@@ -4,6 +4,7 @@ from .workers import StateMachineWorker
 from .managers import StateMachineManager
 from .singleton import Singleton
 import logging
+from .models import StringType, IntegerType, FloatType, BooleanType
 
 class Machine(Singleton):
     r"""
@@ -132,92 +133,132 @@ class AutomationStateMachine(StateMachine):
     run_to_sleep = running.to(sleeping)
     wait_to_sleep = waiting.to(sleeping)
 
-    def __init__(self, name:str):
+    # Attributes
+    state = StringType(default="starting")
+    criticity = IntegerType(default=2)
+    priority = IntegerType(default=1)
+    description = StringType(default="")
+    classification = StringType(default="")
+
+    def __init__(
+            self,
+            name:str,
+            description:str="",
+            classification:str=""
+        ):
 
         super(AutomationStateMachine, self).__init__()
         self.name = name
+        self.machine_interval = None
+        self.description.value = description
+        self.classification.value = classification
 
     # State Methods
     def while_starting(self):
 
-        print(f"{self.name}: [Starting]")
         self.send('start_to_wait')
 
     def while_waiting(self):
 
-        print(f"{self.name}: [Waiting]")
         self.send('wait_to_run')
 
     def while_running(self):
 
-        print(f"{self.name}: [Running]")
-        self.send('run_to_reset')
+        pass
 
     def while_testing(self):
 
-        print(f"{self.name}: [Testing]")
+        pass
 
     def while_sleeping(self):
 
-        print(f"{self.name}: [Sleeping]")
+        pass
 
     def while_resetting(self):
 
-        print(f"{self.name}: [Resetting]")
         self.send('reset_to_start')
 
     def while_restarting(self):
 
-        print(f"{self.name}: [Restarting]")
+        self.send('restart_to_wait')
+
+    # Entering to States
+    def on_enter_starting(self, event, state):
+
+        self.state.value = state.id
+
+    def on_enter_waiting(self, event, state):
+
+        self.state.value = state.id
+
+    def on_enter_running(self, event, state):
+
+        self.state.value = state.id
+
+    def on_enter_testing(self, event, state):
+
+        self.state.value = state.id
+
+    def on_enter_sleeping(self, event, state):
+
+        self.state.value = state.id
+
+    def on_enter_resetting(self, event, state):
+
+        self.state.value = state.id
+
+    def on_enter_restarting(self, event, state):
+
+        self.state.value = state.id
 
     # Transitions
     def on_start_to_wait(self):
 
-        print(f"[start_to_wait]")
+        self.criticity.value = 2
 
     def on_wait_to_run(self):
 
-        print(f"[wait_to_run]")
+        self.criticity.value = 1
 
     def on_wait_to_restart(self):
 
-        print(f"[wait_to_restart]")
+        self.criticity.value = 5
 
     def on_wait_to_reset(self):
 
-        print(f"[wait_to_reset]")
+        self.criticity.value = 5
 
     def on_run_to_restart(self):
 
-        print(f"[run_to_restart]")
+        self.criticity.value = 5
 
     def on_run_to_reset(self):
 
-        print(f"[run_to_reset]")
+        self.criticity.value = 5
 
     def on_test_to_restart(self):
 
-        print(f"[test_to_restart]")
+        self.criticity.value = 4
 
     def on_test_to_reset(self):
 
-        print(f"[test_to_reset]")
+        self.criticity.value = 4
 
     def on_sleep_to_restart(self):
 
-        print(f"[sleep_to_restart]")
+        self.criticity.value = 4
 
     def on_sleep_to_reset(self):
 
-        print(f"[leep_to_reset]")
+        self.criticity.value = 4
 
     def on_reset_to_start(self):
 
-        print(f"[reset_to_start]")
+        self.criticity.value = 2
 
     def on_restart_to_wait(self):
 
-        print(f"[restart_to_wait]")
+        self.criticity.value = 2
 
     # Auxiliaries Methods
 
@@ -254,7 +295,7 @@ class AutomationStateMachine(StateMachine):
         >>> interval = machine.get_interval()
         ```
         """
-        return self._machine_interval
+        return self.machine_interval
 
     def set_interval(self, interval):
         r"""
@@ -271,7 +312,7 @@ class AutomationStateMachine(StateMachine):
         >>> machine.set_interval(0.5)
         ```
         """
-        self._machine_interval = interval
+        self.machine_interval = interval
 
     def _get_active_transitions(self):
         r"""
@@ -363,18 +404,34 @@ class AutomationStateMachine(StateMachine):
 
         return [state.value for state in self.states]
 
+    @classmethod
+    def get_serialized_models(cls):
+        r"""
+        Gets class attributes defined by [model types]()
+
+        **Returns**
+
+        * **(dict)**
+        """
+        result = dict()
+
+        props = cls.__dict__
+        for key, value in props.items():
+
+            if isinstance(value, (StringType, FloatType, IntegerType, BooleanType)):
+
+                result[key] = value.value
+
+        return result
 
     def serialize(self):
 
-        return {
+        result = {
             "name": self.name,
-            "state": self.current_state.value,
-            "host": self.host,
-            "port": self.port,
-            "exchange": self.exchange,
-            "is_producer_connected": self.producer.connection.is_open if hasattr(self, 'producer') else False,
-            "is_consumer_connected": self.consumer.connection.is_open if hasattr(self, 'consumer') else False
+            "sampling_time": self.get_interval(),
         }
+        result.update(AutomationStateMachine.get_serialized_models())
+        return result
 
 
 class LeakStateMachine(AutomationStateMachine):
@@ -400,120 +457,141 @@ class LeakStateMachine(AutomationStateMachine):
     not_available_to_restart = not_available.to(AutomationStateMachine.restarting)
     not_available_to_reset = not_available.to(AutomationStateMachine.resetting)
     
-    def __init__(self, name:str):
+    def __init__(
+            self,
+            name:str,
+            description:str="",
+            classification:str=""
+        ):
 
-        super(LeakStateMachine, self).__init__(name=name)
+        super(LeakStateMachine, self).__init__(
+            name=name,
+            description=description,
+            classification=classification
+            )
 
     def while_running(self):
         r"""
         Documentation here
         """
-        print(f"{self.name} Running")
+        pass
 
     def while_pre_alarming(self):
         r"""
         Documentation here
         """
-        print(f"{self.name} Pre Alarming")
+        pass
 
     def while_leaking(self):
         r"""
         Documentation here
         """
-        print(f"{self.name} Leaking")
+        pass
 
     def while_switching(self):
         r"""
         Documentation here
         """
-        print(f"{self.name} Switching")
+        pass
 
     def while_not_available(self):
         r"""
         Documentation here
         """
-        print(f"{self.name} Not available")
+        pass
+
+    # Entering to States
+    def on_enter_pre_alarming(self, event, state):
+
+        self.state.value = state.id
+
+    def on_enter_leaking(self, event, state):
+
+        self.state.value = state.id
+
+    def on_enter_switching(self, event, state):
+
+        self.state.value = state.id
+
+    def on_enter_not_available(self, event, state):
+
+        self.state.value = state.id
 
     # Transitions methods
     def on_run_to_pre_alarm(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 2
 
     def on_pre_alarm_to_run(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 1
 
     def on_pre_alarm_to_leak(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 5
 
     def on_leak_to_restart(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 4
 
     def on_leak_to_reset(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 4
 
     def on_start_to_switch(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
-
-        r"""
-        Documentation here
-        """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 3
 
     def on_wait_to_switch(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 3
 
     def on_run_to_switch(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 3
 
     def on_switch_to_not_available(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 4
 
     def on_switch_to_restart(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 2
 
     def on_switch_to_reset(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 2
 
     def on_not_available_to_restart(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 2
 
     def on_not_available_to_reset(self):
         r"""
         Documentation here
         """
-        print(f"{self.name}: Transition")
+        self.criticity.value = 2

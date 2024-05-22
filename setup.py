@@ -1,5 +1,4 @@
 # setup.py
-from pyhades import __version__
 import setuptools
 import platform
 
@@ -13,7 +12,7 @@ system_platform = platform.system()
 
 setuptools.setup(
     name="PyAutomation",
-    version=__version__,
+    version='1.0.0',
     author="KnowAI",
     author_email="dev.know.ai@gmail.com",
     description="A python library to develop automation continuous tasks using sync or async concurrent threads",
