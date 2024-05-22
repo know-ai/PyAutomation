@@ -72,6 +72,12 @@ class DataLogger:
 
         return tag.serialize()
     
+    def delete_tag(self, id:str):
+        r"""
+        Documentation here
+        """
+        Tags.delete(id=id)
+    
     def create_tables(self, tables):
         if not self._db:
             

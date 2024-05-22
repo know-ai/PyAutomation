@@ -160,6 +160,19 @@ class DataLoggerEngine(Singleton):
         _query["parameters"].update(fields)
         
         return self.__query(_query)
+    
+    def delete_tag(self, id:str):
+        r"""
+        Documentation here
+        """
+
+        _query = dict()
+        _query["action"] = "delete_tag"
+
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        
+        return self.__query(_query)
 
     def write_tag(self, tag, value):
         r"""

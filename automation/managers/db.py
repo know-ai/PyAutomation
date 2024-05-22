@@ -79,7 +79,6 @@ class DBManager(Singleton):
         Drop all tables defined
         """
         tables = self._tables
-        
         self.logger.drop_tables(tables)
 
     def get_tags(self)->dict:
@@ -133,6 +132,16 @@ class DBManager(Singleton):
 
         # UPDATE TAG ON CVT (HOLDING MEMORY)
         self.tag_engine.update_tag(id=id, **fields)
+
+    def delete_tag(self, id:str):
+        r"""
+        Documentation here
+        """
+        # DELETE TAG ON DATABASE (PERSISTENT DATA)
+        self.logger.delete_tag(id=id)
+
+        # DELETE TAG ON CVT (HOLDING MEMORY)
+        self.tag_engine.delete_tag(id=id)
 
     def init_database(self, **kwargs):
         r"""
