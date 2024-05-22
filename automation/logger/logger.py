@@ -152,7 +152,14 @@ class DataLoggerEngine(Singleton):
         Documentation here
         """
 
-        return self.logger.update_tag(id=id, **fields)
+        _query = dict()
+        _query["action"] = "update_tag"
+
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        _query["parameters"].update(fields)
+        
+        return self.__query(_query)
 
     def write_tag(self, tag, value):
         r"""

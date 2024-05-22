@@ -124,29 +124,15 @@ class DBManager(Singleton):
         # CREATE TAG ON CVT (HOLDING MEMORY)
         self.tag_engine.set_tag(**tag)
 
-    def set_tags(self, tags:list|tuple):
-        r"""
-        Allows to you define all tags added with *add_tag* method
-        """
-        
-        for id, name, unit, data_type, description, display_name, opcua_address, node_namespace in tags:
-
-            self.set_tag(
-                id=id,
-                name=name,
-                unit=unit, 
-                data_type=data_type, 
-                description=description, 
-                display_name=display_name, 
-                opcua_address=opcua_address, 
-                node_namespace=node_namespace
-            )
-
     def update_tag(self, id:str, **fields):
         r"""
         Documentation here
         """
-        self.logger.pu
+        # UPDATE TAG ON DATABASE (PERSISTENT DATA)
+        self.logger.update_tag(id=id, **fields)
+
+        # UPDATE TAG ON CVT (HOLDING MEMORY)
+        self.tag_engine.update_tag(id=id, **fields)
 
     def init_database(self, **kwargs):
         r"""
