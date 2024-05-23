@@ -134,8 +134,6 @@ class AutomationStateMachine(StateMachine):
     run_to_sleep = running.to(sleeping)
     wait_to_sleep = waiting.to(sleeping)
 
-    __subscribed_to = list()
-
     # Attributes
     state = StringType(default="starting")
     criticity = IntegerType(default=2)
@@ -157,6 +155,7 @@ class AutomationStateMachine(StateMachine):
         self.classification.value = classification
         self.buffer_size = 10
         self.buffer_roll_type = 'backward'
+        self.__subscribed_to = list()
 
     # State Methods
     def while_starting(self):
@@ -522,14 +521,11 @@ class LeakStateMachine(AutomationStateMachine):
 
             self.send('wait_to_run')
 
-        print(f"[{self.name}] Buffer: {self.data}")
-
     def while_running(self):
         r"""
         Documentation here
         """
         super(LeakStateMachine, self).while_running()
-        print(f"[{self.name}] Buffer: {self.data}")
 
     def while_pre_alarming(self):
         r"""
