@@ -4,6 +4,7 @@ from .workers import StateMachineWorker
 from .managers import StateMachineManager
 from .singleton import Singleton
 import logging
+from .buffer import Buffer
 from .models import StringType, IntegerType, FloatType, BooleanType
 
 class Machine(Singleton):
@@ -133,6 +134,8 @@ class AutomationStateMachine(StateMachine):
     run_to_sleep = running.to(sleeping)
     wait_to_sleep = waiting.to(sleeping)
 
+    __subscribed_to = list()
+
     # Attributes
     state = StringType(default="starting")
     criticity = IntegerType(default=2)
@@ -152,19 +155,25 @@ class AutomationStateMachine(StateMachine):
         self.machine_interval = None
         self.description.value = description
         self.classification.value = classification
+        self.buffer_size = 10
+        self.buffer_roll_type = 'backward'
 
     # State Methods
     def while_starting(self):
 
+        # DEFINE DATA BUFFER
+        self.data = {tag: Buffer(length=self.buffer_size, roll=self.buffer_roll_type) for tag in self.get_subscribed_tags()}
+
+        # TRANSITION
         self.send('start_to_wait')
 
     def while_waiting(self):
 
-        self.send('wait_to_run')
+        self.criticity.value = 1
 
     def while_running(self):
 
-        pass
+        self.criticity.value = 1
 
     def while_testing(self):
 
@@ -261,6 +270,9 @@ class AutomationStateMachine(StateMachine):
         self.criticity.value = 2
 
     # Auxiliaries Methods
+    def set_buffer_size(self, size:int):
+
+        self.buffer_size = int(size)
 
     def get_state_interval(self)->float:
         r"""
@@ -279,6 +291,32 @@ class AutomationStateMachine(StateMachine):
 
         """
         return self.get_interval()
+
+    def get_subscribed_tags(self)->list:
+
+        return self.__subscribed_to
+    
+    def subscribe_to(self, *tags):
+
+        for tag in tags:
+
+            if tag not in self.get_subscribed_tags():
+
+                self.__subscribed_to.append(tag)
+
+    def notify(self, tag:str, value:str|int|bool|float):
+        r"""
+        Documentation here
+        """
+        if tag in self.data:
+            
+            self.data[tag](value)
+
+    def unsubscribe_to(self, tag:str):
+
+        if tag in self.__subscribed_to:
+
+            self.__subscribed_to.remove(tag)
 
     def get_interval(self)->float:
         r"""
@@ -469,12 +507,29 @@ class LeakStateMachine(AutomationStateMachine):
             description=description,
             classification=classification
             )
+        
+    def while_waiting(self):
+
+        super(LeakStateMachine, self).while_waiting()
+        ready_to_run = True
+        for _, value in self.data.items():
+
+            if len(value)!=value.max_length:
+                ready_to_run=False
+                break
+
+        if ready_to_run:
+
+            self.send('wait_to_run')
+
+        print(f"[{self.name}] Buffer: {self.data}")
 
     def while_running(self):
         r"""
         Documentation here
         """
-        pass
+        super(LeakStateMachine, self).while_running()
+        print(f"[{self.name}] Buffer: {self.data}")
 
     def while_pre_alarming(self):
         r"""

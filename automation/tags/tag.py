@@ -1,4 +1,3 @@
-from automation import DATETIME_FORMAT
 from ..utils import Observer
 import secrets
 

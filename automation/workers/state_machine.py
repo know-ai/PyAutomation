@@ -65,11 +65,12 @@ class MachineScheduler():
 
 class SchedThread(Thread):
 
-    def __init__(self, machine):
+    def __init__(self, machine, manager):
 
         super(SchedThread, self).__init__()
 
         self.machine = machine
+        self._manager = manager
 
     def stop(self):
 
@@ -78,6 +79,17 @@ class SchedThread(Thread):
     def loop_closure(self, machine, scheduler):
 
         def loop():
+            _queue = self._manager.get_queue()
+            
+            while not _queue.empty():
+                
+                item = _queue.get()
+                
+                # Notify to Machine
+                for _machine, _, _ in self._manager.get_machines():
+
+                    _machine.notify(**item)
+
             machine.loop()
             local_interval = machine.get_state_interval()
             interval = machine.get_interval()
@@ -102,12 +114,13 @@ class SchedThread(Thread):
 
 class AsyncStateMachineWorker(BaseWorker):
 
-    def __init__(self):
+    def __init__(self, manager):
 
         super(AsyncStateMachineWorker, self).__init__()
         self._machines = list()
         self._schedulers = list()
         self.jobs = list()
+        self._manager = manager
 
     def add_machine(self, machine, interval):
 
@@ -117,7 +130,7 @@ class AsyncStateMachineWorker(BaseWorker):
 
         for machine, _ in self._machines:
 
-            sched = SchedThread(machine)
+            sched = SchedThread(machine, self._manager)
             self._schedulers.append(sched)
             sched.target(machine)
 
@@ -143,8 +156,9 @@ class StateMachineWorker(BaseWorker):
         super(StateMachineWorker, self).__init__()
         
         self._manager = manager
+        self._manager.attach_all()
         self._sync_scheduler = MachineScheduler()
-        self._async_scheduler = AsyncStateMachineWorker()
+        self._async_scheduler = AsyncStateMachineWorker(manager=self._manager)
         self.jobs = list()
 
     def loop_closure(self, machine):

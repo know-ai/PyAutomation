@@ -4,6 +4,8 @@
 This module implements Function Manager.
 """
 from statemachine import StateMachine
+from ..tags import TagObserver, CVTEngine
+import queue
 
 class StateMachineManager:
     r"""
@@ -15,6 +17,13 @@ class StateMachineManager:
     def __init__(self):
 
         self._machines = list()
+        self._tag_queue = queue.Queue()
+
+    def get_queue(self)->queue.Queue:
+        r"""
+        Documentation here
+        """
+        return self._tag_queue
 
     def append_machine(self, machine:StateMachine):
         r"""
@@ -116,3 +125,33 @@ class StateMachineManager:
         ```
         """
         return len(self._machines) > 0
+    
+    def attach_all(self):
+
+        cvt = CVTEngine()
+
+        def attach_observers(tag):
+
+            observer = TagObserver(self.get_queue())
+            query = dict()
+            query["action"] = "attach_observer"
+            query["parameters"] = {
+                "name": tag,
+                "observer": observer,
+            }
+            cvt.request(query)
+            cvt.response()
+
+        tags_for_subscriptions = list()
+
+        for machine, _, _ in self.get_machines():
+
+            for tag in machine.get_subscribed_tags():
+
+                if tag not in tags_for_subscriptions:
+
+                    tags_for_subscriptions.append(tag)
+        
+        for tag in tags_for_subscriptions:
+            
+            attach_observers(tag)

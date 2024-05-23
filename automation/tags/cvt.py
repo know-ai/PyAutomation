@@ -324,7 +324,7 @@ class CVTEngine(Singleton):
         * **observer** (str): TagObserver instance.
         """
         _query = dict()
-        _query["action"] = "attach"
+        _query["action"] = "attach_observer"
         _query["parameters"] = dict()
         _query["parameters"]["name"] = name
         _query["parameters"]["observer"] = observer
@@ -341,7 +341,7 @@ class CVTEngine(Singleton):
         """
         
         _query = dict()
-        _query["action"] = "detach"
+        _query["action"] = "detach_observer"
 
         _query["parameters"] = dict()
         _query["parameters"]["name"] = name
