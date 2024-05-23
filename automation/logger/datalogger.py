@@ -38,6 +38,7 @@ class DataLogger:
 
     def set_tag(
         self, 
+        id:str,
         name:str, 
         unit:str, 
         data_type:str, 
@@ -47,6 +48,7 @@ class DataLogger:
         node_namespace:str=None):
 
         tag = Tags.create(
+            id=id,
             name=name, 
             unit=unit,
             data_type=data_type,
@@ -68,9 +70,7 @@ class DataLogger:
         r"""
         Documentation here
         """
-        tag = Tags.put(id=id, **fields)
-
-        return tag.serialize()
+        Tags.put(id=id, **fields)
     
     def delete_tag(self, id:str):
         r"""

@@ -114,7 +114,8 @@ class DataLoggerEngine(Singleton):
         self.logger.drop_tables(tables)
 
     def set_tag(
-        self, 
+        self,
+        id:str, 
         name:str, 
         unit:str, 
         data_type:str, 
@@ -137,6 +138,7 @@ class DataLoggerEngine(Singleton):
         _query["action"] = "set_tag"
 
         _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
         _query["parameters"]["name"] = name
         _query["parameters"]["unit"] = unit
         _query["parameters"]["data_type"] = data_type

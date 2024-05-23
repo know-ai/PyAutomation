@@ -1,6 +1,5 @@
 from peewee import CharField
 from automation.dbmodels.core import BaseModel
-import secrets
 
 
 class Tags(BaseModel):
@@ -17,6 +16,7 @@ class Tags(BaseModel):
     @classmethod
     def create(
         cls,
+        id:str,
         name:str, 
         unit:str,
         data_type:str,
@@ -29,7 +29,7 @@ class Tags(BaseModel):
         if not cls.name_exists(name):
             
             tag = super().create(
-                id=secrets.token_hex(4),
+                id=id,
                 name=name, 
                 unit=unit,
                 data_type=data_type,

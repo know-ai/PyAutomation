@@ -6,6 +6,7 @@ This module implements Logger Manager.
 from ..singleton import Singleton
 from ..tags import CVTEngine
 from ..logger import DataLoggerEngine
+import queue, secrets
 from ..dbmodels import (
     Tags
     )
@@ -20,10 +21,23 @@ class DBManager(Singleton):
 
         self.tag_engine = CVTEngine()
         self.logger = DataLoggerEngine()
-
+        self.queue = queue.Queue()
+        self.workers = list()
         self._tables = [
             Tags
         ]
+
+    def get_queue(self)->queue.Queue:
+        r"""
+        Documentation here
+        """
+        return self.queue
+
+    def put_queue(self, method:str, **kwargs):
+        r"""
+        Documentation here
+        """
+        self.queue.put((method, kwargs))
 
     def set_db(self, db):
         r"""
@@ -110,38 +124,50 @@ class DBManager(Singleton):
         * **tcp_source_address** (str)[Optional]:
         * **node_namespace** (str)[Optional]:
         """
-        # CREATE TAG ON DATABASE (PERSISTENT DATA)
-        tag = self.logger.set_tag(
-            name=name,  
-            unit=unit,
-            data_type=data_type,
-            description=description,
-            display_name=display_name,
-            opcua_address=opcua_address,
-            node_namespace=node_namespace
-        )
-        # CREATE TAG ON CVT (HOLDING MEMORY)
-        self.tag_engine.set_tag(**tag)
+        payload = {
+            "id": secrets.token_hex(4),
+            "name": name,
+            "unit": unit,
+            "data_type": data_type,
+            "description": description,
+            "display_name": display_name,
+            "opcua_address": opcua_address,
+            "node_namespace": node_namespace
+        }
+        # CREATE TAG ON CVT (HOLD IN MEMORY)
+        self.tag_engine.set_tag(**payload)
+        # CREATE TAG ON DATABASE (PERSISTENT DATA) 
+        # NOT BLOCKING EXECUTION AND THREAD SAFE MECHANISM
+        self.put_queue("set_tag", **payload)
 
     def update_tag(self, id:str, **fields):
         r"""
         Documentation here
         """
-        # UPDATE TAG ON DATABASE (PERSISTENT DATA)
-        self.logger.update_tag(id=id, **fields)
-
-        # UPDATE TAG ON CVT (HOLDING MEMORY)
-        self.tag_engine.update_tag(id=id, **fields)
+        if self.tag_engine.get_tag(id=id):
+            
+            # UPDATE TAG ON CVT (HOLDING MEMORY)
+            self.tag_engine.update_tag(id=id, **fields)
+            # UPDATE TAG ON DATABASE (PERSISTENT DATA)
+            # NOT BLOCKING EXECUTION AND THREAD SAFE MECHANISM
+            fields.update({
+                "id": id
+            })
+            self.put_queue("update_tag", **fields)
 
     def delete_tag(self, id:str):
         r"""
         Documentation here
         """
-        # DELETE TAG ON DATABASE (PERSISTENT DATA)
-        self.logger.delete_tag(id=id)
-
-        # DELETE TAG ON CVT (HOLDING MEMORY)
-        self.tag_engine.delete_tag(id=id)
+        if self.tag_engine.get_tag(id=id):
+            # DELETE TAG ON CVT (HOLDING MEMORY)
+            self.tag_engine.delete_tag(id=id)
+            # DELETE TAG ON DATABASE (PERSISTENT DATA)
+            # NOT BLOCKING EXECUTION AND THREAD SAFE MECHANISM
+            fields = {
+                "id": id
+            }
+            self.put_queue("delete_tag", **fields) 
 
     def init_database(self, **kwargs):
         r"""

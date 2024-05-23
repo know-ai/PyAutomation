@@ -110,6 +110,18 @@ class CVT:
 
         return None
     
+    def get_tag(self, id:str)->Tag|None:
+        r"""
+        Documentation here
+        """
+        for _id, tag in self._tags.items():
+
+            if _id==id:
+                
+                return tag
+
+        return None
+    
     def get_tag_by_display_name(self, display_name:str)->Tag|None:
         r"""
         Documentation here
@@ -160,7 +172,8 @@ class CVT:
             Tag observer object, will update once a tag object is changed.
         """
         tag = self.get_tag_by_name(name)
-        self._tags[tag.id].attach(observer)
+        if tag:
+            self._tags[tag.id].attach(observer)
 
     def detach_observer(self, name, observer):
         """Detaches an observer from a tag object defined by name.
@@ -232,6 +245,16 @@ class CVTEngine(Singleton):
         _query["action"] = "set_data_type"
         _query["parameters"] = dict()
         _query["parameters"]["data_type"] = data_type
+        return self.__query(_query)
+    
+    def get_tag(
+        self,
+        id:str=None
+        ):
+        _query = dict()
+        _query["action"] = "get_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
         return self.__query(_query)
 
     def set_tag(
