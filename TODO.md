@@ -8,12 +8,12 @@ Version 1.0.0
 - [x] DataLogger (Data Persistency)
 - [ ] Workers
     - [x] DataLogger
-    - [] Alarms
+    - [ ] Alarms
     - [x] State Machines
 - [ ] Engines (Thread Safe Mechanisms)
     - [x] CVT
     - [x] DataLogger
-    - [] Alarms
+    - [ ] Alarms
 - [ ] Alarm Management System
     - [x] DBModels (Persistency)
 - [ ] Industrial Protocols
