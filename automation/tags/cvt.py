@@ -34,7 +34,6 @@ class CVT:
     
     def set_tag(
         self, 
-        id:str,
         name:str, 
         unit:str, 
         data_type:str, 
@@ -71,7 +70,6 @@ class CVT:
             self.set_data_type(data_type)
 
         tag = Tag(
-            id=id,
             name=name,
             unit=unit,
             data_type=data_type,
@@ -265,8 +263,7 @@ class CVTEngine(Singleton):
         description:str, 
         display_name:str="",
         opcua_address:str="",
-        node_namespace:str="",
-        id:str=None
+        node_namespace:str=""
         ):
         _query = dict()
         _query["action"] = "set_tag"
@@ -278,7 +275,6 @@ class CVTEngine(Singleton):
         _query["parameters"]["display_name"] = display_name
         _query["parameters"]["opcua_address"] = opcua_address
         _query["parameters"]["node_namespace"] = node_namespace
-        _query["parameters"]["id"] = id
         return self.__query(_query)
     
     def update_tag(self, id:str, **kwargs):
