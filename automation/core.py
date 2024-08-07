@@ -6,7 +6,7 @@ from .workers import StateMachineWorker, LoggerWorker
 import logging
 from .managers import StateMachineManager, DBManager
 from .tags import CVTEngine
-from automation.config_page import ConfigView
+from automation.pages.main import ConfigView
 from automation.pages.callbacks import init_callbacks
 import dash_bootstrap_components as dbc
 
@@ -179,7 +179,7 @@ class PyAutomation(Singleton):
 
     def startup_config_page(self):
         
-        self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True)
+        self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".")
         self.dash_app.set_automation_app(self)
         init_callbacks(app=self.dash_app)
         self.dash_app.run_server()
