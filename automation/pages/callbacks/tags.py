@@ -108,15 +108,22 @@ def init_callback(app:dash.Dash):
         """
         if "create_tag_button" == dash.ctx.triggered_id:
 
-            app.automation.cvt.set_tag(
-                name=tag_name,
-                unit=unit,
-                data_type=datatype,
-                description=description,
-                display_name=display_name,
-                opcua_address=opcua_address,
-                node_namespace=node_namespace
-            )
+            try:
+
+                app.automation.cvt.set_tag(
+                    name=tag_name,
+                    unit=unit,
+                    data_type=datatype,
+                    description=description,
+                    display_name=display_name,
+                    opcua_address=opcua_address,
+                    node_namespace=node_namespace
+                )
+            
+            except Exception as err:
+
+                print(f"Error Message: {err.message}")
+                
             return app.tags_table_data()
         
     @app.callback(
