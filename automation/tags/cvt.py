@@ -41,7 +41,7 @@ class CVT:
         display_name:str="",
         opcua_address:str="",
         node_namespace:str=""
-        ):
+        )->None|str:
         """Initialize a new Tag object in the _tags dictionary.
         
         # Parameters
@@ -86,7 +86,11 @@ class CVT:
 
         self._tags[tag.id] = tag
 
-    def update_tag(self, id:str, **kwargs):
+    def update_tag(self, id:str, **kwargs)->None|str:
+        has_duplicates, message = self.has_duplicates(**kwargs)
+        if has_duplicates:
+
+            return message
         tag = self._tags[id]
         tag.update(**kwargs)
         self._tags[id] = tag
@@ -190,17 +194,20 @@ class CVT:
         tag = self.get_tag_by_name(name)
         self._tags[tag.id].detach(observer)
 
-    def has_duplicates(self, name:str, display_name:str):
+    def has_duplicates(self, name:str=None, display_name:str=None, **kwargs):
 
         for _, _tag in self._tags.items():
 
-            if _tag.get_name()==name:
+            if name:
+                if _tag.get_name()==name:
 
-                return True, f"Duplicated Tag Name: {name}"
+                    return True, f"Duplicated Tag Name: {name}"
+                
+            if display_name:
             
-            elif _tag.get_display_name()==display_name:
+                if _tag.get_display_name()==display_name:
 
-                return True, f"Duplicated Display Name: {display_name}"
+                    return True, f"Duplicated Display Name: {display_name}"
             
         return False, f"Valid Tag Name: {name} - Display Name: {display_name}"
     
