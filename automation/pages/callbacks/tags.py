@@ -140,39 +140,32 @@ def init_callback(app:dash.Dash):
             return app.tags_table_data()
         
     @app.callback(
-        dash.Output('tags_datatable', 'data'),
-        dash.Input('tags_datatable', 'active_cell'),
+        [dash.Input('tags_datatable', 'active_cell'), dash.Input('tags_datatable', 'data_timestamp')],
         dash.State('tags_datatable', 'data_previous'),
-        dash.State('tags_datatable', 'data')
+        dash.State('tags_datatable', 'data'),
         )
-    def delete_update_tags(active_cell, previous, current):
+    def delete_update_tags(active_cell, timestamp, previous, current):
 
-        print(f"Active Cell: {active_cell} - Previous: {previous} - Current: {current}")
+        if timestamp:
 
-        if previous is None:
-            dash.exceptions.PreventUpdate()
+            if active_cell==None and current: # DELETE TAG
 
-        elif active_cell==None and current: # DELETE TAG
+                removed_rows = [row for row in previous if row not in current]
+                
+                for row in removed_rows:
+                    
+                    _id = row['id']
+                    message = f"Do you want to delete Tag ID: {_id}?"
 
-            removed_rows = [row for row in previous if row not in current]
-            
-            for row in removed_rows:
-                _id = row['id']
-                app.automation.cvt.delete_tag(id=_id)
-                # message = f"Do you want to delete Tag ID: {_id}?"
-                # dash.set_props("modal-update-delete-tag-body", {"children": message})
-                # dash.set_props("modal-update_delete-centered", {'is_open': True})
+            else: # UPDATE TAG DEFINITION
+                to_updates = find_differences_between_lists(previous, current)
+                tag_to_update = to_updates[0]
+                tag_id = tag_to_update.pop("id")
+                message = f"Do you want to update tag {tag_id} To {tag_to_update}?"
 
-        else: # UPDATE TAG DEFINITION
-            to_updates = find_differences_between_lists(previous, current)
-            tag_to_update = to_updates[0]
-            tag_id = tag_to_update.pop("id")
-            app.automation.cvt.update_tag(id=tag_id, **tag_to_update)
-            # message = f"Do you want to update tag {tag_id} To {tag_to_update}?"
-            # dash.set_props("modal-update-delete-tag-body", {"children": message})
-            # dash.set_props("modal-update_delete-centered", {'is_open': True})
-
-        return app.tags_table_data()
+            # OPEN MODAL TO CONFIRM CHANGES
+            dash.set_props("modal-update-delete-tag-body", {"children": message})
+            dash.set_props("modal-update_delete-centered", {'is_open': True})
 
     @app.callback(
         dash.Output("modal-centered", "is_open"),
@@ -190,46 +183,47 @@ def init_callback(app:dash.Dash):
         return is_open
     
     @app.callback(
-        dash.Output("modal-update_delete-centered", "is_open"),
+        [dash.Output("modal-update_delete-centered", "is_open"), dash.Output('tags_datatable', 'data')],
         [dash.Input("update-delete-tag-yes", "n_clicks"), dash.Input("update-delete-tag-no", "n_clicks")],
         [
-            dash.State("modal-update_delete-centered", "is_open")
+            dash.State("modal-update_delete-centered", "is_open"),
+            dash.State('tags_datatable', 'active_cell'),
+            dash.State('tags_datatable', 'data_previous'),
+            dash.State('tags_datatable', 'data')
         ]
     )
-    def toggle_modal_update_delete_tag(yes_n, no_n, is_open):
+    def toggle_modal_update_delete_tag(yes_n, no_n, is_open, active_cell, previous, current):
         r"""
         Documentation here
         """
-        print(f"Yes: {yes_n} - no: {no_n} - is open: {is_open}")
+        
         if yes_n:
+            if previous is None:
+                dash.exceptions.PreventUpdate()
 
-            # if previous is None:
-            #     dash.exceptions.PreventUpdate()
+            elif active_cell==None and current: # DELETE TAG
 
-            # elif active_cell==None and current: # DELETE TAG
-
-            #     removed_rows = [row for row in previous if row not in current]
+                removed_rows = [row for row in previous if row not in current]
                 
-            #     for row in removed_rows:
-            #         _id = row['id']
-            #         app.automation.cvt.delete_tag(id=_id)
-                    
-            # else: # UPDATE TAG DEFINITION
+                for row in removed_rows:
+                    _id = row['id']
+                    app.automation.cvt.delete_tag(id=_id)
+                    message = f"Do you want to delete Tag ID: {_id}?"
+                    dash.set_props("modal-update-delete-tag-body", {"children": message})
+                    dash.set_props("modal-update_delete-centered", {'is_open': True})
 
-            #     row_id = active_cell['row'] - 1
-            #     tag_attr = active_cell['column_id']
-            #     tag_to_update = {
-            #         f"{tag_attr}": current[row_id][tag_attr]
-            #     }
-            #     tag_id = active_cell['row_id']
-            #     app.automation.cvt.update_tag(id=tag_id, **tag_to_update)
+            else: # UPDATE TAG DEFINITION
+                to_updates = find_differences_between_lists(previous, current)
+                tag_to_update = to_updates[0]
+                tag_id = tag_to_update.pop("id")
+                app.automation.cvt.update_tag(id=tag_id, **tag_to_update)
 
-            return not is_open
+            return not is_open, app.tags_table_data()
         
         elif no_n:
-            
-            return not is_open
+            # print("No")
+            return not is_open, app.tags_table_data()
 
         else:
 
-            return is_open
+            return is_open, app.tags_table_data()
