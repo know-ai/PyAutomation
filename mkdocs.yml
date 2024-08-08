@@ -11,19 +11,36 @@ site_dir: _build/html
 nav:
     - Summary: 'index.md'
     - Architecture: 'architecture.md'
+    - User' Guide:
+      - Summary: 'Users_Guide/index.md'
+      - Alarms: 
+        - Summary: 'Users_Guide/Alarms/index.md' 
+      - Database:
+        - Summary: 'Users_Guide/Database/index.md' 
+      - Monitor: 
+        - Summary: 'Users_Guide/Monitor/index.md' 
+      - Tags: 
+        - Summary: 'Users_Guide/Tags/index.md'   
+        - Create Tag: 'Users_Guide/Tags/Create.md' 
+        - Update Tag: 'Users_Guide/Tags/Update.md' 
+        - Delete Tag: 'Users_Guide/Tags/Delete.md' 
     - Setup: 'setup.md'
-    - Core:
-      - Summary: 'core/index.md'
-      - State Machines: 'core/state_machines.md'
-      - CVT: 'core/cvt.md'
-      - DataLogger: 'core/datalogger.md'
-      - Alarms: 'core/alarms.md'
-    - Industrial Protocols:
-      - Summary: 'iiot/index.md'
-      - OPCUA: 'iiot/opcua.md'
-      - Modbus: 'iiot/modbus.md'
-    - Logs: 'logs.md'
-    - Testing: 'testing.md'
+    - Development's Guide:
+      - Summary: 'Developments_Guide/index.md'
+      - Core:
+        - Summary: 'Developments_Guide/core/index.md'
+        - State Machines: 'Developments_Guide/core/state_machines.md'
+        - CVT: 'Developments_Guide/core/cvt.md'
+        - DataLogger: 'Developments_Guide/core/datalogger.md'
+        - Alarms: 'Developments_Guide/core/alarms.md'
+      - Industrial Protocols:
+        - Summary: 'Developments_Guide/iiot/index.md'
+        - OPCUA: 'Developments_Guide/iiot/opcua.md'
+        - Modbus: 'Developments_Guide/iiot/modbus.md'
+      - Logs: 'Developments_Guide/logs.md'
+      - Testing: 'Developments_Guide/testing.md'
+    - Integration's Guide:
+      - Summary: 'Integrations_Guide/index.md'
 
 markdown_extensions:
   - admonition
