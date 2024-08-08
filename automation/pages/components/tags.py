@@ -111,8 +111,17 @@ create_tag_form = dash.html.Div(
     )
 
 tags_table = dash.dash_table.DataTable(
-        data,
-        [{'name': 'id', 'id': 'id', 'editable': False}, {'name': 'name', 'id': 'name'}, {'name': 'unit', 'id': 'unit'}, {'name': 'data_type', 'id': 'data_type'}, {'name': 'description', 'id': 'description'}, {'name': 'display_name', 'id': 'display_name'}, {'name': 'opcua_address', 'id': 'opcua_address'}, {'name': 'node_namespace', 'id': 'node_namespace'}],
+        data=data,
+        columns=[
+            {'name': 'id', 'id': 'id', 'editable': False}, 
+            {'name': 'name', 'id': 'name'}, 
+            {'name': 'unit', 'id': 'unit'}, 
+            {'name': 'data_type', 'id': 'data_type', 'presentation': 'dropdown'}, 
+            {'name': 'description', 'id': 'description'}, 
+            {'name': 'display_name', 'id': 'display_name'}, 
+            {'name': 'opcua_address', 'id': 'opcua_address'}, 
+            {'name': 'node_namespace', 'id': 'node_namespace'}
+        ],
         id="tags_datatable",
         filter_action="native",
         sort_action="native",
@@ -124,6 +133,15 @@ tags_table = dash.dash_table.DataTable(
         page_size= 10,
         persistence=True,
         editable=True,
+        dropdown={
+            'data_type': {
+                'options': [
+                    {"label": "Float", "value": 'float'},
+                    {"label": "Integer", "value": 'integer'},
+                    {"label": "String", "value": 'string'}
+                ]
+            }
+        },
         persisted_props=['data'],
         export_format='xlsx',
         export_headers='display',
