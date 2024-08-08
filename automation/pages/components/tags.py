@@ -62,9 +62,9 @@ create_tag_form = dash.html.Div(
                                         dbc.InputGroupText("Datatype"),
                                         dbc.Select(
                                             options=[
-                                                {"label": "Float", "value": 'float'},
-                                                {"label": "Integer", "value": 'integer'},
-                                                {"label": "String", "value": 'string'}
+                                                {"label": "float", "value": 'float'},
+                                                {"label": "integer", "value": 'integer'},
+                                                {"label": "string", "value": 'string'}
                                             ],
                                             id="datatype_input"
                                         ),
@@ -136,9 +136,9 @@ tags_table = dash.dash_table.DataTable(
         dropdown={
             'data_type': {
                 'options': [
-                    {"label": "Float", "value": 'float'},
-                    {"label": "Integer", "value": 'integer'},
-                    {"label": "String", "value": 'string'}
+                    {"label": "float", "value": 'float'},
+                    {"label": "integer", "value": 'integer'},
+                    {"label": "string", "value": 'string'}
                 ]
             }
         },

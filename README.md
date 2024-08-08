@@ -15,3 +15,25 @@ It has a memory persistence module for real-time variables that we call (CVT, Cu
 There is also an alarm management system
 
 And finally, the disk persistence of the variables to provide functionalities for historical trends of the field variables.
+
+
+# Run Config Page
+
+## Crearte Virtual Environment
+
+```python
+python3 -m venv venv
+. venv/bin/activate
+```
+## Install Dependencies
+
+```python
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+## Run Config page
+
+```python
+python test_config.py
+```

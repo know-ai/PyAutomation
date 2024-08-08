@@ -199,7 +199,7 @@ def init_callback(app:dash.Dash):
             
             if timestamp:
                 
-
+                breakpoint()
                 if active_cell==None and current: # DELETE TAG
 
                     removed_rows = [row for row in previous if row not in current]
