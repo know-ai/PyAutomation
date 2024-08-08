@@ -68,8 +68,11 @@ class CVT:
             data_type.set(name, value)
             data_type = data_type.__name__
             self.set_data_type(data_type)
+        
+        has_duplicates, message = self.has_duplicates(name=name, display_name=display_name)
+        if has_duplicates:
 
-        self._check_duplicates(name=name, display_name=display_name)
+            return message
 
         tag = Tag(
             name=name,
@@ -187,17 +190,19 @@ class CVT:
         tag = self.get_tag_by_name(name)
         self._tags[tag.id].detach(observer)
 
-    def _check_duplicates(self, name:str, display_name:str):
+    def has_duplicates(self, name:str, display_name:str):
 
         for _, _tag in self._tags.items():
 
             if _tag.get_name()==name:
 
-                raise NameError(f"Duplicated Tag Name: {name}")
+                return True, f"Duplicated Tag Name: {name}"
             
             elif _tag.get_display_name()==display_name:
 
-                raise NameError(f"Duplicated display Name: {display_name}")
+                return True, f"Duplicated Display Name: {display_name}"
+            
+        return False, f"Valid Tag Name: {name} - Display Name: {display_name}"
     
     def serialize(self, id:str)->dict:
         """Returns a tag type defined by name.
@@ -472,6 +477,7 @@ class CVTEngine(Singleton):
             self.__true_response(resp)
 
         except Exception as e:
+            
             self.__log_error(e, error_msg)
 
         self._response_lock.release()
