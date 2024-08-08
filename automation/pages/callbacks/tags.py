@@ -135,8 +135,8 @@ def init_callback(app:dash.Dash):
     def delete_update_tags(active_cell, timestamp, previous, current):
 
         if timestamp:
-
-            if active_cell==None and current: # DELETE TAG
+            
+            if active_cell==None and previous: # DELETE TAG
 
                 removed_rows = [row for row in previous if row not in current]
                 
@@ -199,8 +199,7 @@ def init_callback(app:dash.Dash):
             
             if timestamp:
                 
-                breakpoint()
-                if active_cell==None and current: # DELETE TAG
+                if active_cell==None and previous: # DELETE TAG
 
                     removed_rows = [row for row in previous if row not in current]
                     
