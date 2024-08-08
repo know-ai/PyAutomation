@@ -1,6 +1,7 @@
 import dash
 import dash_bootstrap_components as dbc
 from automation import PyAutomation
+from automation.variables import VARIABLES
 
 app = PyAutomation()
 
@@ -27,10 +28,7 @@ create_tag_form = dash.html.Div(
                                         dbc.InputGroupText("Variable"),
                                         dbc.Select(
                                             options=[
-                                                {"label": "Pressure", "value": 1},
-                                                {"label": "Mass Flow", "value": 2},
-                                                {"label": "Temperature", "value": 3},
-                                                {"label": "Density", "value": 4},
+                                                {"label": variable, "value": variable} for variable in VARIABLES.keys()
                                             ],
                                             id="variable_input"
                                         ),
@@ -105,9 +103,9 @@ create_tag_form = dash.html.Div(
                     title="Create Tag",
                 )
             ],
-            start_collapsed=True,
-        )
-    ]
+            start_collapsed=False,
+            )
+        ]
     )
 
 tags_table = dash.dash_table.DataTable(

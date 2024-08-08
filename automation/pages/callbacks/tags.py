@@ -1,5 +1,6 @@
 import dash
 from automation.utils import find_differences_between_lists
+from automation.variables import VARIABLES
 
 def init_callback(app:dash.Dash):
 
@@ -19,7 +20,9 @@ def init_callback(app:dash.Dash):
         """
 
         if variable:
-
+            dash.set_props("unit_input", {'options': [
+                {"label": value, "value": value} for _, value in VARIABLES[variable].items()
+            ]})
             dash.set_props("unit_input", {'disabled': False})
             if name and datatype and unit:
 
@@ -31,7 +34,7 @@ def init_callback(app:dash.Dash):
                 dash.set_props("create_tag_button", {'disabled': True})
         
         else:
-
+            
             dash.set_props("unit_input", {'disabled': True})
             dash.set_props("create_tag_button", {'disabled': True})
 
@@ -124,7 +127,7 @@ def init_callback(app:dash.Dash):
                 
                 dash.set_props("modal-body", {"children": message})
                 dash.set_props("modal-centered", {'is_open': True})
-                
+    
             return app.tags_table_data()
         
     @app.callback(
