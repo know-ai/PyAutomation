@@ -1,4 +1,4 @@
 from automation import PyAutomation
 
 app = PyAutomation()
-app.run()
+app.run(debug=True)

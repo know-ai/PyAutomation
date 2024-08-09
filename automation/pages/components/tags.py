@@ -86,7 +86,7 @@ create_tag_form = dash.html.Div(
                                             options=[
                                                 {"label": "ns=2;i=1", "value": "ns=2;i=1"},
                                                 {"label": "ns=2;i=2", "value": "ns=2;i=2"},
-                                                {"label": "ns=2;i=3", "value": "ns=2;i=2"}
+                                                {"label": "ns=2;i=3", "value": "ns=2;i=3"}
                                             ],
                                             id="node_namespace_input",
                                             disabled=True

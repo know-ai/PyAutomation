@@ -177,14 +177,14 @@ class PyAutomation(Singleton):
         logging.info("Manual Shutting down")
         sys.exit()
 
-    def startup_config_page(self):
+    def startup_config_page(self, debug:str=False):
         
         self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".")
         self.dash_app.set_automation_app(self)
         init_callbacks(app=self.dash_app)
-        self.dash_app.run_server()
+        self.dash_app.run(debug=debug)
 
-    def run(self):
+    def run(self, debug:bool=False):
         r"""
         Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
 
@@ -196,4 +196,4 @@ class PyAutomation(Singleton):
         >>> app.run()
         ```
         """
-        self.startup_config_page()
+        self.startup_config_page(debug=debug)
