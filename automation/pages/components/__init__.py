@@ -60,3 +60,35 @@ def modal_confirm(title:str, modal_id:str, body_id:str, yes_button_id:str, no_bu
             ),
         ]
     )
+
+
+def navbar():
+    return dbc.NavbarSimple(
+        children=[
+            dbc.NavItem(dbc.NavLink("Monitor", href="/")),
+            dbc.NavItem(dbc.NavLink("Database", href="/database")),
+            dbc.DropdownMenu(
+                children=[
+                    dbc.DropdownMenuItem("Tags", header=True),
+                    dbc.DropdownMenuItem("Definition", href="/tags", id="tags_definition_link"),
+                    dbc.DropdownMenuItem("Trends", href="/trends"),
+                ],
+                nav=True,
+                in_navbar=True,
+                label="Tags",
+            ),
+            dbc.DropdownMenu(
+                children=[
+                    dbc.DropdownMenuItem("Alarms", header=True),
+                    dbc.DropdownMenuItem("Definition", href="/alarms"),
+                    dbc.DropdownMenuItem("History", href="/alarms-history"),
+                ],
+                nav=True,
+                in_navbar=True,
+                label="Alarms",
+            )
+        ],
+        brand="PyAutomation Configuration",
+        color="primary",
+        dark=True,
+    )

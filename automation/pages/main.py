@@ -1,6 +1,5 @@
 import dash
-import dash_bootstrap_components as dbc
-import pandas as pd
+from automation.pages.components import navbar
 
 
 class ConfigView(dash.Dash):
@@ -10,39 +9,10 @@ class ConfigView(dash.Dash):
 
     def __init__(self, **kwargs):
     
-        super().__init__(__name__, **kwargs)
+        super(ConfigView, self).__init__(__name__, **kwargs)
 
-        navbar = dbc.NavbarSimple(
-            children=[
-                dbc.NavItem(dbc.NavLink("Monitor", href="/")),
-                dbc.NavItem(dbc.NavLink("Database", href="/database")),
-                dbc.DropdownMenu(
-                    children=[
-                        dbc.DropdownMenuItem("Tags", header=True),
-                        dbc.DropdownMenuItem("Definition", href="/tags", id="tags_definition_link"),
-                        dbc.DropdownMenuItem("Trends", href="/trends"),
-                    ],
-                    nav=True,
-                    in_navbar=True,
-                    label="Tags",
-                ),
-                dbc.DropdownMenu(
-                    children=[
-                        dbc.DropdownMenuItem("Alarms", header=True),
-                        dbc.DropdownMenuItem("Definition", href="/alarms"),
-                        dbc.DropdownMenuItem("History", href="/alarms-history"),
-                    ],
-                    nav=True,
-                    in_navbar=True,
-                    label="Alarms",
-                )
-            ],
-            brand="PyAutomation Configuration",
-            color="primary",
-            dark=True,
-        )
         self.layout = dash.html.Div([
-            navbar,
+            navbar(),
             dash.page_container
         ])
 
@@ -52,12 +22,4 @@ class ConfigView(dash.Dash):
         
     def tags_table_data(self):
 
-        tags = pd.DataFrame(self.automation.cvt.get_tags())
-        columns_allowed = ["id", "name", "unit", "data_type", "description", "display_name", "opcua_address", "node_namespace"]
-        records=tags.to_dict("records")
-        data = list()
-        for record in records:
-            
-            data.append({ key : value for (key, value) in record.items() if key in columns_allowed })
-
-        return data
+        return self.automation.cvt.get_tags()
