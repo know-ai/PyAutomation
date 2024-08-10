@@ -5,53 +5,46 @@ from automation.variables import VARIABLES
 def init_callback(app:dash.Dash):
 
     @app.callback(
-        dash.Output("unit_input", "value"),
         dash.Input("tag_name_input", "value"),
         dash.Input("variable_input", "value"),
         dash.Input("datatype_input", "value"),
-        dash.State("unit_input", "value"),  
+        dash.Input("unit_input", "value"),  
         dash.Input("display_name_input", "value"), 
         dash.Input("description_input", "value"),
         dash.Input("opcua_address_input", "value"),
         dash.Input("node_namespace_input", "value")
         )
     def create_tag(
-        name, 
-        variable, 
-        datatype, 
-        previous_unit, 
-        display_name, 
-        description, 
-        opcua_address, 
-        node_namespace
-        ):
+        name:str, 
+        variable:str, 
+        datatype:str, 
+        unit:str, 
+        display_name:str, 
+        description:str, 
+        opcua_address:str, 
+        node_namespace:str
+        )->str:
         r"""
         Documentation here
         """
-        unit = None
-        if variable:
+        if dash.ctx.triggered_id.lower()=="variable_input":
             
             dash.set_props("unit_input", {'options': [
                 {"label": value, "value": value} for _, value in VARIABLES[variable].items()
             ]})
+            
             unit = list(VARIABLES[variable].values())[0]
             dash.set_props("unit_input", {'value': unit})
             dash.set_props("unit_input", {'disabled': False})
-            if name and datatype and unit:
 
-                dash.set_props("create_tag_button", {'disabled': False})
-                dash.set_props("create_tag_button", {'disabled': False})
+        if name and datatype and unit and variable:
 
-            else:
-                
-                dash.set_props("create_tag_button", {'disabled': True})
-        
+            dash.set_props("create_tag_button", {'disabled': False})
+            dash.set_props("create_tag_button", {'disabled': False})
+
         else:
             
-            dash.set_props("unit_input", {'disabled': True})
             dash.set_props("create_tag_button", {'disabled': True})
-
-        return unit
 
     @app.callback(
         dash.Output("description_input", "value"),
@@ -119,14 +112,12 @@ def init_callback(app:dash.Dash):
         display_name,
         description,
         opcua_address,
-        node_namespace,
-        allow_duplicate=True
+        node_namespace
         ):
         r"""
         Documentation here
         """
         if "create_tag_button" == dash.ctx.triggered_id:
-
 
             message = app.automation.cvt.set_tag(
                 name=tag_name,
