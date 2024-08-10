@@ -137,15 +137,15 @@ def init_callback(app:dash.Dash):
             return app.tags_table_data()
         
     @app.callback(
-        [dash.Input('tags_datatable', 'active_cell'), dash.Input('tags_datatable', 'data_timestamp')],
+        dash.Input('tags_datatable', 'data_timestamp'),
         dash.State('tags_datatable', 'data_previous'),
         dash.State('tags_datatable', 'data'),
         )
-    def delete_update_tags(active_cell, timestamp, previous, current):
+    def delete_update_tags(timestamp, previous, current):
 
         if timestamp:
             
-            if active_cell==None and previous: # DELETE TAG
+            if len(previous) > len(current): # DELETE TAG
 
                 removed_rows = [row for row in previous if row not in current]
                 
@@ -158,6 +158,7 @@ def init_callback(app:dash.Dash):
                     dash.set_props("modal-update_delete-centered", {'is_open': True})
 
             elif previous and current: # UPDATE TAG DEFINITION
+                
                 to_updates = find_differences_between_lists(previous, current)
                 tag_to_update = to_updates[0]
                 tag_id = tag_to_update.pop("id")
@@ -194,12 +195,11 @@ def init_callback(app:dash.Dash):
         [
             dash.State('tags_datatable', 'data_timestamp'),
             dash.State("modal-update_delete-centered", "is_open"),
-            dash.State('tags_datatable', 'active_cell'),
             dash.State('tags_datatable', 'data_previous'),
             dash.State('tags_datatable', 'data')
         ]
     )
-    def toggle_modal_update_delete_tag(yes_n, no_n, timestamp, is_open, active_cell, previous, current):
+    def toggle_modal_update_delete_tag(yes_n, no_n, timestamp, is_open, previous, current):
         r"""
         Documentation here
         """
@@ -208,7 +208,7 @@ def init_callback(app:dash.Dash):
             
             if timestamp:
                 
-                if active_cell==None and previous: # DELETE TAG
+                if len(previous) > len(current): # DELETE TAG
 
                     removed_rows = [row for row in previous if row not in current]
                     
