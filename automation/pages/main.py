@@ -1,5 +1,5 @@
 import dash
-from automation.pages.components import navbar
+from automation.pages.components import Components
 
 
 class ConfigView(dash.Dash):
@@ -9,10 +9,10 @@ class ConfigView(dash.Dash):
 
     def __init__(self, **kwargs):
     
-        super(ConfigView, self).__init__(__name__, **kwargs)
-
+        super(ConfigView, self).__init__(__name__, suppress_callback_exceptions=True, **kwargs)
+        
         self.layout = dash.html.Div([
-            navbar(),
+            Components.navbar(),
             dash.page_container
         ])
 

@@ -5,24 +5,37 @@ from automation.variables import VARIABLES
 def init_callback(app:dash.Dash):
 
     @app.callback(
-        dash.Input("tag_name_input", "value"), 
-        dash.Input("variable_input", "value"), 
-        dash.Input("datatype_input", "value"), 
-        dash.Input("unit_input", "value"), 
+        dash.Output("unit_input", "value"),
+        dash.Input("tag_name_input", "value"),
+        dash.Input("variable_input", "value"),
+        dash.Input("datatype_input", "value"),
+        dash.State("unit_input", "value"),  
         dash.Input("display_name_input", "value"), 
         dash.Input("description_input", "value"),
         dash.Input("opcua_address_input", "value"),
         dash.Input("node_namespace_input", "value")
         )
-    def create_tag(name, variable, datatype, unit, display_name, description, opcua_address, node_namespace):
+    def create_tag(
+        name, 
+        variable, 
+        datatype, 
+        previous_unit, 
+        display_name, 
+        description, 
+        opcua_address, 
+        node_namespace
+        ):
         r"""
         Documentation here
         """
-
+        unit = None
         if variable:
+            
             dash.set_props("unit_input", {'options': [
                 {"label": value, "value": value} for _, value in VARIABLES[variable].items()
             ]})
+            unit = list(VARIABLES[variable].values())[0]
+            dash.set_props("unit_input", {'value': unit})
             dash.set_props("unit_input", {'disabled': False})
             if name and datatype and unit:
 
@@ -37,6 +50,8 @@ def init_callback(app:dash.Dash):
             
             dash.set_props("unit_input", {'disabled': True})
             dash.set_props("create_tag_button", {'disabled': True})
+
+        return unit
 
     @app.callback(
         dash.Output("description_input", "value"),
