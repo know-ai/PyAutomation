@@ -82,12 +82,34 @@ class TagsComponents:
                                 ],
                                 width=3),
                                 dbc.Col([
-                                    dbc.InputGroup([dbc.InputGroupText(dbc.RadioButton(id="opcua_radio_button"), className="radiobutton-box"), dbc.Input(placeholder="opc.tcp://url:port/ (Optional)", id="opcua_address_input", disabled=True)], size="md"),
-                                    dbc.InputGroup([dbc.InputGroupText("Namespace"), dbc.Select(options=[], id="node_namespace_input", disabled=True)], size="md")
+                                    dbc.InputGroup([
+                                        dbc.InputGroupText(dbc.RadioButton(id="opcua_server_radio_button"), class_name="radiobutton-box"), 
+                                        dbc.DropdownMenu(
+                                            [], 
+                                            label="OPCUA Server",
+                                            className="m-1",
+                                            toggle_style={
+                                                "textTransform": "uppercase",
+                                                # "background": "#FB79B3",
+                                            },
+                                            toggleClassName="fst-italic border border-dark",
+                                            disabled=True,
+                                        )], size="md"),
+                                    dbc.InputGroup([dbc.DropdownMenu(
+                                            [], 
+                                            label="Namespace",
+                                            className="m-1",
+                                            toggle_style={
+                                                "textTransform": "uppercase",
+                                                # "background": "#FB79B3",
+                                            },
+                                            toggleClassName="fst-italic border border-dark",
+                                            disabled=True,
+                                        )], size="md")
                                 ],
                                 width=3)
                             ]),
-                            dbc.Button("Create", color="success", outline=True, disabled=True, id="create_tag_button"),
+                            dbc.Button("Create", color="primary", outline=True, disabled=True, id="create_tag_button"),
                         ],
                         title="Create Tag",
                     )

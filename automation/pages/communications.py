@@ -3,7 +3,7 @@ import dash
 dash.register_page(__name__, path="/")
 
 layout = dash.html.Div([
-    dash.html.H1('Monitor'),
+    dash.html.H1('Communications'),
     dash.html.Div([
         "Select a city: ",
         dash.dcc.RadioItems(

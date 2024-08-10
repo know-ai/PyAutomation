@@ -70,7 +70,7 @@ class Components:
     def navbar(cls)->dbc.NavbarSimple:
         return dbc.NavbarSimple(
             children=[
-                dbc.NavItem(dbc.NavLink("Monitor", href="/")),
+                dbc.NavItem(dbc.NavLink("Communications", href="/")),
                 dbc.NavItem(dbc.NavLink("Database", href="/database")),
                 dbc.DropdownMenu(
                     children=[
