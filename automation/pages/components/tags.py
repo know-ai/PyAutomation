@@ -94,6 +94,7 @@ class TagsComponents:
                                             },
                                             toggleClassName="fst-italic border border-dark",
                                             disabled=True,
+                                            id="opcua_address_input"
                                         )], size="md"),
                                     dbc.InputGroup([dbc.DropdownMenu(
                                             [], 
@@ -105,6 +106,7 @@ class TagsComponents:
                                             },
                                             toggleClassName="fst-italic border border-dark",
                                             disabled=True,
+                                            id="node_namespace_input"
                                         )], size="md")
                                 ],
                                 width=3)
