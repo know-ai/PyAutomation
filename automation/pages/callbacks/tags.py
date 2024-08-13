@@ -140,6 +140,8 @@ def init_callback(app:dash.Dash):
         dash.State("description_input", "value"),
         dash.State("opcua_address_input", "value"),
         dash.State("node_namespace_input", "value"),
+        dash.State("scan_time_input", "value"),
+        dash.State("dead_band_input", "value"),
         prevent_initial_call=True
     )
     def displayClick(
@@ -150,7 +152,9 @@ def init_callback(app:dash.Dash):
         display_name,
         description,
         opcua_address,
-        node_namespace
+        node_namespace,
+        scan_time,
+        dead_band
         ):
         r"""
         Documentation here
@@ -164,7 +168,9 @@ def init_callback(app:dash.Dash):
                 description=description,
                 display_name=display_name,
                 opcua_address=opcua_address,
-                node_namespace=node_namespace
+                node_namespace=node_namespace,
+                scan_time=scan_time,
+                dead_band=dead_band
             )
             
             if message:
