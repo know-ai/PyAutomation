@@ -20,8 +20,15 @@ class StateMachineManager:
         self._tag_queue = queue.Queue()
 
     def get_queue(self)->queue.Queue:
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         return self._tag_queue
 
@@ -127,7 +134,16 @@ class StateMachineManager:
         return len(self._machines) > 0
     
     def attach_all(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         cvt = CVTEngine()
 
         def attach_observers(tag):

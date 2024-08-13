@@ -31,8 +31,15 @@ class PyAutomation(Singleton):
         self.cvt = CVTEngine()
 
     def get_tags(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
 
         return self.cvt.get_tags()
@@ -46,7 +53,16 @@ class PyAutomation(Singleton):
             opcua_address:str="",
             node_namespace:str=""
         ):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         if not display_name:
 
             display_name = name
@@ -178,7 +194,16 @@ class PyAutomation(Singleton):
         sys.exit()
 
     def startup_config_page(self, debug:str=False):
-        
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".")
         self.dash_app.set_automation_app(self)
         init_callbacks(app=self.dash_app)

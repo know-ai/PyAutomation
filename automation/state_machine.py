@@ -8,7 +8,7 @@ from .buffer import Buffer
 from .models import StringType, IntegerType, FloatType, BooleanType
 
 class Machine(Singleton):
-    r"""
+    r"""Documentation here
     """
     def __init__(self):
 
@@ -16,7 +16,7 @@ class Machine(Singleton):
         self.workers = list()
 
     def append_machine(self, machine, interval:float=1, mode:str='sync'):
-        """
+        r"""
         Append a state machine to the state machine manager.
 
         **Parameters:**
@@ -28,7 +28,7 @@ class Machine(Singleton):
         self._machine_manager.append_machine((machine, interval, mode))
 
     def get_machine(self, name:str):
-        """
+        r"""
         Returns a PyHades State Machine defined by its name.
 
         **Parameters:**
@@ -45,7 +45,7 @@ class Machine(Singleton):
         return self._machine_manager.get_machine(name)
 
     def get_machines(self)->list:
-        """
+        r"""
         Returns all defined PyHades state machines.
 
         **Returns** (list)
@@ -768,6 +768,8 @@ class AutomationStateMachine(StateMachine):
 
 
 class LeakStateMachine(AutomationStateMachine):
+    r"""Documentation here
+    """
 
     pre_alarming = State('pre_alarm')  
     leaking = State('leak')
@@ -804,7 +806,16 @@ class LeakStateMachine(AutomationStateMachine):
             )
         
     def while_waiting(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         super(LeakStateMachine, self).while_waiting()
         ready_to_run = True
         for _, value in self.data.items():
@@ -818,127 +829,289 @@ class LeakStateMachine(AutomationStateMachine):
             self.send('wait_to_run')
 
     def while_running(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         super(LeakStateMachine, self).while_running()
 
     def while_pre_alarming(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         pass
 
     def while_leaking(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         pass
 
     def while_switching(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         pass
 
     def while_not_available(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         pass
 
     # Entering to States
     def on_enter_pre_alarming(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
 
     def on_enter_leaking(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
 
     def on_enter_switching(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
 
     def on_enter_not_available(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
 
     # Transitions methods
     def on_run_to_pre_alarm(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 2
 
     def on_pre_alarm_to_run(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 1
 
     def on_pre_alarm_to_leak(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 5
 
     def on_leak_to_restart(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 4
 
     def on_leak_to_reset(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 4
 
     def on_start_to_switch(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 3
 
     def on_wait_to_switch(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 3
 
     def on_run_to_switch(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 3
 
     def on_switch_to_not_available(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 4
 
     def on_switch_to_restart(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 2
 
     def on_switch_to_reset(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 2
 
     def on_not_available_to_restart(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 2
 
     def on_not_available_to_reset(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.criticity.value = 2

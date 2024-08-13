@@ -28,14 +28,28 @@ class DBManager(Singleton):
         ]
 
     def get_queue(self)->queue.Queue:
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         return self.queue
 
     def put_queue(self, method:str, **kwargs):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self.queue.put((method, kwargs))
 
@@ -141,8 +155,15 @@ class DBManager(Singleton):
         self.put_queue("set_tag", **payload)
 
     def update_tag(self, id:str, **fields):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         if self.tag_engine.get_tag(id=id):
             
@@ -156,8 +177,15 @@ class DBManager(Singleton):
             self.put_queue("update_tag", **fields)
 
     def delete_tag(self, id:str):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         if self.tag_engine.get_tag(id=id):
             # DELETE TAG ON CVT (HOLDING MEMORY)

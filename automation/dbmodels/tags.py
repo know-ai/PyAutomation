@@ -25,7 +25,16 @@ class Tags(BaseModel):
         opcua_address:str=None,
         node_namespace:str=None
         ):
-        
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         if not cls.name_exists(name):
             
             tag = super().create(
@@ -44,8 +53,15 @@ class Tags(BaseModel):
     
     @classmethod
     def name_exists(cls, name:str)->bool|None:
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         tag = cls.get_or_none(name=name)
         if tag:
@@ -54,17 +70,42 @@ class Tags(BaseModel):
         
     @classmethod
     def read(cls, id:str):
-        
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         return cls.get_or_none(id=id)
         
     @classmethod
     def read_by_name(cls, name:str):
-        
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         return cls.get_or_none(name=name)
 
     def serialize(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         return {
             'id': self.id,
