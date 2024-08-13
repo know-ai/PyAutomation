@@ -297,6 +297,9 @@ class CVTEngine(Singleton):
         scan_time:int=None,
         dead_band:float=None
         ):
+        r"""
+        Documentation here
+        """
         _query = dict()
         _query["action"] = "set_tag"
         _query["parameters"] = dict()

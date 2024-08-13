@@ -39,12 +39,15 @@ nav:
         - Modbus: 'Developments_Guide/iiot/modbus.md'
       - Logs: 'Developments_Guide/logs.md'
       - Testing: 'Developments_Guide/testing.md'
+      - API:
+        - CVT: 'Developments_Guide/API/cvt.md'
     - Integration's Guide:
       - Summary: 'Integrations_Guide/index.md'
 
 markdown_extensions:
   - admonition
   - codehilite
+  - mkautodoc
   - pymdownx.arithmatex:
       generic: true
 
