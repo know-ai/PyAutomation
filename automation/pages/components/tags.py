@@ -75,7 +75,7 @@ class TagsComponents:
                                         size="md"
                                     ),
                                 ],
-                                width=3),
+                                width=2),
                                 dbc.Col([
                                     dbc.InputGroup([dbc.InputGroupText(dbc.RadioButton(id="description_radio_button"), class_name="radiobutton-box"), dbc.Input(placeholder="Description (Optional)", id="description_input", disabled=True)], size="md"),
                                     dbc.InputGroup([dbc.InputGroupText(dbc.RadioButton(id="display_name_radio_button"), className="radiobutton-box"), dbc.Input(placeholder="Display Name (Optional)", id="display_name_input", disabled=True)], size="md")
@@ -118,7 +118,12 @@ class TagsComponents:
                                         size="md",
                                     )
                                 ],
-                                width=3)
+                                width=2),
+                                dbc.Col([
+                                    dbc.InputGroup([dbc.Input(placeholder="Scan Time", type="number", step=50, min=100, max=600000, id="scan_time_input", disabled=True), dbc.InputGroupText('ms')], size="md"),
+                                    dbc.InputGroup([dbc.Input(placeholder="Dead-Band", type="number", step=0.1, id="dead_band_input", disabled=True), dbc.InputGroupText('', id="dead_band_unit")], size="md")
+                                ],
+                                width=2)
                             ]),
                             dbc.Button("Create", color="primary", outline=True, disabled=True, id="create_tag_button"),
                         ],

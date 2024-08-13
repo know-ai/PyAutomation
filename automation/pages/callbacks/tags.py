@@ -76,6 +76,27 @@ def init_callback(app:dash.Dash):
         return ""
     
     @app.callback(
+        dash.Output('scan_time_input', 'value'),
+        dash.Output('dead_band_input', 'value'),
+        dash.Input("node_namespace_input", "value")
+    )
+    def enable_scan_time_and_dead_band(node_namespace:str):
+        r"""
+        Documentation here
+        """
+        if node_namespace:
+
+            dash.set_props("scan_time_input", {'disabled': False})
+            dash.set_props("dead_band_input", {'disabled': False})
+
+        else:
+
+            dash.set_props("scan_time_input", {'disabled': True})
+            dash.set_props("dead_band_input", {'disabled': True})
+
+        return "", ""
+    
+    @app.callback(
         dash.Output("display_name_input", "value"),
         dash.Input("display_name_radio_button", "value")
     )
@@ -85,6 +106,16 @@ def init_callback(app:dash.Dash):
         """
         dash.set_props("display_name_input", {'disabled': not enable})
         return ""
+    
+    @app.callback(
+        dash.Output("dead_band_unit", "children"),
+        dash.Input("unit_input", "value")
+    )
+    def update_unit(unit:str):
+        r"""
+        Documentation here
+        """
+        return unit
     
     @app.callback(
         dash.Output('tags_datatable', 'data', allow_duplicate=True),
@@ -247,3 +278,33 @@ def init_callback(app:dash.Dash):
 
             return is_open, app.tags_table_data(), None, 0, 0
         
+    @app.callback(
+        [
+            dash.Output('alert', 'is_open'),
+            dash.Output('alert', 'children'),
+            dash.Output('output', 'children')
+        ],
+        [
+            dash.Input('scan_time_input', 'value')
+        ],
+        [
+            dash.State('scan_time_input', 'min'), 
+            dash.State('scan_time_input', 'max')
+        ]
+    )
+    def update_scan_time(value, min_value, max_value):
+        print(f"Value: {value}")
+        if value is None:
+            
+            return False, '', min_value
+        
+        if value < min_value:
+
+            return True, f'Value {value} is out of range ({min_value}-{max_value})', min_value
+        
+        if value > max_value:
+            
+            return True, f'Value {value} is out of range ({min_value}-{max_value})', max_value
+        
+        return False, '', f'Current value: {value} ms'
+            
