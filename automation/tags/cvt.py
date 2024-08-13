@@ -22,15 +22,6 @@ class CVT:
 
         self._tags = dict()
         self.data_types = ["float", "int", "bool", "str"]
-
-    def is_tag_defined(self, name:str)->bool:
-
-        return name in self._tags
-    
-    def set_data_type(self, data_type):
-
-        self.data_types.append(data_type)
-        self.data_types = list(set(self.data_types))
     
     def set_tag(
         self, 
@@ -91,6 +82,16 @@ class CVT:
         self._tags[tag.id] = tag
 
     def update_tag(self, id:str, **kwargs)->None|str:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         has_duplicates, message = self.has_duplicates(**kwargs)
         if has_duplicates:
 
@@ -100,18 +101,54 @@ class CVT:
         self._tags[id] = tag
 
     def delete_tag(self, id:str):
-        
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self._tags.pop(id)
 
+    def get_tag(self, id:str)->Tag|None:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        for _id, tag in self._tags.items():
+
+            if _id==id:
+                
+                return tag
+
+        return None
+
     def get_tags(self)->list:
-        """Returns a list of the defined tags names.
+        r"""
+        Returns a list of the defined tags names.
         """
 
         return [value.serialize() for _, value in self._tags.items()]
     
     def get_tag_by_name(self, name:str)->Tag|None:
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         for _, tag in self._tags.items():
 
@@ -121,21 +158,16 @@ class CVT:
 
         return None
     
-    def get_tag(self, id:str)->Tag|None:
-        r"""
-        Documentation here
-        """
-        for _id, tag in self._tags.items():
-
-            if _id==id:
-                
-                return tag
-
-        return None
-    
     def get_tag_by_display_name(self, display_name:str)->Tag|None:
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         for _, tag in self._tags.items():
 
@@ -146,8 +178,15 @@ class CVT:
         return None
 
     def get_tag_by_node_namespace(self, node_namespace:str)->Tag|None:
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         for _, tag in self._tags.items():
 
@@ -156,6 +195,21 @@ class CVT:
                 return tag
 
         return None
+    
+    def get_value(self, id:str)->str|float|int|bool:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        tag = self._tags[id]        
+        _new_object = copy.copy(tag.get_value())
+        return _new_object
     
     def set_value(self, id:str, value):
         """Sets a new value for a defined tag.
@@ -168,13 +222,36 @@ class CVT:
         """
         self._tags[id].set_value(value)
 
-    def get_value(self, id:str)->str|float|int|bool:
-        tag = self._tags[id]        
-        _new_object = copy.copy(tag.get_value())
-        return _new_object
+    def set_data_type(self, data_type):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.data_types.append(data_type)
+        self.data_types = list(set(self.data_types))
+    
+    def is_tag_defined(self, name:str)->bool:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+
+        return name in self._tags
     
     def attach_observer(self, name, observer):
-        """Attaches a new observer to a tag object defined by name.
+        r"""Attaches a new observer to a tag object defined by name.
         
         # Parameters
         name (str):
@@ -187,7 +264,8 @@ class CVT:
             self._tags[tag.id].attach(observer)
 
     def detach_observer(self, name, observer):
-        """Detaches an observer from a tag object defined by name.
+        r"""
+        Detaches an observer from a tag object defined by name.
         
         # Parameters
         name (str):
@@ -199,6 +277,16 @@ class CVT:
         self._tags[tag.id].detach(observer)
 
     def has_duplicates(self, name:str=None, display_name:str=None, **kwargs):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
 
         for _, _tag in self._tags.items():
 
@@ -216,7 +304,7 @@ class CVT:
         return False, f"Valid Tag Name: {name} - Display Name: {display_name}"
     
     def serialize(self, id:str)->dict:
-        """Returns a tag type defined by name.
+        r"""Returns a tag type defined by name.
         
         # Parameters
         name (str):
@@ -225,8 +313,15 @@ class CVT:
         return self._tags[id].serialize()
     
     def serialize_by_tag_name(self, name:str)->dict|None:
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         tag = self.get_tag_by_name(name)
 
@@ -261,30 +356,6 @@ class CVTEngine(Singleton):
         self._response = None
         self._response_lock.acquire()
 
-    def is_tag_defined(self, name:str)->bool:
-        _query = dict()
-        _query["action"] = "is_tag_defined"
-        _query["parameters"] = dict()
-        _query["parameters"]["name"] = name
-        return self.__query(_query)
-    
-    def set_data_type(self, data_type):
-        _query = dict()
-        _query["action"] = "set_data_type"
-        _query["parameters"] = dict()
-        _query["parameters"]["data_type"] = data_type
-        return self.__query(_query)
-    
-    def get_tag(
-        self,
-        id:str=None
-        ):
-        _query = dict()
-        _query["action"] = "get_tag"
-        _query["parameters"] = dict()
-        _query["parameters"]["id"] = id
-        return self.__query(_query)
-
     def set_tag(
         self, 
         name:str, 
@@ -297,8 +368,15 @@ class CVTEngine(Singleton):
         scan_time:int=None,
         dead_band:float=None
         ):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         _query = dict()
         _query["action"] = "set_tag"
@@ -315,6 +393,16 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def update_tag(self, id:str, **kwargs):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "update_tag"
         _query["parameters"] = dict()
@@ -323,18 +411,68 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def delete_tag(self, id:str):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "delete_tag"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
         return self.__query(_query)
+    
+    def get_tag(
+        self,
+        id:str=None
+        ):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "get_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        return self.__query(_query)
 
     def get_tags(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "get_tags"
         return self.__query(_query)
     
     def get_tag_by_name(self, name:str)->Tag|None:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "get_tag_by_name"
         _query["parameters"] = dict()
@@ -342,6 +480,16 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_tag_by_display_name(self, display_name:str)->Tag|None:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "get_tag_by_display_name"
         _query["parameters"] = dict()
@@ -349,21 +497,33 @@ class CVTEngine(Singleton):
         return self.__query(_query)
 
     def get_tag_by_node_namespace(self, node_namespace:str)->Tag|None:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "get_tag_by_node_namespace"
         _query["parameters"] = dict()
         _query["parameters"]["node_namespace"] = node_namespace
         return self.__query(_query)
     
-    def set_value(self, id:str, value):
-        _query = dict()
-        _query["action"] = "set_value"
-        _query["parameters"] = dict()
-        _query["parameters"]["id"] = id
-        _query["parameters"]["value"] = value
-        return self.__query(_query)
-
     def get_value(self, id:str)->str|float|int|bool:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "get_value"
         _query["parameters"] = dict()
@@ -371,6 +531,16 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_scan_time(self, id:str)->str|float|int|bool:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "get_scan_time"
         _query["parameters"] = dict()
@@ -378,10 +548,72 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_dead_band(self, id:str)->str|float|int|bool:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "get_dead_band"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
+        return self.__query(_query)
+    
+    def set_value(self, id:str, value):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "set_value"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        _query["parameters"]["value"] = value
+        return self.__query(_query)
+    
+    def set_data_type(self, data_type):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "set_data_type"
+        _query["parameters"] = dict()
+        _query["parameters"]["data_type"] = data_type
+        return self.__query(_query)
+    
+    def is_tag_defined(self, name:str)->bool:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "is_tag_defined"
+        _query["parameters"] = dict()
+        _query["parameters"]["name"] = name
         return self.__query(_query)
 
     def attach(self, name:str, observer):
@@ -424,6 +656,16 @@ class CVTEngine(Singleton):
             return result["response"]
 
     def serialize(self, id:str)->dict:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "serialize"
         _query["parameters"] = dict()
@@ -431,6 +673,16 @@ class CVTEngine(Singleton):
         return self.__query(_query)
 
     def serialize_by_tag_name(self, name:str)->dict|None:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         _query = dict()
         _query["action"] = "serialize_by_tag_name"
         _query["parameters"] = dict()

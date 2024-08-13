@@ -150,8 +150,15 @@ class DataLoggerEngine(Singleton):
         return self.__query(_query)
     
     def update_tag(self, id:str, **fields):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
 
         _query = dict()
@@ -164,8 +171,15 @@ class DataLoggerEngine(Singleton):
         return self.__query(_query)
     
     def delete_tag(self, id:str):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
 
         _query = dict()
@@ -239,8 +253,15 @@ class DataLoggerEngine(Singleton):
             return result["response"]
 
     def request(self, query:dict):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self._request_lock.acquire()
         action = query["action"]
@@ -279,8 +300,15 @@ class DataLoggerEngine(Singleton):
         }
 
     def response(self):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         self._response_lock.acquire()
 

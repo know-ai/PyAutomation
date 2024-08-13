@@ -40,7 +40,34 @@ nav:
       - Logs: 'Developments_Guide/logs.md'
       - Testing: 'Developments_Guide/testing.md'
       - API:
-        - CVT: 'Developments_Guide/API/cvt.md'
+        - Summary: 'Developments_Guide/API/index.md'
+        - Core: 'Developments_Guide/API/core.md'
+        - State Machines:
+          - Summary: Developments_Guide/API/state_machine/index.md
+          - Automation State Machine: Developments_Guide/API/state_machine/automation_state_machine.md
+          - Leak State Machine: Developments_Guide/API/state_machine/leak_state_machine.md
+          - Machine: Developments_Guide/API/state_machine/machine.md
+        - CVT:
+          - Summary: 'Developments_Guide/API/cvt/index.md'
+          - CVTEngine: 'Developments_Guide/API/cvt/cvt_engine.md'
+          - CVT: 'Developments_Guide/API/cvt/cvt.md'
+        - Data Logger:
+          - Summary: Developments_Guide/API/datalogger/index.md
+          - Data Logger Engine: Developments_Guide/API/datalogger/datalogger_engine.md
+          - Data Logger: Developments_Guide/API/datalogger/datalogger.md
+        - Workers:
+          - Summary: Developments_Guide/API/workers/index.md
+          - State Machine: Developments_Guide/API/workers/state_machine.md
+          - Async State Machine: Developments_Guide/API/workers/async_state_machine.md
+          - Scheduler Threads: Developments_Guide/API/workers/sched_thread.md
+          - Main Scheduler: Developments_Guide/API/workers/main_scheduler.md
+        - Managers:
+          - Summary: Developments_Guide/API/managers/index.md
+          - State Machine: Developments_Guide/API/managers/state_machine.md
+          - DB: Developments_Guide/API/managers/db.md
+        - DB Models:
+          - Summary: Developments_Guide/API/db_models/index.md
+          - Tags: Developments_Guide/API/db_models/tags.md
     - Integration's Guide:
       - Summary: 'Integrations_Guide/index.md'
 

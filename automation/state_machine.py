@@ -99,6 +99,9 @@ class Machine(Singleton):
 
 
 class AutomationStateMachine(StateMachine):
+    r"""
+    Documentation here
+    """
 
     starting = State('start', initial=True)
     waiting = State('wait')
@@ -159,7 +162,16 @@ class AutomationStateMachine(StateMachine):
 
     # State Methods
     def while_starting(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         # DEFINE DATA BUFFER
         self.data = {tag: Buffer(length=self.buffer_size, roll=self.buffer_roll_type) for tag in self.get_subscribed_tags()}
 
@@ -167,110 +179,344 @@ class AutomationStateMachine(StateMachine):
         self.send('start_to_wait')
 
     def while_waiting(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 1
 
     def while_running(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 1
 
     def while_testing(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         pass
 
     def while_sleeping(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         pass
 
     def while_resetting(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.send('reset_to_start')
 
     def while_restarting(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.send('restart_to_wait')
 
     # Entering to States
     def on_enter_starting(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
 
     def on_enter_waiting(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
 
     def on_enter_running(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
 
     def on_enter_testing(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
 
     def on_enter_sleeping(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
 
     def on_enter_resetting(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
 
     def on_enter_restarting(self, event, state):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.state.value = state.id
-
+    
     # Transitions
     def on_start_to_wait(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 2
 
     def on_wait_to_run(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 1
 
     def on_wait_to_restart(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 5
 
     def on_wait_to_reset(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 5
 
     def on_run_to_restart(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 5
 
     def on_run_to_reset(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 5
 
     def on_test_to_restart(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 4
 
     def on_test_to_reset(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 4
 
     def on_sleep_to_restart(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 4
 
     def on_sleep_to_reset(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 4
 
     def on_reset_to_start(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 2
 
     def on_restart_to_wait(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.criticity.value = 2
 
     # Auxiliaries Methods
     def set_buffer_size(self, size:int):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self.buffer_size = int(size)
 
     def get_state_interval(self)->float:
@@ -292,11 +538,29 @@ class AutomationStateMachine(StateMachine):
         return self.get_interval()
 
     def get_subscribed_tags(self)->list:
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         return self.__subscribed_to
     
     def subscribe_to(self, *tags):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         for tag in tags:
 
             if tag not in self.get_subscribed_tags():
@@ -304,15 +568,31 @@ class AutomationStateMachine(StateMachine):
                 self.__subscribed_to.append(tag)
 
     def notify(self, tag:str, value:str|int|bool|float):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         if tag in self.data:
             
             self.data[tag](value)
 
     def unsubscribe_to(self, tag:str):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         if tag in self.__subscribed_to:
 
             self.__subscribed_to.remove(tag)
@@ -395,8 +675,15 @@ class AutomationStateMachine(StateMachine):
                 logging.error(f"Machine - {self.name}:{error}")
 
     def loop(self):
-        r"""
-        Documentation in construction
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         state_name = self.current_state.value
         method_name = "while_" + state_name
@@ -462,7 +749,16 @@ class AutomationStateMachine(StateMachine):
         return result
 
     def serialize(self):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         result = {
             "name": self.name,
             "sampling_time": self.get_interval(),

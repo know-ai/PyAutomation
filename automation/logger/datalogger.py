@@ -29,11 +29,29 @@ class DataLogger:
         self._db = None
 
     def set_db(self, db):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         self._db = db
 
     def get_db(self):
-        
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         return self._db
 
     def set_tag(
@@ -46,6 +64,16 @@ class DataLogger:
         display_name:str="",
         opcua_address:str=None, 
         node_namespace:str=None):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
 
         tag = Tags.create(
             id=id,
@@ -61,75 +89,76 @@ class DataLogger:
         return tag.serialize()
 
     def set_tags(self, tags):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         
         for tag in tags:
 
             self.set_tag(tag)
 
     def update_tag(self, id:str, **fields):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         Tags.put(id=id, **fields)
     
     def delete_tag(self, id:str):
-        r"""
-        Documentation here
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
         """
         Tags.delete(id=id)
     
     def create_tables(self, tables):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         if not self._db:
             
             return
         self._db.create_tables(tables, safe=True)
 
     def drop_tables(self, tables):
+        r"""Documentation here
 
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
         if not self._db:
             
             return
 
         self._db.drop_tables(tables, safe=True)
-
-    # def write_tag(self, tag, value):
-    #     try:
-    #         trend = Tags.read_by_name(tag)
-    #         tag_value = TagValue.create(tag=trend, value=value)
-    #         tag_value.save()
-    #     except Exception as e:
-    #         logging.warning(f"Rollback done in database due to conflicts writing tag")
-    #         conn = self._db.connection()
-    #         conn.rollback()
-
-    # def write_tags(self, tags:list):
-
-    #     try:
-    #         TagValue.insert_many(tags).execute()
-    #     except Exception as e:
-    #         logging.warning(f"Rollback done in database due to conflicts writing tags")
-    #         conn = self._db.connection()
-    #         conn.rollback()
-
-    # def read_tag(self, tag):
-    #     try:
-    #         query = Tags.select().order_by(Tags.start)
-    #         trend = query.where(Tags.name == tag).get()
-            
-    #         period = trend.period
-    #         values = trend.values.select()
-            
-    #         result = dict()
-
-    #         t0 = values[0].timestamp.strftime('%Y-%m-%d %H:%M:%S')
-    #         values = [value.value for value in values]
-
-    #         result["t0"] = t0
-    #         result["dt"] = period
-    #         result["values"] = values
-            
-    #         return result
-    #     except Exception as e:
-    #         logging.warning(f"Rollback done in database due to conflicts reading tag")
-    #         conn = self._db.connection()
-    #         conn.rollback()
