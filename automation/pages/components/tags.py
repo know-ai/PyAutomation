@@ -75,41 +75,55 @@ class TagsComponents:
                                         size="md"
                                     ),
                                 ],
-                                width=3),
+                                width=2),
                                 dbc.Col([
                                     dbc.InputGroup([dbc.InputGroupText(dbc.RadioButton(id="description_radio_button"), class_name="radiobutton-box"), dbc.Input(placeholder="Description (Optional)", id="description_input", disabled=True)], size="md"),
                                     dbc.InputGroup([dbc.InputGroupText(dbc.RadioButton(id="display_name_radio_button"), className="radiobutton-box"), dbc.Input(placeholder="Display Name (Optional)", id="display_name_input", disabled=True)], size="md")
                                 ],
                                 width=3),
                                 dbc.Col([
-                                    dbc.InputGroup([
-                                        dbc.InputGroupText(dbc.RadioButton(id="opcua_server_radio_button"), class_name="radiobutton-box"), 
-                                        dbc.DropdownMenu(
-                                            [], 
-                                            label="OPCUA Server",
-                                            className="m-1",
-                                            toggle_style={
-                                                "textTransform": "uppercase",
-                                                # "background": "#FB79B3",
-                                            },
-                                            toggleClassName="fst-italic border border-dark",
-                                            disabled=True,
-                                            id="opcua_address_input"
-                                        )], size="md"),
-                                    dbc.InputGroup([dbc.DropdownMenu(
-                                            [], 
-                                            label="Namespace",
-                                            className="m-1",
-                                            toggle_style={
-                                                "textTransform": "uppercase",
-                                                # "background": "#FB79B3",
-                                            },
-                                            toggleClassName="fst-italic border border-dark",
-                                            disabled=True,
-                                            id="node_namespace_input"
-                                        )], size="md")
+                                    dbc.InputGroup(
+                                        [
+                                            dbc.InputGroupText("OPCUA"),
+                                            dbc.Select(
+                                                options=[
+                                                    {'label': 'None', 'value': ''},
+                                                    {'label': 'Server 1', 'value': 'Server 1'},
+                                                    {'label': 'Server 2', 'value': 'Server 2'},
+                                                    {'label': 'Server 3', 'value': 'Server 3'},
+                                                    {'label': 'Server 4', 'value': 'Server 4'}
+                                                ],
+                                                id="opcua_address_input"
+                                            ),
+                                            
+                                        ],
+                                        size="md"
+                                    ),
+                                    dbc.InputGroup(
+                                        [
+                                            dbc.InputGroupText("Node"),
+                                            dbc.Select(
+                                                options=[
+                                                    {'label': 'None', 'value': ''},
+                                                    {'label': 'ns=2;i=1', 'value': 'ns=2;i=1'},
+                                                    {'label': 'ns=2;i=2', 'value': 'ns=2;i=2'},
+                                                    {'label': 'ns=2;i=3', 'value': 'ns=2;i=3'},
+                                                    {'label': 'ns=2;i=4', 'value': 'ns=2;i=4'}
+                                                ],
+                                                id="node_namespace_input",
+                                                disabled=True
+                                            ),
+                                            
+                                        ],
+                                        size="md",
+                                    )
                                 ],
-                                width=3)
+                                width=2),
+                                dbc.Col([
+                                    dbc.InputGroup([dbc.Input(placeholder="Scan Time", type="number", step=50, min=100, max=600000, id="scan_time_input", disabled=True), dbc.InputGroupText('ms')], size="md"),
+                                    dbc.InputGroup([dbc.Input(placeholder="Dead-Band", type="number", step=0.1, id="dead_band_input", disabled=True), dbc.InputGroupText('', id="dead_band_unit")], size="md")
+                                ],
+                                width=2)
                             ]),
                             dbc.Button("Create", color="primary", outline=True, disabled=True, id="create_tag_button"),
                         ],
@@ -136,8 +150,10 @@ class TagsComponents:
                 {'name': 'data_type', 'id': 'data_type', 'presentation': 'dropdown'}, 
                 {'name': 'description', 'id': 'description'}, 
                 {'name': 'display_name', 'id': 'display_name'}, 
-                {'name': 'opcua_address', 'id': 'opcua_address'}, 
-                {'name': 'node_namespace', 'id': 'node_namespace'}
+                {'name': 'opcua_address', 'id': 'opcua_address', 'presentation': 'dropdown'}, 
+                {'name': 'node_namespace', 'id': 'node_namespace', 'presentation': 'dropdown'},
+                {'name': 'scan_time', 'id': 'scan_time'}, 
+                {'name': 'dead_band', 'id': 'dead_band'}
             ],
             id="tags_datatable",
             filter_action="native",
@@ -157,6 +173,24 @@ class TagsComponents:
                         {'label': 'Integer', 'value': 'integer'},
                         {'label': 'Boolean', 'value': 'boolean'},
                         {'label': 'String', 'value': 'string'}
+                    ]
+                },
+                'opcua_address': {
+                    'options': [
+                        {'label': 'None', 'value': ''},
+                        {'label': 'Server 1', 'value': 'Server 1'},
+                        {'label': 'Server 2', 'value': 'Server 2'},
+                        {'label': 'Server 3', 'value': 'Server 3'},
+                        {'label': 'Server 4', 'value': 'Server 4'}
+                    ]
+                },
+                'node_namespace':{
+                    'options': [
+                        {'label': 'None', 'value': ''},
+                        {'label': 'ns=2;i=1', 'value': 'ns=2;i=1'},
+                        {'label': 'ns=2;i=2', 'value': 'ns=2;i=2'},
+                        {'label': 'ns=2;i=3', 'value': 'ns=2;i=3'},
+                        {'label': 'ns=2;i=4', 'value': 'ns=2;i=4'}
                     ]
                 }
             },

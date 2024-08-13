@@ -40,7 +40,9 @@ class CVT:
         description:str, 
         display_name:str="",
         opcua_address:str="",
-        node_namespace:str=""
+        node_namespace:str="",
+        scan_time:int=None,
+        dead_band:float=None
         )->None|str:
         """Initialize a new Tag object in the _tags dictionary.
         
@@ -81,7 +83,9 @@ class CVT:
             description=description,
             display_name=display_name,
             opcua_address=opcua_address,
-            node_namespace=node_namespace
+            node_namespace=node_namespace,
+            scan_time=scan_time,
+            dead_band=dead_band
         )
 
         self._tags[tag.id] = tag
@@ -289,8 +293,13 @@ class CVTEngine(Singleton):
         description:str, 
         display_name:str="",
         opcua_address:str="",
-        node_namespace:str=""
+        node_namespace:str="",
+        scan_time:int=None,
+        dead_band:float=None
         ):
+        r"""
+        Documentation here
+        """
         _query = dict()
         _query["action"] = "set_tag"
         _query["parameters"] = dict()
@@ -301,6 +310,8 @@ class CVTEngine(Singleton):
         _query["parameters"]["display_name"] = display_name
         _query["parameters"]["opcua_address"] = opcua_address
         _query["parameters"]["node_namespace"] = node_namespace
+        _query["parameters"]["scan_time"] = scan_time
+        _query["parameters"]["dead_band"] = dead_band
         return self.__query(_query)
     
     def update_tag(self, id:str, **kwargs):
@@ -355,6 +366,20 @@ class CVTEngine(Singleton):
     def get_value(self, id:str)->str|float|int|bool:
         _query = dict()
         _query["action"] = "get_value"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        return self.__query(_query)
+    
+    def get_scan_time(self, id:str)->str|float|int|bool:
+        _query = dict()
+        _query["action"] = "get_scan_time"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        return self.__query(_query)
+    
+    def get_dead_band(self, id:str)->str|float|int|bool:
+        _query = dict()
+        _query["action"] = "get_dead_band"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
         return self.__query(_query)

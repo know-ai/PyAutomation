@@ -37,3 +37,35 @@ pip install -r requirements.txt
 ```python
 python test_config.py
 ```
+
+## Deploy documentation on Development mode With mkautodoc
+
+### Install Wheel
+
+```python
+pip install wheel
+```
+
+### Create PyAutomation's package
+
+Execute this code where is setup.py file
+
+```python
+python3 setup.py bdist_wheel
+```
+
+This create some folders
+
+- build
+- dist
+- PyAutomation.egg-info
+
+### Install PyAutomation Folder
+
+Located into "dist" folder
+
+```python
+pip install dist/PyAutomation-1.0.0-py3-none-any.whl
+```
+
+After that, you can run mkdocs serve

@@ -13,6 +13,8 @@ class Tag:
             description:str="",
             opcua_address:str=None,
             node_namespace:str=None,
+            scan_time:int=None,
+            dead_band:float=None,
             id:str=None
     ):
         self.id = secrets.token_hex(4)
@@ -28,6 +30,8 @@ class Tag:
         self.unit=unit
         self.opcua_address = opcua_address
         self.node_namespace = node_namespace
+        self.scan_time = scan_time
+        self.dead_band = dead_band
         self.variable = None
         self._observers = set()
 
@@ -61,6 +65,14 @@ class Tag:
     def set_node_namespace(self, node_namespace:str):
 
         self.node_namespace = node_namespace
+
+    def get_scan_time(self):
+
+        return self.scan_time
+    
+    def get_dead_band(self):
+
+        return self.dead_band
 
     def get_data_type(self):
         
@@ -137,7 +149,9 @@ class Tag:
             self.get_description(),
             self.get_display_name(),
             self.get_opcua_address(),
-            self.get_node_namespace()
+            self.get_node_namespace(),
+            self.get_scan_time(),
+            self.get_dead_band()
         )
     
     def update(self, **kwargs):
@@ -162,7 +176,9 @@ class Tag:
             "description": self.get_description(),
             "display_name": self.get_display_name(),
             "opcua_address": self.get_opcua_address(),
-            "node_namespace": self.get_node_namespace()
+            "node_namespace": self.get_node_namespace(),
+            "scan_time": self.get_scan_time(),
+            "dead_band": self.get_dead_band()
         }
 
 
