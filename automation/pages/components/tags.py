@@ -145,8 +145,8 @@ class TagsComponents:
                 {'name': 'data_type', 'id': 'data_type', 'presentation': 'dropdown'}, 
                 {'name': 'description', 'id': 'description'}, 
                 {'name': 'display_name', 'id': 'display_name'}, 
-                {'name': 'opcua_address', 'id': 'opcua_address'}, 
-                {'name': 'node_namespace', 'id': 'node_namespace'}
+                {'name': 'opcua_address', 'id': 'opcua_address', 'presentation': 'dropdown'}, 
+                {'name': 'node_namespace', 'id': 'node_namespace', 'presentation': 'dropdown'}
             ],
             id="tags_datatable",
             filter_action="native",
@@ -166,6 +166,24 @@ class TagsComponents:
                         {'label': 'Integer', 'value': 'integer'},
                         {'label': 'Boolean', 'value': 'boolean'},
                         {'label': 'String', 'value': 'string'}
+                    ]
+                },
+                'opcua_address': {
+                    'options': [
+                        {'label': 'None', 'value': ''},
+                        {'label': 'Server 1', 'value': 'Server 1'},
+                        {'label': 'Server 2', 'value': 'Server 2'},
+                        {'label': 'Server 3', 'value': 'Server 3'},
+                        {'label': 'Server 4', 'value': 'Server 4'}
+                    ]
+                },
+                'node_namespace':{
+                    'options': [
+                        {'label': 'None', 'value': ''},
+                        {'label': 'ns=2;i=1', 'value': 'ns=2;i=1'},
+                        {'label': 'ns=2;i=2', 'value': 'ns=2;i=2'},
+                        {'label': 'ns=2;i=3', 'value': 'ns=2;i=3'},
+                        {'label': 'ns=2;i=4', 'value': 'ns=2;i=4'}
                     ]
                 }
             },
