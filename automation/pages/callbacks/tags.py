@@ -58,14 +58,21 @@ def init_callback(app:dash.Dash):
         return ""
     
     @app.callback(
-        dash.Output("opcua_address_input", "value"),
-        dash.Input("opcua_radio_button", "value")
+        dash.Output("node_namespace_input", "value"),
+        dash.Input("opcua_address_input", "value")
     )
-    def enable_opcua(enable:bool):
+    def enable_node_namespace(opcua_server:str):
         r"""
         Documentation here
         """
-        dash.set_props("opcua_address_input", {'disabled': not enable})
+        if opcua_server:
+
+            dash.set_props("node_namespace_input", {'disabled': False})
+
+        else:
+
+            dash.set_props("node_namespace_input", {'disabled': True})
+
         return ""
     
     @app.callback(

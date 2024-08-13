@@ -82,32 +82,41 @@ class TagsComponents:
                                 ],
                                 width=3),
                                 dbc.Col([
-                                    dbc.InputGroup([
-                                        dbc.InputGroupText(dbc.RadioButton(id="opcua_server_radio_button"), class_name="radiobutton-box"), 
-                                        dbc.DropdownMenu(
-                                            [], 
-                                            label="OPCUA Server",
-                                            className="m-1",
-                                            toggle_style={
-                                                "textTransform": "uppercase",
-                                                # "background": "#FB79B3",
-                                            },
-                                            toggleClassName="fst-italic border border-dark",
-                                            disabled=True,
-                                            id="opcua_address_input"
-                                        )], size="md"),
-                                    dbc.InputGroup([dbc.DropdownMenu(
-                                            [], 
-                                            label="Namespace",
-                                            className="m-1",
-                                            toggle_style={
-                                                "textTransform": "uppercase",
-                                                # "background": "#FB79B3",
-                                            },
-                                            toggleClassName="fst-italic border border-dark",
-                                            disabled=True,
-                                            id="node_namespace_input"
-                                        )], size="md")
+                                    dbc.InputGroup(
+                                        [
+                                            dbc.InputGroupText("OPCUA"),
+                                            dbc.Select(
+                                                options=[
+                                                    {'label': 'None', 'value': ''},
+                                                    {'label': 'Server 1', 'value': 'Server 1'},
+                                                    {'label': 'Server 2', 'value': 'Server 2'},
+                                                    {'label': 'Server 3', 'value': 'Server 3'},
+                                                    {'label': 'Server 4', 'value': 'Server 4'}
+                                                ],
+                                                id="opcua_address_input"
+                                            ),
+                                            
+                                        ],
+                                        size="md"
+                                    ),
+                                    dbc.InputGroup(
+                                        [
+                                            dbc.InputGroupText("Node"),
+                                            dbc.Select(
+                                                options=[
+                                                    {'label': 'None', 'value': ''},
+                                                    {'label': 'ns=2;i=1', 'value': 'ns=2;i=1'},
+                                                    {'label': 'ns=2;i=2', 'value': 'ns=2;i=2'},
+                                                    {'label': 'ns=2;i=3', 'value': 'ns=2;i=3'},
+                                                    {'label': 'ns=2;i=4', 'value': 'ns=2;i=4'}
+                                                ],
+                                                id="node_namespace_input",
+                                                disabled=True
+                                            ),
+                                            
+                                        ],
+                                        size="md",
+                                    )
                                 ],
                                 width=3)
                             ]),
