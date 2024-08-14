@@ -4,7 +4,7 @@ import sys
 from .utils import log_detailed
 from .workers import StateMachineWorker, LoggerWorker
 import logging
-from .managers import StateMachineManager, DBManager
+from .managers import StateMachineManager, DBManager, OPCUAClientManager
 from .tags import CVTEngine
 from automation.pages.main import ConfigView
 from automation.pages.callbacks import init_callbacks
@@ -23,12 +23,13 @@ class PyAutomation(Singleton):
     >>> app = PyAutomation()
     ```
     """
-
+    PORTS = 65535
     def __init__(self):
 
         self._machine_manager = StateMachineManager()
         self._db_manager = DBManager()
         self.cvt = CVTEngine()
+        self._opcua_client_manager = OPCUAClientManager()
 
     def get_tags(self):
         r"""Documentation here
@@ -113,6 +114,25 @@ class PyAutomation(Singleton):
             log_detailed(e, message)
 
         return db_worker
+    
+    def find_opcua_servers(self, host:str='127.0.0.1', *ports)->list[dict]:
+        r"""
+        Documentation here
+        """
+        info_servers = list()
+        if not ports:
+
+            ports = range(PyAutomation.PORTS)
+
+        for port in ports:
+
+            server = self._opcua_client_manager.discovery(host=host, port=port)
+            if server:
+                
+                info_servers.append(server)
+
+        return info_servers
+
 
     def stop_db(self, db_worker:LoggerWorker):
         r"""
