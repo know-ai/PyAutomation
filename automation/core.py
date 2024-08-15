@@ -115,23 +115,13 @@ class PyAutomation(Singleton):
 
         return db_worker
     
-    def find_opcua_servers(self, host:str='127.0.0.1', *ports)->list[dict]:
+    def find_opcua_servers(self, host:str='127.0.0.1', port:int=4840)->list[dict]:
         r"""
         Documentation here
         """
-        info_servers = list()
-        if not ports:
-
-            ports = range(PyAutomation.PORTS)
-
-        for port in ports:
-
-            server = self._opcua_client_manager.discovery(host=host, port=port)
-            if server:
+        server = self._opcua_client_manager.discovery(host=host, port=port)
                 
-                info_servers.append(server)
-
-        return info_servers
+        return server
 
 
     def stop_db(self, db_worker:LoggerWorker):

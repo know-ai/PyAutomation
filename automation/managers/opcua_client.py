@@ -65,6 +65,15 @@ class OPCUAClientManager:
         if client_name in self._clients:
 
             return self._clients[client_name]
+        
+    def get_node_values(self, client_name:str, namespaces:list)->list:
+
+        if client_name in self._clients:
+
+            client = self._clients[client_name]
+
+            return client.get_nodes_values(namespaces=namespaces)
+
 
     def serialize(self, client_name:str=None)->dict:
         r"""

@@ -188,7 +188,7 @@ class Client(OPCClient):
 
         return nodes
 
-    def get_nodes_values(self, namespaces):
+    def get_nodes_values(self, namespaces:list)->list:
         r"""
         Documentation here
         """
@@ -284,7 +284,7 @@ class Client(OPCClient):
 
             return False
 
-    def get_node_attributes(self, node_namespace):
+    def get_node_attributes(self, node_namespace)->dict:
         r"""
         Documentation here
         """
@@ -325,6 +325,18 @@ class Client(OPCClient):
             }
 
         return result, 200
+    
+    def get_nodes_attributes(self, namespaces:list)->list:
+        r"""
+        Documentation here
+        """
+        nodes = list()
+        for namespace in namespaces:
+
+            node = self.get_node_attributes(node_namespace=namespace)
+            nodes.append(node)
+
+        return nodes
 
     def get_referenced_nodes(self, node_id):
         r"""
