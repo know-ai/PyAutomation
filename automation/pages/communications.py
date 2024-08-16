@@ -1,10 +1,12 @@
 import dash
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
-from automation.pages.components.opcua import FileTree, OPCUAComponents
+from automation.pages.components.opcua import file_tree, OPCUAComponents
+from automation import PyAutomation
 
 # Set React version to 18.2.0
 dash._dash_renderer._set_react_version('18.2.0')
+app = PyAutomation()
 
 dash.register_page(__name__, path="/")
 
@@ -47,8 +49,8 @@ layout = dmc.MantineProvider([
                 dbc.Row(
                     [
                         dbc.Col([
-                            FileTree(data).render(),
-                            FileTree(data).render()
+                            file_tree.render(data),
+                            file_tree.render(data)
                         ],
                         width=2),
                         dbc.Col([

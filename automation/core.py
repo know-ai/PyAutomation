@@ -119,10 +119,36 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        server = self._opcua_client_manager.discovery(host=host, port=port)
-                
-        return server
+        result = {
+            "message": f"Connection refused to opc.tcp://{host}:{port}"
+        }
+        try:
+            
+            server = self._opcua_client_manager.discovery(host=host, port=port)
+            result["message"] = f"Successfully connection to {server[0]['DiscoveryUrls'][0]}"
+            result["data"] = server
+        
+        except Exception as err:
 
+            result["data"] = list()
+                
+        return result
+    
+    def get_opcua_clients(self):
+        r"""
+        Documentation here
+        """
+
+        return self._opcua_client_manager.serialize()
+    
+    def add_opcua_client(self, client_name:str, host:str="127.0.0.1", port:int=4840):
+        r"""
+        Documentation here
+        """
+        servers = self.find_opcua_servers(host=host, port=port)
+        if servers:
+            self._opcua_client_manager.add(client_name=client_name, endpoint_url=f"opc.tcp://{host}:{port}")
+        # print(f"Server {client_name}: {servers}")
 
     def stop_db(self, db_worker:LoggerWorker):
         r"""
