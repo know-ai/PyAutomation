@@ -1,9 +1,8 @@
 import dash
+from automation.pages.components.opcua import file_tree
 
 
 def init_callback(app:dash.Dash):
-
-
 
     @app.callback(
         # dash.Output('selected-file-output', 'children'),
@@ -37,6 +36,7 @@ def init_callback(app:dash.Dash):
     
     @app.callback(
         dash.Output("add_server_modal", "is_open", allow_duplicate=True),
+        dash.Output("server_tree", "children"),
         dash.Input("add_server_ok_button_modal", "n_clicks"),
         dash.State("opcua_client_name_input", "value"),
         dash.State("opcua_client_host_input", "value"),
@@ -46,12 +46,18 @@ def init_callback(app:dash.Dash):
         r"""
         Documentation here
         """
-        resp = app.automation.add_opcua_client(client_name=client_name, host=host, port=port)
+        app.automation.add_opcua_client(client_name=client_name, host=host, port=port)
         clients = app.automation.get_opcua_clients()
 
-        print(f"clients: {clients}")
+        data = list()
+        for client_name, _ in clients.items():
+            
+            opcua_tree = app.automation.get_opcua_tree(client_name=client_name)
+            data.append(opcua_tree[0]["Objects"][0])
 
-        return False
+        data = file_tree.render(data)
+
+        return False, data
     
     @app.callback(
         dash.Output("add_server_modal", "is_open", allow_duplicate=True),
@@ -62,3 +68,25 @@ def init_callback(app:dash.Dash):
         Documentation here
         """
         return False
+    
+    @app.callback(
+        dash.Output("server_tree", "children", allow_duplicate=True),
+        dash.Input('communications_page', 'pathname'),
+        prevent_initial_call=True
+        )
+    def display_page(pathname):
+        r"""
+        Documentation here
+        """
+        if pathname=="/":
+
+            clients = app.automation.get_opcua_clients()
+            data = list()
+            for client_name, _ in clients.items():
+                
+                opcua_tree = app.automation.get_opcua_tree(client_name=client_name)
+                data.append(opcua_tree[0]["Objects"][0])
+
+            data = file_tree.render(data)
+            
+            return data

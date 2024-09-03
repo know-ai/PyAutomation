@@ -66,6 +66,13 @@ class OPCUAClientManager:
 
             return self._clients[client_name]
         
+    def get_opcua_tree(self, client_name):
+        r"""
+        Documentation here
+        """
+        client = self.get(client_name=client_name)
+        return client.get_opc_ua_tree()
+        
     def get_node_values(self, client_name:str, namespaces:list)->list:
 
         if client_name in self._clients:

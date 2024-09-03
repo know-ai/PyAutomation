@@ -1,25 +1,13 @@
 import dash
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
-from automation.pages.components.opcua import file_tree, OPCUAComponents
-from automation import PyAutomation
+from automation.pages.components.opcua import OPCUAComponents
 
 # Set React version to 18.2.0
 dash._dash_renderer._set_react_version('18.2.0')
-app = PyAutomation()
 
 dash.register_page(__name__, path="/")
 
-data = [
-    {
-        'title': 'iDetectFugas', 'key': 'ns=2;i=1', 'children': [
-            {'title': 'FI_02', 'key': 'ns=2;i=2', 'children': [], 'NodeClass': 'Variable'},
-            {'title': 'PI_02', 'key': 'ns=2;i=3', 'children': [], 'NodeClass': 'Variable'},
-            {'title': 'ROHL_02', 'key': 'ns=2;i=4', 'children': [], 'NodeClass': 'Variable'},
-            {'title': 'TI_02', 'key': 'ns=2;i=5', 'children': [], 'NodeClass': 'Variable'}
-        ], 'NodeClass': 'Object'
-    }
-]
 
 layout = dmc.MantineProvider([
     dash.html.Div(
@@ -48,19 +36,9 @@ layout = dmc.MantineProvider([
             [
                 dbc.Row(
                     [
-                        dbc.Col([
-                            file_tree.render(data),
-                            file_tree.render(data)
-                        ],
-                        width=2),
-                        dbc.Col([
-                            dash.html.Div("One of three columns")
-                        ],
-                        width=8),
-                        dbc.Col([
-                            dash.html.Div("One of three columns")
-                        ],
-                        width=2),
+                        dbc.Col(OPCUAComponents.get_opcua_tree(), id="server_tree",  width=2),
+                        dbc.Col([dash.html.Div("One of three columns")], width=8),
+                        dbc.Col([dash.html.Div("One of three columns")], width=2),
                     ]
                 ),
             ]

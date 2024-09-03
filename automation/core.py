@@ -141,6 +141,13 @@ class PyAutomation(Singleton):
 
         return self._opcua_client_manager.serialize()
     
+    def get_opcua_tree(self, client_name:str):
+        r"""
+        Documentation here
+        """
+
+        return self._opcua_client_manager.get_opcua_tree(client_name=client_name)
+    
     def add_opcua_client(self, client_name:str, host:str="127.0.0.1", port:int=4840):
         r"""
         Documentation here

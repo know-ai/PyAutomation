@@ -4,6 +4,79 @@ import dash_bootstrap_components as dbc
 from dash_iconify import DashIconify
 
 
+class FileTree:
+    r"""
+    Documentation here
+    """
+    def __init__(self):
+        
+        self.data = None
+
+    def render(self, data) -> dmc.Accordion:
+        r"""
+        Documentation here
+        """
+        self.data = data
+        return dmc.Accordion(
+            self.build_tree(self.data),
+            multiple=True
+        )
+
+    def flatten(self, l):
+        r"""
+        Documentation here
+        """
+        return [item for sublist in l for item in sublist]
+
+    def make_file(self, file_name, key):
+        r"""
+        Documentation here
+        """
+        return dmc.Text(
+            [
+                dash.dcc.Checklist(
+                    options=[{'label': '', 'value': key}],
+                    id={'type': 'file-checklist', 'index': key},
+                    style={"display": "inline-block"}
+                ),
+                DashIconify(icon="akar-icons:file"),
+                " ",
+                file_name
+            ],
+            style={"paddingTop": '5px'}
+        )
+
+    def make_folder(self, folder_name):
+        r"""
+        Documentation here
+        """
+        return [DashIconify(icon="akar-icons:folder"), " ", folder_name]
+
+    def build_tree(self, nodes):
+        r"""
+        Documentation here
+        """
+        d = []
+        for i, node in enumerate(nodes):
+            if node['children']:
+                children = self.flatten([self.build_tree(node['children'])])
+                d.append(
+                    dmc.AccordionItem(
+                        children=[
+                            dmc.AccordionControl(self.make_folder(node['title'])),
+                            dmc.AccordionPanel(children)
+                        ],
+                        value=f"item-{i}"
+                    )
+                )
+            else:
+                d.append(self.make_file(node['title'], node['key']))
+        return d
+
+
+file_tree = FileTree()
+
+
 class OPCUAComponents:
 
     @classmethod
@@ -11,6 +84,7 @@ class OPCUAComponents:
 
         return dash.html.Div(
             [
+                dash.dcc.Location(id='communications_page', refresh=False),
                 dbc.Modal(
                     [
                         dbc.ModalHeader(dbc.ModalTitle(title), close_button=True),
@@ -124,76 +198,16 @@ class OPCUAComponents:
                 ),
             ]
         )
+    
+    @classmethod
+    def get_opcua_tree(cls):
+        from automation import PyAutomation
+        app = PyAutomation()
+        clients = app.get_opcua_clients()
+        data = list()
+        for client_name, _ in clients.items():
+            
+            opcua_tree = app.automation.get_opcua_tree(client_name=client_name)
+            data.append(opcua_tree[0]["Objects"][0])
 
-
-class FileTree:
-    r"""
-    Documentation here
-    """
-    def __init__(self):
-        
-        self.data = None
-
-    def render(self, data) -> dmc.Accordion:
-        r"""
-        Documentation here
-        """
-        self.data = data
-        return dmc.Accordion(
-            self.build_tree(self.data),
-            multiple=True
-        )
-
-    def flatten(self, l):
-        r"""
-        Documentation here
-        """
-        return [item for sublist in l for item in sublist]
-
-    def make_file(self, file_name, key):
-        r"""
-        Documentation here
-        """
-        return dmc.Text(
-            [
-                dash.dcc.Checklist(
-                    options=[{'label': '', 'value': key}],
-                    id={'type': 'file-checklist', 'index': key},
-                    style={"display": "inline-block"}
-                ),
-                DashIconify(icon="akar-icons:file"),
-                " ",
-                file_name
-            ],
-            style={"paddingTop": '5px'}
-        )
-
-    def make_folder(self, folder_name):
-        r"""
-        Documentation here
-        """
-        return [DashIconify(icon="akar-icons:folder"), " ", folder_name]
-
-    def build_tree(self, nodes):
-        r"""
-        Documentation here
-        """
-        d = []
-        for i, node in enumerate(nodes):
-            if node['children']:
-                children = self.flatten([self.build_tree(node['children'])])
-                d.append(
-                    dmc.AccordionItem(
-                        children=[
-                            dmc.AccordionControl(self.make_folder(node['title'])),
-                            dmc.AccordionPanel(children)
-                        ],
-                        value=f"item-{i}"
-                    )
-                )
-            else:
-                d.append(self.make_file(node['title'], node['key']))
-        return d
-
-
-file_tree = FileTree()
+        data = file_tree.render(data)
