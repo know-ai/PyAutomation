@@ -5,7 +5,6 @@ from automation.pages.components.opcua import OPCUAComponents
 
 # Set React version to 18.2.0
 dash._dash_renderer._set_react_version('18.2.0')
-
 dash.register_page(__name__, path="/")
 
 
@@ -36,8 +35,8 @@ layout = dmc.MantineProvider([
             [
                 dbc.Row(
                     [
-                        dbc.Col(OPCUAComponents.get_opcua_tree(), id="server_tree",  width=2),
-                        dbc.Col([dash.html.Div("One of three columns")], width=8),
+                        dbc.Col([], id="server_tree",  width=2),
+                        dbc.Col(OPCUAComponents.data_access_view_table(), id="data_access_view_table", width=8),
                         dbc.Col([dash.html.Div("One of three columns")], width=2),
                     ]
                 ),

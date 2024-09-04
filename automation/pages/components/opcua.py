@@ -11,6 +11,7 @@ class FileTree:
     def __init__(self):
         
         self.data = None
+        self.folder_name = None
 
     def render(self, data) -> dmc.Accordion:
         r"""
@@ -19,7 +20,8 @@ class FileTree:
         self.data = data
         return dmc.Accordion(
             self.build_tree(self.data),
-            multiple=True
+            multiple=True,
+            id="opcua_server_tree"
         )
 
     def flatten(self, l):
@@ -35,8 +37,8 @@ class FileTree:
         return dmc.Text(
             [
                 dash.dcc.Checklist(
-                    options=[{'label': '', 'value': key}],
-                    id={'type': 'file-checklist', 'index': key},
+                    options=[{'label': '', 'value': f"{self.folder_name}/{key}"}],
+                    id={'type': 'file-checklist', 'index': f"{self.folder_name}/{key}"},
                     style={"display": "inline-block"}
                 ),
                 DashIconify(icon="akar-icons:file"),
@@ -49,7 +51,7 @@ class FileTree:
     def make_folder(self, folder_name):
         r"""
         Documentation here
-        """
+        """       
         return [DashIconify(icon="akar-icons:folder"), " ", folder_name]
 
     def build_tree(self, nodes):
@@ -58,6 +60,8 @@ class FileTree:
         """
         d = []
         for i, node in enumerate(nodes):
+            if node['children']:
+                self.folder_name = node['title']
             if node['children']:
                 children = self.flatten([self.build_tree(node['children'])])
                 d.append(
@@ -200,14 +204,49 @@ class OPCUAComponents:
         )
     
     @classmethod
-    def get_opcua_tree(cls):
-        from automation import PyAutomation
-        app = PyAutomation()
-        clients = app.get_opcua_clients()
+    def get_opcua_tree(cls, app):
+
+        clients = app.automation.get_opcua_clients()
         data = list()
         for client_name, _ in clients.items():
             
             opcua_tree = app.automation.get_opcua_tree(client_name=client_name)
-            data.append(opcua_tree[0]["Objects"][0])
+            opcua_tree = opcua_tree[0]['Objects'][0]
+            opcua_tree["title"] = client_name
+            data.append(opcua_tree)
 
         data = file_tree.render(data)
+
+        return data
+
+    @classmethod
+    def data_access_view_table(cls, data:list=[])->dash.dash_table.DataTable:
+        r"""
+        Documentation here
+        """
+
+        return dash.dash_table.DataTable(
+            data=data,
+            columns=[ 
+                {'name': 'server', 'id': 'server', 'editable': False}, 
+                {'name': 'namespace', 'id': 'namespace', 'editable': False}, 
+                {'name': 'data_type', 'id': 'data_type', 'editable': False}, 
+                {'name': 'display_name', 'id': 'display_name', 'editable': False}, 
+                {'name': 'value', 'id': 'value', 'editable': False},
+                {'name': 'source_timestamp', 'id': 'source_timestamp', 'editable': False},
+                {'name': 'status_code', 'id': 'status_code', 'editable': False}
+            ],
+            id="data_access_view_datatable",
+            filter_action="native",
+            sort_action="native",
+            sort_mode="multi",
+            selected_columns=[],
+            page_action="native",
+            page_current= 0,
+            page_size= 10,
+            persistence=True,
+            editable=False,
+            persisted_props=['data'],
+            export_format='xlsx',
+            export_headers='display',
+        )

@@ -187,6 +187,12 @@ class Client(OPCClient):
             nodes.append(_node)
 
         return nodes
+    
+    def get_node_id_by_namespace(self, namespace:str):
+        r"""
+        Documentar here
+        """
+        return self.get_node(NodeId.from_string(namespace))
 
     def get_nodes_values(self, namespaces:list)->list:
         r"""
@@ -301,6 +307,7 @@ class Client(OPCClient):
                 "Namespace": _node.nodeid.to_string(),
                 "NodeClass": _node.get_node_class().name,
                 "BrowseName": _node.get_browse_name().Name,
+                "DataValue": _node.get_data_value(),
                 "DisplayName": _node.get_display_name().Text,
                 "DataType": datatype_to_varianttype(_node.get_data_type()).name,
                 "AccesLevel": [access_lvl.name for access_lvl in _node.get_access_level()],

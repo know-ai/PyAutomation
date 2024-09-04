@@ -80,7 +80,20 @@ class OPCUAClientManager:
             client = self._clients[client_name]
 
             return client.get_nodes_values(namespaces=namespaces)
+        
+    def get_node_attributes(self, client_name:str, namespaces:list)->list:
 
+        result = list()
+
+        if client_name in self._clients:
+
+            client = self._clients[client_name]
+
+            for namespace in namespaces:
+
+                result.append(client.get_node_attributes(node_namespace=namespace))
+
+            return result
 
     def serialize(self, client_name:str=None)->dict:
         r"""

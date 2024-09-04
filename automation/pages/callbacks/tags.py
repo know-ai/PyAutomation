@@ -299,7 +299,9 @@ def init_callback(app:dash.Dash):
         ]
     )
     def update_scan_time(value, min_value, max_value):
-        print(f"Value: {value}")
+        r"""
+        Documentation here
+        """
         if value is None:
             
             return False, '', min_value

@@ -141,6 +141,26 @@ class PyAutomation(Singleton):
 
         return self._opcua_client_manager.serialize()
     
+    def get_opcua_client(self, client_name:str):
+        r"""
+        Documentation here
+        """
+        return self._opcua_client_manager.get(client_name=client_name)
+
+    def get_node_values(self, client_name:str, namespaces:list):
+        r"""
+        Documentation here
+        """
+
+        return self._opcua_client_manager.get_node_values(client_name=client_name, namespaces=namespaces)
+    
+    def get_node_attributes(self, client_name:str, namespaces:list):
+        r"""
+        Documentation here
+        """
+
+        return self._opcua_client_manager.get_node_attributes(client_name=client_name, namespaces=namespaces)
+    
     def get_opcua_tree(self, client_name:str):
         r"""
         Documentation here

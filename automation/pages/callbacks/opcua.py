@@ -1,23 +1,65 @@
 import dash
-from automation.pages.components.opcua import file_tree
+from automation.pages.components.opcua import OPCUAComponents
+from automation.opcua.subscription import SubHandler
+
+subscription_handler = SubHandler()
 
 
 def init_callback(app:dash.Dash):
 
+
     @app.callback(
-        # dash.Output('selected-file-output', 'children'),
+        dash.Output("data_access_view_table", "children"),
         [dash.Input({'type': 'file-checklist', 'index': dash.dependencies.ALL}, 'value')]
     )
     def display_selected_file(selected_files):
 
-        files = list()
-
+        to_get_node_values = dict()
         for file in selected_files:
-
+            
             if file:
 
-                files.append(file[0])
-        print(f"Files: {files}")
+                info = file[0].split("/")
+                client_name = info[0]
+                namespace = info[1]
+                
+                if client_name in to_get_node_values:
+
+                    to_get_node_values[client_name].append(namespace)
+
+                else:
+
+                    to_get_node_values[client_name] = [namespace]
+
+        data = list()
+        subscriptions = dict()
+        subscription_handler.unsubscribe()
+        for client_name, namespaces in to_get_node_values.items():
+            
+            client = app.automation.get_opcua_client(client_name=client_name)
+            subscriptions[client_name] = client.create_subscription(1000, subscription_handler)
+            infos = app.automation.get_node_attributes(client_name=client_name, namespaces=namespaces)
+            
+            for info in infos:
+                _info = info[0]
+                namespace = _info["Namespace"]
+                data.append(
+                    {
+                        "server": client_name,
+                        "namespace": namespace,
+                        "data_type": _info["DataType"],
+                        "display_name": _info["DisplayName"],
+                        "value": _info["Value"],
+                        "source_timestamp": _info["DataValue"].SourceTimestamp,
+                        "status_code": _info["DataValue"].StatusCode.name
+                    }
+                )
+                
+                node_id = client.get_node_id_by_namespace(namespace)
+                subscription = subscriptions[client_name]
+                subscription_handler.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
+
+        return OPCUAComponents.data_access_view_table(data=data)
 
     @app.callback(
         dash.Output("add_server_modal", "is_open"),
@@ -47,15 +89,8 @@ def init_callback(app:dash.Dash):
         Documentation here
         """
         app.automation.add_opcua_client(client_name=client_name, host=host, port=port)
-        clients = app.automation.get_opcua_clients()
-
-        data = list()
-        for client_name, _ in clients.items():
-            
-            opcua_tree = app.automation.get_opcua_tree(client_name=client_name)
-            data.append(opcua_tree[0]["Objects"][0])
-
-        data = file_tree.render(data)
+        data = OPCUAComponents.get_opcua_tree(app)
+        subscription_handler.unsubscribe()
 
         return False, data
     
@@ -80,13 +115,7 @@ def init_callback(app:dash.Dash):
         """
         if pathname=="/":
 
-            clients = app.automation.get_opcua_clients()
-            data = list()
-            for client_name, _ in clients.items():
-                
-                opcua_tree = app.automation.get_opcua_tree(client_name=client_name)
-                data.append(opcua_tree[0]["Objects"][0])
-
-            data = file_tree.render(data)
+            data = OPCUAComponents.get_opcua_tree(app)
+            subscription_handler.unsubscribe()
             
             return data
