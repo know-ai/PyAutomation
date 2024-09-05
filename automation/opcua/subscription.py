@@ -1,4 +1,3 @@
-# from pyhades.tags import CVTEngine
 from automation.singleton import Singleton
 
 
@@ -13,56 +12,62 @@ class SubHandler(Singleton):
 
     def __init__(self):
         
-        self.nodes = list()
-        self.subscriptions = list()
-        self.monitred_items = dict()
+        self.monitored_items = dict()
 
     def subscribe(self, subscription, client_name, node_id):
+        r"""
+        Documentation here
+        """
 
-        if subscription not in self.subscriptions:
-
-            self.subscriptions.append(subscription)
-
-        if client_name not in self.monitred_items:
+        if client_name not in self.monitored_items:
 
             monitored_item = subscription.subscribe_data_change(
                 node_id
             )
-            self.monitred_items[client_name] = {
-                node_id: monitored_item
+            self.monitored_items[client_name] = {
+                node_id: {
+                    "subscription": subscription,
+                    "monitored_item": monitored_item
+                }
             }
 
         else:
 
-            if node_id not in self.monitred_items[client_name]:
+            if node_id not in self.monitored_items[client_name]:
             
                 monitored_item = subscription.subscribe_data_change(
                     node_id
                 )
-                self.monitred_items[client_name] = {
-                    node_id: monitored_item
-            }
 
-    def unsubscribe(self):
+                self.monitored_items[client_name].update({
+                    node_id: {
+                        "subscription": subscription,
+                        "monitored_item": monitored_item
+                    }
+                })
 
-        for subscription in self.subscriptions:
+    def unsubscribe_all(self):
+        r"""
+        Documentation here
+        """
 
-            for client_name, monitored_items in self.monitred_items.items():
+        for _, monitored_items in self.monitored_items.items():
 
-                for _, monitored_item in self.monitred_items[client_name].items():
-                    try:
-                        subscription.unsubscribe(monitored_item)
-                    except Exception as err:
+            for _, monitored_item in monitored_items.items():
+                
+                item = monitored_item["monitored_item"]
+                subscription = monitored_item["subscription"]
+                subscription.unsubscribe(item)
+                
 
-                        pass
-
-        self.subscriptions = list()
-        self.nodes = list()
-        self.monitred_items = dict()            
+        self.monitored_items = dict()            
 
     def datachange_notification(self, node, val, data):
+        r"""
+        Documentation here
+        """
         
-        namespace = node.nodeid.to_string()
+        # namespace = node.nodeid.to_string()
         print(f"Node: {node} - Value: {val}")
         # tag_name = self.tag_engine.get_tagname_by_node_namespace(namespace)
         

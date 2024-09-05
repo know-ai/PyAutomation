@@ -1,14 +1,16 @@
 import dash
+from dash import callback
 from automation.pages.components.opcua import OPCUAComponents
 from automation.opcua.subscription import SubHandler
 
 subscription_handler = SubHandler()
 
 
+
 def init_callback(app:dash.Dash):
 
 
-    @app.callback(
+    @callback(
         dash.Output("data_access_view_table", "children"),
         [dash.Input({'type': 'file-checklist', 'index': dash.dependencies.ALL}, 'value')]
     )
@@ -33,7 +35,7 @@ def init_callback(app:dash.Dash):
 
         data = list()
         subscriptions = dict()
-        subscription_handler.unsubscribe()
+        subscription_handler.unsubscribe_all()
         for client_name, namespaces in to_get_node_values.items():
             
             client = app.automation.get_opcua_client(client_name=client_name)
@@ -90,7 +92,7 @@ def init_callback(app:dash.Dash):
         """
         app.automation.add_opcua_client(client_name=client_name, host=host, port=port)
         data = OPCUAComponents.get_opcua_tree(app)
-        subscription_handler.unsubscribe()
+        subscription_handler.unsubscribe_all()
 
         return False, data
     
@@ -116,6 +118,6 @@ def init_callback(app:dash.Dash):
         if pathname=="/":
 
             data = OPCUAComponents.get_opcua_tree(app)
-            subscription_handler.unsubscribe()
+            subscription_handler.unsubscribe_all()
             
             return data
