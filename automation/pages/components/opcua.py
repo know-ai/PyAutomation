@@ -1,4 +1,5 @@
 import dash
+from automation.singleton import Singleton
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
 from dash_iconify import DashIconify
@@ -81,7 +82,7 @@ class FileTree:
 file_tree = FileTree()
 
 
-class OPCUAComponents:
+class OPCUAComponents(Singleton):
 
     @classmethod
     def add_server(cls, title:str, modal_id:str, body_id:str, ok_button_id:str, cancel_button_id:str):
@@ -219,14 +220,13 @@ class OPCUAComponents:
 
         return data
 
-    @classmethod
-    def data_access_view_table(cls, data:list=[])->dash.dash_table.DataTable:
+    def data_access_view_table(self, data:list=[])->dash.dash_table.DataTable:
         r"""
         Documentation here
         """
-
+        self.data = data
         return dash.dash_table.DataTable(
-            data=data,
+            data=self.data,
             columns=[ 
                 {'name': 'server', 'id': 'server', 'editable': False}, 
                 {'name': 'namespace', 'id': 'namespace', 'editable': False}, 
@@ -237,10 +237,7 @@ class OPCUAComponents:
                 {'name': 'status_code', 'id': 'status_code', 'editable': False}
             ],
             id="data_access_view_datatable",
-            filter_action="native",
-            sort_action="native",
-            sort_mode="multi",
-            selected_columns=[],
+            # row_selectable='single',
             page_action="native",
             page_current= 0,
             page_size= 10,
@@ -250,3 +247,17 @@ class OPCUAComponents:
             export_format='xlsx',
             export_headers='display',
         )
+    
+    def update_data_access_view(self, namespace, value, timestamp)->dash.dash_table.DataTable:
+        r"""
+        Documentation here
+        """
+        _data = self.data.copy()
+        for counter, data in enumerate(_data):
+
+            if namespace==data["namespace"]:
+
+                self.data[counter]["value"] = value
+                self.data[counter]["source_timestamp"] = timestamp
+        
+        return self.data

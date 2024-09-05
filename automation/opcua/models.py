@@ -10,13 +10,14 @@ class Client(OPCClient):
     r"""
     Documentation here
     """
-    def __init__(self, url, timeout=4):
+    def __init__(self, url, client_name:str, timeout=4):
         r"""
         Documentation here
         """
         self._id = None
         self._server_url = url
         self._timeout = timeout
+        self.name = client_name
         self._client = None
         self._is_open = False
         self._opc_ua_tree = dict()

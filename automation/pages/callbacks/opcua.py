@@ -1,41 +1,39 @@
 import dash
-from dash import callback
+from automation.utils import get_nodes_info, get_data_to_update_into_opcua_table
 from automation.pages.components.opcua import OPCUAComponents
 from automation.opcua.subscription import SubHandler
 
-subscription_handler = SubHandler()
 
+subscription_handler = SubHandler()
+opcua_components = OPCUAComponents()
 
 
 def init_callback(app:dash.Dash):
+    
+    @app.callback(
+        dash.Output("data_access_view_table", "children", allow_duplicate=True),
+        dash.Input('timestamp-interval', 'n_intervals'),
+        dash.State({'type': 'file-checklist', 'index': dash.dependencies.ALL}, 'value'),
+        prevent_initial_call=False
+    )
+    def update_data_access_table( n_intervals, selected_files):
+        
+        to_get_node_values = get_nodes_info(selected_files=selected_files)
+        data = get_data_to_update_into_opcua_table(app=app, to_get_node_values=to_get_node_values)
+        
+        return opcua_components.data_access_view_table(data=data)
 
-
-    @callback(
+    @app.callback(
         dash.Output("data_access_view_table", "children"),
-        [dash.Input({'type': 'file-checklist', 'index': dash.dependencies.ALL}, 'value')]
+        dash.Input({'type': 'file-checklist', 'index': dash.dependencies.ALL}, 'value')
     )
     def display_selected_file(selected_files):
 
-        to_get_node_values = dict()
-        for file in selected_files:
-            
-            if file:
-
-                info = file[0].split("/")
-                client_name = info[0]
-                namespace = info[1]
-                
-                if client_name in to_get_node_values:
-
-                    to_get_node_values[client_name].append(namespace)
-
-                else:
-
-                    to_get_node_values[client_name] = [namespace]
+        subscription_handler.unsubscribe_all()
+        to_get_node_values = get_nodes_info(selected_files=selected_files)
 
         data = list()
         subscriptions = dict()
-        subscription_handler.unsubscribe_all()
         for client_name, namespaces in to_get_node_values.items():
             
             client = app.automation.get_opcua_client(client_name=client_name)
@@ -59,9 +57,9 @@ def init_callback(app:dash.Dash):
                 
                 node_id = client.get_node_id_by_namespace(namespace)
                 subscription = subscriptions[client_name]
-                subscription_handler.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
+                subscription_handler.subscribe(subscription=subscription, client_name=client_name, node_id=node_id, server=client_name)
 
-        return OPCUAComponents.data_access_view_table(data=data)
+        return opcua_components.data_access_view_table(data=data)
 
     @app.callback(
         dash.Output("add_server_modal", "is_open"),

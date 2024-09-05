@@ -1,5 +1,5 @@
 from automation.singleton import Singleton
-
+        
 
 class SubHandler(Singleton):
     r"""
@@ -8,22 +8,22 @@ class SubHandler(Singleton):
     Do not do expensive, slow or network operation there. Create another 
     thread if you need to do such a thing
     """
-    # tag_engine = CVTEngine()
 
     def __init__(self):
         
         self.monitored_items = dict()
 
-    def subscribe(self, subscription, client_name, node_id):
+    def subscribe(self, subscription, client_name, node_id, server):
         r"""
         Documentation here
         """
 
         if client_name not in self.monitored_items:
-
+            
             monitored_item = subscription.subscribe_data_change(
                 node_id
             )
+
             self.monitored_items[client_name] = {
                 node_id: {
                     "subscription": subscription,
@@ -42,7 +42,8 @@ class SubHandler(Singleton):
                 self.monitored_items[client_name].update({
                     node_id: {
                         "subscription": subscription,
-                        "monitored_item": monitored_item
+                        "monitored_item": monitored_item,
+                        "server": server
                     }
                 })
 
@@ -59,18 +60,14 @@ class SubHandler(Singleton):
                 subscription = monitored_item["subscription"]
                 subscription.unsubscribe(item)
                 
-
         self.monitored_items = dict()            
 
     def datachange_notification(self, node, val, data):
         r"""
         Documentation here
         """
-        
         # namespace = node.nodeid.to_string()
-        print(f"Node: {node} - Value: {val}")
-        # tag_name = self.tag_engine.get_tagname_by_node_namespace(namespace)
+        # timestamp = data.monitored_item.Value.SourceTimestamp
+        pass
+
         
-        # if tag_name is not None:
-            
-        #     self.tag_engine.write_tag(tag_name, val)

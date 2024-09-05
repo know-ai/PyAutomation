@@ -25,7 +25,7 @@ class OPCUAClientManager:
 
             return KeyError(f"Client Name {client_name} duplicated")
         
-        opcua_client = Client(endpoint_url)
+        opcua_client = Client(endpoint_url, client_name=client_name)
         message, status_connection = opcua_client.connect()
         if status_connection==200:
 

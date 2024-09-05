@@ -12,6 +12,7 @@ class ConfigView(dash.Dash):
         super(ConfigView, self).__init__(__name__, suppress_callback_exceptions=True, **kwargs)
         
         self.layout = dash.html.Div([
+            dash.dcc.Interval(id='timestamp-interval', interval=500, n_intervals=0),
             Components.navbar(),
             dash.page_container
         ])

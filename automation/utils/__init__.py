@@ -58,3 +58,53 @@ def generate_dropdown_conditional():
                 'options': options
             })
     return dropdown_conditional
+
+def get_nodes_info(selected_files:list):
+    r"""
+    Documentation here
+    """
+    to_get_node_values = dict()
+    for file in selected_files:
+        
+        if file:
+
+            info = file[0].split("/")
+            client_name = info[0]
+            namespace = info[1]
+            
+            if client_name in to_get_node_values:
+
+                to_get_node_values[client_name].append(namespace)
+
+            else:
+
+                to_get_node_values[client_name] = [namespace]
+
+    return to_get_node_values
+
+
+def get_data_to_update_into_opcua_table(app, to_get_node_values:dict):
+    r"""
+    Documentation here
+    """
+    data = list()
+    for client_name, namespaces in to_get_node_values.items():
+        
+        infos = app.automation.get_node_attributes(client_name=client_name, namespaces=namespaces)
+        
+        for info in infos:
+            _info = info[0]
+            namespace = _info["Namespace"]
+            data.append(
+                {
+                    "server": client_name,
+                    "namespace": namespace,
+                    "data_type": _info["DataType"],
+                    "display_name": _info["DisplayName"],
+                    "value": _info["Value"],
+                    "source_timestamp": _info["DataValue"].SourceTimestamp,
+                    "status_code": _info["DataValue"].StatusCode.name
+                }
+            )
+    
+    return data
