@@ -90,7 +90,7 @@ def init_callback(app:dash.Dash):
         """
         app.automation.add_opcua_client(client_name=client_name, host=host, port=port)
         data = OPCUAComponents.get_opcua_tree(app)
-        subscription_handler.unsubscribe_all()
+        subscription_handler.unsubscribe_all()        
 
         return False, data
     

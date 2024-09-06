@@ -78,7 +78,6 @@ class CVT:
             scan_time=scan_time,
             dead_band=dead_band
         )
-
         self._tags[tag.id] = tag
 
     def update_tag(self, id:str, **kwargs)->None|str:
@@ -753,7 +752,7 @@ class CVTEngine(Singleton):
                 if 'parameters' in query:
                     
                     resp = method(**query["parameters"])
-                
+
                 else:
 
                     resp = method()

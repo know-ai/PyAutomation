@@ -51,8 +51,10 @@ class PyAutomation(Singleton):
             data_type:str='float', 
             description:str="", 
             display_name:str=None,
-            opcua_address:str="",
-            node_namespace:str=""
+            opcua_address:str=None,
+            node_namespace:str=None,
+            scan_time:int=None,
+            dead_band:float=None
         ):
         r"""Documentation here
 
@@ -75,7 +77,9 @@ class PyAutomation(Singleton):
             description=description,
             display_name=display_name,
             opcua_address=opcua_address,
-            node_namespace=node_namespace
+            node_namespace=node_namespace,
+            scan_time=scan_time,
+            dead_band=dead_band
         )
 
     def _start_logger(self):
@@ -173,10 +177,11 @@ class PyAutomation(Singleton):
         Documentation here
         """
         servers = self.find_opcua_servers(host=host, port=port)
+        
         if servers:
+            
             self._opcua_client_manager.add(client_name=client_name, endpoint_url=f"opc.tcp://{host}:{port}")
-        # print(f"Server {client_name}: {servers}")
-
+        
     def stop_db(self, db_worker:LoggerWorker):
         r"""
         Stops Database Worker

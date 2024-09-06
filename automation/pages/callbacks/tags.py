@@ -1,5 +1,5 @@
 import dash
-from automation.utils import find_differences_between_lists, find_keys_values_by_unit
+from automation.utils import find_differences_between_lists, generate_dropdown_conditional
 from automation.variables import VARIABLES
 
 def init_callback(app:dash.Dash):
@@ -66,11 +66,11 @@ def init_callback(app:dash.Dash):
         Documentation here
         """
         if opcua_server:
-
+            
             dash.set_props("node_namespace_input", {'disabled': False})
 
         else:
-
+            
             dash.set_props("node_namespace_input", {'disabled': True})
 
         return ""
@@ -119,6 +119,9 @@ def init_callback(app:dash.Dash):
     
     @app.callback(
         dash.Output('tags_datatable', 'data', allow_duplicate=True),
+        dash.Output('opcua_address_input', 'options'),
+        dash.Output('tags_datatable', 'dropdown'),
+        dash.Output('tags_datatable', 'dropdown_conditional'),
         dash.Input('tags_page', 'pathname'),
         prevent_initial_call=True
         )
@@ -126,12 +129,65 @@ def init_callback(app:dash.Dash):
         r"""
         Documentation here
         """
-        if pathname=="/tags":
+        opcua_client_options = [{"label": "", "value": ""}]
+
+        # if pathname=="/tags":
             
-            return app.tags_table_data()
+        for opcua_client, info in app.automation.get_opcua_clients().items():
+            
+            opcua_client_options.append({
+                "label": opcua_client, "value": info['server_url']
+            })
+        
+        dropdown = {
+            'data_type': {
+                'options': [
+                    {'label': 'Float', 'value': 'float'},
+                    {'label': 'Integer', 'value': 'integer'},
+                    {'label': 'Boolean', 'value': 'boolean'},
+                    {'label': 'String', 'value': 'string'}
+                ]
+            },
+            'opcua_address': {
+                'options': opcua_client_options
+            }
+        }
+
+        dropdown_conditional = generate_dropdown_conditional()
+        
+        return app.tags_table_data(), opcua_client_options, dropdown, dropdown_conditional
+        
+    @app.callback(
+        dash.Output('node_namespace_input', 'options'),
+        dash.Input('opcua_address_input', 'value'),
+        prevent_initial_call=True
+        )
+    def select_opcua_server(server_url):
+        r"""
+        Documentation here
+        """
+        opcua_clients = app.automation.get_opcua_clients()
+        for client_name, info in opcua_clients.items():
+
+            if server_url==info["server_url"]:
+
+                break
+
+        nodes = [{"label": "None", "value": "None"}]
+        tree = app.automation.get_opcua_tree(client_name)
+        for node in tree[0]["Objects"][0]["children"]:
+
+            nodes.append(
+                {
+                    "label": node["title"],
+                    "value": node["key"]
+                }
+            )
+        return nodes
         
     @app.callback(
         dash.Output('tags_datatable', 'data', allow_duplicate=True),
+        dash.Output('tags_datatable', 'dropdown_conditional', allow_duplicate=True),
         dash.Input('create_tag_button', 'n_clicks'),
         dash.State("tag_name_input", "value"), 
         dash.State("datatype_input", "value"), 
@@ -160,7 +216,7 @@ def init_callback(app:dash.Dash):
         Documentation here
         """
         if "create_tag_button" == dash.ctx.triggered_id:
-
+            
             message = app.automation.cvt.set_tag(
                 name=tag_name,
                 unit=unit,
@@ -177,8 +233,8 @@ def init_callback(app:dash.Dash):
                 
                 dash.set_props("modal-body", {"children": message})
                 dash.set_props("modal-centered", {'is_open': True})
-        
-            return app.tags_table_data()
+            
+            return app.tags_table_data(), generate_dropdown_conditional()
         
     @app.callback(
         dash.Input('tags_datatable', 'data_timestamp'),

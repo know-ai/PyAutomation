@@ -47,15 +47,7 @@ class TagsComponents:
                                 ],
                                 width=3),
                                 dbc.Col([
-                                    dbc.InputGroup(
-                                        [
-                                            dbc.InputGroupText("Unit"),
-                                            dbc.Select(
-                                                options=[],
-                                                id="unit_input",
-                                                disabled=True
-                                            ),
-                                        ],
+                                    dbc.InputGroup([dbc.InputGroupText("Unit"), dbc.Select(options=[], id="unit_input", disabled=True )],
                                         size="md"
                                     ),
                                     dbc.InputGroup(
@@ -82,39 +74,10 @@ class TagsComponents:
                                 ],
                                 width=3),
                                 dbc.Col([
-                                    dbc.InputGroup(
-                                        [
-                                            dbc.InputGroupText("OPCUA"),
-                                            dbc.Select(
-                                                options=[
-                                                    {'label': 'None', 'value': ''},
-                                                    {'label': 'Server 1', 'value': 'Server 1'},
-                                                    {'label': 'Server 2', 'value': 'Server 2'},
-                                                    {'label': 'Server 3', 'value': 'Server 3'},
-                                                    {'label': 'Server 4', 'value': 'Server 4'}
-                                                ],
-                                                id="opcua_address_input"
-                                            ),
-                                            
-                                        ],
+                                    dbc.InputGroup([dbc.InputGroupText("OPCUA"), dbc.Select(options=[], id="opcua_address_input")],
                                         size="md"
                                     ),
-                                    dbc.InputGroup(
-                                        [
-                                            dbc.InputGroupText("Node"),
-                                            dbc.Select(
-                                                options=[
-                                                    {'label': 'None', 'value': ''},
-                                                    {'label': 'ns=2;i=1', 'value': 'ns=2;i=1'},
-                                                    {'label': 'ns=2;i=2', 'value': 'ns=2;i=2'},
-                                                    {'label': 'ns=2;i=3', 'value': 'ns=2;i=3'},
-                                                    {'label': 'ns=2;i=4', 'value': 'ns=2;i=4'}
-                                                ],
-                                                id="node_namespace_input",
-                                                disabled=True
-                                            ),
-                                            
-                                        ],
+                                    dbc.InputGroup([dbc.InputGroupText("Node"), dbc.Select(options=[], id="node_namespace_input", disabled=True)],
                                         size="md",
                                     )
                                 ],
@@ -161,12 +124,7 @@ class TagsComponents:
             sort_mode="multi",
             row_deletable=True,
             selected_columns=[],
-            page_action="native",
-            page_current= 0,
-            page_size= 10,
-            persistence=True,
-            editable=True,
-            dropdown={
+            dropdown = {
                 'data_type': {
                     'options': [
                         {'label': 'Float', 'value': 'float'},
@@ -176,25 +134,14 @@ class TagsComponents:
                     ]
                 },
                 'opcua_address': {
-                    'options': [
-                        {'label': 'None', 'value': ''},
-                        {'label': 'Server 1', 'value': 'Server 1'},
-                        {'label': 'Server 2', 'value': 'Server 2'},
-                        {'label': 'Server 3', 'value': 'Server 3'},
-                        {'label': 'Server 4', 'value': 'Server 4'}
-                    ]
-                },
-                'node_namespace':{
-                    'options': [
-                        {'label': 'None', 'value': ''},
-                        {'label': 'ns=2;i=1', 'value': 'ns=2;i=1'},
-                        {'label': 'ns=2;i=2', 'value': 'ns=2;i=2'},
-                        {'label': 'ns=2;i=3', 'value': 'ns=2;i=3'},
-                        {'label': 'ns=2;i=4', 'value': 'ns=2;i=4'}
-                    ]
+                    'options': []
                 }
             },
-            dropdown_conditional=generate_dropdown_conditional(),
+            page_action="native",
+            page_current= 0,
+            page_size= 10,
+            persistence=True,
+            editable=True,
             persisted_props=['data'],
             export_format='xlsx',
             export_headers='display',

@@ -44,10 +44,12 @@ def generate_dropdown_conditional():
     r"""
     Documentation here
     """
+    from automation import PyAutomation
+    app = PyAutomation()
     data = VARIABLES
     dropdown_conditional = []
-
-    for key, sub_dict in data.items():
+    # dropdown conditional for unit column in table
+    for _, sub_dict in data.items():
 
         for unit in sub_dict.values():
 
@@ -57,6 +59,27 @@ def generate_dropdown_conditional():
                 'if': {'column_id': 'unit', 'filter_query': f'{{unit}} eq "{unit}"'},
                 'options': options
             })
+
+    # dropdown conditional for node_namespace column in table
+    dropdown_conditional.append({
+        'if': {'column_id': 'node_namespace', 'filter_query': f'{{opcua_address}} eq ""'},
+        'options': []
+    })
+    for client_name, info in app.get_opcua_clients().items():
+        
+        tree = app.get_opcua_tree(client_name=client_name)
+        options = list()
+        for node in tree[0]["Objects"][0]["children"]:
+            options.append({
+                "label": node["title"],
+                "value": node["key"]
+            })
+            server = info['server_url']
+            dropdown_conditional.append({
+                'if': {'column_id': 'node_namespace', 'filter_query': f'{{opcua_address}} eq "{server}"'},
+                'options': options
+            })
+
     return dropdown_conditional
 
 def get_nodes_info(selected_files:list):
