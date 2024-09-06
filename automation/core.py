@@ -204,7 +204,6 @@ class PyAutomation(Singleton):
         if self._create_tables:
 
             db_worker = LoggerWorker(self._db_manager)
-            db_worker.init_database()
             self.workers.append(db_worker)
 
         # if self._create_alarm_worker:

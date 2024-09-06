@@ -1,4 +1,4 @@
-from peewee import CharField
+from peewee import CharField, IntegerField, FloatField
 from automation.dbmodels.core import BaseModel
 
 
@@ -12,6 +12,8 @@ class Tags(BaseModel):
     display_name = CharField()
     opcua_address = CharField(null=True)
     node_namespace = CharField(null=True)
+    scan_time = IntegerField(null=True)
+    dead_band = FloatField(null=True)
 
     @classmethod
     def create(
@@ -23,7 +25,9 @@ class Tags(BaseModel):
         description:str,
         display_name:str,
         opcua_address:str=None,
-        node_namespace:str=None
+        node_namespace:str=None,
+        scan_time:int=None,
+        dead_band:float=None
         ):
         r"""Documentation here
 
@@ -45,7 +49,9 @@ class Tags(BaseModel):
                 description=description,
                 display_name=display_name,
                 opcua_address=opcua_address,
-                node_namespace=node_namespace
+                node_namespace=node_namespace,
+                scan_time=scan_time,
+                dead_band=dead_band
                 )
             tag.save()
 
@@ -115,5 +121,7 @@ class Tags(BaseModel):
             'description': self.description,
             'display_name': self.display_name,
             'opcua_address': self.opcua_address,
-            'node_namespace': self.node_namespace
+            'node_namespace': self.node_namespace,
+            'scan_time': self.scan_time,
+            'dead_band': self.dead_band
         }

@@ -49,7 +49,7 @@ class LoggerWorker(BaseWorker):
         self.scheduler = LoggerScheduler(manager=self._manager, period=period)
 
     def run(self):
-
+        print(f"automation/workers/logger.py LoggerWorker run executed")
         thread = Thread(target=self.scheduler.run)
         thread.start()
         

@@ -131,8 +131,6 @@ def init_callback(app:dash.Dash):
         """
         opcua_client_options = [{"label": "", "value": ""}]
 
-        # if pathname=="/tags":
-            
         for opcua_client, info in app.automation.get_opcua_clients().items():
             
             opcua_client_options.append({
@@ -154,8 +152,12 @@ def init_callback(app:dash.Dash):
         }
 
         dropdown_conditional = generate_dropdown_conditional()
+
+        if pathname=="/tags":
+            
+            return app.tags_table_data(), opcua_client_options, dropdown, dropdown_conditional
         
-        return app.tags_table_data(), opcua_client_options, dropdown, dropdown_conditional
+        return dash.no_update, opcua_client_options, dropdown, dropdown_conditional
         
     @app.callback(
         dash.Output('node_namespace_input', 'options'),
