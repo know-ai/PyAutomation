@@ -2,17 +2,8 @@ import dash
 import dash_bootstrap_components as dbc
 from automation import PyAutomation
 from automation.variables import VARIABLES
-from automation.utils import generate_dropdown_conditional
 
 app = PyAutomation()
-
-if hasattr(app, 'dash_app'):
-
-    data = app.dash_app.tags_table_data()
-
-else:
-
-    data = list()
 
 class TagsComponents:
 
@@ -105,7 +96,7 @@ class TagsComponents:
         """
 
         return dash.dash_table.DataTable(
-            data=data,
+            data=[],
             columns=[
                 {'name': 'id', 'id': 'id', 'editable': False}, 
                 {'name': 'name', 'id': 'name'}, 

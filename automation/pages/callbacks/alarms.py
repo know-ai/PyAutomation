@@ -1,4 +1,5 @@
 import dash
+from automation.utils import find_differences_between_lists
 
 def init_callback(app:dash.Dash):
 
@@ -56,6 +57,7 @@ def init_callback(app:dash.Dash):
         dash.Output('alarms_datatable', 'data', allow_duplicate=True),
         dash.Output('tag_alarm_input', 'options'),
         dash.Output('alarms_datatable', 'dropdown'),
+        dash.Output('alarm_type_input', 'options'),
         dash.Input('alarms_page', 'pathname'),
         prevent_initial_call=True
         )
@@ -92,12 +94,12 @@ def init_callback(app:dash.Dash):
                 }
             }
 
-            return data, dropdown_options_tag, dropdown
+            return data, dropdown_options_tag, dropdown, dropdown_options_type
         
-        return dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
     
     @app.callback(
-        dash.Output('alarms_datatable', 'data'),
+        dash.Output('alarms_datatable', 'data', allow_duplicate=True),
         dash.Input('create_alarm_button', 'n_clicks'),
         dash.State("tag_alarm_input", "value"),
         dash.State("alarm_name_input", "value"), 
@@ -132,12 +134,93 @@ def init_callback(app:dash.Dash):
                 dash.set_props("modal-body-alarm-create", {"children": message})
                 dash.set_props("modal-alarm-create", {'is_open': True})
 
-            return [{
-                "id": alarm["id"],
-                "tag": alarm["tag"], 
-                "name": alarm["name"],
-                "description": alarm["description"],
-                "state": alarm["state"],
-                "type": alarm["type"],
-                "trigger_value": alarm["trigger_value"]
-                } for alarm in app.automation.alarm_manager.serialize()]
+            return app.alarms_table_data()
+        
+    @app.callback(
+        dash.Input('alarms_datatable', 'data_timestamp'),
+        dash.State('alarms_datatable', 'data_previous'),
+        dash.State('alarms_datatable', 'data'),
+        )
+    def delete_update_alarms(timestamp, previous, current):
+
+        if timestamp:
+            
+            if len(previous) > len(current): # DELETE ALARM
+
+                removed_rows = [row for row in previous if row not in current]
+                
+                for row in removed_rows:
+                    
+                    _id = row['id']
+                    message = f"Do you want to delete Alarm ID: {_id}?"
+                    # OPEN MODAL TO CONFIRM CHANGES
+                    dash.set_props("modal-update-delete-alarm-body", {"children": message})
+                    dash.set_props("modal-update-delete-alarm", {'is_open': True})
+
+            elif previous and current: # UPDATE TAG DEFINITION
+                
+                to_updates = find_differences_between_lists(previous, current)
+                alarm_to_update = to_updates[0]
+                alarm_id = alarm_to_update.pop("id")
+                message = f"Do you want to update alarm {alarm_id} To {alarm_to_update}?"
+
+                # OPEN MODAL TO CONFIRM CHANGES
+                dash.set_props("modal-update-delete-alarm-body", {"children": message})
+                dash.set_props("modal-update-delete-alarm", {'is_open': True})
+
+    @app.callback(
+        [
+            dash.Output("modal-update-delete-alarm", "is_open"), 
+            dash.Output('alarms_datatable', 'data'), 
+            dash.Output('alarms_datatable', 'data_timestamp'),
+            dash.Output("update-delete-alarm-yes", "n_clicks"),
+            dash.Output("update-delete-alarm-no", "n_clicks")
+        ],
+        [dash.Input("update-delete-alarm-yes", "n_clicks"), dash.Input("update-delete-alarm-no", "n_clicks")],
+        [
+            dash.State('alarms_datatable', 'data_timestamp'),
+            dash.State("modal-update-delete-alarm", "is_open"),
+            dash.State('alarms_datatable', 'data_previous'),
+            dash.State('alarms_datatable', 'data')
+        ]
+    )
+    def toggle_modal_update_delete_alarm(yes_n, no_n, timestamp, is_open, previous, current):
+        r"""
+        Documentation here
+        """
+        
+        if yes_n:
+            
+            if timestamp:
+                
+                if len(previous) > len(current): # DELETE ALARM
+
+                    removed_rows = [row for row in previous if row not in current]
+                    
+                    for row in removed_rows:
+                        _id = row['id']
+                        message = app.automation.alarm_manager.delete_alarm(id=_id)
+                        
+                        if message:
+                            dash.set_props("modal-body-alarm-create", {"children": message})
+                            dash.set_props("modal-alarm-create", {'is_open': True})
+                        
+                elif previous and current: # UPDATE TAG DEFINITION
+                    to_updates = find_differences_between_lists(previous, current)
+                    alarm_to_update = to_updates[0]
+                    alarm_id = alarm_to_update.pop("id")
+                    message = app.automation.alarm_manager.update_alarm(id=alarm_id, **alarm_to_update)
+                    
+                    if message:
+                        dash.set_props("modal-body-alarm-create", {"children": message})
+                        dash.set_props("modal-alarm-create", {'is_open': True})
+
+                return not is_open, app.alarms_table_data(), None, 0, 0
+        
+        elif no_n:
+            
+            return not is_open, app.alarms_table_data(), None, 0, 0
+
+        else:
+
+            return is_open, app.alarms_table_data(), None, 0, 0

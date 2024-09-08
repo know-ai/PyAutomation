@@ -57,7 +57,7 @@ class AlarmManager(Singleton):
 
             return f"Alarm {name} is already defined"
 
-    def update_alarm(self, id:str, **kwargs)->dict:
+    def update_alarm(self, id:str, **kwargs):
         r"""
         Updates alarm attributes
 
@@ -75,9 +75,14 @@ class AlarmManager(Singleton):
         * **alarm** (dict) Alarm Object jsonable
         """
         alarm = self._alarms[id]
+        if "name" in kwargs:
+            
+            if self.get_alarm_by_name(kwargs["name"]):
+                
+                return f"Alarm {kwargs['name']} is already defined"
+        
         alarm = alarm.update_alarm_definition(**kwargs)
         self._alarms[id] = alarm
-        return alarm.serialize()
 
     def delete_alarm(self, id:str):
         r"""

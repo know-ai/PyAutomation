@@ -100,7 +100,7 @@ class Alarm:
 
         if 'trigger_value' in kwargs.keys():
             trigger_value = kwargs.pop('trigger_value')
-            self._trigger.value = trigger_value
+            self._trigger.value = float(trigger_value)
 
         for key, value in kwargs.items():
 

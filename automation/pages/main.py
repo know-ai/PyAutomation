@@ -27,6 +27,12 @@ class ConfigView(dash.Dash):
     
     def alarms_table_data(self):
 
-        return []
-
-        # return self.automation.cvt.get_tags()
+        return [{
+                "id": alarm["id"],
+                "tag": alarm["tag"], 
+                "name": alarm["name"],
+                "description": alarm["description"],
+                "state": alarm["state"],
+                "type": alarm["type"],
+                "trigger_value": alarm["trigger_value"]
+                } for alarm in self.automation.alarm_manager.serialize()]

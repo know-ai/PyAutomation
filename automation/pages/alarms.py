@@ -14,10 +14,10 @@ layout = dash.html.Div([
     ),
     Components.modal_confirm(
         title="Confirmation",
-        modal_id="modal-update_delete-centered",
-        body_id="modal-update-delete-tag-body",
-        yes_button_id="update-delete-tag-yes",
-        no_button_id="update-delete-tag-no"
+        modal_id="modal-update-delete-alarm",
+        body_id="modal-update-delete-alarm-body",
+        yes_button_id="update-delete-alarm-yes",
+        no_button_id="update-delete-alarm-no"
     ),
     AlarmsComponents.create_alarm_form(),
     AlarmsComponents.alarms_table()

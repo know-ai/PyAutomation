@@ -1,18 +1,8 @@
 import dash
 import dash_bootstrap_components as dbc
 from automation import PyAutomation
-from automation.variables import VARIABLES
-from automation.utils import generate_dropdown_conditional
 
 app = PyAutomation()
-
-if hasattr(app, 'dash_app'):
-
-    data = app.dash_app.alarms_table_data()
-
-else:
-
-    data = list()
 
 class AlarmsComponents:
 
@@ -54,13 +44,7 @@ class AlarmsComponents:
                                 ],
                                 width=4),
                                 dbc.Col([
-                                    dbc.InputGroup([dbc.InputGroupText("Type"), dbc.Select(options=[
-                                        {'label': 'HIGH-HIGH', 'value': 'HIGH-HIGH'},
-                                        {'label': 'HIGH', 'value': 'HIGH'},
-                                        {'label': 'LOW', 'value': 'LOW'},
-                                        {'label': 'LOW-LOW', 'value': 'LOW-LOW'},
-                                        {'label': 'BOOL', 'value': 'BOOL'}
-                                    ], id="alarm_type_input")],
+                                    dbc.InputGroup([dbc.InputGroupText("Type"), dbc.Select(options=[], id="alarm_type_input")],
                                         size="md"
                                     )
                                 ],
@@ -87,7 +71,7 @@ class AlarmsComponents:
         """
 
         return dash.dash_table.DataTable(
-            data=data,
+            data=[],
             columns=[
                 {'name': 'id', 'id': 'id', 'editable': False}, 
                 {'name': 'name', 'id': 'name'}, 
@@ -103,11 +87,6 @@ class AlarmsComponents:
             sort_mode="multi",
             row_deletable=True,
             selected_columns=[],
-            # dropdown = {
-            #     'type': {
-            #         'options': 
-            #     }
-            # },
             page_action="native",
             page_current= 0,
             page_size= 10,
