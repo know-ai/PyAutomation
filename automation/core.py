@@ -4,7 +4,7 @@ import sys
 from .utils import log_detailed
 from .workers import StateMachineWorker, LoggerWorker
 import logging
-from .managers import StateMachineManager, DBManager, OPCUAClientManager
+from .managers import StateMachineManager, DBManager, OPCUAClientManager, AlarmManager
 from .tags import CVTEngine
 from automation.pages.main import ConfigView
 from automation.pages.callbacks import init_callbacks
@@ -26,10 +26,11 @@ class PyAutomation(Singleton):
     PORTS = 65535
     def __init__(self):
 
-        self._machine_manager = StateMachineManager()
-        self._db_manager = DBManager()
+        self.machine_manager = StateMachineManager()
+        self.db_manager = DBManager()
         self.cvt = CVTEngine()
-        self._opcua_client_manager = OPCUAClientManager()
+        self.opcua_client_manager = OPCUAClientManager()
+        self.alarm_manager = AlarmManager()
 
     def get_tags(self):
         r"""Documentation here
@@ -105,7 +106,7 @@ class PyAutomation(Singleton):
 
         * **db_worker**: (LoggerWorker Object)
         """
-        db_worker = LoggerWorker(self._db_manager)
+        db_worker = LoggerWorker(self.db_manager)
         db_worker.init_database()
 
         try:
@@ -128,7 +129,7 @@ class PyAutomation(Singleton):
         }
         try:
             
-            server = self._opcua_client_manager.discovery(host=host, port=port)
+            server = self.opcua_client_manager.discovery(host=host, port=port)
             result["message"] = f"Successfully connection to {server[0]['DiscoveryUrls'][0]}"
             result["data"] = server
         
@@ -143,34 +144,34 @@ class PyAutomation(Singleton):
         Documentation here
         """
 
-        return self._opcua_client_manager.serialize()
+        return self.opcua_client_manager.serialize()
     
     def get_opcua_client(self, client_name:str):
         r"""
         Documentation here
         """
-        return self._opcua_client_manager.get(client_name=client_name)
+        return self.opcua_client_manager.get(client_name=client_name)
 
     def get_node_values(self, client_name:str, namespaces:list):
         r"""
         Documentation here
         """
 
-        return self._opcua_client_manager.get_node_values(client_name=client_name, namespaces=namespaces)
+        return self.opcua_client_manager.get_node_values(client_name=client_name, namespaces=namespaces)
     
     def get_node_attributes(self, client_name:str, namespaces:list):
         r"""
         Documentation here
         """
 
-        return self._opcua_client_manager.get_node_attributes(client_name=client_name, namespaces=namespaces)
+        return self.opcua_client_manager.get_node_attributes(client_name=client_name, namespaces=namespaces)
     
     def get_opcua_tree(self, client_name:str):
         r"""
         Documentation here
         """
 
-        return self._opcua_client_manager.get_opcua_tree(client_name=client_name)
+        return self.opcua_client_manager.get_opcua_tree(client_name=client_name)
     
     def add_opcua_client(self, client_name:str, host:str="127.0.0.1", port:int=4840):
         r"""
@@ -180,7 +181,7 @@ class PyAutomation(Singleton):
         
         if servers:
             
-            self._opcua_client_manager.add(client_name=client_name, endpoint_url=f"opc.tcp://{host}:{port}")
+            self.opcua_client_manager.add(client_name=client_name, endpoint_url=f"opc.tcp://{host}:{port}")
         
     def stop_db(self, db_worker:LoggerWorker):
         r"""
@@ -203,7 +204,7 @@ class PyAutomation(Singleton):
         
         if self._create_tables:
 
-            db_worker = LoggerWorker(self._db_manager)
+            db_worker = LoggerWorker(self.db_manager)
             self.workers.append(db_worker)
 
         # if self._create_alarm_worker:

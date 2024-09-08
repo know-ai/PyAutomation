@@ -9,6 +9,7 @@ from ..tags import CVTEngine
 from ..logger import DataLoggerEngine
 from .states import AlarmState, Status
 from .trigger import Trigger, TriggerType
+import secrets
 
 
 class Alarm:
@@ -19,7 +20,7 @@ class Alarm:
     tag_engine = CVTEngine()
     logger_engine = DataLoggerEngine()
 
-    def __init__(self, name:str, tag:str, description:str):
+    def __init__(self, name:str, tag:str, description:str=""):
 
         self.name = name
         self._tag = tag
@@ -50,7 +51,7 @@ class Alarm:
         }
         self._shelved_until = None
         self.__default_operations()
-        self._id = None
+        self._id =secrets.token_hex(4)
 
     def __default_operations(self):
         r"""

@@ -30,67 +30,49 @@ class AlarmsComponents:
                         [
                             dbc.Row([
                                 dbc.Col([
-                                    dbc.InputGroup([dbc.Input(placeholder="Tag Name", id="tag_name_input")], size="md"),
                                     dbc.InputGroup(
                                         [
-                                            dbc.InputGroupText("Variable"),
+                                            dbc.InputGroupText("Tag"),
                                             dbc.Select(
                                                 options=[
-                                                    {"label": variable, "value": variable} for variable in VARIABLES.keys()
+                                                    {"label": tag["name"], "value": tag["name"]} for tag in app.cvt.get_tags()
                                                 ],
-                                                id="variable_input"
+                                                id="tag_alarm_input"
                                             ),
                                             
                                         ],
                                         size="md"
                                     )
                                 ],
-                                width=3),
+                                width=2),
                                 dbc.Col([
-                                    dbc.InputGroup([dbc.InputGroupText("Unit"), dbc.Select(options=[], id="unit_input", disabled=True )],
-                                        size="md"
-                                    ),
-                                    dbc.InputGroup(
-                                        [
-                                            dbc.InputGroupText("Datatype"),
-                                            dbc.Select(
-                                                options=[
-                                                    {'label': 'Float', 'value': 'float'},
-                                                    {'label': 'Integer', 'value': 'integer'},
-                                                    {'label': 'Boolean', 'value': 'boolean'},
-                                                    {'label': 'String', 'value': 'string'}
-                                                ],
-                                                id="datatype_input"
-                                            ),
-                                            
-                                        ],
-                                        size="md"
-                                    ),
+                                    dbc.InputGroup([dbc.Input(placeholder="Alarm Name", id="alarm_name_input")], size="md"),
                                 ],
                                 width=2),
                                 dbc.Col([
-                                    dbc.InputGroup([dbc.InputGroupText(dbc.RadioButton(id="description_radio_button"), class_name="radiobutton-box"), dbc.Input(placeholder="Description (Optional)", id="description_input", disabled=True)], size="md"),
-                                    dbc.InputGroup([dbc.InputGroupText(dbc.RadioButton(id="display_name_radio_button"), className="radiobutton-box"), dbc.Input(placeholder="Display Name (Optional)", id="display_name_input", disabled=True)], size="md")
+                                    dbc.InputGroup([dbc.InputGroupText(dbc.RadioButton(id="alarm_description_radio_button"), class_name="radiobutton-box"), dbc.Input(placeholder="Alarm Description (Optional)", id="alarm_description_input", disabled=True)], size="md")
                                 ],
-                                width=3),
+                                width=4),
                                 dbc.Col([
-                                    dbc.InputGroup([dbc.InputGroupText("OPCUA"), dbc.Select(options=[], id="opcua_address_input")],
+                                    dbc.InputGroup([dbc.InputGroupText("Type"), dbc.Select(options=[
+                                        {'label': 'HIGH-HIGH', 'value': 'HIGH-HIGH'},
+                                        {'label': 'HIGH', 'value': 'HIGH'},
+                                        {'label': 'LOW', 'value': 'LOW'},
+                                        {'label': 'LOW-LOW', 'value': 'LOW-LOW'},
+                                        {'label': 'BOOL', 'value': 'BOOL'}
+                                    ], id="alarm_type_input")],
                                         size="md"
-                                    ),
-                                    dbc.InputGroup([dbc.InputGroupText("Node"), dbc.Select(options=[], id="node_namespace_input", disabled=True)],
-                                        size="md",
                                     )
                                 ],
                                 width=2),
                                 dbc.Col([
-                                    dbc.InputGroup([dbc.Input(placeholder="Scan Time", type="number", step=50, min=100, max=600000, id="scan_time_input", disabled=True), dbc.InputGroupText('ms')], size="md"),
-                                    dbc.InputGroup([dbc.Input(placeholder="Dead-Band", type="number", step=0.1, id="dead_band_input", disabled=True), dbc.InputGroupText('', id="dead_band_unit")], size="md")
+                                    dbc.InputGroup([dbc.Input(placeholder="Trigger Value", type="number", step=0.1, id="alarm_trigger_value_input"), dbc.InputGroupText('', id="dead_band_unit")], size="md")
                                 ],
                                 width=2)
                             ]),
-                            dbc.Button("Create", color="primary", outline=True, disabled=True, id="create_tag_button"),
+                            dbc.Button("Create", color="primary", outline=True, disabled=True, id="create_alarm_button"),
                         ],
-                        title="Create Tag",
+                        title="Create Alarm",
                     )
                 ],
                 start_collapsed=True,
@@ -109,14 +91,11 @@ class AlarmsComponents:
             columns=[
                 {'name': 'id', 'id': 'id', 'editable': False}, 
                 {'name': 'name', 'id': 'name'}, 
-                {'name': 'unit', 'id': 'unit', 'presentation': 'dropdown'}, 
-                {'name': 'data_type', 'id': 'data_type', 'presentation': 'dropdown'}, 
+                {'name': 'tag', 'id': 'tag', 'presentation': 'dropdown'},
+                {'name': 'state', 'id': 'state', 'editable': False},  
                 {'name': 'description', 'id': 'description'}, 
-                {'name': 'display_name', 'id': 'display_name'}, 
-                {'name': 'opcua_address', 'id': 'opcua_address', 'presentation': 'dropdown'}, 
-                {'name': 'node_namespace', 'id': 'node_namespace', 'presentation': 'dropdown'},
-                {'name': 'scan_time', 'id': 'scan_time'}, 
-                {'name': 'dead_band', 'id': 'dead_band'}
+                {'name': 'type', 'id': 'type', 'presentation': 'dropdown'}, 
+                {'name': 'trigger_value', 'id': 'trigger_value'}
             ],
             id="alarms_datatable",
             filter_action="native",
@@ -124,19 +103,11 @@ class AlarmsComponents:
             sort_mode="multi",
             row_deletable=True,
             selected_columns=[],
-            dropdown = {
-                'data_type': {
-                    'options': [
-                        {'label': 'Float', 'value': 'float'},
-                        {'label': 'Integer', 'value': 'integer'},
-                        {'label': 'Boolean', 'value': 'boolean'},
-                        {'label': 'String', 'value': 'string'}
-                    ]
-                },
-                'opcua_address': {
-                    'options': []
-                }
-            },
+            # dropdown = {
+            #     'type': {
+            #         'options': 
+            #     }
+            # },
             page_action="native",
             page_current= 0,
             page_size= 10,

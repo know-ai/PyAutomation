@@ -40,7 +40,6 @@ def init_callback(app:dash.Dash):
         if name and datatype and unit and variable:
 
             dash.set_props("create_tag_button", {'disabled': False})
-            dash.set_props("create_tag_button", {'disabled': False})
 
         else:
             

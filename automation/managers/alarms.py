@@ -8,6 +8,7 @@ from automation.singleton import Singleton
 from ..tags import CVTEngine, TagObserver
 from ..alarms import AlarmState
 from ..alarms.alarms import Alarm
+from ..alarms.trigger import Trigger
 
 
 class AlarmManager(Singleton):
@@ -27,7 +28,14 @@ class AlarmManager(Singleton):
         """
         return self._tag_queue
     
-    def append_alarm(self, alarm:Alarm):
+    def append_alarm(
+            self, 
+            name:str, 
+            tag:str, 
+            type:str="BOOL", 
+            trigger_value:bool|float=True, 
+            description:str=""
+        )->dict:
         r"""
         Append alarm to the Alarm Manager
 
@@ -39,9 +47,17 @@ class AlarmManager(Singleton):
 
         * **None**
         """
-        self._alarms[f'{alarm._id}'] = alarm
+        alarm = Alarm(name=name, tag=tag, description=description)
+        alarm.set_trigger(value=trigger_value, _type=type)
+        if not self.get_alarm_by_name(name):
+        
+            self._alarms[alarm._id] = alarm
 
-    def update_alarm(self, id:int, **kwargs)->dict:
+        else:
+
+            return f"Alarm {name} is already defined"
+
+    def update_alarm(self, id:str, **kwargs)->dict:
         r"""
         Updates alarm attributes
 
@@ -58,12 +74,12 @@ class AlarmManager(Singleton):
 
         * **alarm** (dict) Alarm Object jsonable
         """
-        alarm = self._alarms[str(id)]
+        alarm = self._alarms[id]
         alarm = alarm.update_alarm_definition(**kwargs)
-        self._alarms[str(id)] = alarm
+        self._alarms[id] = alarm
         return alarm.serialize()
 
-    def delete_alarm(self, id:int):
+    def delete_alarm(self, id:str):
         r"""
         Removes alarm
 
@@ -71,11 +87,11 @@ class AlarmManager(Singleton):
 
         * **id** (int): Alarm ID
         """
-        if str(id) in self._alarms: 
+        if id in self._alarms: 
                 
-            self._alarms.pop(str(id))
+            self._alarms.pop(id)
 
-    def get_alarm(self, id:int)->Alarm:
+    def get_alarm(self, id:str)->Alarm:
         r"""
         Gets alarm from the Alarm Manager by id
 
@@ -88,9 +104,9 @@ class AlarmManager(Singleton):
         * **alarm** (Alarm Object)
         """
         
-        if str(id) in self._alarms:
+        if id in self._alarms:
 
-            return self._alarms[str(id)]
+            return self._alarms[id]
     
     def get_alarm_by_name(self, name:str)->Alarm:
         r"""
@@ -160,6 +176,13 @@ class AlarmManager(Singleton):
         * **alarms**: (dict) Alarm objects
         """
         return self._alarms
+    
+    def serialize(self):
+        r"""
+        Documentation here
+        """
+
+        return [alarm.serialize() for _, alarm in self._alarms.items()]
 
     def get_tag_alarms(self)->list:
         r"""
