@@ -315,7 +315,7 @@ def init_callback(app:dash.Dash):
                     
                     for row in removed_rows:
                         _id = row['id']
-                        message = app.automation.cvt.delete_tag(id=_id)
+                        message = app.automation.delete_tag(id=_id)
                         
                         if message:
                             dash.set_props("modal-body", {"children": message})

@@ -83,6 +83,28 @@ class PyAutomation(Singleton):
             dead_band=dead_band
         )
 
+    def delete_tag(self, id:str):
+        r"""
+        Documentation here
+        """
+        tag = self.cvt.get_tag(id=id)
+        alarm = self.alarm_manager.get_alarm_by_tag(tag=tag.get_name())
+        if alarm:
+
+            return f"Tag {tag.get_name()} has an alarm associated"
+        
+        self.cvt.delete_tag(id=id)
+
+    def delete_tag_by_name(self, name:str):
+        r"""
+        Documentation here
+        """
+        tag = self.cvt.get_tag_by_name(name=name)
+        alarm = self.alarm_manager.get_alarm_by_tag(tag=tag.get_name())
+        if alarm:
+
+            return f"Tag {name} has an alarm associated: {alarm.name}, delete first it"
+
     def _start_logger(self):
         r"""
         Starts logger in log file
@@ -138,7 +160,7 @@ class PyAutomation(Singleton):
             result["data"] = list()
                 
         return result
-    
+
     def get_opcua_clients(self):
         r"""
         Documentation here
