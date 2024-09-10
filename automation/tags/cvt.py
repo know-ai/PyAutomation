@@ -429,7 +429,7 @@ class CVTEngine(Singleton):
     def get_tag(
         self,
         id:str=None
-        ):
+        )->Tag:
         r"""Documentation here
 
         # Parameters
@@ -810,3 +810,5 @@ class CVTEngine(Singleton):
         self._request_lock = threading.Lock()
         self._response_lock = threading.Lock()
         self._response_lock.acquire()
+
+    

@@ -5,7 +5,8 @@ from .utils import log_detailed
 from .workers import StateMachineWorker, LoggerWorker
 import logging
 from .managers import StateMachineManager, DBManager, OPCUAClientManager, AlarmManager
-from .tags import CVTEngine
+from .tags import CVTEngine, Tag
+from automation.opcua.subscription import DAS
 from automation.pages.main import ConfigView
 from automation.pages.callbacks import init_callbacks
 import dash_bootstrap_components as dbc
@@ -71,7 +72,7 @@ class PyAutomation(Singleton):
 
             display_name = name
 
-        self.cvt.set_tag(
+        message = self.cvt.set_tag(
             name=name,
             unit=unit,
             data_type=data_type,
@@ -83,6 +84,11 @@ class PyAutomation(Singleton):
             dead_band=dead_band
         )
 
+        # CREATE OPCUA SUBSCRIPTION
+        self.__create_opcua_subscription(message=message, opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time)
+
+        return message
+
     def delete_tag(self, id:str):
         r"""
         Documentation here
@@ -93,7 +99,16 @@ class PyAutomation(Singleton):
 
             return f"Tag {tag.get_name()} has an alarm associated"
         
+        self.__opcua_unsubscribe(tag=tag)
         self.cvt.delete_tag(id=id)
+    
+    def update_tag(self, id:str, **kwargs):
+        r"""
+        Documentation here
+        """
+        tag = self.cvt.get_tag(id=id)
+        self.__opcua_update_subscription(tag=tag, **kwargs)
+        return self.cvt.update_tag(id=id, **kwargs)
 
     def delete_tag_by_name(self, name:str):
         r"""
@@ -296,8 +311,105 @@ class PyAutomation(Singleton):
         """
         self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".")
         self.dash_app.set_automation_app(self)
+        self.das = DAS()
         init_callbacks(app=self.dash_app)
         self.dash_app.run(debug=debug)
+
+    def __create_opcua_subscription(self, message:str, opcua_address:str, node_namespace:str, scan_time:float):
+        r"""
+        Documentation here
+        """
+        if not message:
+
+            if opcua_address and node_namespace:
+
+                if not scan_time:
+
+                    for client_name, info in self.get_opcua_clients().items():
+
+                        if opcua_address==info["server_url"]:
+
+                            break
+
+                    opcua_client = self.get_opcua_client(client_name=client_name)
+                    subscription = opcua_client.create_subscription(1000, self.das)
+                    node_id = opcua_client.get_node_id_by_namespace(node_namespace)
+                    self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
+    
+    def __opcua_unsubscribe(self, tag:Tag):
+        r"""
+        Documentation here
+        """
+        opcua_address = tag.get_opcua_address()
+        node_namespace = tag.get_node_namespace()
+        scan_time = tag.get_scan_time()
+        if opcua_address and node_namespace:
+
+            if not scan_time:
+
+                for client_name, info in self.get_opcua_clients().items():
+
+                    if opcua_address==info["server_url"]:
+
+                        break
+        
+        opcua_client = self.get_opcua_client(client_name=client_name)
+        node_id = opcua_client.get_node_id_by_namespace(node_namespace)
+        self.das.unsubscribe(client_name=client_name, node_id=node_id)
+
+    def __opcua_update_subscription(self, tag:Tag, **kwargs):
+        r"""
+        Documentation here
+        """
+        previous_opcua_address = tag.get_opcua_address()
+        previous_node_namespace = tag.get_node_namespace()
+        previous_scan_time = tag.get_scan_time()
+        # REMOVING OPCUA ADDRESS AND NODE_NAMESPACE BINDING
+        if previous_node_namespace:
+            flag = False
+            if "node_namespace" in kwargs:
+
+                if not kwargs["node_namespace"]:
+
+                    flag = True
+
+            if "opcua_address" in kwargs:
+
+                if not kwargs["opcua_address"]:
+                    kwargs["node_namespace"] = None
+                    kwargs["scan_time"] = None
+                    flag = True
+
+            if "scan_time" in kwargs:
+
+                flag = True
+            
+            if flag:
+
+                self.__opcua_unsubscribe(tag=tag)
+
+        # UPDATING TO CREATE OPCUA SUBSCRIPTION
+        elif not previous_node_namespace:
+
+            flag = True
+
+            if "node_namespace" in kwargs:
+
+                if kwargs["node_namespace"]:
+
+                    previous_node_namespace = kwargs["node_namespace"]
+
+                    if "opcua_address" in kwargs:
+
+                        previous_opcua_address = kwargs["opcua_address"]
+
+                if "scan_time" in kwargs or previous_scan_time:
+
+                    flag = False
+
+            if flag:
+            
+                self.__create_opcua_subscription(message=None, opcua_address=previous_opcua_address, node_namespace=previous_node_namespace, scan_time=previous_scan_time)
 
     def run(self, debug:bool=False):
         r"""

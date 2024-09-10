@@ -1,4 +1,5 @@
 from automation.singleton import Singleton
+from automation.tags.cvt import CVTEngine
         
 
 class SubHandler(Singleton):
@@ -13,7 +14,7 @@ class SubHandler(Singleton):
         
         self.monitored_items = dict()
 
-    def subscribe(self, subscription, client_name, node_id, server):
+    def subscribe(self, subscription, client_name, node_id):
         r"""
         Documentation here
         """
@@ -27,7 +28,8 @@ class SubHandler(Singleton):
             self.monitored_items[client_name] = {
                 node_id: {
                     "subscription": subscription,
-                    "monitored_item": monitored_item
+                    "monitored_item": monitored_item,
+                    "server": client_name
                 }
             }
 
@@ -43,7 +45,7 @@ class SubHandler(Singleton):
                     node_id: {
                         "subscription": subscription,
                         "monitored_item": monitored_item,
-                        "server": server
+                        "server": client_name
                     }
                 })
 
@@ -66,8 +68,73 @@ class SubHandler(Singleton):
         r"""
         Documentation here
         """
-        # namespace = node.nodeid.to_string()
-        # timestamp = data.monitored_item.Value.SourceTimestamp
         pass
+        
+
+class DAS(Singleton):
+    r"""
+    Subscription Handler. To receive events from server for a subscription
+    data_change and event methods are called directly from receiving thread.
+    Do not do expensive, slow or network operation there. Create another 
+    thread if you need to do such a thing
+    """
+
+    def __init__(self):
+        
+        self.monitored_items = dict()
+        self.cvt = CVTEngine()
+
+    def subscribe(self, subscription, client_name, node_id):
+        r"""
+        Documentation here
+        """
+
+        if client_name not in self.monitored_items:
+            
+            monitored_item = subscription.subscribe_data_change(
+                node_id
+            )
+
+            self.monitored_items[client_name] = {
+                node_id: {
+                    "subscription": subscription,
+                    "monitored_item": monitored_item,
+                    "server": client_name
+                }
+            }
+
+        else:
+
+            if node_id not in self.monitored_items[client_name]:
+            
+                monitored_item = subscription.subscribe_data_change(
+                    node_id
+                )
+
+                self.monitored_items[client_name].update({
+                    node_id: {
+                        "subscription": subscription,
+                        "monitored_item": monitored_item,
+                        "server": client_name
+                    }
+                })
+
+    def unsubscribe(self, client_name:str, node_id):
+        r"""
+        Documentation here
+        """
+        node = self.monitored_items[client_name].pop(node_id)
+        item = node["monitored_item"]
+        subscription = node["subscription"]
+        subscription.unsubscribe(item)
+
+    def datachange_notification(self, node, val, data):
+        r"""
+        Documentation here
+        """
+        namespace = node.nodeid.to_string()
+        tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
+        self.cvt.set_value(id=tag.id, value=val)
+        print(f"DAS: {tag.name}: {self.cvt.get_value(id=tag.id)} {val}")
 
         

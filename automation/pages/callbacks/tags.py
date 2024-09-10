@@ -218,7 +218,7 @@ def init_callback(app:dash.Dash):
         """
         if "create_tag_button" == dash.ctx.triggered_id:
             
-            message = app.automation.cvt.set_tag(
+            message = app.automation.create_tag(
                 name=tag_name,
                 unit=unit,
                 data_type=datatype,
@@ -325,7 +325,7 @@ def init_callback(app:dash.Dash):
                     to_updates = find_differences_between_lists(previous, current)
                     tag_to_update = to_updates[0]
                     tag_id = tag_to_update.pop("id")
-                    message = app.automation.cvt.update_tag(id=tag_id, **tag_to_update)
+                    message = app.automation.update_tag(id=tag_id, **tag_to_update)
                     
                     if message:
                         dash.set_props("modal-body", {"children": message})

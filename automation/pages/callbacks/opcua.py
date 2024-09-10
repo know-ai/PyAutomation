@@ -57,7 +57,7 @@ def init_callback(app:dash.Dash):
                 
                 node_id = client.get_node_id_by_namespace(namespace)
                 subscription = subscriptions[client_name]
-                subscription_handler.subscribe(subscription=subscription, client_name=client_name, node_id=node_id, server=client_name)
+                subscription_handler.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
 
         return opcua_components.data_access_view_table(data=data)
 
