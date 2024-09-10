@@ -343,6 +343,8 @@ class PyAutomation(Singleton):
         opcua_address = tag.get_opcua_address()
         node_namespace = tag.get_node_namespace()
         scan_time = tag.get_scan_time()
+        flag = False
+        client_name = None
         if opcua_address and node_namespace:
 
             if not scan_time:
@@ -351,11 +353,18 @@ class PyAutomation(Singleton):
 
                     if opcua_address==info["server_url"]:
 
+                        flag = True
+
                         break
+                
+            if client_name:
         
-        opcua_client = self.get_opcua_client(client_name=client_name)
-        node_id = opcua_client.get_node_id_by_namespace(node_namespace)
-        self.das.unsubscribe(client_name=client_name, node_id=node_id)
+                opcua_client = self.get_opcua_client(client_name=client_name)
+                node_id = opcua_client.get_node_id_by_namespace(node_namespace)
+        
+            if flag:
+            
+                self.das.unsubscribe(client_name=client_name, node_id=node_id)
 
     def __opcua_update_subscription(self, tag:Tag, **kwargs):
         r"""
