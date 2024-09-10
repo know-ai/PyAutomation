@@ -37,8 +37,7 @@ layout = dmc.MantineProvider([
                 dbc.Row(
                     [
                         dbc.Col([], id="server_tree",  width=2),
-                        dbc.Col(opcua_components.data_access_view_table(), id="data_access_view_table", width=10),
-                        # dbc.Col([dash.html.Div("One of three columns")], width=2),
+                        dbc.Col(opcua_components.data_access_view_table(), id="data_access_view_table", width=10)
                     ]
                 ),
             ]

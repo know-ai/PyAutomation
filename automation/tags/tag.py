@@ -1,5 +1,6 @@
 from ..utils import Observer
 import secrets
+from datetime import datetime
 
 
 class Tag:
@@ -15,6 +16,7 @@ class Tag:
             node_namespace:str=None,
             scan_time:int=None,
             dead_band:float=None,
+            timestamp:datetime=None,
             id:str=None
     ):
         self.id = secrets.token_hex(4)
@@ -33,16 +35,25 @@ class Tag:
         self.scan_time = scan_time
         self.dead_band = dead_band
         self.variable = None
+        self.timestamp = timestamp
         self._observers = set()
 
-    def set_value(self, value:float|str|int|bool):
-
+    def set_value(self, value:float|str|int|bool, timestamp:datetime):
+        if not timestamp:
+            timestamp = datetime.now()
         self.value = value
+        self.timestamp = timestamp
         self.notify()
 
     def get_value(self):
 
         return self.value
+    
+    def get_timestamp(self):
+        r"""
+        Documentation here
+        """
+        return self.timestamp
 
     def set_display_name(self, value:str):
         r"""
@@ -151,7 +162,8 @@ class Tag:
             self.get_opcua_address(),
             self.get_node_namespace(),
             self.get_scan_time(),
-            self.get_dead_band()
+            self.get_dead_band(),
+            self.get_timestamp()
         )
     
     def update(self, **kwargs):

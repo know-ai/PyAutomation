@@ -1,9 +1,7 @@
 import dash
 import dash_bootstrap_components as dbc
-from automation import PyAutomation
 from automation.variables import VARIABLES
 
-app = PyAutomation()
 
 class TagsComponents:
 

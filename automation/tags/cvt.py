@@ -3,6 +3,7 @@ import copy, logging
 from ..singleton import Singleton
 from ..models import FloatType, StringType, IntegerType, BooleanType
 from .tag import Tag
+from datetime import datetime
 
 class CVT:
     """Current Value Table class for Tag based repository.
@@ -62,7 +63,7 @@ class CVT:
             data_type = data_type.__name__
             self.set_data_type(data_type)
         
-        has_duplicates, message = self.has_duplicates(name=name, display_name=display_name)
+        has_duplicates, message = self.has_duplicates(name=name, display_name=display_name, opcua_address=opcua_address, node_namespace=node_namespace)
         if has_duplicates:
 
             return message
@@ -210,7 +211,39 @@ class CVT:
         _new_object = copy.copy(tag.get_value())
         return _new_object
     
-    def set_value(self, id:str, value):
+    def get_timestamp(self, id:str)->datetime:
+        r"""
+        Documentation here
+        """
+        tag = self._tags[id] 
+
+        return tag.get_timestamp()
+    
+    def get_values_by_name(self, names:list[str])->str|float|int|bool:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        data = dict()
+
+        for name in names:
+
+            tag = self.get_tag_by_name(name=name)  
+            data[name] = {
+                "value": tag.get_value(),
+                "unit": tag.get_unit(),
+                "timestamp": tag.get_timestamp()
+            }
+            
+        return data
+    
+    def set_value(self, id:str, value, timestamp:datetime):
         """Sets a new value for a defined tag.
         
         # Parameters
@@ -219,7 +252,7 @@ class CVT:
         value (float, int, bool): 
             Tag value ("int", "float", "bool")
         """
-        self._tags[id].set_value(value)
+        self._tags[id].set_value(value=value, timestamp=timestamp)
 
     def set_data_type(self, data_type):
         r"""Documentation here
@@ -275,7 +308,7 @@ class CVT:
         tag = self.get_tag_by_name(name)
         self._tags[tag.id].detach(observer)
 
-    def has_duplicates(self, name:str=None, display_name:str=None, **kwargs):
+    def has_duplicates(self, name:str=None, display_name:str=None, node_namespace:str=None, opcua_address:str=None, **kwargs):
         r"""Documentation here
 
         # Parameters
@@ -299,6 +332,12 @@ class CVT:
                 if _tag.get_display_name()==display_name:
 
                     return True, f"Duplicated Display Name: {display_name}"
+                
+            if node_namespace:
+            
+                if _tag.get_node_namespace()==node_namespace and _tag.get_opcua_address()==opcua_address:
+
+                    return True, f"Duplicated Node Namespace: {node_namespace}"
             
         return False, f"Valid Tag Name: {name} - Display Name: {display_name}"
     
@@ -529,6 +568,23 @@ class CVTEngine(Singleton):
         _query["parameters"]["id"] = id
         return self.__query(_query)
     
+    def get_values_by_name(self, tag_names:list[str])->str|float|int|bool:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "get_values_by_name"
+        _query["parameters"] = dict()
+        _query["parameters"]["names"] = tag_names
+        return self.__query(_query)
+    
     def get_scan_time(self, id:str)->str|float|int|bool:
         r"""Documentation here
 
@@ -563,7 +619,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["id"] = id
         return self.__query(_query)
     
-    def set_value(self, id:str, value):
+    def set_value(self, id:str, value, timestamp:datetime):
         r"""Documentation here
 
         # Parameters
@@ -574,11 +630,14 @@ class CVTEngine(Singleton):
 
         - 
         """
+        if not timestamp:
+            timestamp = datetime.now()
         _query = dict()
         _query["action"] = "set_value"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
         _query["parameters"]["value"] = value
+        _query["parameters"]["timestamp"] = timestamp
         return self.__query(_query)
     
     def set_data_type(self, data_type):

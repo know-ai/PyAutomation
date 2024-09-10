@@ -8,9 +8,8 @@ class Buffer(list):
         Documentation here
         """
         self._roll_type_allowed = ['forward', 'backward']
-        self.max_length = length
+        self._max_length = length
         self.roll = roll
-        super(Buffer, self).__init__([0] * self.max_length)
 
     @property
     def max_length(self):
@@ -31,15 +30,18 @@ class Buffer(list):
         if value <= 1:
 
             raise ValueError(f"{value} must be greater than one (1)")
+        
 
-        self._max_length = value
+        self.__init__(value, roll=self.roll)
 
     def last(self):
         r"""
         Returns last registered value of the buffer
         """        
         if self.roll == 'forward':
+
             return self[-1]
+        
         return self[0]
     
     def current(self):
@@ -89,7 +91,6 @@ class Buffer(list):
 
         return foo    
 
-
     @property
     def roll(self):
         r"""
@@ -118,12 +119,38 @@ class Buffer(list):
         """
         if self.roll.lower()=='forward':
             
-            self.pop()
+            _len = len(self)
+            
+            if _len > self.max_length:
+                
+                if _len == self.max_length:
+                    
+                    self.pop()
+                
+                else:
+
+                    for _ in range(_len - self.max_length):
+
+                        self.pop()
+
             super(Buffer, self).insert(0, value)
 
         else:
 
-            self.pop(0)
+            _len = len(self)
+            
+            if _len > self.max_length:
+                
+                if _len == self.max_length:
+                    
+                    self.pop(0)
+                
+                else:
+
+                    for _ in range(_len - self.max_length):
+
+                        self.pop(0)
+                
             super(Buffer, self).append(value)
 
         return self

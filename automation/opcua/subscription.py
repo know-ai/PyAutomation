@@ -83,6 +83,7 @@ class DAS(Singleton):
         
         self.monitored_items = dict()
         self.cvt = CVTEngine()
+        self.buffer = dict()
 
     def subscribe(self, subscription, client_name, node_id):
         r"""
@@ -133,8 +134,7 @@ class DAS(Singleton):
         Documentation here
         """
         namespace = node.nodeid.to_string()
+        timestamp = data.monitored_item.Value.SourceTimestamp
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
-        self.cvt.set_value(id=tag.id, value=val)
-        print(f"DAS: {tag.name}: {self.cvt.get_value(id=tag.id)} {val}")
-
+        self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
         
