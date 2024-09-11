@@ -13,7 +13,8 @@ class TrendsComponents:
         return dash.dcc.Dropdown(
             options = [],
             multi=True,
-            id="trends_tags_dropdown"
+            id="trends_tags_dropdown",
+            persistence=True
         )
 
     @classmethod
@@ -23,14 +24,17 @@ class TrendsComponents:
         """
         return dash.dcc.Dropdown(
             options=[
-            {'label': 'last 30 seconds', 'value': 30},
-            {'label': 'last minute', 'value': 60},
-            {'label': 'last 2 min.', 'value': 2 * 60},
-            {'label': 'last 5 min.', 'value': 5 * 60},
-            {'label': 'last 10 min.', 'value': 10 * 60}],
-            value=30,
+                {'label': 'last 10 seconds', 'value': 10},
+                {'label': 'last 30 seconds', 'value': 30},
+                {'label': 'last minute', 'value': 60},
+                {'label': 'last 2 min.', 'value': 2 * 60},
+                {'label': 'last 5 min.', 'value': 5 * 60},
+                {'label': 'last 10 min.', 'value': 10 * 60}
+            ],
+            value=10,
             clearable=False,
-            id="trends_last_values_dropdown")
+            id="trends_last_values_dropdown"
+        )
 
     @classmethod
     def current_value_table(cls)->dash.dash_table.DataTable:

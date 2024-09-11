@@ -1,6 +1,5 @@
 import dash
 import plotly.graph_objects as go
-from automation.buffer import Buffer
 
 
 def init_callback(app:dash.Dash):
@@ -16,10 +15,10 @@ def init_callback(app:dash.Dash):
         """
         
         if pathname=="/trends":
-
-            dropdown_options_tag = [tag["name"] for tag in app.automation.cvt.get_tags()]
+                
+            tags_options = [tag["name"] for tag in app.automation.cvt.get_tags()]
             
-            return dropdown_options_tag
+            return tags_options
         
         return dash.no_update
     
@@ -28,63 +27,48 @@ def init_callback(app:dash.Dash):
         dash.Output('trends_figure', 'figure'),
         dash.Input('timestamp-interval', 'n_intervals'),
         dash.State('trends_tags_dropdown', 'value'),
-        dash.State('trends_last_values_dropdown', 'value'),
         prevent_initial_call=True
         )
-    def tags(n_intervals, values, last_values):
+    def tags(n_intervals, values):
         r"""
         Documentation here
         """
         if values:
 
             fig = go.Figure()
-
-            tags_values = app.automation.cvt.get_values_by_name(values)
+            counter_axis = 0
+            labels = dict()
             data = list()
             units = list()
-            labels = dict()
             
-            if "timestamp" not in app.automation.das.buffer:
+            for tag_name in values:
 
-                app.automation.das.buffer['timestamp'] = Buffer(length=last_values)
-            
-            counter = 0
-            counter_axis = 0
-            
-            for value in values:
-                
-                if counter==0:
-                    
-                    app.automation.das.buffer['timestamp'](value=tags_values[value]['timestamp'])
-                
-                counter += 1
-                unit = tags_values[value]['unit']
+                timestamp = app.automation.das.buffer[tag_name]["timestamp"]
+                values = app.automation.das.buffer[tag_name]["values"]
+                unit = app.automation.das.buffer[tag_name]["unit"]
                 data.append({
-                    "tag": value, "value": f"{tags_values[value]['value']} {tags_values[value]['unit']}"
+                    "tag": tag_name, "value": f"{values.current()} {unit}"
                 })
 
-                if value not in app.automation.das.buffer:
-
-                    app.automation.das.buffer[value] = Buffer(length=last_values)
-
-                app.automation.das.buffer[value](value=tags_values[value]['value'])
                 if unit not in units:
                     counter_axis += 1
                     units.append(unit)
-                
+
                 if counter_axis==1:
-                    fig.add_trace(go.Scatter(x=app.automation.das.buffer["timestamp"], y=app.automation.das.buffer[value], name=value))
+
+                    fig.add_trace(go.Scatter(x=timestamp, y=values, name=tag_name))
                     labels["yaxis"] =  {
                             "title": unit
                         }
                 else:
-                    fig.add_trace(go.Scatter(x=app.automation.das.buffer["timestamp"], y=app.automation.das.buffer[value], name=value, yaxis=f"y{counter_axis}"))
+
+                    fig.add_trace(go.Scatter(x=timestamp, y=values, name=tag_name, yaxis=f"y{counter_axis}"))
                     labels[f"yaxis{counter_axis}"] = {
                             "title": unit,
                             "anchor": "free",
                             "overlaying": "y",
                             "autoshift": True
-                        }              
+                        }            
 
             fig.update_layout(**labels)
 
@@ -102,7 +86,8 @@ def init_callback(app:dash.Dash):
         Documentation here
         """
         
-        for key, _ in app.automation.das.buffer.items():
+        for tag_name, _ in app.automation.das.buffer.items():
             
-            app.automation.das.buffer[key].max_length = last_values
+            app.automation.das.buffer[tag_name]["timestamp"].max_length = last_values
+            app.automation.das.buffer[tag_name]["values"].max_length = last_values
         

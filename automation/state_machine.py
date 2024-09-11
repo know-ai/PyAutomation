@@ -24,6 +24,10 @@ class Machine(Singleton):
         * **machine** (`PyHadesStateMachine`): a state machine object.
         * **interval** (int): Interval execution time in seconds.
         """
+        if isinstance(machine, DAQ):
+            
+            machine.name = f"DAQ-{interval}"
+        
         machine.set_interval(interval)
         self._machine_manager.append_machine((machine, interval, mode))
 
@@ -96,6 +100,384 @@ class Machine(Singleton):
             except Exception as e:
                 message = f"Error on wokers stop, {e}"
                 logging.error(message)
+
+
+class DAQ(StateMachine):
+    r"""
+    Documentation here
+    """
+
+    starting = State('start', initial=True)
+    running = State('run')
+    resetting = State('reset')
+
+    # Transitions
+    start_to_run = starting.to(running)
+    run_to_reset = running.to(resetting)
+    reset_to_start = resetting.to(starting)
+
+    # Attributes
+    state = StringType(default="starting")
+    criticity = IntegerType(default=2)
+    priority = IntegerType(default=1)
+    description = StringType(default="")
+    classification = StringType(default="Data Acquisition System")
+
+    def __init__(
+            self
+        ):
+
+        super(DAQ, self).__init__()
+        self.name = "DAQ"
+        self.machine_interval = None
+        self.description.value = ""
+        self.classification.value = "Data Acquisition System"
+
+    # State Methods
+    def while_starting(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        # TRANSITION
+        print(f"Starting: {self.name}")
+        self.send('start_to_wait')
+
+    def while_running(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        print(f"Running: {self.name}")
+        self.criticity.value = 1
+
+    def while_resetting(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.send('reset_to_start')
+
+    # Entering to States
+    def on_enter_starting(self, event, state):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.state.value = state.id
+
+    # Entering to States
+    def on_enter_running(self, event, state):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.state.value = state.id
+
+    # Entering to States
+    def on_enter_resetting(self, event, state):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.state.value = state.id
+
+    # Auxiliaries Methods
+    def set_buffer_size(self, size:int):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.buffer_size = int(size)
+
+    def get_state_interval(self)->float:
+        r"""
+        Gets current state interval
+
+        **Returns**
+
+        * **(float)**
+
+        Usage
+
+        ```python
+        >>> machine = app.get_machine(name)
+        >>> current_interval = machine.get_state_interval()
+        ```
+
+        """
+        return self.get_interval()
+
+    def get_subscribed_tags(self)->list:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        return self.__subscribed_to
+    
+    def subscribe_to(self, *tags):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        for tag in tags:
+
+            if tag not in self.get_subscribed_tags():
+
+                self.__subscribed_to.append(tag)
+
+    def notify(self, tag:str, value:str|int|bool|float):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        if tag in self.data:
+            
+            self.data[tag](value)
+
+    def unsubscribe_to(self, tag:str):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        if tag in self.__subscribed_to:
+
+            self.__subscribed_to.remove(tag)
+
+    def get_interval(self)->float:
+        r"""
+        Gets overall state machine interval
+
+        **Returns**
+
+        * **(float)**
+
+        Usage
+
+        ```python
+        >>> machine = app.get_machine(name)
+        >>> interval = machine.get_interval()
+        ```
+        """
+        return self.machine_interval
+
+    def set_interval(self, interval):
+        r"""
+        Sets overall machine interval
+
+        **Parameters**
+
+        * **interval:** (float) overal machine interval in seconds
+
+        Usage
+
+        ```python
+        >>> machine = app.get_machine(name)
+        >>> machine.set_interval(0.5)
+        ```
+        """
+        self.machine_interval = interval
+
+    def _get_active_transitions(self):
+        r"""
+        Gets allowed transitions based on the current state
+
+        **Returns**
+
+        * **(list)**
+        """
+        result = list()
+
+        current_state = self.current_state
+
+        transitions = self.transitions
+
+        for transition in transitions:
+
+            if transition.source == current_state:
+
+                result.append(transition)
+
+        return result
+
+    def _activate_triggers(self):
+        r"""
+        Allows to execute the on_ method in transitions when it's necesary
+
+        """
+        transitions = self._get_active_transitions()
+
+        for transition in transitions:
+            method_name = transition.identifier
+            method = getattr(self, method_name)
+
+            try:
+                source = transition.source
+                if not source._trigger:
+                    continue
+                if source._trigger.evaluate():
+                    method()
+            except Exception as e:
+                error = str(e)
+                logging.error(f"Machine - {self.name}:{error}")
+
+    def loop(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        state_name = self.current_state.value
+        method_name = "while_" + state_name
+
+        if method_name in dir(self):
+
+            method = getattr(self, method_name)
+            method()            
+
+    def info(self)->str:
+        r"""
+        Gets general information of the state machine
+
+        **Returns**
+
+        * **(str)**
+
+        Usage
+
+        ```python
+        >>> machine = app.get_machine(name)
+        >>> info = machine.info()
+        ```
+        """
+        return f'''\nState Machine: {self.name} - Interval: {self.get_interval()} seconds - States: {self.get_states()}'''
+
+    def get_states(self)->list:
+        r"""
+        Gets a list of state machine's names
+
+        **Returns**
+
+        * **(list)**
+
+        Usage
+
+        ```python
+        >>> machine = app.get_machine(name)
+        >>> states = machine.get_states()
+        ```
+        """
+
+        return [state.value for state in self.states]
+
+    @classmethod
+    def get_serialized_models(cls):
+        r"""
+        Gets class attributes defined by [model types]()
+
+        **Returns**
+
+        * **(dict)**
+        """
+        result = dict()
+
+        props = cls.__dict__
+        for key, value in props.items():
+
+            if isinstance(value, (StringType, FloatType, IntegerType, BooleanType)):
+
+                result[key] = value.value
+
+        return result
+
+    def serialize(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        result = {
+            "name": self.name,
+            "sampling_time": self.get_interval(),
+        }
+        result.update(AutomationStateMachine.get_serialized_models())
+        return result
 
 
 class AutomationStateMachine(StateMachine):

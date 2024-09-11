@@ -6,10 +6,12 @@ from .workers import StateMachineWorker, LoggerWorker
 import logging
 from .managers import StateMachineManager, DBManager, OPCUAClientManager, AlarmManager
 from .tags import CVTEngine, Tag
+from .state_machine import Machine, DAQ
 from automation.opcua.subscription import DAS
 from automation.pages.main import ConfigView
 from automation.pages.callbacks import init_callbacks
 import dash_bootstrap_components as dbc
+from automation.buffer import Buffer
 
 
 class PyAutomation(Singleton):
@@ -28,6 +30,7 @@ class PyAutomation(Singleton):
     def __init__(self):
 
         self.machine_manager = StateMachineManager()
+        self.machine = Machine()
         self.db_manager = DBManager()
         self.cvt = CVTEngine()
         self.opcua_client_manager = OPCUAClientManager()
@@ -83,9 +86,21 @@ class PyAutomation(Singleton):
             scan_time=scan_time,
             dead_band=dead_band
         )
-
+        self.das.buffer[name] = {
+            "timestamp": Buffer(),
+            "values": Buffer(),
+            "unit": unit
+        }
         # CREATE OPCUA SUBSCRIPTION
         self.__create_opcua_subscription(message=message, opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time)
+        
+        # CREATE DAQ MACHINE
+        if scan_time:
+
+            if not self.machine_manager.get_machine(name=f"DAQ-{scan_time}"):
+
+                daq = DAQ()
+                self.machine.append_machine(machine=daq, interval=scan_time, mode="async")
 
         return message
 
