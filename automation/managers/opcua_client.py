@@ -81,6 +81,16 @@ class OPCUAClientManager:
 
             return client.get_nodes_values(namespaces=namespaces)
         
+    def get_node_value_by_opcua_address(self, opcua_address:str, namespace:str)->list:
+        r"""
+        Documentation here
+        """
+        for client_name, client in self._clients.items():
+
+            if opcua_address==client.serialize()["server_url"]:
+                
+                return self.get_node_attributes(client_name=client_name, namespaces=[namespace])
+        
     def get_node_attributes(self, client_name:str, namespaces:list)->list:
 
         result = list()

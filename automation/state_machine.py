@@ -6,6 +6,9 @@ from .singleton import Singleton
 import logging
 from .buffer import Buffer
 from .models import StringType, IntegerType, FloatType, BooleanType
+from .tags import CVTEngine, Tag
+from .managers.opcua_client import OPCUAClientManager
+from .opcua.subscription import DAS
 
 class Machine(Singleton):
     r"""Documentation here
@@ -30,6 +33,12 @@ class Machine(Singleton):
         
         machine.set_interval(interval)
         self._machine_manager.append_machine((machine, interval, mode))
+
+    def drop(self, name:str):
+        r"""
+        Documentation here
+        """
+        self._machine_manager.drop(name=name)
 
     def get_machine(self, name:str):
         r"""
@@ -101,6 +110,8 @@ class Machine(Singleton):
                 message = f"Error on wokers stop, {e}"
                 logging.error(message)
 
+        self.workers = list()
+
 
 class DAQ(StateMachine):
     r"""
@@ -129,9 +140,13 @@ class DAQ(StateMachine):
 
         super(DAQ, self).__init__()
         self.name = "DAQ"
+        self.das = DAS()
+        self.opcua_client_manager = None
         self.machine_interval = None
         self.description.value = ""
         self.classification.value = "Data Acquisition System"
+        self.__subscribed_to = dict()
+        self.cvt = CVTEngine()
 
     # State Methods
     def while_starting(self):
@@ -146,8 +161,7 @@ class DAQ(StateMachine):
         - 
         """
         # TRANSITION
-        print(f"Starting: {self.name}")
-        self.send('start_to_wait')
+        self.send('start_to_run')
 
     def while_running(self):
         r"""Documentation here
@@ -160,7 +174,18 @@ class DAQ(StateMachine):
 
         - 
         """
-        print(f"Running: {self.name}")
+        for tag_name, tag in self.get_subscribed_tags().items():
+
+            namespace = tag.get_node_namespace()
+            opcua_address = tag.get_opcua_address()
+            values = self.opcua_client_manager.get_node_value_by_opcua_address(opcua_address=opcua_address, namespace=namespace)
+            data_value = values[0][0]["DataValue"]
+            value = data_value.Value.Value
+            timestamp = data_value.SourceTimestamp
+            self.das.buffer[tag_name]["timestamp"](timestamp)
+            self.das.buffer[tag_name]["values"](value)
+            self.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
+
         self.criticity.value = 1
 
     def while_resetting(self):
@@ -176,61 +201,12 @@ class DAQ(StateMachine):
         """
         self.send('reset_to_start')
 
-    # Entering to States
-    def on_enter_starting(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    # Entering to States
-    def on_enter_running(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    # Entering to States
-    def on_enter_resetting(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
     # Auxiliaries Methods
-    def set_buffer_size(self, size:int):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+    def set_opcua_client_manager(self, manager:OPCUAClientManager):
+        r"""
+        Documentation here
         """
-        self.buffer_size = int(size)
+        self.opcua_client_manager = manager
 
     def get_state_interval(self)->float:
         r"""
@@ -250,7 +226,7 @@ class DAQ(StateMachine):
         """
         return self.get_interval()
 
-    def get_subscribed_tags(self)->list:
+    def get_subscribed_tags(self)->dict:
         r"""Documentation here
 
         # Parameters
@@ -263,7 +239,7 @@ class DAQ(StateMachine):
         """
         return self.__subscribed_to
     
-    def subscribe_to(self, *tags):
+    def subscribe_to(self, tag:Tag):
         r"""Documentation here
 
         # Parameters
@@ -274,11 +250,11 @@ class DAQ(StateMachine):
 
         - 
         """
-        for tag in tags:
+        tag_name = tag.get_name()
 
-            if tag not in self.get_subscribed_tags():
+        if tag_name not in self.get_subscribed_tags():
 
-                self.__subscribed_to.append(tag)
+            self.__subscribed_to[tag_name] = tag
 
     def notify(self, tag:str, value:str|int|bool|float):
         r"""Documentation here
@@ -291,11 +267,12 @@ class DAQ(StateMachine):
 
         - 
         """
-        if tag in self.data:
+        pass
+        # if tag in self.data:
             
-            self.data[tag](value)
+        #     self.data[tag](value)
 
-    def unsubscribe_to(self, tag:str):
+    def unsubscribe_to(self, tag:Tag):
         r"""Documentation here
 
         # Parameters
@@ -306,9 +283,10 @@ class DAQ(StateMachine):
 
         - 
         """
-        if tag in self.__subscribed_to:
+        tag_name = tag.get_name()
+        if tag_name in self.get_subscribed_tags():
 
-            self.__subscribed_to.remove(tag)
+            self.__subscribed_to.pop(tag_name)
 
     def get_interval(self)->float:
         r"""

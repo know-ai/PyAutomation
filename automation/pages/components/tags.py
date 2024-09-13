@@ -72,7 +72,7 @@ class TagsComponents:
                                 ],
                                 width=2),
                                 dbc.Col([
-                                    dbc.InputGroup([dbc.Input(placeholder="Scan Time", type="number", step=50, min=100, max=600000, id="scan_time_input", disabled=True), dbc.InputGroupText('ms')], size="md"),
+                                    dbc.InputGroup([dbc.Input(placeholder="Scan Time", type="number", step=500, min=500, max=600000, id="scan_time_input", disabled=True), dbc.InputGroupText('ms')], size="md"),
                                     dbc.InputGroup([dbc.Input(placeholder="Dead-Band", type="number", step=0.1, id="dead_band_input", disabled=True), dbc.InputGroupText('', id="dead_band_unit")], size="md")
                                 ],
                                 width=2)

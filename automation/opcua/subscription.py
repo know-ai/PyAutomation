@@ -95,9 +95,8 @@ class DAS(Singleton):
             monitored_item = subscription.subscribe_data_change(
                 node_id
             )
-
             self.monitored_items[client_name] = {
-                node_id: {
+                node_id.get_display_name().Text: {
                     "subscription": subscription,
                     "monitored_item": monitored_item,
                     "server": client_name
@@ -113,7 +112,7 @@ class DAS(Singleton):
                 )
 
                 self.monitored_items[client_name].update({
-                    node_id: {
+                    node_id.get_display_name().Text: {
                         "subscription": subscription,
                         "monitored_item": monitored_item,
                         "server": client_name
@@ -124,10 +123,14 @@ class DAS(Singleton):
         r"""
         Documentation here
         """
-        node = self.monitored_items[client_name].pop(node_id)
-        item = node["monitored_item"]
-        subscription = node["subscription"]
-        subscription.unsubscribe(item)
+        if client_name in self.monitored_items:
+            
+            if node_id.get_display_name().Text in self.monitored_items[client_name]:
+                
+                node = self.monitored_items[client_name].pop(node_id.get_display_name().Text)
+                item = node["monitored_item"]
+                subscription = node["subscription"]
+                subscription.unsubscribe(item)
 
     def datachange_notification(self, node, val, data):
         r"""

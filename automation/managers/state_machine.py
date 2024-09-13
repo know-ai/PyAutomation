@@ -4,7 +4,7 @@
 This module implements Function Manager.
 """
 from statemachine import StateMachine
-from ..tags import TagObserver, CVTEngine
+from ..tags import TagObserver, CVTEngine, Tag
 import queue
 
 class StateMachineManager:
@@ -93,11 +93,36 @@ class StateMachineManager:
         >>> machine = manager.get_machine(state_machine_name)
         ```
         """
-        for machine in self._machines:
+        for machine, _, _ in self._machines:
 
             if name == machine.name:
 
                 return machine
+            
+    def drop(self, name:str):
+        r"""
+        Documentation here
+        """
+        index = 0
+        for machine, _, _ in self._machines:
+
+            if name == machine.name:
+
+                break
+            
+            index += 1
+
+        self._machines.pop(index)
+
+    def unsubscribe_tag(self, tag:Tag):
+        r"""
+        Documentation here
+        """
+        for machine, _, _ in self._machines:
+
+            if hasattr(machine, "unsubscribe_to"):
+
+                machine.unsubscribe_to(tag=tag)
 
     def summary(self)->dict:
         r"""
@@ -108,8 +133,7 @@ class StateMachineManager:
         * **summary:** (dict) with keys ('length' (int) - 'state_machines' (list of state machine names))
         """
         result = dict()
-
-        machines = [machine.name for machine in self.get_machines()]
+        machines = [machine.name for machine, _, _ in self.get_machines()]
 
         result["length"] = len(machines)
         result["state_machines"] = machines

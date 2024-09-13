@@ -4,7 +4,7 @@ import sys
 from .utils import log_detailed
 from .workers import StateMachineWorker, LoggerWorker
 import logging
-from .managers import StateMachineManager, DBManager, OPCUAClientManager, AlarmManager
+from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .tags import CVTEngine, Tag
 from .state_machine import Machine, DAQ
 from automation.opcua.subscription import DAS
@@ -29,12 +29,14 @@ class PyAutomation(Singleton):
     PORTS = 65535
     def __init__(self):
 
-        self.machine_manager = StateMachineManager()
         self.machine = Machine()
+        self.machine_manager = self.machine.get_state_machine_manager()
         self.db_manager = DBManager()
         self.cvt = CVTEngine()
         self.opcua_client_manager = OPCUAClientManager()
         self.alarm_manager = AlarmManager()
+        self.workers = list()
+        self.set_log(level=logging.WARNING)
 
     def get_tags(self):
         r"""Documentation here
@@ -86,21 +88,16 @@ class PyAutomation(Singleton):
             scan_time=scan_time,
             dead_band=dead_band
         )
-        self.das.buffer[name] = {
-            "timestamp": Buffer(),
-            "values": Buffer(),
-            "unit": unit
-        }
+    
         # CREATE OPCUA SUBSCRIPTION
-        self.__create_opcua_subscription(message=message, opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time)
-        
-        # CREATE DAQ MACHINE
-        if scan_time:
+        if not message:
 
-            if not self.machine_manager.get_machine(name=f"DAQ-{scan_time}"):
-
-                daq = DAQ()
-                self.machine.append_machine(machine=daq, interval=scan_time, mode="async")
+            self.das.buffer[name] = {
+                "timestamp": Buffer(),
+                "values": Buffer(),
+                "unit": unit
+            }
+            self.subscribe_opcua(tag=self.cvt.get_tag_by_name(name=name), opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time)
 
         return message
 
@@ -109,12 +106,13 @@ class PyAutomation(Singleton):
         Documentation here
         """
         tag = self.cvt.get_tag(id=id)
-        alarm = self.alarm_manager.get_alarm_by_tag(tag=tag.get_name())
+        tag_name = tag.get_name()
+        alarm = self.alarm_manager.get_alarm_by_tag(tag=tag_name)
         if alarm:
 
-            return f"Tag {tag.get_name()} has an alarm associated"
+            return f"Tag {tag_name} has an alarm associated"
         
-        self.__opcua_unsubscribe(tag=tag)
+        self.unsubscribe_opcua(tag=tag)
         self.cvt.delete_tag(id=id)
     
     def update_tag(self, id:str, **kwargs):
@@ -122,8 +120,10 @@ class PyAutomation(Singleton):
         Documentation here
         """
         tag = self.cvt.get_tag(id=id)
-        self.__opcua_update_subscription(tag=tag, **kwargs)
-        return self.cvt.update_tag(id=id, **kwargs)
+        self.unsubscribe_opcua(tag)
+        result = self.cvt.update_tag(id=id, **kwargs)
+        self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())       
+        return result
 
     def delete_tag_by_name(self, name:str):
         r"""
@@ -234,6 +234,30 @@ class PyAutomation(Singleton):
         if servers:
             
             self.opcua_client_manager.add(client_name=client_name, endpoint_url=f"opc.tcp://{host}:{port}")
+
+    def set_log(self, level=logging.INFO, file:str="app.log"):
+        r"""
+        Sets the log file and level.
+
+        **Parameters:**
+
+        * **level** (str): `logging.LEVEL` (default: logging.INFO).
+        * **file** (str): log filename (default: 'app.log').
+
+        **Returns:** `None`
+
+        Usage:
+
+        ```python
+        >>> app.set_log(file="app.log")
+        ```
+        """
+
+        self._logging_level = level
+
+        if file:
+
+            self._log_file = file
         
     def stop_db(self, db_worker:LoggerWorker):
         r"""
@@ -265,22 +289,7 @@ class PyAutomation(Singleton):
             # self.workers.append(alarm_worker)
 
         # StateMachine Worker
-        state_manager = self.get_state_machine_manager()
-        if state_manager.exist_machines():
-
-            state_worker = StateMachineWorker(state_manager)
-            self.workers.append(state_worker)
-
-        try:
-
-            for worker in self.workers:
-                
-                worker.daemon = True
-                worker.start()
-
-        except Exception as e:
-            message = "Error on workers start-up"
-            log_detailed(e, message)
+        self.machine.start()
 
     def _stop_workers(self):
         r"""
@@ -301,9 +310,6 @@ class PyAutomation(Singleton):
         self._create_alarm_worker = alarm_worker
         self._start_logger()
         self._start_workers()
-
-        logging.info("PyAutomation started")
-        logging.info(self.info())
 
     def safe_stop(self):
         r"""
@@ -327,113 +333,65 @@ class PyAutomation(Singleton):
         self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".")
         self.dash_app.set_automation_app(self)
         self.das = DAS()
+        self.safe_start(create_tables=False)
         init_callbacks(app=self.dash_app)
         self.dash_app.run(debug=debug)
 
-    def __create_opcua_subscription(self, message:str, opcua_address:str, node_namespace:str, scan_time:float):
+    def subscribe_opcua(self, tag:Tag, opcua_address:str, node_namespace:str, scan_time:float):
         r"""
         Documentation here
         """
-        if not message:
-
-            if opcua_address and node_namespace:
-
-                if not scan_time:
-
-                    for client_name, info in self.get_opcua_clients().items():
-
-                        if opcua_address==info["server_url"]:
-
-                            break
-
-                    opcua_client = self.get_opcua_client(client_name=client_name)
-                    subscription = opcua_client.create_subscription(1000, self.das)
-                    node_id = opcua_client.get_node_id_by_namespace(node_namespace)
-                    self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
-    
-    def __opcua_unsubscribe(self, tag:Tag):
-        r"""
-        Documentation here
-        """
-        opcua_address = tag.get_opcua_address()
-        node_namespace = tag.get_node_namespace()
-        scan_time = tag.get_scan_time()
-        flag = False
-        client_name = None
         if opcua_address and node_namespace:
 
-            if not scan_time:
+            if not scan_time:                                                           # SUBSCRIBE BY DAS
 
                 for client_name, info in self.get_opcua_clients().items():
 
                     if opcua_address==info["server_url"]:
 
-                        flag = True
-
+                        opcua_client = self.get_opcua_client(client_name=client_name)
+                        subscription = opcua_client.create_subscription(1000, self.das)
+                        node_id = opcua_client.get_node_id_by_namespace(node_namespace)
+                        self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
                         break
-                
-            if client_name:
-        
-                opcua_client = self.get_opcua_client(client_name=client_name)
-                node_id = opcua_client.get_node_id_by_namespace(node_namespace)
-        
-            if flag:
-            
-                self.das.unsubscribe(client_name=client_name, node_id=node_id)
 
-    def __opcua_update_subscription(self, tag:Tag, **kwargs):
+            else:                                                                       # SUBSCRIBE BY DAQ
+
+                self.subscribe_tag(tag_name=tag.get_name(), scan_time=scan_time)
+
+    def subscribe_tag(self, tag_name:str, scan_time:float):
+        r"""
+        Documentatio here
+        """
+        scan_time = float(scan_time)
+        daq = self.machine_manager.get_machine(name=f"DAQ-{scan_time / 1000}")
+        tag = self.cvt.get_tag_by_name(name=tag_name)
+
+        if not daq:
+
+            daq = DAQ()
+            daq.set_opcua_client_manager(manager=self.opcua_client_manager)
+            self.machine.append_machine(machine=daq, interval=scan_time / 1000, mode="async")
+            
+        daq.subscribe_to(tag=tag)
+        self.machine.stop()
+        self.machine.start()                
+
+    def unsubscribe_opcua(self, tag:Tag):
         r"""
         Documentation here
         """
-        previous_opcua_address = tag.get_opcua_address()
-        previous_node_namespace = tag.get_node_namespace()
-        previous_scan_time = tag.get_scan_time()
-        # REMOVING OPCUA ADDRESS AND NODE_NAMESPACE BINDING
-        if previous_node_namespace:
-            flag = False
-            if "node_namespace" in kwargs:
 
-                if not kwargs["node_namespace"]:
+        for client_name, info in self.get_opcua_clients().items():
 
-                    flag = True
+            if tag.get_opcua_address()==info["server_url"]:
 
-            if "opcua_address" in kwargs:
-
-                if not kwargs["opcua_address"]:
-                    kwargs["node_namespace"] = None
-                    kwargs["scan_time"] = None
-                    flag = True
-
-            if "scan_time" in kwargs:
-
-                flag = True
-            
-            if flag:
-
-                self.__opcua_unsubscribe(tag=tag)
-
-        # UPDATING TO CREATE OPCUA SUBSCRIPTION
-        elif not previous_node_namespace:
-
-            flag = True
-
-            if "node_namespace" in kwargs:
-
-                if kwargs["node_namespace"]:
-
-                    previous_node_namespace = kwargs["node_namespace"]
-
-                    if "opcua_address" in kwargs:
-
-                        previous_opcua_address = kwargs["opcua_address"]
-
-                if "scan_time" in kwargs or previous_scan_time:
-
-                    flag = False
-
-            if flag:
-            
-                self.__create_opcua_subscription(message=None, opcua_address=previous_opcua_address, node_namespace=previous_node_namespace, scan_time=previous_scan_time)
+                opcua_client = self.get_opcua_client(client_name=client_name)
+                node_id = opcua_client.get_node_id_by_namespace(tag.get_node_namespace())
+                self.das.unsubscribe(client_name=client_name, node_id=node_id)
+                break
+    
+        self.machine_manager.unsubscribe_tag(tag=tag)
 
     def run(self, debug:bool=False):
         r"""
