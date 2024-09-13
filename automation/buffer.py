@@ -37,20 +37,26 @@ class Buffer(list):
     def last(self):
         r"""
         Returns last registered value of the buffer
-        """        
-        if self.roll == 'forward':
+        """
+        if self:
 
-            return self[-1]
-        
-        return self[0]
+            if self.roll == 'forward':
+
+                return self[-1]
+            
+            return self[0]
     
     def current(self):
         r"""
         Returns lastest registered value of the buffer
-        """        
-        if self.roll == 'forward':
-            return self[0]
-        return self[-1]
+        """  
+        if self: 
+
+            if self.roll == 'forward':
+                
+                return self[0]
+            
+            return self[-1]
     
     def apply_each(self, fn, start:int=None, stop:int=None):
         r"""

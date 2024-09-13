@@ -113,6 +113,7 @@ class PyAutomation(Singleton):
             return f"Tag {tag_name} has an alarm associated"
         
         self.unsubscribe_opcua(tag=tag)
+        self.das.buffer.pop(tag_name)
         self.cvt.delete_tag(id=id)
     
     def update_tag(self, id:str, **kwargs):
@@ -381,17 +382,23 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
+        if tag.get_node_namespace():
 
-        for client_name, info in self.get_opcua_clients().items():
+            for client_name, info in self.get_opcua_clients().items():
 
-            if tag.get_opcua_address()==info["server_url"]:
+                if tag.get_opcua_address()==info["server_url"]:
 
-                opcua_client = self.get_opcua_client(client_name=client_name)
-                node_id = opcua_client.get_node_id_by_namespace(tag.get_node_namespace())
-                self.das.unsubscribe(client_name=client_name, node_id=node_id)
-                break
+                    opcua_client = self.get_opcua_client(client_name=client_name)
+                    node_id = opcua_client.get_node_id_by_namespace(tag.get_node_namespace())
+                    self.das.unsubscribe(client_name=client_name, node_id=node_id)
+                    break
     
         self.machine_manager.unsubscribe_tag(tag=tag)
+        # CLEAR BUFFER
+        self.das.buffer[tag.get_name()].update({
+                "timestamp": Buffer(),
+                "values": Buffer()
+            })
 
     def run(self, debug:bool=False):
         r"""

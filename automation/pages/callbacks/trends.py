@@ -46,9 +46,12 @@ def init_callback(app:dash.Dash):
                 timestamp = app.automation.das.buffer[tag_name]["timestamp"]
                 values = app.automation.das.buffer[tag_name]["values"]
                 unit = app.automation.das.buffer[tag_name]["unit"]
-                data.append({
-                    "tag": tag_name, "value": f"{values.current()} {unit}"
-                })
+
+                current_value = values.current()
+                if current_value:
+                    data.append({
+                        "tag": tag_name, "value": f"{current_value} {unit}"
+                    })
 
                 if unit not in units:
                     counter_axis += 1
