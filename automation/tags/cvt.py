@@ -96,6 +96,7 @@ class CVT:
         if has_duplicates:
 
             return message
+        
         tag = self._tags[id]
         tag.update(**kwargs)
         self._tags[id] = tag
@@ -308,7 +309,7 @@ class CVT:
         tag = self.get_tag_by_name(name)
         self._tags[tag.id].detach(observer)
 
-    def has_duplicates(self, name:str=None, display_name:str=None, node_namespace:str=None, opcua_address:str=None, **kwargs):
+    def has_duplicates(self, tag:Tag=None, name:str=None, display_name:str=None, node_namespace:str=None, opcua_address:str=None, **kwargs):
         r"""Documentation here
 
         # Parameters
@@ -323,6 +324,7 @@ class CVT:
         for _, _tag in self._tags.items():
 
             if name:
+
                 if _tag.get_name()==name:
 
                     return True, f"Duplicated Tag Name: {name}"
@@ -335,8 +337,14 @@ class CVT:
                 
             if node_namespace:
             
-                if _tag.get_node_namespace()==node_namespace and _tag.get_opcua_address()==opcua_address:
+                if _tag.get_node_namespace()==node_namespace:
+                    
+                    if tag:
+                    
+                        if _tag.get_opcua_address()==tag.get_opcua_address():
 
+                            return True, f"Duplicated Node Namespace: {node_namespace}"
+                        
                     return True, f"Duplicated Node Namespace: {node_namespace}"
             
         return False, f"Valid Tag Name: {name} - Display Name: {display_name}"
