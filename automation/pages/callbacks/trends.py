@@ -1,5 +1,9 @@
 import dash
 import plotly.graph_objects as go
+from math import ceil
+from automation.tags import CVTEngine
+
+cvt = CVTEngine()
 
 
 def init_callback(app:dash.Dash):
@@ -90,7 +94,26 @@ def init_callback(app:dash.Dash):
         """
         
         for tag_name, _ in app.automation.das.buffer.items():
+
+            # COMPUTATION OF MAX LENGTH OF THE BUFFER
+            buffer_size = get_buffer_size(tag_name=tag_name, last_values=last_values)            
+            app.automation.das.buffer[tag_name]["timestamp"].size = buffer_size
+            app.automation.das.buffer[tag_name]["values"].size = buffer_size
+
+    def get_buffer_size(tag_name:str, last_values:int):
+        r"""
+        Documentation here
+        """
+        tag = cvt.get_tag_by_name(name=tag_name)
+        scan_time = tag.get_scan_time() # Milliseconds
+        
+        if not scan_time:
             
-            app.automation.das.buffer[tag_name]["timestamp"].max_length = last_values
-            app.automation.das.buffer[tag_name]["values"].max_length = last_values
+            current_timestamp = app.automation.das.buffer[tag_name]["timestamp"].current()
+            previous_last = app.automation.das.buffer[tag_name]["timestamp"].previous_current()
+            dt = current_timestamp - previous_last
+            return ceil(last_values / dt.seconds)
+        
+        scan_time = scan_time / 1000
+        return ceil(last_values / scan_time)
         

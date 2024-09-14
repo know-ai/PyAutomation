@@ -30,7 +30,9 @@ class CVT:
         unit:str, 
         data_type:str, 
         description:str, 
+        variable:str,
         display_name:str="",
+        display_unit:str="",
         opcua_address:str="",
         node_namespace:str="",
         scan_time:int=None,
@@ -67,13 +69,19 @@ class CVT:
         if has_duplicates:
 
             return message
+        
+        if not display_unit:
+
+            display_unit = unit
 
         tag = Tag(
             name=name,
             unit=unit,
             data_type=data_type,
             description=description,
+            variable=variable,
             display_name=display_name,
+            display_unit=display_unit,
             opcua_address=opcua_address,
             node_namespace=node_namespace,
             scan_time=scan_time,
@@ -407,7 +415,9 @@ class CVTEngine(Singleton):
         name:str, 
         unit:str, 
         data_type:str, 
+        variable:str,
         description:str, 
+        display_unit:str="",
         display_name:str="",
         opcua_address:str="",
         node_namespace:str="",
@@ -430,7 +440,9 @@ class CVTEngine(Singleton):
         _query["parameters"]["name"] = name
         _query["parameters"]["unit"] = unit
         _query["parameters"]["data_type"] = data_type
+        _query["parameters"]["variable"] = variable
         _query["parameters"]["description"] = description
+        _query["parameters"]["display_unit"] = display_unit
         _query["parameters"]["display_name"] = display_name
         _query["parameters"]["opcua_address"] = opcua_address
         _query["parameters"]["node_namespace"] = node_namespace

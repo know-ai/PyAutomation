@@ -9,6 +9,7 @@ def init_callback(app:dash.Dash):
         dash.Input("variable_input", "value"),
         dash.Input("datatype_input", "value"),
         dash.Input("unit_input", "value"),  
+        dash.Input("display_unit_input", "value"), 
         dash.Input("display_name_input", "value"), 
         dash.Input("description_input", "value"),
         dash.Input("opcua_address_input", "value"),
@@ -19,6 +20,7 @@ def init_callback(app:dash.Dash):
         variable:str, 
         datatype:str, 
         unit:str, 
+        display_unit:str,
         display_name:str, 
         description:str, 
         opcua_address:str, 
@@ -28,16 +30,18 @@ def init_callback(app:dash.Dash):
         Documentation here
         """
         if dash.ctx.triggered_id.lower()=="variable_input":
-            
-            dash.set_props("unit_input", {'options': [
-                {"label": value, "value": value} for _, value in VARIABLES[variable].items()
-            ]})
-            
+
+            options = [{"label": value, "value": value} for _, value in VARIABLES[variable].items()]
             unit = list(VARIABLES[variable].values())[0]
+            
+            dash.set_props("unit_input", {'options': options})
+            dash.set_props("display_unit_input", {'options': options})
             dash.set_props("unit_input", {'value': unit})
             dash.set_props("unit_input", {'disabled': False})
+            dash.set_props("display_unit_input", {'value': unit})
+            dash.set_props("display_unit_input", {'disabled': False})
 
-        if name and datatype and unit and variable:
+        if name and datatype and unit and variable and display_unit:
 
             dash.set_props("create_tag_button", {'disabled': False})
 
@@ -192,7 +196,9 @@ def init_callback(app:dash.Dash):
         dash.Input('create_tag_button', 'n_clicks'),
         dash.State("tag_name_input", "value"), 
         dash.State("datatype_input", "value"), 
-        dash.State("unit_input", "value"), 
+        dash.State("unit_input", "value"),
+        dash.State("display_unit_input", "value"), 
+        dash.State("variable_input", "value"),
         dash.State("display_name_input", "value"), 
         dash.State("description_input", "value"),
         dash.State("opcua_address_input", "value"),
@@ -206,6 +212,8 @@ def init_callback(app:dash.Dash):
         tag_name,
         datatype,
         unit,
+        display_unit,
+        variable,
         display_name,
         description,
         opcua_address,
@@ -221,7 +229,9 @@ def init_callback(app:dash.Dash):
             message = app.automation.create_tag(
                 name=tag_name,
                 unit=unit,
+                display_unit=display_unit,
                 data_type=datatype,
+                variable=variable,
                 description=description,
                 display_name=display_name,
                 opcua_address=opcua_address,

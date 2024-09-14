@@ -140,7 +140,8 @@ class DAS(Singleton):
         timestamp = data.monitored_item.Value.SourceTimestamp
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
         tag_name = tag.get_name()
-        self.buffer[tag_name]["timestamp"](timestamp)
-        self.buffer[tag_name]["values"](val)
         self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+        self.buffer[tag_name]["timestamp"](timestamp)
+        self.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
+        
         

@@ -3,23 +3,23 @@ class Buffer(list):
     Documentation here
     """
 
-    def __init__(self, length:int=10, roll:str='forward'):
+    def __init__(self, size:int=10, roll:str='forward'):
         r"""
         Documentation here
         """
         self._roll_type_allowed = ['forward', 'backward']
-        self._max_length = length
+        self._size = size
         self.roll = roll
 
     @property
-    def max_length(self):
+    def size(self):
         r"""
         Documentation here
         """
-        return self._max_length
+        return self._size
 
-    @max_length.setter
-    def max_length(self, value:int):
+    @size.setter
+    def size(self, value:int):
         r"""
         Documentation here
         """
@@ -57,6 +57,18 @@ class Buffer(list):
                 return self[0]
             
             return self[-1]
+        
+    def previous_current(self):
+        r"""
+        Returns lastest registered value of the buffer
+        """  
+        if self: 
+
+            if self.roll == 'forward':
+                
+                return self[1]
+            
+            return self[-2]
     
     def apply_each(self, fn, start:int=None, stop:int=None):
         r"""
@@ -127,15 +139,15 @@ class Buffer(list):
             
             _len = len(self)
             
-            if _len > self.max_length:
+            if _len > self.size:
                 
-                if _len == self.max_length:
+                if _len == self.size:
                     
                     self.pop()
                 
                 else:
 
-                    for _ in range(_len - self.max_length):
+                    for _ in range(_len - self.size):
 
                         self.pop()
 
@@ -145,15 +157,15 @@ class Buffer(list):
 
             _len = len(self)
             
-            if _len > self.max_length:
+            if _len > self.size:
                 
-                if _len == self.max_length:
+                if _len == self.size:
                     
                     self.pop(0)
                 
                 else:
 
-                    for _ in range(_len - self.max_length):
+                    for _ in range(_len - self.size):
 
                         self.pop(0)
                 

@@ -32,12 +32,6 @@ class TagsComponents:
                                             
                                         ],
                                         size="md"
-                                    )
-                                ],
-                                width=3),
-                                dbc.Col([
-                                    dbc.InputGroup([dbc.InputGroupText("Unit"), dbc.Select(options=[], id="unit_input", disabled=True )],
-                                        size="md"
                                     ),
                                     dbc.InputGroup(
                                         [
@@ -54,7 +48,17 @@ class TagsComponents:
                                             
                                         ],
                                         size="md"
+                                    )
+                                ],
+                                width=3),
+                                dbc.Col([
+                                    dbc.InputGroup([dbc.InputGroupText("Unit"), dbc.Select(options=[], id="unit_input", disabled=True )],
+                                        size="md"
                                     ),
+                                    dbc.InputGroup([dbc.InputGroupText("Display Unit"), dbc.Select(options=[], id="display_unit_input", disabled=True )],
+                                        size="md"
+                                    ),
+                                    
                                 ],
                                 width=2),
                                 dbc.Col([

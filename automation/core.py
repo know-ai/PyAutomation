@@ -12,6 +12,7 @@ from automation.pages.main import ConfigView
 from automation.pages.callbacks import init_callbacks
 import dash_bootstrap_components as dbc
 from automation.buffer import Buffer
+from math import ceil
 
 
 class PyAutomation(Singleton):
@@ -55,6 +56,8 @@ class PyAutomation(Singleton):
     def create_tag(self,
             name:str, 
             unit:str, 
+            display_unit:str,
+            variable:str,
             data_type:str='float', 
             description:str="", 
             display_name:str=None,
@@ -80,6 +83,8 @@ class PyAutomation(Singleton):
         message = self.cvt.set_tag(
             name=name,
             unit=unit,
+            display_unit=display_unit,
+            variable=variable,
             data_type=data_type,
             description=description,
             display_name=display_name,
@@ -92,11 +97,22 @@ class PyAutomation(Singleton):
         # CREATE OPCUA SUBSCRIPTION
         if not message:
 
-            self.das.buffer[name] = {
-                "timestamp": Buffer(),
-                "values": Buffer(),
-                "unit": unit
-            }
+            if scan_time:
+            
+                self.das.buffer[name] = {
+                    "timestamp": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
+                    "values": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
+                    "unit": display_unit
+                }
+
+            else:
+
+                self.das.buffer[name] = {
+                    "timestamp": Buffer(),
+                    "values": Buffer(),
+                    "unit": display_unit
+                }
+            
             self.subscribe_opcua(tag=self.cvt.get_tag_by_name(name=name), opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time)
 
         return message
@@ -395,7 +411,15 @@ class PyAutomation(Singleton):
     
         self.machine_manager.unsubscribe_tag(tag=tag)
         # CLEAR BUFFER
-        self.das.buffer[tag.get_name()].update({
+        scan_time = tag.get_scan_time()
+        if scan_time:
+            
+            self.das.buffer[tag.get_name()].update({
+                "timestamp": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
+                "values": Buffer(size=ceil(10 / ceil(scan_time / 1000)))
+            })
+        else:
+            self.das.buffer[tag.get_name()].update({
                 "timestamp": Buffer(),
                 "values": Buffer()
             })

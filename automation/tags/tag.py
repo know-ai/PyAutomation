@@ -1,6 +1,17 @@
 from ..utils import Observer
 import secrets
 from datetime import datetime
+from automation.variables import (
+    Temperature,
+    Length,
+    Current,
+    Time,
+    Pressure,
+    Mass,
+    Force,
+    Power,
+    VolumetricFlow
+)
 
 
 class Tag:
@@ -9,8 +20,10 @@ class Tag:
             self,
             name:str,
             unit:str,
+            variable:str,
             data_type:str,
             display_name:str=None,
+            display_unit:str=None,
             description:str="",
             opcua_address:str=None,
             node_namespace:str=None,
@@ -23,31 +36,56 @@ class Tag:
         if id:
             self.id = id
         self.name = name
-        self.value = None
         self.data_type = data_type
         self.description = description
+        self.variable = variable
         self.display_name = name
         if display_name:
             self.display_name = display_name
+        self.display_unit = unit
+        if display_unit:
+            self.display_unit = display_unit
         self.unit=unit
+        if variable.lower()=="temperature":
+            self.value = Temperature(value=0.0, unit=self.unit)
+        elif variable.lower()=="length":
+            self.value = Length(value=0.0, unit=self.unit)
+        elif variable.lower()=="time":
+            self.value = Time(value=0.0, unit=self.unit)
+        elif variable.lower()=="pressure":
+            self.value = Pressure(value=0.0, unit=self.unit)
+        elif variable.lower()=="mass":
+            self.value = Mass(value=0.0, unit=self.unit)
+        elif variable.lower()=="force":
+            self.value = Force(value=0.0, unit=self.unit)
+        elif variable.lower()=="power":
+            self.value = Power(value=0.0, unit=self.unit)
+        elif variable.lower()=="current":
+            self.value = Current(value=0.0, unit=self.unit)
+        elif variable.lower()=="volumetricflow":
+            self.value = VolumetricFlow(value=0.0, unit=self.unit)
         self.opcua_address = opcua_address
         self.node_namespace = node_namespace
         self.scan_time = scan_time
         self.dead_band = dead_band
-        self.variable = None
         self.timestamp = timestamp
         self._observers = set()
 
-    def set_value(self, value:float|str|int|bool, timestamp:datetime):
+    def set_value(self, value:float|str|int|bool, timestamp:datetime=None):
+        r"""
+        Documentation here
+        """
         if not timestamp:
             timestamp = datetime.now()
-        self.value = value
+        self.value.setValue(value=value, unit=self.unit)
         self.timestamp = timestamp
         self.notify()
 
     def get_value(self):
-
-        return self.value
+        r"""
+        Documentation here
+        """            
+        return round(self.value.convert(to_unit=self.display_unit), 3)
     
     def get_timestamp(self):
         r"""
@@ -70,31 +108,45 @@ class Tag:
         self.variable = value
 
     def set_opcua_address(self, opcua_address:str):
-
+        r"""
+        Documentation here
+        """
         self.opcua_address = opcua_address
 
     def set_node_namespace(self, node_namespace:str):
-
+        r"""
+        Documentation here
+        """
         self.node_namespace = node_namespace
 
     def get_scan_time(self):
-
+        r"""
+        Documentation here
+        """
         return self.scan_time
     
     def get_dead_band(self):
-
+        r"""
+        Documentation here
+        """
         return self.dead_band
 
     def get_data_type(self):
-        
+        r"""
+        Documentation here
+        """
         return self.data_type
 
     def get_unit(self):
-
+        r"""
+        Documentation here
+        """
         return self.unit
 
     def get_description(self):
-
+        r"""
+        Documentation here
+        """
         return self.description
     
     def get_display_name(self)->str:
@@ -126,25 +178,35 @@ class Tag:
         return self.name
 
     def get_opcua_address(self):
-        
+        r"""
+        Documentation here
+        """
         return self.opcua_address
 
     def get_node_namespace(self):
-
+        r"""
+        Documentation here
+        """
         return self.node_namespace
     
     def attach(self, observer:Observer):
-
+        r"""
+        Documentation here
+        """
         observer._subject = self
         self._observers.add(observer)
 
     def detach(self, observer:Observer):
-
+        r"""
+        Documentation here
+        """
         observer._subject = None
         self._observers.discard(observer)
 
     def notify(self):
-
+        r"""
+        Documentation here
+        """
         for observer in self._observers:
 
             observer.update()
@@ -213,7 +275,6 @@ class TagObserver(Observer):
         """
         
         result = dict()
-
         result["tag"] = self._subject.name
         result["value"] = self._subject.value
         self._tag_queue.put(result)
