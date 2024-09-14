@@ -376,6 +376,10 @@ class PyAutomation(Singleton):
 
                 self.subscribe_tag(tag_name=tag.get_name(), scan_time=scan_time)
 
+        self.das.buffer[tag.get_name()].update({
+            "unit": tag.get_display_unit()
+        })
+
     def subscribe_tag(self, tag_name:str, scan_time:float):
         r"""
         Documentatio here

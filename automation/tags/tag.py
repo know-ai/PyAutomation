@@ -77,7 +77,7 @@ class Tag:
         """
         if not timestamp:
             timestamp = datetime.now()
-        self.value.setValue(value=value, unit=self.unit)
+        self.value.set_value(value=value, unit=self.unit)
         self.timestamp = timestamp
         self.notify()
 
@@ -142,6 +142,12 @@ class Tag:
         Documentation here
         """
         return self.unit
+    
+    def get_display_unit(self):
+        r"""
+        Documentation here
+        """
+        return self.display_unit
 
     def get_description(self):
         r"""
@@ -245,6 +251,7 @@ class Tag:
             "value": self.get_value(),
             "name": self.name,
             "unit": self.get_unit(),
+            "display_unit": self.get_display_unit(),
             "data_type": self.get_data_type(),
             "variable": self.get_variable(),
             "description": self.get_description(),

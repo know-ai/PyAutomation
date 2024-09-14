@@ -102,7 +102,8 @@ class TagsComponents:
             columns=[
                 {'name': 'id', 'id': 'id', 'editable': False}, 
                 {'name': 'name', 'id': 'name'}, 
-                {'name': 'unit', 'id': 'unit', 'presentation': 'dropdown'}, 
+                {'name': 'unit', 'id': 'unit', 'presentation': 'dropdown'},
+                {'name': 'display_unit', 'id': 'display_unit', 'presentation': 'dropdown'},  
                 {'name': 'data_type', 'id': 'data_type', 'presentation': 'dropdown'}, 
                 {'name': 'description', 'id': 'description'}, 
                 {'name': 'display_name', 'id': 'display_name'}, 

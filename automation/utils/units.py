@@ -32,19 +32,25 @@ class EngUnit(object):
         from_unit = self.unit
         to_unit = to_unit
         return float(self.value) / float(self.conversions[from_unit]) * float(self.conversions[to_unit])
+    
+    def convert_values(self, values:list, from_unit:str, to_unit:str)->list:
+        r"""
+        Documentation here
+        """
+        return [float(value) / float(self.conversions[from_unit]) * float(self.conversions[to_unit]) for value in values]
         
-    def changeUnit(self, unit):
+    def change_unit(self, unit):
         """Converts the current value of the object to a new unit.  Returns a float of the new value."""
         self.value = self.convert(unit)
         self.unit = unit
         return float(self.value)
 
-    def setValue(self, value, unit):
+    def set_value(self, value, unit):
         """Sets the value and unit of the object"""
         self.value = value
         self.unit = unit
 
-    def getValue(self):
+    def get_value(self):
         """Returns a list of the float value and unit of the object."""
         return [float(self.value), self.unit]
 
@@ -52,11 +58,11 @@ class EngUnit(object):
         return str(self.value) + ' ' + self.unit
 
     def __add__(self, other):
-        new_value = self.value + other.changeUnit(self.unit)
+        new_value = self.value + other.change_unit(self.unit)
         return self.__class__(new_value, self.unit)
 
     def __sub__(self, other):
-        new_value = self.value - other.changeUnit(self.unit)
+        new_value = self.value - other.change_unit(self.unit)
         return self.__class__(new_value, self.unit)
 
     def __mul__(self, other):

@@ -75,7 +75,7 @@ class Temperature(EngUnit):
     def __add__(self, other):
         self_original_unit = self.unit
 
-        self.changeUnit('K')
+        self.change_unit('K')
 
         if other.unit in ('K', 'C'):
             new_value = self.value + other.value
@@ -83,13 +83,13 @@ class Temperature(EngUnit):
             new_value = self.value + (other.value * 5.0 / 9.0)            
 
         new_unit = self.__class__(new_value, 'K')
-        new_unit.changeUnit(self_original_unit)
+        new_unit.change_unit(self_original_unit)
         return new_unit
 
     def __sub__(self, other):
             self_original_unit = self.unit
 
-            self.changeUnit('K')
+            self.change_unit('K')
 
             if other.unit in ('K', 'C'):
                 new_value = self.value - other.value
@@ -97,5 +97,5 @@ class Temperature(EngUnit):
                 new_value = self.value - (other.value * 5.0 / 9.0)            
 
             new_unit = self.__class__(new_value, 'K')
-            new_unit.changeUnit(self_original_unit)
+            new_unit.change_unit(self_original_unit)
             return new_unit

@@ -60,6 +60,11 @@ def generate_dropdown_conditional():
                 'options': options
             })
 
+            dropdown_conditional.append({
+                'if': {'column_id': 'display_unit', 'filter_query': f'{{unit}} eq "{unit}"'},
+                'options': options
+            })
+
     # dropdown conditional for node_namespace column in table
     dropdown_conditional.append({
         'if': {'column_id': 'node_namespace', 'filter_query': f'{{opcua_address}} eq ""'},
