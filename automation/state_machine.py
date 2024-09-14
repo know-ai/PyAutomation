@@ -182,9 +182,9 @@ class DAQ(StateMachine):
             data_value = values[0][0]["DataValue"]
             value = data_value.Value.Value
             timestamp = data_value.SourceTimestamp
-            self.das.buffer[tag_name]["timestamp"](timestamp)
-            self.das.buffer[tag_name]["values"](value)
             self.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
+            self.das.buffer[tag_name]["timestamp"](timestamp)
+            self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
 
         self.criticity.value = 1
 
