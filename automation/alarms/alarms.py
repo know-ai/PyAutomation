@@ -65,13 +65,13 @@ class Alarm:
             'sound': True,
             'shelve': True,
             'suppress by design': True,
-            'unsuppressed': False,
+            'unsuppress by design': False,
             'out of service': True,
             'return to service': False,
             'reset': True
         }
 
-    def get_operations(self):
+    def get_operations(self)->dict:
         r"""
         Get alarms operations
         """
@@ -220,7 +220,6 @@ class Alarm:
 
         self._state = _state
 
-        
         if self._state.state==AlarmState.UNACK.state:
 
             self._operations['silence'] = True
@@ -284,7 +283,7 @@ class Alarm:
         self._operations['enable'] = False
         self._operations['shelve'] = True
         self._operations['suppress by design'] = True
-        self._operations['unsuppressed'] = False
+        self._operations['unsuppress by design'] = False
         self._operations['out of service'] = True
         self._operations['reset'] = True
 
@@ -305,7 +304,7 @@ class Alarm:
         self._operations['sound'] = False
         self._operations['shelve'] = False
         self._operations['suppress by design'] = False
-        self._operations['unsuppressed'] = False
+        self._operations['unsuppress by design'] = False
         self._operations['out of service'] = False
         self._operations['return to service'] = False
         self._operations['reset'] = False
@@ -413,7 +412,7 @@ class Alarm:
         self._operations['sound'] = False
         self._operations['shelve'] = False
         self._operations['suppress by design'] = False
-        self._operations['unsuppressed'] = False
+        self._operations['unsuppress by design'] = False
         self._operations['out of service'] = False
         self._operations['return to service'] = False
         self._operations['reset'] = True
@@ -440,7 +439,7 @@ class Alarm:
         self._operations['sound'] = False
         self._operations['shelve'] = False
         self._operations['suppress by design'] = False
-        self._operations['unsuppressed'] = True
+        self._operations['unsuppress by design'] = True
         self._operations['out of service'] = False
         self._operations['return to service'] = False
         self._operations['reset'] = False
@@ -467,7 +466,7 @@ class Alarm:
         self._operations['sound'] = False
         self._operations['shelve'] = False
         self._operations['suppress by design'] = False
-        self._operations['unsuppressed'] = False
+        self._operations['unsuppress by design'] = False
         self._operations['out of service'] = False
         self._operations['return to service'] = True
         self._operations['reset'] = False

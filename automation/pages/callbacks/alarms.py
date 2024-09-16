@@ -1,5 +1,5 @@
 import dash
-from automation.utils import find_differences_between_lists
+from automation.utils import find_differences_between_lists, generate_dropdown_conditional
 
 def init_callback(app:dash.Dash):
 
@@ -224,3 +224,16 @@ def init_callback(app:dash.Dash):
         else:
 
             return is_open, app.alarms_table_data(), None, 0, 0
+        
+    @app.callback(
+        dash.Output('alarms_datatable', 'data', allow_duplicate=True),
+        dash.Output('alarms_datatable', 'dropdown_conditional'),
+        dash.Input('timestamp-interval', 'n_intervals'),
+        prevent_initial_call=True
+        )
+    def real_time_alarms(n_intervals):
+        r"""
+        Documentation here
+        """
+        dropdown_conditional = generate_dropdown_conditional()
+        return app.alarms_table_data(), dropdown_conditional

@@ -79,7 +79,8 @@ class AlarmsComponents:
                 {'name': 'state', 'id': 'state', 'editable': False},  
                 {'name': 'description', 'id': 'description'}, 
                 {'name': 'type', 'id': 'type', 'presentation': 'dropdown'}, 
-                {'name': 'trigger_value', 'id': 'trigger_value'}
+                {'name': 'trigger_value', 'id': 'trigger_value'},
+                {'name': 'operations', 'id': 'operations', 'presentation': 'dropdown'}
             ],
             id="alarms_datatable",
             filter_action="native",

@@ -184,7 +184,7 @@ class AlarmManager(Singleton):
         """
         return self._alarms
     
-    def serialize(self):
+    def serialize(self)->list:
         r"""
         Documentation here
         """

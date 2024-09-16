@@ -34,5 +34,6 @@ class ConfigView(dash.Dash):
                 "description": alarm["description"],
                 "state": alarm["state"],
                 "type": alarm["type"],
-                "trigger_value": alarm["trigger_value"]
+                "trigger_value": alarm["trigger_value"],
+                "operations": "" #[{"label": operation, "value": operation} for operation, is_active in alarm["operations"].items() if is_active]
                 } for alarm in self.automation.alarm_manager.serialize()]

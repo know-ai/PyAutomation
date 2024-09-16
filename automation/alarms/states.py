@@ -1,6 +1,17 @@
 from enum import Enum
 
 
+ACTIONS = {
+    "Normal": ['shelve', 'suppress by design', 'out of service', 'disable'],
+    "Unacknowledged": ['acknowledge', 'shelve', 'suppress by design', 'out of service', 'silence', 'disable'],
+    "Acknowledged": ['shelve', 'suppress by design', 'out of service', 'disable'],
+    "RTN Unacknowledged": ['shelve', 'suppress by design', 'out of service', 'disable'],
+    "Shelved": ["reset"],
+    "Suppressed By Design": ["unsuppress by design"],
+    "Out Of Service": ["return to service"]
+}
+
+
 class States(Enum):
 
     NORM = "Normal"
