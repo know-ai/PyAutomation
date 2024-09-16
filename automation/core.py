@@ -152,21 +152,6 @@ class PyAutomation(Singleton):
 
             return f"Tag {name} has an alarm associated: {alarm.name}, delete first it"
 
-    def _start_logger(self):
-        r"""
-        Starts logger in log file
-        """
-        log_format = "%(asctime)s:%(levelname)s:%(message)s"
-
-        level = self._logging_level
-        log_file = self._log_file
-
-        if not log_file:
-            logging.basicConfig(level=level, format=log_format)
-            return
-
-        logging.basicConfig(filename=log_file, level=level, format=log_format)
-
     def init_db(self)->LoggerWorker:
         r"""
         Initialize Logger Worker
@@ -286,53 +271,20 @@ class PyAutomation(Singleton):
             message = "Error on db worker stop"
             log_detailed(e, message)
 
-    def _start_workers(self):
-        r"""
-        Starts all workers.
-
-        * LoggerWorker
-        * AlarmWorker
-        * StateMachineWorker
-        """
-        
-        if self._create_tables:
-
-            db_worker = LoggerWorker(self.db_manager)
-            self.workers.append(db_worker)
-
-        if self._create_alarm_worker:
-            alarm_manager = self.get_alarm_manager()
-            alarm_worker = AlarmWorker(alarm_manager)
-            self.workers.append(alarm_worker)
-
-        # StateMachine Worker
-        self.machine.start()
-
-    def _stop_workers(self):
-        r"""
-        Safe stop workers execution
-        """
-        for worker in self.workers:
-            try:
-                worker.stop()
-            except Exception as e:
-                message = "Error on wokers stop"
-                log_detailed(e, message)
-
     def safe_start(self, create_tables:bool=True, alarm_worker:bool=False):
         r"""
         Run the app without a main thread, only run the app with the threads and state machines define
         """
         self._create_tables = create_tables
         self._create_alarm_worker = alarm_worker
-        self._start_logger()
-        self._start_workers()
+        self.__start_logger()
+        self.__start_workers()
 
     def safe_stop(self):
         r"""
         Stops the app in safe way with the threads
         """
-        self._stop_workers()
+        self.__stop_workers()
         logging.info("Manual Shutting down")
         sys.exit()
 
@@ -350,7 +302,7 @@ class PyAutomation(Singleton):
         self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".")
         self.dash_app.set_automation_app(self)
         self.das = DAS()
-        self.safe_start(create_tables=False)
+        self.safe_start(create_tables=False, alarm_worker=True)
         init_callbacks(app=self.dash_app)
         self.dash_app.run(debug=debug)
 
@@ -427,6 +379,65 @@ class PyAutomation(Singleton):
                 "timestamp": Buffer(),
                 "values": Buffer()
             })
+
+    def get_alarm_manager(self)->AlarmManager:
+        r"""
+        Documentation here
+        """
+        return self.alarm_manager
+
+    def __start_workers(self):
+        r"""
+        Starts all workers.
+
+        * LoggerWorker
+        * AlarmWorker
+        * StateMachineWorker
+        """
+        
+        if self._create_tables:
+
+            db_worker = LoggerWorker(self.db_manager)
+            self.workers.append(db_worker)
+
+        if self._create_alarm_worker:
+            alarm_manager = self.get_alarm_manager()
+            alarm_worker = AlarmWorker(alarm_manager)
+            self.workers.append(alarm_worker)
+
+        # Start Workers
+        for worker in self.workers:
+            worker.daemon = True
+            worker.start()
+
+        # StateMachine Worker
+        self.machine.start()
+
+    def __stop_workers(self):
+        r"""
+        Safe stop workers execution
+        """
+        for worker in self.workers:
+            try:
+                worker.stop()
+            except Exception as e:
+                message = "Error on wokers stop"
+                log_detailed(e, message)
+
+    def __start_logger(self):
+        r"""
+        Starts logger in log file
+        """
+        log_format = "%(asctime)s:%(levelname)s:%(message)s"
+
+        level = self._logging_level
+        log_file = self._log_file
+
+        if not log_file:
+            logging.basicConfig(level=level, format=log_format)
+            return
+
+        logging.basicConfig(filename=log_file, level=level, format=log_format)
 
     def run(self, debug:bool=False):
         r"""

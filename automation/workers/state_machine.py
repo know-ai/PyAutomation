@@ -50,6 +50,7 @@ class MachineScheduler():
                 func()
                 time_to_finish_job = time.time()-deadline
                 if self.machine:
+                    
                     if time_to_finish_job > self.machine.get_interval():
                         
                         print(f"State Machine {self.machine.name} NOT Executed on time - Interval: {self.machine.get_interval()} - Time: {round(time_to_finish_job,3)}")

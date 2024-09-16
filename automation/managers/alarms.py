@@ -5,7 +5,7 @@ This module implements Alarm Manager.
 from datetime import datetime
 import queue
 from automation.singleton import Singleton
-from ..tags import CVTEngine, TagObserver
+from ..tags import CVTEngine, TagObserver, Tag
 from ..alarms import AlarmState
 from ..alarms.alarms import Alarm
 from ..alarms.trigger import Trigger
@@ -56,6 +56,8 @@ class AlarmManager(Singleton):
         else:
 
             return f"Alarm {name} is already defined"
+        
+        self.attach_all()
 
     def update_alarm(self, id:str, **kwargs):
         r"""
@@ -232,27 +234,18 @@ class AlarmManager(Singleton):
 
     def attach_all(self):
 
-        _cvt = CVTEngine()
-
         def attach_observers(entity):
 
             _tag = entity.tag
 
             observer = TagObserver(self._tag_queue)
-            query = dict()
-            query["action"] = "attach"
-            query["parameters"] = {
-                "name": _tag,
-                "observer": observer,
-            }
-            _cvt.request(query)
-            _cvt.response()
+            self.tag_engine.attach(name=_tag, observer=observer)
 
         for _, _alarm in self._alarms.items():
-
+            
             attach_observers(_alarm)
 
-    def execute(self, tag:str):
+    def execute(self, tag_name:str):
         r"""
         Execute update state value of alarm if the value store in cvt for tag 
         reach alarm threshold values
@@ -261,7 +254,7 @@ class AlarmManager(Singleton):
 
         * **tag**: (str) Tag in CVT
         """
-        value = self.tag_engine.read_tag(tag)
+        value = self.tag_engine.get_value_by_name(tag_name=tag_name)['value']
 
         for _, _alarm in self._alarms.items():
 
@@ -280,6 +273,6 @@ class AlarmManager(Singleton):
 
                 continue
 
-            if tag==_alarm.tag:
+            if tag_name==_alarm.tag:
 
                 _alarm.update(value)
