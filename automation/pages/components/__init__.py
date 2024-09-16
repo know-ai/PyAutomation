@@ -1,5 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
+from dash import html
 
 class Components:
 
@@ -93,7 +94,9 @@ class Components:
                     label="Alarms",
                 )
             ],
-            brand="PyAutomation Configuration",
+            fluid=True, # Navbar container is modified.
+            brand=html.Span("PyAutomation Configuration", className="custom-brand-class mx-2"), # Styles are applied to the HTML brand element.
+            brand_href="/",
             color="primary",
             dark=True,
         )
