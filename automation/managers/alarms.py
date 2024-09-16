@@ -54,55 +54,10 @@ class AlarmManager(Singleton):
             return f"Alarm {name} is already defined"
 
         # Check if alarm is associated to same tag with same alarm type
-        alarms = self.get_alarm_by_tag(tag=tag)
+        trigger_value_message = self.__check_trigger_values(name=name, tag=tag, type=type, trigger_value=trigger_value)
+        if trigger_value_message:
 
-        if alarms:
-
-            for alarm in alarms:
-
-                if type==alarm._trigger.type.value:
-
-                    return f"Alarm Type {type} and alarm's tag {tag} duplicated"
-                
-                if type=="LOW-LOW":
-
-                    if trigger_value>=alarm._trigger.value:
-
-                        return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
-
-                if type=="LOW":
-
-                    if alarm._trigger.type.value=="LOW-LOW":
-
-                        if trigger_value<=alarm._trigger.value:
-
-                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
-
-                    else:
-
-                        if trigger_value>=alarm._trigger.value:
-
-                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
-
-                if type=="HIGH":
-
-                    if alarm._trigger.type.value=="HIGH-HIGH":
-
-                        if trigger_value>=alarm._trigger.value:
-
-                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
-
-                    else:
-
-                        if trigger_value<=alarm._trigger.value:
-
-                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
-
-                if type=="HIGH-HIGH":
-
-                    if trigger_value<=alarm._trigger.value:
-
-                        return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
+            return trigger_value_message
                 
         alarm = Alarm(name=name, tag=tag, description=description)
         alarm.set_trigger(value=trigger_value, _type=type)
@@ -119,19 +74,35 @@ class AlarmManager(Singleton):
         * **name** (str)[Optional]:
         * **tag** (str)[Optional]:
         * **description** (str)[Optional]:
-        * **alarm_type** (str)[Optional]:
+        * **type** (str)[Optional]:
         * **trigger** (float)[Optional]:
 
         **Returns**
 
         * **alarm** (dict) Alarm Object jsonable
         """
-        alarm = self._alarms[id]
+        alarm = self.get_alarm(id=id)
         if "name" in kwargs:
             
             if self.get_alarm_by_name(kwargs["name"]):
                 
                 return f"Alarm {kwargs['name']} is already defined"
+            
+        # Check if alarm is associated to same tag with same alarm type
+        tag = alarm.tag
+        if "tag" in kwargs:
+            tag = kwargs["tag"]
+        type = alarm._trigger.type.value
+        if "type" in kwargs:
+            type = kwargs["type"]
+        trigger_value = alarm._trigger.value
+        if "trigger_value" in kwargs:
+            trigger_value = float(kwargs["trigger_value"])
+        
+        trigger_value_message = self.__check_trigger_values(name=alarm.name, tag=tag, type=type, trigger_value=trigger_value)
+        if trigger_value_message:
+
+            return trigger_value_message
         
         alarm = alarm.update_alarm_definition(**kwargs)
         self._alarms[id] = alarm
@@ -265,6 +236,62 @@ class AlarmManager(Singleton):
         result = set([_alarm.tag for id, _alarm in self.get_alarms().items()])
 
         return list(result)
+
+    def __check_trigger_values(self, name:str, tag:str, type:str, trigger_value:float)->None|str:
+        r"""
+        Documentation here
+        """
+        alarms = self.get_alarm_by_tag(tag=tag)
+
+        if alarms:
+
+            for alarm in alarms:
+
+                if alarm.name!=name:
+                    
+                    if type==alarm._trigger.type.value:
+
+                        return f"Alarm Type {type} and alarm's tag {tag} duplicated"
+                    
+                    if type=="LOW-LOW":
+
+                        if trigger_value>=alarm._trigger.value:
+
+                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
+
+                    if type=="LOW":
+
+                        if alarm._trigger.type.value=="LOW-LOW":
+
+                            if trigger_value<=alarm._trigger.value:
+
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
+
+                        else:
+
+                            if trigger_value>=alarm._trigger.value:
+
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
+
+                    if type=="HIGH":
+
+                        if alarm._trigger.type.value=="HIGH-HIGH":
+
+                            if trigger_value>=alarm._trigger.value:
+
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
+
+                        else:
+
+                            if trigger_value<=alarm._trigger.value:
+
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
+
+                    if type=="HIGH-HIGH":
+
+                        if trigger_value<=alarm._trigger.value:
+
+                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
 
     def summary(self)->dict:
         r"""
