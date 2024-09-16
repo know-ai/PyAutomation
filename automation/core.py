@@ -2,7 +2,7 @@
 from .singleton import Singleton
 import sys
 from .utils import log_detailed
-from .workers import StateMachineWorker, LoggerWorker
+from .workers import LoggerWorker, AlarmWorker
 import logging
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .tags import CVTEngine, Tag
@@ -300,10 +300,10 @@ class PyAutomation(Singleton):
             db_worker = LoggerWorker(self.db_manager)
             self.workers.append(db_worker)
 
-        # if self._create_alarm_worker:
-            # alarm_manager = self.get_alarm_manager()
-            # alarm_worker = AlarmWorker(alarm_manager)
-            # self.workers.append(alarm_worker)
+        if self._create_alarm_worker:
+            alarm_manager = self.get_alarm_manager()
+            alarm_worker = AlarmWorker(alarm_manager)
+            self.workers.append(alarm_worker)
 
         # StateMachine Worker
         self.machine.start()

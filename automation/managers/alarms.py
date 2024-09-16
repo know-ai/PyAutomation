@@ -280,6 +280,6 @@ class AlarmManager(Singleton):
 
                 continue
 
-            if tag == _alarm.tag:
+            if tag==_alarm.tag:
 
                 _alarm.update(value)
