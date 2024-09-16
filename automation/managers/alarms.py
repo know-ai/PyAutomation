@@ -47,16 +47,23 @@ class AlarmManager(Singleton):
 
         * **None**
         """
+        # Check alarm name duplicated
+        alarm = self.get_alarm_by_name(name)
+        if alarm:
+            
+            return f"Alarm {name} is already defined"
+
+        # Check if alarm is associated to same tag with same alarm type
+        alarm = self.get_alarm_by_tag(tag=tag)
+        if alarm:
+
+            if type==alarm._trigger.type.value:
+
+                return f"Alarm Type {type} and alarm's tag {tag} duplicated"
+                
         alarm = Alarm(name=name, tag=tag, description=description)
         alarm.set_trigger(value=trigger_value, _type=type)
-        if not self.get_alarm_by_name(name):
-        
-            self._alarms[alarm._id] = alarm
-
-        else:
-
-            return f"Alarm {name} is already defined"
-        
+        self._alarms[alarm._id] = alarm
         self.attach_all()
 
     def update_alarm(self, id:str, **kwargs):
@@ -154,7 +161,7 @@ class AlarmManager(Singleton):
 
         return alarms
 
-    def get_alarm_by_tag(self, tag:str)->dict:
+    def get_alarm_by_tag(self, tag:str)->Alarm:
         r"""
         Gets alarm associated to some tag
 
@@ -170,9 +177,7 @@ class AlarmManager(Singleton):
             
             if tag == alarm.tag:
                 
-                return {
-                    id: alarm
-                }
+                return alarm
 
     def get_alarms(self)->dict:
         r"""

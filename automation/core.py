@@ -1,30 +1,32 @@
-
-from .singleton import Singleton
-import sys
+import sys, logging
+from math import ceil
 from .utils import log_detailed
+from .singleton import Singleton
 from .workers import LoggerWorker, AlarmWorker
-import logging
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .tags import CVTEngine, Tag
+from .alarms import Alarm
 from .state_machine import Machine, DAQ
-from automation.opcua.subscription import DAS
-from automation.pages.main import ConfigView
-from automation.pages.callbacks import init_callbacks
+from .opcua.subscription import DAS
+from .buffer import Buffer
+
+# DASH APP CONFIGURATION PAGES IMPORTATION
+from .pages.main import ConfigView
+from .pages.callbacks import init_callbacks
 import dash_bootstrap_components as dbc
-from automation.buffer import Buffer
-from math import ceil
 
 
 class PyAutomation(Singleton):
     r"""
     Automation is a [singleton](https://en.wikipedia.org/wiki/Singleton_pattern) class to develop multi threads web application
-    for general purposes .
+    for general purposes.
 
     Usage:
 
     ```python
     >>> from pyautomation import PyAutomation
     >>> app = PyAutomation()
+    >>> app.run()
     ```
     """
     PORTS = 65535
@@ -39,6 +41,7 @@ class PyAutomation(Singleton):
         self.workers = list()
         self.set_log(level=logging.WARNING)
 
+    # TAGS METHODS
     def get_tags(self):
         r"""Documentation here
 
@@ -151,29 +154,8 @@ class PyAutomation(Singleton):
         if alarm:
 
             return f"Tag {name} has an alarm associated: {alarm.name}, delete first it"
-
-    def init_db(self)->LoggerWorker:
-        r"""
-        Initialize Logger Worker
-
-        **Returns**
-
-        * **db_worker**: (LoggerWorker Object)
-        """
-        db_worker = LoggerWorker(self.db_manager)
-        db_worker.init_database()
-
-        try:
-
-            db_worker.daemon = True
-            db_worker.start()
-
-        except Exception as e:
-            message = "Error on db worker start-up"
-            log_detailed(e, message)
-
-        return db_worker
     
+    # OPCUA METHODS
     def find_opcua_servers(self, host:str='127.0.0.1', port:int=4840)->list[dict]:
         r"""
         Documentation here
@@ -236,75 +218,6 @@ class PyAutomation(Singleton):
         if servers:
             
             self.opcua_client_manager.add(client_name=client_name, endpoint_url=f"opc.tcp://{host}:{port}")
-
-    def set_log(self, level=logging.INFO, file:str="app.log"):
-        r"""
-        Sets the log file and level.
-
-        **Parameters:**
-
-        * **level** (str): `logging.LEVEL` (default: logging.INFO).
-        * **file** (str): log filename (default: 'app.log').
-
-        **Returns:** `None`
-
-        Usage:
-
-        ```python
-        >>> app.set_log(file="app.log")
-        ```
-        """
-
-        self._logging_level = level
-
-        if file:
-
-            self._log_file = file
-        
-    def stop_db(self, db_worker:LoggerWorker):
-        r"""
-        Stops Database Worker
-        """
-        try:
-            db_worker.stop()
-        except Exception as e:
-            message = "Error on db worker stop"
-            log_detailed(e, message)
-
-    def safe_start(self, create_tables:bool=True, alarm_worker:bool=False):
-        r"""
-        Run the app without a main thread, only run the app with the threads and state machines define
-        """
-        self._create_tables = create_tables
-        self._create_alarm_worker = alarm_worker
-        self.__start_logger()
-        self.__start_workers()
-
-    def safe_stop(self):
-        r"""
-        Stops the app in safe way with the threads
-        """
-        self.__stop_workers()
-        logging.info("Manual Shutting down")
-        sys.exit()
-
-    def startup_config_page(self, debug:str=False):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".")
-        self.dash_app.set_automation_app(self)
-        self.das = DAS()
-        self.safe_start(create_tables=False, alarm_worker=True)
-        init_callbacks(app=self.dash_app)
-        self.dash_app.run(debug=debug)
 
     def subscribe_opcua(self, tag:Tag, opcua_address:str, node_namespace:str, scan_time:float):
         r"""
@@ -380,12 +293,231 @@ class PyAutomation(Singleton):
                 "values": Buffer()
             })
 
+    # ERROR LOGS
+    def set_log(self, level=logging.INFO, file:str="app.log"):
+        r"""
+        Sets the log file and level.
+
+        **Parameters:**
+
+        * **level** (str): `logging.LEVEL` (default: logging.INFO).
+        * **file** (str): log filename (default: 'app.log').
+
+        **Returns:** `None`
+
+        Usage:
+
+        ```python
+        >>> app.set_log(file="app.log")
+        ```
+        """
+
+        self._logging_level = level
+
+        if file:
+
+            self._log_file = file
+    
+    # DATABASES
+    def init_db(self)->LoggerWorker:
+        r"""
+        Initialize Logger Worker
+
+        **Returns**
+
+        * **db_worker**: (LoggerWorker Object)
+        """
+        db_worker = LoggerWorker(self.db_manager)
+        db_worker.init_database()
+
+        try:
+
+            db_worker.daemon = True
+            db_worker.start()
+
+        except Exception as e:
+            message = "Error on db worker start-up"
+            log_detailed(e, message)
+
+        return db_worker
+
+    def stop_db(self, db_worker:LoggerWorker):
+        r"""
+        Stops Database Worker
+        """
+        try:
+            db_worker.stop()
+        except Exception as e:
+            message = "Error on db worker stop"
+            log_detailed(e, message)
+
+    # ALARMS METHODS
     def get_alarm_manager(self)->AlarmManager:
         r"""
         Documentation here
         """
         return self.alarm_manager
+    
+    def create_alarm(
+            self, 
+            name:str, 
+            tag:str, 
+            type:str="BOOL", 
+            trigger_value:bool|float=True, 
+            description:str=""
+        )->dict:
+        r"""
+        Append alarm to the Alarm Manager
 
+        **Paramters**
+
+        * **alarm**: (Alarm Object)
+
+        **Returns**
+
+        * **None**
+        """
+        return self.alarm_manager.append_alarm(
+            name=name,
+            tag=tag, 
+            type=type, 
+            trigger_value=trigger_value, 
+            description=description
+        )
+    
+    def update_alarm(self, id:str, **kwargs):
+        r"""
+        Updates alarm attributes
+
+        **Parameters**
+
+        * **id** (int).
+        * **name** (str)[Optional]:
+        * **tag** (str)[Optional]:
+        * **description** (str)[Optional]:
+        * **alarm_type** (str)[Optional]:
+        * **trigger** (float)[Optional]:
+
+        **Returns**
+
+        * **alarm** (dict) Alarm Object jsonable
+        """
+
+        return self.alarm_manager.update_alarm(id=id, **kwargs)
+    
+    def get_alarm(self, id:str)->Alarm:
+        r"""
+        Gets alarm from the Alarm Manager by id
+
+        **Paramters**
+
+        * **id**: (int) Alarm ID
+
+        **Returns**
+
+        * **alarm** (Alarm Object)
+        """
+        return self.alarm_manager.get_alarm(id=id)
+    
+    def get_alarms(self)->dict:
+        r"""
+        Gets all alarms
+
+        **Returns**
+
+        * **alarms**: (dict) Alarm objects
+        """
+        return self.alarm_manager.get_alarms()
+    
+    def get_alarm_by_name(self, name:str)->Alarm:
+        r"""
+        Gets alarm from the Alarm Manager by name
+
+        **Paramters**
+
+        * **name**: (str) Alarm name
+
+        **Returns**
+
+        * **alarm** (Alarm Object)
+        """
+        return self.alarm_manager.get_alarm_by_name(name=name)
+    
+    def get_alarms_by_tag(self, tag:str)->dict:
+        r"""
+        Gets all alarms associated to some tag
+
+        **Parameters**
+
+        * **tag**: (str) tag name binded to alarm
+
+        **Returns**
+
+        * **alarm** (dict) of alarm objects
+        """
+        return self.alarm_manager.get_alarm_by_tag(tag=tag)
+    
+    def delete_alarm(self, id:str):
+        r"""
+        Removes alarm
+
+        **Paramters**
+
+        * **id** (int): Alarm ID
+        """
+        self.alarm_manager.delete_alarm(id=id)
+
+    # INIT APP
+    def run(self, debug:bool=False):
+        r"""
+        Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
+
+        **Returns:** `None`
+
+        Usage
+
+        ```python
+        >>> app.run()
+        ```
+        """
+        self.startup_config_page(debug=debug)
+
+    def startup_config_page(self, debug:str=False):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".")
+        self.dash_app.set_automation_app(self)
+        self.das = DAS()
+        self.safe_start(create_tables=False, alarm_worker=True)
+        init_callbacks(app=self.dash_app)
+        self.dash_app.run(debug=debug)
+
+    def safe_start(self, create_tables:bool=True, alarm_worker:bool=False):
+        r"""
+        Run the app without a main thread, only run the app with the threads and state machines define
+        """
+        self._create_tables = create_tables
+        self._create_alarm_worker = alarm_worker
+        self.__start_logger()
+        self.__start_workers()
+
+    def safe_stop(self):
+        r"""
+        Stops the app in safe way with the threads
+        """
+        self.__stop_workers()
+        logging.info("Manual Shutting down")
+        sys.exit()
+
+    # WORKERS
     def __start_workers(self):
         r"""
         Starts all workers.
@@ -438,17 +570,3 @@ class PyAutomation(Singleton):
             return
 
         logging.basicConfig(filename=log_file, level=level, format=log_format)
-
-    def run(self, debug:bool=False):
-        r"""
-        Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
-
-        **Returns:** `None`
-
-        Usage
-
-        ```python
-        >>> app.run()
-        ```
-        """
-        self.startup_config_page(debug=debug)
