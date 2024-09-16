@@ -1,7 +1,18 @@
 import dash
+import dash_bootstrap_components as dbc
 
 dash.register_page(__name__)
 
-layout = dash.html.Div([
-    dash.html.H1('Alarms History')
-])  
+layout = dbc.Container(
+    [
+        dbc.Breadcrumb(
+            items=[
+                {"label": "Home", "href": "/"},  # Primer nivel
+                {"label": "Alarms", "href": "/alarms"},  # Segundo nivel
+                {"label": "Alarms History", "active": True},  # Página actual (sin enlace)
+            ],
+        )
+    ],
+    fluid=False,
+    className="my-3",
+)
