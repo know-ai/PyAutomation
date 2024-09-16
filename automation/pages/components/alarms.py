@@ -15,51 +15,90 @@ class AlarmsComponents:
             [
                 dash.dcc.Location(id='alarms_page', refresh=False),
                 dbc.Accordion(
-                [
-                    dbc.AccordionItem(
-                        [
-                            dbc.Row([
-                                dbc.Col([
-                                    dbc.InputGroup(
-                                        [
-                                            dbc.InputGroupText("Tag"),
-                                            dbc.Select(
-                                                options=[
-                                                    {"label": tag["name"], "value": tag["name"]} for tag in app.cvt.get_tags()
+                    [
+                        dbc.AccordionItem(
+                            [
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.InputGroupText("Tag"),
+                                                    dbc.Select(
+                                                        options=[
+                                                            {"label": tag["name"], "value": tag["name"]} for tag in app.cvt.get_tags()
+                                                        ],
+                                                        id="tag_alarm_input"
+                                                    ),   
                                                 ],
-                                                id="tag_alarm_input"
+                                                size="md"
                                             ),
-                                            
-                                        ],
-                                        size="md"
-                                    )
-                                ],
-                                width=2),
-                                dbc.Col([
-                                    dbc.InputGroup([dbc.Input(placeholder="Alarm Name", id="alarm_name_input")], size="md"),
-                                ],
-                                width=2),
-                                dbc.Col([
-                                    dbc.InputGroup([dbc.InputGroupText(dbc.RadioButton(id="alarm_description_radio_button"), class_name="radiobutton-box"), dbc.Input(placeholder="Alarm Description (Optional)", id="alarm_description_input", disabled=True)], size="md")
-                                ],
-                                width=4),
-                                dbc.Col([
-                                    dbc.InputGroup([dbc.InputGroupText("Type"), dbc.Select(options=[], id="alarm_type_input")],
-                                        size="md"
-                                    )
-                                ],
-                                width=2),
-                                dbc.Col([
-                                    dbc.InputGroup([dbc.Input(placeholder="Trigger Value", type="number", step=0.1, id="alarm_trigger_value_input"), dbc.InputGroupText('', id="dead_band_unit")], size="md")
-                                ],
-                                width=2)
-                            ]),
-                            dbc.Button("Create", color="primary", outline=True, disabled=True, id="create_alarm_button"),
-                        ],
-                        title="Create Alarm",
-                    )
-                ],
-                start_collapsed=True,
+                                            width={"size": 12, "md": 4},
+                                        ),
+                                        
+                                        dbc.Col(
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.Input(placeholder="Alarm Name", id="alarm_name_input"),
+                                                ], 
+                                                size="md"
+                                            ),
+                                            width={"size": 12, "md": 4},
+                                        ),
+                                        
+                                        dbc.Col(
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.InputGroupText(dbc.RadioButton(id="alarm_description_radio_button"), class_name="radiobutton-box"), 
+                                                    dbc.Input(placeholder="Alarm Description (Optional)", id="alarm_description_input", disabled=True),
+                                                ], 
+                                                size="md"
+                                            ),
+                                            width={"size": 12, "md": 6},
+                                        ),
+
+                                        dbc.Col(
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.InputGroupText("Type"), dbc.Select(options=[], id="alarm_type_input"),
+                                                ],
+                                                size="md"
+                                            ),
+                                            width={"size": 12, "md": 4},
+                                        ),
+
+                                        dbc.Col(
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.Input(placeholder="Trigger Value", type="number", step=0.1, id="alarm_trigger_value_input"), 
+                                                    dbc.InputGroupText('', id="dead_band_unit")
+                                                ], 
+                                                size="md"
+                                            ),
+                                            width={"size": 12, "md": 4},
+                                        ),
+
+                                        dbc.Col(
+                                            dbc.Button(
+                                                "Create", 
+                                                color="primary", 
+                                                outline=True, 
+                                                disabled=True, 
+                                                id="create_alarm_button",
+                                                className="w-100"
+                                            ),
+                                            width={"size": 2, "sm": 12},
+                                            className="d-flex justify-content-center align-items-center"
+                                        ),
+                                    ],
+                                    className="g-3"
+                                ),
+                            ],
+                            title="Create Alarm",
+                            className="my-3"
+                        )
+                    ],
+                    start_collapsed=True,
                 )
             ]
         )
