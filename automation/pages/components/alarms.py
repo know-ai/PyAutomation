@@ -31,9 +31,10 @@ class AlarmsComponents:
                                                         id="tag_alarm_input"
                                                     ),   
                                                 ],
-                                                size="md"
+                                                size="md",
                                             ),
-                                            width={"size": 12, "md": 4},
+                                            width=12,
+                                            className="col-sm-12 col-md-3"
                                         ),
                                         
                                         dbc.Col(
@@ -43,7 +44,8 @@ class AlarmsComponents:
                                                 ], 
                                                 size="md"
                                             ),
-                                            width={"size": 12, "md": 4},
+                                            width=12,
+                                            className="col-sm-12 col-md-3"
                                         ),
                                         
                                         dbc.Col(
@@ -54,7 +56,8 @@ class AlarmsComponents:
                                                 ], 
                                                 size="md"
                                             ),
-                                            width={"size": 12, "md": 6},
+                                            width=12,
+                                            className="col-sm-12 col-md-6"
                                         ),
 
                                         dbc.Col(
@@ -64,18 +67,20 @@ class AlarmsComponents:
                                                 ],
                                                 size="md"
                                             ),
-                                            width={"size": 12, "md": 4},
+                                            width=12,
+                                            className="col-sm-12 col-md-3"
                                         ),
 
                                         dbc.Col(
                                             dbc.InputGroup(
                                                 [
                                                     dbc.Input(placeholder="Trigger Value", type="number", step=0.1, id="alarm_trigger_value_input"), 
-                                                    dbc.InputGroupText('', id="dead_band_unit")
+                                                    # dbc.InputGroupText('', id="dead_band_unit")
                                                 ], 
                                                 size="md"
                                             ),
-                                            width={"size": 12, "md": 4},
+                                            width=12,
+                                            className="col-sm-12 col-md-3"
                                         ),
 
                                         dbc.Col(
@@ -87,11 +92,11 @@ class AlarmsComponents:
                                                 id="create_alarm_button",
                                                 className="w-100"
                                             ),
-                                            width={"size": 2, "sm": 12},
+                                            width="auto",
                                             className="d-flex justify-content-center align-items-center"
                                         ),
                                     ],
-                                    className="g-3"
+                                    className="g-3 form" 
                                 ),
                             ],
                             title="Create Alarm",
@@ -107,32 +112,40 @@ class AlarmsComponents:
     def alarms_table(cls)->dash.dash_table.DataTable:
         r"""
         Documentation here
-        """
-
-        return dash.dash_table.DataTable(
-            data=[],
-            columns=[
-                {'name': 'id', 'id': 'id', 'editable': False}, 
-                {'name': 'name', 'id': 'name'}, 
-                {'name': 'tag', 'id': 'tag', 'presentation': 'dropdown'},
-                {'name': 'state', 'id': 'state', 'editable': False},  
-                {'name': 'description', 'id': 'description'}, 
-                {'name': 'type', 'id': 'type', 'presentation': 'dropdown'}, 
-                {'name': 'trigger_value', 'id': 'trigger_value'},
-                {'name': 'operations', 'id': 'operations', 'presentation': 'dropdown'}
-            ],
-            id="alarms_datatable",
-            filter_action="native",
-            sort_action="native",
-            sort_mode="multi",
-            row_deletable=True,
-            selected_columns=[],
-            page_action="native",
-            page_current= 0,
-            page_size= 10,
-            persistence=True,
-            editable=True,
-            persisted_props=['data'],
-            export_format='xlsx',
-            export_headers='display',
+        """       
+        return dbc.Container(
+            dbc.Row(
+                dbc.Col(
+                    dash.dash_table.DataTable(
+                        data=[],
+                        columns=[
+                            {'name': 'id', 'id': 'id', 'editable': False}, 
+                            {'name': 'name', 'id': 'name'}, 
+                            {'name': 'tag', 'id': 'tag', 'presentation': 'dropdown'},
+                            {'name': 'state', 'id': 'state', 'editable': False},  
+                            {'name': 'description', 'id': 'description'}, 
+                            {'name': 'type', 'id': 'type', 'presentation': 'dropdown'}, 
+                            {'name': 'trigger_value', 'id': 'trigger_value'}
+                        ],
+                        id="alarms_datatable",
+                        filter_action="native",
+                        sort_action="native",
+                        sort_mode="multi",
+                        row_deletable=True,
+                        selected_columns=[],
+                        page_action="native",
+                        page_current= 0,
+                        page_size= 10,
+                        persistence=True,
+                        editable=True,
+                        persisted_props=['data'],
+                        export_format='xlsx',
+                        export_headers='display',
+                        style_table={'overflowX': 'auto'},
+                    ),
+                    width=12,
+                )
+            ),
+            fluid=True,
+            className="mx-0 px-0"
         )

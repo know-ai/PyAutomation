@@ -9,8 +9,8 @@ layout = dbc.Container(
     [   
         dbc.Breadcrumb(
             items=[
-                {"label": "Home", "href": "/"},  # Primer nivel
-                {"label": "Alarms", "active": True},  # Página actual (sin enlace)
+                {"label": "Home", "href": "/"},
+                {"label": "Alarms", "active": True},
             ],
         ),
         Components.modal_error(
