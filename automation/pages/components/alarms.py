@@ -75,7 +75,7 @@ class AlarmsComponents:
                                             dbc.InputGroup(
                                                 [
                                                     dbc.Input(placeholder="Trigger Value", type="number", step=0.1, id="alarm_trigger_value_input"), 
-                                                    # dbc.InputGroupText('', id="dead_band_unit")
+                                                    dbc.InputGroupText('', id="dead_band_unit")
                                                 ], 
                                                 size="md"
                                             ),
@@ -96,7 +96,7 @@ class AlarmsComponents:
                                             className="d-flex justify-content-center align-items-center"
                                         ),
                                     ],
-                                    className="g-3 form" 
+                                    className="form g-3" 
                                 ),
                             ],
                             title="Create Alarm",
