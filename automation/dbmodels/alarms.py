@@ -1,7 +1,8 @@
 from peewee import CharField, FloatField, DateTimeField
 from automation.dbmodels.core import BaseModel
 from datetime import datetime
-from automation import DATETIME_FORMAT
+
+DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 
 class Alarms(BaseModel):
