@@ -4,7 +4,6 @@
 This module implements all Alarms class definitions and Alarm Handlers.
 """
 from datetime import datetime, timedelta
-from .states import AlarmState
 from ..tags import CVTEngine
 from ..logger import DataLoggerEngine
 from .states import AlarmState, Status

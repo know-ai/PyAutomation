@@ -4,14 +4,15 @@ from automation.dbmodels.core import BaseModel
 
 class Tags(BaseModel):
 
-    id = CharField(primary_key=True, unique=True)
-    name = CharField(unique=True)
-    unit = CharField(max_length=250)
-    data_type = CharField(max_length=250)
+    id = CharField(primary_key=True, unique=True, max_length=16)
+    name = CharField(unique=True, max_length=64)
+    unit = CharField(max_length=64)
+    display_unit = CharField(max_length=64)
+    data_type = CharField(max_length=64)
     description = CharField(max_length=250)
-    display_name = CharField()
-    opcua_address = CharField(null=True)
-    node_namespace = CharField(null=True)
+    display_name = CharField(max_length=64)
+    opcua_address = CharField(null=True, max_length=64)
+    node_namespace = CharField(null=True, max_length=64)
     scan_time = IntegerField(null=True)
     dead_band = FloatField(null=True)
 
@@ -23,7 +24,8 @@ class Tags(BaseModel):
         unit:str,
         data_type:str,
         description:str,
-        display_name:str,
+        display_name:str=None,
+        display_unit:str=None,
         opcua_address:str=None,
         node_namespace:str=None,
         scan_time:int=None,
@@ -120,6 +122,7 @@ class Tags(BaseModel):
             'data_type': self.data_type,
             'description': self.description,
             'display_name': self.display_name,
+            'display_unit': self.display_unit,
             'opcua_address': self.opcua_address,
             'node_namespace': self.node_namespace,
             'scan_time': self.scan_time,
