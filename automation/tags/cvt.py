@@ -228,6 +228,26 @@ class CVT:
 
         return tag.get_timestamp()
     
+    def get_value_by_name(self, name:str)->str|float|int|bool:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+
+        tag = self.get_tag_by_name(name=name)  
+
+        return {
+                "value": tag.get_value(),
+                "unit": tag.get_unit(),
+                "timestamp": tag.get_timestamp()
+            }
+
     def get_values_by_name(self, names:list[str])->str|float|int|bool:
         r"""Documentation here
 
@@ -302,7 +322,12 @@ class CVT:
         """
         tag = self.get_tag_by_name(name)
         if tag:
+            
             self._tags[tag.id].attach(observer)
+        
+        else:
+
+            logging.warning(f"{name} tag Not exists in CVT.attach_observer method")
 
     def detach_observer(self, name, observer):
         r"""
@@ -586,6 +611,23 @@ class CVTEngine(Singleton):
         _query["action"] = "get_value"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
+        return self.__query(_query)
+    
+    def get_value_by_name(self, tag_name:str)->dict:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "get_value_by_name"
+        _query["parameters"] = dict()
+        _query["parameters"]["name"] = tag_name
         return self.__query(_query)
     
     def get_values_by_name(self, tag_names:list[str])->str|float|int|bool:

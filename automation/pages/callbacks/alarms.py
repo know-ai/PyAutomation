@@ -1,5 +1,5 @@
 import dash
-from automation.utils import find_differences_between_lists
+from automation.utils import find_differences_between_lists, generate_dropdown_conditional
 
 def init_callback(app:dash.Dash):
 
@@ -58,6 +58,7 @@ def init_callback(app:dash.Dash):
         dash.Output('tag_alarm_input', 'options'),
         dash.Output('alarms_datatable', 'dropdown'),
         dash.Output('alarm_type_input', 'options'),
+        dash.Output('alarms_datatable', 'dropdown_conditional'),
         dash.Input('alarms_page', 'pathname'),
         prevent_initial_call=True
         )
@@ -94,9 +95,9 @@ def init_callback(app:dash.Dash):
                 }
             }
 
-            return data, dropdown_options_tag, dropdown, dropdown_options_type
+            return data, dropdown_options_tag, dropdown, dropdown_options_type, generate_dropdown_conditional()
         
-        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
     
     @app.callback(
         dash.Output('alarms_datatable', 'data', allow_duplicate=True),
@@ -121,7 +122,7 @@ def init_callback(app:dash.Dash):
         """
         if "create_alarm_button" == dash.ctx.triggered_id:
             
-            message = app.automation.alarm_manager.append_alarm(
+            message = app.automation.create_alarm(
                 name=alarm_name,
                 tag=tag_name,
                 type=alarm_type,
@@ -133,7 +134,7 @@ def init_callback(app:dash.Dash):
                 
                 dash.set_props("modal-body-alarm-create", {"children": message})
                 dash.set_props("modal-alarm-create", {'is_open': True})
-
+            
             return app.alarms_table_data()
         
     @app.callback(
@@ -199,7 +200,7 @@ def init_callback(app:dash.Dash):
                     
                     for row in removed_rows:
                         _id = row['id']
-                        message = app.automation.alarm_manager.delete_alarm(id=_id)
+                        message = app.automation.delete_alarm(id=_id)
                         
                         if message:
                             dash.set_props("modal-body-alarm-create", {"children": message})
@@ -209,12 +210,12 @@ def init_callback(app:dash.Dash):
                     to_updates = find_differences_between_lists(previous, current)
                     alarm_to_update = to_updates[0]
                     alarm_id = alarm_to_update.pop("id")
-                    message = app.automation.alarm_manager.update_alarm(id=alarm_id, **alarm_to_update)
+                    message = app.automation.update_alarm(id=alarm_id, **alarm_to_update)
                     
                     if message:
                         dash.set_props("modal-body-alarm-create", {"children": message})
                         dash.set_props("modal-alarm-create", {'is_open': True})
-
+                
                 return not is_open, app.alarms_table_data(), None, 0, 0
         
         elif no_n:
@@ -224,3 +225,15 @@ def init_callback(app:dash.Dash):
         else:
 
             return is_open, app.alarms_table_data(), None, 0, 0
+        
+    # @app.callback(
+    #     dash.Output('alarms_datatable', 'data', allow_duplicate=True),
+    #     dash.Output('alarms_datatable', 'dropdown_conditional'),
+    #     dash.Input('timestamp-interval', 'n_intervals'),
+    #     prevent_initial_call=True
+    #     )
+    # def real_time_alarms(n_intervals):
+    #     r"""
+    #     Documentation here
+    #     """
+    #     pass

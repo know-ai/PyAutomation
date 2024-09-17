@@ -112,8 +112,7 @@ class AlarmsComponents:
     def alarms_table(cls)->dash.dash_table.DataTable:
         r"""
         Documentation here
-        """
-        
+        """       
         return dbc.Container(
             dbc.Row(
                 dbc.Col(

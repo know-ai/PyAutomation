@@ -5,7 +5,7 @@ This module implements Alarm Manager.
 from datetime import datetime
 import queue
 from automation.singleton import Singleton
-from ..tags import CVTEngine, TagObserver
+from ..tags import CVTEngine, TagObserver, Tag
 from ..alarms import AlarmState
 from ..alarms.alarms import Alarm
 from ..alarms.trigger import Trigger
@@ -47,15 +47,22 @@ class AlarmManager(Singleton):
 
         * **None**
         """
+        # Check alarm name duplicated
+        alarm = self.get_alarm_by_name(name)
+        if alarm:
+            
+            return f"Alarm {name} is already defined"
+
+        # Check if alarm is associated to same tag with same alarm type
+        trigger_value_message = self.__check_trigger_values(name=name, tag=tag, type=type, trigger_value=trigger_value)
+        if trigger_value_message:
+
+            return trigger_value_message
+                
         alarm = Alarm(name=name, tag=tag, description=description)
         alarm.set_trigger(value=trigger_value, _type=type)
-        if not self.get_alarm_by_name(name):
-        
-            self._alarms[alarm._id] = alarm
-
-        else:
-
-            return f"Alarm {name} is already defined"
+        self._alarms[alarm._id] = alarm
+        self.attach_all()
 
     def update_alarm(self, id:str, **kwargs):
         r"""
@@ -67,19 +74,35 @@ class AlarmManager(Singleton):
         * **name** (str)[Optional]:
         * **tag** (str)[Optional]:
         * **description** (str)[Optional]:
-        * **alarm_type** (str)[Optional]:
+        * **type** (str)[Optional]:
         * **trigger** (float)[Optional]:
 
         **Returns**
 
         * **alarm** (dict) Alarm Object jsonable
         """
-        alarm = self._alarms[id]
+        alarm = self.get_alarm(id=id)
         if "name" in kwargs:
             
             if self.get_alarm_by_name(kwargs["name"]):
                 
                 return f"Alarm {kwargs['name']} is already defined"
+            
+        # Check if alarm is associated to same tag with same alarm type
+        tag = alarm.tag
+        if "tag" in kwargs:
+            tag = kwargs["tag"]
+        type = alarm._trigger.type.value
+        if "type" in kwargs:
+            type = kwargs["type"]
+        trigger_value = alarm._trigger.value
+        if "trigger_value" in kwargs:
+            trigger_value = float(kwargs["trigger_value"])
+        
+        trigger_value_message = self.__check_trigger_values(name=alarm.name, tag=tag, type=type, trigger_value=trigger_value)
+        if trigger_value_message:
+
+            return trigger_value_message
         
         alarm = alarm.update_alarm_definition(**kwargs)
         self._alarms[id] = alarm
@@ -152,7 +175,7 @@ class AlarmManager(Singleton):
 
         return alarms
 
-    def get_alarm_by_tag(self, tag:str)->dict:
+    def get_alarm_by_tag(self, tag:str)->list[Alarm]:
         r"""
         Gets alarm associated to some tag
 
@@ -164,13 +187,14 @@ class AlarmManager(Singleton):
 
         * **alarm** (list) of alarm objects
         """
+        alarms = list()
         for id, alarm in self._alarms.items():
             
             if tag == alarm.tag:
                 
-                return {
-                    id: alarm
-                }
+                alarms.append(alarm)
+
+        return alarms
 
     def get_alarms(self)->dict:
         r"""
@@ -182,7 +206,7 @@ class AlarmManager(Singleton):
         """
         return self._alarms
     
-    def serialize(self):
+    def serialize(self)->list:
         r"""
         Documentation here
         """
@@ -213,6 +237,62 @@ class AlarmManager(Singleton):
 
         return list(result)
 
+    def __check_trigger_values(self, name:str, tag:str, type:str, trigger_value:float)->None|str:
+        r"""
+        Documentation here
+        """
+        alarms = self.get_alarm_by_tag(tag=tag)
+
+        if alarms:
+
+            for alarm in alarms:
+
+                if alarm.name!=name:
+                    
+                    if type==alarm._trigger.type.value:
+
+                        return f"Alarm Type {type} and alarm's tag {tag} duplicated"
+                    
+                    if type=="LOW-LOW":
+
+                        if trigger_value>=alarm._trigger.value:
+
+                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
+
+                    if type=="LOW":
+
+                        if alarm._trigger.type.value=="LOW-LOW":
+
+                            if trigger_value<=alarm._trigger.value:
+
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
+
+                        else:
+
+                            if trigger_value>=alarm._trigger.value:
+
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
+
+                    if type=="HIGH":
+
+                        if alarm._trigger.type.value=="HIGH-HIGH":
+
+                            if trigger_value>=alarm._trigger.value:
+
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
+
+                        else:
+
+                            if trigger_value<=alarm._trigger.value:
+
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
+
+                    if type=="HIGH-HIGH":
+
+                        if trigger_value<=alarm._trigger.value:
+
+                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
+
     def summary(self)->dict:
         r"""
         Summarizes all Alarm Manager
@@ -232,27 +312,18 @@ class AlarmManager(Singleton):
 
     def attach_all(self):
 
-        _cvt = CVTEngine()
-
         def attach_observers(entity):
 
             _tag = entity.tag
 
             observer = TagObserver(self._tag_queue)
-            query = dict()
-            query["action"] = "attach"
-            query["parameters"] = {
-                "name": _tag,
-                "observer": observer,
-            }
-            _cvt.request(query)
-            _cvt.response()
+            self.tag_engine.attach(name=_tag, observer=observer)
 
         for _, _alarm in self._alarms.items():
-
+            
             attach_observers(_alarm)
 
-    def execute(self, tag:str):
+    def execute(self, tag_name:str):
         r"""
         Execute update state value of alarm if the value store in cvt for tag 
         reach alarm threshold values
@@ -261,7 +332,7 @@ class AlarmManager(Singleton):
 
         * **tag**: (str) Tag in CVT
         """
-        value = self.tag_engine.read_tag(tag)
+        value = self.tag_engine.get_value_by_name(tag_name=tag_name)['value']
 
         for _, _alarm in self._alarms.items():
 
@@ -280,6 +351,6 @@ class AlarmManager(Singleton):
 
                 continue
 
-            if tag == _alarm.tag:
+            if tag_name==_alarm.tag:
 
                 _alarm.update(value)
