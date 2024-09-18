@@ -17,9 +17,27 @@ class DatabaseComponents:
                         [
                             dbc.Row([
                                 dbc.Col([
+                                    dbc.InputGroup(
+                                        [
+                                            dbc.InputGroupText("Type"),
+                                            dbc.Select(
+                                                options=[
+                                                    {"label": "postgresql", "value": "postgresql"},
+                                                    {"label": "mysql", "value": "mysql"},
+                                                    {"label": "sqlite", "value": "sqlite"}
+                                                ],
+                                                id="db_type_input"
+                                            ),
+                                            
+                                        ],
+                                        size="md"
+                                    )
+                                ],
+                                width=2),
+                                dbc.Col([
                                     dbc.InputGroup([dbc.Input(placeholder="DB Name", id="db_name_input")], size="md")
                                 ],
-                                width=3),
+                                width=2),
                                 dbc.Col([
                                     dbc.InputGroup([dbc.Input(placeholder="DB Host", id="db_host_input")], size="md")
                                 ],
@@ -27,17 +45,17 @@ class DatabaseComponents:
                                 dbc.Col([
                                     dbc.InputGroup([dbc.Input(placeholder="DB Port", id="db_port_input")], size="md")
                                 ],
-                                width=3),
+                                width=1),
                                 dbc.Col([
                                     dbc.InputGroup([dbc.Input(placeholder="DB User", id="db_user_input")], size="md")
                                 ],
                                 width=2),
                                 dbc.Col([
-                                    dbc.InputGroup([dbc.Input(placeholder="DB Password", id="db_password_input")], size="md")
+                                    dbc.InputGroup([dbc.Input(type="password", placeholder="DB Password", id="db_password_input")], size="md")
                                 ],
-                                width=2)
+                                width=3)
                             ]),
-                            dbc.Button("Create DB", color="primary", outline=True, disabled=True, id="create_db_button"),
+                            dbc.Button("Connect", color="primary", outline=True, disabled=True, id="connect_disconnect_db_button"),
                         ],
                         title="Connection Settings",
                     )

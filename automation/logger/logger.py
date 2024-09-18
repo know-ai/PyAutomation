@@ -8,9 +8,7 @@ in a thread-safe mode.
 import threading, logging
 from .datalogger import DataLogger
 from ..singleton import Singleton
-# from ..dbmodels.core import proxy
 from datetime import datetime
-# from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
 
 
 class DataLoggerEngine(Singleton):
@@ -52,6 +50,12 @@ class DataLoggerEngine(Singleton):
         ```
         """
         self.logger.set_db(db)
+
+    def stop_db(self):
+        r"""
+        Documentation here
+        """
+        self.logger.stop_db()
 
     def get_db(self):
         r"""
@@ -121,6 +125,16 @@ class DataLoggerEngine(Singleton):
         _query["parameters"]["node_namespace"] = node_namespace
         _query["parameters"]["scan_time"] = scan_time
         _query["parameters"]["dead_band"] = dead_band
+        
+        return self.__query(_query)
+
+    def get_tags(self):
+        r"""
+
+        """
+        _query = dict()
+        _query["action"] = "get_tags"
+        _query["parameters"] = dict()
         
         return self.__query(_query)
     

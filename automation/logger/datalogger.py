@@ -48,6 +48,12 @@ class DataLogger:
         Documentation here
         """
         return self._db
+    
+    def stop_db(self):
+        r""""
+        Documentation here
+        """
+        self._db = None
 
     def set_tag(
         self, 
@@ -79,6 +85,20 @@ class DataLogger:
             scan_time=scan_time,
             dead_band=dead_band
             )
+        
+    def delete_tag(self, id:str):
+        r"""
+        Documentation here
+        """
+        tag = Tags.get(identifier=id)
+        Tags.delete(id=tag.id)
+
+    def update_tag(self, id:str, **kwargs):
+        r"""
+        Documentation here
+        """
+        tag = Tags.get(identifier=id)
+        Tags.put(id=tag.id, **kwargs)
 
     def set_tags(self, tags):
         r"""
@@ -87,6 +107,12 @@ class DataLogger:
         for tag in tags:
 
             self.set_tag(tag)
+
+    def get_tags(self):
+        r"""
+        Documentation here
+        """
+        return Tags.read_all()
     
     def create_tables(self, tables):
         r"""

@@ -70,7 +70,8 @@ class PyAutomation(Singleton):
             opcua_address:str=None,
             node_namespace:str=None,
             scan_time:int=None,
-            dead_band:float=None
+            dead_band:float=None,
+            id:str=None
         ):
         r"""Documentation here
 
@@ -97,27 +98,30 @@ class PyAutomation(Singleton):
             opcua_address=opcua_address,
             node_namespace=node_namespace,
             scan_time=scan_time,
-            dead_band=dead_band
+            dead_band=dead_band,
+            id=id
         )
     
         # CREATE OPCUA SUBSCRIPTION
         if not message:
 
             # Persist Tag on Database
-            tag = self.cvt.get_tag_by_name(name=name)
-            self.logger_engine.set_tag(
-                id=tag.id,
-                name=name,
-                unit=unit,
-                data_type=data_type,
-                description=description,
-                display_name=display_name,
-                display_unit=display_unit,
-                opcua_address=opcua_address,
-                node_namespace=node_namespace,
-                scan_time=scan_time,
-                dead_band=dead_band
-            )
+            if self.is_db_connected():
+                
+                tag = self.cvt.get_tag_by_name(name=name)
+                self.logger_engine.set_tag(
+                    id=tag.id,
+                    name=name,
+                    unit=unit,
+                    data_type=data_type,
+                    description=description,
+                    display_name=display_name,
+                    display_unit=display_unit,
+                    opcua_address=opcua_address,
+                    node_namespace=node_namespace,
+                    scan_time=scan_time,
+                    dead_band=dead_band
+                )
 
             if scan_time:
             
@@ -152,6 +156,12 @@ class PyAutomation(Singleton):
         
         self.unsubscribe_opcua(tag=tag)
         self.das.buffer.pop(tag_name)
+
+        # Persist Tag on Database
+        if self.is_db_connected():
+
+            self.logger_engine.delete_tag(id=id)
+
         self.cvt.delete_tag(id=id)
     
     def update_tag(self, id:str, **kwargs):
@@ -160,6 +170,11 @@ class PyAutomation(Singleton):
         """
         tag = self.cvt.get_tag(id=id)
         self.unsubscribe_opcua(tag)
+        # Persist Tag on Database
+        if self.is_db_connected():
+
+            pass
+
         result = self.cvt.update_tag(id=id, **kwargs)
         self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())       
         return result
@@ -286,6 +301,7 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
+        print(f"Tag: {tag} - {tag.get_node_namespace()}")
         if tag.get_node_namespace():
 
             for client_name, info in self.get_opcua_clients().items():
@@ -297,20 +313,20 @@ class PyAutomation(Singleton):
                     self.das.unsubscribe(client_name=client_name, node_id=node_id)
                     break
     
-        self.machine_manager.unsubscribe_tag(tag=tag)
-        # CLEAR BUFFER
-        scan_time = tag.get_scan_time()
-        if scan_time:
-            
-            self.das.buffer[tag.get_name()].update({
-                "timestamp": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
-                "values": Buffer(size=ceil(10 / ceil(scan_time / 1000)))
-            })
-        else:
-            self.das.buffer[tag.get_name()].update({
-                "timestamp": Buffer(),
-                "values": Buffer()
-            })
+            self.machine_manager.unsubscribe_tag(tag=tag)
+            # CLEAR BUFFER
+            scan_time = tag.get_scan_time()
+            if scan_time:
+                
+                self.das.buffer[tag.get_name()].update({
+                    "timestamp": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
+                    "values": Buffer(size=ceil(10 / ceil(scan_time / 1000)))
+                })
+            else:
+                self.das.buffer[tag.get_name()].update({
+                    "timestamp": Buffer(),
+                    "values": Buffer()
+                })
 
     # ERROR LOGS
     def set_log(self, level=logging.INFO, file:str="app.log"):
@@ -441,16 +457,25 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        db_config = {
-            "dbtype": dbtype,
-            'dbfile': dbfile,
-            'user': user,
-            'password': password,
-            'host': host,
-            'port': port,
-            'name': name,    
-        }
-        with open('db_config.json', 'w') as json_file:
+        if dbtype.lower()=="sqlite":
+
+            db_config = {
+                "dbtype": dbtype,
+                "dbfile": dbfile    
+            }
+
+        else:
+
+            db_config = {
+                "dbtype": dbtype,
+                'user': user,
+                'password': password,
+                'host': host,
+                'port': port,
+                'name': name,    
+            }
+
+        with open('./automation/db_config.json', 'w') as json_file:
             
             json.dump(db_config, json_file)
 
@@ -460,7 +485,7 @@ class PyAutomation(Singleton):
         """
         try:
 
-            with open('db_config.json', 'r') as json_file:
+            with open('./automation/db_config.json', 'r') as json_file:
             
                 db_config = json.load(json_file)
 
@@ -471,6 +496,45 @@ class PyAutomation(Singleton):
             message = "Database is not configured"
             logging.warning(message)
             return None
+
+    def is_db_connected(self):
+        r"""
+        Documentation here
+        """
+        if self.db_manager.get_db():
+
+            return True
+        
+        return False
+
+    def connect_to_db(self):
+        r"""
+        Documentation here
+        """
+        db_config = self.get_db_config()
+        if db_config:
+            dbtype = db_config.pop("dbtype")
+            self.set_db(dbtype=dbtype, **db_config)
+            self.db_manager.init_database()
+            self.load_db_to_cvt()
+
+    def disconnect_to_db(self):
+        r"""
+        Documentation here
+        """
+        self.db_manager.stop_database()
+
+    def load_db_to_cvt(self):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            tags = self.db_manager.get_tags()
+        
+            for tag in tags:
+                
+                self.create_tag(**tag)
 
     # ALARMS METHODS
     def get_alarm_manager(self)->AlarmManager:
@@ -651,13 +715,7 @@ class PyAutomation(Singleton):
         if self._create_tables:
             
             db_worker = LoggerWorker(self.db_manager)
-            
-            db_config = self.get_db_config()
-            if db_config:
-                dbtype = db_config.pop("dbtype")
-                self.set_db(dbtype=dbtype, **db_config)
-                self.db_manager.init_database()
-
+            self.connect_to_db()
             self.workers.append(db_worker)
 
         if self._create_alarm_worker:

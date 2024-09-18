@@ -155,7 +155,7 @@ class DBManager(Singleton):
         r"""
         Gets all tag defined in tag's repository
         """
-        return self.engine.get_tags()
+        return self._logger.get_tags()
 
     def set_tag(
         self, 
@@ -274,6 +274,12 @@ class DBManager(Singleton):
         
         self.create_tables()
         self.set_tags()
+
+    def stop_database(self):
+        r"""
+        Documentation here
+        """
+        self._logger.stop_db()
 
     def summary(self)->dict:
         r"""

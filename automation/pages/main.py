@@ -22,7 +22,7 @@ class ConfigView(dash.Dash):
         self.automation = automation_app
         
     def tags_table_data(self):
-
+        
         return self.automation.cvt.get_tags()
     
     def alarms_table_data(self):
@@ -35,5 +35,5 @@ class ConfigView(dash.Dash):
                 "state": alarm["state"],
                 "type": alarm["type"],
                 "trigger_value": alarm["trigger_value"],
-                "operations": "" #[{"label": operation, "value": operation} for operation, is_active in alarm["operations"].items() if is_active]
+                "operations": ""
                 } for alarm in self.automation.alarm_manager.serialize()]

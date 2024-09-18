@@ -36,7 +36,8 @@ class CVT:
         opcua_address:str="",
         node_namespace:str="",
         scan_time:int=None,
-        dead_band:float=None
+        dead_band:float=None,
+        id:str=None
         )->None|str:
         """Initialize a new Tag object in the _tags dictionary.
         
@@ -85,7 +86,8 @@ class CVT:
             opcua_address=opcua_address,
             node_namespace=node_namespace,
             scan_time=scan_time,
-            dead_band=dead_band
+            dead_band=dead_band,
+            id=id
         )
         self._tags[tag.id] = tag
 
@@ -447,7 +449,8 @@ class CVTEngine(Singleton):
         opcua_address:str="",
         node_namespace:str="",
         scan_time:int=None,
-        dead_band:float=None
+        dead_band:float=None,
+        id:str=None,
         ):
         r"""Documentation here
 
@@ -473,6 +476,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["node_namespace"] = node_namespace
         _query["parameters"]["scan_time"] = scan_time
         _query["parameters"]["dead_band"] = dead_band
+        _query["parameters"]["id"] = id
         return self.__query(_query)
     
     def update_tag(self, id:str, **kwargs):

@@ -35,7 +35,6 @@ class Variables(BaseModel):
         """
         result = dict()
         data = dict()
-        name = name.lower()
 
         if not cls.name_exist(name):
 
@@ -153,7 +152,6 @@ class Units(BaseModel):
         result = dict()
         data = dict()
         name = name
-        variable = variable.lower()
 
         if not cls.name_exist(name):
 
@@ -306,7 +304,6 @@ class DataTypes(BaseModel):
         """
         result = dict()
         data = dict()
-        name = name.lower()
 
         if not cls.name_exist(name):
 
@@ -426,7 +423,7 @@ class Tags(BaseModel):
 
             _unit = Units.read_by_unit(unit=unit)
             _display_unit = Units.read_by_unit(unit=display_unit)
-            _data_type = DataTypes.read_by_name(name=data_type.lower())
+            _data_type = DataTypes.read_by_name(name=data_type)
             
             if _unit is not None and _display_unit is not None:
 
@@ -455,7 +452,7 @@ class Tags(BaseModel):
                             'data': data
                         }
                     )
-                    print(f"Result: {result}")
+                    
                     return result
 
                 message = f"{data_type} data type not exist into database"
@@ -519,15 +516,16 @@ class Tags(BaseModel):
         return {
             'id': self.identifier,
             'name': self.name,
-            'unit': self.unit.name,
+            'unit': self.unit.unit,
             'data_type': self.data_type.name,
             'description': self.description,
             'display_name': self.display_name,
-            'display_unit': self.display_unit.name,
+            'display_unit': self.display_unit.unit,
             'opcua_address': self.opcua_address,
             'node_namespace': self.node_namespace,
             'scan_time': self.scan_time,
-            'dead_band': self.dead_band
+            'dead_band': self.dead_band,
+            'variable': self.unit.variable_id.name
         }
 
 
