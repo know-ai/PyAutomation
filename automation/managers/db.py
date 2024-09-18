@@ -1,15 +1,24 @@
 # -*- coding: utf-8 -*-
-"""pyautomation/managers/db.py
+"""pyhades/managers/logger.py
 
 This module implements Logger Manager.
 """
+import logging
 from ..singleton import Singleton
+from ..logger import DataLoggerEngine, LogTable
 from ..tags import CVTEngine
-from ..logger import DataLoggerEngine
-import queue, secrets
 from ..dbmodels import (
-    Tags
-    )
+    Tags, 
+    TagValue, 
+    AlarmTypes,
+    AlarmStates, 
+    Alarms,  
+    AlarmSummary, 
+    Variables, 
+    Units, 
+    DataTypes,
+    BaseModel
+)
 
 
 class DBManager(Singleton):
@@ -17,41 +26,27 @@ class DBManager(Singleton):
     Database Manager class for database logging settings.
     """
 
-    def __init__(self):
+    def __init__(self, period:float=1.0, delay:float=1.0, drop_tables:bool=False):
 
-        self.tag_engine = CVTEngine()
-        self.logger = DataLoggerEngine()
-        self.queue = queue.Queue()
-        self.workers = list()
+        self._period = period
+        self._delay = delay
+        self._drop_tables = drop_tables
+        self.engine = CVTEngine()
+        self._logging_tags = LogTable()
+        self._logger = DataLoggerEngine()
         self._tables = [
-            Tags
+            Variables, 
+            Units, 
+            DataTypes, 
+            Tags, 
+            TagValue, 
+            AlarmTypes,
+            AlarmStates,
+            Alarms,
+            AlarmSummary
         ]
 
-    def get_queue(self)->queue.Queue:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        return self.queue
-
-    def put_queue(self, method:str, **kwargs):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.queue.put((method, kwargs))
+        self._extra_tables = []
 
     def set_db(self, db):
         r"""
@@ -63,14 +58,13 @@ class DBManager(Singleton):
 
         **Returns** `None`
         """
-        self.logger.set_db(db)
-        self.create_tables()
+        self._logger.set_db(db)
 
     def get_db(self):
         r"""
         Returns a DB object
         """
-        return self.logger.get_db()
+        return self._logger.get_db()
 
     def set_dropped(self, drop_tables:bool):
         r"""
@@ -96,33 +90,84 @@ class DBManager(Singleton):
         """
         return self._drop_tables
 
+    def register_table(self, cls:BaseModel):
+        r"""
+        Allows to you register a new database model
+
+        **Parameters**
+
+        * **cls* (BaseModel): A class that inherit from BaseModel
+
+        """
+        self._extra_tables.append(cls)
+
     def create_tables(self):
         r"""
         Creates default tables and tables registered with method *register_table*
         """
-        self.logger.create_tables(self._tables)
+        self._tables.extend(self._extra_tables)
+
+        self._logger.create_tables(self._tables)
 
     def drop_tables(self):
         r"""
         Drop all tables defined
         """
         tables = self._tables
-        self.logger.drop_tables(tables)
+        
+        self._logger.drop_tables(tables)
+
+    def clear_default_tables(self):
+        r"""
+        If you want initialize any PyHades app without default tables, you can use this method
+        """
+        self._tables = []
+
+    def add_tag(
+        self,
+        tag:str, 
+        unit:str, 
+        data_type:str, 
+        description:str,
+        display_name:str, 
+        min_value:float, 
+        max_value:float, 
+        tcp_source_address:str, 
+        node_namespace:str, 
+        period:float
+    ):
+        r"""
+        Add tag to tag's repository
+        """
+        self._logging_tags.add_tag(
+            tag, 
+            unit, 
+            data_type, 
+            description, 
+            display_name,
+            min_value, 
+            max_value, 
+            tcp_source_address, 
+            node_namespace, 
+            period
+        )
 
     def get_tags(self)->dict:
         r"""
         Gets all tag defined in tag's repository
         """
-        return self.tag_engine.get_tags()
+        return self.engine.get_tags()
 
     def set_tag(
         self, 
-        name:str, 
+        tag:str, 
         unit:str, 
         data_type:str, 
         description:str,
-        display_name:str="",
-        opcua_address:str=None, 
+        display_name:str="", 
+        min_value:float=None, 
+        max_value:float=None, 
+        tcp_source_address:str=None, 
         node_namespace:str=None):
         r"""
         Sets tag to Database
@@ -138,77 +183,99 @@ class DBManager(Singleton):
         * **tcp_source_address** (str)[Optional]:
         * **node_namespace** (str)[Optional]:
         """
-        payload = {
-            "id": secrets.token_hex(4),
-            "name": name,
-            "unit": unit,
-            "data_type": data_type,
-            "description": description,
-            "display_name": display_name,
-            "opcua_address": opcua_address,
-            "node_namespace": node_namespace
-        }
-        # CREATE TAG ON CVT (HOLD IN MEMORY)
-        self.tag_engine.set_tag(**payload)
-        # CREATE TAG ON DATABASE (PERSISTENT DATA) 
-        # NOT BLOCKING EXECUTION AND THREAD SAFE MECHANISM
-        self.put_queue("set_tag", **payload)
+        self._logger.set_tag(
+            tag=tag,  
+            unit=unit,
+            data_type=data_type,
+            description=description,
+            display_name=display_name,
+            min_value=min_value,
+            max_value=max_value,
+            tcp_source_address=tcp_source_address,
+            node_namespace=node_namespace
+        )
 
-    def update_tag(self, id:str, **fields):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+    def set_tags(self):
+        r"""
+        Allows to you define all tags added with *add_tag* method
         """
-        if self.tag_engine.get_tag(id=id):
+        for period in self._logging_tags.get_groups():
             
-            # UPDATE TAG ON CVT (HOLDING MEMORY)
-            self.tag_engine.update_tag(id=id, **fields)
-            # UPDATE TAG ON DATABASE (PERSISTENT DATA)
-            # NOT BLOCKING EXECUTION AND THREAD SAFE MECHANISM
-            fields.update({
-                "id": id
-            })
-            self.put_queue("update_tag", **fields)
+            tags = self._logging_tags.get_tags(period)
+        
+            for tag, unit, data_type, description, display_name, min_value, max_value, tcp_source_address, node_namespace in tags:
 
-    def delete_tag(self, id:str):
-        r"""Documentation here
+                self.set_tag(
+                    tag=tag,
+                    unit=unit, 
+                    data_type=data_type, 
+                    description=description, 
+                    display_name=display_name,
+                    min_value=min_value, 
+                    max_value=max_value, 
+                    tcp_source_address=tcp_source_address, 
+                    node_namespace=node_namespace)
 
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+    def get_table(self)->LogTable:
+        r"""
+        Gets a dictionary based Class to hold the tags to be logged.
         """
-        if self.tag_engine.get_tag(id=id):
-            # DELETE TAG ON CVT (HOLDING MEMORY)
-            self.tag_engine.delete_tag(id=id)
-            # DELETE TAG ON DATABASE (PERSISTENT DATA)
-            # NOT BLOCKING EXECUTION AND THREAD SAFE MECHANISM
-            fields = {
-                "id": id
-            }
-            self.put_queue("delete_tag", **fields) 
+        return self._logging_tags
+        
+    def set_period(self, period:float):
+        r"""
+        Sets period to log into database
 
-    def init_database(self, **kwargs):
+        **Parameters**
+
+        * **period** (float): Time scan to log into database
+        """
+        self._period = period
+
+    def get_period(self)->float:
+        r"""
+        Gets the period wich is scan into database
+
+        **Returns**
+
+        * **period** (float): Time scan to log into database
+        """
+        return self._period
+
+    def set_delay(self, delay:float):
+        r"""
+        Sets an initial time to delay some time before start to logging database
+
+        **Parameters**
+
+        * **delay** (float): Time in seconds to delay before start to logging database
+        """
+        self._delay = delay
+
+    def get_delay(self)->float:
+        r"""
+        Gets time to delay some time before start to logging database
+
+        **Returns**
+
+        * **delay** (float): Time in seconds to delay before start to logging database
+        """
+        return self._delay
+
+    def init_database(self):
         r"""
         Initializes all databases.
         """
-        
-        self.logger.set_db(**kwargs)
+        if self.get_dropped():
+            try:
+                self.drop_tables()
+            except Exception as e:
+                error = str(e)
+                logging.error("Database:{}".format(error))
+
         self.create_tables()
-        tags = Tags.read_all()
 
-        for tag in tags:
-
-            self.tag_engine.set_tag(**tag)
+        self.set_tags()
 
     def summary(self)->dict:
         r"""
@@ -220,7 +287,9 @@ class DBManager(Singleton):
         """
         result = dict()
 
+        result["period"] = self.get_period()
         result["tags"] = self.get_tags()
+        result["delay"] = self.get_delay()
 
         return result
     

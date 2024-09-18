@@ -498,7 +498,9 @@ class Tags(BaseModel):
             'display_name': self.display_name,
             'display_unit': self.display_unit.unit,
             'opcua_address': self.opcua_address,
-            'node_namespace': self.node_namespace
+            'node_namespace': self.node_namespace,
+            'scan_time': self.scan_time,
+            'dead_band': self.dead_band
         }
 
 

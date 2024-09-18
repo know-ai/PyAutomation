@@ -10,7 +10,7 @@ from time import sleep
 
 class LoggerScheduler():
 
-    def __init__(self, manager, period:float):
+    def __init__(self, manager, period:float=1):
 
         self.manager = manager
         self._stop = False
@@ -41,7 +41,7 @@ class LoggerScheduler():
 
 class LoggerWorker(BaseWorker):
 
-    def __init__(self, manager, period:float):
+    def __init__(self, manager, period:float=1):
 
         super(LoggerWorker, self).__init__()
         

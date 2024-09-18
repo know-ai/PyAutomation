@@ -9,6 +9,7 @@ import threading, logging
 from .datalogger import DataLogger
 from ..singleton import Singleton
 from ..dbmodels.core import proxy, SQLITE, POSTGRESQL, MYSQL
+from datetime import datetime
 from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
 
 
@@ -121,8 +122,11 @@ class DataLoggerEngine(Singleton):
         data_type:str, 
         description:str,
         display_name:str="", 
+        display_unit:str=None,
         opcua_address:str=None, 
-        node_namespace:str=None
+        node_namespace:str=None,
+        scan_time:int=None,
+        dead_band:float=None
         ):
         r"""
         Define tag names you want log in database, these tags must be defined in CVTEngine
@@ -144,8 +148,11 @@ class DataLoggerEngine(Singleton):
         _query["parameters"]["data_type"] = data_type
         _query["parameters"]["description"] = description
         _query["parameters"]["display_name"] = display_name
+        _query["parameters"]["display_unit"] = display_unit
         _query["parameters"]["opcua_address"] = opcua_address
         _query["parameters"]["node_namespace"] = node_namespace
+        _query["parameters"]["scan_time"] = scan_time
+        _query["parameters"]["dead_band"] = dead_band
         
         return self.__query(_query)
     
@@ -190,7 +197,7 @@ class DataLoggerEngine(Singleton):
         
         return self.__query(_query)
 
-    def write_tag(self, tag, value):
+    def write_tag(self, tag:str, value:float, timestamp:datetime):
         r"""
         Writes value to tag into database on a thread-safe mechanism
 
@@ -205,6 +212,7 @@ class DataLoggerEngine(Singleton):
         _query["parameters"] = dict()
         _query["parameters"]["tag"] = tag
         _query["parameters"]["value"] = value
+        _query["parameters"]["timestamp"] = timestamp
 
         return self.__query(_query)
 
