@@ -173,7 +173,7 @@ class PyAutomation(Singleton):
         # Persist Tag on Database
         if self.is_db_connected():
 
-            pass
+            self.logger_engine.update_tag(id=id, **kwargs)
 
         result = self.cvt.update_tag(id=id, **kwargs)
         self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())       
@@ -301,7 +301,7 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        print(f"Tag: {tag} - {tag.get_node_namespace()}")
+        
         if tag.get_node_namespace():
 
             for client_name, info in self.get_opcua_clients().items():

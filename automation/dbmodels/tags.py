@@ -482,6 +482,45 @@ class Tags(BaseModel):
         return result
 
     @classmethod
+    def put(cls, id:int, **fields)-> dict:
+        r""""
+        Update a single record
+
+        Once a model instance has a primary key, you UPDATE a field by its id. 
+        The model's primary key will not change:
+        """ 
+             
+        if cls.id_exists(id):
+            
+            if "unit" in fields:
+
+                unit = fields["unit"]
+                query = Units.read_by_unit(unit=unit)
+                if query:
+
+                    fields["unit"] = query["id"]
+
+            if "display_unit" in fields:
+
+                display_unit = fields["display_unit"]
+                query = Units.read_by_unit(unit=display_unit)
+                if query:
+
+                    fields["display_unit"] = query["id"]
+
+            if "data_type" in fields:
+
+                data_type = fields["data_type"]
+                query = DataTypes.read_by_name(name=data_type)
+                if query:
+
+                    fields["data_type"] = query["id"]
+
+            query = cls.update(**fields).where(cls.id == id)
+            query.execute()
+            return query
+
+    @classmethod
     def read_by_name(cls, name):
         r"""
         Documentation here

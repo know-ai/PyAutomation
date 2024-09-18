@@ -91,6 +91,7 @@ class BaseModel(Model):
         * **bool:** If True, so id record exist into database
         """
         query = cls.get_or_none(id=id)
+        
         if query:
 
             return True
