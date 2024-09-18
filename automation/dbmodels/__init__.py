@@ -12,3 +12,5 @@ from .alarms import (
     Alarms,
     AlarmSummary
 )
+
+from .opcua import OPCUA

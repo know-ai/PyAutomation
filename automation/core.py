@@ -251,7 +251,7 @@ class PyAutomation(Singleton):
         
         if servers:
             
-            self.opcua_client_manager.add(client_name=client_name, endpoint_url=f"opc.tcp://{host}:{port}")
+            self.opcua_client_manager.add(client_name=client_name, host=host, port=port)
 
     def subscribe_opcua(self, tag:Tag, opcua_address:str, node_namespace:str, scan_time:float):
         r"""
@@ -516,6 +516,7 @@ class PyAutomation(Singleton):
             dbtype = db_config.pop("dbtype")
             self.set_db(dbtype=dbtype, **db_config)
             self.db_manager.init_database()
+            self.load_opcua_clients_from_db()
             self.load_db_to_cvt()
 
     def disconnect_to_db(self):
@@ -535,6 +536,18 @@ class PyAutomation(Singleton):
             for tag in tags:
                 
                 self.create_tag(**tag)
+
+    def load_opcua_clients_from_db(self):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            clients = self.db_manager.get_opcua_clients()
+
+            for client in clients:
+
+                self.add_opcua_client(**client)
 
     # ALARMS METHODS
     def get_alarm_manager(self)->AlarmManager:

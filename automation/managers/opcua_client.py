@@ -1,4 +1,5 @@
 from automation.opcua.models import Client
+from automation.dbmodels import OPCUA
 
 class OPCUAClientManager:
     r"""
@@ -17,10 +18,11 @@ class OPCUAClientManager:
         """
         return Client.find_servers(host, port)
 
-    def add(self, client_name:str, endpoint_url:str):
+    def add(self, client_name:str, host:str, port:int):
         r"""
         Documentation here
         """
+        endpoint_url = f"opc.tcp://{host}:{port}"
         if client_name in self._clients:
 
             return KeyError(f"Client Name {client_name} duplicated")
@@ -30,6 +32,8 @@ class OPCUAClientManager:
         if status_connection==200:
 
             self._clients[client_name] = opcua_client
+            # DATABASE PERSISTENCY
+            OPCUA.create(client_name=client_name, host=host, port=port)
         
         return message
 
@@ -41,6 +45,11 @@ class OPCUAClientManager:
 
             opcua_client = self._clients.pop(client_name)
             opcua_client.disconnect()
+            # DATABASE PERSISTENCY
+            opcua = OPCUA.get_by_client_name(client_name=client_name)
+            if opcua:
+
+                OPCUA.delete(id=opcua.id)
 
     def connect(self, client_name:str)->dict:
         r"""

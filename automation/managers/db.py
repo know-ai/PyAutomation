@@ -17,6 +17,7 @@ from ..dbmodels import (
     Variables, 
     Units, 
     DataTypes,
+    OPCUA,
     BaseModel
 )
 
@@ -43,7 +44,8 @@ class DBManager(Singleton):
             AlarmTypes,
             AlarmStates,
             Alarms,
-            AlarmSummary
+            AlarmSummary,
+            OPCUA
         ]
 
         self._extra_tables = []
@@ -280,6 +282,12 @@ class DBManager(Singleton):
         Documentation here
         """
         self._logger.stop_db()
+
+    def get_opcua_clients(self):
+        r"""
+        Documentation here
+        """
+        return OPCUA.read_all()
 
     def summary(self)->dict:
         r"""

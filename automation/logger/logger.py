@@ -169,10 +169,8 @@ class DataLoggerEngine(Singleton):
 
         - 
         """
-
         _query = dict()
         _query["action"] = "delete_tag"
-
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
         
@@ -235,7 +233,9 @@ class DataLoggerEngine(Singleton):
         return self.__query(_query)
 
     def __query(self, query:dict)->dict:
-
+        r"""
+        Documentation here
+        """
         self.request(query)
         result = self.response()
         if result["result"]:

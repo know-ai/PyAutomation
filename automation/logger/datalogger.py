@@ -11,7 +11,8 @@ from ..dbmodels import (
     AlarmStates, 
     Variables, 
     Units,
-    DataTypes)
+    DataTypes,
+    OPCUA)
 
 from ..alarms.trigger import TriggerType
 from ..alarms.states import AlarmState
