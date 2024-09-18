@@ -388,11 +388,11 @@ class DataTypes(BaseModel):
 
 class Tags(BaseModel):
 
-    id = CharField(unique=True, primary_key=True, max_length=16)
+    identifier = CharField(unique=True)
     name = CharField(unique=True)
     unit = ForeignKeyField(Units, backref='tags', on_delete='CASCADE')
     data_type = ForeignKeyField(DataTypes, backref='tags', on_delete='CASCADE')
-    description = CharField(max_length=256)
+    description = CharField(null=True, max_length=256)
     display_name = CharField()
     display_unit = ForeignKeyField(Units, on_delete='CASCADE')
     opcua_address = CharField(null=True)
@@ -418,20 +418,22 @@ class Tags(BaseModel):
         r"""
         Documentation here
         """
+        result = dict()
         message = f"{name} already exist into database"
+        data = dict()
         
         if not cls.name_exist(name):
 
             _unit = Units.read_by_unit(unit=unit)
             _display_unit = Units.read_by_unit(unit=display_unit)
             _data_type = DataTypes.read_by_name(name=data_type.lower())
-
+            
             if _unit is not None and _display_unit is not None:
 
                 if _data_type is not None:
             
                     query = cls(
-                        id=id,
+                        identifier=id,
                         name=name, 
                         unit=_unit['id'],
                         data_type=_data_type['id'],
@@ -444,18 +446,43 @@ class Tags(BaseModel):
                         dead_band=dead_band
                         )
                     query.save()
+                    message = f"{name} tag created successfully"
+                    data.update(query.serialize())
 
-                    return query
+                    result.update(
+                        {
+                            'message': message, 
+                            'data': data
+                        }
+                    )
+                    print(f"Result: {result}")
+                    return result
 
                 message = f"{data_type} data type not exist into database"
+                result.update(
+                    {
+                        'message': message, 
+                        'data': data
+                    }
+                )
+                return result
 
-                return message
+            message = f"{unit} unit not exist into database"
+            result.update(
+                {
+                    'message': message, 
+                    'data': data
+                }
+            )
+            return result
 
-            message = f"unit {unit} or display_unit {display_unit} not exist into database"
-
-            return message
-
-        return message
+        result.update(
+            {
+                'message': message, 
+                'data': data
+            }
+        )
+        return result
 
     @classmethod
     def read_by_name(cls, name):
@@ -490,13 +517,13 @@ class Tags(BaseModel):
         Documentation here
         """
         return {
-            'id': self.id,
+            'id': self.identifier,
             'name': self.name,
-            'unit': self.unit.unit,
+            'unit': self.unit.name,
             'data_type': self.data_type.name,
             'description': self.description,
             'display_name': self.display_name,
-            'display_unit': self.display_unit.unit,
+            'display_unit': self.display_unit.name,
             'opcua_address': self.opcua_address,
             'node_namespace': self.node_namespace,
             'scan_time': self.scan_time,

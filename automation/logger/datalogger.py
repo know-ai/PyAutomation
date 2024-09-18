@@ -14,9 +14,9 @@ from ..dbmodels import (
     DataTypes)
 
 from ..alarms.trigger import TriggerType
-import json, os
 from ..alarms.states import AlarmState
 import logging
+from ..variables import VARIABLES, DATATYPES
 
 
 class DataLogger:
@@ -39,68 +39,81 @@ class DataLogger:
         self._db = None
 
     def set_db(self, db):
-
+        r"""Documentation here
+        """
         self._db = db
 
     def get_db(self):
-        
+        r"""
+        Documentation here
+        """
         return self._db
 
     def set_tag(
         self, 
-        tag, 
+        id:str,
+        name:str, 
         unit:str, 
         data_type:str, 
         description:str, 
         display_name:str="",
-        min_value:float=None, 
-        max_value:float=None, 
-        tcp_source_address:str=None, 
-        node_namespace:str=None):
-
+        display_unit:str=None,
+        opcua_address:str=None, 
+        node_namespace:str=None,
+        scan_time:int=None,
+        dead_band:float=None
+        ):
+        r"""
+        Documentation here
+        """
         Tags.create(
-            name=tag, 
+            id=id,
+            name=name, 
             unit=unit,
             data_type=data_type,
             description=description,
             display_name=display_name,
-            min_value=min_value,
-            max_value=max_value,
-            tcp_source_address=tcp_source_address,
-            node_namespace=node_namespace)
+            display_unit=display_unit,
+            opcua_address=opcua_address,
+            node_namespace=node_namespace,
+            scan_time=scan_time,
+            dead_band=dead_band
+            )
 
     def set_tags(self, tags):
-        
+        r"""
+        Documentation here
+        """
         for tag in tags:
 
             self.set_tag(tag)
     
     def create_tables(self, tables):
+        r"""
+        Documentation here
+        """
         if not self._db:
             
             return
         
         self._db.create_tables(tables, safe=True)
-        self.__init_default_alarms_schema()
         self.__init_default_variables_schema()
         self.__init_default_datatypes_schema()
+        # self.__init_default_alarms_schema()
 
     def __init_default_variables_schema(self):
         r"""
         Documentation here
         """
-        filename = os.path.join('src', 'variables.json')
-        f = open(filename)
-        variables = json.load(f)
-
-        for variable, units in variables.items():
+        for variable, units in VARIABLES.items():
+    
             if not Variables.name_exist(variable):
                 
                 Variables.create(name=variable)
-            
-            for name, unit in units:
-                
-                if not Units.name_exist(name):
+
+            for name, unit in units.items():
+
+                if not Units.name_exist(unit):
 
                     Units.create(name=name, unit=unit, variable=variable)
 
@@ -108,15 +121,9 @@ class DataLogger:
         r"""
         Documentation here
         """
-        datatypes = [
-            "float",
-            "int",
-            "bool",
-            "str"
-        ]
-        for datatype in datatypes:
+        for datatype in DATATYPES:
 
-            DataTypes.create(name=datatype)
+            DataTypes.create(name=datatype["value"])
 
     def __init_default_alarms_schema(self):
         r"""
@@ -136,17 +143,22 @@ class DataLogger:
             AlarmStates.create(name=name, mnemonic=mnemonic, condition=condition, status=status)
 
     def drop_tables(self, tables):
-
+        r"""
+        Documentation here
+        """
         if not self._db:
             
             return
 
         self._db.drop_tables(tables, safe=True)
 
-    def write_tag(self, tag, value):
+    def write_tag(self, tag, value, timestamp):
+        r"""
+        Documentation here
+        """
         try:
             trend = Tags.read_by_name(tag)
-            tag_value = TagValue.create(tag=trend, value=value)
+            tag_value = TagValue.create(tag=trend, value=value, timestamp=timestamp)
             tag_value.save()
         except Exception as e:
             logging.warning(f"Rollback done in database due to conflicts writing tag")
@@ -154,7 +166,9 @@ class DataLogger:
             conn.rollback()
 
     def write_tags(self, tags:list):
-
+        r"""
+        Documentation here
+        """
         try:
             TagValue.insert_many(tags).execute()
         except Exception as e:
@@ -163,6 +177,9 @@ class DataLogger:
             conn.rollback()
 
     def read_tag(self, tag):
+        r"""
+        Documentation here
+        """
         try:
             query = Tags.select().order_by(Tags.start)
             trend = query.where(Tags.name == tag).get()

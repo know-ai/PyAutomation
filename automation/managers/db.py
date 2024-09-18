@@ -106,7 +106,6 @@ class DBManager(Singleton):
         Creates default tables and tables registered with method *register_table*
         """
         self._tables.extend(self._extra_tables)
-
         self._logger.create_tables(self._tables)
 
     def drop_tables(self):
@@ -272,9 +271,8 @@ class DBManager(Singleton):
             except Exception as e:
                 error = str(e)
                 logging.error("Database:{}".format(error))
-
+        
         self.create_tables()
-
         self.set_tags()
 
     def summary(self)->dict:

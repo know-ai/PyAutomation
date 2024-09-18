@@ -8,9 +8,9 @@ in a thread-safe mode.
 import threading, logging
 from .datalogger import DataLogger
 from ..singleton import Singleton
-from ..dbmodels.core import proxy, SQLITE, POSTGRESQL, MYSQL
+# from ..dbmodels.core import proxy
 from datetime import datetime
-from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
+# from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
 
 
 class DataLoggerEngine(Singleton):
@@ -29,7 +29,7 @@ class DataLoggerEngine(Singleton):
         self._response = None
         self._response_lock.acquire()
 
-    def set_db(self, dbtype:str=SQLITE, **kwargs):
+    def set_db(self, db):
         r"""
         Sets the database, it supports SQLite and Postgres,
         in case of SQLite, the filename must be provided.
@@ -51,38 +51,7 @@ class DataLoggerEngine(Singleton):
         >>> app.set_db(dbfile="app.db")
         ```
         """
-
-        if dbtype.lower() == SQLITE:
-
-            dbfile = "app.db"
-            if 'name' in kwargs:
-
-                dbfile = kwargs['name']
-                del kwargs['name']
-
-            self._db = SqliteDatabase(dbfile, pragmas={
-                'journal_mode': 'wal',
-                'journal_size_limit': 1024,
-                'cache_size': -1024 * 64,  # 64MB
-                'foreign_keys': 1,
-                'ignore_check_constraints': 0,
-                'synchronous': 0}
-            )
-
-        elif dbtype.lower() == MYSQL:
-
-            db_name = kwargs['name']
-            del kwargs['name']
-            self._db = MySQLDatabase(db_name, **kwargs)
-
-        elif dbtype.lower() == POSTGRESQL:
-
-            db_name = kwargs['name']
-            del kwargs['name']
-            self._db = PostgresqlDatabase(db_name, **kwargs)
-
-        proxy.initialize(self._db)
-        self.logger.set_db(self._db)
+        self.logger.set_db(db)
 
     def get_db(self):
         r"""
@@ -140,7 +109,6 @@ class DataLoggerEngine(Singleton):
         """
         _query = dict()
         _query["action"] = "set_tag"
-
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
         _query["parameters"]["name"] = name
@@ -170,7 +138,6 @@ class DataLoggerEngine(Singleton):
 
         _query = dict()
         _query["action"] = "update_tag"
-
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
         _query["parameters"].update(fields)

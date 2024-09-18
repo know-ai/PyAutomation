@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from automation.variables import VARIABLES
+from automation.variables import VARIABLES, DATATYPES
 
 
 class TagsComponents:
@@ -37,12 +37,7 @@ class TagsComponents:
                                         [
                                             dbc.InputGroupText("Datatype"),
                                             dbc.Select(
-                                                options=[
-                                                    {'label': 'Float', 'value': 'float'},
-                                                    {'label': 'Integer', 'value': 'integer'},
-                                                    {'label': 'Boolean', 'value': 'boolean'},
-                                                    {'label': 'String', 'value': 'string'}
-                                                ],
+                                                options=DATATYPES,
                                                 id="datatype_input"
                                             ),
                                             

@@ -1,4 +1,4 @@
-from .core import BaseModel
+from .core import BaseModel, proxy
 from .tags import (
     Tags,
     TagValue,

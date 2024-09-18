@@ -8,6 +8,10 @@ def log_detailed(e, message):
     logging.error(message)
     logging.error(e, exc_info=True)
 
+def chunks(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
 def find_differences_between_lists(prev_list, curr_list):
     r"""
     Documentation here

@@ -1,14 +1,16 @@
-import sys, logging
+import sys, logging, json
 from math import ceil
 from .utils import log_detailed
 from .singleton import Singleton
 from .workers import LoggerWorker, AlarmWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .tags import CVTEngine, Tag
+from .logger import DataLoggerEngine
 from .alarms import Alarm
 from .state_machine import Machine, DAQ
 from .opcua.subscription import DAS
 from .buffer import Buffer
+from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
 
 # DASH APP CONFIGURATION PAGES IMPORTATION
 from .pages.main import ConfigView
@@ -36,6 +38,7 @@ class PyAutomation(Singleton):
         self.machine_manager = self.machine.get_state_machine_manager()
         self.db_manager = DBManager()
         self.cvt = CVTEngine()
+        self.logger_engine = DataLoggerEngine()
         self.opcua_client_manager = OPCUAClientManager()
         self.alarm_manager = AlarmManager()
         self.workers = list()
@@ -99,6 +102,22 @@ class PyAutomation(Singleton):
     
         # CREATE OPCUA SUBSCRIPTION
         if not message:
+
+            # Persist Tag on Database
+            tag = self.cvt.get_tag_by_name(name=name)
+            self.logger_engine.set_tag(
+                id=tag.id,
+                name=name,
+                unit=unit,
+                data_type=data_type,
+                description=description,
+                display_name=display_name,
+                display_unit=display_unit,
+                opcua_address=opcua_address,
+                node_namespace=node_namespace,
+                scan_time=scan_time,
+                dead_band=dead_band
+            )
 
             if scan_time:
             
@@ -319,6 +338,64 @@ class PyAutomation(Singleton):
             self._log_file = file
     
     # DATABASES
+    def set_db(self, dbtype:str='sqlite', drop_table=False, clear_default_tables=False, **kwargs):
+        r"""
+        Sets the database, it supports SQLite and Postgres,
+        in case of SQLite, the filename must be provided.
+
+        if app mode is "Development" you must use SQLite Databse
+
+        **Parameters:**
+
+        * **dbfile** (str): a path to database file.
+        * *drop_table** (bool): If you want to drop table.
+        * **cascade** (bool): if there are some table dependency, drop it as well
+        * **kwargs**: Same attributes to a postgres connection.
+
+        **Returns:** `None`
+
+        Usage:
+
+        ```python
+        >>> app.set_db(dbfile="app.db")
+        ```
+        """
+
+        from .dbmodels import proxy
+
+        if clear_default_tables:
+
+            self.db_manager.clear_default_tables()
+
+        if dbtype.lower()=='sqlite':
+
+            dbfile = kwargs.get("dbfile", ":memory:")
+
+            self._db = SqliteDatabase(dbfile, pragmas={
+                'journal_mode': 'wal',
+                'journal_size_limit': 1024,
+                'cache_size': -1024 * 64,  # 64MB
+                'foreign_keys': 1,
+                'ignore_check_constraints': 0,
+                'synchronous': 0}
+            )
+
+        elif dbtype.lower()=='mysql':
+
+            db_name = kwargs['name']
+            del kwargs['name']
+            self._db = MySQLDatabase(db_name, **kwargs)
+
+        elif dbtype.lower()=='postgresql':
+
+            db_name = kwargs['name']
+            del kwargs['name']
+            self._db = PostgresqlDatabase(db_name, **kwargs)
+
+        proxy.initialize(self._db)
+        self.db_manager.set_db(self._db)
+        self.db_manager.set_dropped(drop_table)
+
     def init_db(self)->LoggerWorker:
         r"""
         Initialize Logger Worker
@@ -350,6 +427,50 @@ class PyAutomation(Singleton):
         except Exception as e:
             message = "Error on db worker stop"
             log_detailed(e, message)
+
+    def set_db_config(
+            self, 
+            dbtype:str="sqlite",
+            dbfile:str="app.db",
+            user:str="admin",
+            password:str="admin",
+            host:str="127.0.0.1",
+            port:int=5432,
+            name:str="app_db"
+        ):
+        r"""
+        Documentation here
+        """
+        db_config = {
+            "dbtype": dbtype,
+            'dbfile': dbfile,
+            'user': user,
+            'password': password,
+            'host': host,
+            'port': port,
+            'name': name,    
+        }
+        with open('db_config.json', 'w') as json_file:
+            
+            json.dump(db_config, json_file)
+
+    def get_db_config(self):
+        r"""
+        Documentation here
+        """
+        try:
+
+            with open('db_config.json', 'r') as json_file:
+            
+                db_config = json.load(json_file)
+
+            return db_config
+
+        except Exception as e:
+            
+            message = "Database is not configured"
+            logging.warning(message)
+            return None
 
     # ALARMS METHODS
     def get_alarm_manager(self)->AlarmManager:
@@ -468,7 +589,7 @@ class PyAutomation(Singleton):
         self.alarm_manager.delete_alarm(id=id)
 
     # INIT APP
-    def run(self, debug:bool=False):
+    def run(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True):
         r"""
         Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
 
@@ -480,9 +601,9 @@ class PyAutomation(Singleton):
         >>> app.run()
         ```
         """
-        self.startup_config_page(debug=debug)
+        self.startup_config_page(debug=debug, create_tables=create_tables, alarm_worker=alarm_worker)
 
-    def startup_config_page(self, debug:str=False):
+    def startup_config_page(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True):
         r"""Documentation here
 
         # Parameters
@@ -496,7 +617,7 @@ class PyAutomation(Singleton):
         self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".")
         self.dash_app.set_automation_app(self)
         self.das = DAS()
-        self.safe_start(create_tables=False, alarm_worker=True)
+        self.safe_start(create_tables=create_tables, alarm_worker=alarm_worker)
         init_callbacks(app=self.dash_app)
         self.dash_app.run(debug=debug)
 
@@ -528,8 +649,15 @@ class PyAutomation(Singleton):
         """
         
         if self._create_tables:
-
+            
             db_worker = LoggerWorker(self.db_manager)
+            
+            db_config = self.get_db_config()
+            if db_config:
+                dbtype = db_config.pop("dbtype")
+                self.set_db(dbtype=dbtype, **db_config)
+                self.db_manager.init_database()
+
             self.workers.append(db_worker)
 
         if self._create_alarm_worker:
