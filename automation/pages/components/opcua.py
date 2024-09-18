@@ -225,28 +225,39 @@ class OPCUAComponents(Singleton):
         Documentation here
         """
         self.data = data
-        return dash.dash_table.DataTable(
-            data=self.data,
-            columns=[ 
-                {'name': 'server', 'id': 'server', 'editable': False}, 
-                {'name': 'namespace', 'id': 'namespace', 'editable': False}, 
-                {'name': 'data_type', 'id': 'data_type', 'editable': False}, 
-                {'name': 'display_name', 'id': 'display_name', 'editable': False}, 
-                {'name': 'value', 'id': 'value', 'editable': False},
-                {'name': 'source_timestamp', 'id': 'source_timestamp', 'editable': False},
-                {'name': 'status_code', 'id': 'status_code', 'editable': False}
-            ],
-            id="data_access_view_datatable",
-            # row_selectable='single',
-            page_action="native",
-            page_current= 0,
-            page_size= 10,
-            persistence=True,
-            editable=False,
-            persisted_props=['data'],
-            export_format='xlsx',
-            export_headers='display',
-        )
+        return dbc.Container(
+            dbc.Row(
+                dbc.Col(
+                    dash.dash_table.DataTable(
+                        data=self.data,
+                        columns=[ 
+                            {'name': 'server', 'id': 'server', 'editable': False}, 
+                            {'name': 'namespace', 'id': 'namespace', 'editable': False}, 
+                            {'name': 'data_type', 'id': 'data_type', 'editable': False}, 
+                            {'name': 'display_name', 'id': 'display_name', 'editable': False}, 
+                            {'name': 'value', 'id': 'value', 'editable': False},
+                            {'name': 'source_timestamp', 'id': 'source_timestamp', 'editable': False},
+                            {'name': 'status_code', 'id': 'status_code', 'editable': False}
+                        ],
+                        id="data_access_view_datatable",
+                        # row_selectable='single',
+                        page_action="native",
+                        page_current= 0,
+                        page_size= 10,
+                        persistence=True,
+                        editable=False,
+                        persisted_props=['data'],
+                        export_format='xlsx',
+                        export_headers='display',
+                        style_table={'overflowX': 'auto'},
+                    ),
+                    width=12,
+                )
+            ),
+            fluid=True,
+            className="mx-0 px-0"
+        ) 
+        
     
     def update_data_access_view(self, namespace, value, timestamp)->dash.dash_table.DataTable:
         r"""

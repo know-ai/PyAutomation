@@ -57,16 +57,28 @@ layout = dmc.MantineProvider(
                         )
                     ]
                 ),
+
                 dash.html.Div(
                     [
                         dbc.Row(
                             [
-                                dbc.Col([], id="server_tree",  width=2),
-                                dbc.Col(opcua_components.data_access_view_table(), id="data_access_view_table", width=10)
+                                dbc.Col(
+                                    [],
+                                    id="server_tree",  
+                                    width=12,
+                                    className="col-md-2 mb-3"
+                                ),
+                                dbc.Col(
+                                    opcua_components.data_access_view_table(), 
+                                    id="data_access_view_table", 
+                                    width=12,
+                                    className="col-md-10"
+                                )
                             ]
                         ),
                     ]
                 ),
+
                 OPCUAComponents.add_server(
                     title="Add Server", 
                     modal_id="add_server_modal", 
