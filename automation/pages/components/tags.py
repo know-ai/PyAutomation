@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from automation.variables import VARIABLES
+from automation.variables import VARIABLES, DATATYPES
 
 class TagsComponents:
 

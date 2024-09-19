@@ -30,3 +30,10 @@ VARIABLES = {
     f"{power_base.__class__.__name__}": power_base.Units.serialize(),
     f"{volumetric_flow_base.__class__.__name__}": volumetric_flow_base.Units.serialize()
 }
+
+DATATYPES = [
+    {'label': 'Float', 'value': 'float'},
+    {'label': 'Integer', 'value': 'integer'},
+    {'label': 'Boolean', 'value': 'boolean'},
+    {'label': 'String', 'value': 'string'}
+]

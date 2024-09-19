@@ -8,8 +8,9 @@ in a thread-safe mode.
 import threading, logging
 from .datalogger import DataLogger
 from ..singleton import Singleton
-from ..dbmodels.core import proxy, SQLITE, POSTGRESQL, MYSQL
-from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
+# from ..dbmodels.core import proxy
+from datetime import datetime
+# from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
 
 
 class DataLoggerEngine(Singleton):
@@ -28,7 +29,7 @@ class DataLoggerEngine(Singleton):
         self._response = None
         self._response_lock.acquire()
 
-    def set_db(self, dbtype:str=SQLITE, **kwargs):
+    def set_db(self, db):
         r"""
         Sets the database, it supports SQLite and Postgres,
         in case of SQLite, the filename must be provided.
@@ -50,38 +51,7 @@ class DataLoggerEngine(Singleton):
         >>> app.set_db(dbfile="app.db")
         ```
         """
-
-        if dbtype.lower() == SQLITE:
-
-            dbfile = "app.db"
-            if 'name' in kwargs:
-
-                dbfile = kwargs['name']
-                del kwargs['name']
-
-            self._db = SqliteDatabase(dbfile, pragmas={
-                'journal_mode': 'wal',
-                'journal_size_limit': 1024,
-                'cache_size': -1024 * 64,  # 64MB
-                'foreign_keys': 1,
-                'ignore_check_constraints': 0,
-                'synchronous': 0}
-            )
-
-        elif dbtype.lower() == MYSQL:
-
-            db_name = kwargs['name']
-            del kwargs['name']
-            self._db = MySQLDatabase(db_name, **kwargs)
-
-        elif dbtype.lower() == POSTGRESQL:
-
-            db_name = kwargs['name']
-            del kwargs['name']
-            self._db = PostgresqlDatabase(db_name, **kwargs)
-
-        proxy.initialize(self._db)
-        self.logger.set_db(self._db)
+        self.logger.set_db(db)
 
     def get_db(self):
         r"""
@@ -121,8 +91,11 @@ class DataLoggerEngine(Singleton):
         data_type:str, 
         description:str,
         display_name:str="", 
+        display_unit:str=None,
         opcua_address:str=None, 
-        node_namespace:str=None
+        node_namespace:str=None,
+        scan_time:int=None,
+        dead_band:float=None
         ):
         r"""
         Define tag names you want log in database, these tags must be defined in CVTEngine
@@ -136,7 +109,6 @@ class DataLoggerEngine(Singleton):
         """
         _query = dict()
         _query["action"] = "set_tag"
-
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
         _query["parameters"]["name"] = name
@@ -144,8 +116,11 @@ class DataLoggerEngine(Singleton):
         _query["parameters"]["data_type"] = data_type
         _query["parameters"]["description"] = description
         _query["parameters"]["display_name"] = display_name
+        _query["parameters"]["display_unit"] = display_unit
         _query["parameters"]["opcua_address"] = opcua_address
         _query["parameters"]["node_namespace"] = node_namespace
+        _query["parameters"]["scan_time"] = scan_time
+        _query["parameters"]["dead_band"] = dead_band
         
         return self.__query(_query)
     
@@ -163,7 +138,6 @@ class DataLoggerEngine(Singleton):
 
         _query = dict()
         _query["action"] = "update_tag"
-
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
         _query["parameters"].update(fields)
@@ -190,7 +164,7 @@ class DataLoggerEngine(Singleton):
         
         return self.__query(_query)
 
-    def write_tag(self, tag, value):
+    def write_tag(self, tag:str, value:float, timestamp:datetime):
         r"""
         Writes value to tag into database on a thread-safe mechanism
 
@@ -205,6 +179,7 @@ class DataLoggerEngine(Singleton):
         _query["parameters"] = dict()
         _query["parameters"]["tag"] = tag
         _query["parameters"]["value"] = value
+        _query["parameters"]["timestamp"] = timestamp
 
         return self.__query(_query)
 
