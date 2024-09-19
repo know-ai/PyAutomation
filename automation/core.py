@@ -284,9 +284,9 @@ class PyAutomation(Singleton):
         Documentatio here
         """
         scan_time = float(scan_time)
-        daq = self.machine_manager.get_machine(name=f"DAQ-{scan_time / 1000}")
+        daq_name = f"DAQ-{int(scan_time / 1000)}"
+        daq = self.machine_manager.get_machine(name=daq_name)
         tag = self.cvt.get_tag_by_name(name=tag_name)
-
         if not daq:
 
             daq = DAQ()
@@ -696,7 +696,7 @@ class PyAutomation(Singleton):
         self.das = DAS()
         self.safe_start(create_tables=create_tables, alarm_worker=alarm_worker)
         init_callbacks(app=self.dash_app)
-        self.dash_app.run(debug=debug)
+        self.dash_app.run(debug=debug, use_reloader=False)
 
     def safe_start(self, create_tables:bool=True, alarm_worker:bool=False):
         r"""
@@ -724,22 +724,24 @@ class PyAutomation(Singleton):
         * AlarmWorker
         * StateMachineWorker
         """
-        
         if self._create_tables:
             
             db_worker = LoggerWorker(self.db_manager)
             self.connect_to_db()
-            self.workers.append(db_worker)
+            db_worker.start_workers()
+            # self.workers.append(db_worker)
 
         if self._create_alarm_worker:
             alarm_manager = self.get_alarm_manager()
             alarm_worker = AlarmWorker(alarm_manager)
-            self.workers.append(alarm_worker)
+            alarm_worker.daemon = True
+            alarm_worker.start()
+            # self.workers.append(alarm_worker)
 
         # Start Workers
-        for worker in self.workers:
-            worker.daemon = True
-            worker.start()
+        # for worker in self.workers:
+        #     worker.daemon = True
+        #     worker.start()
 
         # StateMachine Worker
         self.machine.start()

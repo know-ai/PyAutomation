@@ -1,5 +1,6 @@
 from peewee import CharField, DateTimeField, FloatField, ForeignKeyField, IntegerField, fn
 from .core import BaseModel
+from datetime import datetime
 
 
 class Variables(BaseModel):
@@ -573,3 +574,19 @@ class TagValue(BaseModel):
     tag = ForeignKeyField(Tags, backref='values')
     value = FloatField()
     timestamp = DateTimeField()
+
+    @classmethod
+    def create(
+        cls, 
+        tag:str,
+        value:float,
+        timestamp:datetime):
+        r"""
+        Documentation here
+        """
+        query = cls(
+            tag=tag,
+            value=value, 
+            timestamp=timestamp
+            )
+        query.save()

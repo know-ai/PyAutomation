@@ -7,6 +7,7 @@ import logging
 from .buffer import Buffer
 from .models import StringType, IntegerType, FloatType, BooleanType
 from .tags import CVTEngine, Tag
+from .logger import DataLoggerEngine
 from .managers.opcua_client import OPCUAClientManager
 from .opcua.subscription import DAS
 
@@ -147,6 +148,7 @@ class DAQ(StateMachine):
         self.classification.value = "Data Acquisition System"
         self.__subscribed_to = dict()
         self.cvt = CVTEngine()
+        self.logger = DataLoggerEngine()
 
     # State Methods
     def while_starting(self):
@@ -174,18 +176,30 @@ class DAQ(StateMachine):
 
         - 
         """
+        tags = list()
+
         for tag_name, tag in self.get_subscribed_tags().items():
 
             namespace = tag.get_node_namespace()
             opcua_address = tag.get_opcua_address()
             values = self.opcua_client_manager.get_node_value_by_opcua_address(opcua_address=opcua_address, namespace=namespace)
-            data_value = values[0][0]["DataValue"]
-            value = data_value.Value.Value
-            timestamp = data_value.SourceTimestamp
-            self.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
-            self.das.buffer[tag_name]["timestamp"](timestamp)
-            self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
+            if values:
+                data_value = values[0][0]["DataValue"]
+                value = data_value.Value.Value
+                timestamp = data_value.SourceTimestamp
+                tags.append({
+                    "tag": tag_name,
+                    "value": value,
+                    "timestamp": timestamp
+                })
+                self.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
+                self.das.buffer[tag_name]["timestamp"](timestamp)
+                self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
+                
 
+        # INSERT MANY into database
+        if tags:
+            self.logger.write_tags(tags)
         self.criticity.value = 1
 
     def while_resetting(self):

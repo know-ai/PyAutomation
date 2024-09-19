@@ -1,5 +1,8 @@
 from automation.opcua.models import Client
 from automation.dbmodels import OPCUA
+from automation.logger import DataLoggerEngine
+from automation.tags import CVTEngine
+from automation.opcua.subscription import DAS
 
 class OPCUAClientManager:
     r"""
@@ -11,6 +14,9 @@ class OPCUAClientManager:
         Documentation here
         """
         self._clients = dict()
+        self.logger = DataLoggerEngine()
+        self.cvt = CVTEngine()
+        self.das = DAS()
 
     def discovery(self, host:str='127.0.0.1', port:int=4840)->list[dict]:
         r"""
@@ -32,8 +38,24 @@ class OPCUAClientManager:
         if status_connection==200:
 
             self._clients[client_name] = opcua_client
+            
             # DATABASE PERSISTENCY
-            OPCUA.create(client_name=client_name, host=host, port=port)
+            if self.logger.get_db():
+                
+                OPCUA.create(client_name=client_name, host=host, port=port)
+
+            # RECONNECT TO SUBSCRIPTION 
+            for tag in self.cvt.get_tags():
+                
+                if tag["opcua_address"]==endpoint_url:
+
+                    if not tag["scan_time"]:
+
+                        subscription = opcua_client.create_subscription(1000, self.das)
+                        node_id = opcua_client.get_node_id_by_namespace(tag["node_namespace"])
+                        self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
+
+                    self.das.restart_buffer(tag=self.cvt.get_tag(id=tag["id"]))
         
         return message
 
@@ -48,8 +70,8 @@ class OPCUAClientManager:
             # DATABASE PERSISTENCY
             opcua = OPCUA.get_by_client_name(client_name=client_name)
             if opcua:
-
-                OPCUA.delete(id=opcua.id)
+                if self.logger.get_db():
+                    OPCUA.delete(id=opcua.id)
 
     def connect(self, client_name:str)->dict:
         r"""

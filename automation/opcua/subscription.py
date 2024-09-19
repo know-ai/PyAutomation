@@ -1,5 +1,9 @@
 from automation.singleton import Singleton
 from automation.tags.cvt import CVTEngine
+from automation.tags import Tag
+from automation.buffer import Buffer
+from automation.logger import DataLoggerEngine
+from math import ceil
         
 
 class SubHandler(Singleton):
@@ -83,7 +87,25 @@ class DAS(Singleton):
         
         self.monitored_items = dict()
         self.cvt = CVTEngine()
+        self.logger = DataLoggerEngine()
         self.buffer = dict()
+
+    def restart_buffer(self, tag:Tag):
+        r"""
+        Documentation here
+        """
+        scan_time = tag.get_scan_time()
+        if scan_time:
+            
+            self.buffer[tag.get_name()].update({
+                "timestamp": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
+                "values": Buffer(size=ceil(10 / ceil(scan_time / 1000)))
+            })
+        else:
+            self.buffer[tag.get_name()].update({
+                "timestamp": Buffer(),
+                "values": Buffer()
+            })
 
     def subscribe(self, subscription, client_name, node_id):
         r"""
@@ -106,7 +128,7 @@ class DAS(Singleton):
         else:
 
             if node_id not in self.monitored_items[client_name]:
-            
+                
                 monitored_item = subscription.subscribe_data_change(
                     node_id
                 )
@@ -141,6 +163,11 @@ class DAS(Singleton):
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
         tag_name = tag.get_name()
         self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+        # PERSISTENCY ON DB
+        if self.logger.get_db():
+            
+            self.logger.write_tag(tag=tag_name, value=val, timestamp=timestamp)
+
         self.buffer[tag_name]["timestamp"](timestamp)
         self.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
         

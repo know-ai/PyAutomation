@@ -117,6 +117,104 @@ class AlarmTypes(BaseModel):
         }
 
 
+class AlarmStates(BaseModel):
+    r"""
+    Based on ISA 18.2
+    """
+
+    name = CharField(unique=True)
+    mnemonic = CharField(max_length=20)
+    condition = CharField(max_length=20)
+    status = CharField(max_length=20)
+
+    @classmethod
+    def create(cls, name:str, mnemonic:str, condition:str, status:str)-> dict:
+        r"""
+        You can use Model.create() to create a new model instance. This method accepts keyword arguments, where the keys correspond 
+        to the names of the model's fields. A new instance is returned and a row is added to the table.
+
+        ```python
+        >>> AlarmsType.create(name='Unacknowledged', mnemonic='UNACKED', description='Alarm unacknowledged')
+        {
+            'message': (str)
+            'data': (dict) {
+                'id': 1,
+                'name': 'unacknowledged',
+                'mnemonic': 'UNACKED',
+                'description': 'Alarm unacknowledged'
+            }
+        }
+        ```
+        
+        This will INSERT a new row into the database. The primary key will automatically be retrieved and stored on the model instance.
+
+        **Parameters**
+
+        * **name:** (str), Industrial protocol name
+
+        **Returns**
+
+        * **result:** (dict) --> {'message': (str), 'data': (dict) row serialized}
+
+        """
+
+        if not cls.name_exist(name):
+
+            query = cls(name=name, mnemonic=mnemonic, condition=condition, status=status)
+            query.save()
+            
+            return query
+
+    @classmethod
+    def read_by_name(cls, name:str)->bool:
+        r"""
+        Get instance by its a name
+
+        **Parameters**
+
+        * **name:** (str) Alarm type name
+
+        **Returns**
+
+        * **bool:** If True, name exist into database 
+        """
+        return cls.get_or_none(name=name)
+
+    @classmethod
+    def name_exist(cls, name:str)->bool:
+        r"""
+        Verify is a name exist into database
+
+        **Parameters**
+
+        * **name:** (str) Alarm type name
+
+        **Returns**
+
+        * **bool:** If True, name exist into database 
+        """
+        query = cls.get_or_none(name=name)
+        
+        if query is not None:
+
+            return True
+        
+        return False
+
+    def serialize(self)-> dict:
+        r"""
+        Serialize database record to a jsonable object
+        """
+
+        return {
+            "id": self.id,
+            "name": self.name,
+            "mnemonic": self.mnemonic,
+            "condition": self.condition,
+            "status": self.status
+        }
+
+
 class Alarms(BaseModel):
 
     id = CharField(primary_key=True, unique=True, max_length=16)
@@ -252,104 +350,6 @@ class Alarms(BaseModel):
         }
     
 
-class AlarmStates(BaseModel):
-    r"""
-    Based on ISA 18.2
-    """
-
-    name = CharField(unique=True)
-    mnemonic = CharField(max_length=20)
-    condition = CharField(max_length=20)
-    status = CharField(max_length=20)
-
-    @classmethod
-    def create(cls, name:str, mnemonic:str, condition:str, status:str)-> dict:
-        r"""
-        You can use Model.create() to create a new model instance. This method accepts keyword arguments, where the keys correspond 
-        to the names of the model's fields. A new instance is returned and a row is added to the table.
-
-        ```python
-        >>> AlarmsType.create(name='Unacknowledged', mnemonic='UNACKED', description='Alarm unacknowledged')
-        {
-            'message': (str)
-            'data': (dict) {
-                'id': 1,
-                'name': 'unacknowledged',
-                'mnemonic': 'UNACKED',
-                'description': 'Alarm unacknowledged'
-            }
-        }
-        ```
-        
-        This will INSERT a new row into the database. The primary key will automatically be retrieved and stored on the model instance.
-
-        **Parameters**
-
-        * **name:** (str), Industrial protocol name
-
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (dict) row serialized}
-
-        """
-
-        if not cls.name_exist(name):
-
-            query = cls(name=name, mnemonic=mnemonic, condition=condition, status=status)
-            query.save()
-            
-            return query
-
-    @classmethod
-    def read_by_name(cls, name:str)->bool:
-        r"""
-        Get instance by its a name
-
-        **Parameters**
-
-        * **name:** (str) Alarm type name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
-        """
-        return cls.get_or_none(name=name)
-
-    @classmethod
-    def name_exist(cls, name:str)->bool:
-        r"""
-        Verify is a name exist into database
-
-        **Parameters**
-
-        * **name:** (str) Alarm type name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
-        """
-        query = cls.get_or_none(name=name)
-        
-        if query is not None:
-
-            return True
-        
-        return False
-
-    def serialize(self)-> dict:
-        r"""
-        Serialize database record to a jsonable object
-        """
-
-        return {
-            "id": self.id,
-            "name": self.name,
-            "mnemonic": self.mnemonic,
-            "condition": self.condition,
-            "status": self.status
-        }
-
-
 class AlarmSummary(BaseModel):
     
     alarm = ForeignKeyField(Alarms, backref='summary', on_delete='CASCADE')
@@ -454,17 +454,6 @@ class AlarmSummary(BaseModel):
         result = [alarm.serialize() for alarm in alarms]
 
         return result
-
-    # def get_comments(self):
-    #     r"""
-    #     Documentation here
-    #     """
-    #     comments = requests.get(f"{EVENT_LOGGER_SERVICE_URL}/api/logs/comments/{self.id}", verify=False)
-    #     if comments:
-
-    #         return comments.json()
-        
-    #     return []
 
     def serialize(self):
         r"""

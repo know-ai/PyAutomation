@@ -185,9 +185,9 @@ class DataLogger:
         """
         try:
             trend = Tags.read_by_name(tag)
-            tag_value = TagValue.create(tag=trend, value=value, timestamp=timestamp)
-            tag_value.save()
+            TagValue.create(tag=trend, value=value, timestamp=timestamp)
         except Exception as e:
+            
             logging.warning(f"Rollback done in database due to conflicts writing tag")
             conn = self._db.connection()
             conn.rollback()
@@ -196,9 +196,18 @@ class DataLogger:
         r"""
         Documentation here
         """
+        _tags = tags.copy()
         try:
+            for counter, tag in enumerate(tags):
+
+                _tags[counter].update({
+                    'tag': Tags.read_by_name(tag['tag'])
+                })
+
             TagValue.insert_many(tags).execute()
+
         except Exception as e:
+            print(e)
             logging.warning(f"Rollback done in database due to conflicts writing tags")
             conn = self._db.connection()
             conn.rollback()
