@@ -13,6 +13,7 @@ from ..dbmodels import (
     Units,
     DataTypes,
     Alarms,
+    AlarmSummary,
     OPCUA)
 
 from ..alarms.trigger import TriggerType
@@ -267,3 +268,15 @@ class DataLogger:
         Documentation here
         """
         return Alarms.read_all()
+    
+    def create_record_on_summary(self, name:str, state:str):
+        r"""
+        Documentation here
+        """
+        AlarmSummary.create(name=name, state=state)
+
+    def get_summary(self):
+        r"""
+        Documentation here
+        """
+        return AlarmSummary.read_all()

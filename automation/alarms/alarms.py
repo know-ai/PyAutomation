@@ -264,6 +264,8 @@ class Alarm:
             self._operations['silence'] = False
             self._operations['sound'] = False
             self.audible = False
+            # Persist on DB
+            self.logger_engine.create_record_on_summary(name=self.name, state=self._state.state)
 
         elif self._state.state==AlarmState.NORM.state:
 
@@ -271,6 +273,8 @@ class Alarm:
             self._operations['silence'] = False
             self._operations['sound'] = False
             self.audible = False
+            # Persist on DB
+            self.logger_engine.create_record_on_summary(name=self.name, state=self._state.state)
 
     def trigger(self):
         r"""

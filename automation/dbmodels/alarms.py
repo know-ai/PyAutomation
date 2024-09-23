@@ -354,9 +354,6 @@ class AlarmSummary(BaseModel):
     state = ForeignKeyField(AlarmStates, backref='summary', on_delete='CASCADE')
     alarm_time = DateTimeField(default=datetime.now)
     ack_time = DateTimeField(null=True)
-    out_of_service_time = DateTimeField(null=True)
-    return_to_service_time = DateTimeField(null=True)
-    active = BooleanField(default=True)
 
     @classmethod
     def create(cls, name:str, state:str):
@@ -366,15 +363,6 @@ class AlarmSummary(BaseModel):
         if _alarm:
 
             if _state:
-            
-                # Set Active old alarms False
-                old_query = cls.select().where(cls.alarm==_alarm)
-                if old_query:
-                    
-                    for _query in old_query:
-                        _query.active = False
-                        _query.save()
-
 
                 # Create record
                 query = cls(alarm=_alarm.id, state=_state.id)
@@ -429,8 +417,6 @@ class AlarmSummary(BaseModel):
 
         * **result:** (dict) --> {'message': (str), 'data': (list) row serialized}
         """
-
-        # result = dict()
         data = list()
         
         try:
@@ -457,23 +443,17 @@ class AlarmSummary(BaseModel):
         r"""
         Documentation here
         """
-        
-
+        ack_time = None
+        if self.ack_time:
+            ack_time = self.ack_time.strftime(DATETIME_FORMAT)
         return {
-            # 'id': self.id,
-            # 'alarm_id': alarm._id,
-            # 'name': self.alarm.name,
-            # 'state': self.state.name,
-            # 'mnemonic': self.state.mnemonic,
-            # 'status': self.state.status,
-            # 'condition': self.state.condition,
-            # 'description': self.alarm.description,
-            # 'alarm_time': self.alarm_time.strftime(DATETIME_FORMAT),
-            # 'ack_time': ack_time,
-            # 'out_of_service_time': out_of_service_time,
-            # 'return_to_service_time': return_to_service_time,
-            # 'active': self.active,
-            # 'audible': alarm.audible,
-            # 'is_process_alarm': is_process_alarm,
-            # 'comments': self.get_comments()
+            'id': self.id,
+            'name': self.alarm.name,
+            'tag': self.alarm.tag,
+            'description': self.alarm.description,
+            'state': self.state.name,
+            'mnemonic': self.state.mnemonic,
+            'status': self.state.status,
+            'alarm_time': self.alarm_time.strftime(DATETIME_FORMAT),
+            'ack_time': ack_time
         }

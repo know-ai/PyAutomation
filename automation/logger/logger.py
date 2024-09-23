@@ -267,6 +267,28 @@ class DataLoggerEngine(Singleton):
         _query["parameters"] = dict()
         
         return self.__query(_query)
+    
+    def create_record_on_summary(self, name:str, state:str):
+        r"""
+        Documentation here
+        """
+        _query = dict()
+        _query["action"] = "create_record_on_summary"
+        _query["parameters"] = dict()
+        _query["parameters"]["name"] = name
+        _query["parameters"]["state"] = state
+        
+        return self.__query(_query)
+
+    def get_summary(self):
+        r"""
+        Documentation here
+        """
+        _query = dict()
+        _query["action"] = "get_summary"
+        _query["parameters"] = dict()
+        
+        return self.__query(_query)
 
     def __query(self, query:dict)->dict:
         r"""
