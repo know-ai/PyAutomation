@@ -449,7 +449,7 @@ class AlarmSummary(BaseModel):
         return {
             'id': self.id,
             'name': self.alarm.name,
-            'tag': self.alarm.tag,
+            'tag': self.alarm.tag.name,
             'description': self.alarm.description,
             'state': self.state.name,
             'mnemonic': self.state.mnemonic,
