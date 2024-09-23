@@ -261,3 +261,9 @@ class DataLogger:
             description=description,
             tag_alarm=tag_alarm
         )
+
+    def get_alarms(self):
+        r"""
+        Documentation here
+        """
+        return Alarms.read_all()

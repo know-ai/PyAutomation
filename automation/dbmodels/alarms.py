@@ -220,7 +220,7 @@ class Alarms(BaseModel):
     trigger_value = FloatField()
     description = CharField(null=True, max_length=256)
     tag_alarm = CharField(null=True, max_length=64)
-    state = CharField(null=True, max_length=16)
+    state = ForeignKeyField(AlarmStates, backref='alarms', on_delete='CASCADE')
     timestamp = DateTimeField(null=True)
     acknowledged_timestamp = DateTimeField(null=True)
 
@@ -335,10 +335,10 @@ class Alarms(BaseModel):
             acknowledged_timestamp = timestamp.strftime(DATETIME_FORMAT)
 
         return {
-            'id': self.identifier,
+            'identifier': self.identifier,
             'name': self.name,
             'tag': self.tag.name,  
-            'trigger_type': self.trigger_type.name,
+            'type': self.trigger_type.name,
             'trigger_value': self.trigger_value,
             'description': self.description,
             'tag_alarm': self.tag_alarm,

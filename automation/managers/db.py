@@ -158,6 +158,12 @@ class DBManager(Singleton):
         Gets all tag defined in tag's repository
         """
         return self._logger.get_tags()
+    
+    def get_alarms(self)->dict:
+        r"""
+        Gets all tag defined in tag's repository
+        """
+        return self._logger.get_alarms()
 
     def set_tag(
         self, 

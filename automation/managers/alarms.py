@@ -34,7 +34,12 @@ class AlarmManager(Singleton):
             tag:str, 
             type:str="BOOL", 
             trigger_value:bool|float=True, 
-            description:str=""
+            description:str="",
+            identifier:str=None,
+            tag_alarm:str=None,
+            state:str="Normal",
+            timestamp:str=None,
+            acknowledged_timestamp:str=None
         )->dict:
         r"""
         Append alarm to the Alarm Manager
@@ -59,7 +64,15 @@ class AlarmManager(Singleton):
 
             return trigger_value_message
                 
-        alarm = Alarm(name=name, tag=tag, description=description)
+        alarm = Alarm(
+            name=name, 
+            tag=tag, 
+            description=description, 
+            identifier=identifier, 
+            tag_alarm=tag_alarm, 
+            state=state,
+            timestamp=timestamp,
+            acknowledged_timestamp=acknowledged_timestamp)
         alarm.set_trigger(value=trigger_value, _type=type)
         self._alarms[alarm._id] = alarm
         self.attach_all()

@@ -257,6 +257,16 @@ class DataLoggerEngine(Singleton):
         _query["parameters"]["tag_alarm"] = tag_alarm
         
         return self.__query(_query)
+    
+    def get_alarms(self):
+        r"""
+
+        """
+        _query = dict()
+        _query["action"] = "get_alarms"
+        _query["parameters"] = dict()
+        
+        return self.__query(_query)
 
     def __query(self, query:dict)->dict:
         r"""

@@ -518,6 +518,7 @@ class PyAutomation(Singleton):
             self.db_manager.init_database()
             self.load_opcua_clients_from_db()
             self.load_db_to_cvt()
+            self.load_db_to_alarm_manager()
 
     def disconnect_to_db(self):
         r"""
@@ -536,6 +537,18 @@ class PyAutomation(Singleton):
             for tag in tags:
                 
                 self.create_tag(**tag)
+
+    def load_db_to_alarm_manager(self):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            alarms = self.db_manager.get_alarms()
+        
+            for alarm in alarms:
+                
+                self.create_alarm(**alarm)
 
     def load_opcua_clients_from_db(self):
         r"""
@@ -562,7 +575,12 @@ class PyAutomation(Singleton):
             tag:str, 
             type:str="BOOL", 
             trigger_value:bool|float=True, 
-            description:str=""
+            description:str="",
+            identifier:str=None,
+            tag_alarm:str=None,
+            state:str="Normal",
+            timestamp:str=None,
+            acknowledged_timestamp:str=None
         )->dict:
         r"""
         Append alarm to the Alarm Manager
@@ -580,7 +598,12 @@ class PyAutomation(Singleton):
             tag=tag, 
             type=type, 
             trigger_value=trigger_value, 
-            description=description
+            description=description,
+            identifier=identifier,
+            tag_alarm=tag_alarm,
+            state=state,
+            timestamp=timestamp,
+            acknowledged_timestamp=acknowledged_timestamp
         )
 
         if not message:

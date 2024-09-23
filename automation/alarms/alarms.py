@@ -6,9 +6,10 @@ This module implements all Alarms class definitions and Alarm Handlers.
 from datetime import datetime, timedelta
 from ..tags import CVTEngine
 from ..logger import DataLoggerEngine
-from .states import AlarmState, Status
+from .states import AlarmState, Status, AlarmAttrs
 from .trigger import Trigger, TriggerType
 import secrets
+DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 
 class Alarm:
@@ -19,7 +20,17 @@ class Alarm:
     tag_engine = CVTEngine()
     logger_engine = DataLoggerEngine()
 
-    def __init__(self, name:str, tag:str, description:str=""):
+    def __init__(
+            self, 
+            name:str, 
+            tag:str, 
+            description:str="", 
+            identifier:str=None, 
+            tag_alarm:str=None, 
+            state:str=None,
+            timestamp:str=None,
+            acknowledged_timestamp:str=None
+            ):
 
         self.name = name
         self._tag = tag
@@ -28,15 +39,29 @@ class Alarm:
         self._message = None
         self._state = AlarmState.NORM
         self._mnemonic = AlarmState.NORM.mnemonic
+        if state:
+            
+            for _, attr in AlarmState.__dict__.items():
+                
+                if isinstance(attr, AlarmAttrs):
+                    
+                    if state==attr.state:
+                        
+                        self._state = attr
+                        break
         self._trigger = Trigger()
-        self._tag_alarm = None
+        self._tag_alarm = tag_alarm
         self._enabled = True
         self._deadband = None
         self._priority = 0
         self._on_delay = None
         self._off_delay = None
         self._timestamp = None
+        if timestamp:
+            self._timestamp = datetime.strptime(timestamp, DATETIME_FORMAT)  
         self._acknowledged_timestamp = None
+        if acknowledged_timestamp:
+            self._acknowledged_timestamp = datetime.strptime(acknowledged_timestamp, DATETIME_FORMAT)
         self._shelved_time = None
         self.audible = False
         self._shelved_options_time = {
@@ -50,7 +75,10 @@ class Alarm:
         }
         self._shelved_until = None
         self.__default_operations()
-        self._id =secrets.token_hex(4)
+        if identifier:
+            self._id = identifier
+        else:
+            self._id =secrets.token_hex(4)
 
     def __default_operations(self):
         r"""

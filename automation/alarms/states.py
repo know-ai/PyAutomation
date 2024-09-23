@@ -279,7 +279,6 @@ class AlarmState:
         Documentation here
         """
         _state = States(state)
-
         for alarm_state in cls._states:
 
             if _state==alarm_state:
