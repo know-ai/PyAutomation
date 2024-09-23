@@ -44,6 +44,19 @@ class PyAutomation(Singleton):
         self.workers = list()
         self.set_log(level=logging.WARNING)
 
+    # MACHINES METHODS
+    def append_machine(self, machine, interval:float=1.0, mode:str="async"):
+        r"""
+        Documentation here
+        """
+        self.machine.append_machine(machine=machine, interval=interval, mode=mode)
+
+    def get_machine(self, name:str):
+        r"""
+        Documentation here
+        """
+        return self.machine_manager.get_machine(name=name)
+
     # TAGS METHODS
     def get_tags(self):
         r"""Documentation here
@@ -475,7 +488,7 @@ class PyAutomation(Singleton):
                 'name': name,    
             }
 
-        with open('./automation/db_config.json', 'w') as json_file:
+        with open('./db_config.json', 'w') as json_file:
             
             json.dump(db_config, json_file)
 
@@ -485,7 +498,7 @@ class PyAutomation(Singleton):
         """
         try:
 
-            with open('./automation/db_config.json', 'r') as json_file:
+            with open('./db_config.json', 'r') as json_file:
             
                 db_config = json.load(json_file)
 
@@ -707,7 +720,7 @@ class PyAutomation(Singleton):
         self.alarm_manager.delete_alarm(id=id)
 
     # INIT APP
-    def run(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True):
+    def run(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True, **kwargs):
         r"""
         Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
 
@@ -719,9 +732,9 @@ class PyAutomation(Singleton):
         >>> app.run()
         ```
         """
-        self.startup_config_page(debug=debug, create_tables=create_tables, alarm_worker=alarm_worker)
+        self.startup_config_page(debug=debug, create_tables=create_tables, alarm_worker=alarm_worker, **kwargs)
 
-    def startup_config_page(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True):
+    def startup_config_page(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True, **kwargs):
         r"""Documentation here
 
         # Parameters
@@ -732,7 +745,7 @@ class PyAutomation(Singleton):
 
         - 
         """
-        self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".")
+        self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
         self.dash_app.set_automation_app(self)
         self.das = DAS()
         self.safe_start(create_tables=create_tables, alarm_worker=alarm_worker)
