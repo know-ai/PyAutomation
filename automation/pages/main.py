@@ -37,3 +37,7 @@ class ConfigView(dash.Dash):
                 "trigger_value": alarm["trigger_value"],
                 "operations": ""
                 } for alarm in self.automation.alarm_manager.serialize()]
+    
+    def machines_table_data(self):
+
+        return self.automation.serialize_machines()

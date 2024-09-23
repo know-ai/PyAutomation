@@ -73,6 +73,13 @@ class StateMachineManager:
         result = self._machines
         
         return result
+    
+    def serialize_machines(self):
+        r"""
+        Documentation here
+        """
+
+        return [machine.serialize() for machine, _, _ in self.get_machines()]
 
     def get_machine(self, name:str)->StateMachine:
         r"""

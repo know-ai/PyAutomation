@@ -56,6 +56,12 @@ class PyAutomation(Singleton):
         Documentation here
         """
         return self.machine_manager.get_machine(name=name)
+    
+    def serialize_machines(self):
+        r"""
+        Documentation here
+        """
+        return self.machine_manager.serialize_machines()
 
     # TAGS METHODS
     def get_tags(self):

@@ -92,7 +92,8 @@ class Components:
                     nav=True,
                     in_navbar=True,
                     label="Alarms",
-                )
+                ),
+                dbc.NavItem(dbc.NavLink("Machines", href="/machines")),
             ],
             fluid=True, # Navbar container is modified.
             brand=html.Span("PyAutomation Configuration", className="custom-brand-class mx-2"), # Styles are applied to the HTML brand element.
