@@ -526,8 +526,7 @@ class Tags(BaseModel):
         r"""
         Documentation here
         """
-        query = cls.get_or_none(name=name)
-        return query
+        return cls.get_or_none(name=name)
 
     @classmethod
     def read_by_names(cls, names):

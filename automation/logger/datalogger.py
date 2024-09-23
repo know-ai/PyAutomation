@@ -12,6 +12,7 @@ from ..dbmodels import (
     Variables, 
     Units,
     DataTypes,
+    Alarms,
     OPCUA)
 
 from ..alarms.trigger import TriggerType
@@ -126,7 +127,7 @@ class DataLogger:
         self._db.create_tables(tables, safe=True)
         self.__init_default_variables_schema()
         self.__init_default_datatypes_schema()
-        # self.__init_default_alarms_schema()
+        self.__init_default_alarms_schema()
 
     def __init_default_variables_schema(self):
         r"""
@@ -237,3 +238,26 @@ class DataLogger:
             logging.warning(f"Rollback done in database due to conflicts reading tag")
             conn = self._db.connection()
             conn.rollback()
+
+    # ALARMS METHODS
+    def set_alarm(
+            self,
+            id:str,
+            name:str,
+            tag:str,
+            trigger_type:str,
+            trigger_value:float,
+            description:str,
+            tag_alarm:str):
+        r"""
+        Documentation here
+        """
+        Alarms.create(
+            identifier=id,
+            name=name,
+            tag=tag,
+            trigger_type=trigger_type,
+            trigger_value=trigger_value,
+            description=description,
+            tag_alarm=tag_alarm
+        )

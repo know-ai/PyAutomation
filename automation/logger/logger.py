@@ -232,6 +232,32 @@ class DataLoggerEngine(Singleton):
 
         return self.__query(_query)
 
+    # ALARMS METHODS
+    def set_alarm(
+            self,
+            id:str,
+            name:str,
+            tag:str,
+            trigger_type:str,
+            trigger_value:float,
+            description:str,
+            tag_alarm:str):
+        r"""
+        Documentation here
+        """
+        _query = dict()
+        _query["action"] = "set_alarm"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        _query["parameters"]["name"] = name
+        _query["parameters"]["tag"] = tag
+        _query["parameters"]["trigger_type"] = trigger_type
+        _query["parameters"]["description"] = description
+        _query["parameters"]["trigger_value"] = trigger_value
+        _query["parameters"]["tag_alarm"] = tag_alarm
+        
+        return self.__query(_query)
+
     def __query(self, query:dict)->dict:
         r"""
         Documentation here

@@ -1,6 +1,8 @@
 from peewee import CharField, FloatField, DateTimeField, ForeignKeyField, BooleanField
 from automation.dbmodels.core import BaseModel
 from datetime import datetime
+from .tags import Tags
+from ..alarms.states import States
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
@@ -65,7 +67,7 @@ class AlarmTypes(BaseModel):
         return result
 
     @classmethod
-    def read_by_name(cls, name:str)->bool:
+    def read_by_name(cls, name:str):
         r"""
         Get instance by its a name
 
@@ -76,14 +78,8 @@ class AlarmTypes(BaseModel):
         **Returns**
 
         * **bool:** If True, name exist into database 
-        """
-        query = cls.get_or_none(name=name.upper())
-        
-        if query is not None:
-
-            return query.serialize()
-        
-        return None
+        """        
+        return cls.get_or_none(name=name.upper())
 
     @classmethod
     def name_exist(cls, name:str)->bool:
@@ -217,10 +213,10 @@ class AlarmStates(BaseModel):
 
 class Alarms(BaseModel):
 
-    id = CharField(primary_key=True, unique=True, max_length=16)
+    identifier = CharField(unique=True)
     name = CharField(unique=True, max_length=64)
-    tag = CharField(max_length=64)    
-    trigger_type = CharField(null=True, max_length=16)
+    tag = ForeignKeyField(Tags, backref='alarms', on_delete='CASCADE')
+    trigger_type = ForeignKeyField(AlarmTypes, backref='alarms', on_delete='CASCADE')
     trigger_value = FloatField()
     description = CharField(null=True, max_length=256)
     tag_alarm = CharField(null=True, max_length=64)
@@ -231,14 +227,14 @@ class Alarms(BaseModel):
     @classmethod
     def create(
         cls,
-        id:str,
+        identifier:str,
         name:str,
         tag:str,  
         trigger_type:str,
         trigger_value:float,
         description:str=None,
         tag_alarm:str=None,
-        state:str=None,
+        state:str=States.NORM.value,
         timestamp:datetime=None,
         acknowledged_timestamp:datetime=None
         ):
@@ -253,9 +249,12 @@ class Alarms(BaseModel):
         - 
         """
         if not cls.name_exists(name):
-            
-            tag = super().create(
-                id=id,
+
+            trigger_type = AlarmTypes.read_by_name(name=trigger_type)
+            tag = Tags.read_by_name(name=tag)
+            state = AlarmStates.read_by_name(name=state)
+            alarm = super().create(
+                identifier=identifier,
                 name=name,
                 tag=tag,  
                 trigger_type=trigger_type,
@@ -266,9 +265,8 @@ class Alarms(BaseModel):
                 timestamp=timestamp,
                 acknowledged_timestamp=acknowledged_timestamp
             )
-            tag.save()
-
-            return tag
+            alarm.save()
+            return alarm
     
     @classmethod
     def name_exists(cls, name:str)->bool|None:
@@ -337,14 +335,14 @@ class Alarms(BaseModel):
             acknowledged_timestamp = timestamp.strftime(DATETIME_FORMAT)
 
         return {
-            'id': self.id,
+            'id': self.identifier,
             'name': self.name,
-            'tag': self.tag,  
-            'trigger_type': self.trigger_type,
+            'tag': self.tag.name,  
+            'trigger_type': self.trigger_type.name,
             'trigger_value': self.trigger_value,
             'description': self.description,
             'tag_alarm': self.tag_alarm,
-            'state': self.state,
+            'state': self.state.name,
             'timestamp': timestamp,
             'acknowledged_timestamp': acknowledged_timestamp
         }

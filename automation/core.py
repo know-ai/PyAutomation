@@ -575,13 +575,31 @@ class PyAutomation(Singleton):
 
         * **None**
         """
-        return self.alarm_manager.append_alarm(
+        message = self.alarm_manager.append_alarm(
             name=name,
             tag=tag, 
             type=type, 
             trigger_value=trigger_value, 
             description=description
         )
+
+        if not message:
+
+            # Persist Tag on Database
+            if self.is_db_connected():
+                
+                alarm = self.alarm_manager.get_alarm_by_name(name=name)
+                self.logger_engine.set_alarm(
+                    id=alarm._id,
+                    name=name,
+                    tag=tag,
+                    trigger_type=type,
+                    trigger_value=trigger_value,
+                    description=description,
+                    tag_alarm=None
+                )
+
+        return message
     
     def update_alarm(self, id:str, **kwargs):
         r"""
