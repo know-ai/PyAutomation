@@ -467,6 +467,7 @@ class DAQ(StateMachine):
         result = {
             "name": self.name,
             "sampling_time": self.get_interval(),
+            "state": self.state.value
         }
         result.update(AutomationStateMachine.get_serialized_models())
         return result
@@ -512,11 +513,7 @@ class AutomationStateMachine(StateMachine):
     wait_to_sleep = waiting.to(sleeping)
 
     # Attributes
-    state = StringType(default="starting")
-    criticity = IntegerType(default=2)
-    priority = IntegerType(default=1)
-    description = StringType(default="")
-    classification = StringType(default="")
+    
 
     def __init__(
             self,
@@ -526,10 +523,12 @@ class AutomationStateMachine(StateMachine):
         ):
 
         super(AutomationStateMachine, self).__init__()
+        self.criticity = IntegerType(default=2)
+        self.priority = IntegerType(default=1)
+        self.description = StringType(default=description)
+        self.classification = StringType(default=classification)
         self.name = name
         self.machine_interval = None
-        self.description.value = description
-        self.classification.value = classification
         self.buffer_size = 10
         self.buffer_roll_type = 'backward'
         self.__subscribed_to = list()
@@ -630,98 +629,6 @@ class AutomationStateMachine(StateMachine):
         """
         self.send('restart_to_wait')
 
-    # Entering to States
-    def on_enter_starting(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    def on_enter_waiting(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    def on_enter_running(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    def on_enter_testing(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    def on_enter_sleeping(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    def on_enter_resetting(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    def on_enter_restarting(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-    
     # Transitions
     def on_start_to_wait(self):
         r"""Documentation here
@@ -1102,8 +1009,8 @@ class AutomationStateMachine(StateMachine):
 
         return [state.value for state in self.states]
 
-    @classmethod
-    def get_serialized_models(cls):
+    # @classmethod
+    def get_serialized_models(self):
         r"""
         Gets class attributes defined by [model types]()
 
@@ -1112,8 +1019,8 @@ class AutomationStateMachine(StateMachine):
         * **(dict)**
         """
         result = dict()
-
-        props = cls.__dict__
+        props = self.__dict__
+        
         for key, value in props.items():
 
             if isinstance(value, (StringType, FloatType, IntegerType, BooleanType)):
@@ -1136,8 +1043,9 @@ class AutomationStateMachine(StateMachine):
         result = {
             "name": self.name,
             "sampling_time": self.get_interval(),
+            "state": self.current_state.id
         }
-        result.update(AutomationStateMachine.get_serialized_models())
+        result.update(self.get_serialized_models())
         return result
 
 
@@ -1266,59 +1174,6 @@ class LeakStateMachine(AutomationStateMachine):
         - 
         """
         pass
-
-    # Entering to States
-    def on_enter_pre_alarming(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    def on_enter_leaking(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    def on_enter_switching(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
-
-    def on_enter_not_available(self, event, state):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.state.value = state.id
 
     # Transitions methods
     def on_run_to_pre_alarm(self):
