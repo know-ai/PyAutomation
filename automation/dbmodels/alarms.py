@@ -457,3 +457,4 @@ class AlarmSummary(BaseModel):
             'alarm_time': self.alarm_time.strftime(DATETIME_FORMAT),
             'ack_time': ack_time
         }
+    

@@ -13,8 +13,8 @@ def init_callback(app:dash.Dash):
         """
         if pathname=="/alarms-history":
 
-            data = app.automation.logger_engine.get_summary()
+            data = app.automation.get_lasts_alarms()
 
-            return data
+            return data[0]
         
         return dash.no_update

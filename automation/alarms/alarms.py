@@ -5,7 +5,6 @@ This module implements all Alarms class definitions and Alarm Handlers.
 """
 from datetime import datetime, timedelta
 from ..tags import CVTEngine
-from ..logger import DataLoggerEngine
 from .states import AlarmState, Status, AlarmAttrs
 from .trigger import Trigger, TriggerType
 import secrets
@@ -18,7 +17,6 @@ class Alarm:
     """
 
     tag_engine = CVTEngine()
-    logger_engine = DataLoggerEngine()
 
     def __init__(
             self, 
@@ -31,7 +29,8 @@ class Alarm:
             timestamp:str=None,
             acknowledged_timestamp:str=None
             ):
-
+        from ..logger import DataLoggerEngine
+        self.logger_engine = DataLoggerEngine()
         self.name = name
         self._tag = tag
         self._description = description

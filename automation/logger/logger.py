@@ -288,6 +288,27 @@ class DataLoggerEngine(Singleton):
         
         return self.__query(_query)
     
+    def get_lasts_alarms(self, lasts:int=10):
+        r"""
+        Documentation here
+        """
+        _query = dict()
+        _query["action"] = "get_lasts_alarms"
+        _query["parameters"] = dict()
+        _query["parameters"]["lasts"] = lasts
+        
+        return self.__query(_query)
+    
+    def filter_alarms_by(self, **fields):
+        r"""
+        Documentation here
+        """
+        _query = dict()
+        _query["action"] = "filter_alarms_by"
+        _query["parameters"] = fields
+        
+        return self.__query(_query)
+    
     def create_record_on_summary(self, name:str, state:str):
         r"""
         Documentation here

@@ -5,10 +5,13 @@ This module implements Alarm Manager.
 from datetime import datetime
 import queue
 from automation.singleton import Singleton
-from ..tags import CVTEngine, TagObserver, Tag
+from ..tags import CVTEngine, TagObserver
 from ..alarms import AlarmState
-from ..alarms.alarms import Alarm
-from ..alarms.trigger import Trigger
+from ..alarms.alarms import Alarm, AlarmState
+from ..dbmodels.alarms import AlarmSummary, AlarmStates, Alarms
+from ..dbmodels.tags import Tags
+
+DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 
 class AlarmManager(Singleton):
@@ -305,6 +308,90 @@ class AlarmManager(Singleton):
                         if trigger_value<=alarm._trigger.value:
 
                             return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
+                        
+    def filter_by(self, **fields):
+        r"""
+        Documentation here
+        """
+        payload = fields
+        
+        _query = ''
+
+        # State
+        if 'states' in payload.keys():
+            
+            states = payload["states"]
+            subquery = AlarmStates.select(AlarmStates.id).where(AlarmStates.name.in_(states))
+            _query = AlarmSummary.select().join(AlarmStates).where(AlarmStates.id.in_(subquery)).order_by(AlarmSummary.id.desc())
+
+        if 'names' in payload.keys():
+            
+            names = payload["names"]
+            subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(names))
+
+            if _query:
+
+                _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
+
+            else:
+                _query = AlarmSummary.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
+
+        if 'tags' in payload.keys():
+            
+            tags = payload["tags"]
+            subquery = Tags.select(Tags.id).where(Tags.name.in_(tags))
+            subquery = Alarms.select(Alarms.id).join(Tags).where(Tags.id.in_(subquery))
+
+            if _query:
+    
+                _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
+
+            else:
+                
+                _query = AlarmSummary.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
+
+        separator = '.'
+        # GREATER THAN TIMESTAMP
+        if 'greater_than_timestamp' in payload.keys():
+
+            greater_than_timestamp = payload.pop('greater_than_timestamp')
+            greater_than_timestamp = datetime.strptime(greater_than_timestamp.replace("T", " ").split(separator, 1)[0], "%Y-%m-%d %H:%M:%S")
+            
+            if _query:
+
+                _query = _query.select().where(AlarmSummary.alarm_time > greater_than_timestamp).order_by(AlarmSummary.id.desc())
+
+            else:
+
+                _query = AlarmSummary.select().where(AlarmSummary.alarm_time > greater_than_timestamp).order_by(AlarmSummary.id.desc())
+
+        # LESS THAN TIMESTAMP
+        if 'less_than_timestamp' in payload.keys():
+
+            less_than_timestamp = payload.pop('less_than_timestamp')
+            less_than_timestamp = datetime.strptime(less_than_timestamp.replace("T", " ").split(separator, 1)[0], "%Y-%m-%d %H:%M:%S")
+            
+            if _query:
+
+                _query = _query.select().where(AlarmSummary.alarm_time < less_than_timestamp).order_by(AlarmSummary.id.desc())
+
+            else:
+
+                _query = AlarmSummary.select().where(AlarmSummary.alarm_time < less_than_timestamp).order_by(AlarmSummary.id.desc())
+
+
+        result = [alarm.serialize() for alarm in _query]
+
+        return result, 200
+
+    def get_lasts(self, lasts:int=10):
+        r"""
+        Documentation here
+        """
+        _query = AlarmSummary.select().order_by(AlarmSummary.id.desc()).limit(lasts)
+        result = [alarm.serialize() for alarm in _query]
+
+        return result, 200
 
     def summary(self)->dict:
         r"""

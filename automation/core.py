@@ -649,6 +649,22 @@ class PyAutomation(Singleton):
 
         return message
     
+    def get_lasts_alarms(self, lasts:int=10):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+            
+            return self.logger_engine.get_lasts_alarms(lasts=lasts)
+        
+    def filter_alarms_by(self, **fields):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+            
+            return self.logger_engine.filter_alarms_by(**fields)
+
     def update_alarm(self, id:str, **kwargs):
         r"""
         Updates alarm attributes

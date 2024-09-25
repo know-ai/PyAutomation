@@ -40,9 +40,10 @@ class DataLogger:
     """
 
     def __init__(self):
-
+        from ..managers.alarms import AlarmManager
         self._db = None
         self.tag_engine = CVTEngine()
+        self.alarm_manager = AlarmManager()
 
     def set_db(self, db):
         r"""Documentation here
@@ -295,6 +296,18 @@ class DataLogger:
         Documentation here
         """
         return Alarms.read_all()
+    
+    def get_lasts_alarms(self, lasts:int=10):
+        r"""
+        Documentation here
+        """
+        return self.alarm_manager.get_lasts(lasts=lasts)
+    
+    def filter_alarms_by(self, **fields):
+        r"""
+        Documentation here
+        """
+        return self.alarm_manager.filter_by(**fields)
     
     def create_record_on_summary(self, name:str, state:str):
         r"""
