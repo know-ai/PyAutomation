@@ -11,16 +11,7 @@ Escribir un preambulo de contenido de la API
     :members: while_sleeping
     :members: while_resetting
     :members: while_restarting
-    :members: on_enter_starting
-    :members: on_enter_waiting
-    :members: on_enter_running
-    :members: on_enter_testing
-    :members: on_enter_sleeping
-    :members: on_enter_resetting
-    :members: on_enter_restarting
     :members: on_start_to_wait
-    :members: on_wait_to_run
-    :members: on_wait_to_restart
     :members: on_wait_to_reset
     :members: on_run_to_restart
     :members: on_run_to_reset
@@ -38,8 +29,10 @@ Escribir un preambulo de contenido de la API
     :members: unsubscribe_to
     :members: get_interval
     :members: set_interval
+    :members: _get_active_transitions
+    :members: _activate_triggers
     :members: loop
     :members: info
     :members: get_states
-    :members: get_serialized_models
     :members: serialize
+    
