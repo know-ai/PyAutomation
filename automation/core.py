@@ -57,6 +57,12 @@ class PyAutomation(Singleton):
         """
         return self.machine_manager.get_machine(name=name)
     
+    def get_machines(self):
+        r"""
+        Documentation here
+        """
+        return self.machine_manager.get_machines()
+    
     def serialize_machines(self):
         r"""
         Documentation here
@@ -708,6 +714,12 @@ class PyAutomation(Singleton):
         * **alarms**: (dict) Alarm objects
         """
         return self.alarm_manager.get_alarms()
+    
+    def get_lasts_active_alarms(self, lasts:int=None):
+        r"""
+        Documentation here
+        """
+        return self.alarm_manager.get_lasts_active_alarms(lasts=lasts)
     
     def get_alarm_by_name(self, name:str)->Alarm:
         r"""

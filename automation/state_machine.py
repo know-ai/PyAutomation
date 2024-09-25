@@ -480,10 +480,23 @@ class AutomationStateMachine(StateMachine):
     sleeping = State('sleep')
     resetting = State('reset')
     restarting = State('restart')
+    con_restart = State('confirm_restart')
+    con_reset = State('confirm_reset')
 
     # Transitions
     start_to_wait = starting.to(waiting)
     wait_to_run = waiting.to(running)
+    eset_to_confirm_reset = resetting.to(con_reset)
+    restart_to_confirm_restart = restarting.to(con_restart)
+    confirm_restart_to_wait = con_restart.to(waiting)
+    confirm_reset_to_start = con_reset.to(starting)
+    confirm_restart_to_run = con_restart.to(running)
+    confirm_restart_to_sleep = con_restart.to(sleeping)
+    confirm_restart_to_test = con_restart.to(testing)
+    confirm_reset_to_run = con_reset.to(running)
+    confirm_reset_to_wait = con_reset.to(waiting)
+    confirm_reset_to_sleep = con_reset.to(sleeping)
+    confirm_reset_to_test = con_reset.to(testing)
 
     #
     wait_to_restart = waiting.to(restarting)
@@ -498,6 +511,18 @@ class AutomationStateMachine(StateMachine):
     #
     reset_to_start = resetting.to(starting)
     restart_to_wait = restarting.to(waiting)
+
+    # Transitions to Restart
+    run_to_restart = running.to(restarting)
+    wait_to_restart = waiting.to(restarting)
+    test_to_restart = testing.to(restarting)
+    sleep_to_restart = sleeping.to(restarting)
+
+    # Transitions to Reset
+    run_to_reset = running.to(resetting)
+    wait_to_reset = waiting.to(resetting)
+    test_to_reset = testing.to(resetting)
+    sleep_to_reset = sleeping.to(resetting)
 
     #
     run_to_test = running.to(testing)
@@ -583,7 +608,7 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 3
 
     def while_sleeping(self):
         r"""Documentation here
@@ -596,7 +621,7 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 5
 
     def while_resetting(self):
         r"""Documentation here
@@ -609,7 +634,7 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        self.send('reset_to_start')
+        self.send('reset_to_confirm_reset')
 
     def while_restarting(self):
         r"""Documentation here
@@ -622,7 +647,33 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        self.send('restart_to_wait')
+        self.send('restart_to_confirm_restart')
+
+    def while_con_reset(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.criticity.value = 4
+
+    def while_con_restart(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.send('confirm_restart_to_wait')
 
     # Transitions
     def on_start_to_wait(self):
@@ -854,9 +905,25 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        if tag in self.data:
+        pass
+        # if tag in self.data:
             
-            self.data[tag](value)
+        #     self.data[tag](value)
+
+    def transition(
+        self,
+        to
+        ):
+        r"""
+        Documentation here
+        """
+        try:
+            _from = self.current_state.name.lower()
+            _transition = getattr(self, '{}_to_{}'.format(_from, to))
+            _transition()
+        except Exception as err:
+
+            logging.WARNING(f"Transition from {_from} state to {to} state for {self.name} is not allowed")
 
     def unsubscribe_to(self, tag:str):
         r"""Documentation here

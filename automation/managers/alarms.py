@@ -222,6 +222,21 @@ class AlarmManager(Singleton):
         """
         return self._alarms
     
+    def get_lasts_active_alarms(self, lasts:int=None)->list:
+        r"""
+        Documentation here
+        """
+        original_list = [alarm.serialize() for _, alarm in self.get_alarms().items()]
+        filtered_list = [elem for elem in original_list if elem['triggered']]
+        sorted_list = sorted(filtered_list, key=lambda x: x['timestamp'] if x['timestamp'] else '')
+        if lasts:
+            
+            if len(sorted_list)>lasts:
+
+                sorted_list = sorted_list[0:lasts]
+
+        return sorted_list
+    
     def serialize(self)->list:
         r"""
         Documentation here
