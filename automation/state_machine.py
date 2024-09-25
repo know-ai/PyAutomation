@@ -127,13 +127,7 @@ class DAQ(StateMachine):
     start_to_run = starting.to(running)
     run_to_reset = running.to(resetting)
     reset_to_start = resetting.to(starting)
-
-    # Attributes
-    state = StringType(default="starting")
-    criticity = IntegerType(default=2)
-    priority = IntegerType(default=1)
-    description = StringType(default="")
-    classification = StringType(default="Data Acquisition System")
+    
 
     def __init__(
             self
@@ -144,8 +138,10 @@ class DAQ(StateMachine):
         self.das = DAS()
         self.opcua_client_manager = None
         self.machine_interval = None
-        self.description.value = ""
-        self.classification.value = "Data Acquisition System"
+        self.criticity = IntegerType(default=2)
+        self.priority = IntegerType(default=1)
+        self.description = StringType(default="")
+        self.classification = StringType(default="Data Acquisition System")
         self.__subscribed_to = dict()
         self.cvt = CVTEngine()
         self.logger = DataLoggerEngine()
@@ -433,8 +429,7 @@ class DAQ(StateMachine):
 
         return [state.value for state in self.states]
 
-    @classmethod
-    def get_serialized_models(cls):
+    def get_serialized_models(self):
         r"""
         Gets class attributes defined by [model types]()
 
@@ -443,8 +438,8 @@ class DAQ(StateMachine):
         * **(dict)**
         """
         result = dict()
-
-        props = cls.__dict__
+        props = self.__dict__
+        
         for key, value in props.items():
 
             if isinstance(value, (StringType, FloatType, IntegerType, BooleanType)):
@@ -467,9 +462,9 @@ class DAQ(StateMachine):
         result = {
             "name": self.name,
             "sampling_time": self.get_interval(),
-            "state": self.state.value
+            "state": self.current_state.id
         }
-        result.update(AutomationStateMachine.get_serialized_models())
+        result.update(self.get_serialized_models())
         return result
 
 
