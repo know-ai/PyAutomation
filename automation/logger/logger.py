@@ -231,6 +231,26 @@ class DataLoggerEngine(Singleton):
         _query["parameters"]["tag"] = tag
 
         return self.__query(_query)
+    
+    def read_trends(self, start:str, stop:str, *tags):
+        r"""
+        Read tag value from database on a thread-safe mechanism
+
+        **Parameters**
+
+        * **tag** (str): Tag name in database
+
+        **Returns**
+
+        * **value** (float): Tag value requested
+        """
+        _query = dict()
+        _query["action"] = "read_trends"
+        _query["parameters"] = dict()
+        _query["parameters"]["start"] = start
+        _query["parameters"]["stop"] = stop
+        _query["parameters"]["tags"] = tags
+        return self.__query(_query)
 
     # ALARMS METHODS
     def set_alarm(

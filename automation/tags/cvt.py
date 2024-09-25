@@ -142,6 +142,44 @@ class CVT:
                 return tag
 
         return None
+    
+    def get_unit_by_tag(self, tag:str)->Tag|None:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        for _id, _tag in self._tags.items():
+
+            if _tag.name==tag:
+                
+                return _tag.unit
+
+        return None
+    
+    def get_display_unit_by_tag(self, tag:str)->Tag|None:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        for _id, _tag in self._tags.items():
+            
+            if _tag.name==tag:
+                
+                return _tag.display_unit
+
+        return None
 
     def get_tags(self)->list:
         r"""
@@ -683,6 +721,23 @@ class CVTEngine(Singleton):
         _query["action"] = "get_dead_band"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
+        return self.__query(_query)
+    
+    def get_display_unit_by_tag(self, tag:str)->str:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "get_display_unit_by_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["tag"] = tag
         return self.__query(_query)
     
     def set_value(self, id:str, value, timestamp:datetime):

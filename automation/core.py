@@ -11,7 +11,7 @@ from .state_machine import Machine, DAQ
 from .opcua.subscription import DAS
 from .buffer import Buffer
 from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
-
+from datetime import datetime
 # DASH APP CONFIGURATION PAGES IMPORTATION
 from .pages.main import ConfigView
 from .pages.callbacks import init_callbacks
@@ -77,6 +77,12 @@ class PyAutomation(Singleton):
         """
 
         return self.cvt.get_tags()
+    
+    def get_trends(self, start:str, stop:str, *tags):
+        r"""
+        Documentation here
+        """
+        return self.logger_engine.read_trends(start, stop, *tags)
     
     def create_tag(self,
             name:str, 

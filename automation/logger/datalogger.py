@@ -15,11 +15,13 @@ from ..dbmodels import (
     Alarms,
     AlarmSummary,
     OPCUA)
-
+from datetime import datetime
 from ..alarms.trigger import TriggerType
 from ..alarms.states import AlarmState
 import logging
+from automation.tags import CVTEngine
 from ..variables import VARIABLES, DATATYPES
+DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f'
 
 
 class DataLogger:
@@ -40,6 +42,7 @@ class DataLogger:
     def __init__(self):
 
         self._db = None
+        self.tag_engine = CVTEngine()
 
     def set_db(self, db):
         r"""Documentation here
@@ -239,6 +242,30 @@ class DataLogger:
             logging.warning(f"Rollback done in database due to conflicts reading tag")
             conn = self._db.connection()
             conn.rollback()
+
+    def read_trends(self, start:str, stop:str, tags):
+        r"""
+        Documentation here
+        """    
+        start = datetime.strptime(start, DATETIME_FORMAT)
+        stop = datetime.strptime(stop, DATETIME_FORMAT)
+        result = {tag: {
+            'values': list(),
+            'unit': self.tag_engine.get_display_unit_by_tag(tag)
+        } for tag in tags}
+        
+
+        for tag in tags:
+
+            trend = Tags.select().where(Tags.name==tag).get()
+            
+            values = trend.values.select().where((TagValue.timestamp > start) & (TagValue.timestamp < stop)).order_by(TagValue.timestamp.asc())
+
+            for value in values:
+                
+                result[tag]['values'].append({"x": value.timestamp.strftime(DATETIME_FORMAT), "y": value.value})
+
+        return result
 
     # ALARMS METHODS
     def set_alarm(
