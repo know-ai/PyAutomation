@@ -94,11 +94,7 @@ class Machine(Singleton):
         if state_manager.exist_machines():
 
             state_worker = StateMachineWorker(state_manager)
-            self.workers.append(state_worker)
-
-        for worker in self.workers:
-            worker.daemon = True
-            worker.run()
+            state_worker.run()
 
     def stop(self):
         r"""
@@ -480,33 +476,10 @@ class AutomationStateMachine(StateMachine):
     sleeping = State('sleep')
     resetting = State('reset')
     restarting = State('restart')
-    con_restart = State('confirm_restart')
-    con_reset = State('confirm_reset')
 
     # Transitions
     start_to_wait = starting.to(waiting)
     wait_to_run = waiting.to(running)
-    eset_to_confirm_reset = resetting.to(con_reset)
-    restart_to_confirm_restart = restarting.to(con_restart)
-    confirm_restart_to_wait = con_restart.to(waiting)
-    confirm_reset_to_start = con_reset.to(starting)
-    confirm_restart_to_run = con_restart.to(running)
-    confirm_restart_to_sleep = con_restart.to(sleeping)
-    confirm_restart_to_test = con_restart.to(testing)
-    confirm_reset_to_run = con_reset.to(running)
-    confirm_reset_to_wait = con_reset.to(waiting)
-    confirm_reset_to_sleep = con_reset.to(sleeping)
-    confirm_reset_to_test = con_reset.to(testing)
-
-    #
-    wait_to_restart = waiting.to(restarting)
-    wait_to_reset = waiting.to(resetting)
-    run_to_restart = running.to(restarting)
-    run_to_reset = running.to(resetting)
-    test_to_restart = testing.to(restarting)
-    test_to_reset = testing.to(resetting)
-    sleep_to_restart = sleeping.to(restarting)
-    sleep_to_reset = sleeping.to(resetting)
 
     #
     reset_to_start = resetting.to(starting)
@@ -634,7 +607,7 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        self.send('reset_to_confirm_reset')
+        self.criticity.value = 4
 
     def while_restarting(self):
         r"""Documentation here
@@ -647,33 +620,7 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        self.send('restart_to_confirm_restart')
-
-    def while_con_reset(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
         self.criticity.value = 4
-
-    def while_con_restart(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.send('confirm_restart_to_wait')
 
     # Transitions
     def on_start_to_wait(self):
@@ -919,8 +866,9 @@ class AutomationStateMachine(StateMachine):
         """
         try:
             _from = self.current_state.name.lower()
-            _transition = getattr(self, '{}_to_{}'.format(_from, to))
-            _transition()
+            transition_name = f'{_from}_to_{to}'
+            self.send(transition_name)
+            
         except Exception as err:
 
             logging.WARNING(f"Transition from {_from} state to {to} state for {self.name} is not allowed")
@@ -1119,6 +1067,8 @@ class LeakStateMachine(AutomationStateMachine):
     leaking = State('leak')
     switching = State('switch')
     not_available = State('not_available')
+    con_restart = State('confirm_restart')
+    con_reset = State('confirm_reset')
 
     #Transitions
     run_to_pre_alarm = AutomationStateMachine.running.to(pre_alarming)
@@ -1126,6 +1076,18 @@ class LeakStateMachine(AutomationStateMachine):
     pre_alarm_to_leak = pre_alarming.to(leaking)
     leak_to_restart = leaking.to(AutomationStateMachine.restarting)
     leak_to_reset = leaking.to(AutomationStateMachine.resetting)
+
+    reset_to_confirm_reset = AutomationStateMachine.resetting.to(con_reset)
+    restart_to_confirm_restart = AutomationStateMachine.restarting.to(con_restart)
+    confirm_restart_to_wait = con_restart.to(AutomationStateMachine.waiting)
+    confirm_reset_to_start = con_reset.to(AutomationStateMachine.starting)
+    confirm_restart_to_run = con_restart.to(AutomationStateMachine.running)
+    confirm_restart_to_sleep = con_restart.to(AutomationStateMachine.sleeping)
+    confirm_restart_to_test = con_restart.to(AutomationStateMachine.testing)
+    confirm_reset_to_run = con_reset.to(AutomationStateMachine.running)
+    confirm_reset_to_wait = con_reset.to(AutomationStateMachine.waiting)
+    confirm_reset_to_sleep = con_reset.to(AutomationStateMachine.sleeping)
+    confirm_reset_to_test = con_reset.to(AutomationStateMachine.testing)
 
     start_to_switch = AutomationStateMachine.starting.to(switching)
     wait_to_switch = AutomationStateMachine.waiting.to(switching)
@@ -1196,7 +1158,7 @@ class LeakStateMachine(AutomationStateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 2
 
     def while_leaking(self):
         r"""Documentation here
@@ -1209,7 +1171,61 @@ class LeakStateMachine(AutomationStateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 3
+
+    def while_resetting(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.criticity.value = 3
+        self.send('reset_to_confirm_reset')
+
+    def while_restarting(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.criticity.value = 3
+        self.send('restart_to_confirm_restart')
+
+    def while_con_reset(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.criticity.value = 4
+
+    def while_con_restart(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.criticity.value = 5
 
     def while_switching(self):
         r"""Documentation here
@@ -1222,7 +1238,7 @@ class LeakStateMachine(AutomationStateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 2
 
     def while_not_available(self):
         r"""Documentation here
@@ -1235,7 +1251,7 @@ class LeakStateMachine(AutomationStateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 5
 
     # Transitions methods
     def on_run_to_pre_alarm(self):

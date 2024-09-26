@@ -832,13 +832,14 @@ class PyAutomation(Singleton):
             alarm_worker.start()
             # self.workers.append(alarm_worker)
 
-        # Start Workers
-        # for worker in self.workers:
-        #     worker.daemon = True
-        #     worker.start()
+        # # Start Workers
+        # # for worker in self.workers:
+        # #     worker.daemon = True
+        # #     worker.start()
 
-        # StateMachine Worker
-        self.machine.start()
+        # # StateMachine Worker
+        # print("start state machines worker")
+        # # self.machine.start()
 
     def __stop_workers(self):
         r"""
