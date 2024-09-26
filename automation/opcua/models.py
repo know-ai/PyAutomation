@@ -1,8 +1,7 @@
 from opcua import Client as OPCClient
 from opcua import ua
 from opcua.ua.uatypes import NodeId, datatype_to_varianttype
-import re
-import uuid
+import re, uuid, logging
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
@@ -35,7 +34,24 @@ class Client(OPCClient):
         """
         try:
 
-            super(Client, self).connect()
+            
+
+            try:
+                # Connect to the server
+                super(Client, self).connect()
+
+                # Re-establish the connection by creating a new SecureChannel
+                super(Client, self).open_secure_channel()
+
+                # Activate a session (you can create a new session if needed)
+                super(Client, self).activate_session()
+
+                # Now you're connected again!
+                
+            except Exception as e:
+
+                logging.error(f"Error during connection: {e}")
+
             self._is_open = True
             self._id = str(uuid.uuid4())
             result = {

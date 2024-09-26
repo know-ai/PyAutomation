@@ -1,5 +1,4 @@
-import threading
-import copy, logging
+import threading, copy, logging
 from ..singleton import Singleton
 from ..models import FloatType, StringType, IntegerType, BooleanType
 from .tag import Tag
@@ -366,7 +365,7 @@ class CVT:
             self._tags[tag.id].attach(observer)
         
         else:
-
+            
             logging.warning(f"{name} tag Not exists in CVT.attach_observer method")
 
     def detach_observer(self, name, observer):

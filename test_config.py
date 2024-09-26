@@ -1,4 +1,5 @@
 from automation import PyAutomation, server
 
 app = PyAutomation()
-app.run(debug=True, create_tables=True, alarm_worker=True, server=server)
+app.define_dash_app(server=server)
+app.run(debug=True, create_tables=True, alarm_worker=True)

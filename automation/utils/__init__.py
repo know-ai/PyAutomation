@@ -132,20 +132,22 @@ def get_data_to_update_into_opcua_table(app, to_get_node_values:dict):
     for client_name, namespaces in to_get_node_values.items():
         
         infos = app.automation.get_node_attributes(client_name=client_name, namespaces=namespaces)
+
+        if infos:
         
-        for info in infos:
-            _info = info[0]
-            namespace = _info["Namespace"]
-            data.append(
-                {
-                    "server": client_name,
-                    "namespace": namespace,
-                    "data_type": _info["DataType"],
-                    "display_name": _info["DisplayName"],
-                    "value": _info["Value"],
-                    "source_timestamp": _info["DataValue"].SourceTimestamp,
-                    "status_code": _info["DataValue"].StatusCode.name
-                }
-            )
+            for info in infos:
+                _info = info[0]
+                namespace = _info["Namespace"]
+                data.append(
+                    {
+                        "server": client_name,
+                        "namespace": namespace,
+                        "data_type": _info["DataType"],
+                        "display_name": _info["DisplayName"],
+                        "value": _info["Value"],
+                        "source_timestamp": _info["DataValue"].SourceTimestamp,
+                        "status_code": _info["DataValue"].StatusCode.name
+                    }
+                )
     
     return data

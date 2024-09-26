@@ -18,7 +18,7 @@ from ..dbmodels import (
 from datetime import datetime
 from ..alarms.trigger import TriggerType
 from ..alarms.states import AlarmState
-import logging
+import logging, sys, os
 from automation.tags import CVTEngine
 from ..variables import VARIABLES, DATATYPES
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f'
@@ -193,8 +193,11 @@ class DataLogger:
             trend = Tags.read_by_name(tag)
             TagValue.create(tag=trend, value=value, timestamp=timestamp)
         except Exception as e:
-            
-            logging.warning(f"Rollback done in database due to conflicts writing tag")
+            _, _, e_traceback = sys.exc_info()
+            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
+            e_message = str(e)
+            e_line_number = e_traceback.tb_lineno
+            logging.warning(f"Rollback done in database due to conflicts writing tag: {e_line_number} - {e_filename} - {e_message}")
             conn = self._db.connection()
             conn.rollback()
 
@@ -213,8 +216,11 @@ class DataLogger:
             TagValue.insert_many(tags).execute()
 
         except Exception as e:
-            print(e)
-            logging.warning(f"Rollback done in database due to conflicts writing tags")
+            _, _, e_traceback = sys.exc_info()
+            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
+            e_message = str(e)
+            e_line_number = e_traceback.tb_lineno
+            logging.warning(f"Rollback done in database due to conflicts writing tags: {e_line_number} - {e_filename} - {e_message}")
             conn = self._db.connection()
             conn.rollback()
 
@@ -240,7 +246,11 @@ class DataLogger:
             
             return result
         except Exception as e:
-            logging.warning(f"Rollback done in database due to conflicts reading tag")
+            _, _, e_traceback = sys.exc_info()
+            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
+            e_message = str(e)
+            e_line_number = e_traceback.tb_lineno
+            logging.warning(f"Rollback done in database due to conflicts reading tag: {e_line_number} - {e_filename} - {e_message}")
             conn = self._db.connection()
             conn.rollback()
 

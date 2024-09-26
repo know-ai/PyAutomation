@@ -37,27 +37,28 @@ def init_callback(app:dash.Dash):
         for client_name, namespaces in to_get_node_values.items():
             
             client = app.automation.get_opcua_client(client_name=client_name)
-            subscriptions[client_name] = client.create_subscription(1000, subscription_handler)
-            infos = app.automation.get_node_attributes(client_name=client_name, namespaces=namespaces)
-            
-            for info in infos:
-                _info = info[0]
-                namespace = _info["Namespace"]
-                data.append(
-                    {
-                        "server": client_name,
-                        "namespace": namespace,
-                        "data_type": _info["DataType"],
-                        "display_name": _info["DisplayName"],
-                        "value": _info["Value"],
-                        "source_timestamp": _info["DataValue"].SourceTimestamp,
-                        "status_code": _info["DataValue"].StatusCode.name
-                    }
-                )
-                
-                node_id = client.get_node_id_by_namespace(namespace)
-                subscription = subscriptions[client_name]
-                subscription_handler.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
+            if client:
+                subscriptions[client_name] = client.create_subscription(1000, subscription_handler)
+                infos = app.automation.get_node_attributes(client_name=client_name, namespaces=namespaces)
+                if infos:
+                    for info in infos:
+                        _info = info[0]
+                        namespace = _info["Namespace"]
+                        data.append(
+                            {
+                                "server": client_name,
+                                "namespace": namespace,
+                                "data_type": _info["DataType"],
+                                "display_name": _info["DisplayName"],
+                                "value": _info["Value"],
+                                "source_timestamp": _info["DataValue"].SourceTimestamp,
+                                "status_code": _info["DataValue"].StatusCode.name
+                            }
+                        )
+                        
+                        node_id = client.get_node_id_by_namespace(namespace)
+                        subscription = subscriptions[client_name]
+                        subscription_handler.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
 
         return opcua_components.data_access_view_table(data=data)
 

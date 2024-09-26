@@ -111,7 +111,6 @@ class DAS(Singleton):
         r"""
         Documentation here
         """
-
         if client_name not in self.monitored_items:
             
             monitored_item = subscription.subscribe_data_change(
