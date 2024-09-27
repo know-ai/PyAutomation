@@ -1,7 +1,8 @@
 from flask_restx import Namespace, Resource, fields
-from automation import PyAutomation, Users
+from automation import PyAutomation
 from automation.extensions.api import api
 from automation.extensions import _api as Api
+from automation.modules.users.users import users
 
 
 ns = Namespace('Users', description='Users')
@@ -31,7 +32,6 @@ class SignUpResource(Resource):
     @ns.expect(signup_model)
     def post(self):
         """User signup"""
-        users = Users()
         user, message = users.signup(**api.payload)
         
         if user:
@@ -48,7 +48,6 @@ class LoginResource(Resource):
     @ns.expect(login_model)
     def post(self):
         """User login"""
-        users = Users()
         user = users.login(**api.payload)
 
         if user:

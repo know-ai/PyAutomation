@@ -16,11 +16,11 @@ class User:
             password:str, 
             name:str=None, 
             lastname:str=None, 
-            id:str=None):
+            identifier:str=None):
 
-        self.id = secrets.token_hex(4)
-        if id:
-            self.id = id
+        self.identifier = secrets.token_hex(4)
+        if identifier:
+            self.identifier = identifier
         self.username = username
         self.role = role
         self.email = email
@@ -40,7 +40,7 @@ class User:
         Documentation here
         """
         return {
-            "id": self.id,
+            "identifier": self.identifier,
             "username": self.username,
             "role": self.role.serialize(),
             "email": self.email,
@@ -60,7 +60,7 @@ class Auth:
         """            
         if self.decode_password(user=user, password=password):
             
-            user.token = self.code(secrets.token_hex(4))
+            user.token = self.encode(secrets.token_hex(4))
             
             return True
         
@@ -72,7 +72,7 @@ class Auth:
         """
         user.logout()
     
-    def code(self, value:str)->str:
+    def encode(self, value:str)->str:
 
         return generate_password_hash(value)
 
@@ -91,7 +91,9 @@ class Auth:
             email:str, 
             password:str, 
             name:str=None, 
-            lastname:str=None
+            lastname:str=None,
+            identifier:str=None,
+            encode_password:bool=True
         )->User:
         r"""
         Documentation here
@@ -101,10 +103,10 @@ class Auth:
             username=username,
             role=role,
             email=email,
-            password=self.code(value=password),
+            password=self.encode(value=password) if encode_password else password,
             name=name,
             lastname=lastname,
-            id=secrets.token_hex(4)
+            identifier=identifier if identifier else secrets.token_hex(4)
         )
 
     
@@ -116,8 +118,12 @@ class Users(Singleton):
     def __init__(self):
 
         self.__auth = Auth()
+        self.__reset()
+
+    def __reset(self):
+
         self.active_users = dict()                      # Save by token
-        self.__by_id = dict()
+        self.__by_identifier = dict()
         self.__by_username = dict()
         self.__by_email = dict()
 
@@ -169,7 +175,10 @@ class Users(Singleton):
             email:str, 
             password:str, 
             name:str=None, 
-            lastname:str=None)->tuple:
+            lastname:str=None,
+            identifier:str=None,
+            encode_password:bool=True
+            )->tuple:
         r"""
         Documentation here
         """
@@ -189,10 +198,12 @@ class Users(Singleton):
                         email=email,
                         password=password,
                         name=name,
-                        lastname=lastname
+                        lastname=lastname,
+                        identifier=identifier,
+                        encode_password=encode_password
                     )
 
-                    self.__by_id[user.id] = user
+                    self.__by_identifier[user.identifier] = user
                     self.__by_username[user.username] = user
                     self.__by_email[user.email] = user
                     return user, message
@@ -209,13 +220,13 @@ class Users(Singleton):
 
             return None, f"username: {username} already exists"
 
-    def get(self, id:str)->User:
+    def get(self, identifier:str)->User:
         r"""
         Documentation here
         """
-        if id in self.__by_id:
+        if identifier in self.__by_identifier:
             
-            return self.__by_id[id]
+            return self.__by_identifier[identifier]
 
     def get_active_user(self, token:str)->User:
         r"""
@@ -261,7 +272,13 @@ class Users(Singleton):
         
         return False
     
-    def code(self, value:str)->str:
+    def encode(self, value:str)->str:
 
         return generate_password_hash(value)
+    
+    def _delete_all(self):
+        
+        self.__reset()
+    
+users = Users()
         

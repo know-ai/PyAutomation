@@ -1,5 +1,6 @@
 from flask_restx import Namespace, Resource, fields
-from automation import PyAutomation, Roles, Role
+from automation import PyAutomation
+from automation.modules.users.roles import roles, Role
 from automation.extensions.api import api
 from automation.extensions import _api as Api
 
@@ -21,7 +22,6 @@ class CreateRoleResource(Resource):
     def post(self):
         """User signup"""
         role = Role(**api.payload)
-        roles = Roles()
         role_id = roles.add(role=role)
         
         if role_id:

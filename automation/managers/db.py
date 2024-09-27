@@ -18,6 +18,8 @@ from ..dbmodels import (
     Units, 
     DataTypes,
     OPCUA,
+    Users,
+    Roles,
     BaseModel
 )
 
@@ -45,7 +47,9 @@ class DBManager(Singleton):
             AlarmStates,
             Alarms,
             AlarmSummary,
-            OPCUA
+            OPCUA,
+            Roles,
+            Users
         ]
 
         self._extra_tables = []

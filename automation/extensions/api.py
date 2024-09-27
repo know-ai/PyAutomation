@@ -3,7 +3,7 @@ from flask_restx import Api as API
 from automation.singleton import Singleton
 from functools import wraps
 import logging, jwt
-from automation import Users
+from automation.modules.users.users import Users
 from werkzeug.security import check_password_hash
 
 

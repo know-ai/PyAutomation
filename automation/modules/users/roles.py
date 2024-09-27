@@ -7,8 +7,15 @@ class Role:
     Documentation here
     """
 
-    def __init__(self, name:str, level:int):
+    def __init__(self, name:str, level:int, identifier:str=None):
+        
+        _identifier = secrets.token_hex(4)
+        
+        if identifier:
 
+            _identifier = identifier
+
+        self.identifier = _identifier
         self.name:str = name
         self.level:int = level
 
@@ -17,6 +24,7 @@ class Role:
         Documentation here
         """
         return {
+            "identifier": self.identifier,
             "name": self.name,
             "level": self.level
         }

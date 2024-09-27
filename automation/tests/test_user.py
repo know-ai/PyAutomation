@@ -1,6 +1,6 @@
 import unittest
-from automation import Users, Roles, Role
-from automation.modules.users.users import User
+from automation.modules.users.users import users, User
+from automation.modules.users.roles import roles, Role
 
 USERNAME = "user1"
 ROLE_NAME = "admin"
@@ -16,9 +16,10 @@ class TestUsers(unittest.TestCase):
 
     def setUp(self) -> None:
         
-        self.roles = Roles()
+        self.roles = roles
         self.roles._delete_all()
-        self.users = Users()
+        self.users = users
+        self.users._delete_all()
 
         return super().setUp()
 
@@ -34,7 +35,7 @@ class TestUsers(unittest.TestCase):
             "name": "admin",
             "level": 0
         }
-        self.assertDictEqual(expected, admin.serialize())
+        self.assertDictContainsSubset(expected, admin.serialize())
     
     def test_add_role_to_repo(self):
         
@@ -117,7 +118,7 @@ class TestUsers(unittest.TestCase):
         role = Role(name=ROLE_NAME, level=0)
         self.roles.add(role=role)
         user, _ = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
-        self.assertEqual(user, self.users.get(id=user.id))
+        self.assertEqual(user, self.users.get(identifier=user.identifier))
 
     def test_get_by_username(self):
 
