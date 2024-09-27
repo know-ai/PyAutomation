@@ -1,3 +1,5 @@
+from .users import Role, Roles, Users
+
 # Init Resources
 def init_app(app):
 

@@ -31,7 +31,7 @@ class Roles(Singleton):
 
         self.roles = dict()
 
-    def add(self, role:Role, id:str=None)->None:
+    def add(self, role:Role, id:str=None)->str:
         r"""
         Documentation here
         """
@@ -45,29 +45,32 @@ class Roles(Singleton):
                 
                 else:
 
-                    self.roles[secrets.token_hex(4)] = role
+                    id = secrets.token_hex(4)
+                    self.roles[id] = role
+
+                return id
 
         else:
 
             raise TypeError(f"{role} must be a Role instale")
         
-    def get(self, id:str)->dict:
+    def get(self, id:str)->Role:
         r"""
         Documentation here
         """
         if id in self.roles:
 
-            return self.roles[id].serialize()
+            return self.roles[id]
         
-    def get_by_name(self, name:str)->dict:
+    def get_by_name(self, name:str)->Role:
         r"""
         Documentation here
         """
-        for role_id, role in self.roles.items():
+        for _, role in self.roles.items():
 
             if name.lower()==role.name.lower():
 
-                return {role_id: role.serialize()}
+                return role
             
     def get_names(self)->list:
         r"""
@@ -75,14 +78,22 @@ class Roles(Singleton):
         """
         return [role.name for _, role in self.roles.items()]
     
-    def put(self, id, **kwargs):
+    def put(self, id:str, **kwargs):
         r"""
         Documentation here
         """
         if id in self.roles:
             role = self.roles[id]
             fields = {key: value for key, value in kwargs.items() if key in role.serialize()}
-            self.roles[id].update(fields)
+            self.roles[id].__dict__.update(fields)
+
+    def delete(self, id:str)->dict:
+        r"""
+        Documentation here
+        """
+        if id in self.roles:
+            
+            return self.roles.pop(id)
     
     def check_role_name(self, name:str):
         r"""
