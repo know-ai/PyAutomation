@@ -2,12 +2,12 @@ from flask_restx import Namespace, Resource, fields
 from automation import PyAutomation
 from automation.extensions.api import api
 from automation.extensions import _api as Api
-from automation.modules.users.users import users
+from automation.modules.users.users import Users as CVTUsers
 
 
 ns = Namespace('Users', description='Users')
 app = PyAutomation()
-
+users = CVTUsers()
 
 
 login_model = api.model("login_model", {
@@ -32,7 +32,7 @@ class SignUpResource(Resource):
     @ns.expect(signup_model)
     def post(self):
         """User signup"""
-        user, message = users.signup(**api.payload)
+        user, message = app.signup(**api.payload)
         
         if user:
 

@@ -1,8 +1,9 @@
 from peewee import CharField, IntegerField, ForeignKeyField
 from automation.dbmodels.core import BaseModel
-from automation.modules.users.users import users
+from automation.modules.users.users import Users as CVTUsers
+from automation.modules.users.users import User
 
-
+users = CVTUsers()
 class Roles(BaseModel):
 
     identifier = CharField(unique=True, max_length=16)
@@ -21,9 +22,10 @@ class Roles(BaseModel):
         if cls.identifier_exist(identifier):
                 
             return None, f"identifier {identifier} is already used"
-
+        
         query = cls(name=name, level=level, identifier=identifier)
         query.save()
+        
         return query, f"Role creation successful"
 
     @classmethod
@@ -41,6 +43,7 @@ class Roles(BaseModel):
         
         return True if cls.get_or_none(name=name.upper()) else False
     
+    @classmethod
     def identifier_exist(cls, identifier:str)->bool:
 
         return True if cls.get_or_none(identifier=identifier) else False
@@ -74,45 +77,33 @@ class Users(BaseModel):
     lastname = CharField(unique=True, max_length=64, null=True)
 
     @classmethod
-    def create(cls, username:str, role:str, email:str, password:str, name:str=None, lastname:str=None)-> dict:
+    def create(cls, user:User)-> dict:
 
-        if cls.username_exist(username):
+        if cls.username_exist(user.username):
 
-            return None, f"username {username} is already used"
+            return None, f"username {user.username} is already used"
 
-        if cls.email_exist(email):
+        if cls.email_exist(user.email):
 
-            return None, f"email {email} is already used"
+            return None, f"email {user.email} is already used"
         
-        user, message = users.signup(
-            username=username, 
-            role_name=role,
-            email=email,
-            password=password,
-            name=name,
-            lastname=lastname
+        if cls.identifier_exist(user.identifier):
+
+            return None, f"identifier {user.identifier} is already used"
+        # print(f"user: {user.serialize()}")
+        query = cls(
+            username=user.username,
+            role=Roles.read_by_name(name=user.role.name),
+            email=user.email,
+            password=user.password,
+            identifier=user.identifier,
+            name=user.name,
+            lastname=user.lastname
             )
-        
-        if user:
-        
-            if cls.identifier_exist(user.identifier):
+        print(f"Query: {query}")
+        query.save()
 
-                return None, f"identifier {user.identifier} is already used"
-
-            query = cls(
-                username=username,
-                role=user.role.name,
-                email=email,
-                password=user.password,
-                identifier=user.identifier,
-                name=name,
-                lastname=lastname
-                )
-            query.save()
-
-            return query, f"User creation successful"
-        
-        return None, message
+        return query, f"User creation successful"
 
     @classmethod
     def read_by_name(cls, name:str):

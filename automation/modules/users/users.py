@@ -191,7 +191,7 @@ class Users(Singleton):
                 role = roles.get_by_name(name=role_name)
 
                 if role:
-
+                    
                     user = self.__auth.signup(
                         username=username,
                         role=role,
@@ -202,7 +202,7 @@ class Users(Singleton):
                         identifier=identifier,
                         encode_password=encode_password
                     )
-
+                    
                     self.__by_identifier[user.identifier] = user
                     self.__by_username[user.username] = user
                     self.__by_email[user.email] = user

@@ -14,6 +14,8 @@ from ..dbmodels import (
     DataTypes,
     Alarms,
     AlarmSummary,
+    Users,
+    Roles,
     OPCUA)
 from datetime import datetime
 from ..alarms.trigger import TriggerType
@@ -21,6 +23,7 @@ from ..alarms.states import AlarmState
 import logging, sys, os
 from automation.tags import CVTEngine
 from ..variables import VARIABLES, DATATYPES
+from automation.modules.users.users import User
 
 
 class DataLogger:
@@ -329,3 +332,50 @@ class DataLogger:
         Documentation here
         """
         return AlarmSummary.read_all()
+
+    # ROLES METHODS
+    def set_role(self, name:str, level:int, identifier:str):
+        r"""
+        Documentation here
+        """
+        return Roles.create(
+            name=name,
+            level=level,
+            identifier=identifier
+        )
+
+    def put_role(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    def delete_role(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    # USERS METHODS
+    def set_user(
+            self, 
+            user:User
+        ):
+        r"""
+        Documentation here
+        """
+        return Users.create(
+            user=user
+        )
+
+    def put_user(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    def delete_user(self):
+        r"""
+        Documentation here
+        """
+        pass

@@ -39,7 +39,7 @@ class Roles(Singleton):
 
         self.roles = dict()
 
-    def add(self, role:Role, id:str=None)->str:
+    def add(self, role:Role)->str:
         r"""
         Documentation here
         """
@@ -47,16 +47,11 @@ class Roles(Singleton):
 
             if not self.check_role_name(name=role.name):
 
-                if id:
+                self.roles[role.identifier] = role
 
-                    self.roles[id] = role
-                
-                else:
-
-                    id = secrets.token_hex(4)
-                    self.roles[id] = role
-
-                return id
+                return role.identifier, f"role creation successful"
+            
+            return None, f"role {role.name} is already used"
 
         else:
 

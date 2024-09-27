@@ -9,6 +9,7 @@ import threading, logging
 from .datalogger import DataLogger
 from ..singleton import Singleton
 from datetime import datetime
+from automation.modules.users.users import User
 
 
 class DataLoggerEngine(Singleton):
@@ -320,6 +321,59 @@ class DataLoggerEngine(Singleton):
         _query["parameters"]["state"] = state
         
         return self.__query(_query)
+
+    # ROLES METHODS
+    def set_role(self, name:str, level:int, identifier:str):
+        r"""
+        Documentation here
+        """
+        _query = dict()
+        _query["action"] = "set_role"
+        _query["parameters"] = dict()
+        _query["parameters"]["identifier"] = identifier
+        _query["parameters"]["name"] = name
+        _query["parameters"]["level"] = level
+        
+        return self.__query(_query)
+
+    def put_role(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    def delete_role(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    # USERS METHODS
+    def set_user(
+            self, 
+            user:User
+        ):
+        r"""
+        Documentation here
+        """
+        _query = dict()
+        _query["action"] = "set_user"
+        _query["parameters"] = dict()
+        _query["parameters"]["user"] = user
+        
+        return self.__query(_query)
+
+    def put_role(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    def delete_role(self):
+        r"""
+        Documentation here
+        """
+        pass
 
     def get_summary(self):
         r"""

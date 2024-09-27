@@ -1,5 +1,9 @@
 import sys, logging, json, os, jwt
 from math import ceil
+from datetime import datetime, timezone
+# DRIVERS IMPORTATION
+from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
+# PYAUTOMATION MODULES IMPORTATION
 from .utils import log_detailed
 from .singleton import Singleton
 from .workers import LoggerWorker, AlarmWorker
@@ -10,8 +14,8 @@ from .alarms import Alarm
 from .state_machine import Machine, DAQ
 from .opcua.subscription import DAS
 from .buffer import Buffer
-from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
-from datetime import datetime, timezone
+from .modules.users.users import users
+from .modules.users.roles import roles, Role
 # DASH APP CONFIGURATION PAGES IMPORTATION
 from .pages.main import ConfigView
 from .pages.callbacks import init_callbacks
@@ -228,6 +232,99 @@ class PyAutomation(Singleton):
         if alarm:
 
             return f"Tag {name} has an alarm associated: {alarm.name}, delete first it"
+
+    # USERS METHODS
+    def signup(
+            self,
+            username:str,
+            role_name:str,
+            email:str,
+            password:str,
+            name:str=None,
+            lastname:str=None
+        ):
+        r"""
+        Documentation here
+        """
+        user, message = users.signup(
+            username=username,
+            role_name=role_name,
+            email=email,
+            password=password,
+            name=name,
+            lastname=lastname
+        )
+        if user:
+
+            # Persist Tag on Database
+            if self.is_db_connected():
+                
+                _, message = self.db_manager.set_user(
+                    user=user
+                )
+
+            return user, message
+
+        return None, message
+
+    def login(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    def put_user(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    def delete_user(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    def create_token(self, role_name:str):
+        r"""
+        Documentation here
+        """
+        from automation import server
+        payload = {
+            "created_on": datetime.now(timezone.utc).strftime(self.cvt.DATETIME_FORMAT),
+            "role": role_name
+        }
+        return jwt.encode(payload, server.config['TPT_TOKEN'], algorithm="HS256")
+
+    # ROLES METHODS
+    def set_role(self, name:str, level:int)->Role|None:
+        r"""
+        Documentation here
+        """
+        role = Role(name=name, level=level)
+        role_id, message = roles.add(role=role)
+        if role_id:
+
+            # Persist Tag on Database
+            if self.is_db_connected():
+                
+                _, message = self.db_manager.set_role(name=name, level=level, identifier=role.identifier)
+
+            return role, message
+
+        return None, message
+
+    def put_role(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    def delete_role(self):
+        r"""
+        Documentation here
+        """
+        pass
 
     # OPCUA METHODS
     def find_opcua_servers(self, host:str='127.0.0.1', port:int=4840)->list[dict]:
@@ -845,17 +942,6 @@ class PyAutomation(Singleton):
             alarm_worker.start()
 
         self.machine.start()
-
-    def create_token(self, role_name:str):
-        r"""
-        Documentation here
-        """
-        from automation import server
-        payload = {
-            "created_on": datetime.now(timezone.utc).strftime(self.cvt.DATETIME_FORMAT),
-            "role": role_name
-        }
-        return jwt.encode(payload, server.config['TPT_TOKEN'], algorithm="HS256")
 
     def __stop_workers(self):
         r"""

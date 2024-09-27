@@ -3,7 +3,7 @@ from flask_restx import Api as API
 from automation.singleton import Singleton
 from functools import wraps
 import logging, jwt
-from automation.modules.users.users import Users
+from automation.modules.users.users import Users as CVTUsers
 from werkzeug.security import check_password_hash
 
 
@@ -25,6 +25,8 @@ api = API(blueprint, version='1.0',
         doc='/docs',
         authorizations=authorizations
     )
+
+users = CVTUsers()
 
 class Api(Singleton):
 
@@ -89,7 +91,6 @@ class Api(Singleton):
                             
                             return {'message' : 'Key is missing.'}, 401
                         
-                        users = Users()
                         user = users.get_active_user(token=token)
 
                         if user:

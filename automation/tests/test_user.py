@@ -1,5 +1,5 @@
 import unittest
-from automation.modules.users.users import users, User
+from automation.modules.users.users import Users, User
 from automation.modules.users.roles import roles, Role
 
 USERNAME = "user1"
@@ -18,7 +18,7 @@ class TestUsers(unittest.TestCase):
         
         self.roles = roles
         self.roles._delete_all()
-        self.users = users
+        self.users = Users()
         self.users._delete_all()
 
         return super().setUp()
@@ -46,7 +46,7 @@ class TestUsers(unittest.TestCase):
     def test_get_role(self):
         
         admin = Role(name="admin", level=0)
-        admin_id = self.roles.add(role=admin)
+        admin_id, _ = self.roles.add(role=admin)
         self.assertEqual(admin, self.roles.get(id=admin_id))
 
     def test_get_role_by_name(self):
@@ -67,7 +67,7 @@ class TestUsers(unittest.TestCase):
     def test_put_role(self):
         
         role = Role(name="admin", level=0)
-        role_id = self.roles.add(role=role)
+        role_id, _ = self.roles.add(role=role)
         self.roles.put(id=role_id, name="sudo")
         self.assertEqual(role.name, "sudo")
 

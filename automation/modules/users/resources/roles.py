@@ -21,9 +21,10 @@ class CreateRoleResource(Resource):
     @ns.expect(create_role_model)
     def post(self):
         """User signup"""
-        role = Role(**api.payload)
-        role_id = roles.add(role=role)
+        role, message = app.set_role(**api.payload)
         
-        if role_id:
+        if role:
 
             return role.serialize(), 200
+        
+        return message, 400

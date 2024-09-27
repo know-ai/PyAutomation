@@ -7,6 +7,7 @@ import logging
 from ..singleton import Singleton
 from ..logger import DataLoggerEngine, LogTable
 from ..tags import CVTEngine
+from automation.modules.users.users import User
 from ..dbmodels import (
     Tags, 
     TagValue, 
@@ -298,6 +299,49 @@ class DBManager(Singleton):
         Documentation here
         """
         return OPCUA.read_all()
+
+    # ROLES METHODS
+    def set_role(self, name:str, level:int, identifier:str):
+        r"""
+        Documentation here
+        """
+        return self._logger.set_role(name=name, level=level, identifier=identifier)
+
+    def put_role(self):
+        r"""
+        Documentation here
+        """
+        self._logger.put_role(self)
+
+    def delete_role(self):
+        r"""
+        Documentation here
+        """
+        self._logger.delete_role(self)
+
+    # ROLES METHODS
+    def set_user(
+            self, 
+            user:User
+        ):
+        r"""
+        Documentation here
+        """
+        return self._logger.set_user(
+            user=user
+            )
+
+    def put_user(self):
+        r"""
+        Documentation here
+        """
+        self._logger.put_user(self)
+
+    def delete_user(self):
+        r"""
+        Documentation here
+        """
+        self._logger.delete_user(self)
 
     def summary(self)->dict:
         r"""
