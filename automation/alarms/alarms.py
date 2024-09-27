@@ -8,7 +8,6 @@ from ..tags import CVTEngine
 from .states import AlarmState, Status, AlarmAttrs
 from .trigger import Trigger, TriggerType
 import secrets
-DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 
 class Alarm:
@@ -57,10 +56,10 @@ class Alarm:
         self._off_delay = None
         self._timestamp = None
         if timestamp:
-            self._timestamp = datetime.strptime(timestamp, DATETIME_FORMAT)  
+            self._timestamp = datetime.strptime(timestamp, self.tag_engine.DATETIME_FORMAT)  
         self._acknowledged_timestamp = None
         if acknowledged_timestamp:
-            self._acknowledged_timestamp = datetime.strptime(acknowledged_timestamp, DATETIME_FORMAT)
+            self._acknowledged_timestamp = datetime.strptime(acknowledged_timestamp, self.tag_engine.DATETIME_FORMAT)
         self._shelved_time = None
         self.audible = False
         self._shelved_options_time = {

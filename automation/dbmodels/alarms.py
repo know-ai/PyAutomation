@@ -3,8 +3,9 @@ from automation.dbmodels.core import BaseModel
 from datetime import datetime
 from .tags import Tags
 from ..alarms.states import States
+from ..tags.cvt import CVTEngine
 
-DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
+tag_engine = CVTEngine()
 
 class AlarmTypes(BaseModel):
 
@@ -327,12 +328,12 @@ class Alarms(BaseModel):
         timestamp = self.timestamp
         if timestamp:
 
-            timestamp = timestamp.strftime(DATETIME_FORMAT)
+            timestamp = timestamp.strftime(tag_engine.DATETIME_FORMAT)
 
         acknowledged_timestamp = self.acknowledged_timestamp
         if acknowledged_timestamp:
 
-            acknowledged_timestamp = timestamp.strftime(DATETIME_FORMAT)
+            acknowledged_timestamp = timestamp.strftime(tag_engine.DATETIME_FORMAT)
 
         return {
             'identifier': self.identifier,
@@ -445,7 +446,7 @@ class AlarmSummary(BaseModel):
         """
         ack_time = None
         if self.ack_time:
-            ack_time = self.ack_time.strftime(DATETIME_FORMAT)
+            ack_time = self.ack_time.strftime(tag_engine.DATETIME_FORMAT)
         return {
             'id': self.id,
             'name': self.alarm.name,
@@ -454,7 +455,7 @@ class AlarmSummary(BaseModel):
             'state': self.state.name,
             'mnemonic': self.state.mnemonic,
             'status': self.state.status,
-            'alarm_time': self.alarm_time.strftime(DATETIME_FORMAT),
+            'alarm_time': self.alarm_time.strftime(tag_engine.DATETIME_FORMAT),
             'ack_time': ack_time
         }
     

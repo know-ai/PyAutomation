@@ -1,4 +1,4 @@
-import sys, logging, json, os
+import sys, logging, json, os, jwt
 from math import ceil
 from .utils import log_detailed
 from .singleton import Singleton
@@ -11,7 +11,7 @@ from .state_machine import Machine, DAQ
 from .opcua.subscription import DAS
 from .buffer import Buffer
 from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
-from datetime import datetime
+from datetime import datetime, timezone
 # DASH APP CONFIGURATION PAGES IMPORTATION
 from .pages.main import ConfigView
 from .pages.callbacks import init_callbacks
@@ -845,6 +845,17 @@ class PyAutomation(Singleton):
             alarm_worker.start()
 
         self.machine.start()
+
+    def create_token(self, role_name:str):
+        r"""
+        Documentation here
+        """
+        from automation import server
+        payload = {
+            "created_on": datetime.now(timezone.utc).strftime(self.cvt.DATETIME_FORMAT),
+            "role": role_name
+        }
+        return jwt.encode(payload, server.config['TPT_TOKEN'], algorithm="HS256")
 
     def __stop_workers(self):
         r"""

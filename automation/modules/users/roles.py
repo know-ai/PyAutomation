@@ -94,6 +94,10 @@ class Roles(Singleton):
         if id in self.roles:
             
             return self.roles.pop(id)
+        
+    def _delete_all(self):
+
+        self.roles = dict()
     
     def check_role_name(self, name:str):
         r"""
@@ -110,3 +114,5 @@ class Roles(Singleton):
         Documentation here
         """
         return [role.serialize() for _, role in self.roles.items()]
+    
+roles = Roles()

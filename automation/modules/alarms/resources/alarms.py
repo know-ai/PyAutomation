@@ -2,6 +2,7 @@ from flask_restx import Namespace, Resource, fields
 from automation import PyAutomation
 from automation.alarms import AlarmState
 from automation.extensions.api import api
+from automation.extensions import _api as Api
 
 
 ns = Namespace('Alarms', description='Alarms')
@@ -24,6 +25,8 @@ shelve_alarm_resource_by_name_model = api.model("shelve_alarm_resource_by_name_m
 @ns.route('/')
 class AlarmsCollection(Resource):
 
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     def get(self):
         """
         Get Alarms
@@ -33,6 +36,8 @@ class AlarmsCollection(Resource):
 @ns.route('/<id>')
 class AlarmResource(Resource):
 
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     def get(self, id):
         """
         Gets alarm by alarm id
@@ -49,6 +54,8 @@ class AlarmResource(Resource):
 @ns.route('/name/<alarm_name>')
 class AlarmByNameResource(Resource):
 
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     def get(self, alarm_name):
         """
         Gets all alarm names defined
@@ -65,6 +72,8 @@ class AlarmByNameResource(Resource):
 @ns.route('/name/acknowledge')
 class AckAlarmByNameResource(Resource):
     
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(alarm_resource_by_name_model)
     def post(self):
         """
@@ -92,6 +101,8 @@ class AckAlarmByNameResource(Resource):
 @ns.route('/acknowledge_all')
 class AckAllAlarmsResource(Resource):
 
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     def post(self):
         """
         Acknowledge all alarms triggered
@@ -116,6 +127,8 @@ class AckAllAlarmsResource(Resource):
 @ns.route('/silence_all')
 class SilenceAllAlarmsResource(Resource):
 
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     def post(self):
         """
         Silence all alarms triggered
@@ -143,6 +156,8 @@ class SilenceAllAlarmsResource(Resource):
 @ns.route('/name/enable')
 class EnableAlarmByNameResource(Resource):
     
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(alarm_resource_by_name_model)
     def post(self):
         """
@@ -166,6 +181,8 @@ class EnableAlarmByNameResource(Resource):
 @ns.route('/name/disable')
 class DisableAlarmByNameResource(Resource):
     
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(alarm_resource_by_name_model)
     def post(self):
         """
@@ -192,6 +209,8 @@ class DisableAlarmByNameResource(Resource):
 @ns.route('/name/suppress_by_design')
 class SuppressByDesignAlarmByNameResource(Resource):
     
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(alarm_resource_by_name_model)
     def post(self):
         """
@@ -215,6 +234,8 @@ class SuppressByDesignAlarmByNameResource(Resource):
 @ns.route('/name/unsuppress_by_design')
 class UnsuppressByDesignAlarmByNameResource(Resource):
     
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(alarm_resource_by_name_model)
     def post(self):
         """
@@ -241,6 +262,8 @@ class UnsuppressByDesignAlarmByNameResource(Resource):
 @ns.route('/name/out_of_service')
 class OutOfServiceAlarmByNameResource(Resource):
     
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(alarm_resource_by_name_model)
     def post(self):
         """
@@ -264,6 +287,8 @@ class OutOfServiceAlarmByNameResource(Resource):
 @ns.route('/name/shelve')
 class ShelveAlarmByNameResource(Resource):
     
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(shelve_alarm_resource_by_name_model)
     def post(self):
         """
@@ -314,6 +339,8 @@ class ShelveAlarmByNameResource(Resource):
 @ns.route('/name/return_to_service')
 class ReturnToServiceAlarmByNameResource(Resource):
     
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(alarm_resource_by_name_model)
     def post(self):
         """
@@ -340,6 +367,8 @@ class ReturnToServiceAlarmByNameResource(Resource):
 @ns.route('/name/silence')
 class SilenceAlarmByNameResource(Resource):
     
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(alarm_resource_by_name_model)
     def post(self):
         """
@@ -365,6 +394,8 @@ class SilenceAlarmByNameResource(Resource):
 @ns.route('/name/sound')
 class SoundAlarmByNameResource(Resource):
     
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(alarm_resource_by_name_model)
     def post(self):
         """

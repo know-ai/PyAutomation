@@ -3,7 +3,6 @@ from opcua import ua
 from opcua.ua.uatypes import NodeId, datatype_to_varianttype
 import re, uuid, logging
 
-DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 class Client(OPCClient):
     r"""

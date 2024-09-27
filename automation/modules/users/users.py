@@ -3,7 +3,6 @@ from .roles import Role, Roles
 from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
 
-# roles = Roles()
 
 class User:
     r"""
@@ -35,6 +34,19 @@ class User:
         Documentation here
         """
         self.token = None
+
+    def serialize(self):
+        r"""
+        Documentation here
+        """
+        return {
+            "id": self.id,
+            "username": self.username,
+            "role": self.role.serialize(),
+            "email": self.email,
+            "name": self.name,
+            "lastname": self.lastname
+        }
 
 
 class Auth:
@@ -108,7 +120,6 @@ class Users(Singleton):
         self.__by_id = dict()
         self.__by_username = dict()
         self.__by_email = dict()
-        self.roles = Roles()
 
     def login(self, password:str, username:str=None, email:str=None):
         r"""
@@ -136,7 +147,7 @@ class Users(Singleton):
                 
                 self.active_users[user.token] = user
 
-                return True
+                return user
 
         else:
 
@@ -158,15 +169,17 @@ class Users(Singleton):
             email:str, 
             password:str, 
             name:str=None, 
-            lastname:str=None):
+            lastname:str=None)->tuple:
         r"""
         Documentation here
         """
+        message = f"{username} created successfully"
         if not self.check_username(username=username):
 
             if not self.check_email(email=email):
-
-                role = self.roles.get_by_name(name=role_name)
+                
+                roles = Roles()
+                role = roles.get_by_name(name=role_name)
 
                 if role:
 
@@ -182,7 +195,19 @@ class Users(Singleton):
                     self.__by_id[user.id] = user
                     self.__by_username[user.username] = user
                     self.__by_email[user.email] = user
-                    return user
+                    return user, message
+                
+                else:
+
+                    return None, f"role: {role_name} not exists"
+            
+            else:
+
+                return None, f"Email: {email} already exists"
+            
+        else:
+
+            return None, f"username: {username} already exists"
 
     def get(self, id:str)->User:
         r"""

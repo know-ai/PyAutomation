@@ -11,8 +11,6 @@ from ..alarms.alarms import Alarm, AlarmState
 from ..dbmodels.alarms import AlarmSummary, AlarmStates, Alarms
 from ..dbmodels.tags import Tags
 
-DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
-
 
 class AlarmManager(Singleton):
     r"""

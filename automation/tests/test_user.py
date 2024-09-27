@@ -15,8 +15,9 @@ EMAIL2 = "jhon.doe2@gmail.com"
 class TestUsers(unittest.TestCase):
 
     def setUp(self) -> None:
-
+        
         self.roles = Roles()
+        self.roles._delete_all()
         self.users = Users()
 
         return super().setUp()
@@ -83,14 +84,14 @@ class TestUsers(unittest.TestCase):
 
         role = Role(name=ROLE_NAME, level=0)
         self.roles.add(role=role)
-        user = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
+        user, _ = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
         self.assertIsInstance(user, User)
 
     def test_login_logout(self):
 
         role = Role(name=ROLE_NAME, level=0)
         self.roles.add(role=role)
-        user = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
+        user, _ = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
         with self.subTest("Test Login"):
             
             self.assertTrue(self.users.login(password="123456", username="user1"))
@@ -108,35 +109,35 @@ class TestUsers(unittest.TestCase):
 
         role = Role(name=ROLE_NAME, level=0)
         self.roles.add(role=role)
-        user = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
+        user, _ = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
         self.assertFalse(self.users.login(password=user.password, username="user1"))
 
     def test_get_user(self):
 
         role = Role(name=ROLE_NAME, level=0)
         self.roles.add(role=role)
-        user = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
+        user, _ = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
         self.assertEqual(user, self.users.get(id=user.id))
 
     def test_get_by_username(self):
 
         role = Role(name=ROLE_NAME, level=0)
         self.roles.add(role=role)
-        user = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
+        user, _ = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
         self.assertEqual(user, self.users.get_by_username(username=USERNAME))
 
     def test_get_by_email(self):
 
         role = Role(name=ROLE_NAME, level=0)
         self.roles.add(role=role)
-        user = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
+        user, _ = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
         self.assertEqual(user, self.users.get_by_email(email=EMAIL))
 
     def test_get_active_user(self):
 
         role = Role(name=ROLE_NAME, level=0)
         self.roles.add(role=role)
-        user1 = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
+        user1, _ = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
         self.users.signup(username=USERNAME2, role_name=ROLE_NAME, email=EMAIL2, password=PASSWORD, name=NAME, lastname=LASTNAME)
         self.users.login(password=PASSWORD, username=USERNAME)
         self.assertEqual(user1, self.users.get_active_user(token=user1.token))
@@ -146,7 +147,7 @@ class TestUsers(unittest.TestCase):
         role = Role(name=ROLE_NAME, level=0)
         self.roles.add(role=role)
         self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
-        user2 = self.users.signup(username=USERNAME2, role_name=ROLE_NAME, email=EMAIL2, password=PASSWORD, name=NAME, lastname=LASTNAME)
+        user2, _ = self.users.signup(username=USERNAME2, role_name=ROLE_NAME, email=EMAIL2, password=PASSWORD, name=NAME, lastname=LASTNAME)
         self.users.login(password=PASSWORD, username=USERNAME)
         self.assertIsNone(self.users.get_active_user(token=user2.token))
 

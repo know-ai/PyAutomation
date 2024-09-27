@@ -21,7 +21,6 @@ from ..alarms.states import AlarmState
 import logging, sys, os
 from automation.tags import CVTEngine
 from ..variables import VARIABLES, DATATYPES
-DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f'
 
 
 class DataLogger:
@@ -258,8 +257,8 @@ class DataLogger:
         r"""
         Documentation here
         """    
-        start = datetime.strptime(start, DATETIME_FORMAT)
-        stop = datetime.strptime(stop, DATETIME_FORMAT)
+        start = datetime.strptime(start, self.tag_engine.DATETIME_FORMAT)
+        stop = datetime.strptime(stop, self.tag_engine.DATETIME_FORMAT)
         result = {tag: {
             'values': list(),
             'unit': self.tag_engine.get_display_unit_by_tag(tag)
@@ -274,7 +273,7 @@ class DataLogger:
 
             for value in values:
                 
-                result[tag]['values'].append({"x": value.timestamp.strftime(DATETIME_FORMAT), "y": value.value})
+                result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": value.value})
 
         return result
 

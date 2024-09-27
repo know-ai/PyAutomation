@@ -473,6 +473,7 @@ class CVTEngine(Singleton):
         self._config = None
         self._response = None
         self._response_lock.acquire()
+        self.DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
     def set_tag(
         self, 

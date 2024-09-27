@@ -2,7 +2,6 @@ from flask import Flask
 from automation.core import PyAutomation
 from automation.modules import Users, Roles, Role
 
-DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 app = Flask(__name__, instance_relative_config=False)
 
@@ -29,3 +28,4 @@ class CreateApp():
         
 __application = CreateApp()
 server = __application()    
+server.config['TPT_TOKEN'] = '073821603fcc483f9afee3f1500782a4'

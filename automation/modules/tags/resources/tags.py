@@ -2,6 +2,7 @@ from flask_restx import Namespace, Resource, fields
 from automation import PyAutomation
 from datetime import datetime, timedelta
 from automation.extensions.api import api
+from automation.extensions import _api as Api
 
 
 ns = Namespace('Tags', description='Tags')
@@ -17,6 +18,8 @@ query_trends_model = api.model("query_trends_model",{
 @ns.route('/')
 class TagsCollection(Resource):
 
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     def get(self):
         """
         Get Tags
@@ -26,6 +29,8 @@ class TagsCollection(Resource):
 @ns.route('/query_trends')
 class QueryTrendsResource(Resource):
 
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(query_trends_model)
     def post(self):
         """

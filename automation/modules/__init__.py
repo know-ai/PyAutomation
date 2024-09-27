@@ -5,6 +5,8 @@ def init_app(app):
 
     from automation.modules.tags.resources import init_app as init_tags
     from automation.modules.alarms.resources import init_app as init_alarms
+    from automation.modules.users.resources import init_app as init_users
 
     init_tags()
     init_alarms()
+    init_users()
