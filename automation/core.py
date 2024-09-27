@@ -3,6 +3,7 @@ from math import ceil
 from datetime import datetime, timezone
 # DRIVERS IMPORTATION
 from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
+from .dbmodels.users import Roles, Users
 # PYAUTOMATION MODULES IMPORTATION
 from .utils import log_detailed
 from .singleton import Singleton
@@ -659,6 +660,8 @@ class PyAutomation(Singleton):
             self.load_opcua_clients_from_db()
             self.load_db_to_cvt()
             self.load_db_to_alarm_manager()
+            self.load_db_to_roles()
+            self.load_db_to_users()
 
     def disconnect_to_db(self):
         r"""
@@ -689,6 +692,23 @@ class PyAutomation(Singleton):
             for alarm in alarms:
 
                 self.create_alarm(**alarm)
+
+    def load_db_to_roles(self):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            Roles.fill_cvt_roles()
+
+    def load_db_to_users(self):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            Users.fill_cvt_users()
+        
 
     def load_opcua_clients_from_db(self):
         r"""

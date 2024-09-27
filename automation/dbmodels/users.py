@@ -1,9 +1,13 @@
 from peewee import CharField, IntegerField, ForeignKeyField
 from automation.dbmodels.core import BaseModel
 from automation.modules.users.users import Users as CVTUsers
+from automation.modules.users.roles import Roles as CVTRoles
+from automation.modules.users.roles import Role
 from automation.modules.users.users import User
 
 users = CVTUsers()
+roles = CVTRoles()
+
 class Roles(BaseModel):
 
     identifier = CharField(unique=True, max_length=16)
@@ -52,6 +56,21 @@ class Roles(BaseModel):
     def read_names(cls)->list:
 
         return [role.name for role in cls.select()]
+    
+    @classmethod
+    def fill_cvt_roles(cls):
+        r"""
+        Documentation here
+        """
+        for role in cls.select():
+
+            _role = Role(
+                name=role.name,
+                level=role.level,
+                identifier=role.identifier
+            )
+
+            roles.add(role=_role)
 
     def serialize(self)->dict:
         r"""
@@ -90,7 +109,7 @@ class Users(BaseModel):
         if cls.identifier_exist(user.identifier):
 
             return None, f"identifier {user.identifier} is already used"
-        # print(f"user: {user.serialize()}")
+        
         query = cls(
             username=user.username,
             role=Roles.read_by_name(name=user.role.name),
@@ -100,7 +119,6 @@ class Users(BaseModel):
             name=user.name,
             lastname=user.lastname
             )
-        print(f"Query: {query}")
         query.save()
 
         return query, f"User creation successful"
