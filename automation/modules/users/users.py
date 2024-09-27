@@ -66,6 +66,16 @@ class Auth:
         
         return False
     
+    def verify_credentials(self, user:User, password:str)->bool:
+        r"""
+        Documentation here
+        """            
+        if self.decode_password(user=user, password=password):
+
+            return True
+        
+        return False
+    
     def logout(self, user:User)->None:
         r"""
         Documentation here
@@ -137,7 +147,7 @@ class Users(Singleton):
             
                 if not self.check_username(username=username):
 
-                    raise NameError(f"{username} is not valid")
+                    return None, f"{username} is not valid"
                 
                 user = self.get_by_username(username=username)
 
@@ -145,7 +155,7 @@ class Users(Singleton):
 
                 if not self.check_email(email=email):
 
-                    raise NameError(f"{email} is not valid")
+                    return None, f"{email} is not valid"
                 
                 user = self.get_by_email(email=email)
 
@@ -153,7 +163,7 @@ class Users(Singleton):
                 
                 self.active_users[user.token] = user
 
-                return user
+                return user, f"Login successful"
 
         else:
 
@@ -220,6 +230,34 @@ class Users(Singleton):
 
             return None, f"username: {username} already exists"
 
+    def verify_credentials(self, password:str, username:str=None, email:str=None)->bool:
+        r"""
+        Documentation here
+        """
+        if username or email:
+
+            if username:
+            
+                if not self.check_username(username=username):
+
+                    return False, f"{username} is not valid"
+                
+                user = self.get_by_username(username=username)
+
+            elif email:
+
+                if not self.check_email(email=email):
+
+                    return False, f"{email} is not valid"
+                
+                user = self.get_by_email(email=email)
+
+            return self.__auth.verify_credentials(user=user, password=password), f"Credentials valid"
+
+        else:
+
+            return False, "You must submit username or email"
+
     def get(self, identifier:str)->User:
         r"""
         Documentation here
@@ -279,6 +317,12 @@ class Users(Singleton):
     def _delete_all(self):
         
         self.__reset()
+
+    def serialize(self):
+        r"""
+        Documentation here
+        """
+        return [user.serialize() for user in self.__by_username.values()]
     
 users = Users()
         

@@ -13,6 +13,16 @@ create_role_model = api.model("create_role_model", {
     'level': fields.Integer(required=True, description='Role Level')
 })
 
+@ns.route('/')
+class UsersByRoleResource(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def get(self):
+        """View all tecnogiros's role"""
+
+        return roles.serialize(), 200
+
 @ns.route('/add')
 class CreateRoleResource(Resource):
     

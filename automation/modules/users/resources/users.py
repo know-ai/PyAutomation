@@ -1,3 +1,4 @@
+from flask import request
 from flask_restx import Namespace, Resource, fields
 from automation import PyAutomation
 from automation.extensions.api import api
@@ -25,6 +26,15 @@ signup_model = api.model("signup_model", {
     'lastname':fields.String(required=False, description='User`s last name')
 })
 
+@ns.route('/')
+class UsersResource(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def get(self):
+        """Get all usernames"""
+
+        return users.serialize(), 200
 
 @ns.route('/signup')
 class SignUpResource(Resource):
@@ -48,7 +58,7 @@ class LoginResource(Resource):
     @ns.expect(login_model)
     def post(self):
         """User login"""
-        user = users.login(**api.payload)
+        user, message = users.login(**api.payload)
 
         if user:
 
@@ -58,4 +68,63 @@ class LoginResource(Resource):
                 "role_level": user.role.level
                 }, 200
 
-        return {"message": "Credentials Fail"}, 403
+        return message, 403
+    
+
+@ns.route('/credentials_are_valid')
+class VerifyCredentialsResource(Resource):
+    
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    @ns.expect(login_model)
+    def post(self):
+        """Verify user credentials"""
+        credentials_valid, _ = users.verify_credentials(**api.payload)
+        return credentials_valid, 200
+    
+@ns.route('/<username>')
+class UserResource(Resource):
+    
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def get(self, username):
+        """Get user information"""
+        
+        user = users.get_by_username(username=username)
+
+        if user:
+
+            return user.serialize(), 200
+
+        return f"{username} is not a valid username", 400
+
+    # @api.doc(security='apikey')
+    # @Api.token_required(auth=True)
+    # def delete(self, username):
+    #     """Delete user"""
+
+    #     if users.delete_by_username(username=username):
+
+    #         return {'message': f"User {username} deleted successfully"}, 200
+
+    #     return {'message': f"{username} is not a valid username"}, 400
+
+
+@ns.route('/logout')
+class LogoutResource(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def post(self):
+        """User logout"""
+        if 'X-API-KEY' in request.headers:
+                            
+            token = request.headers['X-API-KEY']
+
+        elif 'Authorization' in request.headers:
+            
+            token = request.headers['Authorization'].split('Token ')[-1]
+        
+        users.logout(token=token)
+
+        return f"Logout successful", 200
