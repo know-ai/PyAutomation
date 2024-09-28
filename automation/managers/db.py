@@ -21,6 +21,7 @@ from ..dbmodels import (
     OPCUA,
     Users,
     Roles,
+    Events,
     BaseModel
 )
 
@@ -50,7 +51,8 @@ class DBManager(Singleton):
             AlarmSummary,
             OPCUA,
             Roles,
-            Users
+            Users,
+            Events
         ]
 
         self._extra_tables = []

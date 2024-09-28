@@ -124,6 +124,11 @@ class Users(BaseModel):
         return query, f"User creation successful"
 
     @classmethod
+    def read_by_username(cls, username:str):
+   
+        return cls.get_or_none(username=username)
+
+    @classmethod
     def read_by_name(cls, name:str):
    
         return cls.get_or_none(name=name)
