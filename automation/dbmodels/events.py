@@ -35,15 +35,15 @@ class Events(BaseModel):
             return None, f"User {user} - {type(user)} must be an User Object"
         
         _user = Users.read_by_username(username=user.username) 
+
+        if not timestamp:
+
+            timestamp = datetime.now()
         
         if not isinstance(timestamp, datetime):
 
             return None, f"Timestamp must be a datetime Object"
         
-        if not timestamp:
-
-            timestamp = datetime.now()
-
         query = cls(
             message=message,
             user=_user,

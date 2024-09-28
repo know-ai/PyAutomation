@@ -434,11 +434,81 @@ class AlarmSummary(BaseModel):
         r"""
         Documentation here
         """
-        alarms = cls.select().where(cls.id > cls.select().count() - int(lasts)).order_by(cls.id.desc())
+        alarms = cls.select().order_by(cls.id.desc()).limit(lasts)
 
-        result = [alarm.serialize() for alarm in alarms]
+        return [alarm.serialize() for alarm in alarms]
+    
+    @classmethod
+    def filter_by(cls, **fields):
+        r"""
+        Documentation here
+        """
+        _query = ''
 
-        return result
+        # State
+        if 'states' in fields.keys():
+            
+            states = fields["states"]
+            subquery = AlarmStates.select(AlarmStates.id).where(AlarmStates.name.in_(states))
+            _query = cls.select().join(AlarmStates).where(AlarmStates.id.in_(subquery)).order_by(cls.id.desc())
+
+        if 'names' in fields.keys():
+            
+            names = fields["names"]
+            subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(names))
+
+            if _query:
+
+                _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
+
+            else:
+                _query = cls.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
+
+        if 'tags' in fields.keys():
+            
+            tags = fields["tags"]
+            subquery = Tags.select(Tags.id).where(Tags.name.in_(tags))
+            subquery = Alarms.select(Alarms.id).join(Tags).where(Tags.id.in_(subquery))
+
+            if _query:
+    
+                _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
+
+            else:
+                
+                _query = cls.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
+
+        separator = '.'
+        # GREATER THAN TIMESTAMP
+        if 'greater_than_timestamp' in fields.keys():
+
+            greater_than_timestamp = fields.pop('greater_than_timestamp')
+            greater_than_timestamp = datetime.strptime(greater_than_timestamp.replace("T", " ").split(separator, 1)[0], "%Y-%m-%d %H:%M:%S")
+            
+            if _query:
+
+                _query = _query.select().where(cls.alarm_time > greater_than_timestamp).order_by(cls.id.desc())
+
+            else:
+
+                _query = cls.select().where(cls.alarm_time > greater_than_timestamp).order_by(cls.id.desc())
+
+        # LESS THAN TIMESTAMP
+        if 'less_than_timestamp' in fields.keys():
+
+            less_than_timestamp = fields.pop('less_than_timestamp')
+            less_than_timestamp = datetime.strptime(less_than_timestamp.replace("T", " ").split(separator, 1)[0], "%Y-%m-%d %H:%M:%S")
+            
+            if _query:
+
+                _query = _query.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
+
+            else:
+
+                _query = cls.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
+
+
+        return [alarm.serialize() for alarm in _query]
 
     def serialize(self):
         r"""

@@ -110,3 +110,22 @@ class Api(Singleton):
             return decorated
 
         return _token_required
+    
+    @classmethod
+    def get_current_user(cls):
+
+        token = None
+
+        if 'X-API-KEY' in request.headers:
+                            
+            token = request.headers['X-API-KEY']
+
+        elif 'Authorization' in request.headers:
+            
+            token = request.headers['Authorization'].split('Token ')[-1]
+
+        if token:
+
+            return users.get_active_user(token=token)
+
+        return None

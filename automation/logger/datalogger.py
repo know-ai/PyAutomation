@@ -16,6 +16,7 @@ from ..dbmodels import (
     AlarmSummary,
     Users,
     Roles,
+    Events,
     OPCUA)
 from datetime import datetime
 from ..alarms.trigger import TriggerType
@@ -327,11 +328,46 @@ class DataLogger:
         """
         AlarmSummary.create(name=name, state=state)
 
-    def get_summary(self):
+    def get_alarm_summary(self):
         r"""
         Documentation here
         """
         return AlarmSummary.read_all()
+    
+    # EVENTS METHODS
+    def create_event(
+            self,
+            message:str,
+            user:User,
+            description:str=None,
+            classification:str=None,
+            priority:int=None,
+            criticity:int=None,
+            timestamp:datetime=None):
+        r"""
+        Documentation here
+        """
+        Events.create(
+            message=message,
+            user=user,
+            description=description,
+            classification=classification,
+            priority=priority,
+            criticity=criticity,
+            timestamp=timestamp
+        )
+    
+    def get_lasts_events(self, lasts:int=10):
+        r"""
+        Documentation here
+        """
+        return self.event_manager.get_lasts(lasts=lasts)
+    
+    def filter_events_by(self, **fields):
+        r"""
+        Documentation here
+        """
+        return self.event_manager.filter_by(**fields)
 
     # ROLES METHODS
     def set_role(self, name:str, level:int, identifier:str):

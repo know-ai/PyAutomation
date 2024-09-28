@@ -10,6 +10,10 @@ from .tags import CVTEngine, Tag
 from .logger import DataLoggerEngine
 from .managers.opcua_client import OPCUAClientManager
 from .opcua.subscription import DAS
+from .modules.users.users import User
+from .logger import EventsLoggerEngine
+
+events_engine = EventsLoggerEngine()
 
 class Machine(Singleton):
     r"""Documentation here
@@ -859,7 +863,8 @@ class AutomationStateMachine(StateMachine):
 
     def transition(
         self,
-        to
+        to,
+        user:User=None
         ):
         r"""
         Documentation here
@@ -868,6 +873,16 @@ class AutomationStateMachine(StateMachine):
             _from = self.current_state.name.lower()
             transition_name = f'{_from}_to_{to}'
             self.send(transition_name)
+            
+            if user:
+
+                events_engine.create(
+                    message=f"{self.name} switched from: {_from} to: {to}",
+                    classification="State Machine",
+                    user=user,
+                    priority=2,
+                    criticity=1
+                )
             
         except Exception as err:
 

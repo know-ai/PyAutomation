@@ -202,7 +202,7 @@ class AlarmManager(Singleton):
         * **alarm** (list) of alarm objects
         """
         alarms = list()
-        for id, alarm in self._alarms.items():
+        for _, alarm in self._alarms.items():
             
             if tag == alarm.tag:
                 
@@ -326,85 +326,15 @@ class AlarmManager(Singleton):
         r"""
         Documentation here
         """
-        payload = fields
-        
-        _query = ''
 
-        # State
-        if 'states' in payload.keys():
-            
-            states = payload["states"]
-            subquery = AlarmStates.select(AlarmStates.id).where(AlarmStates.name.in_(states))
-            _query = AlarmSummary.select().join(AlarmStates).where(AlarmStates.id.in_(subquery)).order_by(AlarmSummary.id.desc())
-
-        if 'names' in payload.keys():
-            
-            names = payload["names"]
-            subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(names))
-
-            if _query:
-
-                _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
-
-            else:
-                _query = AlarmSummary.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
-
-        if 'tags' in payload.keys():
-            
-            tags = payload["tags"]
-            subquery = Tags.select(Tags.id).where(Tags.name.in_(tags))
-            subquery = Alarms.select(Alarms.id).join(Tags).where(Tags.id.in_(subquery))
-
-            if _query:
-    
-                _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
-
-            else:
-                
-                _query = AlarmSummary.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
-
-        separator = '.'
-        # GREATER THAN TIMESTAMP
-        if 'greater_than_timestamp' in payload.keys():
-
-            greater_than_timestamp = payload.pop('greater_than_timestamp')
-            greater_than_timestamp = datetime.strptime(greater_than_timestamp.replace("T", " ").split(separator, 1)[0], "%Y-%m-%d %H:%M:%S")
-            
-            if _query:
-
-                _query = _query.select().where(AlarmSummary.alarm_time > greater_than_timestamp).order_by(AlarmSummary.id.desc())
-
-            else:
-
-                _query = AlarmSummary.select().where(AlarmSummary.alarm_time > greater_than_timestamp).order_by(AlarmSummary.id.desc())
-
-        # LESS THAN TIMESTAMP
-        if 'less_than_timestamp' in payload.keys():
-
-            less_than_timestamp = payload.pop('less_than_timestamp')
-            less_than_timestamp = datetime.strptime(less_than_timestamp.replace("T", " ").split(separator, 1)[0], "%Y-%m-%d %H:%M:%S")
-            
-            if _query:
-
-                _query = _query.select().where(AlarmSummary.alarm_time < less_than_timestamp).order_by(AlarmSummary.id.desc())
-
-            else:
-
-                _query = AlarmSummary.select().where(AlarmSummary.alarm_time < less_than_timestamp).order_by(AlarmSummary.id.desc())
-
-
-        result = [alarm.serialize() for alarm in _query]
-
-        return result, 200
+        return AlarmSummary.filter_by(**fields), 200
 
     def get_lasts(self, lasts:int=10):
         r"""
         Documentation here
         """
-        _query = AlarmSummary.select().order_by(AlarmSummary.id.desc()).limit(lasts)
-        result = [alarm.serialize() for alarm in _query]
 
-        return result, 200
+        return AlarmSummary.read_lasts(lasts=lasts), 200
 
     def summary(self)->dict:
         r"""

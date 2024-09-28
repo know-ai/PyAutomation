@@ -10,12 +10,12 @@ from .singleton import Singleton
 from .workers import LoggerWorker, AlarmWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .tags import CVTEngine, Tag
-from .logger import DataLoggerEngine
+from .logger import DataLoggerEngine, EventsLoggerEngine
 from .alarms import Alarm
 from .state_machine import Machine, DAQ
 from .opcua.subscription import DAS
 from .buffer import Buffer
-from .modules.users.users import users
+from .modules.users.users import users, User
 from .modules.users.roles import roles, Role
 # DASH APP CONFIGURATION PAGES IMPORTATION
 from .pages.main import ConfigView
@@ -44,6 +44,7 @@ class PyAutomation(Singleton):
         self.db_manager = DBManager()
         self.cvt = CVTEngine()
         self.logger_engine = DataLoggerEngine()
+        self.events_engine = EventsLoggerEngine()
         self.opcua_client_manager = OPCUAClientManager()
         self.alarm_manager = AlarmManager()
         self.workers = list()
@@ -709,7 +710,6 @@ class PyAutomation(Singleton):
 
             Users.fill_cvt_users()
         
-
     def load_opcua_clients_from_db(self):
         r"""
         Documentation here
@@ -901,23 +901,8 @@ class PyAutomation(Singleton):
         >>> app.run()
         ```
         """
-        self.startup_config_page(debug=debug, create_tables=create_tables, alarm_worker=alarm_worker, **kwargs)
-
-    def startup_config_page(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True, **kwargs):
-        r"""Documentation here
-
-        # Parameters
-
-        -
-
-        # Returns
-
-        -
-        """
-        # self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
-        # self.dash_app.set_automation_app(self)
-        # init_callbacks(app=self.dash_app)
         self.safe_start(create_tables=create_tables, alarm_worker=alarm_worker)
+        
         if debug:
 
             self.dash_app.run(debug=debug, use_reloader=False)
