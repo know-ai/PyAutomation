@@ -1,6 +1,6 @@
 from automation.opcua.models import Client
 from automation.dbmodels import OPCUA
-from automation.logger import DataLoggerEngine
+from automation.logger.datalogger import DataLoggerEngine
 from automation.tags import CVTEngine
 from automation.opcua.subscription import DAS
 

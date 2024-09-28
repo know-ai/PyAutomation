@@ -2,7 +2,7 @@
 """pyhades/logger/events.py
 """
 from datetime import datetime
-from ..dbmodels import Events
+from ..dbmodels.events import Events
 from ..modules.users.users import User
 from .core import BaseEngine, BaseLogger
 

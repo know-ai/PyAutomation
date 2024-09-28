@@ -3,9 +3,8 @@ from automation.dbmodels.core import BaseModel
 from datetime import datetime
 from .users import Users
 from automation.modules.users.users import User
-from ..tags.cvt import CVTEngine
 
-tag_engine = CVTEngine()
+DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 
 class Events(BaseModel):
@@ -128,7 +127,7 @@ class Events(BaseModel):
         timestamp = self.timestamp
         if timestamp:
 
-            timestamp = timestamp.strftime(tag_engine.DATETIME_FORMAT)
+            timestamp = timestamp.strftime(DATETIME_FORMAT)
 
         return {
             "id": self.id,

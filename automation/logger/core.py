@@ -1,15 +1,11 @@
 import threading, logging
 from ..singleton import Singleton
 from ..dbmodels import (
-    AlarmTypes, 
-    AlarmStates, 
     Variables, 
     Units,
     DataTypes
     )
 from ..variables import VARIABLES, DATATYPES
-from ..alarms.trigger import TriggerType
-from ..alarms.states import AlarmState
 
 class BaseLogger(Singleton):
 
@@ -45,7 +41,6 @@ class BaseLogger(Singleton):
         self._db.create_tables(tables, safe=True)
         self.__init_default_variables_schema()
         self.__init_default_datatypes_schema()
-        self.__init_default_alarms_schema()
 
     def __init_default_variables_schema(self):
         r"""
@@ -70,23 +65,6 @@ class BaseLogger(Singleton):
         for datatype in DATATYPES:
 
             DataTypes.create(name=datatype["value"])
-
-    def __init_default_alarms_schema(self):
-        r"""
-        Documentation here
-        """
-        ## Alarm Types
-        for alarm_type in TriggerType:
-
-            AlarmTypes.create(name=alarm_type.value)
-
-        ## Alarm States
-        for alarm_state in AlarmState._states:
-            name = alarm_state.state
-            mnemonic = alarm_state.mnemonic
-            condition = alarm_state.process_condition
-            status = alarm_state.alarm_status
-            AlarmStates.create(name=name, mnemonic=mnemonic, condition=condition, status=status)
 
     def drop_tables(self, tables):
         r"""

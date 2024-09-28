@@ -7,11 +7,12 @@ import logging
 from .buffer import Buffer
 from .models import StringType, IntegerType, FloatType, BooleanType
 from .tags import CVTEngine, Tag
-from .logger import DataLoggerEngine
+from .logger.datalogger import DataLoggerEngine
+from .logger.events import EventsLoggerEngine
 from .managers.opcua_client import OPCUAClientManager
 from .opcua.subscription import DAS
 from .modules.users.users import User
-from .logger import EventsLoggerEngine
+
 
 events_engine = EventsLoggerEngine()
 

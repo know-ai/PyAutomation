@@ -10,7 +10,9 @@ from .singleton import Singleton
 from .workers import LoggerWorker, AlarmWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .tags import CVTEngine, Tag
-from .logger import DataLoggerEngine, EventsLoggerEngine, AlarmsLoggerEngine
+from .logger.datalogger import DataLoggerEngine
+from .logger.events import EventsLoggerEngine
+from .logger.alarms import AlarmsLoggerEngine
 from .alarms import Alarm
 from .state_machine import Machine, DAQ
 from .opcua.subscription import DAS
@@ -966,7 +968,6 @@ class PyAutomation(Singleton):
             db_worker = LoggerWorker(self.db_manager)
             self.connect_to_db()
             db_worker.start_workers()
-            # self.workers.append(db_worker)
 
         if self._create_alarm_worker:
             alarm_manager = self.get_alarm_manager()

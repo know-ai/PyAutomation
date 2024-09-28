@@ -2,8 +2,10 @@
 """pyhades/logger/alarms.py
 """
 from datetime import datetime
-from ..dbmodels import Alarms, AlarmSummary, AlarmTypes
+from ..dbmodels import Alarms, AlarmSummary, AlarmTypes, AlarmStates
 from .core import BaseEngine, BaseLogger
+from ..alarms.trigger import TriggerType
+from ..alarms.states import AlarmState
 
 
 class AlarmsLogger(BaseLogger):
@@ -11,6 +13,34 @@ class AlarmsLogger(BaseLogger):
     def __init__(self):
 
         super(AlarmsLogger, self).__init__()
+
+    def create_tables(self, tables):
+        r"""
+        Documentation here
+        """
+        if not self._db:
+            
+            return
+        
+        self._db.create_tables(tables, safe=True)
+        self.__init_default_alarms_schema()
+
+    def __init_default_alarms_schema(self):
+        r"""
+        Documentation here
+        """
+        ## Alarm Types
+        for alarm_type in TriggerType:
+
+            AlarmTypes.create(name=alarm_type.value)
+
+        ## Alarm States
+        for alarm_state in AlarmState._states:
+            name = alarm_state.state
+            mnemonic = alarm_state.mnemonic
+            condition = alarm_state.process_condition
+            status = alarm_state.alarm_status
+            AlarmStates.create(name=name, mnemonic=mnemonic, condition=condition, status=status)
 
     def create(
             self,
@@ -264,3 +294,17 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         
         return self.query(_query)
+
+    def create_tables(self, tables):
+        r"""
+        Create default PyHades database tables
+
+        ['TagTrend', 'TagValue']
+
+        **Parameters**
+
+        * **tables** (list) list of database model
+
+        **Returns** `None`
+        """
+        self.logger.create_tables(tables)

@@ -4,6 +4,7 @@ from ..singleton import Singleton
 from ..models import FloatType, StringType, IntegerType, BooleanType
 from .tag import Tag
 from ..modules.users.users import User
+from ..logger.events import EventsLoggerEngine
 
 class CVT:
     """Current Value Table class for Tag based repository.
@@ -23,8 +24,7 @@ class CVT:
 
         self._tags = dict()
         self.data_types = ["float", "int", "bool", "str"]
-        # from ..logger import EventsLoggerEngine
-        # self.events_engine = EventsLoggerEngine()
+        self.events_engine = EventsLoggerEngine()
     
     def set_tag(
         self, 

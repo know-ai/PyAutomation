@@ -28,7 +28,8 @@ class Alarm:
             user:User=None,
             reload:bool=False
             ):
-        from ..logger import AlarmsLoggerEngine, EventsLoggerEngine
+        from ..logger.alarms import AlarmsLoggerEngine
+        from ..logger.events import EventsLoggerEngine
         from ..tags import CVTEngine
         self.events_engine = EventsLoggerEngine()
         self.alarm_engine = AlarmsLoggerEngine()

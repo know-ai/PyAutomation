@@ -5,7 +5,11 @@ This module implements Logger Manager.
 """
 import logging
 from ..singleton import Singleton
-from ..logger import DataLoggerEngine, LogTable, AlarmsLoggerEngine, EventsLoggerEngine, UsersLoggerEngine
+from ..logger.datalogger import DataLoggerEngine
+from ..logger.logdict import  LogTable
+from ..logger.alarms import AlarmsLoggerEngine
+from ..logger.events import EventsLoggerEngine
+from ..logger.users import UsersLoggerEngine
 from ..tags import CVTEngine
 from automation.modules.users.users import User
 from ..dbmodels import (
@@ -122,6 +126,7 @@ class DBManager(Singleton):
         """
         self._tables.extend(self._extra_tables)
         self._logger.create_tables(self._tables)
+        self.alarms_logger.create_tables(self._tables)
 
     def drop_tables(self):
         r"""
