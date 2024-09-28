@@ -21,6 +21,14 @@ shelve_alarm_resource_by_name_model = api.model("shelve_alarm_resource_by_name_m
     'weeks': fields.Integer(required=False, description='Shelve time')
 })
 
+append_alarm_resource_model = api.model("append_alarm_resource_model",{
+    'name': fields.String(required=True, description='Alarm Name'),
+    'tag': fields.String(required=True, description='Tag to whom the alarm will be subscribed'),
+    'description': fields.String(required=True, description='Alarm description'),
+    'type': fields.String(required=True, description='Alarm Type - Allowed ["HIGH-HIGH", "HIGH", "BOOL", "LOW", "LOW-LOW"]'),
+    'trigger_value': fields.Float(required=True, description="Alarm trigger value")
+})
+
 
 @ns.route('/')
 class AlarmsCollection(Resource):
@@ -32,6 +40,19 @@ class AlarmsCollection(Resource):
         Get Alarms
         """
         return app.alarm_manager.serialize(), 200
+    
+@ns.route('/add')
+class CreateAlarmResource(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    @ns.expect(append_alarm_resource_model)
+    def post(self):
+        """
+        Create Alarm
+        """
+        user = Api.get_current_user()
+        return app.alarm_manager.append_alarm(user=user, **api.payload), 200
     
 @ns.route('/<id>')
 class AlarmResource(Resource):
@@ -86,8 +107,8 @@ class AckAlarmByNameResource(Resource):
         if alarm:
 
             if alarm.state in [AlarmState.UNACK, AlarmState.RTNUN]:
-
-                alarm.acknowledge()
+                user = Api.get_current_user()
+                alarm.acknowledge(user=user)
                 result['message'] = f"{alarm.name} was acknowledged successfully"
                 result['data'] = alarm.serialize()
 
@@ -114,8 +135,8 @@ class AckAllAlarmsResource(Resource):
             if not alarm._is_process_alarm:
 
                 if alarm.state in [AlarmState.UNACK, AlarmState.RTNUN]:
-
-                    alarm.acknowledge()
+                    user = Api.get_current_user()
+                    alarm.acknowledge(user=user)
         
         result = {
             'message': "Alarms were acknowledged successfully"
@@ -143,8 +164,8 @@ class SilenceAllAlarmsResource(Resource):
             if not alarm._is_process_alarm:
 
                 if alarm.audible:
-                    
-                    alarm.silence()
+                    user = Api.get_current_user()
+                    alarm.silence(user=user)
             
                     result = {
                         'message': "Alarms were silenced successfully"
@@ -168,8 +189,8 @@ class EnableAlarmByNameResource(Resource):
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
         if alarm:
-
-            alarm.enable()
+            user = Api.get_current_user()
+            alarm.enable(user=user)
             result['message'] = f"{alarm.name} was enabled successfully"
             result['data'] = alarm.serialize()
 
@@ -195,7 +216,8 @@ class DisableAlarmByNameResource(Resource):
         if alarm:
 
             if alarm.state in [AlarmState.NORM]:
-                alarm.disable()
+                user = Api.get_current_user()
+                alarm.disable(user=user)
                 result['message'] = f"{alarm.name} was disabled successfully"
                 result['data'] = alarm.serialize()
 
@@ -221,8 +243,8 @@ class SuppressByDesignAlarmByNameResource(Resource):
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
         if alarm:
-
-            alarm.suppress_by_design()
+            user = Api.get_current_user()
+            alarm.suppress_by_design(user=user)
             result['message'] = f"{alarm.name} was suppressed by design successfully"
             result['data'] = alarm.serialize()
 
@@ -248,7 +270,8 @@ class UnsuppressByDesignAlarmByNameResource(Resource):
         if alarm:
 
             if alarm.state in [AlarmState.DSUPR]:
-                alarm.unsuppress_by_design()
+                user = Api.get_current_user()
+                alarm.unsuppress_by_design(user=user)
                 result['message'] = f"{alarm.name} was suppressed by design successfully"
                 result['data'] = alarm.serialize()
 
@@ -274,8 +297,8 @@ class OutOfServiceAlarmByNameResource(Resource):
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
         if alarm:
-
-            alarm.out_of_service()
+            user = Api.get_current_user()
+            alarm.out_of_service(user=user)
             result['message'] = f"{alarm.name} was pusshed in out of service successfully"
             result['data'] = alarm.serialize()
 
@@ -320,8 +343,9 @@ class ShelveAlarmByNameResource(Resource):
             weeks = api.payload['weeks']
 
         if alarm:
-
+            user = Api.get_current_user()
             alarm.shelve(
+                user=user,
                 seconds=seconds,
                 minutes=minutes,
                 hours=hours,
@@ -353,7 +377,8 @@ class ReturnToServiceAlarmByNameResource(Resource):
         if alarm:
 
             if alarm.state in [AlarmState.OOSRV]:
-                alarm.return_to_service()
+                user = Api.get_current_user()
+                alarm.return_to_service(user=user)
                 result['message'] = f"{alarm.name} was returned to service successfully"
                 result['data'] = alarm.serialize()
 
@@ -380,7 +405,8 @@ class SilenceAlarmByNameResource(Resource):
         if alarm:
 
             if alarm.audible:
-                alarm.silence()
+                user = Api.get_current_user()
+                alarm.silence(user=user)
                 result['message'] = f"{alarm.name} was silenced successfully"
                 result['data'] = alarm.serialize()
 
@@ -408,7 +434,8 @@ class SoundAlarmByNameResource(Resource):
         if alarm:
 
             if not alarm.audible:
-                alarm.sound()
+                user = Api.get_current_user()
+                alarm.sound(user=user)
                 result['message'] = f"{alarm.name} was returned to audible successfully"
                 result['data'] = alarm.serialize()
 

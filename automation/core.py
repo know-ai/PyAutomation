@@ -692,7 +692,7 @@ class PyAutomation(Singleton):
 
             for alarm in alarms:
 
-                self.create_alarm(**alarm)
+                self.create_alarm(reload=True, **alarm)
 
     def load_db_to_roles(self):
         r"""
@@ -740,7 +740,8 @@ class PyAutomation(Singleton):
             tag_alarm:str=None,
             state:str="Normal",
             timestamp:str=None,
-            acknowledged_timestamp:str=None
+            acknowledged_timestamp:str=None,
+            reload:bool=False
         )->dict:
         r"""
         Append alarm to the Alarm Manager
@@ -763,7 +764,8 @@ class PyAutomation(Singleton):
             tag_alarm=tag_alarm,
             state=state,
             timestamp=timestamp,
-            acknowledged_timestamp=acknowledged_timestamp
+            acknowledged_timestamp=acknowledged_timestamp,
+            reload=reload
         )
 
         if not message:

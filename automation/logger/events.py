@@ -7,7 +7,6 @@ from ..dbmodels import Events
 from ..singleton import Singleton
 from ..modules.users.users import User
 from .logger import DataLoggerEngine
-
 logger_engine = DataLoggerEngine()
 
 

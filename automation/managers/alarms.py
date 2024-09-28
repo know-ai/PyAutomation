@@ -8,8 +8,8 @@ from automation.singleton import Singleton
 from ..tags import CVTEngine, TagObserver
 from ..alarms import AlarmState
 from ..alarms.alarms import Alarm, AlarmState
-from ..dbmodels.alarms import AlarmSummary, AlarmStates, Alarms
-from ..dbmodels.tags import Tags
+from ..dbmodels.alarms import AlarmSummary
+from ..modules.users.users import User
 
 
 class AlarmManager(Singleton):
@@ -40,7 +40,9 @@ class AlarmManager(Singleton):
             tag_alarm:str=None,
             state:str="Normal",
             timestamp:str=None,
-            acknowledged_timestamp:str=None
+            acknowledged_timestamp:str=None,
+            user:User=None,
+            reload:bool=False
         )->dict:
         r"""
         Append alarm to the Alarm Manager
@@ -73,10 +75,13 @@ class AlarmManager(Singleton):
             tag_alarm=tag_alarm, 
             state=state,
             timestamp=timestamp,
-            acknowledged_timestamp=acknowledged_timestamp)
+            acknowledged_timestamp=acknowledged_timestamp,
+            user=user,
+            reload=reload)
         alarm.set_trigger(value=trigger_value, _type=type)
         self._alarms[alarm._id] = alarm
         self.attach_all()
+        return alarm.serialize()
 
     def update_alarm(self, id:str, **kwargs):
         r"""
