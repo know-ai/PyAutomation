@@ -5,7 +5,7 @@ This module implements Logger Manager.
 """
 import logging
 from ..singleton import Singleton
-from ..logger import DataLoggerEngine, LogTable
+from ..logger import DataLoggerEngine, LogTable, AlarmsLoggerEngine, EventsLoggerEngine
 from ..tags import CVTEngine
 from automation.modules.users.users import User
 from ..dbmodels import (
@@ -39,6 +39,8 @@ class DBManager(Singleton):
         self.engine = CVTEngine()
         self._logging_tags = LogTable()
         self._logger = DataLoggerEngine()
+        self.alarms_logger = AlarmsLoggerEngine()
+        self.events_logger = EventsLoggerEngine()
         self._tables = [
             Variables, 
             Units, 
@@ -68,6 +70,8 @@ class DBManager(Singleton):
         **Returns** `None`
         """
         self._logger.set_db(db)
+        self.alarms_logger.set_db(db)
+        self.events_logger.set_db(db)
 
     def get_db(self):
         r"""
@@ -170,7 +174,8 @@ class DBManager(Singleton):
         r"""
         Gets all tag defined in tag's repository
         """
-        return self._logger.get_alarms()
+
+        return self.alarms_logger.get_alarms()
 
     def set_tag(
         self, 

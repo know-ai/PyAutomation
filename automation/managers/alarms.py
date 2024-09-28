@@ -81,9 +81,17 @@ class AlarmManager(Singleton):
         alarm.set_trigger(value=trigger_value, _type=type)
         self._alarms[alarm._id] = alarm
         self.attach_all()
-        return alarm.serialize()
 
-    def update_alarm(self, id:str, **kwargs):
+    def put(
+            self, 
+            id:str, 
+            name:str=None,
+            tag:str=None,
+            description:str=None,
+            alarm_type:str=None,
+            trigger_value:float=None,
+            user:User=None
+            ):
         r"""
         Updates alarm attributes
 
@@ -101,29 +109,38 @@ class AlarmManager(Singleton):
         * **alarm** (dict) Alarm Object jsonable
         """
         alarm = self.get_alarm(id=id)
-        if "name" in kwargs:
+        if name:
             
-            if self.get_alarm_by_name(kwargs["name"]):
+            if self.get_alarm_by_name(name=name):
                 
-                return f"Alarm {kwargs['name']} is already defined"
+                return f"Alarm {name} is already defined"
             
         # Check if alarm is associated to same tag with same alarm type
-        tag = alarm.tag
-        if "tag" in kwargs:
-            tag = kwargs["tag"]
-        type = alarm._trigger.type.value
-        if "type" in kwargs:
-            type = kwargs["type"]
-        trigger_value = alarm._trigger.value
-        if "trigger_value" in kwargs:
-            trigger_value = float(kwargs["trigger_value"])
+        if not tag:
+            tag = alarm.tag
+        if not alarm_type:
+            alarm_type = alarm._trigger.type.value
+        if not trigger_value:
+            trigger_value = alarm._trigger.value
         
-        trigger_value_message = self.__check_trigger_values(name=alarm.name, tag=tag, type=type, trigger_value=trigger_value)
+        trigger_value_message = self.__check_trigger_values(
+            name=alarm.name, 
+            tag=tag, 
+            type=alarm_type, 
+            trigger_value=trigger_value
+            )
         if trigger_value_message:
 
             return trigger_value_message
         
-        alarm = alarm.update_alarm_definition(**kwargs)
+        alarm = alarm.put(
+            user=user,
+            name=name,
+            tag=tag,
+            description=description,
+            alarm_type=alarm_type,
+            trigger_value=trigger_value
+            )
         self._alarms[id] = alarm
 
     def delete_alarm(self, id:str):

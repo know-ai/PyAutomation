@@ -7,7 +7,7 @@ to retrieve history, trends and waveforms from database.
 
 from datetime import datetime, timedelta
 from automation.singleton import Singleton
-from .logger import DataLoggerEngine
+from .datalogger import DataLoggerEngine
 from ..dbmodels import Tags, TagValue
 
 

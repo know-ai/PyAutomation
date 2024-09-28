@@ -124,7 +124,7 @@ class AlarmsComponents:
                             {'name': 'tag', 'id': 'tag', 'presentation': 'dropdown'},
                             {'name': 'state', 'id': 'state', 'editable': False},  
                             {'name': 'description', 'id': 'description'}, 
-                            {'name': 'type', 'id': 'type', 'presentation': 'dropdown'}, 
+                            {'name': 'alarm_type', 'id': 'alarm_type', 'presentation': 'dropdown'}, 
                             {'name': 'trigger_value', 'id': 'trigger_value'},
                             {'name': 'operations', 'id': 'operations', 'presentation': 'dropdown'}
                         ],

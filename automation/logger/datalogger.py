@@ -7,27 +7,16 @@ will create a time-serie for each tag in a short memory data base.
 from ..dbmodels import (
     Tags, 
     TagValue, 
-    AlarmTypes, 
-    AlarmStates, 
-    Variables, 
-    Units,
-    DataTypes,
-    Alarms,
-    AlarmSummary,
     Users,
-    Roles,
-    Events,
-    OPCUA)
+    Roles
+    )
 from datetime import datetime
-from ..alarms.trigger import TriggerType
-from ..alarms.states import AlarmState
 import logging, sys, os
-from automation.tags import CVTEngine
-from ..variables import VARIABLES, DATATYPES
 from automation.modules.users.users import User
+from .core import BaseLogger, BaseEngine
 
 
-class DataLogger:
+class DataLogger(BaseLogger):
 
     """Data Logger class.
 
@@ -41,29 +30,9 @@ class DataLogger:
     >>> _logger = DataLogger()
     ```
     """
-
     def __init__(self):
-        from ..managers.alarms import AlarmManager
-        self._db = None
-        self.tag_engine = CVTEngine()
-        self.alarm_manager = AlarmManager()
 
-    def set_db(self, db):
-        r"""Documentation here
-        """
-        self._db = db
-
-    def get_db(self):
-        r"""
-        Documentation here
-        """
-        return self._db
-    
-    def stop_db(self):
-        r""""
-        Documentation here
-        """
-        self._db = None
+        super(DataLogger, self).__init__()
 
     def set_tag(
         self, 
@@ -124,70 +93,6 @@ class DataLogger:
         """
         return Tags.read_all()
     
-    def create_tables(self, tables):
-        r"""
-        Documentation here
-        """
-        if not self._db:
-            
-            return
-        
-        self._db.create_tables(tables, safe=True)
-        self.__init_default_variables_schema()
-        self.__init_default_datatypes_schema()
-        self.__init_default_alarms_schema()
-
-    def __init_default_variables_schema(self):
-        r"""
-        Documentation here
-        """
-        for variable, units in VARIABLES.items():
-    
-            if not Variables.name_exist(variable):
-                
-                Variables.create(name=variable)
-
-            for name, unit in units.items():
-
-                if not Units.name_exist(unit):
-
-                    Units.create(name=name, unit=unit, variable=variable)
-
-    def __init_default_datatypes_schema(self):
-        r"""
-        Documentation here
-        """
-        for datatype in DATATYPES:
-
-            DataTypes.create(name=datatype["value"])
-
-    def __init_default_alarms_schema(self):
-        r"""
-        Documentation here
-        """
-        ## Alarm Types
-        for alarm_type in TriggerType:
-
-            AlarmTypes.create(name=alarm_type.value)
-
-        ## Alarm States
-        for alarm_state in AlarmState._states:
-            name = alarm_state.state
-            mnemonic = alarm_state.mnemonic
-            condition = alarm_state.process_condition
-            status = alarm_state.alarm_status
-            AlarmStates.create(name=name, mnemonic=mnemonic, condition=condition, status=status)
-
-    def drop_tables(self, tables):
-        r"""
-        Documentation here
-        """
-        if not self._db:
-            
-            return
-
-        self._db.drop_tables(tables, safe=True)
-
     def write_tag(self, tag, value, timestamp):
         r"""
         Documentation here
@@ -281,94 +186,6 @@ class DataLogger:
 
         return result
 
-    # ALARMS METHODS
-    def set_alarm(
-            self,
-            id:str,
-            name:str,
-            tag:str,
-            trigger_type:str,
-            trigger_value:float,
-            description:str,
-            tag_alarm:str):
-        r"""
-        Documentation here
-        """
-        Alarms.create(
-            identifier=id,
-            name=name,
-            tag=tag,
-            trigger_type=trigger_type,
-            trigger_value=trigger_value,
-            description=description,
-            tag_alarm=tag_alarm
-        )
-
-    def get_alarms(self):
-        r"""
-        Documentation here
-        """
-        return Alarms.read_all()
-    
-    def get_lasts_alarms(self, lasts:int=10):
-        r"""
-        Documentation here
-        """
-        return self.alarm_manager.get_lasts(lasts=lasts)
-    
-    def filter_alarms_by(self, **fields):
-        r"""
-        Documentation here
-        """
-        return self.alarm_manager.filter_by(**fields)
-    
-    def create_record_on_summary(self, name:str, state:str):
-        r"""
-        Documentation here
-        """
-        AlarmSummary.create(name=name, state=state)
-
-    def get_alarm_summary(self):
-        r"""
-        Documentation here
-        """
-        return AlarmSummary.read_all()
-    
-    # EVENTS METHODS
-    def create_event(
-            self,
-            message:str,
-            user:User,
-            description:str=None,
-            classification:str=None,
-            priority:int=None,
-            criticity:int=None,
-            timestamp:datetime=None):
-        r"""
-        Documentation here
-        """
-        Events.create(
-            message=message,
-            user=user,
-            description=description,
-            classification=classification,
-            priority=priority,
-            criticity=criticity,
-            timestamp=timestamp
-        )
-    
-    def get_lasts_events(self, lasts:int=10):
-        r"""
-        Documentation here
-        """
-        return self.event_manager.get_lasts(lasts=lasts)
-    
-    def filter_events_by(self, **fields):
-        r"""
-        Documentation here
-        """
-        return self.event_manager.filter_by(**fields)
-
     # ROLES METHODS
     def set_role(self, name:str, level:int, identifier:str):
         r"""
@@ -411,6 +228,258 @@ class DataLogger:
         pass
 
     def delete_user(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+class DataLoggerEngine(BaseEngine):
+    r"""
+    Data logger Engine class for Tag thread-safe database logging.
+
+    """
+    def __init__(self):
+
+        super(DataLoggerEngine, self).__init__()
+        self.logger = DataLogger()
+
+    def create_tables(self, tables):
+        r"""
+        Create default PyHades database tables
+
+        ['TagTrend', 'TagValue']
+
+        **Parameters**
+
+        * **tables** (list) list of database model
+
+        **Returns** `None`
+        """
+        self.logger.create_tables(tables)
+
+    def drop_tables(self, tables:list):
+        r"""
+        Drop tables if exist in database
+
+        **Parameters**
+
+        * **tables** (list): List of database model you want yo drop
+        """
+        self.logger.drop_tables(tables)
+
+    def set_tag(
+        self,
+        id:str, 
+        name:str, 
+        unit:str, 
+        data_type:str, 
+        description:str,
+        display_name:str="", 
+        display_unit:str=None,
+        opcua_address:str=None, 
+        node_namespace:str=None,
+        scan_time:int=None,
+        dead_band:float=None
+        ):
+        r"""
+        Define tag names you want log in database, these tags must be defined in CVTEngine
+
+        **Parameters**
+
+        * **tag** (str): Tag name defined in CVTEngine
+        * **period** (float): Sampling time to log tag on database
+
+        **Returns** `None`
+        """
+        _query = dict()
+        _query["action"] = "set_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        _query["parameters"]["name"] = name
+        _query["parameters"]["unit"] = unit
+        _query["parameters"]["data_type"] = data_type
+        _query["parameters"]["description"] = description
+        _query["parameters"]["display_name"] = display_name
+        _query["parameters"]["display_unit"] = display_unit
+        _query["parameters"]["opcua_address"] = opcua_address
+        _query["parameters"]["node_namespace"] = node_namespace
+        _query["parameters"]["scan_time"] = scan_time
+        _query["parameters"]["dead_band"] = dead_band
+        
+        return self.query(_query)
+
+    def get_tags(self):
+        r"""
+
+        """
+        _query = dict()
+        _query["action"] = "get_tags"
+        _query["parameters"] = dict()
+        
+        return self.query(_query)
+    
+    def update_tag(self, id:str, **fields):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+
+        _query = dict()
+        _query["action"] = "update_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        _query["parameters"].update(fields)
+        
+        return self.query(_query)
+    
+    def delete_tag(self, id:str):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "delete_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        
+        return self.query(_query)
+
+    def write_tag(self, tag:str, value:float, timestamp:datetime):
+        r"""
+        Writes value to tag into database on a thread-safe mechanism
+
+        **Parameters**
+
+        * **tag** (str): Tag name in database
+        * **value** (float): Value to write in tag
+        """
+        _query = dict()
+        _query["action"] = "write_tag"
+
+        _query["parameters"] = dict()
+        _query["parameters"]["tag"] = tag
+        _query["parameters"]["value"] = value
+        _query["parameters"]["timestamp"] = timestamp
+
+        return self.query(_query)
+
+    def write_tags(self, tags:list):
+        r"""
+        Writes value to tag into database on a thread-safe mechanism
+
+        **Parameters**
+
+        * **tag** (str): Tag name in database
+        * **value** (float): Value to write in tag
+        """
+        _query = dict()
+        _query["action"] = "write_tags"
+
+        _query["parameters"] = dict()
+        _query["parameters"]["tags"] = tags
+
+        return self.query(_query)
+
+    def read_tag(self, tag):
+        r"""
+        Read tag value from database on a thread-safe mechanism
+
+        **Parameters**
+
+        * **tag** (str): Tag name in database
+
+        **Returns**
+
+        * **value** (float): Tag value requested
+        """
+        _query = dict()
+        _query["action"] = "read_tag"
+
+        _query["parameters"] = dict()
+        _query["parameters"]["tag"] = tag
+
+        return self.query(_query)
+    
+    def read_trends(self, start:str, stop:str, *tags):
+        r"""
+        Read tag value from database on a thread-safe mechanism
+
+        **Parameters**
+
+        * **tag** (str): Tag name in database
+
+        **Returns**
+
+        * **value** (float): Tag value requested
+        """
+        _query = dict()
+        _query["action"] = "read_trends"
+        _query["parameters"] = dict()
+        _query["parameters"]["start"] = start
+        _query["parameters"]["stop"] = stop
+        _query["parameters"]["tags"] = tags
+        return self.query(_query)
+
+    # ROLES METHODS
+    def set_role(self, name:str, level:int, identifier:str):
+        r"""
+        Documentation here
+        """
+        _query = dict()
+        _query["action"] = "set_role"
+        _query["parameters"] = dict()
+        _query["parameters"]["identifier"] = identifier
+        _query["parameters"]["name"] = name
+        _query["parameters"]["level"] = level
+        
+        return self.query(_query)
+
+    def put_role(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    def delete_role(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    # USERS METHODS
+    def set_user(
+            self, 
+            user:User
+        ):
+        r"""
+        Documentation here
+        """
+        _query = dict()
+        _query["action"] = "set_user"
+        _query["parameters"] = dict()
+        _query["parameters"]["user"] = user
+        
+        return self.query(_query)
+
+    def put_role(self):
+        r"""
+        Documentation here
+        """
+        pass
+
+    def delete_role(self):
         r"""
         Documentation here
         """

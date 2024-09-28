@@ -54,13 +54,13 @@ class BaseModel(Model):
         return data
 
     @classmethod
-    def put(cls, id:int, **fields)-> dict:
+    def put(cls, id:str, **fields)-> dict:
         r""""
         Update a single record
 
         Once a model instance has a primary key, you UPDATE a field by its id. 
         The model's primary key will not change:
-        """       
+        """     
         if cls.id_exists(id):
 
             query = cls.update(**fields).where(cls.id == id)

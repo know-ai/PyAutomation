@@ -28,12 +28,12 @@ class Alarm:
             user:User=None,
             reload:bool=False
             ):
-        from ..logger import DataLoggerEngine, EventsLoggerEngine
+        from ..logger import AlarmsLoggerEngine, EventsLoggerEngine
         from ..tags import CVTEngine
         self.events_engine = EventsLoggerEngine()
-        self.logger_engine = DataLoggerEngine()
+        self.alarm_engine = AlarmsLoggerEngine()
         self.tag_engine = CVTEngine()
-        self.name = name
+        self._name = name
         self._tag = tag
         self._description = description
         self._value = False
@@ -115,7 +115,14 @@ class Alarm:
         """
         return self._operations
 
-    def update_alarm_definition(self, user:User=None, **kwargs):
+    def put(
+            self, 
+            user:User=None,
+            name:str=None,
+            tag:str=None,
+            description:str=None,
+            alarm_type:str=None,
+            trigger_value:float=None):
         r"""
         Update alarm configuration
 
@@ -128,26 +135,39 @@ class Alarm:
         * **trigger_value** (float): Alarm trigger value
 
         """
+        _description = ""
+        if alarm_type:
 
-        if 'type' in kwargs.keys():
+            if alarm_type.upper() in ["HIGH-HIGH", "HIGH", "LOW", "LOW-LOW", "BOOL"]:
 
-            _type = kwargs.pop('type')
-            if _type.upper() in ["HIGH-HIGH", "HIGH", "LOW", "LOW-LOW", "BOOL"]:
+                self._trigger.type = alarm_type
 
-                self._trigger.type = _type
+                _description += f"alarm_type: {alarm_type}"
 
-        if 'trigger_value' in kwargs.keys():
-            trigger_value = kwargs.pop('trigger_value')
+        if trigger_value:
+            
             self._trigger.value = float(trigger_value)
+            _description += f"trigger value: {trigger_value}"
 
-        for key, value in kwargs.items():
+        if name:
 
-            setattr(self, f"_{key}", value)
+            self._name = name
+            _description += f"name: {name}"
+
+        if tag:
+
+            self._tag = tag
+            _description += f"tag: {tag}"
+
+        if description:
+
+            self._description = description
+            _description += f"description: {description}"
 
         self.__persist_on_event_logger(
             user=user, 
             message="Updating alarm definition",
-            description=f"{kwargs}",
+            description=_description,
             priority=2,
             criticity=1
             )
@@ -284,7 +304,7 @@ class Alarm:
             self._operations['sound'] = False
             self.audible = False
             # Persist on DB
-            self.logger_engine.create_record_on_summary(name=self.name, state=self._state.state)
+            self.alarm_engine.create_record_on_alarm_summary(name=self._name, state=self._state.state)
 
         elif self._state.state==AlarmState.NORM.state:
 
@@ -293,7 +313,7 @@ class Alarm:
             self._operations['sound'] = False
             self.audible = False
             # Persist on DB
-            self.logger_engine.create_record_on_summary(name=self.name, state=self._state.state)
+            self.alarm_engine.create_record_on_alarm_summary(name=self._name, state=self._state.state)
 
     def trigger(self):
         r"""
@@ -340,7 +360,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm enabled",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=1
             )
@@ -370,7 +390,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm disabled",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=5
             )
@@ -398,7 +418,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm acknowledged",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=3
             )
@@ -425,7 +445,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm silenced",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=4
             )
@@ -454,7 +474,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm back to sound",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=1
             )
@@ -498,7 +518,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm shelved",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=4
             )
@@ -515,7 +535,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm unshelved",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=1
             )
@@ -540,7 +560,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm suppessed by design",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=4
             )
@@ -555,7 +575,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm unsupressed by design",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=1
             )
@@ -580,7 +600,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm out of service",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=5
             )
@@ -595,7 +615,7 @@ class Alarm:
         self.__persist_on_event_logger(
             user=user, 
             message="Alarm back to service",
-            description=f"Alarm: {self.name} - Tag: {self.tag}",
+            description=f"Alarm: {self._name} - Tag: {self.tag}",
             priority=1,
             criticity=1
             )
@@ -700,7 +720,7 @@ class Alarm:
         return {
             "id": self._id,
             "timestamp": self._timestamp,
-            "name": self.name,
+            "name": self._name,
             "tag": self.tag,
             "tag_alarm": self.tag_alarm,
             "state": self.state.state,
@@ -713,9 +733,8 @@ class Alarm:
             "acknowledged_timestamp": self._acknowledged_timestamp,
             "value": self._value,
             "audible": self.audible,
-            "type": self._trigger.type.value,
+            "alarm_type": self._trigger.type.value,
             "description": self.description,
             "operations": self.get_operations(),
-            "priority": self.priority,
-            "is_process_alarm": self._is_process_alarm
+            "priority": self.priority
         }

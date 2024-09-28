@@ -52,7 +52,7 @@ class CreateAlarmResource(Resource):
         Create Alarm
         """
         user = Api.get_current_user()
-        return app.alarm_manager.append_alarm(user=user, **api.payload), 200
+        return app.create_alarm(user=user, **api.payload), 200
     
 @ns.route('/<id>')
 class AlarmResource(Resource):

@@ -299,6 +299,20 @@ class Alarms(BaseModel):
         - 
         """
         return cls.get_or_none(id=id)
+    
+    @classmethod
+    def read_by_identifier(cls, identifier:str):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        return cls.get_or_none(identifier=identifier)
         
     @classmethod
     def read_by_name(cls, name:str):
@@ -439,74 +453,47 @@ class AlarmSummary(BaseModel):
         return [alarm.serialize() for alarm in alarms]
     
     @classmethod
-    def filter_by(cls, **fields):
+    def filter_by(
+        cls,
+        states:list[str]=None,
+        names:list[str]=None,
+        tags:list[str]=None,
+        greater_than_timestamp:datetime=None,
+        less_than_timestamp:datetime=None
+        ):
         r"""
         Documentation here
         """
-        _query = ''
-
-        # State
-        if 'states' in fields.keys():
-            
-            states = fields["states"]
+        if states:
             subquery = AlarmStates.select(AlarmStates.id).where(AlarmStates.name.in_(states))
             _query = cls.select().join(AlarmStates).where(AlarmStates.id.in_(subquery)).order_by(cls.id.desc())
 
-        if 'names' in fields.keys():
-            
-            names = fields["names"]
+        if names:
             subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(names))
-
             if _query:
-
                 _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
-
             else:
                 _query = cls.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
 
-        if 'tags' in fields.keys():
-            
-            tags = fields["tags"]
+        if tags:
             subquery = Tags.select(Tags.id).where(Tags.name.in_(tags))
             subquery = Alarms.select(Alarms.id).join(Tags).where(Tags.id.in_(subquery))
-
             if _query:
-    
                 _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
-
             else:
-                
                 _query = cls.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
 
-        separator = '.'
-        # GREATER THAN TIMESTAMP
-        if 'greater_than_timestamp' in fields.keys():
-
-            greater_than_timestamp = fields.pop('greater_than_timestamp')
-            greater_than_timestamp = datetime.strptime(greater_than_timestamp.replace("T", " ").split(separator, 1)[0], "%Y-%m-%d %H:%M:%S")
-            
+        if greater_than_timestamp:
             if _query:
-
                 _query = _query.select().where(cls.alarm_time > greater_than_timestamp).order_by(cls.id.desc())
-
             else:
-
                 _query = cls.select().where(cls.alarm_time > greater_than_timestamp).order_by(cls.id.desc())
 
-        # LESS THAN TIMESTAMP
-        if 'less_than_timestamp' in fields.keys():
-
-            less_than_timestamp = fields.pop('less_than_timestamp')
-            less_than_timestamp = datetime.strptime(less_than_timestamp.replace("T", " ").split(separator, 1)[0], "%Y-%m-%d %H:%M:%S")
-            
+        if less_than_timestamp:
             if _query:
-
                 _query = _query.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
-
             else:
-
                 _query = cls.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
-
 
         return [alarm.serialize() for alarm in _query]
 

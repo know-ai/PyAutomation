@@ -10,7 +10,7 @@ from .singleton import Singleton
 from .workers import LoggerWorker, AlarmWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .tags import CVTEngine, Tag
-from .logger import DataLoggerEngine, EventsLoggerEngine
+from .logger import DataLoggerEngine, EventsLoggerEngine, AlarmsLoggerEngine
 from .alarms import Alarm
 from .state_machine import Machine, DAQ
 from .opcua.subscription import DAS
@@ -45,6 +45,7 @@ class PyAutomation(Singleton):
         self.cvt = CVTEngine()
         self.logger_engine = DataLoggerEngine()
         self.events_engine = EventsLoggerEngine()
+        self.alarms_engine = AlarmsLoggerEngine()
         self.opcua_client_manager = OPCUAClientManager()
         self.alarm_manager = AlarmManager()
         self.workers = list()
@@ -741,6 +742,7 @@ class PyAutomation(Singleton):
             state:str="Normal",
             timestamp:str=None,
             acknowledged_timestamp:str=None,
+            user:User=None,
             reload:bool=False
         )->dict:
         r"""
@@ -765,8 +767,10 @@ class PyAutomation(Singleton):
             state=state,
             timestamp=timestamp,
             acknowledged_timestamp=acknowledged_timestamp,
+            user=user,
             reload=reload
         )
+        
 
         if not message:
 
@@ -774,7 +778,7 @@ class PyAutomation(Singleton):
             if self.is_db_connected():
 
                 alarm = self.alarm_manager.get_alarm_by_name(name=name)
-                self.logger_engine.set_alarm(
+                self.alarms_engine.create(
                     id=alarm._id,
                     name=name,
                     tag=tag,
@@ -792,7 +796,7 @@ class PyAutomation(Singleton):
         """
         if self.is_db_connected():
 
-            return self.logger_engine.get_lasts_alarms(lasts=lasts)
+            return self.alarms_engine.get_lasts(lasts=lasts)
 
     def filter_alarms_by(self, **fields):
         r"""
@@ -800,9 +804,16 @@ class PyAutomation(Singleton):
         """
         if self.is_db_connected():
 
-            return self.logger_engine.filter_alarms_by(**fields)
+            return self.alarms_engine.filter_alarm_summary_by(**fields)
 
-    def update_alarm(self, id:str, **kwargs):
+    def update_alarm(
+            self, 
+            id:str, 
+            name:str=None,
+            tag:str=None,
+            description:str=None,
+            alarm_type:str=None,
+            trigger_value:float=None):
         r"""
         Updates alarm attributes
 
@@ -819,8 +830,24 @@ class PyAutomation(Singleton):
 
         * **alarm** (dict) Alarm Object jsonable
         """
+        self.alarm_manager.put(
+            id=id,
+            name=name,
+            tag=tag,
+            description=description,
+            alarm_type=alarm_type,
+            trigger_value=trigger_value
+        )
+        # Persist Tag on Database
+        if self.is_db_connected():
 
-        return self.alarm_manager.update_alarm(id=id, **kwargs)
+            self.alarms_engine.put(
+                id=id,
+                name=name,
+                tag=tag,
+                description=description,
+                alarm_type=alarm_type,
+                trigger_value=trigger_value)
 
     def get_alarm(self, id:str)->Alarm:
         r"""
@@ -889,6 +916,9 @@ class PyAutomation(Singleton):
         * **id** (int): Alarm ID
         """
         self.alarm_manager.delete_alarm(id=id)
+        if self.is_db_connected():
+
+            self.alarms_engine.delete(id=id)
 
     # EVENTS METHODS
     def get_lasts_events(self, lasts:int=10):

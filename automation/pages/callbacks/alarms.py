@@ -74,7 +74,7 @@ def init_callback(app:dash.Dash):
                 "name": alarm["name"],
                 "description": alarm["description"],
                 "state": alarm["state"],
-                "type": alarm["type"],
+                "alarm_type": alarm["alarm_type"],
                 "trigger_value": alarm["trigger_value"]
                 } for alarm in app.automation.alarm_manager.serialize()]
 
@@ -87,7 +87,7 @@ def init_callback(app:dash.Dash):
             ]
             dropdown_options_tag = [{"label": tag["name"], "value": tag["name"]} for tag in app.automation.cvt.get_tags()]
             dropdown = {
-                "type": {
+                "alarm_type": {
                     "options": dropdown_options_type,
                 },
                 "tag": {
