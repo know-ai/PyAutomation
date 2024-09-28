@@ -24,7 +24,7 @@ shelve_alarm_resource_by_name_model = api.model("shelve_alarm_resource_by_name_m
 append_alarm_resource_model = api.model("append_alarm_resource_model",{
     'name': fields.String(required=True, description='Alarm Name'),
     'tag': fields.String(required=True, description='Tag to whom the alarm will be subscribed'),
-    'description': fields.String(required=True, description='Alarm description'),
+    'description': fields.String(required=False, description='Alarm description'),
     'type': fields.String(required=True, description='Alarm Type - Allowed ["HIGH-HIGH", "HIGH", "BOOL", "LOW", "LOW-LOW"]'),
     'trigger_value': fields.Float(required=True, description="Alarm trigger value")
 })
@@ -52,7 +52,16 @@ class CreateAlarmResource(Resource):
         Create Alarm
         """
         user = Api.get_current_user()
-        return app.create_alarm(user=user, **api.payload), 200
+        alarm_name = api.payload["name"]
+        message = app.create_alarm(user=user, **api.payload)
+
+        if message:
+
+            return app.create_alarm(user=user, **api.payload), 400
+        
+        alarm = app.get_alarm_by_name(name=alarm_name)
+
+        return alarm.serialize(), 200
     
 @ns.route('/<id>')
 class AlarmResource(Resource):

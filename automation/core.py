@@ -795,7 +795,7 @@ class PyAutomation(Singleton):
         Documentation here
         """
         if self.is_db_connected():
-
+            
             return self.alarms_engine.get_lasts(lasts=lasts)
 
     def filter_alarms_by(self, **fields):

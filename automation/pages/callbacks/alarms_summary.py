@@ -15,6 +15,6 @@ def init_callback(app:dash.Dash):
 
             data = app.automation.get_lasts_alarms()
 
-            return data[0]
+            return data
         
         return dash.no_update

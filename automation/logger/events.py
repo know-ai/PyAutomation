@@ -43,7 +43,7 @@ class EventsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if self.logger.get_db():
+        if self.get_db():
         
             return Events.read_lasts(lasts=lasts)
     
