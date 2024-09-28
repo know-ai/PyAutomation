@@ -4,41 +4,41 @@ from automation.extensions.api import api
 from datetime import datetime, timedelta
 from automation.extensions import _api as Api
 
-ns = Namespace('Alarms Summary', description='Alarms Summary')
+ns = Namespace('Events Logger', description='Events Logger')
 app = PyAutomation()
 
 
-alarms_summary_filter_model = api.model("alarms_summary_filter_model",{
-    'names': fields.List(fields.String(), required=False),
-    'states': fields.List(fields.String(), required=False),
-    'tags': fields.List(fields.String(), required=False),
+events_summary_filter_model = api.model("events_summary_filter_model",{
+    'usernames': fields.List(fields.String(), required=False),
+    'priorities': fields.List(fields.Integer(), required=False),
+    'criticities': fields.List(fields.String(), required=False),
     'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now() - timedelta(minutes=2), description=f'Greater than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
     'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(), description=f'Less than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}')
 })
 
     
 @ns.route('/filter_by')
-class AlarmsSummarygFilterByResource(Resource):
+class EventsSummaryFilterByResource(Resource):
 
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
-    @ns.expect(alarms_summary_filter_model)
+    @ns.expect(events_summary_filter_model)
     def post(self):
         r"""
-        Alarms Summary Filter By
+        Events Summary Filter By
         """
         
-        return app.filter_alarms_by(**api.payload)
+        return app.filter_events_by(**api.payload)
     
 
 @ns.route('/lasts/<lasts>')
-class LastsAlarmsResource(Resource):
+class LastsEventsResource(Resource):
 
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
     def get(self, lasts:int=10):
         r"""
-        Get lasts alarms
+        Get lasts events
         """
         
-        return app.get_lasts_alarms(lasts=lasts)
+        return app.get_lasts_events(lasts=lasts)

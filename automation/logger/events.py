@@ -38,6 +38,33 @@ class EventsLogger:
                 criticity=criticity,
                 timestamp=timestamp
             )
+
+    def get_lasts(self, lasts:int=1):
+        r"""
+        Documentation here
+        """
+
+        return Events.read_lasts(lasts=lasts)
+    
+    def filter_by(
+        self,
+        usernames:list[str]=None,
+        priorities:list[int]=None,
+        criticities:list[int]=None,
+        greater_than_timestamp:datetime=None,
+        less_than_timestamp:datetime=None
+        ):
+        r"""
+        Documentation here
+        """
+
+        return Events.filter_by(
+            usernames=usernames,
+            priorities=priorities,
+            criticities=criticities,
+            greater_than_timestamp=greater_than_timestamp,
+            less_than_timestamp=less_than_timestamp
+        )
         
     def get_summary(self)->list:
         r"""
@@ -88,7 +115,38 @@ class EventsLoggerEngine(Singleton):
         _query["parameters"]["timestamp"] = timestamp
         
         return self.__query(_query)
+    
+    def get_lasts(
+        self,
+        lasts:int=1
+        ):
 
+        _query = dict()
+        _query["action"] = "get_lasts"
+        _query["parameters"] = dict()
+        _query["parameters"]["lasts"] = lasts
+        
+        return self.__query(_query)
+    
+    def filter_by(
+        self,
+        usernames:list[str]=None,
+        priorities:list[int]=None,
+        criticities:list[int]=None,
+        greater_than_timestamp:datetime=None,
+        less_than_timestamp:datetime=None
+        ):
+
+        _query = dict()
+        _query["action"] = "filter_by"
+        _query["parameters"] = dict()
+        _query["parameters"]["usernames"] = usernames
+        _query["parameters"]["priorities"] = priorities
+        _query["parameters"]["criticities"] = criticities
+        _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
+        _query["parameters"]["less_than_timestamp"] = less_than_timestamp
+        
+        return self.__query(_query)
 
     def get_summary(self):
         r"""

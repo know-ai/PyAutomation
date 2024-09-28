@@ -56,6 +56,72 @@ class Events(BaseModel):
         query.save()
 
         return query, f"Event creation successful"
+    
+    @classmethod
+    def read_lasts(cls, lasts:int=1):
+        r"""
+        Documentation here
+        """
+        events = cls.select().order_by(cls.id.desc()).limit(lasts)
+
+        return [event.serialize() for event in events]
+    
+    @classmethod
+    def filter_by(
+        cls, 
+        usernames:list[str]=None,
+        priorities:list[int]=None,
+        criticities:list[int]=None,
+        greater_than_timestamp:datetime=None,
+        less_than_timestamp:datetime=None):
+        r"""
+        Documentation here
+        """
+        if usernames:
+            
+            subquery = Users.select(Users.id).where(Users.username.in_(usernames))
+            _query = cls.select().join(Users).where(Users.id.in_(subquery)).order_by(cls.id.desc())
+
+        if priorities:
+
+            if _query:
+
+                _query = _query.select().where(cls.in_(priorities)).order_by(cls.id.desc())
+
+            else:
+                _query = cls.select().where(cls.in_(priorities)).order_by(cls.id.desc())
+
+        if criticities:
+
+            if _query:
+
+                _query = _query.select().where(cls.in_(criticities)).order_by(cls.id.desc())
+
+            else:
+                _query = cls.select().where(cls.in_(criticities)).order_by(cls.id.desc())
+
+        if greater_than_timestamp:
+            
+            if _query:
+
+                _query = _query.select().where(cls.timestamp > greater_than_timestamp).order_by(cls.id.desc())
+
+            else:
+
+                _query = cls.select().where(cls.timestamp > greater_than_timestamp).order_by(cls.id.desc())
+
+        if less_than_timestamp:
+            
+            if _query:
+
+                _query = _query.select().where(cls.timestamp < less_than_timestamp).order_by(cls.id.desc())
+
+            else:
+
+                _query = cls.select().where(cls.timestamp < less_than_timestamp).order_by(cls.id.desc())
+
+
+        return [event.serialize() for event in _query]
 
     def serialize(self)-> dict:
 

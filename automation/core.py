@@ -888,6 +888,35 @@ class PyAutomation(Singleton):
         """
         self.alarm_manager.delete_alarm(id=id)
 
+    # EVENTS METHODS
+    def get_lasts_events(self, lasts:int=10):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.events_engine.get_lasts(lasts=lasts)
+
+    def filter_events_by(
+            self,
+            usernames:list[str]=None,
+            priorities:list[int]=None,
+            criticities:list[int]=None,
+            greater_than_timestamp:datetime=None,
+            less_than_timestamp:datetime=None):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.events_engine.filter_by(
+                usernames=usernames,
+                priorities=priorities,
+                criticities=criticities,
+                greater_than_timestamp=greater_than_timestamp,
+                less_than_timestamp=less_than_timestamp
+            )
+
     # INIT APP
     def run(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True, **kwargs):
         r"""
