@@ -1,8 +1,9 @@
 import threading, copy, logging
+from datetime import datetime
 from ..singleton import Singleton
 from ..models import FloatType, StringType, IntegerType, BooleanType
 from .tag import Tag
-from datetime import datetime
+from ..modules.users.users import User
 
 class CVT:
     """Current Value Table class for Tag based repository.
@@ -22,6 +23,8 @@ class CVT:
 
         self._tags = dict()
         self.data_types = ["float", "int", "bool", "str"]
+        # from ..logger import EventsLoggerEngine
+        # self.events_engine = EventsLoggerEngine()
     
     def set_tag(
         self, 
@@ -421,6 +424,19 @@ class CVT:
             
         return False, f"Valid Tag Name: {name} - Display Name: {display_name}"
     
+    def __persist_on_event_logger(self, user:User, message:str, description:str, priority:int, criticity:int):
+
+        if isinstance(user, User):
+
+            self.events_engine.create(
+                message=message,
+                description=description,
+                classification="Alarms",
+                priority=priority,
+                criticity=criticity,
+                user=user
+            )
+
     def serialize(self, id:str)->dict:
         r"""Returns a tag type defined by name.
         

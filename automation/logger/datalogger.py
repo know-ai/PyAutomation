@@ -4,15 +4,9 @@
 This module implements a database logger for the CVT instance, 
 will create a time-serie for each tag in a short memory data base.
 """
-from ..dbmodels import (
-    Tags, 
-    TagValue, 
-    Users,
-    Roles
-    )
-from datetime import datetime
 import logging, sys, os
-from automation.modules.users.users import User
+from datetime import datetime
+from ..dbmodels import Tags, TagValue
 from .core import BaseLogger, BaseEngine
 
 
@@ -185,53 +179,6 @@ class DataLogger(BaseLogger):
                 result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": value.value})
 
         return result
-
-    # ROLES METHODS
-    def set_role(self, name:str, level:int, identifier:str):
-        r"""
-        Documentation here
-        """
-        return Roles.create(
-            name=name,
-            level=level,
-            identifier=identifier
-        )
-
-    def put_role(self):
-        r"""
-        Documentation here
-        """
-        pass
-
-    def delete_role(self):
-        r"""
-        Documentation here
-        """
-        pass
-
-    # USERS METHODS
-    def set_user(
-            self, 
-            user:User
-        ):
-        r"""
-        Documentation here
-        """
-        return Users.create(
-            user=user
-        )
-
-    def put_user(self):
-        r"""
-        Documentation here
-        """
-        pass
-
-    def delete_user(self):
-        r"""
-        Documentation here
-        """
-        pass
 
 class DataLoggerEngine(BaseEngine):
     r"""
@@ -432,55 +379,3 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"]["tags"] = tags
         return self.query(_query)
 
-    # ROLES METHODS
-    def set_role(self, name:str, level:int, identifier:str):
-        r"""
-        Documentation here
-        """
-        _query = dict()
-        _query["action"] = "set_role"
-        _query["parameters"] = dict()
-        _query["parameters"]["identifier"] = identifier
-        _query["parameters"]["name"] = name
-        _query["parameters"]["level"] = level
-        
-        return self.query(_query)
-
-    def put_role(self):
-        r"""
-        Documentation here
-        """
-        pass
-
-    def delete_role(self):
-        r"""
-        Documentation here
-        """
-        pass
-
-    # USERS METHODS
-    def set_user(
-            self, 
-            user:User
-        ):
-        r"""
-        Documentation here
-        """
-        _query = dict()
-        _query["action"] = "set_user"
-        _query["parameters"] = dict()
-        _query["parameters"]["user"] = user
-        
-        return self.query(_query)
-
-    def put_role(self):
-        r"""
-        Documentation here
-        """
-        pass
-
-    def delete_role(self):
-        r"""
-        Documentation here
-        """
-        pass

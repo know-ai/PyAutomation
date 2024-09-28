@@ -262,31 +262,11 @@ class PyAutomation(Singleton):
             # Persist Tag on Database
             if self.is_db_connected():
                 
-                _, message = self.db_manager.set_user(
-                    user=user
-                )
+                _, message = self.db_manager.set_user(user=user)
 
             return user, message
 
         return None, message
-
-    def login(self):
-        r"""
-        Documentation here
-        """
-        pass
-
-    def put_user(self):
-        r"""
-        Documentation here
-        """
-        pass
-
-    def delete_user(self):
-        r"""
-        Documentation here
-        """
-        pass
 
     def create_token(self, role_name:str):
         r"""
@@ -299,7 +279,6 @@ class PyAutomation(Singleton):
         }
         return jwt.encode(payload, server.config['TPT_TOKEN'], algorithm="HS256")
 
-    # ROLES METHODS
     def set_role(self, name:str, level:int)->Role|None:
         r"""
         Documentation here
@@ -316,18 +295,6 @@ class PyAutomation(Singleton):
             return role, message
 
         return None, message
-
-    def put_role(self):
-        r"""
-        Documentation here
-        """
-        pass
-
-    def delete_role(self):
-        r"""
-        Documentation here
-        """
-        pass
 
     # OPCUA METHODS
     def find_opcua_servers(self, host:str='127.0.0.1', port:int=4840)->list[dict]:

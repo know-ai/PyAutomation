@@ -1,6 +1,5 @@
 import threading, logging
 from ..singleton import Singleton
-from ..tags import CVTEngine
 from ..dbmodels import (
     AlarmTypes, 
     AlarmStates, 
@@ -17,7 +16,6 @@ class BaseLogger(Singleton):
     def __init__(self):
 
         self._db = None
-        self.tag_engine = CVTEngine()
 
     def set_db(self, db):
         r"""Documentation here
