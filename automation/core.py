@@ -121,7 +121,8 @@ class PyAutomation(Singleton):
             node_namespace:str=None,
             scan_time:int=None,
             dead_band:float=None,
-            id:str=None
+            id:str=None,
+            user:User|None=None
         ):
         r"""Documentation here
 
@@ -149,7 +150,8 @@ class PyAutomation(Singleton):
             node_namespace=node_namespace,
             scan_time=scan_time,
             dead_band=dead_band,
-            id=id
+            id=id,
+            user=user
         )
 
         # CREATE OPCUA SUBSCRIPTION
@@ -202,7 +204,7 @@ class PyAutomation(Singleton):
         return self.logger_engine.read_trends(start, stop, *tags)
 
     @validate_types(id=str, output=None|str)
-    def delete_tag(self, id:str)->None|str:
+    def delete_tag(self, id:str, user:User|None=None)->None|str:
         r"""
         Documentation here
         """
@@ -220,7 +222,7 @@ class PyAutomation(Singleton):
 
             self.logger_engine.delete_tag(id=id)
 
-        self.cvt.delete_tag(id=id)
+        self.cvt.delete_tag(id=id, user=user)
         self.das.buffer.pop(tag_name)
 
     @validate_types(

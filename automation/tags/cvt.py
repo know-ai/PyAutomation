@@ -551,6 +551,7 @@ class CVTEngine(Singleton):
         scan_time:int=0,
         dead_band:float=0.0,
         id:str="",
+        user:User|None=None
         ):
         r"""Documentation here
 
@@ -577,6 +578,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["scan_time"] = scan_time
         _query["parameters"]["dead_band"] = dead_band
         _query["parameters"]["id"] = id
+        _query["parameters"]["user"] = user
         return self.__query(_query)
     
     def update_tag(
@@ -623,7 +625,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["opcua_address"] = opcua_address
         return self.__query(_query)
     
-    def delete_tag(self, id:str):
+    def delete_tag(self, id:str, user:User|None=None):
         r"""Documentation here
 
         # Parameters
@@ -638,6 +640,7 @@ class CVTEngine(Singleton):
         _query["action"] = "delete_tag"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
+        _query["parameters"]["user"] = user
         return self.__query(_query)
     
     def get_tag(

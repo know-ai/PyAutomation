@@ -70,8 +70,10 @@ class BaseModel(Model):
     @classmethod
     def delete(cls, id:int):
         r"""
-        Delete record from database including dependencies
+        Delete record from database including 
         """
+
+        print(f"Deleting tag: {id}")
         if cls.id_exists(id):
         
             query = super().delete().where(cls.id==id)
