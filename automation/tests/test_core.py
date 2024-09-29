@@ -1,29 +1,63 @@
-import unittest
-from automation.modules.users.users import Users, User
-from automation.modules.users.roles import roles, Role
+import unittest, os
+from automation import PyAutomation
 
-USERNAME = "user1"
-ROLE_NAME = "admin"
-EMAIL = "jhon.doe@gmail.com"
-PASSWORD = "123456"
-NAME = "Jhon"
-LASTNAME = "Doe"
-
-USERNAME2 = "user2"
-EMAIL2 = "jhon.doe2@gmail.com"
 
 class TestCore(unittest.TestCase):
 
     def setUp(self) -> None:
-        
-        self.roles = roles
-        self.roles._delete_all()
-        self.users = Users()
-        self.users._delete_all()
-
+        file_path = "./test.db"
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        self.app = PyAutomation()
+        self.app.run(debug=True, test=True, create_tables=True, alarm_worker=True)
         return super().setUp()
 
     def tearDown(self) -> None:
-        delattr(self, "roles")
-        delattr(self, "users")
+        
         return super().tearDown()
+    
+    def test_tags(self):
+        
+        _tag1 = {
+            "name": "P1",
+            "unit": "Pa",
+            "variable": "Pressure"
+        }
+        tag1, _ = self.app.create_tag(**_tag1)
+        with self.subTest("Test tag in cvt"):
+            
+            tag_in_cvt = self.app.cvt.get_tag_by_name(name=_tag1['name'])
+            self.assertEqual(tag1, tag_in_cvt)
+
+        with self.subTest("Test tag in DB"):
+
+            tag_in_db = self.app.logger_engine.get_tag_by_name(name=_tag1['name'])
+            self.assertDictContainsSubset(tag_in_db.serialize(), tag_in_cvt.serialize())
+
+        # GET TAGS
+        _tag2 = {
+            "name": "T1",
+            "unit": "C",
+            "variable": "Temperature"
+        }
+        tag2, _ = self.app.create_tag(**_tag2)
+        tags_in_cvt = self.app.get_tags()
+        tags_in_db = self.app.logger_engine.get_tags()
+
+        with self.subTest("Test get tags CVT - DB"):
+
+            for counter, tag_in_db in enumerate(tags_in_db):
+
+                self.assertDictContainsSubset(tag_in_db, tags_in_cvt[counter])
+
+        with self.subTest("Test update tag name"):
+
+            name = "TT"
+            updated_tag, _ = self.app.update_tag(id=tag2.id, name=name)
+            self.assertEqual(name, updated_tag.name)
+
+        with self.subTest("Test update tag unit"):
+
+            unit = "K"
+            updated_tag, _ = self.app.update_tag(id=tag2.id, unit=unit)
+            self.assertEqual(unit, updated_tag.unit)

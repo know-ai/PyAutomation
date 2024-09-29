@@ -408,10 +408,10 @@ class Tags(BaseModel):
         description:str,
         display_name:str,
         display_unit:str,
-        opcua_address:str=None,
-        node_namespace:str=None,
-        scan_time:int=None,
-        dead_band:float=None
+        opcua_address:str="",
+        node_namespace:str="",
+        scan_time:int=0,
+        dead_band:float=0.0
         ):
         r"""
         Documentation here
@@ -445,6 +445,7 @@ class Tags(BaseModel):
                         )
                     query.save()
                     message = f"{name} tag created successfully"
+                    
                     data.update(query.serialize())
 
                     result.update(

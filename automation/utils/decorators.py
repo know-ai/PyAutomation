@@ -81,9 +81,7 @@ def validate_types(**validations):
             _output = type(None)
 
     def decorator(func):
-        from ..alarms.alarms import Alarm
-        from ..managers.alarms import AlarmManager
-        from ..workers.logger import LoggerWorker
+
         def wrapper(*args, **kwargs):
             
             for key, _data_type in kwargs.items():
@@ -91,7 +89,7 @@ def validate_types(**validations):
                 if key in validations:
                 
                     if not isinstance(_data_type, validations[key]):
-                        message = f"Expected {validations[key]}, but got {type(_data_type)} in {func}"
+                        message = f"Expected Input {key} as {validations[key]}, but got {type(_data_type)} in {func}"
                         logging.error(message)
                         raise TypeError(message)
                     
@@ -105,10 +103,23 @@ def validate_types(**validations):
 
             # Validate the output type
             if _output:
-                if not isinstance(result, _output):
-                    message = f"Expected output type {_output}, but got {type(result)} in func {func}"
-                    logging.error(message)
-                    raise TypeError(message)
+                
+                if isinstance(_output, tuple):
+                    
+                    for counter, expected in enumerate(_output):
+                        
+                        if not isinstance(result[counter], expected):
+
+                            message = f"Expected output type ({counter}) {expected}, but got {type(result[counter])} in func {func}"
+                            logging.error(message)
+                            raise TypeError(message)
+                        
+                else:
+
+                    if not isinstance(result, _output):
+                        message = f"Expected output type {_output}, but got {type(result)} in func {func}"
+                        logging.error(message)
+                        raise TypeError(message)
 
             return result
         return wrapper

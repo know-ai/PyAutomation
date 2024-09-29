@@ -23,7 +23,7 @@ class ConfigView(dash.Dash):
         
     def tags_table_data(self):
         
-        return self.automation.cvt.get_tags()
+        return self.automation.get_tags()
     
     def alarms_table_data(self):
         

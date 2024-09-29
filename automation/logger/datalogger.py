@@ -6,6 +6,7 @@ will create a time-serie for each tag in a short memory data base.
 """
 import logging, sys, os
 from datetime import datetime
+from ..tags.tag import Tag
 from ..dbmodels import Tags, TagValue
 from .core import BaseLogger, BaseEngine
 
@@ -34,7 +35,7 @@ class DataLogger(BaseLogger):
         name:str, 
         unit:str, 
         data_type:str, 
-        description:str, 
+        description:str="", 
         display_name:str="",
         display_unit:str=None,
         opcua_address:str=None, 
@@ -65,6 +66,12 @@ class DataLogger(BaseLogger):
         """
         tag = Tags.get(identifier=id)
         Tags.delete(id=tag.id)
+
+    def get_tag_by_name(self, name:str):
+        r"""
+        Documentation here
+        """
+        return Tags.read_by_name(name=name)
 
     def update_tag(self, id:str, **kwargs):
         r"""
@@ -216,17 +223,18 @@ class DataLoggerEngine(BaseEngine):
 
     def set_tag(
         self,
-        id:str, 
-        name:str, 
-        unit:str, 
-        data_type:str, 
-        description:str,
-        display_name:str="", 
-        display_unit:str=None,
-        opcua_address:str=None, 
-        node_namespace:str=None,
-        scan_time:int=None,
-        dead_band:float=None
+        # id:str, 
+        # name:str, 
+        # unit:str, 
+        # data_type:str, 
+        # description:str="",
+        # display_name:str="", 
+        # display_unit:str="",
+        # opcua_address:str="", 
+        # node_namespace:str="",
+        # scan_time:int=0,
+        # dead_band:float=0.0
+        tag:Tag
         ):
         r"""
         Define tag names you want log in database, these tags must be defined in CVTEngine
@@ -241,17 +249,17 @@ class DataLoggerEngine(BaseEngine):
         _query = dict()
         _query["action"] = "set_tag"
         _query["parameters"] = dict()
-        _query["parameters"]["id"] = id
-        _query["parameters"]["name"] = name
-        _query["parameters"]["unit"] = unit
-        _query["parameters"]["data_type"] = data_type
-        _query["parameters"]["description"] = description
-        _query["parameters"]["display_name"] = display_name
-        _query["parameters"]["display_unit"] = display_unit
-        _query["parameters"]["opcua_address"] = opcua_address
-        _query["parameters"]["node_namespace"] = node_namespace
-        _query["parameters"]["scan_time"] = scan_time
-        _query["parameters"]["dead_band"] = dead_band
+        _query["parameters"]["id"] = tag.id
+        _query["parameters"]["name"] = tag.name
+        _query["parameters"]["unit"] = tag.unit
+        _query["parameters"]["data_type"] = tag.data_type
+        _query["parameters"]["description"] = tag.description
+        _query["parameters"]["display_name"] = tag.display_name
+        _query["parameters"]["display_unit"] = tag.display_unit
+        _query["parameters"]["opcua_address"] = tag.opcua_address
+        _query["parameters"]["node_namespace"] = tag.node_namespace
+        _query["parameters"]["scan_time"] = tag.scan_time
+        _query["parameters"]["dead_band"] = tag.dead_band
         
         return self.query(_query)
 
@@ -262,6 +270,17 @@ class DataLoggerEngine(BaseEngine):
         _query = dict()
         _query["action"] = "get_tags"
         _query["parameters"] = dict()
+        
+        return self.query(_query)
+    
+    def get_tag_by_name(self, name:str):
+        r"""
+
+        """
+        _query = dict()
+        _query["action"] = "get_tag_by_name"
+        _query["parameters"] = dict()
+        _query["parameters"]["name"] = name
         
         return self.query(_query)
     
@@ -339,7 +358,7 @@ class DataLoggerEngine(BaseEngine):
 
         return self.query(_query)
 
-    def read_tag(self, tag):
+    def read_tag(self, tag:str):
         r"""
         Read tag value from database on a thread-safe mechanism
 
