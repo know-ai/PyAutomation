@@ -3,6 +3,7 @@ from automation import PyAutomation
 from automation.extensions.api import api
 from datetime import datetime, timedelta
 from automation.extensions import _api as Api
+from automation.dbmodels.alarms import AlarmSummary
 
 ns = Namespace('Alarms Summary', description='Alarms Summary')
 app = PyAutomation()
@@ -42,3 +43,16 @@ class LastsAlarmsResource(Resource):
         """
         
         return app.get_lasts_alarms(lasts=lasts)
+    
+
+@ns.route('/<id>/comments')
+class AlarmsSummaryCommentsResource(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def get(self, id:int):
+        r"""
+        Get Alarm Summary Comments
+        """
+        comments = AlarmSummary.get_alarm_summary_comments(id=id)
+        return comments, 200

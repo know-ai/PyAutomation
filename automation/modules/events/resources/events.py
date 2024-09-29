@@ -3,6 +3,7 @@ from automation import PyAutomation
 from automation.extensions.api import api
 from datetime import datetime, timedelta
 from automation.extensions import _api as Api
+from automation.dbmodels.events import Events
 
 ns = Namespace('Events Logger', description='Events Logger')
 app = PyAutomation()
@@ -42,3 +43,16 @@ class LastsEventsResource(Resource):
         """
         
         return app.get_lasts_events(lasts=lasts)
+    
+
+@ns.route('/<id>/comments')
+class EventsCommentsResource(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def get(self, id:int):
+        r"""
+        Get Alarm Summary Comments
+        """
+        comments = Events.get_comments(id=id)
+        return comments, 200

@@ -497,6 +497,15 @@ class AlarmSummary(BaseModel):
 
         return [alarm.serialize() for alarm in _query]
 
+    @classmethod
+    def get_alarm_summary_comments(cls, id:int):
+        r"""
+        Documentation here
+        """
+        query = cls.read(id=id)
+
+        return [comment.serialize() for comment in query.logs]
+
     def serialize(self):
         r"""
         Documentation here
