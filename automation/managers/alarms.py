@@ -10,6 +10,7 @@ from ..alarms import AlarmState
 from ..alarms.alarms import Alarm, AlarmState
 from ..dbmodels.alarms import AlarmSummary
 from ..modules.users.users import User
+from ..utils.decorators import set_event
 
 
 class AlarmManager(Singleton):
@@ -143,6 +144,7 @@ class AlarmManager(Singleton):
             )
         self._alarms[id] = alarm
 
+    @set_event(message=f"Deleted", classification="Alarm", priority=3, criticity=5)
     def delete_alarm(self, id:str):
         r"""
         Removes alarm
@@ -153,7 +155,9 @@ class AlarmManager(Singleton):
         """
         if id in self._alarms: 
                 
-            self._alarms.pop(id)
+            alarm = self._alarms.pop(id)
+
+        return alarm, f"Alarm: {alarm.name} - Tag: {alarm.tag}"
 
     def get_alarm(self, id:str)->Alarm:
         r"""

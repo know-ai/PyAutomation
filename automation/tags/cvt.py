@@ -95,7 +95,7 @@ class CVT:
         )
         self._tags[tag.id] = tag
 
-        return tag, f"{name} {unit} creation successful"
+        return tag, f"Tag: {name} - {unit}"
 
     @set_event(message=f"Updated", classification="Tag", priority=1, criticity=3)
     def update_tag(self, id:str, user:User=None, **kwargs)->tuple[Tag|None, str]:
@@ -118,9 +118,10 @@ class CVT:
         tag.update(**kwargs)
         self._tags[id] = tag
 
-        return tag, f"Message to Change"
+        return tag, f"Tag: {tag.name}"
 
-    def delete_tag(self, id:str):
+    @set_event(message=f"Updated", classification="Tag", priority=1, criticity=5)
+    def delete_tag(self, id:str, user:User):
         r"""Documentation here
 
         # Parameters
@@ -131,7 +132,8 @@ class CVT:
 
         - 
         """
-        self._tags.pop(id)
+        tag = self._tags.pop(id)
+        return tag, f"Tag: {tag.name}"
 
     def get_tag(self, id:str)->Tag|None:
         r"""Documentation here
