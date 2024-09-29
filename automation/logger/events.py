@@ -68,7 +68,7 @@ class EventsLogger(BaseLogger):
                 less_than_timestamp=less_than_timestamp
             )
         
-    def get_summary(self)->list:
+    def get_summary(self)->tuple[list, str]:
         r"""
         Documentation here
         """
@@ -76,7 +76,7 @@ class EventsLogger(BaseLogger):
             
             return Events.serialize()
         
-        return []
+        return list(), f"DB Not Initialized"
     
 class EventsLoggerEngine(BaseEngine):
     r"""

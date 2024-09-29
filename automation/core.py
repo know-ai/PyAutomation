@@ -43,18 +43,18 @@ class PyAutomation(Singleton):
 
         self.machine = Machine()
         self.machine_manager = self.machine.get_state_machine_manager()
-        self.db_manager = DBManager()
         self.cvt = CVTEngine()
         self.logger_engine = DataLoggerEngine()
         self.events_engine = EventsLoggerEngine()
         self.alarms_engine = AlarmsLoggerEngine()
+        self.db_manager = DBManager()
         self.opcua_client_manager = OPCUAClientManager()
         self.alarm_manager = AlarmManager()
         self.workers = list()
-        self.set_log(level=logging.WARNING)
         self.das = DAS()
+        self.set_log(level=logging.WARNING)
     
-    def define_dash_app(self, **kwargs):
+    def define_dash_app(self, **kwargs)->None:
         r"""
         Documentation here
         """
@@ -63,51 +63,31 @@ class PyAutomation(Singleton):
         init_callbacks(app=self.dash_app)
 
     # MACHINES METHODS
-    def append_machine(self, machine, interval:float=1.0, mode:str="async"):
+    def append_machine(self, machine, interval:float=1.0, mode:str="async")->None:
         r"""
         Documentation here
         """
         self.machine.append_machine(machine=machine, interval=interval, mode=mode)
 
-    def get_machine(self, name:str):
+    def get_machine(self, name:str)->tuple[Machine, int, str]:
         r"""
         Documentation here
         """
         return self.machine_manager.get_machine(name=name)
 
-    def get_machines(self):
+    def get_machines(self)->list[tuple[Machine, int, str]]:
         r"""
         Documentation here
         """
         return self.machine_manager.get_machines()
 
-    def serialize_machines(self):
+    def serialize_machines(self)->dict:
         r"""
         Documentation here
         """
         return self.machine_manager.serialize_machines()
 
     # TAGS METHODS
-    def get_tags(self):
-        r"""Documentation here
-
-        # Parameters
-
-        -
-
-        # Returns
-
-        -
-        """
-
-        return self.cvt.get_tags()
-
-    def get_trends(self, start:str, stop:str, *tags):
-        r"""
-        Documentation here
-        """
-        return self.logger_engine.read_trends(start, stop, *tags)
-
     def create_tag(self,
             name:str,
             unit:str,
@@ -191,6 +171,26 @@ class PyAutomation(Singleton):
             self.subscribe_opcua(tag=self.cvt.get_tag_by_name(name=name), opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time)
 
         return message
+    
+    def get_tags(self):
+        r"""Documentation here
+
+        # Parameters
+
+        -
+
+        # Returns
+
+        -
+        """
+
+        return self.cvt.get_tags()
+
+    def get_trends(self, start:str, stop:str, *tags):
+        r"""
+        Documentation here
+        """
+        return self.logger_engine.read_trends(start, stop, *tags)
 
     def delete_tag(self, id:str):
         r"""
@@ -322,7 +322,6 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-
         return self.opcua_client_manager.serialize()
 
     def get_opcua_client(self, client_name:str):
@@ -349,7 +348,6 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-
         return self.opcua_client_manager.get_opcua_tree(client_name=client_name)
 
     def add_opcua_client(self, client_name:str, host:str="127.0.0.1", port:int=4840):

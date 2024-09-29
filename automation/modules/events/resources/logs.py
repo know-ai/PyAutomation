@@ -4,31 +4,31 @@ from automation.extensions.api import api
 from datetime import datetime, timedelta
 from automation.extensions import _api as Api
 
-ns = Namespace('Events Logger', description='Events Logger')
+ns = Namespace('Operation Logs', description='Operation Logs')
 app = PyAutomation()
 
 
-events_filter_model = api.model("events_filter_model",{
+logs_filter_model = api.model("logs_filter_model",{
     'usernames': fields.List(fields.String(), required=False),
-    'priorities': fields.List(fields.Integer(), required=False),
-    'criticities': fields.List(fields.Integer(), required=False),
+    'alarm_names': fields.List(fields.String(), required=False),
+    'event_ids': fields.List(fields.Integer(), required=False),
     'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now() - timedelta(minutes=2), description=f'Greater than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
     'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(), description=f'Less than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}')
 })
 
     
 @ns.route('/filter_by')
-class EventsSummaryFilterByResource(Resource):
+class LogsFilterByResource(Resource):
 
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
-    @ns.expect(events_filter_model)
+    @ns.expect(logs_filter_model)
     def post(self):
         r"""
-        Events Summary Filter By
+        Logs Filter By
         """
         
-        return app.filter_events_by(**api.payload)
+        return app.filter_logs_by(**api.payload)
     
 
 @ns.route('/lasts/<lasts>')
@@ -41,4 +41,4 @@ class LastsEventsResource(Resource):
         Get lasts events
         """
         
-        return app.get_lasts_events(lasts=lasts)
+        return app.get_lasts_logs(lasts=lasts)
