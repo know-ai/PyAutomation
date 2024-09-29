@@ -214,14 +214,14 @@ class PyAutomation(Singleton):
             return f"Tag {tag_name} has an alarm associated"
 
         self.unsubscribe_opcua(tag=tag)
-        self.das.buffer.pop(tag_name)
-
+        
         # Persist Tag on Database
         if self.is_db_connected():
 
             self.logger_engine.delete_tag(id=id)
 
         self.cvt.delete_tag(id=id)
+        self.das.buffer.pop(tag_name)
 
     @validate_types(
             id=str,  
