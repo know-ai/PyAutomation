@@ -253,7 +253,7 @@ class PyAutomation(Singleton):
             node_namespace:str="",
             scan_time:int=None,
             dead_band:int|float=None,
-            user:User=None, 
+            user:User|None=None, 
         )->dict:
         r"""
         Documentation here
@@ -277,8 +277,7 @@ class PyAutomation(Singleton):
                 opcua_address=opcua_address,
                 node_namespace=node_namespace,
                 scan_time=scan_time,
-                dead_band=dead_band,
-                user=user
+                dead_band=dead_band
             )
 
         result = self.cvt.update_tag(

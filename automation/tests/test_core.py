@@ -56,6 +56,11 @@ class TestCore(unittest.TestCase):
             updated_tag, _ = self.app.update_tag(id=tag2.id, name=name)
             self.assertEqual(name, updated_tag.name)
 
+            with self.subTest("Test update tag name from DB"):
+
+                updated_tag = self.app.logger_engine.get_tag_by_name(name=name)
+                self.assertEqual(name, updated_tag.name)
+
         with self.subTest("Test update tag unit"):
 
             unit = "K"

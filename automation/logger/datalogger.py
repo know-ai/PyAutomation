@@ -8,6 +8,7 @@ import logging, sys, os
 from datetime import datetime
 from ..tags.tag import Tag
 from ..dbmodels import Tags, TagValue
+from ..modules.users.users import User
 from .core import BaseLogger, BaseEngine
 
 
@@ -223,17 +224,6 @@ class DataLoggerEngine(BaseEngine):
 
     def set_tag(
         self,
-        # id:str, 
-        # name:str, 
-        # unit:str, 
-        # data_type:str, 
-        # description:str="",
-        # display_name:str="", 
-        # display_unit:str="",
-        # opcua_address:str="", 
-        # node_namespace:str="",
-        # scan_time:int=0,
-        # dead_band:float=0.0
         tag:Tag
         ):
         r"""
@@ -284,7 +274,22 @@ class DataLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    def update_tag(self, id:str, **fields):
+    def update_tag(
+            self, 
+            id:str, 
+            name:str="", 
+            unit:str="", 
+            data_type:str="", 
+            description:str="", 
+            variable:str="",
+            display_name:str="",
+            display_unit:str="",
+            opcua_address:str="",
+            node_namespace:str="",
+            scan_time:int=None,
+            dead_band:int|float=None,
+            user:User|None=None
+            ):
         r"""Documentation here
 
         # Parameters
@@ -300,7 +305,49 @@ class DataLoggerEngine(BaseEngine):
         _query["action"] = "update_tag"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
-        _query["parameters"].update(fields)
+        if name:
+
+            _query["parameters"]["name"] = name
+        
+        if unit:
+
+            _query["parameters"]["unit"] = unit
+
+        if data_type:
+
+            _query["parameters"]["data_type"] = data_type
+
+        if description:
+
+            _query["parameters"]["description"] = description
+
+        if variable:
+
+            _query["parameters"]["variable"] = variable
+
+        if display_name:
+
+            _query["parameters"]["display_name"] = display_name
+
+        if display_unit:
+
+            _query["parameters"]["display_unit"] = display_unit
+
+        if opcua_address:
+
+            _query["parameters"]["opcua_address"] = opcua_address
+
+        if node_namespace:
+
+            _query["parameters"]["node_namespace"] = node_namespace
+
+        if scan_time:
+
+            _query["parameters"]["scan_time"] = scan_time
+
+        if dead_band:
+
+            _query["parameters"]["dead_band"] = dead_band
         
         return self.query(_query)
     
