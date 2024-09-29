@@ -388,11 +388,11 @@ class Tags(BaseModel):
 
     identifier = CharField(unique=True)
     name = CharField(unique=True)
-    unit = ForeignKeyField(Units, backref='tags', on_delete='CASCADE')
-    data_type = ForeignKeyField(DataTypes, backref='tags', on_delete='CASCADE')
+    unit = ForeignKeyField(Units, backref='tags')
+    data_type = ForeignKeyField(DataTypes, backref='tags')
     description = CharField(null=True, max_length=256)
     display_name = CharField()
-    display_unit = ForeignKeyField(Units, on_delete='CASCADE')
+    display_unit = ForeignKeyField(Units)
     opcua_address = CharField(null=True)
     node_namespace = CharField(null=True)
     scan_time = IntegerField(null=True)
@@ -521,6 +521,19 @@ class Tags(BaseModel):
             query = cls.update(**fields).where(cls.id == id)
             query.execute()
             return query
+
+    # @classmethod
+    # def delete(cls, id:int):
+    #     r"""
+    #     Delete record from database including 
+    #     """
+
+    #     print(f"Deleting tag: {id} - Exist? {cls.id_exists(id)}")
+    #     if cls.id_exists(id):
+        
+    #         query = super().delete().where(cls.id==id)
+    #         print(f"Query: {query}")
+    #         query.execute()
 
     @classmethod
     def read_by_name(cls, name):

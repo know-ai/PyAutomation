@@ -197,6 +197,11 @@ class PyAutomation(Singleton):
 
         return self.cvt.get_tags()
 
+    @validate_types(name=str, output=Tag|None)
+    def get_tag_by_name(self, name:str)->Tag:
+
+        return self.cvt.get_tag_by_name(name=name)
+
     def get_trends(self, start:str, stop:str, *tags):
         r"""
         Documentation here

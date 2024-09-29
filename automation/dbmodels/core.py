@@ -66,18 +66,15 @@ class BaseModel(Model):
             query = cls.update(**fields).where(cls.id == id)
             query.execute()
             return query
-
-    @classmethod
-    def delete(cls, id:int):
-        r"""
-        Delete record from database including 
-        """
-
-        print(f"Deleting tag: {id}")
-        if cls.id_exists(id):
         
-            query = super().delete().where(cls.id==id)
-            query.execute()
+    # @classmethod
+    # def delete(cls, id:int):
+    #     r"""
+    #     Delete record from database including 
+    #     """
+    #     query = super().delete().where(cls.id==id)
+    #     query.execute()
+            
 
     @classmethod
     def id_exists(cls, id:str|int)->bool|None:
@@ -92,11 +89,7 @@ class BaseModel(Model):
 
         * **bool:** If True, so id record exist into database
         """
-        query = cls.get_or_none(id=id)
-        
-        if query:
-
-            return True
+        return True if cls.get_or_none(id=id) else False
 
     class Meta:
         database = proxy

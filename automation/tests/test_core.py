@@ -50,33 +50,33 @@ class TestCore(unittest.TestCase):
 
                 self.assertDictContainsSubset(tag_in_db, tags_in_cvt[counter])
 
+        name = "TT"
+        updated_tag, _ = self.app.update_tag(id=tag2.id, name=name)
         with self.subTest("Test update tag name"):
 
-            name = "TT"
-            updated_tag, _ = self.app.update_tag(id=tag2.id, name=name)
             self.assertEqual(name, updated_tag.name)
 
-            with self.subTest("Test update tag name from DB"):
+        with self.subTest("Test update tag name from DB"):
 
-                updated_tag = self.app.logger_engine.get_tag_by_name(name=name)
-                self.assertEqual(name, updated_tag.name)
+            updated_tag = self.app.logger_engine.get_tag_by_name(name=name)
+            self.assertEqual(name, updated_tag.name)
 
+        unit = "K"
+        updated_tag, _ = self.app.update_tag(id=tag2.id, unit=unit)
         with self.subTest("Test update tag unit"):
 
-            unit = "K"
-            updated_tag, _ = self.app.update_tag(id=tag2.id, unit=unit)
             self.assertEqual(unit, updated_tag.unit)
 
-            with self.subTest("Test update tag unit from DB"):
+        with self.subTest("Test update tag unit from DB"):
 
-                updated_tag = self.app.logger_engine.get_tag_by_name(name=tag2.name)
-                self.assertEqual(unit, updated_tag.unit.unit)
+            updated_tag = self.app.logger_engine.get_tag_by_name(name=tag2.name)
+            self.assertEqual(unit, updated_tag.unit.unit)
 
+        self.app.delete_tag(id=tag2.id)
         with self.subTest("Test delete tag"):
 
-            self.app.delete_tag(id=tag2.id)
-            self.assertIsNone(self.app.get_alarm_by_name(name=tag2.name))
+            self.assertIsNone(self.app.get_tag_by_name(name=tag2.name))
 
-            with self.subTest("Test delete tag from DB"):
+        with self.subTest("Test delete tag from DB"):
 
-                self.assertIsNone(self.app.logger_engine.get_tag_by_name(name=tag2.name))
+            self.assertIsNone(self.app.logger_engine.get_tag_by_name(name=tag2.name))

@@ -216,12 +216,12 @@ class Alarms(BaseModel):
 
     identifier = CharField(unique=True)
     name = CharField(unique=True, max_length=64)
-    tag = ForeignKeyField(Tags, backref='alarms', on_delete='CASCADE')
-    trigger_type = ForeignKeyField(AlarmTypes, backref='alarms', on_delete='CASCADE')
+    tag = ForeignKeyField(Tags, backref='alarms')
+    trigger_type = ForeignKeyField(AlarmTypes, backref='alarms')
     trigger_value = FloatField()
     description = CharField(null=True, max_length=256)
     tag_alarm = CharField(null=True, max_length=64)
-    state = ForeignKeyField(AlarmStates, backref='alarms', on_delete='CASCADE')
+    state = ForeignKeyField(AlarmStates, backref='alarms')
     timestamp = DateTimeField(null=True)
     acknowledged_timestamp = DateTimeField(null=True)
 

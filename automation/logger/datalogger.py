@@ -66,7 +66,8 @@ class DataLogger(BaseLogger):
         Documentation here
         """
         tag = Tags.get(identifier=id)
-        Tags.delete(id=tag.id)
+        query = Tags.delete().where(Tags.id==tag.id)
+        query.execute()
 
     def get_tag_by_name(self, name:str):
         r"""
