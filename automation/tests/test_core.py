@@ -71,3 +71,12 @@ class TestCore(unittest.TestCase):
 
                 updated_tag = self.app.logger_engine.get_tag_by_name(name=tag2.name)
                 self.assertEqual(unit, updated_tag.unit.unit)
+
+        with self.subTest("Test delete tag"):
+
+            self.app.delete_tag(id=tag2.id)
+            self.assertIsNone(self.app.get_alarm_by_name(name=tag2.name))
+
+            with self.subTest("Test delete tag from DB"):
+
+                self.assertIsNone(self.app.logger_engine.get_tag_by_name(name=tag2.name))
