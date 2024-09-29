@@ -1,21 +1,23 @@
-from peewee import CharField, DateTimeField, ForeignKeyField, IntegerField
+from peewee import CharField, DateTimeField, ForeignKeyField
 from automation.dbmodels.core import BaseModel
 from datetime import datetime
 from .users import Users
+from .events import Events
+from .alarms import AlarmSummary, Alarms
 from automation.modules.users.users import User
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 
-class Events(BaseModel):
+class Logs(BaseModel):
 
     timestamp = DateTimeField()
     message = CharField(max_length=256)
     description = CharField(max_length=256, null=True)
     classification = CharField(max_length=128, null=True)
-    priority = IntegerField(null=True)
-    criticity = IntegerField(null=True)
-    user = ForeignKeyField(Users, backref='events', on_delete='CASCADE')
+    user = ForeignKeyField(Users, backref='logs', on_delete='CASCADE')
+    alarm = ForeignKeyField(AlarmSummary, null=True, backref='logs', on_delete='CASCADE')
+    event = ForeignKeyField(Events, null=True, backref='logs', on_delete='CASCADE')
 
     @classmethod
     def create(
@@ -24,8 +26,8 @@ class Events(BaseModel):
         user:User, 
         description:str=None, 
         classification:str=None,
-        priority:int=None,
-        criticity:int=None,
+        alarm_summary_id:int=None,
+        event_id:int=None,
         timestamp:datetime=None
         )->tuple:
 
@@ -48,9 +50,9 @@ class Events(BaseModel):
             user=_user,
             description=description,
             classification=classification,
-            priority=priority,
-            criticity=criticity,
-            timestamp=timestamp
+            timestamp=timestamp,
+            event=Events.get_or_none(id=event_id),
+            alarm=AlarmSummary.get_or_none(id=alarm_summary_id)
         )
         query.save()
 
@@ -61,43 +63,40 @@ class Events(BaseModel):
         r"""
         Documentation here
         """
-        events = cls.select().order_by(cls.id.desc()).limit(lasts)
+        logs = cls.select().order_by(cls.id.desc()).limit(lasts)
 
-        return [event.serialize() for event in events]
+        return [log.serialize() for log in logs]
     
     @classmethod
     def filter_by(
         cls, 
         usernames:list[str]=None,
-        priorities:list[int]=None,
-        criticities:list[int]=None,
+        alarm_names:list[str]=None,
+        event_ids:list[int]=None,
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None):
         r"""
         Documentation here
         """
         if usernames:
-            
             subquery = Users.select(Users.id).where(Users.username.in_(usernames))
             _query = cls.select().join(Users).where(Users.id.in_(subquery)).order_by(cls.id.desc())
 
-        if priorities:
+        if event_ids:
 
+            subquery = Events.select(Events.id).where(Events.id.in_(event_ids))
             if _query:
-
-                _query = _query.select().where(cls.in_(priorities)).order_by(cls.id.desc())
-
+                _query = _query.select().join(Events).where(cls.in_(subquery)).order_by(cls.id.desc())
             else:
-                _query = cls.select().where(cls.in_(priorities)).order_by(cls.id.desc())
+                _query = cls.select().join(Events).where(cls.in_(subquery)).order_by(cls.id.desc())
 
-        if criticities:
-
+        if alarm_names:
+            subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(alarm_names))
+            subquery = subquery.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
             if _query:
-
-                _query = _query.select().where(cls.in_(criticities)).order_by(cls.id.desc())
-
+                _query = _query.select().where(cls.in_(subquery)).order_by(cls.id.desc())
             else:
-                _query = cls.select().where(cls.in_(criticities)).order_by(cls.id.desc())
+                _query = cls.select().where(cls.in_(subquery)).order_by(cls.id.desc())
 
         if greater_than_timestamp:
             
@@ -136,8 +135,6 @@ class Events(BaseModel):
             "message": self.message,
             "description": self.description,
             "classification": self.classification,
-            "priority": self.priority,
-            "criticity": self.criticity
+            "event": self.event.serialize(),
+            "alarm": self.alarm.serialize()
         }
-    
-
