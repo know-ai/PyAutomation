@@ -123,7 +123,6 @@ def get_nodes_info(selected_files:list):
 
     return to_get_node_values
 
-
 def get_data_to_update_into_opcua_table(app, to_get_node_values:dict):
     r"""
     Documentation here

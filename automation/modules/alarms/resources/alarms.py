@@ -139,13 +139,12 @@ class AckAllAlarmsResource(Resource):
         """
         alarms = app.alarm_manager.get_alarms()
 
-        for id, alarm in alarms.items():
+        for _, alarm in alarms.items():
 
-            if not alarm._is_process_alarm:
-
-                if alarm.state in [AlarmState.UNACK, AlarmState.RTNUN]:
-                    user = Api.get_current_user()
-                    alarm.acknowledge(user=user)
+            if alarm.state in [AlarmState.UNACK, AlarmState.RTNUN]:
+                
+                user = Api.get_current_user()
+                alarm.acknowledge(user=user)
         
         result = {
             'message': "Alarms were acknowledged successfully"
@@ -170,15 +169,13 @@ class SilenceAllAlarmsResource(Resource):
 
         for id, alarm in alarms.items():
 
-            if not alarm._is_process_alarm:
-
-                if alarm.audible:
-                    user = Api.get_current_user()
-                    alarm.silence(user=user)
-            
-                    result = {
-                        'message': "Alarms were silenced successfully"
-                    }
+            if alarm.audible:
+                user = Api.get_current_user()
+                alarm.silence(user=user)
+        
+                result = {
+                    'message': "Alarms were silenced successfully"
+                }
         
         return result, 200
     

@@ -2,9 +2,10 @@ import threading, copy, logging
 from datetime import datetime
 from ..singleton import Singleton
 from ..models import FloatType, StringType, IntegerType, BooleanType
-from .tag import Tag
 from ..modules.users.users import User
-from ..logger.events import EventsLoggerEngine
+from ..modules.users.users import User
+from ..utils.decorators import set_event
+from .tag import Tag
 
 class CVT:
     """Current Value Table class for Tag based repository.
@@ -24,8 +25,8 @@ class CVT:
 
         self._tags = dict()
         self.data_types = ["float", "int", "bool", "str"]
-        self.events_engine = EventsLoggerEngine()
     
+    @set_event(message=f"Created", classification="Tag", priority=1, criticity=1)
     def set_tag(
         self, 
         name:str, 
@@ -39,8 +40,9 @@ class CVT:
         node_namespace:str="",
         scan_time:int=None,
         dead_band:float=None,
-        id:str=None
-        )->None|str:
+        id:str=None,
+        user:User=None
+        )->tuple[Tag|None, str]:
         """Initialize a new Tag object in the _tags dictionary.
         
         # Parameters
@@ -93,7 +95,10 @@ class CVT:
         )
         self._tags[tag.id] = tag
 
-    def update_tag(self, id:str, **kwargs)->None|str:
+        return tag, f"{name} {unit} creation successful"
+
+    @set_event(message=f"Updated", classification="Tag", priority=1, criticity=3)
+    def update_tag(self, id:str, user:User=None, **kwargs)->tuple[Tag|None, str]:
         r"""Documentation here
 
         # Parameters
@@ -107,11 +112,13 @@ class CVT:
         has_duplicates, message = self.has_duplicates(**kwargs)
         if has_duplicates:
 
-            return message
+            return None, message
         
         tag = self._tags[id]
         tag.update(**kwargs)
         self._tags[id] = tag
+
+        return tag, f"Message to Change"
 
     def delete_tag(self, id:str):
         r"""Documentation here

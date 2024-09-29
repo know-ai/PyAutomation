@@ -12,6 +12,7 @@ from .logger.events import EventsLoggerEngine
 from .managers.opcua_client import OPCUAClientManager
 from .opcua.subscription import DAS
 from .modules.users.users import User
+from .utils.decorators import set_event
 
 
 events_engine = EventsLoggerEngine()
@@ -862,11 +863,8 @@ class AutomationStateMachine(StateMachine):
             
         #     self.data[tag](value)
 
-    def transition(
-        self,
-        to,
-        user:User=None
-        ):
+    @set_event(message=f"Switched", classification="State Machine", priority=2, criticity=3)
+    def transition(self, to, user:User=None):
         r"""
         Documentation here
         """
@@ -874,16 +872,7 @@ class AutomationStateMachine(StateMachine):
             _from = self.current_state.name.lower()
             transition_name = f'{_from}_to_{to}'
             self.send(transition_name)
-            
-            if user:
-
-                events_engine.create(
-                    message=f"{self.name} switched from: {_from} to: {to}",
-                    classification="State Machine",
-                    user=user,
-                    priority=2,
-                    criticity=1
-                )
+            return self, f"from: {_from} to: {to}"
             
         except Exception as err:
 
