@@ -744,7 +744,7 @@ class PyAutomation(Singleton):
 
             json.dump(db_config, json_file)
 
-    @validate_types(output=None)
+    @validate_types(output=dict)
     def get_db_config(self):
         r"""
         Documentation here
