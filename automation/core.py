@@ -15,7 +15,7 @@ from .logger.datalogger import DataLoggerEngine
 from .logger.events import EventsLoggerEngine
 from .logger.alarms import AlarmsLoggerEngine
 from .alarms import Alarm
-from .state_machine import Machine, DAQ
+from .state_machine import Machine, DAQ, StateMachine
 from .opcua.subscription import DAS
 from .buffer import Buffer
 from .modules.users.users import users, User
@@ -65,15 +65,15 @@ class PyAutomation(Singleton):
         init_callbacks(app=self.dash_app)
 
     # MACHINES METHODS
-    @validate_types(machine=Machine, interval=float, mode=str, output=None)
+    @validate_types(machine=StateMachine, interval=float|int, mode=str, output=None)
     def append_machine(self, machine, interval:float=1.0, mode:str="async")->None:
         r"""
         Documentation here
         """
         self.machine.append_machine(machine=machine, interval=interval, mode=mode)
 
-    @validate_types(name=str, output=(Machine, int, str))
-    def get_machine(self, name:str)->tuple[Machine, int, str]:
+    @validate_types(name=str, output=StateMachine)
+    def get_machine(self, name:str)->StateMachine:
         r"""
         Documentation here
         """
