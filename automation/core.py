@@ -23,6 +23,7 @@ from .modules.users.roles import roles, Role
 from .pages.main import ConfigView
 from .pages.callbacks import init_callbacks
 import dash_bootstrap_components as dbc
+from .utils.decorators import validate_types
 
 
 class PyAutomation(Singleton):
@@ -941,6 +942,7 @@ class PyAutomation(Singleton):
 
                 self.dash_app.run(debug=debug, use_reloader=False)
 
+    @validate_types(test=bool, create_tables=bool, alarm_worker=bool, output=None)
     def safe_start(self, test:bool=False, create_tables:bool=True, alarm_worker:bool=False):
         r"""
         Run the app without a main thread, only run the app with the threads and state machines define

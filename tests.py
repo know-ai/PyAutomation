@@ -1,5 +1,6 @@
 from unittest import TestLoader, TestSuite, TextTestRunner
 from automation.tests.test_user import TestUsers
+from automation.tests.test_core import TestCore
 
 
 def suite():
@@ -9,6 +10,7 @@ def suite():
     tests = list()
     suite = TestSuite()
     tests.append(TestLoader().loadTestsFromTestCase(TestUsers))
+    tests.append(TestLoader().loadTestsFromTestCase(TestCore))
     suite = TestSuite(tests)
     return suite
 

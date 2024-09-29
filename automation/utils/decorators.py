@@ -68,3 +68,41 @@ def set_event(message:str, classification:str, priority:int, criticity:int):
         return result
 
     return wrapper
+
+
+def validate_types(**validations):
+    
+    if "output" in validations:
+
+        _output = validations.pop('output')
+
+        if _output is None:
+
+            _output = type(None)
+
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            
+            for key, _data_type in kwargs.items():
+
+                if key in validations:
+                
+                    if not isinstance(_data_type, validations[key]):
+
+                        raise TypeError(f"Expected {validations[key]}, but got {type(_data_type)}")
+                    
+                else:
+
+                    raise KeyError(f"You didn't define {key} argument to validate in {func}")
+
+            # Call the wrapped function
+            result = func(*args, **kwargs)
+
+            # Validate the output type
+            if _output:
+                if not isinstance(result, _output):
+                    raise TypeError(f"Expected output type {_output}, but got {type(result)}")
+
+            return result
+        return wrapper
+    return decorator

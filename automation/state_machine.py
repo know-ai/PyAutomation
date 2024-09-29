@@ -12,7 +12,7 @@ from .logger.events import EventsLoggerEngine
 from .managers.opcua_client import OPCUAClientManager
 from .opcua.subscription import DAS
 from .modules.users.users import User
-from .utils.decorators import set_event
+from .utils.decorators import set_event, validate_types
 
 
 events_engine = EventsLoggerEngine()
@@ -25,7 +25,7 @@ class Machine(Singleton):
         self._machine_manager = StateMachineManager()
         self.workers = list()
 
-    def append_machine(self, machine, interval:float=1, mode:str='sync'):
+    def append_machine(self, machine:StateMachine, interval:float=1, mode:str='sync'):
         r"""
         Append a state machine to the state machine manager.
 
