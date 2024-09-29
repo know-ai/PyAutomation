@@ -617,11 +617,15 @@ class PyAutomation(Singleton):
 
         return False
 
-    def connect_to_db(self):
+    def connect_to_db(self, test:bool=False):
         r"""
         Documentation here
         """
-        db_config = self.get_db_config()
+        if not test:
+            db_config = self.get_db_config()
+        else:
+            db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
+            
         if db_config:
             dbtype = db_config.pop("dbtype")
             self.set_db(dbtype=dbtype, **db_config)
@@ -917,7 +921,7 @@ class PyAutomation(Singleton):
             )
 
     # INIT APP
-    def run(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True, **kwargs):
+    def run(self, debug:bool=False, test:bool=False, create_tables:bool=False, alarm_worker:bool=True, **kwargs):
         r"""
         Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
 
@@ -929,20 +933,22 @@ class PyAutomation(Singleton):
         >>> app.run()
         ```
         """
-        self.safe_start(create_tables=create_tables, alarm_worker=alarm_worker)
+        self.safe_start(test=test, create_tables=create_tables, alarm_worker=alarm_worker)
+
+        if not test:
         
-        if debug:
+            if debug:
 
-            self.dash_app.run(debug=debug, use_reloader=False)
+                self.dash_app.run(debug=debug, use_reloader=False)
 
-    def safe_start(self, create_tables:bool=True, alarm_worker:bool=False):
+    def safe_start(self, test:bool=False, create_tables:bool=True, alarm_worker:bool=False):
         r"""
         Run the app without a main thread, only run the app with the threads and state machines define
         """
         self._create_tables = create_tables
         self._create_alarm_worker = alarm_worker
         self.__start_logger()
-        self.__start_workers()
+        self.__start_workers(test=test)
 
     def safe_stop(self):
         r"""
@@ -953,7 +959,7 @@ class PyAutomation(Singleton):
         sys.exit()
 
     # WORKERS
-    def __start_workers(self):
+    def __start_workers(self, test:bool=False):
         r"""
         Starts all workers.
 
@@ -964,7 +970,7 @@ class PyAutomation(Singleton):
         if self._create_tables:
 
             db_worker = LoggerWorker(self.db_manager)
-            self.connect_to_db()
+            self.connect_to_db(test=test)
             db_worker.start_workers()
 
         if self._create_alarm_worker:
