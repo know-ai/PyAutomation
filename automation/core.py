@@ -14,6 +14,7 @@ from .tags import CVTEngine, Tag
 from .logger.datalogger import DataLoggerEngine
 from .logger.events import EventsLoggerEngine
 from .logger.alarms import AlarmsLoggerEngine
+from .logger.logs import LogsLoggerEngine
 from .alarms import Alarm
 from .state_machine import Machine, DAQ, StateMachine
 from .opcua.subscription import DAS
@@ -49,6 +50,7 @@ class PyAutomation(Singleton):
         self.logger_engine = DataLoggerEngine()
         self.events_engine = EventsLoggerEngine()
         self.alarms_engine = AlarmsLoggerEngine()
+        self.logs_engine = LogsLoggerEngine()
         self.db_manager = DBManager()
         self.opcua_client_manager = OPCUAClientManager()
         self.alarm_manager = AlarmManager()
@@ -872,14 +874,14 @@ class PyAutomation(Singleton):
     @validate_types(
             name=str,
             tag=str,
-            type=str,
+            alarm_type=str,
             trigger_value=bool|float,
-            description=str,
+            description=str|type(None),
             identifier=str|type(None),
             tag_alarm=str|type(None),
             state=str,
-            timestamp=str,
-            acknowledged_timestamp=str,
+            timestamp=str|type(None),
+            acknowledged_timestamp=str|type(None),
             user=User|type(None),
             reload=bool,
             output=(Alarm, str)
@@ -888,7 +890,7 @@ class PyAutomation(Singleton):
             self,
             name:str,
             tag:str,
-            type:str="BOOL",
+            alarm_type:str="BOOL",
             trigger_value:bool|float=True,
             description:str="",
             identifier:str=None,
@@ -913,7 +915,7 @@ class PyAutomation(Singleton):
         alarm, message = self.alarm_manager.append_alarm(
             name=name,
             tag=tag,
-            type=type,
+            type=alarm_type,
             trigger_value=trigger_value,
             description=description,
             identifier=identifier,
@@ -935,7 +937,7 @@ class PyAutomation(Singleton):
                     id=alarm.identifier,
                     name=name,
                     tag=tag,
-                    trigger_type=type,
+                    trigger_type=alarm_type,
                     trigger_value=trigger_value,
                     description=description,
                     tag_alarm=None
@@ -1119,6 +1121,64 @@ class PyAutomation(Singleton):
                 greater_than_timestamp=greater_than_timestamp,
                 less_than_timestamp=less_than_timestamp
             )
+        
+    # LOGS METHODS
+    def create_log(
+        self, 
+        message:str, 
+        user:User, 
+        description:str=None, 
+        classification:str=None,
+        alarm_summary_id:int=None,
+        event_id:int=None,
+        timestamp:datetime=None
+        )->list:
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.logs_engine.create(
+                message=message, 
+                user=user, 
+                description=description, 
+                classification=classification,
+                alarm_summary_id=alarm_summary_id,
+                event_id=event_id,
+                timestamp=timestamp
+            )
+        
+    def filter_logs_by(
+            self,
+            usernames:list[str]=None,
+            alarm_names:list[str]=None,
+            event_ids:list[int]=None,
+            classifications:list[str]=None,
+            greater_than_timestamp:datetime=None,
+            less_than_timestamp:datetime=None
+        )->list:
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.logs_engine.filter_by(
+                usernames=usernames,
+                alarm_names=alarm_names,
+                event_ids=event_ids,
+                classifications=classifications,
+                greater_than_timestamp=greater_than_timestamp,
+                less_than_timestamp=less_than_timestamp
+            )
+        
+    # @validate_types(lasts=int, output=list)
+    def get_lasts_logs(self, lasts:int=10)->list:
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.logs_engine.get_lasts(lasts=lasts)
 
     # INIT APP
     @validate_types(debug=bool, test=bool, create_tables=bool, alarm_worker=bool,output=None)

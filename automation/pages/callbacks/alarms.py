@@ -69,7 +69,7 @@ def init_callback(app:dash.Dash):
         if pathname=="/alarms":
 
             data = [{
-                "id": alarm["id"],
+                "id": alarm["identifier"],
                 "tag": alarm["tag"], 
                 "name": alarm["name"],
                 "description": alarm["description"],
@@ -122,15 +122,15 @@ def init_callback(app:dash.Dash):
         """
         if "create_alarm_button" == dash.ctx.triggered_id:
             
-            message = app.automation.create_alarm(
+            alarm, message = app.automation.create_alarm(
                 name=alarm_name,
                 tag=tag_name,
-                type=alarm_type,
+                alarm_type=alarm_type,
                 trigger_value=trigger_value,
                 description=alarm_description
             )
             
-            if message:
+            if not alarm:
                 
                 dash.set_props("modal-body-alarm-create", {"children": message})
                 dash.set_props("modal-alarm-create", {'is_open': True})

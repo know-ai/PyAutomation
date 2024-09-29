@@ -56,7 +56,7 @@ class AlarmsLogger(BaseLogger):
         """
         if self.get_db():
 
-            Alarms.create(
+            query = Alarms.create(
                 identifier=id,
                 name=name,
                 tag=tag,

@@ -522,19 +522,6 @@ class Tags(BaseModel):
             query.execute()
             return query
 
-    # @classmethod
-    # def delete(cls, id:int):
-    #     r"""
-    #     Delete record from database including 
-    #     """
-
-    #     print(f"Deleting tag: {id} - Exist? {cls.id_exists(id)}")
-    #     if cls.id_exists(id):
-        
-    #         query = super().delete().where(cls.id==id)
-    #         print(f"Query: {query}")
-    #         query.execute()
-
     @classmethod
     def read_by_name(cls, name):
         r"""

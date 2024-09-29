@@ -120,7 +120,7 @@ class TestCore(unittest.TestCase):
         alarm_LL_payload = {
             "name": "alarm_LL",
             "tag": tag.name,
-            "type": "LOW-LOW",
+            "alarm_type": "LOW-LOW",
             "trigger_value": 10.0,
         }
 
@@ -141,7 +141,7 @@ class TestCore(unittest.TestCase):
         alarm_L_payload = {
             "name": "alarm_L",
             "tag": tag.name,
-            "type": "LOW",
+            "alarm_type": "LOW",
             "trigger_value": 20.0,
         }
         alarm_L, _ = self.app.create_alarm(**alarm_L_payload)
@@ -160,7 +160,7 @@ class TestCore(unittest.TestCase):
         alarm_H_payload = {
             "name": "alarm_H",
             "tag": tag.name,
-            "type": "HIGH",
+            "alarm_type": "HIGH",
             "trigger_value": 30.0,
         }
         alarm_H, _ = self.app.create_alarm(**alarm_H_payload)
@@ -179,7 +179,7 @@ class TestCore(unittest.TestCase):
         alarm_HH_payload = {
             "name": "alarm_HH",
             "tag": tag.name,
-            "type": "HIGH-HIGH",
+            "alarm_type": "HIGH-HIGH",
             "trigger_value": 40.0,
         }
         alarm_HH, _ = self.app.create_alarm(**alarm_HH_payload)

@@ -28,7 +28,7 @@ class ConfigView(dash.Dash):
     def alarms_table_data(self):
         
         return [{
-                "id": alarm["id"],
+                "id": alarm["identifier"],
                 "tag": alarm["tag"], 
                 "name": alarm["name"],
                 "description": alarm["description"],

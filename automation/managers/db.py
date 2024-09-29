@@ -10,6 +10,7 @@ from ..logger.logdict import  LogTable
 from ..logger.alarms import AlarmsLoggerEngine
 from ..logger.events import EventsLoggerEngine
 from ..logger.users import UsersLoggerEngine
+from ..logger.logs import LogsLoggerEngine
 from ..tags import CVTEngine
 from automation.modules.users.users import User
 from ..dbmodels import (
@@ -26,6 +27,7 @@ from ..dbmodels import (
     Users,
     Roles,
     Events,
+    Logs,
     BaseModel
 )
 
@@ -46,6 +48,7 @@ class DBManager(Singleton):
         self.alarms_logger = AlarmsLoggerEngine()
         self.events_logger = EventsLoggerEngine()
         self.users_logger = UsersLoggerEngine()
+        self.logs_logger = LogsLoggerEngine()
         self._tables = [
             Variables, 
             Units, 
@@ -59,7 +62,8 @@ class DBManager(Singleton):
             OPCUA,
             Roles,
             Users,
-            Events
+            Events,
+            Logs
         ]
 
         self._extra_tables = []
@@ -78,6 +82,7 @@ class DBManager(Singleton):
         self.alarms_logger.set_db(db)
         self.events_logger.set_db(db)
         self.users_logger.set_db(db)
+        self.logs_logger.set_db(db)
 
     def get_db(self):
         r"""

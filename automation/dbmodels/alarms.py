@@ -374,7 +374,7 @@ class AlarmSummary(BaseModel):
     def create(cls, name:str, state:str):
         _alarm = Alarms.read_by_name(name=name)
         _state = AlarmStates.read_by_name(name=state)
-
+        
         if _alarm:
 
             if _state:

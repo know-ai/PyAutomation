@@ -73,8 +73,10 @@ class Logs(BaseModel):
         usernames:list[str]=None,
         alarm_names:list[str]=None,
         event_ids:list[int]=None,
+        classifications:list[str]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None):
+        less_than_timestamp:datetime=None
+        ):
         r"""
         Documentation here
         """
@@ -94,9 +96,16 @@ class Logs(BaseModel):
             subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(alarm_names))
             subquery = subquery.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
             if _query:
-                _query = _query.select().where(cls.in_(subquery)).order_by(cls.id.desc())
+                _query = _query.select().join(AlarmSummary).where(cls.in_(subquery)).order_by(cls.id.desc())
             else:
-                _query = cls.select().where(cls.in_(subquery)).order_by(cls.id.desc())
+                _query = cls.select().join(AlarmSummary).where(cls.in_(subquery)).order_by(cls.id.desc())
+
+        if classifications:
+            
+            if _query:
+                _query = _query.select().where(cls.in_(classifications)).order_by(cls.id.desc())
+            else:
+                _query = cls.select().where(cls.in_(classifications)).order_by(cls.id.desc())
 
         if greater_than_timestamp:
             
@@ -128,6 +137,16 @@ class Logs(BaseModel):
 
             timestamp = timestamp.strftime(DATETIME_FORMAT)
 
+        _event = None
+        if self.event:
+
+            _event = self.event.serialize()
+
+        _alarm = None
+        if self.alarm:
+
+            _alarm = self.alarm.serialize()
+
         return {
             "id": self.id,
             "timestamp": timestamp,
@@ -135,6 +154,6 @@ class Logs(BaseModel):
             "message": self.message,
             "description": self.description,
             "classification": self.classification,
-            "event": self.event.serialize(),
-            "alarm": self.alarm.serialize()
+            "event": _event,
+            "alarm": _alarm
         }
