@@ -44,7 +44,7 @@ class AlarmManager(Singleton):
             acknowledged_timestamp:str=None,
             user:User=None,
             reload:bool=False
-        )->dict:
+        )->tuple[Alarm, str]:
         r"""
         Append alarm to the Alarm Manager
 
@@ -60,13 +60,13 @@ class AlarmManager(Singleton):
         alarm = self.get_alarm_by_name(name)
         if alarm:
             
-            return f"Alarm {name} is already defined"
+            return alarm, f"Alarm {name} is already defined"
 
         # Check if alarm is associated to same tag with same alarm type
         trigger_value_message = self.__check_trigger_values(name=name, tag=tag, type=type, trigger_value=trigger_value)
         if trigger_value_message:
 
-            return trigger_value_message
+            return None, trigger_value_message
                 
         alarm = Alarm(
             name=name, 
@@ -80,8 +80,9 @@ class AlarmManager(Singleton):
             user=user,
             reload=reload)
         alarm.set_trigger(value=trigger_value, _type=type)
-        self._alarms[alarm._id] = alarm
+        self._alarms[alarm.identifier] = alarm
         self.attach_all()
+        return alarm, f"Alarm creation successful"
 
     def put(
             self, 
@@ -92,7 +93,7 @@ class AlarmManager(Singleton):
             alarm_type:str=None,
             trigger_value:float=None,
             user:User=None
-            ):
+            )->tuple[Alarm, str]:
         r"""
         Updates alarm attributes
 
@@ -132,9 +133,9 @@ class AlarmManager(Singleton):
             )
         if trigger_value_message:
 
-            return trigger_value_message
+            return None, trigger_value_message
         
-        alarm = alarm.put(
+        alarm, message = alarm.put(
             user=user,
             name=name,
             tag=tag,

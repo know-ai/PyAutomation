@@ -79,9 +79,9 @@ class Alarm:
         self._shelved_until = None
         self.__default_operations()
         if identifier:
-            self._id = identifier
+            self.identifier = identifier
         else:
-            self._id =secrets.token_hex(4)
+            self.identifier =secrets.token_hex(4)
 
     def __default_operations(self):
         r"""
@@ -135,27 +135,27 @@ class Alarm:
 
                 self._trigger.type = alarm_type
 
-                message += f"alarm_type: {alarm_type}"
+                message += f" alarm_type: {alarm_type}"
 
         if trigger_value:
             
             self._trigger.value = float(trigger_value)
-            message += f"trigger value: {trigger_value}"
-
+            message += f" trigger value: {trigger_value}"
+        
         if name:
 
             self._name = name
-            message += f"name: {name}"
+            message += f" name: {name}"
 
         if tag:
 
             self._tag = tag
-            message += f"tag: {tag}"
+            message += f" tag: {tag}"
 
         if description:
 
             self._description = description
-            message += f"description: {description}"
+            message += f" description: {description}"
         
         return self, message
 
@@ -163,7 +163,6 @@ class Alarm:
         r"""
         Gets Trigger object for alarm
         """
-
         return self._trigger
 
     def set_trigger(self, value, _type:str):
@@ -633,7 +632,7 @@ class Alarm:
         * **alarm_info**: (dict) A jsonable dictionary
         """
         return {
-            "id": self._id,
+            "identifier": self.identifier,
             "timestamp": self._timestamp,
             "name": self._name,
             "tag": self.tag,

@@ -80,6 +80,14 @@ class AlarmsLogger(BaseLogger):
             
         return list()
     
+    def get_alarm_by_name(self, name:str)->Alarms|None:
+        r"""
+        Documentation here
+        """
+        if self.get_db():
+        
+            return Alarms.read_by_name(name=name)
+            
     def get_lasts(self, lasts:int=10):
         r"""
         Documentation here
@@ -221,6 +229,15 @@ class AlarmsLoggerEngine(BaseEngine):
         _query = dict()
         _query["action"] = "get_alarms"
         _query["parameters"] = dict()
+        
+        return self.query(_query)
+    
+    def get_alarm_by_name(self, name:str):
+
+        _query = dict()
+        _query["action"] = "get_alarm_by_name"
+        _query["parameters"] = dict()
+        _query["parameters"]["name"] = name
         
         return self.query(_query)
     

@@ -42,7 +42,7 @@ class CVT:
         dead_band:float=None,
         id:str=None,
         user:User=None
-        )->tuple:
+        )->tuple[Tag, str]:
         """Initialize a new Tag object in the _tags dictionary.
         
         # Parameters
@@ -73,7 +73,7 @@ class CVT:
         has_duplicates, message = self.has_duplicates(name=name, display_name=display_name, opcua_address=opcua_address, node_namespace=node_namespace)
         if has_duplicates:
 
-            return message
+            return None, message
         
         if not display_unit:
 
@@ -232,9 +232,8 @@ class CVT:
     def get_tags(self)->list:
         r"""
         Returns a list of the defined tags names.
-        """
-
-        return [value.serialize() for _, value in self._tags.items()]
+        """        
+        return [tag.serialize() for _, tag in self._tags.items()]
     
     def get_tag_by_name(self, name:str)->Tag|None:
         r"""Documentation here
@@ -552,7 +551,7 @@ class CVTEngine(Singleton):
         dead_band:float=0.0,
         id:str="",
         user:User|None=None
-        ):
+        )->tuple[Tag, str]:
         r"""Documentation here
 
         # Parameters

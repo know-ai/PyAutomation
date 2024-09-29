@@ -353,7 +353,7 @@ class Alarms(BaseModel):
             'identifier': self.identifier,
             'name': self.name,
             'tag': self.tag.name,  
-            'type': self.trigger_type.name,
+            'alarm_type': self.trigger_type.name,
             'trigger_value': self.trigger_value,
             'description': self.description,
             'tag_alarm': self.tag_alarm,
