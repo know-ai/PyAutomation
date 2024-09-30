@@ -1062,6 +1062,114 @@ class AutomationStateMachine(StateMachine):
         }
         result.update(self.get_serialized_models())
         return result
+    
+
+class IAD(AutomationStateMachine):
+    r"""Documentation here
+    """
+    def __init__(
+            self,
+            name="IAD",
+            description:str="Instrument Anomaly Detection",
+            classification:str="Service"
+        ):
+
+        super(IAD, self).__init__(
+            name=name,
+            description=description,
+            classification=classification
+            )
+        
+    def while_waiting(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        super(IAD, self).while_waiting()
+        ready_to_run = True
+        for _, value in self.data.items():
+
+            if len(value)!=value.max_length:
+                ready_to_run=False
+                break
+
+        if ready_to_run:
+
+            self.send('wait_to_run')
+
+    def while_running(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        super(IAD, self).while_running()
+        pass
+
+
+class Filter(AutomationStateMachine):
+    r"""Documentation here
+    """
+    def __init__(
+            self,
+            name="Filter",
+            description:str="Gaussian an Process Filter",
+            classification:str="Service"
+        ):
+
+        super(Filter, self).__init__(
+            name=name,
+            description=description,
+            classification=classification
+            )
+        
+    def while_waiting(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        super(Filter, self).while_waiting()
+        ready_to_run = True
+        for _, value in self.data.items():
+
+            if len(value)!=value.max_length:
+                ready_to_run=False
+                break
+
+        if ready_to_run:
+
+            self.send('wait_to_run')
+
+    def while_running(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        super(Filter, self).while_running()
+        pass
 
 
 class LeakStateMachine(AutomationStateMachine):

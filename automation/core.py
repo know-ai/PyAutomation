@@ -16,7 +16,7 @@ from .logger.events import EventsLoggerEngine
 from .logger.alarms import AlarmsLoggerEngine
 from .logger.logs import LogsLoggerEngine
 from .alarms import Alarm
-from .state_machine import Machine, DAQ, StateMachine
+from .state_machine import Machine, DAQ, StateMachine, IAD, Filter
 from .opcua.subscription import DAS
 from .buffer import Buffer
 from .modules.users.users import users, User
@@ -56,6 +56,10 @@ class PyAutomation(Singleton):
         self.alarm_manager = AlarmManager()
         self.workers = list()
         self.das = DAS()
+        self.iad = IAD()
+        self.machine.append_machine(machine=self.iad, interval=2.0, mode="async")
+        self.filter = Filter()
+        self.machine.append_machine(machine=self.filter, interval=2.0, mode="async")
         self.set_log(level=logging.WARNING)
     
     def define_dash_app(self, **kwargs)->None:
