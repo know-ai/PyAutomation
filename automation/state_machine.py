@@ -99,21 +99,18 @@ class Machine(Singleton):
         state_manager = self.get_state_machine_manager()
         if state_manager.exist_machines():
 
-            state_worker = StateMachineWorker(state_manager)
-            state_worker.run()
+            self.state_worker = StateMachineWorker(state_manager)
+            self.state_worker.run()
 
     def stop(self):
         r"""
         Safe stop workers execution
         """
-        for worker in self.workers:
-            try:
-                worker.stop()
-            except Exception as e:
-                message = f"Error on wokers stop, {e}"
-                logging.error(message)
-
-        self.workers = list()
+        try:
+            self.state_worker.stop()
+        except Exception as e:
+            message = f"Error on wokers stop, {e}"
+            logging.error(message)
 
 
 class DAQ(StateMachine):

@@ -16,8 +16,19 @@ class TestCore(unittest.TestCase):
         return super().setUp()
 
     def tearDown(self) -> None:
-        
+        self.app.safe_stop()
         return super().tearDown()
+    
+    @staticmethod
+    def assert_dict_contains_subset(subset, superset, msg=None):
+        """
+        Custom assertion to check if `subset` is a subset of `superset`.
+        """
+        missing_keys = {key for key in subset if key not in superset}
+        assert not missing_keys, f"{msg or 'Dictionary subset check failed'}: Missing keys {missing_keys}"
+
+        for key, value in subset.items():
+            assert superset[key] == value, f"{msg or 'Dictionary subset check failed'}: Value mismatch for key '{key}'"
     
     def test_tags(self):
         
@@ -36,7 +47,7 @@ class TestCore(unittest.TestCase):
         with self.subTest("Test tag in DB"):
 
             tag_in_db = self.app.logger_engine.get_tag_by_name(name=_tag1['name'])
-            self.assertDictContainsSubset(tag_in_db.serialize(), tag_in_cvt.serialize())
+            self.assert_dict_contains_subset(tag_in_db.serialize(), tag_in_cvt.serialize())
 
         # GET TAGS
         _tag2 = {
@@ -52,7 +63,7 @@ class TestCore(unittest.TestCase):
 
             for counter, tag_in_db in enumerate(tags_in_db):
                 
-                self.assertDictContainsSubset(tag_in_db, tags_in_cvt[counter])
+                self.assert_dict_contains_subset(tag_in_db, tags_in_cvt[counter])
 
         # SET TAG VALUES
         timestamp = datetime.now()
@@ -136,7 +147,7 @@ class TestCore(unittest.TestCase):
 
         with self.subTest("Test create alarm in DB"):
             alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_LL.name)
-            self.assertDictContainsSubset(alarm.serialize(), alarm_LL.serialize())
+            self.assert_dict_contains_subset(alarm.serialize(), alarm_LL.serialize())
 
         alarm_L_payload = {
             "name": "alarm_L",
@@ -155,7 +166,7 @@ class TestCore(unittest.TestCase):
 
         with self.subTest("Test create alarm in DB"):
             alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_L.name)
-            self.assertDictContainsSubset(alarm.serialize(), alarm_L.serialize())
+            self.assert_dict_contains_subset(alarm.serialize(), alarm_L.serialize())
 
         alarm_H_payload = {
             "name": "alarm_H",
@@ -174,7 +185,7 @@ class TestCore(unittest.TestCase):
 
         with self.subTest("Test create alarm in DB"):
             alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_H.name)
-            self.assertDictContainsSubset(alarm.serialize(), alarm_H.serialize())
+            self.assert_dict_contains_subset(alarm.serialize(), alarm_H.serialize())
 
         alarm_HH_payload = {
             "name": "alarm_HH",
@@ -193,7 +204,7 @@ class TestCore(unittest.TestCase):
 
         with self.subTest("Test create alarm in DB"):
             alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_HH.name)
-            self.assertDictContainsSubset(alarm.serialize(), alarm_HH.serialize())
+            self.assert_dict_contains_subset(alarm.serialize(), alarm_HH.serialize())
 
         # UPDATE ALARM DEFINITION
         self.app.update_alarm(id=alarm_HH.identifier, trigger_value=50)

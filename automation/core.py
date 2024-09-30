@@ -1222,8 +1222,6 @@ class PyAutomation(Singleton):
         Stops the app in safe way with the threads
         """
         self.__stop_workers()
-        logging.info("Manual Shutting down")
-        sys.exit()
 
     # WORKERS
     @validate_types(test=bool, output=None)
@@ -1237,15 +1235,15 @@ class PyAutomation(Singleton):
         """
         if self._create_tables:
 
-            db_worker = LoggerWorker(self.db_manager)
+            self.db_worker = LoggerWorker(self.db_manager)
             self.connect_to_db(test=test)
-            db_worker.start_workers()
+            self.db_worker.start_workers()
 
         if self._create_alarm_worker:
             alarm_manager = self.get_alarm_manager()
-            alarm_worker = AlarmWorker(alarm_manager)
-            alarm_worker.daemon = True
-            alarm_worker.start()
+            self.alarm_worker = AlarmWorker(alarm_manager)
+            self.alarm_worker.daemon = True
+            self.alarm_worker.start()
 
         self.machine.start()
 
@@ -1254,12 +1252,13 @@ class PyAutomation(Singleton):
         r"""
         Safe stop workers execution
         """
-        for worker in self.workers:
-            try:
-                worker.stop()
-            except Exception as e:
-                message = "Error on wokers stop"
-                log_detailed(e, message)
+        try:
+            self.machine.stop()
+            self.alarm_worker.stop()
+            self.db_worker.stop()
+        except Exception as e:
+            message = "Error on wokers stop"
+            log_detailed(e, message)
 
     @validate_types(output=None)
     def __start_logger(self)->None:
