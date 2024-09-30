@@ -92,8 +92,8 @@ class PyAutomation(Singleton):
         """
         return self.machine_manager.get_machines()
 
-    @validate_types(output=dict)
-    def serialize_machines(self)->dict:
+    @validate_types(output=list)
+    def serialize_machines(self)->list[dict]:
         r"""
         Documentation here
         """
@@ -110,7 +110,7 @@ class PyAutomation(Singleton):
             display_name=str|type(None),
             opcua_address=str|type(None),
             node_namespace=str|type(None),
-            scan_time=int|type(None),
+            scan_time=int|float|type(None),
             dead_band=int|float|type(None),
             id=str|type(None),
             output=(Tag|None, str)
