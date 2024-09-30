@@ -16,7 +16,7 @@ from .logger.events import EventsLoggerEngine
 from .logger.alarms import AlarmsLoggerEngine
 from .logger.logs import LogsLoggerEngine
 from .alarms import Alarm
-from .state_machine import Machine, DAQ, StateMachine, IAD, Filter
+from .state_machine import Machine, DAQ, StateMachine, IAD, Filter, AutomationStateMachine
 from .opcua.subscription import DAS
 from .buffer import Buffer
 from .modules.users.users import users, User
@@ -98,6 +98,13 @@ class PyAutomation(Singleton):
         Documentation here
         """
         return self.machine_manager.serialize_machines()
+    
+    @validate_types(machine=AutomationStateMachine, tag=Tag, output=dict)
+    def subscribe_tag_into_automation_machine(self, machine:AutomationStateMachine, tag:Tag)->dict:
+        r"""
+        Documentation here
+        """
+        machine.subscribe_to(tag)
 
     # TAGS METHODS
     @validate_types(
@@ -1237,7 +1244,7 @@ class PyAutomation(Singleton):
 
             self.db_worker = LoggerWorker(self.db_manager)
             self.connect_to_db(test=test)
-            self.db_worker.start_workers()
+            # self.db_worker.start_workers()
 
         if self._create_alarm_worker:
             alarm_manager = self.get_alarm_manager()

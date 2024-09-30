@@ -471,7 +471,7 @@ class AutomationStateMachine(StateMachine):
     r"""
     Documentation here
     """
-
+    # States
     starting = State('start', initial=True)
     waiting = State('wait')
     running = State('run')
@@ -483,32 +483,20 @@ class AutomationStateMachine(StateMachine):
     # Transitions
     start_to_wait = starting.to(waiting)
     wait_to_run = waiting.to(running)
-
-    #
     reset_to_start = resetting.to(starting)
     restart_to_wait = restarting.to(waiting)
-
-    # Transitions to Restart
     run_to_restart = running.to(restarting)
     wait_to_restart = waiting.to(restarting)
     test_to_restart = testing.to(restarting)
     sleep_to_restart = sleeping.to(restarting)
-
-    # Transitions to Reset
     run_to_reset = running.to(resetting)
     wait_to_reset = waiting.to(resetting)
     test_to_reset = testing.to(resetting)
     sleep_to_reset = sleeping.to(resetting)
-
-    #
     run_to_test = running.to(testing)
     wait_to_test = waiting.to(testing)
-
-    #
     run_to_sleep = running.to(sleeping)
     wait_to_sleep = waiting.to(sleeping)
-
-    # Attributes
     
 
     def __init__(
@@ -523,298 +511,180 @@ class AutomationStateMachine(StateMachine):
         self.priority = IntegerType(default=1)
         self.description = StringType(default=description)
         self.classification = StringType(default=classification)
-        self.name = name
-        self.machine_interval = None
-        self.buffer_size = 10
-        self.buffer_roll_type = 'backward'
-        self.__subscribed_to = list()
+        self.name = StringType(default=name)
+        self.machine_interval = FloatType(default=None)
+        self.buffer_size = IntegerType(default=10)
+        self.buffer_roll_type = StringType(default='backward')
+        self.__subscribed_to = dict()
 
     # State Methods
     def while_starting(self):
-        r"""Documentation here
+        r"""
+        This method is executed every machine loop when it is on Start state
 
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        Configure your state machine here
         """
         # DEFINE DATA BUFFER
-        self.data = {tag: Buffer(length=self.buffer_size, roll=self.buffer_roll_type) for tag in self.get_subscribed_tags()}
-
+        self.set_buffer_size(size=self.buffer_size.value)
         # TRANSITION
         self.send('start_to_wait')
 
     def while_waiting(self):
-        r"""Documentation here
+        r"""
+        This method is executed every machine loop when it is on Wait state
 
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        It was designed to check your buffer data in self.data, if your buffer is full, so they pass to run state
         """
-        self.criticity.value = 1
+        ready_to_run = True
+        for _, value in self.data.items():
+
+            if len(value) < value.max_length:
+                ready_to_run=False
+                break
+
+        if ready_to_run:
+
+            self.send('wait_to_run')
 
     def while_running(self):
-        r"""Documentation here
+        r"""
+        This method is executed every machine loop when it is on Run state
 
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        Depending on you state machine goal, write your script here
         """
         self.criticity.value = 1
 
     def while_testing(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        This method is executed every machine loop when it is on Test state
         """
         self.criticity.value = 3
 
     def while_sleeping(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        This method is executed every machine loop when it is on Sleep state
         """
         self.criticity.value = 5
 
     def while_resetting(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        This method is executed every machine loop when it is on Reset state
         """
-        self.criticity.value = 4
+        self.send("reset_to_start")
 
     def while_restarting(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        This method is executed every machine loop when it is on Restart state
         """
-        self.criticity.value = 4
+        self.restart_buffer()
+        self.send("restart_to_wait")
 
     # Transitions
     def on_start_to_wait(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Wait state from Sleep state 
         """
-        self.criticity.value = 2
+        self.last_state = "start"
+        self.criticity.value = 1
 
     def on_wait_to_run(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Run state from Wait state 
         """
+        self.last_state = "wait"
         self.criticity.value = 1
 
     def on_wait_to_restart(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Restart state from Wait state 
         """
+        self.last_state = "wait"
         self.criticity.value = 5
 
     def on_wait_to_reset(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Reset state from Wait state 
         """
+        self.last_state = "wait"
         self.criticity.value = 5
 
     def on_run_to_restart(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Restart state from Run state 
         """
+        self.last_state = "run"
         self.criticity.value = 5
 
     def on_run_to_reset(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Reset state from Run state 
         """
+        self.last_state = "run"
         self.criticity.value = 5
 
     def on_test_to_restart(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Restart state from Test state 
         """
+        self.last_state = "test"
         self.criticity.value = 4
 
     def on_test_to_reset(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Reset state from Test state 
         """
+        self.last_state = "test"
         self.criticity.value = 4
 
     def on_sleep_to_restart(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Restart state from Sleep state 
         """
+        self.last_state = "sleep"
         self.criticity.value = 4
 
     def on_sleep_to_reset(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Reset state from Sleep state 
         """
+        self.last_state = "sleep"
         self.criticity.value = 4
 
     def on_reset_to_start(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Start state from Reset state 
         """
+        self.last_state = "reset"
         self.criticity.value = 2
 
     def on_restart_to_wait(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        It's executed one time before enter to Wait state from Restart state 
         """
+        self.last_state = "restart"
         self.criticity.value = 2
 
     # Auxiliaries Methods
-    def set_buffer_size(self, size:int):
-        r"""Documentation here
+    @validate_types(size=int, output=None)
+    def set_buffer_size(self, size:int)->None:
+        r"""
+        Set data buffer size
 
         # Parameters
 
-        - 
-
-        # Returns
-
-        - 
+        - *size:* [int] buffer size
         """
-        self.buffer_size = int(size)
+        self.buffer_size.value = int(size)
+        self.restart_buffer()
 
-    def get_state_interval(self)->float:
+    def restart_buffer(self):
         r"""
-        Gets current state interval
-
-        **Returns**
-
-        * **(float)**
-
-        Usage
-
-        ```python
-        >>> machine = app.get_machine(name)
-        >>> current_interval = machine.get_state_interval()
-        ```
-
+        Restart Buffer
         """
-        return self.get_interval()
+        self.data = {tag_name: Buffer(length=self.buffer_size.value, roll=self.buffer_roll_type.value) for tag_name, tag in self.get_subscribed_tags().items()}
 
-    def get_subscribed_tags(self)->list:
+    @validate_types(output=dict)
+    def get_subscribed_tags(self)->dict:
         r"""Documentation here
 
         # Parameters
@@ -827,41 +697,36 @@ class AutomationStateMachine(StateMachine):
         """
         return self.__subscribed_to
     
-    def subscribe_to(self, *tags):
-        r"""Documentation here
+    def subscribe_to(self, *tags:Tag):
+        r"""
 
         # Parameters
 
-        - 
-
-        # Returns
-
-        - 
+        - *tags:* [list] 
         """
         for tag in tags:
 
             if tag not in self.get_subscribed_tags():
 
-                self.__subscribed_to.append(tag)
+                self.__subscribed_to[tag.name] = tag
 
-    def notify(self, tag:str, value:str|int|bool|float):
-        r"""Documentation here
-
+    @validate_types(tag=Tag, value=int|float|bool, output=None)
+    def notify(self, tag:Tag, value:str|int|bool|float):
+        r"""
+        This method provide an interface to CVT to notify if tag value has change
+        
         # Parameters
 
-        - 
-
-        # Returns
-
-        - 
+        - *tag:* [Tag] tag Object
+        - *value:* [int|float|bool] tag value
         """
-        pass
-        # if tag in self.data:
-            
-        #     self.data[tag](value)
+        if tag.name in self.get_subscribed_tags():
+            print(f"{self.name.value}: {tag.name}: {value}")
+            self.data[tag.name](value)
 
     @set_event(message=f"Switched", classification="State Machine", priority=2, criticity=3)
-    def transition(self, to, user:User=None):
+    @validate_types(to=str, user=User, output=None)
+    def transition(self, to:str, user:User=None):
         r"""
         Documentation here
         """
@@ -873,9 +738,10 @@ class AutomationStateMachine(StateMachine):
             
         except Exception as err:
 
-            logging.WARNING(f"Transition from {_from} state to {to} state for {self.name} is not allowed")
+            logging.WARNING(f"Transition from {_from} state to {to} state for {self.name.value} is not allowed")
 
-    def unsubscribe_to(self, tag:str):
+    @validate_types(size=int, output=None)
+    def unsubscribe_to(self, tag:Tag):
         r"""Documentation here
 
         # Parameters
@@ -886,10 +752,11 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        if tag in self.__subscribed_to:
+        if tag.name in self.__subscribed_to:
 
-            self.__subscribed_to.remove(tag)
+            self.__subscribed_to.pop(tag.name)
 
+    @validate_types(output=int|float)
     def get_interval(self)->float:
         r"""
         Gets overall state machine interval
@@ -905,9 +772,10 @@ class AutomationStateMachine(StateMachine):
         >>> interval = machine.get_interval()
         ```
         """
-        return self.machine_interval
+        return self.machine_interval.value
 
-    def set_interval(self, interval):
+    @validate_types(interval=int|float, output=None)
+    def set_interval(self, interval:int|float):
         r"""
         Sets overall machine interval
 
@@ -922,7 +790,7 @@ class AutomationStateMachine(StateMachine):
         >>> machine.set_interval(0.5)
         ```
         """
-        self.machine_interval = interval
+        self.machine_interval.value = interval
 
     def _get_active_transitions(self):
         r"""
@@ -949,7 +817,6 @@ class AutomationStateMachine(StateMachine):
     def _activate_triggers(self):
         r"""
         Allows to execute the on_ method in transitions when it's necesary
-
         """
         transitions = self._get_active_transitions()
 
@@ -968,42 +835,18 @@ class AutomationStateMachine(StateMachine):
                 logging.error(f"Machine - {self.name}:{error}")
 
     def loop(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        This method is executed by state machine worker every state machine interval to execute the correct method according its state
         """
-        state_name = self.current_state.value
-        method_name = "while_" + state_name
+        method_name = f"while_{self.current_state.value}"
 
         if method_name in dir(self):
 
             method = getattr(self, method_name)
             method()            
 
-    def info(self)->str:
-        r"""
-        Gets general information of the state machine
-
-        **Returns**
-
-        * **(str)**
-
-        Usage
-
-        ```python
-        >>> machine = app.get_machine(name)
-        >>> info = machine.info()
-        ```
-        """
-        return f'''\nState Machine: {self.name} - Interval: {self.get_interval()} seconds - States: {self.get_states()}'''
-
-    def get_states(self)->list:
+    @validate_types(output=list)
+    def get_states(self)->list[str]:
         r"""
         Gets a list of state machine's names
 
@@ -1018,11 +861,10 @@ class AutomationStateMachine(StateMachine):
         >>> states = machine.get_states()
         ```
         """
-
         return [state.value for state in self.states]
 
-    # @classmethod
-    def get_serialized_models(self):
+    @validate_types(output=dict)
+    def get_serialized_models(self)->dict:
         r"""
         Gets class attributes defined by [model types]()
 
@@ -1041,21 +883,17 @@ class AutomationStateMachine(StateMachine):
 
         return result
 
-    def serialize(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
+    @validate_types(output=dict)
+    def serialize(self)->dict:
+        r"""
+        It provides the values of attributes defined with PyAutomation Models
 
         # Returns
 
-        - 
+        - dict: Serialized state machine
         """
         result = {
-            "name": self.name,
-            "sampling_time": self.get_interval(),
-            "state": self.current_state.id
+            "state": self.current_state.value
         }
         result.update(self.get_serialized_models())
         return result
@@ -1089,16 +927,6 @@ class IAD(AutomationStateMachine):
         - 
         """
         super(IAD, self).while_waiting()
-        ready_to_run = True
-        for _, value in self.data.items():
-
-            if len(value)!=value.max_length:
-                ready_to_run=False
-                break
-
-        if ready_to_run:
-
-            self.send('wait_to_run')
 
     def while_running(self):
         r"""Documentation here
@@ -1112,7 +940,6 @@ class IAD(AutomationStateMachine):
         - 
         """
         super(IAD, self).while_running()
-        pass
 
 
 class Filter(AutomationStateMachine):
@@ -1143,16 +970,6 @@ class Filter(AutomationStateMachine):
         - 
         """
         super(Filter, self).while_waiting()
-        ready_to_run = True
-        for _, value in self.data.items():
-
-            if len(value)!=value.max_length:
-                ready_to_run=False
-                break
-
-        if ready_to_run:
-
-            self.send('wait_to_run')
 
     def while_running(self):
         r"""Documentation here

@@ -468,19 +468,6 @@ class CVT:
                     return True, f"Duplicated Node Namespace: {node_namespace}"
             
         return False, f"Valid Tag Name: {name} - Display Name: {display_name}"
-    
-    def __persist_on_event_logger(self, user:User, message:str, description:str, priority:int, criticity:int):
-
-        if isinstance(user, User):
-
-            self.events_engine.create(
-                message=message,
-                description=description,
-                classification="Alarms",
-                priority=priority,
-                criticity=criticity,
-                user=user
-            )
 
     def serialize(self, id:str)->dict:
         r"""Returns a tag type defined by name.

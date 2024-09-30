@@ -92,7 +92,7 @@ class SchedThread(Thread):
                     _machine.notify(**item)
 
             machine.loop()
-            local_interval = machine.get_state_interval()
+            local_interval = machine.get_interval()
             interval = machine.get_interval()
             interval = min(interval, local_interval)
             scheduler.call_later(interval, loop, machine)
