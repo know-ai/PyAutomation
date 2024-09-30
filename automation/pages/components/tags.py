@@ -192,8 +192,8 @@ class TagsComponents:
                             {'name': 'display_name', 'id': 'display_name'}, 
                             {'name': 'opcua_address', 'id': 'opcua_address', 'presentation': 'dropdown'}, 
                             {'name': 'node_namespace', 'id': 'node_namespace', 'presentation': 'dropdown'},
-                            {'name': 'scan_time', 'id': 'scan_time'}, 
-                            {'name': 'dead_band', 'id': 'dead_band'}
+                            {'name': 'scan_time', 'id': 'scan_time', 'type': 'numeric'}, 
+                            {'name': 'dead_band', 'id': 'dead_band', 'type': 'numeric'}
                         ],
                         id="tags_datatable",
                         filter_action="native",

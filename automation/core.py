@@ -1,17 +1,27 @@
-import sys, logging, json
+import sys, logging, json, os, jwt
 from math import ceil
+from datetime import datetime, timezone
+# DRIVERS IMPORTATION
+from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
+from .dbmodels.users import Roles, Users
+# PYAUTOMATION MODULES IMPORTATION
 from .utils import log_detailed
 from .singleton import Singleton
 from .workers import LoggerWorker, AlarmWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
+from .opcua.models import Client
 from .tags import CVTEngine, Tag
-from .logger import DataLoggerEngine
+from .logger.datalogger import DataLoggerEngine
+from .logger.events import EventsLoggerEngine
+from .logger.alarms import AlarmsLoggerEngine
+from .logger.logs import LogsLoggerEngine
 from .alarms import Alarm
-from .state_machine import Machine, DAQ
+from .state_machine import Machine, DAQ, StateMachine, IAD, Filter
 from .opcua.subscription import DAS
 from .buffer import Buffer
-from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
-
+from .modules.users.users import users, User
+from .modules.users.roles import roles, Role
+from .utils.decorators import validate_types
 # DASH APP CONFIGURATION PAGES IMPORTATION
 from .pages.main import ConfigView
 from .pages.callbacks import init_callbacks
@@ -36,77 +46,105 @@ class PyAutomation(Singleton):
 
         self.machine = Machine()
         self.machine_manager = self.machine.get_state_machine_manager()
-        self.db_manager = DBManager()
         self.cvt = CVTEngine()
         self.logger_engine = DataLoggerEngine()
+        self.events_engine = EventsLoggerEngine()
+        self.alarms_engine = AlarmsLoggerEngine()
+        self.logs_engine = LogsLoggerEngine()
+        self.db_manager = DBManager()
         self.opcua_client_manager = OPCUAClientManager()
         self.alarm_manager = AlarmManager()
         self.workers = list()
+        self.das = DAS()
+        self.iad = IAD()
+        self.machine.append_machine(machine=self.iad, interval=2.0, mode="async")
+        self.filter = Filter()
+        self.machine.append_machine(machine=self.filter, interval=2.0, mode="async")
         self.set_log(level=logging.WARNING)
+    
+    def define_dash_app(self, **kwargs)->None:
+        r"""
+        Documentation here
+        """
+        self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
+        self.dash_app.set_automation_app(self)
+        init_callbacks(app=self.dash_app)
 
     # MACHINES METHODS
-    def append_machine(self, machine, interval:float=1.0, mode:str="async"):
+    @validate_types(machine=StateMachine, interval=float|int, mode=str, output=None)
+    def append_machine(self, machine, interval:float=1.0, mode:str="async")->None:
         r"""
         Documentation here
         """
         self.machine.append_machine(machine=machine, interval=interval, mode=mode)
 
-    def get_machine(self, name:str):
+    @validate_types(name=str, output=StateMachine)
+    def get_machine(self, name:str)->StateMachine:
         r"""
         Documentation here
         """
         return self.machine_manager.get_machine(name=name)
-    
-    def serialize_machines(self):
+
+    @validate_types(output=[(Machine, int, str)])
+    def get_machines(self)->list[tuple[Machine, int, str]]:
+        r"""
+        Documentation here
+        """
+        return self.machine_manager.get_machines()
+
+    @validate_types(output=dict)
+    def serialize_machines(self)->dict:
         r"""
         Documentation here
         """
         return self.machine_manager.serialize_machines()
 
     # TAGS METHODS
-    def get_tags(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-
-        return self.cvt.get_tags()
-    
+    @validate_types(
+            name=str,
+            unit=str,
+            display_unit=str,
+            variable=str,
+            data_type=str,
+            description=str|type(None),
+            display_name=str|type(None),
+            opcua_address=str|type(None),
+            node_namespace=str|type(None),
+            scan_time=int|type(None),
+            dead_band=int|float|type(None),
+            id=str|type(None),
+            output=(Tag|None, str)
+    )
     def create_tag(self,
-            name:str, 
-            unit:str, 
-            display_unit:str,
+            name:str,
+            unit:str,
             variable:str,
-            data_type:str='float', 
-            description:str="", 
+            display_unit:str="",
+            data_type:str='float',
+            description:str=None,
             display_name:str=None,
             opcua_address:str=None,
             node_namespace:str=None,
             scan_time:int=None,
             dead_band:float=None,
-            id:str=None
-        ):
+            id:str=None,
+            user:User|None=None
+        )->tuple[Tag,str]:
         r"""Documentation here
 
         # Parameters
 
-        - 
+        -
 
         # Returns
 
-        - 
+        -
         """
         if not display_name:
 
             display_name = name
 
-        message = self.cvt.set_tag(
+        tag, message = self.cvt.set_tag(
             name=name,
             unit=unit,
             display_unit=display_unit,
@@ -118,32 +156,20 @@ class PyAutomation(Singleton):
             node_namespace=node_namespace,
             scan_time=scan_time,
             dead_band=dead_band,
-            id=id
+            id=id,
+            user=user
         )
-    
+
         # CREATE OPCUA SUBSCRIPTION
-        if not message:
+        if tag:
 
             # Persist Tag on Database
             if self.is_db_connected():
-                
-                tag = self.cvt.get_tag_by_name(name=name)
-                self.logger_engine.set_tag(
-                    id=tag.id,
-                    name=name,
-                    unit=unit,
-                    data_type=data_type,
-                    description=description,
-                    display_name=display_name,
-                    display_unit=display_unit,
-                    opcua_address=opcua_address,
-                    node_namespace=node_namespace,
-                    scan_time=scan_time,
-                    dead_band=dead_band
-                )
+
+                self.logger_engine.set_tag(tag=tag)
 
             if scan_time:
-            
+
                 self.das.buffer[name] = {
                     "timestamp": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
                     "values": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
@@ -157,12 +183,43 @@ class PyAutomation(Singleton):
                     "values": Buffer(),
                     "unit": display_unit
                 }
-            
+
             self.subscribe_opcua(tag=self.cvt.get_tag_by_name(name=name), opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time)
 
-        return message
+            return tag, message
+        
+        else:
 
-    def delete_tag(self, id:str):
+            return None, message
+    
+    @validate_types(output=list)
+    def get_tags(self)->list:
+        r"""Documentation here
+
+        # Parameters
+
+        -
+
+        # Returns
+
+        -
+        """
+
+        return self.cvt.get_tags()
+
+    @validate_types(name=str, output=Tag|None)
+    def get_tag_by_name(self, name:str)->Tag:
+
+        return self.cvt.get_tag_by_name(name=name)
+
+    def get_trends(self, start:str, stop:str, *tags):
+        r"""
+        Documentation here
+        """
+        return self.logger_engine.read_trends(start, stop, *tags)
+
+    @validate_types(id=str, output=None|str)
+    def delete_tag(self, id:str, user:User|None=None)->None|str:
         r"""
         Documentation here
         """
@@ -172,43 +229,188 @@ class PyAutomation(Singleton):
         if alarm:
 
             return f"Tag {tag_name} has an alarm associated"
-        
-        self.unsubscribe_opcua(tag=tag)
-        self.das.buffer.pop(tag_name)
 
+        self.unsubscribe_opcua(tag=tag)
+        
         # Persist Tag on Database
         if self.is_db_connected():
 
             self.logger_engine.delete_tag(id=id)
 
-        self.cvt.delete_tag(id=id)
-    
-    def update_tag(self, id:str, **kwargs):
+        self.cvt.delete_tag(id=id, user=user)
+        self.das.buffer.pop(tag_name)
+
+    @validate_types(
+            id=str,  
+            name=str, 
+            unit=str, 
+            data_type=str, 
+            description=str, 
+            variable=str,
+            display_name=str,
+            display_unit=str,
+            opcua_address=str,
+            node_namespace=str,
+            scan_time=int|float|type(None),
+            dead_band=int|float|type(None),
+            user=User|type(None),
+            output=(Tag, str)
+        )
+    def update_tag(
+            self, 
+            id:str,  
+            name:str="", 
+            unit:str="", 
+            data_type:str="", 
+            description:str="", 
+            variable:str="",
+            display_name:str="",
+            display_unit:str="",
+            opcua_address:str="",
+            node_namespace:str="",
+            scan_time:int=None,
+            dead_band:int|float=None,
+            user:User|None=None, 
+        )->dict:
         r"""
         Documentation here
         """
         tag = self.cvt.get_tag(id=id)
         self.unsubscribe_opcua(tag)
+        if name:
+            tag_name = tag.get_name()
         # Persist Tag on Database
         if self.is_db_connected():
 
-            self.logger_engine.update_tag(id=id, **kwargs)
+            self.logger_engine.update_tag(
+                id=id,  
+                name=name, 
+                unit=unit, 
+                data_type=data_type, 
+                description=description, 
+                variable=variable,
+                display_name=display_name,
+                display_unit=display_unit,
+                opcua_address=opcua_address,
+                node_namespace=node_namespace,
+                scan_time=scan_time,
+                dead_band=dead_band
+            )
 
-        result = self.cvt.update_tag(id=id, **kwargs)
-        self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())       
+        result = self.cvt.update_tag(
+            id=id,  
+            name=name, 
+            unit=unit, 
+            data_type=data_type, 
+            description=description, 
+            variable=variable,
+            display_name=display_name,
+            display_unit=display_unit,
+            opcua_address=opcua_address,
+            node_namespace=node_namespace,
+            scan_time=scan_time,
+            dead_band=dead_band,
+            user=user
+        )
+        if name:
+            self.das.buffer.pop(tag_name)
+            self.__update_buffer(tag=tag)
+
+        self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
         return result
 
-    def delete_tag_by_name(self, name:str):
+    @validate_types(name=str, output=None|str)
+    def delete_tag_by_name(self, name:str, user:User|None=None):
         r"""
         Documentation here
         """
         tag = self.cvt.get_tag_by_name(name=name)
-        alarm = self.alarm_manager.get_alarm_by_tag(tag=tag.get_name())
+        alarm = self.alarm_manager.get_alarm_by_tag(tag=name)
         if alarm:
 
-            return f"Tag {name} has an alarm associated: {alarm.name}, delete first it"
-    
+            return f"Tag {name} has an alarm associated"
+
+        self.unsubscribe_opcua(tag=tag)
+        # Persist Tag on Database
+        if self.is_db_connected():
+
+            self.logger_engine.delete_tag(id=tag.id)
+
+        self.cvt.delete_tag(id=tag.id, user=user)
+
+    # USERS METHODS
+    # @validate_types(
+    #         username=str,
+    #         role_name=str,
+    #         email=str,
+    #         password=str,
+    #         name=str|type(None),
+    #         lastname=str|type(None),
+    #         output=tuple[User|None, str]
+    # )
+    def signup(
+            self,
+            username:str,
+            role_name:str,
+            email:str,
+            password:str,
+            name:str=None,
+            lastname:str=None
+        )->tuple[User|None, str]:
+        r"""
+        Documentation here
+        """
+        user, message = users.signup(
+            username=username,
+            role_name=role_name,
+            email=email,
+            password=password,
+            name=name,
+            lastname=lastname
+        )
+        if user:
+
+            # Persist Tag on Database
+            if self.is_db_connected():
+                
+                _, message = self.db_manager.set_user(user=user)
+
+            return user, message
+
+        return None, message
+
+    # @validate_types(role_name=str, output=str)
+    def create_token(self, role_name:str)->str:
+        r"""
+        Documentation here
+        """
+        from automation import server
+        payload = {
+            "created_on": datetime.now(timezone.utc).strftime(self.cvt.DATETIME_FORMAT),
+            "role": role_name
+        }
+        return jwt.encode(payload, server.config['TPT_TOKEN'], algorithm="HS256")
+
+    # @validate_types(name=str, level=int, output=Role|None)
+    def set_role(self, name:str, level:int)->Role|None:
+        r"""
+        Documentation here
+        """
+        role = Role(name=name, level=level)
+        role_id, message = roles.add(role=role)
+        if role_id:
+
+            # Persist Tag on Database
+            if self.is_db_connected():
+                
+                _, message = self.db_manager.set_role(name=name, level=level, identifier=role.identifier)
+
+            return role, message
+
+        return None, message
+
     # OPCUA METHODS
+    # @validate_types(host=str|type(None), port=int|type(None), output=list[dict])
     def find_opcua_servers(self, host:str='127.0.0.1', port:int=4840)->list[dict]:
         r"""
         Documentation here
@@ -217,61 +419,66 @@ class PyAutomation(Singleton):
             "message": f"Connection refused to opc.tcp://{host}:{port}"
         }
         try:
-            
+
             server = self.opcua_client_manager.discovery(host=host, port=port)
             result["message"] = f"Successfully connection to {server[0]['DiscoveryUrls'][0]}"
             result["data"] = server
-        
+
         except Exception as err:
 
             result["data"] = list()
-                
+
         return result
 
+    # @validate_types(output=dict)
     def get_opcua_clients(self):
         r"""
         Documentation here
         """
-
         return self.opcua_client_manager.serialize()
-    
+
+    # @validate_types(client_name=str, output=Client)
     def get_opcua_client(self, client_name:str):
         r"""
         Documentation here
         """
         return self.opcua_client_manager.get(client_name=client_name)
 
-    def get_node_values(self, client_name:str, namespaces:list):
+    # @validate_types(client_name=str, namespaces=list, output=list)
+    def get_node_values(self, client_name:str, namespaces:list)->list:
         r"""
         Documentation here
         """
 
         return self.opcua_client_manager.get_node_values(client_name=client_name, namespaces=namespaces)
-    
-    def get_node_attributes(self, client_name:str, namespaces:list):
+
+    # @validate_types(client_name=str, namespaces=list[str], output=list[dict])
+    def get_node_attributes(self, client_name:str, namespaces:list)->list[dict]:
         r"""
         Documentation here
         """
 
         return self.opcua_client_manager.get_node_attributes(client_name=client_name, namespaces=namespaces)
-    
+
+    # @validate_types(client_name=str, output=tuple[dict, int])
     def get_opcua_tree(self, client_name:str):
         r"""
         Documentation here
         """
-
         return self.opcua_client_manager.get_opcua_tree(client_name=client_name)
-    
+
+    # @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=None)
     def add_opcua_client(self, client_name:str, host:str="127.0.0.1", port:int=4840):
         r"""
         Documentation here
         """
         servers = self.find_opcua_servers(host=host, port=port)
-        
+
         if servers:
-            
+
             self.opcua_client_manager.add(client_name=client_name, host=host, port=port)
 
+    # @validate_types(tag=Tag, opcua_address=str|type(None), node_namespace=str|type(None), scan_time=float|type(None), output=None)
     def subscribe_opcua(self, tag:Tag, opcua_address:str, node_namespace:str, scan_time:float):
         r"""
         Documentation here
@@ -298,6 +505,7 @@ class PyAutomation(Singleton):
             "unit": tag.get_display_unit()
         })
 
+    # @validate_types(tag_name=str, scan_time=float, output=None)
     def subscribe_tag(self, tag_name:str, scan_time:float):
         r"""
         Documentatio here
@@ -311,16 +519,17 @@ class PyAutomation(Singleton):
             daq = DAQ()
             daq.set_opcua_client_manager(manager=self.opcua_client_manager)
             self.machine.append_machine(machine=daq, interval=scan_time / 1000, mode="async")
-            
+
         daq.subscribe_to(tag=tag)
         self.machine.stop()
-        self.machine.start()                
+        self.machine.start()
 
+    # @validate_types(tag=Tag, output=None)
     def unsubscribe_opcua(self, tag:Tag):
         r"""
         Documentation here
         """
-        
+
         if tag.get_node_namespace():
 
             for client_name, info in self.get_opcua_clients().items():
@@ -331,12 +540,12 @@ class PyAutomation(Singleton):
                     node_id = opcua_client.get_node_id_by_namespace(tag.get_node_namespace())
                     self.das.unsubscribe(client_name=client_name, node_id=node_id)
                     break
-    
+
             self.machine_manager.unsubscribe_tag(tag=tag)
             # CLEAR BUFFER
             scan_time = tag.get_scan_time()
             if scan_time:
-                
+
                 self.das.buffer[tag.get_name()].update({
                     "timestamp": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
                     "values": Buffer(size=ceil(10 / ceil(scan_time / 1000)))
@@ -347,8 +556,29 @@ class PyAutomation(Singleton):
                     "values": Buffer()
                 })
 
+    def __update_buffer(self, tag:Tag):
+        r"""
+        Documentation here
+        """
+        if tag.get_scan_time():
+
+            self.das.buffer[tag.get_name()] = {
+                "timestamp": Buffer(size=ceil(10 / ceil(tag.get_scan_time() / 1000))),
+                "values": Buffer(size=ceil(10 / ceil(tag.get_scan_time() / 1000))),
+                "unit": tag.get_display_unit()
+            }
+
+        else:
+
+            self.das.buffer[tag.get_name()] = {
+                "timestamp": Buffer(),
+                "values": Buffer(),
+                "unit": tag.get_display_unit()
+            }
+
     # ERROR LOGS
-    def set_log(self, level=logging.INFO, file:str="app.log"):
+    @validate_types(level=int, file=str, output=None)
+    def set_log(self, level:int=logging.INFO, file:str="app.log"):
         r"""
         Sets the log file and level.
 
@@ -371,8 +601,19 @@ class PyAutomation(Singleton):
         if file:
 
             self._log_file = file
-    
+
     # DATABASES
+    @validate_types(
+            dbtype=str, 
+            drop_table=bool, 
+            clear_default_tables=bool, 
+            dbfile=str|type(None),
+            user=str|type(None),
+            password=str|type(None),
+            host=str|type(None),
+            port=int|type(None),
+            name=str|type(None),
+            output=None)
     def set_db(self, dbtype:str='sqlite', drop_table=False, clear_default_tables=False, **kwargs):
         r"""
         Sets the database, it supports SQLite and Postgres,
@@ -431,6 +672,7 @@ class PyAutomation(Singleton):
         self.db_manager.set_db(self._db)
         self.db_manager.set_dropped(drop_table)
 
+    @validate_types(output=LoggerWorker)
     def init_db(self)->LoggerWorker:
         r"""
         Initialize Logger Worker
@@ -453,6 +695,7 @@ class PyAutomation(Singleton):
 
         return db_worker
 
+    @validate_types(db_worker=LoggerWorker, output=None)
     def stop_db(self, db_worker:LoggerWorker):
         r"""
         Stops Database Worker
@@ -463,15 +706,24 @@ class PyAutomation(Singleton):
             message = "Error on db worker stop"
             log_detailed(e, message)
 
+    @validate_types(
+            dbtype=str, 
+            dbfile=str, 
+            user=str|type(None), 
+            password=str|type(None), 
+            host=str|type(None), 
+            port=int|type(None), 
+            name=str|type(None), 
+            output=None)
     def set_db_config(
-            self, 
+            self,
             dbtype:str="sqlite",
             dbfile:str="app.db",
-            user:str="admin",
-            password:str="admin",
-            host:str="127.0.0.1",
-            port:int=5432,
-            name:str="app_db"
+            user:str|None="admin",
+            password:str|None="admin",
+            host:str|None="127.0.0.1",
+            port:int|None=5432,
+            name:str|None="app_db"
         ):
         r"""
         Documentation here
@@ -480,7 +732,7 @@ class PyAutomation(Singleton):
 
             db_config = {
                 "dbtype": dbtype,
-                "dbfile": dbfile    
+                "dbfile": dbfile
             }
 
         else:
@@ -491,13 +743,14 @@ class PyAutomation(Singleton):
                 'password': password,
                 'host': host,
                 'port': port,
-                'name': name,    
+                'name': name,
             }
 
         with open('./db_config.json', 'w') as json_file:
-            
+
             json.dump(db_config, json_file)
 
+    @validate_types(output=dict)
     def get_db_config(self):
         r"""
         Documentation here
@@ -505,17 +758,21 @@ class PyAutomation(Singleton):
         try:
 
             with open('./db_config.json', 'r') as json_file:
-            
+
                 db_config = json.load(json_file)
 
             return db_config
 
         except Exception as e:
-            
-            message = "Database is not configured"
+            _, _, e_traceback = sys.exc_info()
+            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
+            e_message = str(e)
+            e_line_number = e_traceback.tb_lineno
+            message = f"Database is not configured: {e_line_number} - {e_filename} - {e_message}"
             logging.warning(message)
             return None
 
+    @validate_types(output=bool)
     def is_db_connected(self):
         r"""
         Documentation here
@@ -523,14 +780,19 @@ class PyAutomation(Singleton):
         if self.db_manager.get_db():
 
             return True
-        
+
         return False
 
-    def connect_to_db(self):
+    @validate_types(test=bool|type(None), output=None)
+    def connect_to_db(self, test:bool=False):
         r"""
         Documentation here
         """
-        db_config = self.get_db_config()
+        if not test:
+            db_config = self.get_db_config()
+        else:
+            db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
+            
         if db_config:
             dbtype = db_config.pop("dbtype")
             self.set_db(dbtype=dbtype, **db_config)
@@ -538,13 +800,17 @@ class PyAutomation(Singleton):
             self.load_opcua_clients_from_db()
             self.load_db_to_cvt()
             self.load_db_to_alarm_manager()
+            self.load_db_to_roles()
+            self.load_db_to_users()
 
+    @validate_types(output=None)
     def disconnect_to_db(self):
         r"""
         Documentation here
         """
         self.db_manager.stop_database()
 
+    @validate_types(output=None)
     def load_db_to_cvt(self):
         r"""
         Documentation here
@@ -552,11 +818,12 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             tags = self.db_manager.get_tags()
-        
+
             for tag in tags:
-                
+
                 self.create_tag(**tag)
 
+    @validate_types(output=None)
     def load_db_to_alarm_manager(self):
         r"""
         Documentation here
@@ -564,11 +831,30 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             alarms = self.db_manager.get_alarms()
-        
-            for alarm in alarms:
-                
-                self.create_alarm(**alarm)
 
+            for alarm in alarms:
+
+                self.create_alarm(reload=True, **alarm)
+
+    @validate_types(output=None)
+    def load_db_to_roles(self):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            Roles.fill_cvt_roles()
+
+    @validate_types(output=None)
+    def load_db_to_users(self):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            Users.fill_cvt_users()
+        
+    @validate_types(output=None)
     def load_opcua_clients_from_db(self):
         r"""
         Documentation here
@@ -582,25 +868,43 @@ class PyAutomation(Singleton):
                 self.add_opcua_client(**client)
 
     # ALARMS METHODS
+    @validate_types(output=AlarmManager)
     def get_alarm_manager(self)->AlarmManager:
         r"""
         Documentation here
         """
         return self.alarm_manager
-    
+
+    @validate_types(
+            name=str,
+            tag=str,
+            alarm_type=str,
+            trigger_value=bool|float,
+            description=str|type(None),
+            identifier=str|type(None),
+            tag_alarm=str|type(None),
+            state=str,
+            timestamp=str|type(None),
+            acknowledged_timestamp=str|type(None),
+            user=User|type(None),
+            reload=bool,
+            output=(Alarm, str)
+    )
     def create_alarm(
-            self, 
-            name:str, 
-            tag:str, 
-            type:str="BOOL", 
-            trigger_value:bool|float=True, 
+            self,
+            name:str,
+            tag:str,
+            alarm_type:str="BOOL",
+            trigger_value:bool|float=True,
             description:str="",
             identifier:str=None,
             tag_alarm:str=None,
             state:str="Normal",
             timestamp:str=None,
-            acknowledged_timestamp:str=None
-        )->dict:
+            acknowledged_timestamp:str=None,
+            user:User=None,
+            reload:bool=False
+        )->tuple[Alarm, str]:
         r"""
         Append alarm to the Alarm Manager
 
@@ -612,38 +916,67 @@ class PyAutomation(Singleton):
 
         * **None**
         """
-        message = self.alarm_manager.append_alarm(
+        alarm, message = self.alarm_manager.append_alarm(
             name=name,
-            tag=tag, 
-            type=type, 
-            trigger_value=trigger_value, 
+            tag=tag,
+            type=alarm_type,
+            trigger_value=trigger_value,
             description=description,
             identifier=identifier,
             tag_alarm=tag_alarm,
             state=state,
             timestamp=timestamp,
-            acknowledged_timestamp=acknowledged_timestamp
+            acknowledged_timestamp=acknowledged_timestamp,
+            user=user,
+            reload=reload
         )
 
-        if not message:
+        if alarm:
 
             # Persist Tag on Database
             if self.is_db_connected():
-                
                 alarm = self.alarm_manager.get_alarm_by_name(name=name)
-                self.logger_engine.set_alarm(
-                    id=alarm._id,
+                
+                self.alarms_engine.create(
+                    id=alarm.identifier,
                     name=name,
                     tag=tag,
-                    trigger_type=type,
+                    trigger_type=alarm_type,
                     trigger_value=trigger_value,
                     description=description,
                     tag_alarm=None
                 )
+            
+            return alarm, message
 
-        return message
-    
-    def update_alarm(self, id:str, **kwargs):
+        return None, message
+
+    @validate_types(lasts=int, output=list)
+    def get_lasts_alarms(self, lasts:int=10)->list:
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+            
+            return self.alarms_engine.get_lasts(lasts=lasts)
+
+    def filter_alarms_by(self, **fields):
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.alarms_engine.filter_alarm_summary_by(**fields)
+
+    @validate_types(id=str, name=str|None, description=str|None, alarm_type=str|None, trigger_value=int|float|None, output=None)
+    def update_alarm(
+            self, 
+            id:str, 
+            name:str=None,
+            tag:str=None,
+            description:str=None,
+            alarm_type:str=None,
+            trigger_value:int|float=None)->None:
         r"""
         Updates alarm attributes
 
@@ -660,9 +993,26 @@ class PyAutomation(Singleton):
 
         * **alarm** (dict) Alarm Object jsonable
         """
+        self.alarm_manager.put(
+            id=id,
+            name=name,
+            tag=tag,
+            description=description,
+            alarm_type=alarm_type,
+            trigger_value=trigger_value
+        )
+        # Persist Tag on Database
+        if self.is_db_connected():
 
-        return self.alarm_manager.update_alarm(id=id, **kwargs)
-    
+            self.alarms_engine.put(
+                id=id,
+                name=name,
+                tag=tag,
+                description=description,
+                alarm_type=alarm_type,
+                trigger_value=trigger_value)
+
+    @validate_types(id=str, output=Alarm)
     def get_alarm(self, id:str)->Alarm:
         r"""
         Gets alarm from the Alarm Manager by id
@@ -676,8 +1026,9 @@ class PyAutomation(Singleton):
         * **alarm** (Alarm Object)
         """
         return self.alarm_manager.get_alarm(id=id)
-    
-    def get_alarms(self)->dict:
+
+    @validate_types(output=list)
+    def get_alarms(self)->list:
         r"""
         Gets all alarms
 
@@ -686,7 +1037,15 @@ class PyAutomation(Singleton):
         * **alarms**: (dict) Alarm objects
         """
         return self.alarm_manager.get_alarms()
-    
+
+    @validate_types(lasts=int|None, output=list)
+    def get_lasts_active_alarms(self, lasts:int=None)->list:
+        r"""
+        Documentation here
+        """
+        return self.alarm_manager.get_lasts_active_alarms(lasts=lasts)
+
+    @validate_types(name=str, output=Alarm)
     def get_alarm_by_name(self, name:str)->Alarm:
         r"""
         Gets alarm from the Alarm Manager by name
@@ -700,8 +1059,9 @@ class PyAutomation(Singleton):
         * **alarm** (Alarm Object)
         """
         return self.alarm_manager.get_alarm_by_name(name=name)
-    
-    def get_alarms_by_tag(self, tag:str)->dict:
+
+    @validate_types(tag=str, output=list)
+    def get_alarms_by_tag(self, tag:str)->list:
         r"""
         Gets all alarms associated to some tag
 
@@ -713,8 +1073,9 @@ class PyAutomation(Singleton):
 
         * **alarm** (dict) of alarm objects
         """
-        return self.alarm_manager.get_alarm_by_tag(tag=tag)
-    
+        return self.alarm_manager.get_alarms_by_tag(tag=tag)
+
+    @validate_types(id=str, output=None)
     def delete_alarm(self, id:str):
         r"""
         Removes alarm
@@ -724,9 +1085,108 @@ class PyAutomation(Singleton):
         * **id** (int): Alarm ID
         """
         self.alarm_manager.delete_alarm(id=id)
+        if self.is_db_connected():
+
+            self.alarms_engine.delete(id=id)
+
+    # EVENTS METHODS
+    # @validate_types(lasts=int, output=list)
+    def get_lasts_events(self, lasts:int=10)->list:
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.events_engine.get_lasts(lasts=lasts)
+
+    # @validate_types(
+    #         usernames=list[str], 
+    #         priorities=list[int], 
+    #         criticities=list[int], 
+    #         greater_than_timestamp=datetime, 
+    #         less_than_timestamp=datetime, 
+    #         output=list)
+    def filter_events_by(
+            self,
+            usernames:list[str]=None,
+            priorities:list[int]=None,
+            criticities:list[int]=None,
+            greater_than_timestamp:datetime=None,
+            less_than_timestamp:datetime=None)->list:
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.events_engine.filter_by(
+                usernames=usernames,
+                priorities=priorities,
+                criticities=criticities,
+                greater_than_timestamp=greater_than_timestamp,
+                less_than_timestamp=less_than_timestamp
+            )
+        
+    # LOGS METHODS
+    def create_log(
+        self, 
+        message:str, 
+        user:User, 
+        description:str=None, 
+        classification:str=None,
+        alarm_summary_id:int=None,
+        event_id:int=None,
+        timestamp:datetime=None
+        )->list:
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.logs_engine.create(
+                message=message, 
+                user=user, 
+                description=description, 
+                classification=classification,
+                alarm_summary_id=alarm_summary_id,
+                event_id=event_id,
+                timestamp=timestamp
+            )
+        
+    def filter_logs_by(
+            self,
+            usernames:list[str]=None,
+            alarm_names:list[str]=None,
+            event_ids:list[int]=None,
+            classifications:list[str]=None,
+            greater_than_timestamp:datetime=None,
+            less_than_timestamp:datetime=None
+        )->list:
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.logs_engine.filter_by(
+                usernames=usernames,
+                alarm_names=alarm_names,
+                event_ids=event_ids,
+                classifications=classifications,
+                greater_than_timestamp=greater_than_timestamp,
+                less_than_timestamp=less_than_timestamp
+            )
+        
+    # @validate_types(lasts=int, output=list)
+    def get_lasts_logs(self, lasts:int=10)->list:
+        r"""
+        Documentation here
+        """
+        if self.is_db_connected():
+
+            return self.logs_engine.get_lasts(lasts=lasts)
 
     # INIT APP
-    def run(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True, **kwargs):
+    @validate_types(debug=bool, test=bool, create_tables=bool, alarm_worker=bool,output=None)
+    def run(self, debug:bool=False, test:bool=False, create_tables:bool=False, alarm_worker:bool=True)->None:
         r"""
         Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
 
@@ -738,36 +1198,26 @@ class PyAutomation(Singleton):
         >>> app.run()
         ```
         """
-        self.startup_config_page(debug=debug, create_tables=create_tables, alarm_worker=alarm_worker, **kwargs)
+        self.safe_start(test=test, create_tables=create_tables, alarm_worker=alarm_worker)
 
-    def startup_config_page(self, debug:bool=False, create_tables:bool=False, alarm_worker:bool=True, **kwargs):
-        r"""Documentation here
+        if not test:
+        
+            if debug:
 
-        # Parameters
+                self.dash_app.run(debug=debug, use_reloader=False)
 
-        - 
-
-        # Returns
-
-        - 
-        """
-        self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
-        self.dash_app.set_automation_app(self)
-        self.das = DAS()
-        self.safe_start(create_tables=create_tables, alarm_worker=alarm_worker)
-        init_callbacks(app=self.dash_app)
-        self.dash_app.run(debug=debug, use_reloader=False)
-
-    def safe_start(self, create_tables:bool=True, alarm_worker:bool=False):
+    @validate_types(test=bool, create_tables=bool, alarm_worker=bool, output=None)
+    def safe_start(self, test:bool=False, create_tables:bool=True, alarm_worker:bool=False):
         r"""
         Run the app without a main thread, only run the app with the threads and state machines define
         """
         self._create_tables = create_tables
         self._create_alarm_worker = alarm_worker
         self.__start_logger()
-        self.__start_workers()
+        self.__start_workers(test=test)
 
-    def safe_stop(self):
+    @validate_types(output=None)
+    def safe_stop(self)->None:
         r"""
         Stops the app in safe way with the threads
         """
@@ -776,7 +1226,8 @@ class PyAutomation(Singleton):
         sys.exit()
 
     # WORKERS
-    def __start_workers(self):
+    @validate_types(test=bool, output=None)
+    def __start_workers(self, test:bool=False)->None:
         r"""
         Starts all workers.
 
@@ -785,28 +1236,21 @@ class PyAutomation(Singleton):
         * StateMachineWorker
         """
         if self._create_tables:
-            
+
             db_worker = LoggerWorker(self.db_manager)
-            self.connect_to_db()
+            self.connect_to_db(test=test)
             db_worker.start_workers()
-            # self.workers.append(db_worker)
 
         if self._create_alarm_worker:
             alarm_manager = self.get_alarm_manager()
             alarm_worker = AlarmWorker(alarm_manager)
             alarm_worker.daemon = True
             alarm_worker.start()
-            # self.workers.append(alarm_worker)
 
-        # Start Workers
-        # for worker in self.workers:
-        #     worker.daemon = True
-        #     worker.start()
-
-        # StateMachine Worker
         self.machine.start()
 
-    def __stop_workers(self):
+    @validate_types(output=None)
+    def __stop_workers(self)->None:
         r"""
         Safe stop workers execution
         """
@@ -817,7 +1261,8 @@ class PyAutomation(Singleton):
                 message = "Error on wokers stop"
                 log_detailed(e, message)
 
-    def __start_logger(self):
+    @validate_types(output=None)
+    def __start_logger(self)->None:
         r"""
         Starts logger in log file
         """

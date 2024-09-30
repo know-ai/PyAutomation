@@ -6,15 +6,15 @@ to retrieve history, trends and waveforms from database.
 """
 
 from datetime import datetime, timedelta
-
-from .logger import DataLoggerEngine
+from automation.singleton import Singleton
+from .datalogger import DataLoggerEngine
 from ..dbmodels import Tags, TagValue
 
 
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f'
 
 
-class QueryLogger:
+class QueryLogger(Singleton):
 
     def __init__(self):
         from ..tags import CVTEngine
@@ -36,7 +36,7 @@ class QueryLogger:
         
         return float(trend.period)
 
-    def get__value(self, tag):
+    def get_value(self, tag):
         r"""
         Documentation here
         """
@@ -248,10 +248,10 @@ ORDER BY ts;
         
         return result
 
-    def query_trends(self, start, stop, *tags):
+    def query_trends(self, start:str, stop:str, *tags):
         r"""
         Documentation here
-        """        
+        """      
         start = datetime.strptime(start, DATETIME_FORMAT)
         stop = datetime.strptime(stop, DATETIME_FORMAT)
         result = {tag: {

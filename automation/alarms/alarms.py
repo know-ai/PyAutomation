@@ -3,23 +3,19 @@
 
 This module implements all Alarms class definitions and Alarm Handlers.
 """
+import secrets
 from datetime import datetime, timedelta
-from ..tags import CVTEngine
-from ..logger import DataLoggerEngine
 from .states import AlarmState, Status, AlarmAttrs
 from .trigger import Trigger, TriggerType
-import secrets
-DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
+from ..modules.users.users import User
+from ..utils.decorators import set_event
 
 
 class Alarm:
     r"""
     This class implements all definitions for Alarm object
     """
-
-    tag_engine = CVTEngine()
-    logger_engine = DataLoggerEngine()
-
+    @set_event(message=f"Created", classification="Alarm", priority=1, criticity=1)
     def __init__(
             self, 
             name:str, 
@@ -29,10 +25,17 @@ class Alarm:
             tag_alarm:str=None, 
             state:str=None,
             timestamp:str=None,
-            acknowledged_timestamp:str=None
+            acknowledged_timestamp:str=None,
+            user:User=None,
+            reload:bool=False
             ):
-
-        self.name = name
+        from ..logger.alarms import AlarmsLoggerEngine
+        from ..logger.events import EventsLoggerEngine
+        from ..tags import CVTEngine
+        self.events_engine = EventsLoggerEngine()
+        self.alarm_engine = AlarmsLoggerEngine()
+        self.tag_engine = CVTEngine()
+        self._name = name
         self._tag = tag
         self._description = description
         self._value = False
@@ -58,10 +61,10 @@ class Alarm:
         self._off_delay = None
         self._timestamp = None
         if timestamp:
-            self._timestamp = datetime.strptime(timestamp, DATETIME_FORMAT)  
+            self._timestamp = datetime.strptime(timestamp, self.tag_engine.DATETIME_FORMAT)  
         self._acknowledged_timestamp = None
         if acknowledged_timestamp:
-            self._acknowledged_timestamp = datetime.strptime(acknowledged_timestamp, DATETIME_FORMAT)
+            self._acknowledged_timestamp = datetime.strptime(acknowledged_timestamp, self.tag_engine.DATETIME_FORMAT)
         self._shelved_time = None
         self.audible = False
         self._shelved_options_time = {
@@ -76,9 +79,9 @@ class Alarm:
         self._shelved_until = None
         self.__default_operations()
         if identifier:
-            self._id = identifier
+            self.identifier = identifier
         else:
-            self._id =secrets.token_hex(4)
+            self.identifier =secrets.token_hex(4)
 
     def __default_operations(self):
         r"""
@@ -104,7 +107,15 @@ class Alarm:
         """
         return self._operations
 
-    def update_alarm_definition(self, **kwargs):
+    @set_event(message=f"Updated", classification="Alarm", priority=2, criticity=3)
+    def put(
+            self, 
+            user:User=None,
+            name:str=None,
+            tag:str=None,
+            description:str=None,
+            alarm_type:str=None,
+            trigger_value:float=None):
         r"""
         Update alarm configuration
 
@@ -117,29 +128,41 @@ class Alarm:
         * **trigger_value** (float): Alarm trigger value
 
         """
+        message = ""
+        if alarm_type:
 
-        if 'type' in kwargs.keys():
+            if alarm_type.upper() in ["HIGH-HIGH", "HIGH", "LOW", "LOW-LOW", "BOOL"]:
 
-            _type = kwargs.pop('type')
-            if _type.upper() in ["HIGH-HIGH", "HIGH", "LOW", "LOW-LOW", "BOOL"]:
+                self._trigger.type = alarm_type
 
-                self._trigger.type = _type
+                message += f" alarm_type: {alarm_type}"
 
-        if 'trigger_value' in kwargs.keys():
-            trigger_value = kwargs.pop('trigger_value')
+        if trigger_value:
+            
             self._trigger.value = float(trigger_value)
-
-        for key, value in kwargs.items():
-
-            setattr(self, f"_{key}", value)
+            message += f" trigger value: {trigger_value}"
         
-        return self
+        if name:
+
+            self._name = name
+            message += f" name: {name}"
+
+        if tag:
+
+            self._tag = tag
+            message += f" tag: {tag}"
+
+        if description:
+
+            self._description = description
+            message += f" description: {description}"
+        
+        return self, message
 
     def get_trigger(self):
         r"""
         Gets Trigger object for alarm
         """
-
         return self._trigger
 
     def set_trigger(self, value, _type:str):
@@ -265,7 +288,7 @@ class Alarm:
             self._operations['sound'] = False
             self.audible = False
             # Persist on DB
-            self.logger_engine.create_record_on_summary(name=self.name, state=self._state.state)
+            self.alarm_engine.create_record_on_alarm_summary(name=self._name, state=self._state.state)
 
         elif self._state.state==AlarmState.NORM.state:
 
@@ -274,7 +297,7 @@ class Alarm:
             self._operations['sound'] = False
             self.audible = False
             # Persist on DB
-            self.logger_engine.create_record_on_summary(name=self.name, state=self._state.state)
+            self.alarm_engine.create_record_on_alarm_summary(name=self._name, state=self._state.state)
 
     def trigger(self):
         r"""
@@ -300,7 +323,8 @@ class Alarm:
         """
         return self._enabled
 
-    def enable(self):
+    @set_event(message=f"Enabled", classification="Alarm", priority=3, criticity=1)
+    def enable(self, user:User=None)->tuple:
         r"""
         Enable or disable alarm according the parameter *value*
 
@@ -317,8 +341,11 @@ class Alarm:
         self._operations['unsuppress by design'] = False
         self._operations['out of service'] = True
         self._operations['reset'] = True
+        
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
 
-    def disable(self):
+    @set_event(message=f"Disabled", classification="Alarm", priority=3, criticity=5)
+    def disable(self, user:User=None)->tuple:
         r"""
         Enable or disable alarm according the parameter *value*
 
@@ -340,8 +367,10 @@ class Alarm:
         self._operations['return to service'] = False
         self._operations['reset'] = False
         self.silence()
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
 
-    def acknowledge(self):
+    @set_event(message=f"Acknowledged", classification="Alarm", priority=2, criticity=3)
+    def acknowledge(self, user:User=None)->tuple:
         r"""
         Allows you to acknowledge alarm triggered
         """
@@ -361,8 +390,10 @@ class Alarm:
 
         self._acknowledged_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         self._operations['acknowledge'] = False
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
 
-    def silence(self):
+    @set_event(message=f"Silenced", classification="Alarm", priority=2, criticity=4)
+    def silence(self, user:User=None):
         r"""
         Documentation here for silence alarm
         """
@@ -380,8 +411,11 @@ class Alarm:
         else:
 
             self._operations['sound'] = False
+        
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
 
-    def sound(self):
+    @set_event(message=f"Back to sound", classification="Alarm", priority=3, criticity=1)
+    def sound(self, user:User=None):
         r"""
         Documentation here for sound alarm
         """
@@ -401,21 +435,11 @@ class Alarm:
             else:
 
                 self._operations['silence'] = False
-        
-    def reset(self):
-        r"""
-        Returns alarm to normal condition
-        """
-        self._enabled = True
-        self._timestamp = None
-        self._acknowledged_timestamp = None
-        self._silence = False
-        self.state = AlarmState.NORM
-        self.__default_operations()
 
-    def shelve(
-        self, 
-        **options):
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
+
+    @set_event(message=f"Shelved", classification="Alarm", priority=3, criticity=4)
+    def shelve(self, user:User=None, **options):
         r"""
         Set alarm to Shelved state
 
@@ -448,7 +472,10 @@ class Alarm:
         self._operations['return to service'] = False
         self._operations['reset'] = True
 
-    def unshelve(self):
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
+
+    @set_event(message=f"Unshelved", classification="Alarm", priority=3, criticity=1)
+    def unshelve(self, user:User=None):
         r"""
         Set Alarm to normal state after Shelved state
         """
@@ -457,8 +484,11 @@ class Alarm:
         self.state = AlarmState.NORM
         self.audible = False
         self.__default_operations()
+        
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
 
-    def suppress_by_design(self):
+    @set_event(message=f"Suppressed by design", classification="Alarm", priority=3, criticity=4)
+    def suppress_by_design(self, user:User=None):
         r"""
         Suppress Alarm by design
         """
@@ -475,16 +505,20 @@ class Alarm:
         self._operations['return to service'] = False
         self._operations['reset'] = False
         self.audible = False
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
 
-    def unsuppress_by_design(self):
+    @set_event(message=f"Unsuppresed by design", classification="Alarm", priority=3, criticity=1)
+    def unsuppress_by_design(self, user:User=None):
         r"""
         Unsuppress alarm, return to normal state after suppress state
         """
         self.state = AlarmState.NORM
         self.audible = False
         self.__default_operations()
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
 
-    def out_of_service(self):
+    @set_event(message=f"Out of service", classification="Alarm", priority=3, criticity=5)
+    def out_of_service(self, user:User=None):
         r"""
         Remove alarm from service
         """
@@ -501,14 +535,17 @@ class Alarm:
         self._operations['out of service'] = False
         self._operations['return to service'] = True
         self._operations['reset'] = False
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
     
-    def return_to_service(self):
+    @set_event(message=f"Back to service", classification="Alarm", priority=3, criticity=1)
+    def return_to_service(self, user:User=None):
         r"""
         Return alarm to normal condition after Out Of Service state
         """
         self.state = AlarmState.NORM
         self.audible = False
         self.__default_operations()
+        return self, f"Alarm: {self._name} - Tag: {self.tag}"
 
     def update(self, value):
         r"""
@@ -595,9 +632,9 @@ class Alarm:
         * **alarm_info**: (dict) A jsonable dictionary
         """
         return {
-            "id": self._id,
+            "identifier": self.identifier,
             "timestamp": self._timestamp,
-            "name": self.name,
+            "name": self._name,
             "tag": self.tag,
             "tag_alarm": self.tag_alarm,
             "state": self.state.state,
@@ -610,9 +647,8 @@ class Alarm:
             "acknowledged_timestamp": self._acknowledged_timestamp,
             "value": self._value,
             "audible": self.audible,
-            "type": self._trigger.type.value,
+            "alarm_type": self._trigger.type.value,
             "description": self.description,
             "operations": self.get_operations(),
-            "priority": self.priority,
-            "is_process_alarm": self._is_process_alarm
+            "priority": self.priority
         }

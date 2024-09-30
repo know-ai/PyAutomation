@@ -4,25 +4,15 @@
 This module implements a database logger for the CVT instance, 
 will create a time-serie for each tag in a short memory data base.
 """
-from ..dbmodels import (
-    Tags, 
-    TagValue, 
-    AlarmTypes, 
-    AlarmStates, 
-    Variables, 
-    Units,
-    DataTypes,
-    Alarms,
-    AlarmSummary,
-    OPCUA)
-
-from ..alarms.trigger import TriggerType
-from ..alarms.states import AlarmState
-import logging
-from ..variables import VARIABLES, DATATYPES
+import logging, sys, os
+from datetime import datetime
+from ..tags.tag import Tag
+from ..dbmodels import Tags, TagValue
+from ..modules.users.users import User
+from .core import BaseLogger, BaseEngine
 
 
-class DataLogger:
+class DataLogger(BaseLogger):
 
     """Data Logger class.
 
@@ -36,27 +26,9 @@ class DataLogger:
     >>> _logger = DataLogger()
     ```
     """
-
     def __init__(self):
 
-        self._db = None
-
-    def set_db(self, db):
-        r"""Documentation here
-        """
-        self._db = db
-
-    def get_db(self):
-        r"""
-        Documentation here
-        """
-        return self._db
-    
-    def stop_db(self):
-        r""""
-        Documentation here
-        """
-        self._db = None
+        super(DataLogger, self).__init__()
 
     def set_tag(
         self, 
@@ -64,7 +36,7 @@ class DataLogger:
         name:str, 
         unit:str, 
         data_type:str, 
-        description:str, 
+        description:str="", 
         display_name:str="",
         display_unit:str=None,
         opcua_address:str=None, 
@@ -94,7 +66,14 @@ class DataLogger:
         Documentation here
         """
         tag = Tags.get(identifier=id)
-        Tags.delete(id=tag.id)
+        query = Tags.delete().where(Tags.id==tag.id)
+        query.execute()
+
+    def get_tag_by_name(self, name:str):
+        r"""
+        Documentation here
+        """
+        return Tags.read_by_name(name=name)
 
     def update_tag(self, id:str, **kwargs):
         r"""
@@ -117,70 +96,6 @@ class DataLogger:
         """
         return Tags.read_all()
     
-    def create_tables(self, tables):
-        r"""
-        Documentation here
-        """
-        if not self._db:
-            
-            return
-        
-        self._db.create_tables(tables, safe=True)
-        self.__init_default_variables_schema()
-        self.__init_default_datatypes_schema()
-        self.__init_default_alarms_schema()
-
-    def __init_default_variables_schema(self):
-        r"""
-        Documentation here
-        """
-        for variable, units in VARIABLES.items():
-    
-            if not Variables.name_exist(variable):
-                
-                Variables.create(name=variable)
-
-            for name, unit in units.items():
-
-                if not Units.name_exist(unit):
-
-                    Units.create(name=name, unit=unit, variable=variable)
-
-    def __init_default_datatypes_schema(self):
-        r"""
-        Documentation here
-        """
-        for datatype in DATATYPES:
-
-            DataTypes.create(name=datatype["value"])
-
-    def __init_default_alarms_schema(self):
-        r"""
-        Documentation here
-        """
-        ## Alarm Types
-        for alarm_type in TriggerType:
-
-            AlarmTypes.create(name=alarm_type.value)
-
-        ## Alarm States
-        for alarm_state in AlarmState._states:
-            name = alarm_state.state
-            mnemonic = alarm_state.mnemonic
-            condition = alarm_state.process_condition
-            status = alarm_state.alarm_status
-            AlarmStates.create(name=name, mnemonic=mnemonic, condition=condition, status=status)
-
-    def drop_tables(self, tables):
-        r"""
-        Documentation here
-        """
-        if not self._db:
-            
-            return
-
-        self._db.drop_tables(tables, safe=True)
-
     def write_tag(self, tag, value, timestamp):
         r"""
         Documentation here
@@ -189,8 +104,11 @@ class DataLogger:
             trend = Tags.read_by_name(tag)
             TagValue.create(tag=trend, value=value, timestamp=timestamp)
         except Exception as e:
-            
-            logging.warning(f"Rollback done in database due to conflicts writing tag")
+            _, _, e_traceback = sys.exc_info()
+            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
+            e_message = str(e)
+            e_line_number = e_traceback.tb_lineno
+            logging.warning(f"Rollback done in database due to conflicts writing tag: {e_line_number} - {e_filename} - {e_message}")
             conn = self._db.connection()
             conn.rollback()
 
@@ -209,8 +127,11 @@ class DataLogger:
             TagValue.insert_many(tags).execute()
 
         except Exception as e:
-            print(e)
-            logging.warning(f"Rollback done in database due to conflicts writing tags")
+            _, _, e_traceback = sys.exc_info()
+            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
+            e_message = str(e)
+            e_line_number = e_traceback.tb_lineno
+            logging.warning(f"Rollback done in database due to conflicts writing tags: {e_line_number} - {e_filename} - {e_message}")
             conn = self._db.connection()
             conn.rollback()
 
@@ -236,47 +157,292 @@ class DataLogger:
             
             return result
         except Exception as e:
-            logging.warning(f"Rollback done in database due to conflicts reading tag")
+            _, _, e_traceback = sys.exc_info()
+            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
+            e_message = str(e)
+            e_line_number = e_traceback.tb_lineno
+            logging.warning(f"Rollback done in database due to conflicts reading tag: {e_line_number} - {e_filename} - {e_message}")
             conn = self._db.connection()
             conn.rollback()
 
-    # ALARMS METHODS
-    def set_alarm(
-            self,
-            id:str,
-            name:str,
-            tag:str,
-            trigger_type:str,
-            trigger_value:float,
-            description:str,
-            tag_alarm:str):
+    def read_trends(self, start:str, stop:str, tags):
         r"""
         Documentation here
-        """
-        Alarms.create(
-            identifier=id,
-            name=name,
-            tag=tag,
-            trigger_type=trigger_type,
-            trigger_value=trigger_value,
-            description=description,
-            tag_alarm=tag_alarm
-        )
+        """    
+        start = datetime.strptime(start, self.tag_engine.DATETIME_FORMAT)
+        stop = datetime.strptime(stop, self.tag_engine.DATETIME_FORMAT)
+        result = {tag: {
+            'values': list(),
+            'unit': self.tag_engine.get_display_unit_by_tag(tag)
+        } for tag in tags}
+        
 
-    def get_alarms(self):
+        for tag in tags:
+
+            trend = Tags.select().where(Tags.name==tag).get()
+            
+            values = trend.values.select().where((TagValue.timestamp > start) & (TagValue.timestamp < stop)).order_by(TagValue.timestamp.asc())
+
+            for value in values:
+                
+                result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": value.value})
+
+        return result
+
+class DataLoggerEngine(BaseEngine):
+    r"""
+    Data logger Engine class for Tag thread-safe database logging.
+
+    """
+    def __init__(self):
+
+        super(DataLoggerEngine, self).__init__()
+        self.logger = DataLogger()
+
+    def create_tables(self, tables):
         r"""
-        Documentation here
+        Create default PyHades database tables
+
+        ['TagTrend', 'TagValue']
+
+        **Parameters**
+
+        * **tables** (list) list of database model
+
+        **Returns** `None`
         """
-        return Alarms.read_all()
+        self.logger.create_tables(tables)
+
+    def drop_tables(self, tables:list):
+        r"""
+        Drop tables if exist in database
+
+        **Parameters**
+
+        * **tables** (list): List of database model you want yo drop
+        """
+        self.logger.drop_tables(tables)
+
+    def set_tag(
+        self,
+        tag:Tag
+        ):
+        r"""
+        Define tag names you want log in database, these tags must be defined in CVTEngine
+
+        **Parameters**
+
+        * **tag** (str): Tag name defined in CVTEngine
+        * **period** (float): Sampling time to log tag on database
+
+        **Returns** `None`
+        """
+        _query = dict()
+        _query["action"] = "set_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = tag.id
+        _query["parameters"]["name"] = tag.name
+        _query["parameters"]["unit"] = tag.unit
+        _query["parameters"]["data_type"] = tag.data_type
+        _query["parameters"]["description"] = tag.description
+        _query["parameters"]["display_name"] = tag.display_name
+        _query["parameters"]["display_unit"] = tag.display_unit
+        _query["parameters"]["opcua_address"] = tag.opcua_address
+        _query["parameters"]["node_namespace"] = tag.node_namespace
+        _query["parameters"]["scan_time"] = tag.scan_time
+        _query["parameters"]["dead_band"] = tag.dead_band
+        
+        return self.query(_query)
+
+    def get_tags(self):
+        r"""
+
+        """
+        _query = dict()
+        _query["action"] = "get_tags"
+        _query["parameters"] = dict()
+        
+        return self.query(_query)
     
-    def create_record_on_summary(self, name:str, state:str):
+    def get_tag_by_name(self, name:str):
         r"""
-        Documentation here
-        """
-        AlarmSummary.create(name=name, state=state)
 
-    def get_summary(self):
-        r"""
-        Documentation here
         """
-        return AlarmSummary.read_all()
+        _query = dict()
+        _query["action"] = "get_tag_by_name"
+        _query["parameters"] = dict()
+        _query["parameters"]["name"] = name
+        
+        return self.query(_query)
+    
+    def update_tag(
+            self, 
+            id:str, 
+            name:str="", 
+            unit:str="", 
+            data_type:str="", 
+            description:str="", 
+            variable:str="",
+            display_name:str="",
+            display_unit:str="",
+            opcua_address:str="",
+            node_namespace:str="",
+            scan_time:int=None,
+            dead_band:int|float=None,
+            user:User|None=None
+            ):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+
+        _query = dict()
+        _query["action"] = "update_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        if name:
+
+            _query["parameters"]["name"] = name
+        
+        if unit:
+
+            _query["parameters"]["unit"] = unit
+
+        if data_type:
+
+            _query["parameters"]["data_type"] = data_type
+
+        if description:
+
+            _query["parameters"]["description"] = description
+
+        if variable:
+
+            _query["parameters"]["variable"] = variable
+
+        if display_name:
+
+            _query["parameters"]["display_name"] = display_name
+
+        if display_unit:
+
+            _query["parameters"]["display_unit"] = display_unit
+
+        if opcua_address:
+
+            _query["parameters"]["opcua_address"] = opcua_address
+
+        if node_namespace:
+
+            _query["parameters"]["node_namespace"] = node_namespace
+
+        if scan_time:
+
+            _query["parameters"]["scan_time"] = scan_time
+
+        if dead_band:
+
+            _query["parameters"]["dead_band"] = dead_band
+        
+        return self.query(_query)
+    
+    def delete_tag(self, id:str):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "delete_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["id"] = id
+        
+        return self.query(_query)
+
+    def write_tag(self, tag:str, value:float, timestamp:datetime):
+        r"""
+        Writes value to tag into database on a thread-safe mechanism
+
+        **Parameters**
+
+        * **tag** (str): Tag name in database
+        * **value** (float): Value to write in tag
+        """
+        _query = dict()
+        _query["action"] = "write_tag"
+
+        _query["parameters"] = dict()
+        _query["parameters"]["tag"] = tag
+        _query["parameters"]["value"] = value
+        _query["parameters"]["timestamp"] = timestamp
+
+        return self.query(_query)
+
+    def write_tags(self, tags:list):
+        r"""
+        Writes value to tag into database on a thread-safe mechanism
+
+        **Parameters**
+
+        * **tag** (str): Tag name in database
+        * **value** (float): Value to write in tag
+        """
+        _query = dict()
+        _query["action"] = "write_tags"
+
+        _query["parameters"] = dict()
+        _query["parameters"]["tags"] = tags
+
+        return self.query(_query)
+
+    def read_tag(self, tag:str):
+        r"""
+        Read tag value from database on a thread-safe mechanism
+
+        **Parameters**
+
+        * **tag** (str): Tag name in database
+
+        **Returns**
+
+        * **value** (float): Tag value requested
+        """
+        _query = dict()
+        _query["action"] = "read_tag"
+
+        _query["parameters"] = dict()
+        _query["parameters"]["tag"] = tag
+
+        return self.query(_query)
+    
+    def read_trends(self, start:str, stop:str, *tags):
+        r"""
+        Read tag value from database on a thread-safe mechanism
+
+        **Parameters**
+
+        * **tag** (str): Tag name in database
+
+        **Returns**
+
+        * **value** (float): Tag value requested
+        """
+        _query = dict()
+        _query["action"] = "read_trends"
+        _query["parameters"] = dict()
+        _query["parameters"]["start"] = start
+        _query["parameters"]["stop"] = stop
+        _query["parameters"]["tags"] = tags
+        return self.query(_query)
+

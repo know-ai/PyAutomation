@@ -7,9 +7,15 @@ import logging
 from .buffer import Buffer
 from .models import StringType, IntegerType, FloatType, BooleanType
 from .tags import CVTEngine, Tag
-from .logger import DataLoggerEngine
+from .logger.datalogger import DataLoggerEngine
+from .logger.events import EventsLoggerEngine
 from .managers.opcua_client import OPCUAClientManager
 from .opcua.subscription import DAS
+from .modules.users.users import User
+from .utils.decorators import set_event, validate_types
+
+
+events_engine = EventsLoggerEngine()
 
 class Machine(Singleton):
     r"""Documentation here
@@ -19,7 +25,7 @@ class Machine(Singleton):
         self._machine_manager = StateMachineManager()
         self.workers = list()
 
-    def append_machine(self, machine, interval:float=1, mode:str='sync'):
+    def append_machine(self, machine:StateMachine, interval:float=1, mode:str='sync'):
         r"""
         Append a state machine to the state machine manager.
 
@@ -94,11 +100,7 @@ class Machine(Singleton):
         if state_manager.exist_machines():
 
             state_worker = StateMachineWorker(state_manager)
-            self.workers.append(state_worker)
-
-        for worker in self.workers:
-            worker.daemon = True
-            worker.run()
+            state_worker.run()
 
     def stop(self):
         r"""
@@ -486,18 +488,20 @@ class AutomationStateMachine(StateMachine):
     wait_to_run = waiting.to(running)
 
     #
-    wait_to_restart = waiting.to(restarting)
-    wait_to_reset = waiting.to(resetting)
-    run_to_restart = running.to(restarting)
-    run_to_reset = running.to(resetting)
-    test_to_restart = testing.to(restarting)
-    test_to_reset = testing.to(resetting)
-    sleep_to_restart = sleeping.to(restarting)
-    sleep_to_reset = sleeping.to(resetting)
-
-    #
     reset_to_start = resetting.to(starting)
     restart_to_wait = restarting.to(waiting)
+
+    # Transitions to Restart
+    run_to_restart = running.to(restarting)
+    wait_to_restart = waiting.to(restarting)
+    test_to_restart = testing.to(restarting)
+    sleep_to_restart = sleeping.to(restarting)
+
+    # Transitions to Reset
+    run_to_reset = running.to(resetting)
+    wait_to_reset = waiting.to(resetting)
+    test_to_reset = testing.to(resetting)
+    sleep_to_reset = sleeping.to(resetting)
 
     #
     run_to_test = running.to(testing)
@@ -583,7 +587,7 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 3
 
     def while_sleeping(self):
         r"""Documentation here
@@ -596,7 +600,7 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 5
 
     def while_resetting(self):
         r"""Documentation here
@@ -609,7 +613,7 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        self.send('reset_to_start')
+        self.criticity.value = 4
 
     def while_restarting(self):
         r"""Documentation here
@@ -622,7 +626,7 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        self.send('restart_to_wait')
+        self.criticity.value = 4
 
     # Transitions
     def on_start_to_wait(self):
@@ -854,9 +858,25 @@ class AutomationStateMachine(StateMachine):
 
         - 
         """
-        if tag in self.data:
+        pass
+        # if tag in self.data:
             
-            self.data[tag](value)
+        #     self.data[tag](value)
+
+    @set_event(message=f"Switched", classification="State Machine", priority=2, criticity=3)
+    def transition(self, to, user:User=None):
+        r"""
+        Documentation here
+        """
+        try:
+            _from = self.current_state.name.lower()
+            transition_name = f'{_from}_to_{to}'
+            self.send(transition_name)
+            return self, f"from: {_from} to: {to}"
+            
+        except Exception as err:
+
+            logging.WARNING(f"Transition from {_from} state to {to} state for {self.name} is not allowed")
 
     def unsubscribe_to(self, tag:str):
         r"""Documentation here
@@ -1042,6 +1062,114 @@ class AutomationStateMachine(StateMachine):
         }
         result.update(self.get_serialized_models())
         return result
+    
+
+class IAD(AutomationStateMachine):
+    r"""Documentation here
+    """
+    def __init__(
+            self,
+            name="IAD",
+            description:str="Instrument Anomaly Detection",
+            classification:str="Service"
+        ):
+
+        super(IAD, self).__init__(
+            name=name,
+            description=description,
+            classification=classification
+            )
+        
+    def while_waiting(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        super(IAD, self).while_waiting()
+        ready_to_run = True
+        for _, value in self.data.items():
+
+            if len(value)!=value.max_length:
+                ready_to_run=False
+                break
+
+        if ready_to_run:
+
+            self.send('wait_to_run')
+
+    def while_running(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        super(IAD, self).while_running()
+        pass
+
+
+class Filter(AutomationStateMachine):
+    r"""Documentation here
+    """
+    def __init__(
+            self,
+            name="Filter",
+            description:str="Gaussian an Process Filter",
+            classification:str="Service"
+        ):
+
+        super(Filter, self).__init__(
+            name=name,
+            description=description,
+            classification=classification
+            )
+        
+    def while_waiting(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        super(Filter, self).while_waiting()
+        ready_to_run = True
+        for _, value in self.data.items():
+
+            if len(value)!=value.max_length:
+                ready_to_run=False
+                break
+
+        if ready_to_run:
+
+            self.send('wait_to_run')
+
+    def while_running(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        super(Filter, self).while_running()
+        pass
 
 
 class LeakStateMachine(AutomationStateMachine):
@@ -1052,6 +1180,8 @@ class LeakStateMachine(AutomationStateMachine):
     leaking = State('leak')
     switching = State('switch')
     not_available = State('not_available')
+    con_restart = State('confirm_restart')
+    con_reset = State('confirm_reset')
 
     #Transitions
     run_to_pre_alarm = AutomationStateMachine.running.to(pre_alarming)
@@ -1059,6 +1189,18 @@ class LeakStateMachine(AutomationStateMachine):
     pre_alarm_to_leak = pre_alarming.to(leaking)
     leak_to_restart = leaking.to(AutomationStateMachine.restarting)
     leak_to_reset = leaking.to(AutomationStateMachine.resetting)
+
+    reset_to_confirm_reset = AutomationStateMachine.resetting.to(con_reset)
+    restart_to_confirm_restart = AutomationStateMachine.restarting.to(con_restart)
+    confirm_restart_to_wait = con_restart.to(AutomationStateMachine.waiting)
+    confirm_reset_to_start = con_reset.to(AutomationStateMachine.starting)
+    confirm_restart_to_run = con_restart.to(AutomationStateMachine.running)
+    confirm_restart_to_sleep = con_restart.to(AutomationStateMachine.sleeping)
+    confirm_restart_to_test = con_restart.to(AutomationStateMachine.testing)
+    confirm_reset_to_run = con_reset.to(AutomationStateMachine.running)
+    confirm_reset_to_wait = con_reset.to(AutomationStateMachine.waiting)
+    confirm_reset_to_sleep = con_reset.to(AutomationStateMachine.sleeping)
+    confirm_reset_to_test = con_reset.to(AutomationStateMachine.testing)
 
     start_to_switch = AutomationStateMachine.starting.to(switching)
     wait_to_switch = AutomationStateMachine.waiting.to(switching)
@@ -1129,7 +1271,7 @@ class LeakStateMachine(AutomationStateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 2
 
     def while_leaking(self):
         r"""Documentation here
@@ -1142,7 +1284,61 @@ class LeakStateMachine(AutomationStateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 3
+
+    def while_resetting(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.criticity.value = 3
+        self.send('reset_to_confirm_reset')
+
+    def while_restarting(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.criticity.value = 3
+        self.send('restart_to_confirm_restart')
+
+    def while_con_reset(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.criticity.value = 4
+
+    def while_con_restart(self):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        self.criticity.value = 5
 
     def while_switching(self):
         r"""Documentation here
@@ -1155,7 +1351,7 @@ class LeakStateMachine(AutomationStateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 2
 
     def while_not_available(self):
         r"""Documentation here
@@ -1168,7 +1364,7 @@ class LeakStateMachine(AutomationStateMachine):
 
         - 
         """
-        pass
+        self.criticity.value = 5
 
     # Transitions methods
     def on_run_to_pre_alarm(self):

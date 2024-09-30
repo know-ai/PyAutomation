@@ -5,8 +5,14 @@ This module implements Logger Manager.
 """
 import logging
 from ..singleton import Singleton
-from ..logger import DataLoggerEngine, LogTable
+from ..logger.datalogger import DataLoggerEngine
+from ..logger.logdict import  LogTable
+from ..logger.alarms import AlarmsLoggerEngine
+from ..logger.events import EventsLoggerEngine
+from ..logger.users import UsersLoggerEngine
+from ..logger.logs import LogsLoggerEngine
 from ..tags import CVTEngine
+from automation.modules.users.users import User
 from ..dbmodels import (
     Tags, 
     TagValue, 
@@ -18,6 +24,10 @@ from ..dbmodels import (
     Units, 
     DataTypes,
     OPCUA,
+    Users,
+    Roles,
+    Events,
+    Logs,
     BaseModel
 )
 
@@ -35,6 +45,10 @@ class DBManager(Singleton):
         self.engine = CVTEngine()
         self._logging_tags = LogTable()
         self._logger = DataLoggerEngine()
+        self.alarms_logger = AlarmsLoggerEngine()
+        self.events_logger = EventsLoggerEngine()
+        self.users_logger = UsersLoggerEngine()
+        self.logs_logger = LogsLoggerEngine()
         self._tables = [
             Variables, 
             Units, 
@@ -45,7 +59,11 @@ class DBManager(Singleton):
             AlarmStates,
             Alarms,
             AlarmSummary,
-            OPCUA
+            OPCUA,
+            Roles,
+            Users,
+            Events,
+            Logs
         ]
 
         self._extra_tables = []
@@ -61,6 +79,10 @@ class DBManager(Singleton):
         **Returns** `None`
         """
         self._logger.set_db(db)
+        self.alarms_logger.set_db(db)
+        self.events_logger.set_db(db)
+        self.users_logger.set_db(db)
+        self.logs_logger.set_db(db)
 
     def get_db(self):
         r"""
@@ -109,6 +131,7 @@ class DBManager(Singleton):
         """
         self._tables.extend(self._extra_tables)
         self._logger.create_tables(self._tables)
+        self.alarms_logger.create_tables(self._tables)
 
     def drop_tables(self):
         r"""
@@ -163,7 +186,8 @@ class DBManager(Singleton):
         r"""
         Gets all tag defined in tag's repository
         """
-        return self._logger.get_alarms()
+
+        return self.alarms_logger.get_alarms()
 
     def set_tag(
         self, 
@@ -294,6 +318,19 @@ class DBManager(Singleton):
         Documentation here
         """
         return OPCUA.read_all()
+
+    # USERS METHODS
+    def set_role(self, name:str, level:int, identifier:str):
+        r"""
+        Documentation here
+        """
+        return self.users_logger.set_role(name=name, level=level, identifier=identifier)
+
+    def set_user(self, user:User):
+        r"""
+        Documentation here
+        """
+        return self.users_logger.set_user(user=user)
 
     def summary(self)->dict:
         r"""

@@ -174,12 +174,13 @@ class StateMachineWorker(BaseWorker):
         return loop
 
     def run(self):
-
+        
         for machine, interval, mode in self._manager.get_machines():
             
             if mode == "async":
                 
                 self._async_scheduler.add_machine(machine, interval)
+                
                 
             else:
                 func = self.loop_closure(machine)

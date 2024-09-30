@@ -1,6 +1,10 @@
-from flask import Blueprint
+from flask import Blueprint, request
 from flask_restx import Api as API
 from automation.singleton import Singleton
+from functools import wraps
+import logging, jwt
+from automation.modules.users.users import Users as CVTUsers
+from werkzeug.security import check_password_hash
 
 
 authorizations = {
@@ -21,6 +25,8 @@ api = API(blueprint, version='1.0',
         doc='/docs',
         authorizations=authorizations
     )
+
+users = CVTUsers()
 
 class Api(Singleton):
 
@@ -44,3 +50,82 @@ class Api(Singleton):
 
         return api
     
+    @staticmethod
+    def verify_tpt(tpt:str):
+        r"""
+        Verify Third Party Token
+        """
+        from automation import server
+        try:
+
+            jwt.decode(tpt, server.config["TPT_TOKEN"], algorithms=["HS256"])
+
+            return True
+
+        except:
+
+            return False
+    
+    @classmethod
+    def token_required(cls, auth:bool=False):
+        
+        def _token_required(f):
+            
+            @wraps(f)
+            def decorated(*args, **kwargs):
+                try:
+
+                    if auth:
+
+                        token = None
+
+                        if 'X-API-KEY' in request.headers:
+                            
+                            token = request.headers['X-API-KEY']
+
+                        elif 'Authorization' in request.headers:
+                            
+                            token = request.headers['Authorization'].split('Token ')[-1]
+
+                        if not token:
+                            
+                            return {'message' : 'Key is missing.'}, 401
+                        
+                        user = users.get_active_user(token=token)
+
+                        if user:
+
+                            return f(*args, **kwargs)
+
+                        if Api.verify_tpt(tpt=token):
+                    
+                            return f(*args, **kwargs)
+
+                        return {'message' : 'Invalid token'}, 401                  
+                
+                except Exception as err:
+
+                    logging.ERROR(str(err))
+
+            return decorated
+
+        return _token_required
+    
+    @classmethod
+    def get_current_user(cls):
+
+        token = None
+
+        if 'X-API-KEY' in request.headers:
+                            
+            token = request.headers['X-API-KEY']
+
+        elif 'Authorization' in request.headers:
+            
+            token = request.headers['Authorization'].split('Token ')[-1]
+
+        if token:
+
+            return users.get_active_user(token=token)
+
+        return None

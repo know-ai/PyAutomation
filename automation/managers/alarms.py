@@ -5,10 +5,12 @@ This module implements Alarm Manager.
 from datetime import datetime
 import queue
 from automation.singleton import Singleton
-from ..tags import CVTEngine, TagObserver, Tag
+from ..tags import CVTEngine, TagObserver
 from ..alarms import AlarmState
-from ..alarms.alarms import Alarm
-from ..alarms.trigger import Trigger
+from ..alarms.alarms import Alarm, AlarmState
+from ..dbmodels.alarms import AlarmSummary
+from ..modules.users.users import User
+from ..utils.decorators import set_event
 
 
 class AlarmManager(Singleton):
@@ -39,8 +41,10 @@ class AlarmManager(Singleton):
             tag_alarm:str=None,
             state:str="Normal",
             timestamp:str=None,
-            acknowledged_timestamp:str=None
-        )->dict:
+            acknowledged_timestamp:str=None,
+            user:User=None,
+            reload:bool=False
+        )->tuple[Alarm, str]:
         r"""
         Append alarm to the Alarm Manager
 
@@ -56,13 +60,13 @@ class AlarmManager(Singleton):
         alarm = self.get_alarm_by_name(name)
         if alarm:
             
-            return f"Alarm {name} is already defined"
+            return alarm, f"Alarm {name} is already defined"
 
         # Check if alarm is associated to same tag with same alarm type
         trigger_value_message = self.__check_trigger_values(name=name, tag=tag, type=type, trigger_value=trigger_value)
         if trigger_value_message:
 
-            return trigger_value_message
+            return None, trigger_value_message
                 
         alarm = Alarm(
             name=name, 
@@ -72,12 +76,24 @@ class AlarmManager(Singleton):
             tag_alarm=tag_alarm, 
             state=state,
             timestamp=timestamp,
-            acknowledged_timestamp=acknowledged_timestamp)
+            acknowledged_timestamp=acknowledged_timestamp,
+            user=user,
+            reload=reload)
         alarm.set_trigger(value=trigger_value, _type=type)
-        self._alarms[alarm._id] = alarm
+        self._alarms[alarm.identifier] = alarm
         self.attach_all()
+        return alarm, f"Alarm creation successful"
 
-    def update_alarm(self, id:str, **kwargs):
+    def put(
+            self, 
+            id:str, 
+            name:str=None,
+            tag:str=None,
+            description:str=None,
+            alarm_type:str=None,
+            trigger_value:float=None,
+            user:User=None
+            )->tuple[Alarm, str]:
         r"""
         Updates alarm attributes
 
@@ -95,31 +111,41 @@ class AlarmManager(Singleton):
         * **alarm** (dict) Alarm Object jsonable
         """
         alarm = self.get_alarm(id=id)
-        if "name" in kwargs:
+        if name:
             
-            if self.get_alarm_by_name(kwargs["name"]):
+            if self.get_alarm_by_name(name=name):
                 
-                return f"Alarm {kwargs['name']} is already defined"
+                return f"Alarm {name} is already defined"
             
         # Check if alarm is associated to same tag with same alarm type
-        tag = alarm.tag
-        if "tag" in kwargs:
-            tag = kwargs["tag"]
-        type = alarm._trigger.type.value
-        if "type" in kwargs:
-            type = kwargs["type"]
-        trigger_value = alarm._trigger.value
-        if "trigger_value" in kwargs:
-            trigger_value = float(kwargs["trigger_value"])
+        if not tag:
+            tag = alarm.tag
+        if not alarm_type:
+            alarm_type = alarm._trigger.type.value
+        if not trigger_value:
+            trigger_value = alarm._trigger.value
         
-        trigger_value_message = self.__check_trigger_values(name=alarm.name, tag=tag, type=type, trigger_value=trigger_value)
+        trigger_value_message = self.__check_trigger_values(
+            name=alarm.name, 
+            tag=tag, 
+            type=alarm_type, 
+            trigger_value=trigger_value
+            )
         if trigger_value_message:
 
-            return trigger_value_message
+            return None, trigger_value_message
         
-        alarm = alarm.update_alarm_definition(**kwargs)
+        alarm, message = alarm.put(
+            user=user,
+            name=name,
+            tag=tag,
+            description=description,
+            alarm_type=alarm_type,
+            trigger_value=trigger_value
+            )
         self._alarms[id] = alarm
 
+    @set_event(message=f"Deleted", classification="Alarm", priority=3, criticity=5)
     def delete_alarm(self, id:str):
         r"""
         Removes alarm
@@ -130,7 +156,9 @@ class AlarmManager(Singleton):
         """
         if id in self._alarms: 
                 
-            self._alarms.pop(id)
+            alarm = self._alarms.pop(id)
+
+        return alarm, f"Alarm: {alarm.name} - Tag: {alarm.tag}"
 
     def get_alarm(self, id:str)->Alarm:
         r"""
@@ -201,7 +229,7 @@ class AlarmManager(Singleton):
         * **alarm** (list) of alarm objects
         """
         alarms = list()
-        for id, alarm in self._alarms.items():
+        for _, alarm in self._alarms.items():
             
             if tag == alarm.tag:
                 
@@ -218,6 +246,21 @@ class AlarmManager(Singleton):
         * **alarms**: (dict) Alarm objects
         """
         return self._alarms
+    
+    def get_lasts_active_alarms(self, lasts:int=None)->list:
+        r"""
+        Documentation here
+        """
+        original_list = [alarm.serialize() for _, alarm in self.get_alarms().items()]
+        filtered_list = [elem for elem in original_list if elem['triggered']]
+        sorted_list = sorted(filtered_list, key=lambda x: x['timestamp'] if x['timestamp'] else '')
+        if lasts:
+            
+            if len(sorted_list)>lasts:
+
+                sorted_list = sorted_list[0:lasts]
+
+        return sorted_list
     
     def serialize(self)->list:
         r"""
@@ -305,6 +348,20 @@ class AlarmManager(Singleton):
                         if trigger_value<=alarm._trigger.value:
 
                             return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
+                        
+    def filter_by(self, **fields):
+        r"""
+        Documentation here
+        """
+
+        return AlarmSummary.filter_by(**fields), 200
+
+    def get_lasts(self, lasts:int=10):
+        r"""
+        Documentation here
+        """
+
+        return AlarmSummary.read_lasts(lasts=lasts), 200
 
     def summary(self)->dict:
         r"""

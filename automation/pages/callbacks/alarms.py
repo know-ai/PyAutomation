@@ -69,12 +69,12 @@ def init_callback(app:dash.Dash):
         if pathname=="/alarms":
 
             data = [{
-                "id": alarm["id"],
+                "id": alarm["identifier"],
                 "tag": alarm["tag"], 
                 "name": alarm["name"],
                 "description": alarm["description"],
                 "state": alarm["state"],
-                "type": alarm["type"],
+                "alarm_type": alarm["alarm_type"],
                 "trigger_value": alarm["trigger_value"]
                 } for alarm in app.automation.alarm_manager.serialize()]
 
@@ -87,7 +87,7 @@ def init_callback(app:dash.Dash):
             ]
             dropdown_options_tag = [{"label": tag["name"], "value": tag["name"]} for tag in app.automation.cvt.get_tags()]
             dropdown = {
-                "type": {
+                "alarm_type": {
                     "options": dropdown_options_type,
                 },
                 "tag": {
@@ -122,15 +122,15 @@ def init_callback(app:dash.Dash):
         """
         if "create_alarm_button" == dash.ctx.triggered_id:
             
-            message = app.automation.create_alarm(
+            alarm, message = app.automation.create_alarm(
                 name=alarm_name,
                 tag=tag_name,
-                type=alarm_type,
+                alarm_type=alarm_type,
                 trigger_value=trigger_value,
                 description=alarm_description
             )
             
-            if message:
+            if not alarm:
                 
                 dash.set_props("modal-body-alarm-create", {"children": message})
                 dash.set_props("modal-alarm-create", {'is_open': True})

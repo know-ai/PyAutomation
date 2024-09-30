@@ -388,11 +388,11 @@ class Tags(BaseModel):
 
     identifier = CharField(unique=True)
     name = CharField(unique=True)
-    unit = ForeignKeyField(Units, backref='tags', on_delete='CASCADE')
-    data_type = ForeignKeyField(DataTypes, backref='tags', on_delete='CASCADE')
+    unit = ForeignKeyField(Units, backref='tags')
+    data_type = ForeignKeyField(DataTypes, backref='tags')
     description = CharField(null=True, max_length=256)
     display_name = CharField()
-    display_unit = ForeignKeyField(Units, on_delete='CASCADE')
+    display_unit = ForeignKeyField(Units)
     opcua_address = CharField(null=True)
     node_namespace = CharField(null=True)
     scan_time = IntegerField(null=True)
@@ -408,10 +408,10 @@ class Tags(BaseModel):
         description:str,
         display_name:str,
         display_unit:str,
-        opcua_address:str=None,
-        node_namespace:str=None,
-        scan_time:int=None,
-        dead_band:float=None
+        opcua_address:str="",
+        node_namespace:str="",
+        scan_time:int=0,
+        dead_band:float=0.0
         ):
         r"""
         Documentation here
@@ -445,6 +445,7 @@ class Tags(BaseModel):
                         )
                     query.save()
                     message = f"{name} tag created successfully"
+                    
                     data.update(query.serialize())
 
                     result.update(

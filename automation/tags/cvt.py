@@ -1,9 +1,11 @@
-import threading
-import copy, logging
+import threading, copy, logging
+from datetime import datetime
 from ..singleton import Singleton
 from ..models import FloatType, StringType, IntegerType, BooleanType
+from ..modules.users.users import User
+from ..modules.users.users import User
+from ..utils.decorators import set_event
 from .tag import Tag
-from datetime import datetime
 
 class CVT:
     """Current Value Table class for Tag based repository.
@@ -24,6 +26,7 @@ class CVT:
         self._tags = dict()
         self.data_types = ["float", "int", "bool", "str"]
     
+    @set_event(message=f"Created", classification="Tag", priority=1, criticity=1)
     def set_tag(
         self, 
         name:str, 
@@ -37,8 +40,9 @@ class CVT:
         node_namespace:str="",
         scan_time:int=None,
         dead_band:float=None,
-        id:str=None
-        )->None|str:
+        id:str=None,
+        user:User=None
+        )->tuple[Tag, str]:
         """Initialize a new Tag object in the _tags dictionary.
         
         # Parameters
@@ -69,7 +73,7 @@ class CVT:
         has_duplicates, message = self.has_duplicates(name=name, display_name=display_name, opcua_address=opcua_address, node_namespace=node_namespace)
         if has_duplicates:
 
-            return message
+            return None, message
         
         if not display_unit:
 
@@ -91,7 +95,25 @@ class CVT:
         )
         self._tags[tag.id] = tag
 
-    def update_tag(self, id:str, **kwargs)->None|str:
+        return tag, f"Tag: {name} - {unit}"
+
+    @set_event(message=f"Updated", classification="Tag", priority=1, criticity=3)
+    def update_tag(
+        self, 
+        id:str,  
+        name:str, 
+        unit:str, 
+        data_type:str, 
+        description:str, 
+        variable:str,
+        display_name:str="",
+        display_unit:str="",
+        opcua_address:str="",
+        node_namespace:str="",
+        scan_time:int=None,
+        dead_band:float=None,
+        user:User=None, 
+        )->tuple[Tag|None, str]:
         r"""Documentation here
 
         # Parameters
@@ -102,16 +124,41 @@ class CVT:
 
         - 
         """
-        has_duplicates, message = self.has_duplicates(**kwargs)
+        has_duplicates, message = self.has_duplicates(name=name, display_name=display_name, node_namespace=node_namespace, opcua_address=opcua_address)
         if has_duplicates:
 
-            return message
+            return None, message
         
         tag = self._tags[id]
-        tag.update(**kwargs)
+        if name:
+            tag.set_name(name=name)
+        if unit:
+            tag.set_unit(unit=unit)
+        if data_type:
+            tag.set_data_type(data_type=data_type)
+        if description:
+            tag.set_description(description=description)
+        if variable:
+            tag.set_variable(variable=variable)
+        if display_name:
+            tag.set_display_name(name=display_name)
+        if display_unit:
+            tag.set_display_unit(unit=display_unit)
+        if opcua_address:
+            tag.set_opcua_address(opcua_address=opcua_address)
+        if node_namespace:
+            tag.set_node_namespace(node_namespace=node_namespace)
+        if scan_time:
+            tag.set_scan_time(scan_time=scan_time)
+        if dead_band:
+            tag.set_dead_band(dead_band=dead_band)
+        
         self._tags[id] = tag
 
-    def delete_tag(self, id:str):
+        return tag, f"Tag: {tag.name}"
+
+    @set_event(message=f"Updated", classification="Tag", priority=1, criticity=5)
+    def delete_tag(self, id:str, user:User):
         r"""Documentation here
 
         # Parameters
@@ -122,7 +169,8 @@ class CVT:
 
         - 
         """
-        self._tags.pop(id)
+        tag = self._tags.pop(id)
+        return tag, f"Tag: {tag.name}"
 
     def get_tag(self, id:str)->Tag|None:
         r"""Documentation here
@@ -142,13 +190,50 @@ class CVT:
                 return tag
 
         return None
+    
+    def get_unit_by_tag(self, tag:str)->Tag|None:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        for _id, _tag in self._tags.items():
+
+            if _tag.name==tag:
+                
+                return _tag.unit
+
+        return None
+    
+    def get_display_unit_by_tag(self, tag:str)->Tag|None:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        for _id, _tag in self._tags.items():
+            
+            if _tag.name==tag:
+                
+                return _tag.display_unit
+
+        return None
 
     def get_tags(self)->list:
         r"""
         Returns a list of the defined tags names.
-        """
-
-        return [value.serialize() for _, value in self._tags.items()]
+        """        
+        return [tag.serialize() for _, tag in self._tags.items()]
     
     def get_tag_by_name(self, name:str)->Tag|None:
         r"""Documentation here
@@ -328,7 +413,7 @@ class CVT:
             self._tags[tag.id].attach(observer)
         
         else:
-
+            
             logging.warning(f"{name} tag Not exists in CVT.attach_observer method")
 
     def detach_observer(self, name, observer):
@@ -344,7 +429,7 @@ class CVT:
         tag = self.get_tag_by_name(name)
         self._tags[tag.id].detach(observer)
 
-    def has_duplicates(self, tag:Tag=None, name:str=None, display_name:str=None, node_namespace:str=None, opcua_address:str=None, **kwargs):
+    def has_duplicates(self, tag:Tag=None, name:str=None, display_name:str=None, node_namespace:str=None, opcua_address:str=None):
         r"""Documentation here
 
         # Parameters
@@ -384,6 +469,19 @@ class CVT:
             
         return False, f"Valid Tag Name: {name} - Display Name: {display_name}"
     
+    def __persist_on_event_logger(self, user:User, message:str, description:str, priority:int, criticity:int):
+
+        if isinstance(user, User):
+
+            self.events_engine.create(
+                message=message,
+                description=description,
+                classification="Alarms",
+                priority=priority,
+                criticity=criticity,
+                user=user
+            )
+
     def serialize(self, id:str)->dict:
         r"""Returns a tag type defined by name.
         
@@ -436,6 +534,7 @@ class CVTEngine(Singleton):
         self._config = None
         self._response = None
         self._response_lock.acquire()
+        self.DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
     def set_tag(
         self, 
@@ -448,10 +547,11 @@ class CVTEngine(Singleton):
         display_name:str="",
         opcua_address:str="",
         node_namespace:str="",
-        scan_time:int=None,
-        dead_band:float=None,
-        id:str=None,
-        ):
+        scan_time:int=0,
+        dead_band:float=0.0,
+        id:str="",
+        user:User|None=None
+        )->tuple[Tag, str]:
         r"""Documentation here
 
         # Parameters
@@ -477,9 +577,25 @@ class CVTEngine(Singleton):
         _query["parameters"]["scan_time"] = scan_time
         _query["parameters"]["dead_band"] = dead_band
         _query["parameters"]["id"] = id
+        _query["parameters"]["user"] = user
         return self.__query(_query)
     
-    def update_tag(self, id:str, **kwargs):
+    def update_tag(
+            self, 
+            id:str,  
+            name:str, 
+            unit:str, 
+            data_type:str, 
+            description:str, 
+            variable:str,
+            display_name:str="",
+            display_unit:str="",
+            opcua_address:str="",
+            node_namespace:str="",
+            scan_time:int=None,
+            dead_band:float=None,
+            user:User=None, 
+        ):
         r"""Documentation here
 
         # Parameters
@@ -494,10 +610,21 @@ class CVTEngine(Singleton):
         _query["action"] = "update_tag"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
-        _query["parameters"].update(kwargs)
+        _query["parameters"]["user"] = user
+        _query["parameters"]["name"] = name
+        _query["parameters"]["unit"] = unit
+        _query["parameters"]["data_type"] = data_type
+        _query["parameters"]["description"] = description
+        _query["parameters"]["variable"] = variable
+        _query["parameters"]["display_name"] = display_name
+        _query["parameters"]["display_unit"] = display_unit
+        _query["parameters"]["scan_time"] = scan_time
+        _query["parameters"]["dead_band"] = dead_band
+        _query["parameters"]["node_namespace"] = node_namespace
+        _query["parameters"]["opcua_address"] = opcua_address
         return self.__query(_query)
     
-    def delete_tag(self, id:str):
+    def delete_tag(self, id:str, user:User|None=None):
         r"""Documentation here
 
         # Parameters
@@ -512,6 +639,7 @@ class CVTEngine(Singleton):
         _query["action"] = "delete_tag"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
+        _query["parameters"]["user"] = user
         return self.__query(_query)
     
     def get_tag(
@@ -683,6 +811,23 @@ class CVTEngine(Singleton):
         _query["action"] = "get_dead_band"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
+        return self.__query(_query)
+    
+    def get_display_unit_by_tag(self, tag:str)->str:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "get_display_unit_by_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["tag"] = tag
         return self.__query(_query)
     
     def set_value(self, id:str, value, timestamp:datetime):

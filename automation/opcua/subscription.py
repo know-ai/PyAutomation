@@ -2,7 +2,7 @@ from automation.singleton import Singleton
 from automation.tags.cvt import CVTEngine
 from automation.tags import Tag
 from automation.buffer import Buffer
-from automation.logger import DataLoggerEngine
+from automation.logger.datalogger import DataLoggerEngine
 from math import ceil
         
 
@@ -111,7 +111,6 @@ class DAS(Singleton):
         r"""
         Documentation here
         """
-
         if client_name not in self.monitored_items:
             
             monitored_item = subscription.subscribe_data_change(

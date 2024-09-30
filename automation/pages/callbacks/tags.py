@@ -218,15 +218,23 @@ def init_callback(app:dash.Dash):
         description,
         opcua_address,
         node_namespace,
-        scan_time,
-        dead_band
+        scan_time:int|None=None,
+        dead_band:float|None=None
         ):
         r"""
         Documentation here
         """
         if "create_tag_button" == dash.ctx.triggered_id:
+
+            if not scan_time:
+
+                scan_time = None
             
-            message = app.automation.create_tag(
+            if not dead_band:
+
+                dead_band = None
+            
+            tag, message = app.automation.create_tag(
                 name=tag_name,
                 unit=unit,
                 display_unit=display_unit,
@@ -240,7 +248,7 @@ def init_callback(app:dash.Dash):
                 dead_band=dead_band
             )
             
-            if message:
+            if not tag:
                 
                 dash.set_props("modal-body", {"children": message})
                 dash.set_props("modal-centered", {'is_open': True})
@@ -335,9 +343,9 @@ def init_callback(app:dash.Dash):
                     to_updates = find_differences_between_lists(previous, current)
                     tag_to_update = to_updates[0]
                     tag_id = tag_to_update.pop("id")
-                    message = app.automation.update_tag(id=tag_id, **tag_to_update)
+                    tag, message = app.automation.update_tag(id=tag_id, **tag_to_update)
                     
-                    if message:
+                    if not tag:
                         dash.set_props("modal-body", {"children": message})
                         dash.set_props("modal-centered", {'is_open': True})
 

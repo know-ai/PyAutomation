@@ -3,8 +3,9 @@ from automation.dbmodels.core import BaseModel
 from datetime import datetime
 from .tags import Tags
 from ..alarms.states import States
+from ..tags.cvt import CVTEngine
 
-DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
+tag_engine = CVTEngine()
 
 class AlarmTypes(BaseModel):
 
@@ -215,12 +216,12 @@ class Alarms(BaseModel):
 
     identifier = CharField(unique=True)
     name = CharField(unique=True, max_length=64)
-    tag = ForeignKeyField(Tags, backref='alarms', on_delete='CASCADE')
-    trigger_type = ForeignKeyField(AlarmTypes, backref='alarms', on_delete='CASCADE')
+    tag = ForeignKeyField(Tags, backref='alarms')
+    trigger_type = ForeignKeyField(AlarmTypes, backref='alarms')
     trigger_value = FloatField()
     description = CharField(null=True, max_length=256)
     tag_alarm = CharField(null=True, max_length=64)
-    state = ForeignKeyField(AlarmStates, backref='alarms', on_delete='CASCADE')
+    state = ForeignKeyField(AlarmStates, backref='alarms')
     timestamp = DateTimeField(null=True)
     acknowledged_timestamp = DateTimeField(null=True)
 
@@ -298,6 +299,20 @@ class Alarms(BaseModel):
         - 
         """
         return cls.get_or_none(id=id)
+    
+    @classmethod
+    def read_by_identifier(cls, identifier:str):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        return cls.get_or_none(identifier=identifier)
         
     @classmethod
     def read_by_name(cls, name:str):
@@ -327,18 +342,18 @@ class Alarms(BaseModel):
         timestamp = self.timestamp
         if timestamp:
 
-            timestamp = timestamp.strftime(DATETIME_FORMAT)
+            timestamp = timestamp.strftime(tag_engine.DATETIME_FORMAT)
 
         acknowledged_timestamp = self.acknowledged_timestamp
         if acknowledged_timestamp:
 
-            acknowledged_timestamp = timestamp.strftime(DATETIME_FORMAT)
+            acknowledged_timestamp = timestamp.strftime(tag_engine.DATETIME_FORMAT)
 
         return {
             'identifier': self.identifier,
             'name': self.name,
             'tag': self.tag.name,  
-            'type': self.trigger_type.name,
+            'alarm_type': self.trigger_type.name,
             'trigger_value': self.trigger_value,
             'description': self.description,
             'tag_alarm': self.tag_alarm,
@@ -359,7 +374,7 @@ class AlarmSummary(BaseModel):
     def create(cls, name:str, state:str):
         _alarm = Alarms.read_by_name(name=name)
         _state = AlarmStates.read_by_name(name=state)
-
+        
         if _alarm:
 
             if _state:
@@ -433,11 +448,63 @@ class AlarmSummary(BaseModel):
         r"""
         Documentation here
         """
-        alarms = cls.select().where(cls.id > cls.select().count() - int(lasts)).order_by(cls.id.desc())
+        alarms = cls.select().order_by(cls.id.desc()).limit(lasts)
 
-        result = [alarm.serialize() for alarm in alarms]
+        return [alarm.serialize() for alarm in alarms]
+    
+    @classmethod
+    def filter_by(
+        cls,
+        states:list[str]=None,
+        names:list[str]=None,
+        tags:list[str]=None,
+        greater_than_timestamp:datetime=None,
+        less_than_timestamp:datetime=None
+        ):
+        r"""
+        Documentation here
+        """
+        if states:
+            subquery = AlarmStates.select(AlarmStates.id).where(AlarmStates.name.in_(states))
+            _query = cls.select().join(AlarmStates).where(AlarmStates.id.in_(subquery)).order_by(cls.id.desc())
 
-        return result
+        if names:
+            subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(names))
+            if _query:
+                _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
+            else:
+                _query = cls.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
+
+        if tags:
+            subquery = Tags.select(Tags.id).where(Tags.name.in_(tags))
+            subquery = Alarms.select(Alarms.id).join(Tags).where(Tags.id.in_(subquery))
+            if _query:
+                _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
+            else:
+                _query = cls.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
+
+        if greater_than_timestamp:
+            if _query:
+                _query = _query.select().where(cls.alarm_time > greater_than_timestamp).order_by(cls.id.desc())
+            else:
+                _query = cls.select().where(cls.alarm_time > greater_than_timestamp).order_by(cls.id.desc())
+
+        if less_than_timestamp:
+            if _query:
+                _query = _query.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
+            else:
+                _query = cls.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
+
+        return [alarm.serialize() for alarm in _query]
+
+    @classmethod
+    def get_alarm_summary_comments(cls, id:int):
+        r"""
+        Documentation here
+        """
+        query = cls.read(id=id)
+
+        return [comment.serialize() for comment in query.logs]
 
     def serialize(self):
         r"""
@@ -445,7 +512,7 @@ class AlarmSummary(BaseModel):
         """
         ack_time = None
         if self.ack_time:
-            ack_time = self.ack_time.strftime(DATETIME_FORMAT)
+            ack_time = self.ack_time.strftime(tag_engine.DATETIME_FORMAT)
         return {
             'id': self.id,
             'name': self.alarm.name,
@@ -454,6 +521,7 @@ class AlarmSummary(BaseModel):
             'state': self.state.name,
             'mnemonic': self.state.mnemonic,
             'status': self.state.status,
-            'alarm_time': self.alarm_time.strftime(DATETIME_FORMAT),
+            'alarm_time': self.alarm_time.strftime(tag_engine.DATETIME_FORMAT),
             'ack_time': ack_time
         }
+    

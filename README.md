@@ -35,7 +35,7 @@ pip install -r requirements.txt
 ## Run Config page
 
 ```python
-python test_config.py
+python wsgi.py
 ```
 
 ## Deploy documentation on Development mode With mkautodoc

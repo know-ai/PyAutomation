@@ -6,7 +6,7 @@ This module implements Logger Worker.
 import time
 import logging
 
-from ..logger.logger import DataLoggerEngine
+from ..logger.datalogger import DataLoggerEngine
 from .worker import BaseWorker
 from ..utils import chunks, log_detailed
 

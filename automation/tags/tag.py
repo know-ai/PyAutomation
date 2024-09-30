@@ -71,6 +71,12 @@ class Tag:
         self.timestamp = timestamp
         self._observers = set()
 
+    def set_name(self, name:str):
+        r"""
+        Documentation here
+        """
+        self.name = name
+
     def set_value(self, value:float|str|int|bool, timestamp:datetime=None):
         r"""
         Documentation here
@@ -81,31 +87,25 @@ class Tag:
         self.timestamp = timestamp
         self.notify()
 
-    def get_value(self):
-        r"""
-        Documentation here
-        """            
-        return round(self.value.convert(to_unit=self.display_unit), 3)
-    
-    def get_timestamp(self):
-        r"""
-        Documentation here
-        """
-        return self.timestamp
-
-    def set_display_name(self, value:str):
+    def set_display_name(self, name:str):
         r"""
         Documentation here
         """
 
-        self.display_name = value
+        self.display_name = name
 
-    def set_variable(self, value:str):
+    def set_data_type(self, data_type:str):
+        r"""
+        Documentation here
+        """
+        self.data_type = data_type
+
+    def set_variable(self, variable:str):
         r"""
         Documentation here
         """
 
-        self.variable = value
+        self.variable = variable
 
     def set_opcua_address(self, opcua_address:str):
         r"""
@@ -113,11 +113,47 @@ class Tag:
         """
         self.opcua_address = opcua_address
 
+    def set_unit(self, unit:str):
+        r"""
+        Documentation here
+        """
+        self.unit = unit
+
+    def set_display_unit(self, unit:str): 
+        r"""
+        Documentation here
+        """
+        self.display_unit = unit
+
     def set_node_namespace(self, node_namespace:str):
         r"""
         Documentation here
         """
         self.node_namespace = node_namespace
+
+    def get_value(self):
+        r"""
+        Documentation here
+        """            
+        return round(self.value.convert(to_unit=self.display_unit), 3)
+    
+    def set_scan_time(self, scan_time:int):
+        r"""
+        Documentation here
+        """
+        self.scan_time = scan_time
+
+    def set_dead_band(self, dead_band:float):
+        r"""
+        Documentation here
+        """
+        self.dead_band = dead_band
+
+    def get_timestamp(self):
+        r"""
+        Documentation here
+        """
+        return self.timestamp
 
     def get_scan_time(self):
         r"""
@@ -233,16 +269,6 @@ class Tag:
             self.get_dead_band(),
             self.get_timestamp()
         )
-    
-    def update(self, **kwargs):
-        r"""
-        Documentation here
-        """
-        for key, value in kwargs.items():
-
-            if hasattr(self, key):
-
-                setattr(self, key, value)
 
     def serialize(self):
 
