@@ -174,6 +174,7 @@ class PyAutomation(Singleton):
             if self.is_db_connected():
 
                 self.logger_engine.set_tag(tag=tag)
+                self.db_manager.attach_all()
 
             if scan_time:
 
@@ -219,11 +220,11 @@ class PyAutomation(Singleton):
 
         return self.cvt.get_tag_by_name(name=name)
 
-    def get_trends(self, start:str, stop:str, *tags):
+    def get_trends(self, start:str, stop:str, timezone:str, *tags):
         r"""
         Documentation here
         """
-        return self.logger_engine.read_trends(start, stop, *tags)
+        return self.logger_engine.read_trends(start, stop, timezone, *tags)
 
     @validate_types(id=str, output=None|str)
     def delete_tag(self, id:str, user:User|None=None)->None|str:
@@ -678,40 +679,6 @@ class PyAutomation(Singleton):
         proxy.initialize(self._db)
         self.db_manager.set_db(self._db)
         self.db_manager.set_dropped(drop_table)
-
-    @validate_types(output=LoggerWorker)
-    def init_db(self)->LoggerWorker:
-        r"""
-        Initialize Logger Worker
-
-        **Returns**
-
-        * **db_worker**: (LoggerWorker Object)
-        """
-        db_worker = LoggerWorker(self.db_manager)
-        db_worker.init_database()
-
-        try:
-
-            db_worker.daemon = True
-            db_worker.start()
-
-        except Exception as e:
-            message = "Error on db worker start-up"
-            log_detailed(e, message)
-
-        return db_worker
-
-    @validate_types(db_worker=LoggerWorker, output=None)
-    def stop_db(self, db_worker:LoggerWorker):
-        r"""
-        Stops Database Worker
-        """
-        try:
-            db_worker.stop()
-        except Exception as e:
-            message = "Error on db worker stop"
-            log_detailed(e, message)
 
     @validate_types(
             dbtype=str, 
@@ -1244,7 +1211,7 @@ class PyAutomation(Singleton):
 
             self.db_worker = LoggerWorker(self.db_manager)
             self.connect_to_db(test=test)
-            # self.db_worker.start_workers()
+            self.db_worker.start()
 
         if self._create_alarm_worker:
             alarm_manager = self.get_alarm_manager()

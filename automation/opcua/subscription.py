@@ -162,10 +162,10 @@ class DAS(Singleton):
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
         tag_name = tag.get_name()
         self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-        # PERSISTENCY ON DB
-        if self.logger.get_db():
+        # # PERSISTENCY ON DB
+        # if self.logger.get_db():
             
-            self.logger.write_tag(tag=tag_name, value=val, timestamp=timestamp)
+        #     self.logger.write_tag(tag=tag_name, value=val, timestamp=timestamp)
 
         self.buffer[tag_name]["timestamp"](timestamp)
         self.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))

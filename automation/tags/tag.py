@@ -308,7 +308,7 @@ class TagObserver(Observer):
         """
         
         result = dict()
-        # print(f"From tag Observer: {self._subject}")
         result["tag"] = self._subject.name
         result["value"] = self._subject.value
+        result["timestamp"] = self._subject.timestamp
         self._tag_queue.put(result)

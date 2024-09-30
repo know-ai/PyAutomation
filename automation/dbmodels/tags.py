@@ -1,4 +1,4 @@
-from peewee import CharField, DateTimeField, FloatField, ForeignKeyField, IntegerField, fn
+from peewee import CharField, DateTimeField, FloatField, ForeignKeyField, IntegerField, fn, TimestampField
 from .core import BaseModel
 from datetime import datetime
 
@@ -573,7 +573,7 @@ class TagValue(BaseModel):
 
     tag = ForeignKeyField(Tags, backref='values')
     value = FloatField()
-    timestamp = DateTimeField()
+    timestamp = TimestampField(utc=True)
 
     @classmethod
     def create(

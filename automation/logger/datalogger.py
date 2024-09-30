@@ -4,13 +4,16 @@
 This module implements a database logger for the CVT instance, 
 will create a time-serie for each tag in a short memory data base.
 """
-import logging, sys, os
+import logging, sys, os, pytz
 from datetime import datetime
 from ..tags.tag import Tag
 from ..dbmodels import Tags, TagValue
 from ..modules.users.users import User
+from ..tags.cvt import CVTEngine
 from .core import BaseLogger, BaseEngine
 
+
+DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
 
 class DataLogger(BaseLogger):
 
@@ -29,6 +32,7 @@ class DataLogger(BaseLogger):
     def __init__(self):
 
         super(DataLogger, self).__init__()
+        self.tag_engine = CVTEngine()
 
     def set_tag(
         self, 
@@ -124,7 +128,7 @@ class DataLogger(BaseLogger):
                     'tag': Tags.read_by_name(tag['tag'])
                 })
 
-            TagValue.insert_many(tags).execute()
+            TagValue.insert_many(_tags).execute()
 
         except Exception as e:
             _, _, e_traceback = sys.exc_info()
@@ -165,12 +169,13 @@ class DataLogger(BaseLogger):
             conn = self._db.connection()
             conn.rollback()
 
-    def read_trends(self, start:str, stop:str, tags):
+    def read_trends(self, start:str, stop:str, timezone:str, tags):
         r"""
         Documentation here
-        """    
-        start = datetime.strptime(start, self.tag_engine.DATETIME_FORMAT)
-        stop = datetime.strptime(stop, self.tag_engine.DATETIME_FORMAT)
+        """  
+        _timezone = pytz.timezone(timezone)
+        start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
+        stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
         result = {tag: {
             'values': list(),
             'unit': self.tag_engine.get_display_unit_by_tag(tag)
@@ -426,7 +431,7 @@ class DataLoggerEngine(BaseEngine):
 
         return self.query(_query)
     
-    def read_trends(self, start:str, stop:str, *tags):
+    def read_trends(self, start:str, stop:str, timezone:str, *tags):
         r"""
         Read tag value from database on a thread-safe mechanism
 
@@ -443,6 +448,7 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         _query["parameters"]["start"] = start
         _query["parameters"]["stop"] = stop
+        _query["parameters"]["timezone"] = timezone
         _query["parameters"]["tags"] = tags
         return self.query(_query)
 

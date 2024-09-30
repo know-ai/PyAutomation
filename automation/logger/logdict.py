@@ -22,36 +22,6 @@ class LogTable(dict):
 
         return True
 
-    def add_tag(
-        self,
-        tag, 
-        unit, 
-        data_type, 
-        description,
-        display_name, 
-        min_value, 
-        max_value, 
-        tcp_source_address, 
-        node_namespace, 
-        period
-    ):
-
-        if not self.validate(period, tag):
-            return
-
-        for key, value in self.items():
-
-            if tag in value:
-                self[key].remove(tag)
-
-        if period in self.keys():
-
-            self[period].append((tag, unit, data_type, description, display_name, min_value, max_value, tcp_source_address, node_namespace))
-
-        else:
-
-            self[period] = [(tag, unit, data_type, description, display_name, min_value, max_value, tcp_source_address, node_namespace)]
-
     def get_groups(self):
 
         return list(self.keys())

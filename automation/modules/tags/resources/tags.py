@@ -3,6 +3,7 @@ from automation import PyAutomation
 from datetime import datetime, timedelta
 from automation.extensions.api import api
 from automation.extensions import _api as Api
+import pytz
 
 
 ns = Namespace('Tags', description='Tags')
@@ -10,8 +11,9 @@ app = PyAutomation()
 
 query_trends_model = api.model("query_trends_model",{
     'tags':  fields.List(fields.String(), required=True),
-    'greater_than_timestamp': fields.DateTime(required=True, default=datetime.now() - timedelta(minutes=2), description='Greater than DateTime'),
-    'less_than_timestamp': fields.DateTime(required=True, default=datetime.now(), description='Less than DateTime')
+    'greater_than_timestamp': fields.DateTime(required=True, default=datetime.now().astimezone(pytz.UTC) - timedelta(minutes=5), description='Greater than DateTime'),
+    'less_than_timestamp': fields.DateTime(required=True, default=datetime.now().astimezone(pytz.UTC), description='Less than DateTime'),
+    'timezone': fields.String(required=True, default='UTC')
 })
 
 
@@ -38,12 +40,32 @@ class QueryTrendsResource(Resource):
 
         Authorized Roles: {0}
         """
+        timezone = 'UTC'
         tags = api.payload['tags']
+        if "timezone" in api.payload:
+
+            timezone = api.payload["timezone"]
+
+        if timezone not in pytz.all_timezones:
+
+            return f"Invalid Timezone", 400
+        
         separator = '.'
         greater_than_timestamp = api.payload['greater_than_timestamp']
         start = greater_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
         less_than_timestamp = api.payload['less_than_timestamp']
         stop = less_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
-        result = app.get_trends(start, stop, *tags)
+        result = app.get_trends(start, stop, timezone, *tags)
         
         return result, 200
+    
+@ns.route('/timezones')
+class TimezonesCollection(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def get(self):
+        """
+        Get Available Timezones
+        """
+        return pytz.all_timezones, 200
