@@ -1,6 +1,7 @@
 import unittest
 from automation.modules.users.users import Users, User
 from automation.modules.users.roles import roles, Role
+from . import assert_dict_contains_subset
 
 USERNAME = "user1"
 ROLE_NAME = "admin"
@@ -35,7 +36,7 @@ class TestUsers(unittest.TestCase):
             "name": "admin",
             "level": 0
         }
-        self.assertDictContainsSubset(expected, admin.serialize())
+        assert_dict_contains_subset(expected, admin.serialize())
     
     def test_add_role_to_repo(self):
         
