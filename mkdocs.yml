@@ -17,13 +17,14 @@ nav:
         - Summary: 'Users_Guide/Alarms/index.md' 
       - Database:
         - Summary: 'Users_Guide/Database/index.md' 
-      - Monitor: 
-        - Summary: 'Users_Guide/Monitor/index.md' 
+      - Communications: 
+        - Summary: 'Users_Guide/Communications/index.md' 
       - Tags: 
         - Summary: 'Users_Guide/Tags/index.md'   
         - Create Tag: 'Users_Guide/Tags/Create.md' 
         - Update Tag: 'Users_Guide/Tags/Update.md' 
-        - Delete Tag: 'Users_Guide/Tags/Delete.md' 
+        - Delete Tag: 'Users_Guide/Tags/Delete.md'
+        - Trends: 'Users_Guide/Tags/Trends.md'
     - Setup: 'setup.md'
     - Development's Guide:
       - Summary: 'Developments_Guide/index.md'
