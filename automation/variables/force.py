@@ -1,4 +1,4 @@
-from automation.utils.units import *
+from ..utils.units import *
 
 class Force(EngUnit):
     """Creates a force object that can store a force value and 

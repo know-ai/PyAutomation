@@ -1,9 +1,9 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from automation import PyAutomation
-from automation.extensions.api import api
-from automation.extensions import _api as Api
-from automation.modules.users.users import Users as CVTUsers
+from .... import PyAutomation
+from ....extensions.api import api
+from ....extensions import _api as Api
+from ....modules.users.users import Users as CVTUsers
 
 
 ns = Namespace('Users', description='Users')

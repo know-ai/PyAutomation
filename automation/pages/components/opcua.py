@@ -1,8 +1,8 @@
 import dash
-from automation.singleton import Singleton
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
 from dash_iconify import DashIconify
+from ...singleton import Singleton
 
 
 class FileTree:

@@ -1,8 +1,8 @@
-from automation.opcua.models import Client
-from automation.dbmodels import OPCUA
-from automation.logger.datalogger import DataLoggerEngine
-from automation.tags import CVTEngine
-from automation.opcua.subscription import DAS
+from ..opcua.models import Client
+from ..dbmodels import OPCUA
+from ..logger.datalogger import DataLoggerEngine
+from ..tags import CVTEngine
+from ..opcua.subscription import DAS
 
 class OPCUAClientManager:
     r"""

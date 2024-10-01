@@ -1,4 +1,4 @@
-from automation.utils.units import *
+from ..utils.units import *
 
 class Mass(EngUnit):
     """Creates a mass object that can store a mass value and 

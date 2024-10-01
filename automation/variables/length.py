@@ -1,4 +1,4 @@
-from automation.utils.units import EngUnit, UnitSerializer, UnitError
+from ..utils.units import EngUnit, UnitSerializer, UnitError
 
 class Length(EngUnit):
     """Creates a length object that can store a length value and 

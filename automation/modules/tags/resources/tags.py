@@ -1,9 +1,9 @@
-from flask_restx import Namespace, Resource, fields
-from automation import PyAutomation
-from datetime import datetime, timedelta
-from automation.extensions.api import api
-from automation.extensions import _api as Api
 import pytz
+from datetime import datetime, timedelta
+from flask_restx import Namespace, Resource, fields
+from .... import PyAutomation
+from ....extensions.api import api
+from ....extensions import _api as Api
 
 
 ns = Namespace('Tags', description='Tags')

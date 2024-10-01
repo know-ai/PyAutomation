@@ -1,4 +1,4 @@
-from automation.extensions.api import api
+from ....extensions.api import api
 
 
 def init_app():

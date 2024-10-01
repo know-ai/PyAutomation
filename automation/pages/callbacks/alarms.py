@@ -1,5 +1,5 @@
 import dash
-from automation.utils import find_differences_between_lists, generate_dropdown_conditional
+from ...utils import find_differences_between_lists, generate_dropdown_conditional
 
 def init_callback(app:dash.Dash):
 

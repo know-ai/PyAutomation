@@ -1,9 +1,9 @@
-from flask_restx import Namespace, Resource, fields
-from automation import PyAutomation
-from automation.extensions.api import api
 from datetime import datetime, timedelta
-from automation.extensions import _api as Api
-from automation.dbmodels.events import Events
+from flask_restx import Namespace, Resource, fields
+from .... import PyAutomation
+from ....extensions.api import api
+from ....extensions import _api as Api
+from ....dbmodels.events import Events
 
 ns = Namespace('Events Logger', description='Events Logger')
 app = PyAutomation()

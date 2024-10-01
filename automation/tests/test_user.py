@@ -1,7 +1,7 @@
 import unittest
-from automation.modules.users.users import Users, User
-from automation.modules.users.roles import roles, Role
 from . import assert_dict_contains_subset
+from ..modules.users.users import Users, User
+from ..modules.users.roles import roles, Role
 
 USERNAME = "user1"
 ROLE_NAME = "admin"

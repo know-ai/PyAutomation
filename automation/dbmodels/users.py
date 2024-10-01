@@ -1,9 +1,9 @@
 from peewee import CharField, IntegerField, ForeignKeyField
-from automation.dbmodels.core import BaseModel
-from automation.modules.users.users import Users as CVTUsers
-from automation.modules.users.roles import Roles as CVTRoles
-from automation.modules.users.roles import Role
-from automation.modules.users.users import User
+from ..dbmodels.core import BaseModel
+from ..modules.users.users import Users as CVTUsers
+from ..modules.users.roles import Roles as CVTRoles
+from ..modules.users.roles import Role
+from ..modules.users.users import User
 
 users = CVTUsers()
 roles = CVTRoles()

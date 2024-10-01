@@ -1,4 +1,4 @@
-from automation.utils.units import *
+from ..utils.units import *
 
 class VolumetricFlow(EngUnit):
     """Creates a flow object that can store a flow value and 

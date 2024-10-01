@@ -1,9 +1,9 @@
-from automation.singleton import Singleton
-from automation.tags.cvt import CVTEngine
-from automation.tags import Tag
-from automation.buffer import Buffer
-from automation.logger.datalogger import DataLoggerEngine
 from math import ceil
+from ..singleton import Singleton
+from ..tags.cvt import CVTEngine
+from ..tags import Tag
+from ..buffer import Buffer
+from ..logger.datalogger import DataLoggerEngine
         
 
 class SubHandler(Singleton):

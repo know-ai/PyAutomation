@@ -1,5 +1,5 @@
-from automation.singleton import Singleton
 import secrets
+from ...singleton import Singleton
 
 
 class Role:

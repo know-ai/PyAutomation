@@ -1,4 +1,4 @@
-from automation.utils.units import EngUnit, UnitSerializer, UnitError
+from ..utils.units import EngUnit, UnitSerializer, UnitError
 
 class Temperature(EngUnit):
     """Creates a temperature object that can store a temperature value and

@@ -1,5 +1,5 @@
 from peewee import CharField, FloatField, DateTimeField, ForeignKeyField, BooleanField
-from automation.dbmodels.core import BaseModel
+from ..dbmodels.core import BaseModel
 from datetime import datetime
 from .tags import Tags
 from ..alarms.states import States

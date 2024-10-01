@@ -1,7 +1,8 @@
-from automation.singleton import Singleton
-from .roles import Role, Roles
-from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
+from werkzeug.security import generate_password_hash, check_password_hash
+from ...singleton import Singleton
+from .roles import Role, Roles
+
 
 
 class User:

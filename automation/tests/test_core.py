@@ -1,9 +1,9 @@
 import unittest, os
-from datetime import datetime
-from automation import PyAutomation
-from automation.alarms.alarms import Alarm, AlarmState
 from time import sleep
+from datetime import datetime
 from . import assert_dict_contains_subset
+from .. import PyAutomation
+from ..alarms.alarms import Alarm, AlarmState
 
 
 class TestCore(unittest.TestCase):

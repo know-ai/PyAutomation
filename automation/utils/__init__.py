@@ -1,7 +1,7 @@
-from .observer import Observer
 import logging
-from automation.variables import VARIABLES
-from automation.alarms.states import ACTIONS
+from .observer import Observer
+from ..variables import VARIABLES
+from ..alarms.states import ACTIONS
 
 def log_detailed(e, message):
     
@@ -49,7 +49,7 @@ def generate_dropdown_conditional():
     r"""
     Documentation here
     """
-    from automation import PyAutomation
+    from .. import PyAutomation
     app = PyAutomation()
     data = VARIABLES
     dropdown_conditional = []

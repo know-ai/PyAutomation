@@ -1,5 +1,5 @@
 import dash
-from automation.pages.components import Components
+from ..pages.components import Components
 
 
 class ConfigView(dash.Dash):

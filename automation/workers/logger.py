@@ -4,9 +4,8 @@
 This module implements Logger Worker.
 """
 import logging, time
-from datetime import datetime
 from .worker import BaseWorker
-from automation.managers import DBManager
+from ..managers import DBManager
 from ..logger.datalogger import DataLoggerEngine
 
 

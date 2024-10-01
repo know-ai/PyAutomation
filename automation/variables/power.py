@@ -1,4 +1,4 @@
-from automation.utils.units import *
+from ..utils.units import *
 
 class Power(EngUnit):
     """Creates a power object that can store a power value and 

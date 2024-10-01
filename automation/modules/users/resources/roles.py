@@ -1,8 +1,8 @@
 from flask_restx import Namespace, Resource, fields
-from automation import PyAutomation
-from automation.modules.users.roles import roles, Role
-from automation.extensions.api import api
-from automation.extensions import _api as Api
+from .... import PyAutomation
+from ....modules.users.roles import roles
+from ....extensions.api import api
+from ....extensions import _api as Api
 
 
 ns = Namespace('Roles', description='Roles')

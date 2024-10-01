@@ -1,7 +1,7 @@
 import dash
 import dash_bootstrap_components as dbc
-from automation.pages.components import Components
-from automation.pages.components.tags import TagsComponents
+from ..pages.components import Components
+from ..pages.components.tags import TagsComponents
 
 dash.register_page(__name__)
 

@@ -1,5 +1,5 @@
 from peewee import CharField, IntegerField
-from automation.dbmodels.core import BaseModel
+from ..dbmodels.core import BaseModel
 
 class OPCUA(BaseModel):
 

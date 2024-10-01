@@ -1,4 +1,4 @@
-from automation.utils.units import EngUnit, UnitError, UnitSerializer
+from ..utils.units import EngUnit, UnitError, UnitSerializer
 
 class Current(EngUnit):
     """Creates a current (amperage) object that can store a current (amperage) value and 

@@ -4,7 +4,7 @@ This module implements Alarm Manager.
 """
 from datetime import datetime
 import queue
-from automation.singleton import Singleton
+from ..singleton import Singleton
 from ..tags import CVTEngine, TagObserver
 from ..alarms import AlarmState
 from ..alarms.alarms import Alarm, AlarmState

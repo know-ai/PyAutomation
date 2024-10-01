@@ -1,7 +1,7 @@
+from math import ceil
 import dash
 import plotly.graph_objects as go
-from math import ceil
-from automation.tags import CVTEngine
+from ...tags import CVTEngine
 
 cvt = CVTEngine()
 

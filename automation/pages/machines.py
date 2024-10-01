@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from automation.pages.components.machines import MachinesComponents
+from ..pages.components.machines import MachinesComponents
 
 dash.register_page(__name__)
 

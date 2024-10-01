@@ -1,8 +1,8 @@
 from peewee import CharField, DateTimeField, ForeignKeyField, IntegerField
-from automation.dbmodels.core import BaseModel
+from ..dbmodels.core import BaseModel
 from datetime import datetime
 from .users import Users
-from automation.modules.users.users import User
+from ..modules.users.users import User
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 

@@ -13,7 +13,7 @@ from ..logger.events import EventsLoggerEngine
 from ..logger.users import UsersLoggerEngine
 from ..logger.logs import LogsLoggerEngine
 from ..tags import CVTEngine, TagObserver, Tag
-from automation.modules.users.users import User
+from ..modules.users.users import User
 from ..dbmodels import (
     Tags, 
     TagValue, 

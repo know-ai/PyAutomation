@@ -1,9 +1,9 @@
 from flask import Blueprint, request
 from flask_restx import Api as API
-from automation.singleton import Singleton
+from ..singleton import Singleton
 from functools import wraps
 import logging, jwt
-from automation.modules.users.users import Users as CVTUsers
+from ..modules.users.users import Users as CVTUsers
 from werkzeug.security import check_password_hash
 
 
@@ -55,7 +55,7 @@ class Api(Singleton):
         r"""
         Verify Third Party Token
         """
-        from automation import server
+        from . import server
         try:
 
             jwt.decode(tpt, server.config["TPT_TOKEN"], algorithms=["HS256"])

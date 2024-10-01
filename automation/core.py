@@ -393,7 +393,7 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        from automation import server
+        from . import server
         payload = {
             "created_on": datetime.now(timezone.utc).strftime(self.cvt.DATETIME_FORMAT),
             "role": role_name

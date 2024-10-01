@@ -1,7 +1,7 @@
 import dash
-from automation.utils import get_nodes_info, get_data_to_update_into_opcua_table
-from automation.pages.components.opcua import OPCUAComponents
-from automation.opcua.subscription import SubHandler
+from ...utils import get_nodes_info, get_data_to_update_into_opcua_table
+from ...pages.components.opcua import OPCUAComponents
+from ...opcua.subscription import SubHandler
 
 
 subscription_handler = SubHandler()

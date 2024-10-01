@@ -1,5 +1,5 @@
 from flask import Flask
-from automation.core import PyAutomation
+from .core import PyAutomation
 
 
 app = Flask(__name__, instance_relative_config=False)
@@ -17,10 +17,10 @@ class CreateApp():
         
         with app.app_context():
 
-            from automation import extensions
+            from . import extensions
             extensions.init_app(app)
 
-            from automation import modules
+            from . import modules
             modules.init_app(app)
             
             return app

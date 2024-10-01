@@ -3,10 +3,9 @@
 
 This module implements Alarm Worker.
 """
-import logging
-import time
+import logging, time
 from .worker import BaseWorker
-from automation.managers import AlarmManager
+from ..managers import AlarmManager
 
 
 class AlarmWorker(BaseWorker):

@@ -1,4 +1,4 @@
-from automation.utils.units import *
+from ..utils.units import *
 
 class Pressure(EngUnit):
     """Creates a pressure object that can store a pressure value and 

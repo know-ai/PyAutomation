@@ -1,4 +1,4 @@
-from automation.utils.units import *
+from ..utils.units import *
 
 class Time(EngUnit):
     """Creates a time object that can store a time value and 

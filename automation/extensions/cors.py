@@ -1,5 +1,5 @@
 from flask_cors import CORS
-from automation.singleton import Singleton
+from ..singleton import Singleton
 
 
 class Cors(Singleton):
