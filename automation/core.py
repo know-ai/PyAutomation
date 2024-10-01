@@ -19,7 +19,7 @@ from .alarms import Alarm
 from .state_machine import Machine, DAQ, StateMachine, IAD, Filter, AutomationStateMachine
 from .opcua.subscription import DAS
 from .buffer import Buffer
-from .models import StringType
+from .models import StringType, FloatType
 from .modules.users.users import users, User
 from .modules.users.roles import roles, Role
 from .utils.decorators import validate_types
@@ -58,9 +58,9 @@ class PyAutomation(Singleton):
         self.workers = list()
         self.das = DAS()
         self.iad = IAD()
-        self.machine.append_machine(machine=self.iad, interval=2.0, mode="async")
+        self.machine.append_machine(machine=self.iad, interval=FloatType(2.0), mode="async")
         self.filter = Filter()
-        self.machine.append_machine(machine=self.filter, interval=2.0, mode="async")
+        self.machine.append_machine(machine=self.filter, interval=FloatType(2.0), mode="async")
         self.set_log(level=logging.WARNING)
     
     def define_dash_app(self, **kwargs)->None:
@@ -527,7 +527,7 @@ class PyAutomation(Singleton):
 
             daq = DAQ(name=daq_name)
             daq.set_opcua_client_manager(manager=self.opcua_client_manager)
-            self.machine.append_machine(machine=daq, interval=scan_time / 1000, mode="async")
+            self.machine.append_machine(machine=daq, interval=FloatType(scan_time / 1000), mode="async")
 
         daq.subscribe_to(tag=tag)
         self.machine.stop()

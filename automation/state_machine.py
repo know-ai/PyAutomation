@@ -31,7 +31,7 @@ class Machine(Singleton):
         self._machine_manager = StateMachineManager()
         self.workers = list()
 
-    def append_machine(self, machine:StateMachine, interval:float=1, mode:str='sync'):
+    def append_machine(self, machine:StateMachine, interval:FloatType=1, mode:str='sync'):
         r"""
         Append a state machine to the state machine manager.
 
@@ -42,7 +42,7 @@ class Machine(Singleton):
         """
         if isinstance(machine, DAQ):
             
-            machine.name = StringType(f"DAQ-{interval}")
+            machine.name = StringType(f"DAQ-{interval.value}")
         
         machine.set_interval(interval)
         self._machine_manager.append_machine((machine, interval, mode))
@@ -153,6 +153,10 @@ class StateMachineCore(StateMachine):
         self.buffer_size = IntegerType(default=10)
         self.buffer_roll_type = StringType(default='backward')
         self.__subscribed_to = dict()
+        transitions = []
+        for state in self.states:
+            transitions.extend(state.transitions)
+        self.transitions = transitions
         super(StateMachineCore, self).__init__()
 
     # State Methods
@@ -190,6 +194,7 @@ class StateMachineCore(StateMachine):
 
         Depending on you state machine goal, write your script here
         """
+        print(f"{self.name.value}")
         self.criticity.value = 1
 
     def while_resetting(self):
@@ -276,7 +281,7 @@ class StateMachineCore(StateMachine):
             self.data[tag](value.value)
 
     @set_event(message=f"Switched", classification="State Machine", priority=2, criticity=3)
-    @validate_types(to=str, user=User, output=None)
+    @validate_types(to=str, user=User, output=tuple)
     def transition(self, to:str, user:User=None):
         r"""
         Documentation here
@@ -284,8 +289,13 @@ class StateMachineCore(StateMachine):
         try:
             _from = self.current_state.name.lower()
             transition_name = f'{_from}_to_{to}'
-            self.send(transition_name)
-            return self, f"from: {_from} to: {to}"
+            allowed_transitions = self._get_active_transitions()
+            for _transition in allowed_transitions:
+                if f"{_transition.source.name}_to_{_transition.target.name}"==transition_name:
+                    self.send(transition_name)
+                    return self, f"from: {_from} to: {to}"
+                
+            return None, f"Transitio to {to} not allowed"
             
         except Exception as err:
 
@@ -308,7 +318,7 @@ class StateMachineCore(StateMachine):
             self.__subscribed_to.pop(tag.name)
 
     @validate_types(output=int|float)
-    def get_interval(self)->float:
+    def get_interval(self)->int|float:
         r"""
         Gets overall state machine interval
 
@@ -325,8 +335,8 @@ class StateMachineCore(StateMachine):
         """
         return self.machine_interval.value
 
-    @validate_types(interval=int|float, output=None)
-    def set_interval(self, interval:int|float):
+    @validate_types(interval=IntegerType|FloatType, output=None)
+    def set_interval(self, interval:IntegerType|FloatType):
         r"""
         Sets overall machine interval
 
@@ -341,7 +351,7 @@ class StateMachineCore(StateMachine):
         >>> machine.set_interval(0.5)
         ```
         """
-        self.machine_interval.value = interval
+        self.machine_interval = interval
 
     def _get_active_transitions(self):
         r"""
@@ -354,7 +364,6 @@ class StateMachineCore(StateMachine):
         result = list()
 
         current_state = self.current_state
-
         transitions = self.transitions
 
         for transition in transitions:

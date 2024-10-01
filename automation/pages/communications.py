@@ -1,7 +1,7 @@
 import dash
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
-from ..pages.components.opcua import OPCUAComponents
+from automation.pages.components.opcua import OPCUAComponents
 
 # Set React version to 18.2.0
 dash._dash_renderer._set_react_version('18.2.0')

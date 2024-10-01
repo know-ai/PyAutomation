@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from ..pages.components.trends import TrendsComponents
+from automation.pages.components.trends import TrendsComponents
 
 dash.register_page(__name__)
 
