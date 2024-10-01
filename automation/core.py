@@ -819,7 +819,11 @@ class PyAutomation(Singleton):
 
             for alarm in alarms:
 
-                self.create_alarm(reload=True, **alarm)
+                was_deleted = alarm.pop("was_deleted")
+
+                if not was_deleted:
+
+                    self.create_alarm(reload=True, **alarm)
 
     @validate_types(output=None)
     def load_db_to_roles(self):

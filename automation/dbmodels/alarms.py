@@ -224,6 +224,7 @@ class Alarms(BaseModel):
     state = ForeignKeyField(AlarmStates, backref='alarms')
     timestamp = DateTimeField(null=True)
     acknowledged_timestamp = DateTimeField(null=True)
+    was_deleted = BooleanField(null=True)
 
     @classmethod
     def create(
@@ -237,7 +238,8 @@ class Alarms(BaseModel):
         tag_alarm:str=None,
         state:str=States.NORM.value,
         timestamp:datetime=None,
-        acknowledged_timestamp:datetime=None
+        acknowledged_timestamp:datetime=None,
+        was_deleted:bool=False
         ):
         r"""Documentation here
 
@@ -249,11 +251,11 @@ class Alarms(BaseModel):
 
         - 
         """
+        trigger_type = AlarmTypes.read_by_name(name=trigger_type)
+        tag = Tags.read_by_name(name=tag)
+        state = AlarmStates.read_by_name(name=state)
         if not cls.name_exists(name):
 
-            trigger_type = AlarmTypes.read_by_name(name=trigger_type)
-            tag = Tags.read_by_name(name=tag)
-            state = AlarmStates.read_by_name(name=state)
             alarm = super().create(
                 identifier=identifier,
                 name=name,
@@ -264,10 +266,29 @@ class Alarms(BaseModel):
                 tag_alarm=tag_alarm,
                 state=state,
                 timestamp=timestamp,
-                acknowledged_timestamp=acknowledged_timestamp
+                acknowledged_timestamp=acknowledged_timestamp,
+                was_deleted=was_deleted
             )
             alarm.save()
-            return alarm
+        
+        else:
+
+            alarm = cls.get_or_create(name=name)
+            payload = {
+                "identifier": identifier,
+                "tag": tag,  
+                "trigger_type": trigger_type,
+                "trigger_value": trigger_value,
+                "description": description,
+                "tag_alarm": tag_alarm,
+                "state": state,
+                "timestamp": timestamp,
+                "acknowledged_timestamp": acknowledged_timestamp,
+                "was_delete": False
+            }
+            alarm = cls.put(id=tag.id, **payload)
+
+        return alarm
     
     @classmethod
     def name_exists(cls, name:str)->bool|None:
@@ -359,14 +380,15 @@ class Alarms(BaseModel):
             'tag_alarm': self.tag_alarm,
             'state': self.state.name,
             'timestamp': timestamp,
-            'acknowledged_timestamp': acknowledged_timestamp
+            'acknowledged_timestamp': acknowledged_timestamp,
+            'was_deleted': self.was_deleted
         }
     
 
 class AlarmSummary(BaseModel):
     
-    alarm = ForeignKeyField(Alarms, backref='summary', on_delete='CASCADE')
-    state = ForeignKeyField(AlarmStates, backref='summary', on_delete='CASCADE')
+    alarm = ForeignKeyField(Alarms, backref='summary')
+    state = ForeignKeyField(AlarmStates, backref='summary')
     alarm_time = DateTimeField(default=datetime.now)
     ack_time = DateTimeField(null=True)
 

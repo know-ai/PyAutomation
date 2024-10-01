@@ -54,7 +54,7 @@ class BaseModel(Model):
         return data
 
     @classmethod
-    def put(cls, id:str, **fields)-> dict:
+    def put(cls, id:str, **fields):
         r""""
         Update a single record
 

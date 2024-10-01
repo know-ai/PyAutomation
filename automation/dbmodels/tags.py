@@ -1,4 +1,4 @@
-from peewee import CharField, DateTimeField, FloatField, ForeignKeyField, IntegerField, fn, TimestampField, BooleanField
+from peewee import CharField, BooleanField, FloatField, ForeignKeyField, IntegerField, fn, TimestampField, BooleanField
 from .core import BaseModel
 from datetime import datetime
 
