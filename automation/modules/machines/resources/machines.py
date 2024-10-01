@@ -108,11 +108,12 @@ class MachineAttrResource(Resource):
         if attr=="machine_interval":
             
 
-            machine.set_interval(interval=value)
+            machine.set_interval(interval=value, user=user)
 
         else:
         
-            setattr(machine, attr, value)
+            # setattr(machine, attr, value)
+            machine.put_attr(attr_name=attr, value=value, user=user)
 
         return f"{attr} updated successfully to {value.value}", 200
     

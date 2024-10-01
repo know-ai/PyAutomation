@@ -31,7 +31,7 @@ class Machine(Singleton):
         self._machine_manager = StateMachineManager()
         self.workers = list()
 
-    def append_machine(self, machine:StateMachine, interval:FloatType=1, mode:str='sync'):
+    def append_machine(self, machine:StateMachine, interval:FloatType=FloatType(1), mode:str='sync'):
         r"""
         Append a state machine to the state machine manager.
 
@@ -194,7 +194,6 @@ class StateMachineCore(StateMachine):
 
         Depending on you state machine goal, write your script here
         """
-        print(f"{self.name.value}")
         self.criticity.value = 1
 
     def while_resetting(self):
@@ -210,11 +209,14 @@ class StateMachineCore(StateMachine):
         self.restart_buffer()
         self.send("restart_to_wait")
 
+    # Auxiliaries Methods
+    def put_attr(self, attr_name:str, value:StringType|FloatType|IntegerType|BooleanType, user:User=None):
 
-        # Auxiliaries Methods
-    
+        attr = getattr(self, attr_name)
+        attr.set_value(value=value, user=user, name=attr_name)
+
     @validate_types(size=int, output=None)
-    def set_buffer_size(self, size:int)->None:
+    def set_buffer_size(self, size:int, user:User=None)->None:
         r"""
         Set data buffer size
 
@@ -222,7 +224,7 @@ class StateMachineCore(StateMachine):
 
         - *size:* [int] buffer size
         """
-        self.buffer_size.value = int(size)
+        self.put_attr(attr_name="buffer_size", value=IntegerType(size), user=user)
         self.restart_buffer()
 
     def restart_buffer(self):
@@ -335,8 +337,8 @@ class StateMachineCore(StateMachine):
         """
         return self.machine_interval.value
 
-    @validate_types(interval=IntegerType|FloatType, output=None)
-    def set_interval(self, interval:IntegerType|FloatType):
+    @validate_types(interval=IntegerType|FloatType, user=User, output=None)
+    def set_interval(self, interval:IntegerType|FloatType, user:User=None):
         r"""
         Sets overall machine interval
 
@@ -351,7 +353,7 @@ class StateMachineCore(StateMachine):
         >>> machine.set_interval(0.5)
         ```
         """
-        self.machine_interval = interval
+        self.put_attr(attr_name="machine_interval", value=interval, user=user)
 
     def _get_active_transitions(self):
         r"""

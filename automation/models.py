@@ -5,6 +5,8 @@ This module implements a Tags and other classes for
 modelling the subjects involved in the core of the engine.
 """
 from inspect import ismethod
+from .modules.users.users import User
+from .utils.decorators import set_event
 
 FLOAT = "float"
 INTEGER = "int"
@@ -32,8 +34,17 @@ class PropertyType:
 
     @value.setter
     def value(self, value):
-            
+        
         self.__value = value
+    
+    @set_event(message=f"Attribute updated", classification="State Machine", priority=2, criticity=3)
+    def set_value(self, value, user:User=None, name:str=None):
+        
+        self.value = value.value
+        if name=="machine_interval":
+            return value, f"{name} To: {value.value} s."
+        
+        return value, f"{name} To: {value.value}"
 
 
 class StringType(PropertyType):
