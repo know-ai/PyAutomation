@@ -1,6 +1,5 @@
 from flask import Flask
 from automation.core import PyAutomation
-# from automation.modules import Users, Roles, Role
 
 
 app = Flask(__name__, instance_relative_config=False)

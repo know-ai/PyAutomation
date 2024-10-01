@@ -19,6 +19,7 @@ from .alarms import Alarm
 from .state_machine import Machine, DAQ, StateMachine, IAD, Filter, AutomationStateMachine
 from .opcua.subscription import DAS
 from .buffer import Buffer
+from .models import StringType
 from .modules.users.users import users, User
 from .modules.users.roles import roles, Role
 from .utils.decorators import validate_types
@@ -78,8 +79,8 @@ class PyAutomation(Singleton):
         """
         self.machine.append_machine(machine=machine, interval=interval, mode=mode)
 
-    @validate_types(name=str, output=StateMachine)
-    def get_machine(self, name:str)->StateMachine:
+    @validate_types(name=StringType, output=StateMachine)
+    def get_machine(self, name:StringType)->StateMachine:
         r"""
         Documentation here
         """
@@ -519,12 +520,12 @@ class PyAutomation(Singleton):
         Documentatio here
         """
         scan_time = float(scan_time)
-        daq_name = f"DAQ-{int(scan_time / 1000)}"
+        daq_name = StringType(f"DAQ-{int(scan_time / 1000)}")
         daq = self.machine_manager.get_machine(name=daq_name)
         tag = self.cvt.get_tag_by_name(name=tag_name)
         if not daq:
 
-            daq = DAQ()
+            daq = DAQ(name=daq_name)
             daq.set_opcua_client_manager(manager=self.opcua_client_manager)
             self.machine.append_machine(machine=daq, interval=scan_time / 1000, mode="async")
 
@@ -1218,8 +1219,6 @@ class PyAutomation(Singleton):
             self.alarm_worker = AlarmWorker(alarm_manager)
             self.alarm_worker.daemon = True
             self.alarm_worker.start()
-
-        self.machine.start()
 
     @validate_types(output=None)
     def __stop_workers(self)->None:

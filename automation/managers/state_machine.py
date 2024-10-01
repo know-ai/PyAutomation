@@ -4,6 +4,7 @@
 This module implements Function Manager.
 """
 from statemachine import StateMachine
+from ..models import StringType
 from ..tags import TagObserver, CVTEngine, Tag
 import queue
 
@@ -81,7 +82,7 @@ class StateMachineManager:
 
         return [machine.serialize() for machine, _, _ in self.get_machines()]
 
-    def get_machine(self, name:str)->StateMachine:
+    def get_machine(self, name:StringType)->StateMachine:
         r"""
         Gets state machine by its name
 
@@ -102,7 +103,7 @@ class StateMachineManager:
         """
         for machine, _, _ in self._machines:
 
-            if name == machine.name:
+            if name.value == machine.name.value:
 
                 return machine
             
