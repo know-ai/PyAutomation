@@ -1,4 +1,4 @@
-from peewee import CharField, DateTimeField, FloatField, ForeignKeyField, IntegerField, fn, TimestampField
+from peewee import CharField, DateTimeField, FloatField, ForeignKeyField, IntegerField, fn, TimestampField, BooleanField
 from .core import BaseModel
 from datetime import datetime
 
@@ -412,12 +412,13 @@ class Tags(BaseModel):
     unit = ForeignKeyField(Units, backref='tags')
     data_type = ForeignKeyField(DataTypes, backref='tags')
     description = CharField(null=True, max_length=256)
-    display_name = CharField()
+    display_name = CharField(unique=True)
     display_unit = ForeignKeyField(Units)
     opcua_address = CharField(null=True)
     node_namespace = CharField(null=True)
     scan_time = IntegerField(null=True)
     dead_band = FloatField(null=True)
+    was_deleted = BooleanField(null=True)
 
     @classmethod
     def create(
@@ -432,7 +433,8 @@ class Tags(BaseModel):
         opcua_address:str="",
         node_namespace:str="",
         scan_time:int=0,
-        dead_band:float=0.0
+        dead_band:float=0.0,
+        was_deleted:bool=False
         ):
         r"""
         Documentation here
@@ -440,45 +442,56 @@ class Tags(BaseModel):
         result = dict()
         message = f"{name} already exist into database"
         data = dict()
+        _unit = Units.read_by_unit(unit=unit)
+        _display_unit = Units.read_by_unit(unit=display_unit)
+        _data_type = DataTypes.read_by_name(name=data_type)
         
         if not cls.name_exist(name):
 
-            _unit = Units.read_by_unit(unit=unit)
-            _display_unit = Units.read_by_unit(unit=display_unit)
-            _data_type = DataTypes.read_by_name(name=data_type)
-            
-            if _unit is not None and _display_unit is not None:
+            if not cls.display_name_exist(name):
+                
+                if _unit is not None and _display_unit is not None:
 
-                if _data_type is not None:
-                    
-                    query = cls(
-                        identifier=id,
-                        name=name, 
-                        unit=_unit,
-                        data_type=_data_type,
-                        description=description,
-                        display_name=display_name,
-                        display_unit=_display_unit,
-                        opcua_address=opcua_address,
-                        node_namespace=node_namespace,
-                        scan_time=scan_time,
-                        dead_band=dead_band
+                    if _data_type is not None:
+                        
+                        query = cls(
+                            identifier=id,
+                            name=name, 
+                            unit=_unit,
+                            data_type=_data_type,
+                            description=description,
+                            display_name=display_name,
+                            display_unit=_display_unit,
+                            opcua_address=opcua_address,
+                            node_namespace=node_namespace,
+                            scan_time=scan_time,
+                            dead_band=dead_band,
+                            was_deleted=was_deleted
+                            )
+                        query.save()
+                        message = f"{name} tag created successfully"
+                        
+                        data.update(query.serialize())
+
+                        result.update(
+                            {
+                                'message': message, 
+                                'data': data
+                            }
                         )
-                    query.save()
-                    message = f"{name} tag created successfully"
-                    
-                    data.update(query.serialize())
+                        
+                        return result
 
+                    message = f"{data_type} data type not exist into database"
                     result.update(
                         {
                             'message': message, 
                             'data': data
                         }
                     )
-                    
                     return result
 
-                message = f"{data_type} data type not exist into database"
+                message = f"{unit} unit not exist into database"
                 result.update(
                     {
                         'message': message, 
@@ -486,7 +499,36 @@ class Tags(BaseModel):
                     }
                 )
                 return result
+        
+        else:
 
+            if _unit is not None and _display_unit is not None:
+
+                    if _data_type is not None:
+                        tag = cls.get_or_create(name=name)
+                        payload = {
+                            "unit":_unit,
+                            "data_type":_data_type,
+                            "description":description,
+                            "display_name":display_name,
+                            "display_unit":_display_unit,
+                            "opcua_address":opcua_address,
+                            "node_namespace":node_namespace,
+                            "scan_time":scan_time,
+                            "dead_band":dead_band,
+                            "was_delete": False
+                        }
+                        cls.put(id=tag.id, **payload)
+
+                    message = f"{data_type} data type not exist into database"
+                    result.update(
+                        {
+                            'message': message, 
+                            'data': data
+                        }
+                    )
+                    return result
+            
             message = f"{unit} unit not exist into database"
             result.update(
                 {
@@ -503,6 +545,7 @@ class Tags(BaseModel):
             }
         )
         return result
+
 
     @classmethod
     def put(cls, id:int, **fields)-> dict:
@@ -569,6 +612,18 @@ class Tags(BaseModel):
             return True
         
         return False
+    
+    @classmethod
+    def display_name_exist(cls, name):
+        r"""
+        Documentation here
+        """
+        tag = cls.get_or_none(name=name)
+        if tag is not None:
+
+            return True
+        
+        return False
 
     def serialize(self):
         r"""
@@ -586,13 +641,14 @@ class Tags(BaseModel):
             'node_namespace': self.node_namespace,
             'scan_time': self.scan_time,
             'dead_band': self.dead_band,
-            'variable': self.unit.variable_id.name
+            'variable': self.unit.variable_id.name,
+            'was_deleted': self.was_deleted
         }
 
 
 class TagValue(BaseModel):
 
-    tag = ForeignKeyField(Tags, backref='values', on_delete="CASCADE")
+    tag = ForeignKeyField(Tags, backref='values')
     unit = ForeignKeyField(Units, backref='values')
     value = FloatField()
     timestamp = TimestampField(utc=True)

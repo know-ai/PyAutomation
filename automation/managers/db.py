@@ -321,6 +321,11 @@ class DBManager(Singleton):
 
         return result
     
+    def attach(self, tag_name:str):
+
+        observer = TagObserver(self._tag_queue)
+        self.engine.attach(name=tag_name, observer=observer)
+
     def attach_all(self):
 
         def attach_observers(tag_name:str):

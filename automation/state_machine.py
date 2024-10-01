@@ -107,6 +107,7 @@ class Machine(Singleton):
         if state_manager.exist_machines():
             
             self.state_worker = StateMachineWorker(state_manager)
+            self.state_worker.daemon = True
             self.state_worker.start()
 
     def stop(self):
@@ -305,7 +306,7 @@ class StateMachineCore(StateMachine):
 
             logging.warning(f"Transition from {_from} state to {to} state for {self.name.value} is not allowed")
 
-    @validate_types(size=int, output=None)
+    @validate_types(tag=Tag, output=None)
     def unsubscribe_to(self, tag:Tag):
         r"""Documentation here
 
@@ -575,6 +576,7 @@ class DAQ(StateMachineCore):
                 self.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
+        print(f"{self.name.value}")
         super().while_running()
 
     # Auxiliaries Methods

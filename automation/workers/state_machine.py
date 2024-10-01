@@ -17,22 +17,26 @@ class MachineScheduler():
 
         self._ready = deque()
         self._sleeping = list()
+        self._sequence = 0
+        self.last = None
         self._stop = False
-        self.machine = None
 
     def call_soon(self, func):
         
         self._ready.append(func)
 
     def call_later(self, delay, func, machine):
+        self._sequence += 1
         deadline = time.time() + delay
-        heapq.heappush(self._sleeping, (deadline, func, machine))
+        heapq.heappush(self._sleeping, (deadline, self._sequence, func, machine))
 
     def stop(self):
 
         self._stop = True
     
     def run(self):
+
+        self.set_last()
         
         while self._ready or self._sleeping:
 
@@ -40,38 +44,40 @@ class MachineScheduler():
                 break
 
             if not self._ready and self._sleeping:
-                deadline, func, self.machine = heapq.heappop(self._sleeping)
+                deadline, _, func, machine = heapq.heappop(self._sleeping)
+                self.sleep_elapsed(machine)
+                
                 self._ready.append(func)
-                self._check_sleep(deadline=deadline)
 
             while self._ready:
-                deadline = time.time()
                 func = self._ready.popleft()
                 func()
-                time_to_finish_job = time.time()-deadline
-                if self.machine:
-                    
-                    if time_to_finish_job > self.machine.get_interval():
-                        
-                        print(f"State Machine {self.machine.name} NOT Executed on time - Interval: {self.machine.get_interval()} - Time: {round(time_to_finish_job,3)}")
 
-    def _check_sleep(self, deadline):
-        r"""
-        Documentation here
-        """
-        delta = deadline - time.time()
-        if delta > 0:
-            time.sleep(delta)
+    def set_last(self):
+
+        self.last = time.time()
+
+        return self.last
+
+    def sleep_elapsed(self, machine):
+        elapsed = time.time() - self.last
+        interval = machine.get_interval()
+        
+        try:
+            time.sleep(interval - elapsed)
+            self.set_last()
+        except ValueError:
+            self.set_last()
+            logging.warning(f"State Machine: {machine.name.value} NOT executed on time - Execution Interval: {interval} - Elapsed: {elapsed}")
 
 
 class SchedThread(Thread):
 
-    def __init__(self, machine, manager):
+    def __init__(self, machine):
 
         super(SchedThread, self).__init__()
 
         self.machine = machine
-        self._manager = manager
 
     def stop(self):
 
@@ -80,21 +86,8 @@ class SchedThread(Thread):
     def loop_closure(self, machine, scheduler):
 
         def loop():
-            _queue = self._manager.get_queue()
-            
-            while not _queue.empty():
-                
-                item = _queue.get()
-                
-                # Notify to Machine
-                for _machine, _, _ in self._manager.get_machines():
-
-                    _machine.notify(**item)
-
             machine.loop()
-            local_interval = machine.get_interval()
             interval = machine.get_interval()
-            interval = min(interval, local_interval)
             scheduler.call_later(interval, loop, machine)
     
         return loop
@@ -104,41 +97,37 @@ class SchedThread(Thread):
         self.scheduler = scheduler
         func = self.loop_closure(machine, scheduler)
         scheduler.call_soon(func)
-        return scheduler
+        scheduler.run() 
 
     def run(self):
         
-        scheduler = self.target(self.machine)
-        thread = Thread(target=scheduler.run)
-        thread.start()
+        self.target(self.machine)
 
 
 class AsyncStateMachineWorker(BaseWorker):
 
-    def __init__(self, manager):
+    def __init__(self):
 
         super(AsyncStateMachineWorker, self).__init__()
         self._machines = list()
         self._schedulers = list()
         self.jobs = list()
-        self._manager = manager
 
-    def add_machine(self, machine, interval):
+    def add_machine(self, machine):
 
-        self._machines.append((machine, interval,))
+        self._machines.append(machine)
 
     def run(self):
 
-        for machine, _ in self._machines:
+        for machine in self._machines:
 
-            sched = SchedThread(machine, self._manager)
+            sched = SchedThread(machine)
             self._schedulers.append(sched)
-            sched.target(machine)
 
         for sched in self._schedulers:
 
             sched.daemon = True
-            sched.run()
+            sched.start()
 
     def stop(self):
 
@@ -159,16 +148,16 @@ class StateMachineWorker(BaseWorker):
         self._manager = manager
         self._manager.attach_all()
         self._sync_scheduler = MachineScheduler()
-        self._async_scheduler = AsyncStateMachineWorker(manager=self._manager)
+        self._async_scheduler = AsyncStateMachineWorker()
         self.jobs = list()
 
     def loop_closure(self, machine):
         
+        self._machine = machine
+
         def loop():
             machine.loop()
-            local_interval = machine.get_state_interval()
             interval = machine.get_interval()
-            interval = min(interval, local_interval)
             self._sync_scheduler.call_later(interval, loop, machine)
 
         return loop
@@ -179,7 +168,7 @@ class StateMachineWorker(BaseWorker):
             
             if mode == "async":
                 
-                self._async_scheduler.add_machine(machine, interval)
+                self._async_scheduler.add_machine(machine)
                 
                 
             else:

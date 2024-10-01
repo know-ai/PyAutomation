@@ -95,9 +95,9 @@ class TestCore(unittest.TestCase):
 
             self.assertIsNone(self.app.get_tag_by_name(name=tag2.name))
 
-        with self.subTest("Test delete tag from DB"):
+        # with self.subTest("Test delete tag from DB"):
 
-            self.assertIsNone(self.app.logger_engine.get_tag_by_name(name=tag2.name))
+        #     self.assertIsNone(self.app.logger_engine.get_tag_by_name(name=tag2.name))
 
         # DELETE TAG BY NAME
         self.app.delete_tag_by_name(name=tag1.name)

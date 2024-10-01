@@ -177,7 +177,7 @@ class PyAutomation(Singleton):
             if self.is_db_connected():
 
                 self.logger_engine.set_tag(tag=tag)
-                self.db_manager.attach_all()
+                self.db_manager.attach(tag_name=name)
 
             if scan_time:
 
@@ -802,7 +802,11 @@ class PyAutomation(Singleton):
 
             for tag in tags:
 
-                self.create_tag(**tag)
+                was_deleted = tag.pop("was_deleted")
+
+                if not was_deleted:
+
+                    self.create_tag(**tag)
 
     @validate_types(output=None)
     def load_db_to_alarm_manager(self):
