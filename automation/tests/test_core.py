@@ -141,8 +141,9 @@ class TestCore(unittest.TestCase):
             self.assertEqual(alarm_LL, self.app.alarm_manager.get_alarm_by_name(name=alarm_LL.name))
 
         with self.subTest("Test create alarm in DB"):
-            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_LL.name)
-            assert_dict_contains_subset(alarm.serialize(), alarm_LL.serialize())
+            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_LL.name).serialize()
+            alarm.pop("was_deleted")
+            assert_dict_contains_subset(alarm, alarm_LL.serialize())
 
         alarm_L_payload = {
             "name": "alarm_L",
@@ -160,8 +161,9 @@ class TestCore(unittest.TestCase):
             self.assertEqual(alarm_L, self.app.alarm_manager.get_alarm_by_name(name=alarm_L.name))
 
         with self.subTest("Test create alarm in DB"):
-            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_L.name)
-            assert_dict_contains_subset(alarm.serialize(), alarm_L.serialize())
+            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_L.name).serialize()
+            alarm.pop("was_deleted")
+            assert_dict_contains_subset(alarm, alarm_L.serialize())
 
         alarm_H_payload = {
             "name": "alarm_H",
@@ -179,8 +181,9 @@ class TestCore(unittest.TestCase):
             self.assertEqual(alarm_H, self.app.alarm_manager.get_alarm_by_name(name=alarm_H.name))
 
         with self.subTest("Test create alarm in DB"):
-            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_H.name)
-            assert_dict_contains_subset(alarm.serialize(), alarm_H.serialize())
+            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_H.name).serialize()
+            alarm.pop("was_deleted")
+            assert_dict_contains_subset(alarm, alarm_H.serialize())
 
         alarm_HH_payload = {
             "name": "alarm_HH",
@@ -198,8 +201,9 @@ class TestCore(unittest.TestCase):
             self.assertEqual(alarm_HH, self.app.alarm_manager.get_alarm_by_name(name=alarm_HH.name))
 
         with self.subTest("Test create alarm in DB"):
-            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_HH.name)
-            assert_dict_contains_subset(alarm.serialize(), alarm_HH.serialize())
+            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_HH.name).serialize()
+            alarm.pop("was_deleted")
+            assert_dict_contains_subset(alarm, alarm_HH.serialize())
 
         # UPDATE ALARM DEFINITION
         self.app.update_alarm(id=alarm_HH.identifier, trigger_value=50)
