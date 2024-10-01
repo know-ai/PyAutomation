@@ -4,8 +4,9 @@ from automation.tests.test_core import TestCore
 
 
 def suite():
-    r"""
+    """
     Documentation here
+    wefwefwefffwfeweffewefwef
     """
     tests = list()
     suite = TestSuite()

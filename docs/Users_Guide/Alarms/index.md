@@ -4,27 +4,27 @@ In this Alarms module, it is possible to create and configure specific alarms. T
 </div>
 
 
-# Tag 
+## Tag 
 We specify the tag for which we want to create an alarm.
 
 ![alt text](images/image.png)
 
-# Alarm Name
+## Alarm Name
 We specity the Alarm's name.
 
 ![alt text](images/image1.png)
 
-# Alarm's Description (Optional)
+## Alarm's Description (Optional)
 This field is optional, but we can put any type of description for more information.
 
 ![alt text](images/image2.png)
 
-# Type
+## Type
 We select the type of alarm we want to create.
 
 ![alt text](images/image3.png)
 
-# Trigger value
+## Trigger value
 We specify the value that will trigger the alarm.
 
 ![alt text](images/image4.png)
