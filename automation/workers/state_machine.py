@@ -87,10 +87,9 @@ class SchedThread(Thread):
                 item = _queue.get()
                 
                 # Notify to Machine
-                # print(f"ITEM: {item}")
-                # for _machine, _, _ in self._manager.get_machines():
+                for _machine, _, _ in self._manager.get_machines():
 
-                #     _machine.notify(**item)
+                    _machine.notify(**item)
 
             machine.loop()
             local_interval = machine.get_interval()

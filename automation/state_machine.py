@@ -190,7 +190,6 @@ class StateMachineCore(StateMachine):
 
         Depending on you state machine goal, write your script here
         """
-        print(f"{self.name.value} - Running")
         self.criticity.value = 1
 
     def while_resetting(self):
@@ -272,7 +271,6 @@ class StateMachineCore(StateMachine):
         - *tag:* [Tag] tag Object
         - *value:* [int|float|bool] tag value
         """
-        print(f"Notifying machine: [{timestamp}] {tag}: {value}")
         if tag in self.get_subscribed_tags():
             
             self.data[tag](value.value)
