@@ -1,4 +1,5 @@
 import logging
+from time import sleep
 from datetime import datetime
 from statemachine import State, StateMachine
 from .workers.state_machine import StateMachineWorker
@@ -29,7 +30,6 @@ class Machine(Singleton):
     def __init__(self):
 
         self._machine_manager = StateMachineManager()
-        self.workers = list()
 
     def append_machine(self, machine:StateMachine, interval:FloatType=FloatType(1), mode:str='sync'):
         r"""
@@ -103,10 +103,11 @@ class Machine(Singleton):
         """
         # StateMachine Worker
         state_manager = self.get_state_machine_manager()
+        
         if state_manager.exist_machines():
-
+            
             self.state_worker = StateMachineWorker(state_manager)
-            self.state_worker.run()
+            self.state_worker.start()
 
     def stop(self):
         r"""
@@ -114,6 +115,7 @@ class Machine(Singleton):
         """
         try:
             self.state_worker.stop()
+
         except Exception as e:
             message = f"Error on wokers stop, {e}"
             logging.error(message)
@@ -573,7 +575,6 @@ class DAQ(StateMachineCore):
                 self.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
-
         super().while_running()
 
     # Auxiliaries Methods

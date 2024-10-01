@@ -7,7 +7,7 @@ will create a time-serie for each tag in a short memory data base.
 import logging, sys, os, pytz
 from datetime import datetime
 from ..tags.tag import Tag
-from ..dbmodels import Tags, TagValue
+from ..dbmodels import Tags, TagValue, Units
 from ..modules.users.users import User
 from ..tags.cvt import CVTEngine
 from .core import BaseLogger, BaseEngine
@@ -69,8 +69,7 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """
-        tag = Tags.get(identifier=id)
-        query = Tags.delete().where(Tags.id==tag.id)
+        query = Tags.delete().where(Tags.identifier==id)
         query.execute()
 
     def get_tag_by_name(self, name:str):
@@ -106,7 +105,8 @@ class DataLogger(BaseLogger):
         """
         try:
             trend = Tags.read_by_name(tag)
-            TagValue.create(tag=trend, value=value, timestamp=timestamp)
+            unit = Units.read_by_unit(unit=trend.display_unit.unit)
+            TagValue.create(tag=trend, value=value, timestamp=timestamp, unit=unit)
         except Exception as e:
             _, _, e_traceback = sys.exc_info()
             e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
@@ -123,11 +123,13 @@ class DataLogger(BaseLogger):
         _tags = tags.copy()
         try:
             for counter, tag in enumerate(tags):
-
+                _tag = Tags.read_by_name(tag['tag'])
+                unit = Units.get_or_none(id=_tag.display_unit.id)
                 _tags[counter].update({
-                    'tag': Tags.read_by_name(tag['tag'])
+                    'tag': _tag,
+                    'unit': unit
                 })
-
+            
             TagValue.insert_many(_tags).execute()
 
         except Exception as e:

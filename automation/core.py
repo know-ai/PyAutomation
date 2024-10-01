@@ -1,4 +1,5 @@
 import sys, logging, json, os, jwt
+from time import sleep
 from math import ceil
 from datetime import datetime, timezone
 # DRIVERS IMPORTATION
@@ -47,6 +48,7 @@ class PyAutomation(Singleton):
 
         self.machine = Machine()
         self.machine_manager = self.machine.get_state_machine_manager()
+        self.is_starting = True
         self.cvt = CVTEngine()
         self.logger_engine = DataLoggerEngine()
         self.events_engine = EventsLoggerEngine()
@@ -487,7 +489,7 @@ class PyAutomation(Singleton):
 
             self.opcua_client_manager.add(client_name=client_name, host=host, port=port)
 
-    # @validate_types(tag=Tag, opcua_address=str|type(None), node_namespace=str|type(None), scan_time=float|type(None), output=None)
+    @validate_types(tag=Tag, opcua_address=str|type(None), node_namespace=str|type(None), scan_time=float|int|type(None), output=None)
     def subscribe_opcua(self, tag:Tag, opcua_address:str, node_namespace:str, scan_time:float):
         r"""
         Documentation here
@@ -514,8 +516,8 @@ class PyAutomation(Singleton):
             "unit": tag.get_display_unit()
         })
 
-    # @validate_types(tag_name=str, scan_time=float, output=None)
-    def subscribe_tag(self, tag_name:str, scan_time:float):
+    @validate_types(tag_name=str, scan_time=float|int, output=None)
+    def subscribe_tag(self, tag_name:str, scan_time:float|int):
         r"""
         Documentatio here
         """
@@ -526,13 +528,17 @@ class PyAutomation(Singleton):
         if not daq:
 
             daq = DAQ(name=daq_name)
+            interval = FloatType(scan_time / 1000)
             daq.set_opcua_client_manager(manager=self.opcua_client_manager)
-            self.machine.append_machine(machine=daq, interval=FloatType(scan_time / 1000), mode="async")
+            self.machine.append_machine(machine=daq, interval=interval, mode="async")
+            
+            if not self.is_starting:
+
+                self.machine.stop()
+                self.machine.start()
 
         daq.subscribe_to(tag=tag)
-        self.machine.stop()
-        self.machine.start()
-
+        
     # @validate_types(tag=Tag, output=None)
     def unsubscribe_opcua(self, tag:Tag):
         r"""
@@ -1219,6 +1225,9 @@ class PyAutomation(Singleton):
             self.alarm_worker = AlarmWorker(alarm_manager)
             self.alarm_worker.daemon = True
             self.alarm_worker.start()
+
+        self.machine.start()
+        self.is_starting = False
 
     @validate_types(output=None)
     def __stop_workers(self)->None:

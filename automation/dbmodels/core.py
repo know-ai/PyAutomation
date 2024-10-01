@@ -65,16 +65,7 @@ class BaseModel(Model):
 
             query = cls.update(**fields).where(cls.id == id)
             query.execute()
-            return query
-        
-    # @classmethod
-    # def delete(cls, id:int):
-    #     r"""
-    #     Delete record from database including 
-    #     """
-    #     query = super().delete().where(cls.id==id)
-    #     query.execute()
-            
+            return query            
 
     @classmethod
     def id_exists(cls, id:str|int)->bool|None:

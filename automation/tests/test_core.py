@@ -59,6 +59,7 @@ class TestCore(unittest.TestCase):
         timestamp = datetime.now()
         value = 35
         self.app.cvt.set_value(id=tag2.id, value=value, timestamp=timestamp)
+        sleep(1)
         with self.subTest("Test Value in CVT"):
             
             self.assertEqual(self.app.cvt.get_value(id=tag2.id), value)
@@ -76,7 +77,9 @@ class TestCore(unittest.TestCase):
             self.assertEqual(name, updated_tag.name)
 
         unit = "K"
+        # breakpoint()
         updated_tag, _ = self.app.update_tag(id=tag2.id, unit=unit)
+        sleep(2)
         with self.subTest("Test update tag unit"):
 
             self.assertEqual(unit, updated_tag.unit)

@@ -79,6 +79,7 @@ class CVT:
 
             display_unit = unit
 
+        
         tag = Tag(
             name=name,
             unit=unit,

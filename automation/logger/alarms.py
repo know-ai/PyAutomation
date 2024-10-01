@@ -155,8 +155,8 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        alarm =Alarms.read_by_identifier(identifier=id)
-        Alarms.delete(id=alarm.id)
+        # alarm = Alarms.read_by_identifier(identifier=id)
+        Alarms.delete().where(Alarms.identifier==id)
 
     def create_record_on_alarm_summary(self, name:str, state:str):
         r"""

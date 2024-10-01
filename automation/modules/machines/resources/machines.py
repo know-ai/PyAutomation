@@ -112,7 +112,6 @@ class MachineAttrResource(Resource):
 
         else:
         
-            # setattr(machine, attr, value)
             machine.put_attr(attr_name=attr, value=value, user=user)
 
         return f"{attr} updated successfully to {value.value}", 200

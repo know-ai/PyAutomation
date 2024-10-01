@@ -79,7 +79,7 @@ class Variables(BaseModel):
         
         if query is not None:
 
-            return query.serialize()
+            return query
         
         return None
 
@@ -160,7 +160,7 @@ class Units(BaseModel):
             
             if query_variable is not None:
 
-                variable_id = query_variable['id']
+                variable_id = query_variable
 
                 query = cls(name=name, unit=unit, variable_id=variable_id)
                 query.save()
@@ -234,7 +234,28 @@ class Units(BaseModel):
         
         if query is not None:
 
-            return query.serialize()
+            return query
+        
+        return None
+    
+    @classmethod
+    def read_by_unit(cls, unit:str)->bool:
+        r"""
+        Get instance by its a name
+
+        **Parameters**
+
+        * **name:** (str) Variable name
+
+        **Returns**
+
+        * **bool:** If True, name exist into database 
+        """
+        query = cls.get_or_none(unit=unit)
+        
+        if query is not None:
+
+            return query
         
         return None
 
@@ -348,7 +369,7 @@ class DataTypes(BaseModel):
         
         if query is not None:
 
-            return query.serialize()
+            return query
         
         return None
 
@@ -429,15 +450,15 @@ class Tags(BaseModel):
             if _unit is not None and _display_unit is not None:
 
                 if _data_type is not None:
-            
+                    
                     query = cls(
                         identifier=id,
                         name=name, 
-                        unit=_unit['id'],
-                        data_type=_data_type['id'],
+                        unit=_unit,
+                        data_type=_data_type,
                         description=description,
                         display_name=display_name,
-                        display_unit=_display_unit['id'],
+                        display_unit=_display_unit,
                         opcua_address=opcua_address,
                         node_namespace=node_namespace,
                         scan_time=scan_time,
@@ -500,7 +521,7 @@ class Tags(BaseModel):
                 query = Units.read_by_unit(unit=unit)
                 if query:
 
-                    fields["unit"] = query["id"]
+                    fields["unit"] = query
 
             if "display_unit" in fields:
 
@@ -508,7 +529,7 @@ class Tags(BaseModel):
                 query = Units.read_by_unit(unit=display_unit)
                 if query:
 
-                    fields["display_unit"] = query["id"]
+                    fields["display_unit"] = query
 
             if "data_type" in fields:
 
@@ -516,7 +537,7 @@ class Tags(BaseModel):
                 query = DataTypes.read_by_name(name=data_type)
                 if query:
 
-                    fields["data_type"] = query["id"]
+                    fields["data_type"] = query
 
             query = cls.update(**fields).where(cls.id == id)
             query.execute()
@@ -571,22 +592,25 @@ class Tags(BaseModel):
 
 class TagValue(BaseModel):
 
-    tag = ForeignKeyField(Tags, backref='values')
+    tag = ForeignKeyField(Tags, backref='values', on_delete="CASCADE")
+    unit = ForeignKeyField(Units, backref='values')
     value = FloatField()
     timestamp = TimestampField(utc=True)
 
     @classmethod
     def create(
         cls, 
-        tag:str,
+        tag:Tags,
         value:float,
-        timestamp:datetime):
+        timestamp:datetime,
+        unit=Units):
         r"""
         Documentation here
         """
         query = cls(
             tag=tag,
             value=value, 
-            timestamp=timestamp
+            timestamp=timestamp,
+            unit=unit
             )
         query.save()

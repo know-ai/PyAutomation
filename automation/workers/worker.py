@@ -20,8 +20,9 @@ class BaseWorker(Thread):
         return self.stop_event
 
     def stop(self):
-
+        print(f"Stopping thread: {self}")
         self.stop_event.set()
+
 
     def __getstate__(self):
 
