@@ -37,7 +37,9 @@ class TestCore(unittest.TestCase):
         with self.subTest("Test tag in DB"):
 
             tag_in_db = self.app.logger_engine.get_tag_by_name(name=_tag1['name'])
-            assert_dict_contains_subset(tag_in_db.serialize(), tag_in_cvt.serialize())
+            tag_in_db = tag_in_db.serialize()
+            tag_in_db.pop("was_deleted")
+            assert_dict_contains_subset(tag_in_db, tag_in_cvt.serialize())
 
         # GET TAGS
         _tag2 = {
@@ -52,7 +54,7 @@ class TestCore(unittest.TestCase):
         with self.subTest("Test get tags CVT - DB"):
 
             for counter, tag_in_db in enumerate(tags_in_db):
-                
+                tag_in_db.pop("was_deleted")
                 assert_dict_contains_subset(tag_in_db, tags_in_cvt[counter])
 
         # SET TAG VALUES
@@ -95,9 +97,9 @@ class TestCore(unittest.TestCase):
 
             self.assertIsNone(self.app.get_tag_by_name(name=tag2.name))
 
-        # with self.subTest("Test delete tag from DB"):
-
-        #     self.assertIsNone(self.app.logger_engine.get_tag_by_name(name=tag2.name))
+        with self.subTest("Test delete tag from DB"):
+            tag = self.app.logger_engine.get_tag_by_name(name=tag2.name)
+            self.assertTrue(tag.was_deleted)
 
         # DELETE TAG BY NAME
         self.app.delete_tag_by_name(name=tag1.name)
@@ -106,8 +108,8 @@ class TestCore(unittest.TestCase):
             self.assertIsNone(self.app.get_tag_by_name(name=tag1.name))
 
         with self.subTest("Test delete tag by name from DB"):
-
-            self.assertIsNone(self.app.logger_engine.get_tag_by_name(name=tag1.name))
+            tag = self.app.logger_engine.get_tag_by_name(name=tag1.name)
+            self.assertTrue(tag.was_deleted)
 
     def test_alarms(self):
         r"""
