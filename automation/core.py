@@ -20,7 +20,7 @@ from .alarms import Alarm
 from .state_machine import Machine, DAQ, StateMachine, IAD, Filter, AutomationStateMachine
 from .opcua.subscription import DAS
 from .buffer import Buffer
-from .models import StringType, FloatType
+from .models import StringType, FloatType, IntegerType
 from .modules.users.users import users, User
 from .modules.users.roles import roles, Role
 from .utils.decorators import validate_types
@@ -74,8 +74,8 @@ class PyAutomation(Singleton):
         init_callbacks(app=self.dash_app)
 
     # MACHINES METHODS
-    @validate_types(machine=StateMachine, interval=float|int, mode=str, output=None)
-    def append_machine(self, machine, interval:float=1.0, mode:str="async")->None:
+    @validate_types(machine=StateMachine, interval=FloatType|IntegerType, mode=str, output=None)
+    def append_machine(self, machine, interval:float=FloatType(1.0), mode:str="async")->None:
         r"""
         Documentation here
         """

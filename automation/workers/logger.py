@@ -11,7 +11,7 @@ from ..logger.datalogger import DataLoggerEngine
 
 class LoggerWorker(BaseWorker):
 
-    def __init__(self, manager:DBManager, period:int=0.5):
+    def __init__(self, manager:DBManager, period:int=10.0):
 
         super(LoggerWorker, self).__init__()
         

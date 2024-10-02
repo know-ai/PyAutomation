@@ -461,6 +461,7 @@ class StateMachineCore(StateMachine):
             "state": self.current_state.value
         }
         result.update(self.get_serialized_models())
+        
         return result
     
     # TRANSITIONS
@@ -576,7 +577,7 @@ class DAQ(StateMachineCore):
                 self.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
-        print(f"{self.name.value}")
+        
         super().while_running()
 
     # Auxiliaries Methods
