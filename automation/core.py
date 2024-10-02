@@ -816,7 +816,6 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             alarms = self.db_manager.get_alarms()
-
             for alarm in alarms:
 
                 was_deleted = alarm.pop("was_deleted")

@@ -35,7 +35,7 @@ class LoggerWorker(BaseWorker):
                 tag = item["tag"]
                 value = item["value"]
                 timestamp = item["timestamp"]
-                tags.append({"tag":tag, "value":value.value, "timestamp":timestamp})
+                tags.append({"tag":tag, "value":value, "timestamp":timestamp})
 
             self.logger.write_tags(tags=tags)
 
