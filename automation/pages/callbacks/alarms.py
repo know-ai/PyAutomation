@@ -1,5 +1,8 @@
 import dash
+from ...tags.cvt import CVTEngine
 from ...utils import find_differences_between_lists, generate_dropdown_conditional
+
+tag_engine = CVTEngine()
 
 def init_callback(app:dash.Dash):
 
@@ -18,6 +21,9 @@ def init_callback(app:dash.Dash):
         r"""
         Documentation here
         """
+        if tag:
+            _tag = tag_engine.get_tag_by_name(name=tag)
+            dash.set_props("alarm_trigger_unit", {'children': _tag.get_display_unit()})
 
         if name and tag and type and trigger_value:
 
@@ -145,20 +151,8 @@ def init_callback(app:dash.Dash):
     def delete_update_alarms(timestamp, previous, current):
 
         if timestamp:
-            
-            if len(previous) > len(current): # DELETE ALARM
 
-                removed_rows = [row for row in previous if row not in current]
-                
-                for row in removed_rows:
-                    
-                    _id = row['id']
-                    message = f"Do you want to delete Alarm ID: {_id}?"
-                    # OPEN MODAL TO CONFIRM CHANGES
-                    dash.set_props("modal-update-delete-alarm-body", {"children": message})
-                    dash.set_props("modal-update-delete-alarm", {'is_open': True})
-
-            elif previous and current: # UPDATE TAG DEFINITION
+            if previous and current: # UPDATE TAG DEFINITION
                 
                 to_updates = find_differences_between_lists(previous, current)
                 alarm_to_update = to_updates[0]
@@ -226,14 +220,3 @@ def init_callback(app:dash.Dash):
 
             return is_open, app.alarms_table_data(), None, 0, 0
         
-    # @app.callback(
-    #     dash.Output('alarms_datatable', 'data', allow_duplicate=True),
-    #     dash.Output('alarms_datatable', 'dropdown_conditional'),
-    #     dash.Input('timestamp-interval', 'n_intervals'),
-    #     prevent_initial_call=True
-    #     )
-    # def real_time_alarms(n_intervals):
-    #     r"""
-    #     Documentation here
-    #     """
-    #     pass

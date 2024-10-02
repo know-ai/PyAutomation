@@ -6,6 +6,7 @@ modelling the subjects involved in the core of the engine.
 """
 from inspect import ismethod
 from .modules.users.users import User
+from .tags.tag import Tag
 from .utils.decorators import set_event
 
 FLOAT = "float"
@@ -89,4 +90,22 @@ class BooleanType(PropertyType):
     def __init__(self, default=None, unit=None):
 
         super(BooleanType, self).__init__(BOOL, default, unit)
+
+
+class ProcessType(FloatType):
+
+    """
+    Implement a Process Type
+
+    Attributes
+
+    - read_only: [bool] only read from CVT, used to field data.
+    - tag: [Tag] Tag binded on CVT
+    """
+
+    def __init__(self, tag:Tag, default=None, read_only:bool=True):
+
+        super(ProcessType, self).__init__(FLOAT, default=default, unit=tag.get_display_unit())
+        self.tag = tag
+        read_only = read_only
 

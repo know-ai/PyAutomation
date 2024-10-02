@@ -802,9 +802,9 @@ class PyAutomation(Singleton):
 
             for tag in tags:
 
-                was_deleted = tag.pop("was_deleted")
+                active = tag.pop("active")
 
-                if not was_deleted:
+                if active:
 
                     self.create_tag(**tag)
 
@@ -817,10 +817,6 @@ class PyAutomation(Singleton):
 
             alarms = self.db_manager.get_alarms()
             for alarm in alarms:
-
-                was_deleted = alarm.pop("was_deleted")
-
-                if not was_deleted:
 
                     self.create_alarm(reload=True, **alarm)
 
@@ -867,7 +863,7 @@ class PyAutomation(Singleton):
             name=str,
             tag=str,
             alarm_type=str,
-            trigger_value=bool|float,
+            trigger_value=bool|float|int,
             description=str|type(None),
             identifier=str|type(None),
             tag_alarm=str|type(None),
@@ -883,7 +879,7 @@ class PyAutomation(Singleton):
             name:str,
             tag:str,
             alarm_type:str="BOOL",
-            trigger_value:bool|float=True,
+            trigger_value:bool|float|int=True,
             description:str="",
             identifier:str=None,
             tag_alarm:str=None,
@@ -923,6 +919,7 @@ class PyAutomation(Singleton):
 
             # Persist Tag on Database
             if self.is_db_connected():
+                
                 alarm = self.alarm_manager.get_alarm_by_name(name=name)
                 
                 self.alarms_engine.create(
@@ -1210,6 +1207,14 @@ class PyAutomation(Singleton):
         Stops the app in safe way with the threads
         """
         self.__stop_workers()
+
+    def state_machine_diagrams(self, folder_path:str):
+        r"""
+        Documentation here"""
+        for machine, _, _ in self._manager.get_machines():
+            # SAVE STATE DIAGRAM
+            img_path = f"{folder_path}{machine.name.value}.png"
+            machine._graph().write_png(img_path)
 
     # WORKERS
     @validate_types(test=bool, output=None)

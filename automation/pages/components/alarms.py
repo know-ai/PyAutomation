@@ -75,7 +75,7 @@ class AlarmsComponents:
                                             dbc.InputGroup(
                                                 [
                                                     dbc.Input(placeholder="Trigger Value", type="number", step=0.1, id="alarm_trigger_value_input"), 
-                                                    dbc.InputGroupText('', id="dead_band_unit")
+                                                    dbc.InputGroupText('', id="alarm_trigger_unit")
                                                 ], 
                                                 size="md"
                                             ),
@@ -125,14 +125,14 @@ class AlarmsComponents:
                             {'name': 'state', 'id': 'state', 'editable': False},  
                             {'name': 'description', 'id': 'description'}, 
                             {'name': 'alarm_type', 'id': 'alarm_type', 'presentation': 'dropdown'}, 
-                            {'name': 'trigger_value', 'id': 'trigger_value'},
+                            {'name': 'trigger_value', 'id': 'trigger_value', 'type': "numeric"},
                             {'name': 'operations', 'id': 'operations', 'presentation': 'dropdown'}
                         ],
                         id="alarms_datatable",
                         filter_action="native",
                         sort_action="native",
                         sort_mode="multi",
-                        row_deletable=True,
+                        row_deletable=False,
                         selected_columns=[],
                         page_action="native",
                         page_current= 0,

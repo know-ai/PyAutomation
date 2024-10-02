@@ -165,7 +165,7 @@ class StateMachineWorker(BaseWorker):
     def run(self):
         
         for machine, interval, mode in self._manager.get_machines():
-            
+    
             if mode == "async":
                 
                 self._async_scheduler.add_machine(machine)

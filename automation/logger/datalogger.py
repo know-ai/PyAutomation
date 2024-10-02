@@ -71,7 +71,7 @@ class DataLogger(BaseLogger):
         Documentation here
         """
         tag, _ = Tags.get_or_create(identifier=id)
-        Tags.put(id=tag.id, was_deleted=True)
+        Tags.put(id=tag.id, active=False)
 
     def get_tag_by_name(self, name:str):
         r"""

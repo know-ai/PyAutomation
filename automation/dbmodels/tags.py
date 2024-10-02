@@ -418,7 +418,7 @@ class Tags(BaseModel):
     node_namespace = CharField(null=True)
     scan_time = IntegerField(null=True)
     dead_band = FloatField(null=True)
-    was_deleted = BooleanField(null=True)
+    active = BooleanField(default=True)
 
     @classmethod
     def create(
@@ -434,7 +434,7 @@ class Tags(BaseModel):
         node_namespace:str="",
         scan_time:int=0,
         dead_band:float=0.0,
-        was_deleted:bool=False
+        active:bool=True
         ):
         r"""
         Documentation here
@@ -466,7 +466,7 @@ class Tags(BaseModel):
                             node_namespace=node_namespace,
                             scan_time=scan_time,
                             dead_band=dead_band,
-                            was_deleted=was_deleted
+                            active=active
                             )
                         query.save()
                         message = f"{name} tag created successfully"
@@ -516,7 +516,7 @@ class Tags(BaseModel):
                             "node_namespace":node_namespace,
                             "scan_time":scan_time,
                             "dead_band":dead_band,
-                            "was_delete": False
+                            "active": True
                         }
                         cls.put(id=tag.id, **payload)
 
@@ -642,7 +642,7 @@ class Tags(BaseModel):
             'scan_time': self.scan_time,
             'dead_band': self.dead_band,
             'variable': self.unit.variable_id.name,
-            'was_deleted': self.was_deleted
+            'active': self.active
         }
 
 
