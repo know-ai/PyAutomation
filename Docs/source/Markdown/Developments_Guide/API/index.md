@@ -1,7 +1,6 @@
 # API
 
 ```{toctree}
-:caption: Development' Guide Contents
 :maxdepth: 2
 
 <!-- CVT DOCUMENTATION -->
