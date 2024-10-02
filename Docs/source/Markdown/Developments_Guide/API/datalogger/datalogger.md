@@ -1,6 +1,6 @@
 # Data Logger API Documentation
 
 ```{eval-rst}
-.. automodule:: automation.tags.DataLogger
-    :members: set_db, get_db, set_tag, set_tags, update_tag, delete_tag, create_tables, drop_tables
+.. automodule:: automation.logger.datalogger.DataLogger
+    :members: set_tag, delete_tag, get_tag_by_name, update_tag, set_tags, get_tags, write_tag, write_tags, read_trends
     
