@@ -102,21 +102,33 @@ class ProcessType(FloatType):
     - tag: [Tag] Tag binded on CVT
     """
 
-    def __init__(self, tag:Tag, default=None, read_only:bool=True):
+    def __init__(self, tag:Tag|None=None, default=None, read_only:bool=True):
+        
+        if tag:
+            
+            unit = tag.get_display_unit()
+        
+        else:
+            
+            unit = None
 
-        super(ProcessType, self).__init__(FLOAT, default=default, unit=tag.get_display_unit())
         self.tag = tag
         self.read_only = read_only
-
+        super(ProcessType, self).__init__(FLOAT, default=default, unit=unit)
+        
     def serialize(self):
         r"""
         Documentation here
         """
+        tag = None
+        if self.tag:
+
+            tag = self.tag.serialize()
 
         return {
             "value": self.value,
             "unit": self.unit,
-            "tag": self.tag.serialize(),
+            "tag": tag,
             "read_only": self.read_only
         }
 
