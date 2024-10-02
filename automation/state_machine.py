@@ -1,5 +1,4 @@
 import logging
-from time import sleep
 from datetime import datetime
 from statemachine import State, StateMachine
 from .workers.state_machine import StateMachineWorker
@@ -7,7 +6,7 @@ from .managers.state_machine import StateMachineManager
 from .managers.opcua_client import OPCUAClientManager
 from .singleton import Singleton
 from .buffer import Buffer
-from .models import StringType, IntegerType, FloatType, BooleanType
+from .models import StringType, IntegerType, FloatType, BooleanType, ProcessType
 from .tags.cvt import CVTEngine, Tag
 from .opcua.subscription import DAS
 from .modules.users.users import User
@@ -217,6 +216,44 @@ class StateMachineCore(StateMachine):
 
         attr = getattr(self, attr_name)
         attr.set_value(value=value, user=user, name=attr_name)
+
+    def add_process_variable(self, name:str, tag:Tag, read_only:bool=False):
+        r"""
+        Documentation here
+        """
+        
+        props = self.__dict__
+        if name not in props.items():
+            process_variable = ProcessType(tag=Tag, default=tag.value, read_only=read_only)
+            setattr(self, name, process_variable)
+
+    def get_process_variables(self):
+        r"""
+        Documentation here
+        """
+
+        result = dict()
+        props = self.__dict__
+        
+        for key, value in props.items():
+
+            if isinstance(value, ProcessType):
+
+                result[key] = value.serialize()
+
+        return result
+
+    def get_process_variable(self, name:str):
+        r"""
+        Documentation here
+        """
+        props = self.__dict__
+        if name in props.items():
+
+            value = props[name]
+            if isinstance(value, ProcessType):
+
+                return value.serialize()
 
     @validate_types(size=int, output=None)
     def set_buffer_size(self, size:int, user:User=None)->None:
@@ -442,9 +479,15 @@ class StateMachineCore(StateMachine):
         
         for key, value in props.items():
 
-            if isinstance(value, (StringType, FloatType, IntegerType, BooleanType)):
+            if isinstance(value, (StringType, FloatType, IntegerType, BooleanType, ProcessType)):
 
-                result[key] = value.value
+                if isinstance(value, ProcessType):
+
+                    result[key] = value.serialize()
+
+                else:
+
+                    result[key] = value.value
 
         return result
 

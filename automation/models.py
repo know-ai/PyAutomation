@@ -4,7 +4,6 @@
 This module implements a Tags and other classes for
 modelling the subjects involved in the core of the engine.
 """
-from inspect import ismethod
 from .modules.users.users import User
 from .tags.tag import Tag
 from .utils.decorators import set_event
@@ -107,5 +106,17 @@ class ProcessType(FloatType):
 
         super(ProcessType, self).__init__(FLOAT, default=default, unit=tag.get_display_unit())
         self.tag = tag
-        read_only = read_only
+        self.read_only = read_only
+
+    def serialize(self):
+        r"""
+        Documentation here
+        """
+
+        return {
+            "value": self.value,
+            "unit": self.unit,
+            "tag": self.tag.serialize(),
+            "read_only": self.read_only
+        }
 
