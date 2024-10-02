@@ -1,28 +1,5 @@
-# API Documentation
+# Managers Database API Documentation
 
-Escribir un preambulo de contenido de la API
+```{eval-rst}
+.. automodule:: automation.tags.Manag,    :members: set_db,get_db,set_dropped,get_dropped,register_table,create_tables,drop_tables,clear_default_tables,add_tag,get_tags,get_alarms,set_tag,set_tags,get_table,set_period,get_period,set_delay,get_delay,init_database,stop_database,get_opcua_clients,summary
 
-::: automation.managers.DBManager
-    :docstring:
-    :members: set_db
-    :members: get_db
-    :members: set_dropped
-    :members: get_dropped
-    :members: register_table
-    :members: create_tables
-    :members: drop_tables
-    :members: clear_default_tables
-    :members: add_tag
-    :members: get_tags
-    :members: get_alarms
-    :members: set_tag
-    :members: set_tags
-    :members: get_table
-    :members: set_period
-    :members: get_period
-    :members: set_delay
-    :members: get_delay
-    :members: init_database
-    :members: stop_database
-    :members: get_opcua_clients
-    :members: summary

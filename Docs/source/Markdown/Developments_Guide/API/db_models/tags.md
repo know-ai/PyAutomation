@@ -1,11 +1,6 @@
-# API Documentation
+# DataBase Models API Documentation
 
-Escribir un preambulo de contenido de la API
 
-::: automation.dbmodels.Tags
-    :docstring:
-    :members: create
-    :members: name_exist
-    :members: read
-    :members: read_by_name
-    :members: serialize
+```{eval-rst}
+.. automodule:: automation.tags.Tags
+    :members: create,name_exist,read,read_by_name,serialize

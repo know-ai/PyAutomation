@@ -1,18 +1,5 @@
-# API Documentation
+# DataLogger Engine  API Documentation
 
-Escribir un preambulo de contenido de la API
-
-::: automation.logger.datalogger.DataLoggerEngine
-    :docstring:
-    :members: set_db
-    :members: get_db
-    :members: create_tables
-    :members: drop_tables
-    :members: set_tag
-    :members: update_tag
-    :members: delete_tag
-    :members: write_tag
-    :members: write_tags
-    :members: read_tag
-    :members: request
-    :members: response
+```{eval-rst}
+.. automodule:: automation.tags.DataLoggerEngine
+    :members: set_db,get_db,create_tables,drop_tables,set_tag,update_tag,delete_tag,write_tag,write_tags,read_tag,request,response

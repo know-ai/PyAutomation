@@ -8,7 +8,7 @@ In this manual, we will walk you through the key features, functionalities, and 
 
 
 ```{toctree}
-:caption: Contenidos de la Guía de Usuario
+:caption: User's Guide Content
 :maxdepth: 1
 
 Alarms/index.md

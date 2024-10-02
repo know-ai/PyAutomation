@@ -26,7 +26,8 @@ release = '0.1'
 extensions = [
     'myst_parser',
     'sphinx.ext.autodoc',         
-    'sphinx_rtd_theme',  
+    'sphinx_rtd_theme',
+    'sphinx.ext.napoleon',
 ]
 
 templates_path = ['_templates']
@@ -37,5 +38,8 @@ exclude_patterns = []
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'piccolo_theme'
+html_theme = 'furo'
 html_static_path = ['_static']
+# html_css_files = [
+#     'styles.css',  # Nombre del archivo que guardaste en _static
+# ]
