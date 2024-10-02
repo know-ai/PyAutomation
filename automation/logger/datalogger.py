@@ -11,6 +11,7 @@ from ..dbmodels import Tags, TagValue, Units
 from ..modules.users.users import User
 from ..tags.cvt import CVTEngine
 from .core import BaseLogger, BaseEngine
+from ..variables import *
 
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
@@ -141,36 +142,6 @@ class DataLogger(BaseLogger):
             conn = self._db.connection()
             conn.rollback()
 
-    def read_tag(self, tag):
-        r"""
-        Documentation here
-        """
-        try:
-            query = Tags.select().order_by(Tags.start)
-            trend = query.where(Tags.name == tag).get()
-            
-            period = trend.period
-            values = trend.values.select()
-            
-            result = dict()
-
-            t0 = values[0].timestamp.strftime('%Y-%m-%d %H:%M:%S')
-            values = [value.value for value in values]
-
-            result["t0"] = t0
-            result["dt"] = period
-            result["values"] = values
-            
-            return result
-        except Exception as e:
-            _, _, e_traceback = sys.exc_info()
-            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
-            e_message = str(e)
-            e_line_number = e_traceback.tb_lineno
-            logging.warning(f"Rollback done in database due to conflicts reading tag: {e_line_number} - {e_filename} - {e_message}")
-            conn = self._db.connection()
-            conn.rollback()
-
     def read_trends(self, start:str, stop:str, timezone:str, tags):
         r"""
         Documentation here
@@ -187,12 +158,11 @@ class DataLogger(BaseLogger):
         for tag in tags:
 
             trend = Tags.select().where(Tags.name==tag).get()
-            
+            _tag = self.tag_engine.get_tag_by_name(name=tag)
+            variable = _tag.get_variable()
             values = trend.values.select().where((TagValue.timestamp > start) & (TagValue.timestamp < stop)).order_by(TagValue.timestamp.asc())
-
             for value in values:
-                
-                result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": value.value})
+                result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": eval(f"{variable}.convert_value({value.value}, from_unit={'value.unit.unit'}, to_unit={'_tag.get_display_unit()'})")})
 
         return result
 
@@ -410,26 +380,6 @@ class DataLoggerEngine(BaseEngine):
 
         _query["parameters"] = dict()
         _query["parameters"]["tags"] = tags
-
-        return self.query(_query)
-
-    def read_tag(self, tag:str):
-        r"""
-        Read tag value from database on a thread-safe mechanism
-
-        **Parameters**
-
-        * **tag** (str): Tag name in database
-
-        **Returns**
-
-        * **value** (float): Tag value requested
-        """
-        _query = dict()
-        _query["action"] = "read_tag"
-
-        _query["parameters"] = dict()
-        _query["parameters"]["tag"] = tag
 
         return self.query(_query)
     

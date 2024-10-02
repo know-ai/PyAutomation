@@ -38,6 +38,13 @@ class EngUnit(object):
         Documentation here
         """
         return [float(value) / float(self.conversions[from_unit]) * float(self.conversions[to_unit]) for value in values]
+    
+    @classmethod
+    def convert_value(cls, value:int|float, from_unit:str, to_unit:str)->float:
+        r"""
+        Documentation here
+        """
+        return float(value) / float(cls.conversions[from_unit]) * float(cls.conversions[to_unit])
         
     def change_unit(self, unit):
         """Converts the current value of the object to a new unit.  Returns a float of the new value."""

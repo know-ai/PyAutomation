@@ -70,7 +70,34 @@ class Temperature(EngUnit):
         elif to_unit == 'F':
             return temperature_kelvin * 9.0 / 5.0 - 459.67
         else:
-            return None    
+            return None  
+
+    @classmethod
+    def convert_value(cls, value, _from:str, to_unit:str):
+        
+        temperature_kelvin = 0
+        if _from.upper() == 'K':
+            temperature_kelvin = value
+        elif _from.upper() == 'R':
+            temperature_kelvin = value * 5.0 / 9.0
+        elif _from.upper() == 'C':
+            temperature_kelvin = value + 273.15
+        elif _from.upper() == 'F':
+            temperature_kelvin = (value + 459.67) / 9.0 * 5.0
+        else:
+            return None
+        
+        # Return Value in Required Unit
+        if to_unit == 'K':
+            return float(temperature_kelvin)
+        elif to_unit == 'R':
+            return temperature_kelvin * 9.0 / 5.0
+        elif to_unit == 'C':
+            return temperature_kelvin - 273.15
+        elif to_unit == 'F':
+            return temperature_kelvin * 9.0 / 5.0 - 459.67
+        else:
+            return None  
 
     def __add__(self, other):
         self_original_unit = self.unit
