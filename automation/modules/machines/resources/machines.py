@@ -53,7 +53,7 @@ class MachineAttrResource(Resource):
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
     @ns.expect(put_attr_value_model)
-    def put(self,machine_name:str, attr:str):
+    def put(self, machine_name:str, attr:str):
         """
         Put Machine Attr
         """
@@ -89,7 +89,7 @@ class MachineAttrResource(Resource):
 
                 value = FloatType(float(api.payload["value"]))
 
-            elif isinstance(machine_attr, (IntegerType,int)):
+            elif isinstance(machine_attr, (IntegerType, int)):
 
                 value = IntegerType(int(api.payload["value"]))
 
@@ -105,14 +105,7 @@ class MachineAttrResource(Resource):
 
             return f"{err}", 400
         
-        if attr=="machine_interval":
-            
-
-            machine.set_interval(interval=value, user=user)
-
-        else:
-        
-            machine.put_attr(attr_name=attr, value=value, user=user)
+        machine.put_attr(attr_name=attr, value=value, user=user)
 
         return f"{attr} updated successfully to {value.value}", 200
     
@@ -166,6 +159,7 @@ class SubscribeResource(Resource):
             return f"{tag_name} subscribe to {machine_name} successfully", 200
 
         return f"{tag_name} is already subscribed to {machine_name}", 403
+
 
 @ns.route('/unsubscribe/<machine_name>/to/<tag_name>')
 class UnsubscribeResource(Resource):

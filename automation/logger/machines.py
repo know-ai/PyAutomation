@@ -55,6 +55,7 @@ class MachinesLogger(BaseLogger):
         fields = dict()
         machine = Machines.read_by_name(name=name.value)
         if machine_interval:
+            
             fields["interval"] = machine_interval.value
         if description:
             fields["description"] = description.value

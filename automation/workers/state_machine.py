@@ -140,7 +140,6 @@ class AsyncStateMachineWorker(BaseWorker):
 
         for sched in self._schedulers:
             try:
-                print(f"stop sched")
                 sched.stop()
             except Exception as e:
                 message = "Error on async scheduler stop"
@@ -188,7 +187,6 @@ class StateMachineWorker(BaseWorker):
         
 
     def stop(self):
-        print(f"Stoping")
         self._async_scheduler.stop()
         self._sync_scheduler.stop()
     

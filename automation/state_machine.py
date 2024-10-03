@@ -219,7 +219,6 @@ class StateMachineCore(StateMachine):
 
         Depending on you state machine goal, write your script here
         """
-        print(f"{self.name.value} Running")
         self.criticity.value = 1
 
     def while_resetting(self):
@@ -237,7 +236,7 @@ class StateMachineCore(StateMachine):
 
     # Auxiliaries Methods   
     def put_attr(self, attr_name:str, value:StringType|FloatType|IntegerType|BooleanType, user:User=None):
-
+        
         attr = getattr(self, attr_name)
         attr.set_value(value=value, user=user, name=attr_name)
         kwargs = {
