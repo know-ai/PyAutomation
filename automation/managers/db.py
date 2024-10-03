@@ -29,6 +29,7 @@ from ..dbmodels import (
     Roles,
     Events,
     Logs,
+    Machines,
     BaseModel
 )
 
@@ -65,7 +66,8 @@ class DBManager(Singleton):
             Roles,
             Users,
             Events,
-            Logs
+            Logs,
+            Machines
         ]
 
         self._extra_tables = []
