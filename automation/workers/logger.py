@@ -12,7 +12,7 @@ from ..tags.cvt import CVTEngine
 
 class LoggerWorker(BaseWorker):
 
-    def __init__(self, manager:DBManager, period:int=10.0):
+    def __init__(self, manager:DBManager, period:int=2.0):
 
         super(LoggerWorker, self).__init__()
         
@@ -33,7 +33,7 @@ class LoggerWorker(BaseWorker):
             tags = list()
             while not _queue.empty():
 
-                item = _queue.get()
+                item = _queue.get(block=False)
                 tag_name = item["tag"]
                 tag = self.cvt.get_tag_by_name(name=tag_name)
                 if tag:

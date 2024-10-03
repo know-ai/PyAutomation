@@ -100,7 +100,7 @@ class OPCUAComponents(Singleton):
                                     dash.html.Div([
                                         dbc.InputGroup([dbc.InputGroupText("Name"), dbc.Input(placeholder="Server 1", id="opcua_client_name_input")], size="sm", className="mb-1"),
                                         dbc.InputGroup([dbc.InputGroupText("Host"), dbc.Input(placeholder="127.0.0.1", id="opcua_client_host_input")], size="sm", className="mb-1"),
-                                        dbc.InputGroup([dbc.InputGroupText("Port"), dbc.Input(placeholder="4840", id="opcua_client_port_input")], size="sm"),
+                                        dbc.InputGroup([dbc.InputGroupText("Port"), dbc.Input(placeholder=4840, id="opcua_client_port_input", type="number")], size="sm"),
                                     ], style={'border': '1px solid black', 'padding': '10px'}, className="mb-2"),
 
                                     dash.html.H6('Security Settings'),  # This is the title

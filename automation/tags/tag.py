@@ -312,7 +312,7 @@ class TagObserver(Observer):
         result["tag"] = self._subject.name
         result["value"] = self._subject.value
         result["timestamp"] = self._subject.timestamp
-        self._tag_queue.put(result)
+        self._tag_queue.put(result, block=False)
 
 
 class MachineObserver(Observer):
