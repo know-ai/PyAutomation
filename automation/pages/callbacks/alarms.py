@@ -21,7 +21,6 @@ def init_callback(app:dash.Dash):
         r"""
         Documentation here
         """
-        print(f"name: {name} - tag: {tag} - _type: {type} - trigger_value: {trigger_value}")
         if tag:
             _tag = tag_engine.get_tag_by_name(name=tag)
             dash.set_props("alarm_trigger_unit", {'children': _tag.get_display_unit()})
