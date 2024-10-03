@@ -1,4 +1,4 @@
-import logging
+import logging, queue
 from datetime import datetime
 from statemachine import State, StateMachine
 from .workers.state_machine import StateMachineWorker
@@ -8,9 +8,10 @@ from .singleton import Singleton
 from .buffer import Buffer
 from .models import StringType, IntegerType, FloatType, BooleanType, ProcessType
 from .tags.cvt import CVTEngine, Tag
+from .tags.tag import MachineObserver
 from .opcua.subscription import DAS
 from .modules.users.users import User
-from .utils.decorators import set_event, validate_types
+from .utils.decorators import set_event, validate_types, logging_error_handler
 from .variables import (
     Temperature,
     Length,
@@ -155,6 +156,7 @@ class StateMachineCore(StateMachine):
         self.buffer_size = IntegerType(default=10)
         self.buffer_roll_type = StringType(default='backward')
         self.__subscribed_to = dict()
+        self.restart_buffer()
         transitions = []
         for state in self.states:
             transitions.extend(state.transitions)
@@ -212,6 +214,19 @@ class StateMachineCore(StateMachine):
         self.send("restart_to_wait")
 
     # Auxiliaries Methods
+    def get_queue(self)->queue.Queue:
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        return self._tag_queue
+    
     def put_attr(self, attr_name:str, value:StringType|FloatType|IntegerType|BooleanType, user:User=None):
 
         attr = getattr(self, attr_name)
@@ -271,7 +286,7 @@ class StateMachineCore(StateMachine):
         r"""
         Restart Buffer
         """
-        self.data = {tag_name: Buffer(size=self.buffer_size.value, roll=self.buffer_roll_type.value) for tag_name, tag in self.get_subscribed_tags().items()}
+        self.data = {tag_name: Buffer(size=self.buffer_size.value, roll=self.buffer_roll_type.value) for tag_name, _ in self.get_subscribed_tags().items()}
 
     @validate_types(output=dict)
     def get_subscribed_tags(self)->dict:
@@ -295,10 +310,32 @@ class StateMachineCore(StateMachine):
         - *tags:* [list] 
         """
         tag_name = tag.get_name()
-
+        
         if tag_name not in self.get_subscribed_tags():
 
+            setattr(self, tag_name, ProcessType(tag=tag, default=tag.value, read_only=True))
             self.__subscribed_to[tag.name] = tag
+            self.attach(machine=self, tag=tag)
+            self.restart_buffer()
+            return True
+
+    @validate_types(tag=Tag, output=None|bool)
+    def unsubscribe_to(self, tag:Tag):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        if tag.name in self.__subscribed_to:
+            delattr(self, tag.name)
+            self.__subscribed_to.pop(tag.name)
+            self.restart_buffer()
+            return True
 
     @validate_types(
             tag=str, 
@@ -319,8 +356,29 @@ class StateMachineCore(StateMachine):
         - *value:* [int|float|bool] tag value
         """
         if tag in self.get_subscribed_tags():
-            
-            self.data[tag](value.value)
+            _tag = self.__subscribed_to[tag]
+            attr = getattr(self, tag)
+            value = value.convert(to_unit=_tag.get_display_unit())
+            attr.value = value
+            # IMPORTANTE A CAMBIAR SEGUN LA UNIDAD QUE NECESITEN LOS MODELOS
+            self.data[tag](value)
+
+    @logging_error_handler
+    def attach(self, machine, tag:Tag):
+        cvt = CVTEngine()
+        def attach_observer(machine, tag:Tag):
+
+            observer = MachineObserver(machine)
+            query = dict()
+            query["action"] = "attach_observer"
+            query["parameters"] = {
+                "name": tag.name,
+                "observer": observer,
+            }
+            cvt.request(query)
+            cvt.response()
+
+        attach_observer(machine, tag)
 
     @set_event(message=f"Switched", classification="State Machine", priority=2, criticity=3)
     @validate_types(to=str, user=User, output=tuple)
@@ -342,22 +400,6 @@ class StateMachineCore(StateMachine):
         except Exception as err:
 
             logging.warning(f"Transition from {_from} state to {to} state for {self.name.value} is not allowed")
-
-    @validate_types(tag=Tag, output=None)
-    def unsubscribe_to(self, tag:Tag):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        if tag.name in self.__subscribed_to:
-
-            self.__subscribed_to.pop(tag.name)
 
     @validate_types(output=int|float)
     def get_interval(self)->int|float:

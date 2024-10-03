@@ -505,7 +505,7 @@ class Tags(BaseModel):
             if _unit is not None and _display_unit is not None:
 
                     if _data_type is not None:
-                        tag = cls.get_or_create(name=name)
+                        tag, _ = cls.get_or_create(name=name)
                         payload = {
                             "unit":_unit,
                             "data_type":_data_type,

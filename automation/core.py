@@ -539,7 +539,7 @@ class PyAutomation(Singleton):
 
         daq.subscribe_to(tag=tag)
         
-    # @validate_types(tag=Tag, output=None)
+    @validate_types(tag=Tag, output=None)
     def unsubscribe_opcua(self, tag:Tag):
         r"""
         Documentation here

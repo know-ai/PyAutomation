@@ -81,7 +81,7 @@ class AlarmManager(Singleton):
             reload=reload)
         alarm.set_trigger(value=trigger_value, _type=type)
         self._alarms[alarm.identifier] = alarm
-        self.attach_all()
+        self.attach(alarm_name=name)
         return alarm, f"Alarm creation successful"
 
     def put(
@@ -380,18 +380,17 @@ class AlarmManager(Singleton):
 
         return result
 
-    def attach_all(self):
+    def attach(self, alarm_name:str):
 
-        def attach_observers(entity):
+        def attach_observer(entity):
 
             _tag = entity.tag
 
             observer = TagObserver(self._tag_queue)
             self.tag_engine.attach(name=_tag, observer=observer)
 
-        for _, _alarm in self._alarms.items():
-            
-            attach_observers(_alarm)
+        alarm = self.get_alarm_by_name(name=alarm_name)
+        attach_observer(alarm)
 
     def execute(self, tag_name:str):
         r"""

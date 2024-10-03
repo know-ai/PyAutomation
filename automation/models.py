@@ -114,7 +114,7 @@ class ProcessType(FloatType):
 
         self.tag = tag
         self.read_only = read_only
-        super(ProcessType, self).__init__(FLOAT, default=default, unit=unit)
+        super(ProcessType, self).__init__(default=default, unit=unit)
         
     def serialize(self):
         r"""
@@ -125,8 +125,13 @@ class ProcessType(FloatType):
 
             tag = self.tag.serialize()
 
+        value = None
+        if self.value:
+
+            value = self.value.value
+
         return {
-            "value": self.value,
+            "value": value,
             "unit": self.unit,
             "tag": tag,
             "read_only": self.read_only

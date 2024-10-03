@@ -268,7 +268,7 @@ class Alarms(BaseModel):
             )
             alarm.save()
 
-        return alarm
+            return alarm
     
     @classmethod
     def name_exists(cls, name:str)->bool|None:

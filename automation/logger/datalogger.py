@@ -12,6 +12,7 @@ from ..modules.users.users import User
 from ..tags.cvt import CVTEngine
 from .core import BaseLogger, BaseEngine
 from ..variables import *
+from ..utils.decorators import logging_error_handler
 
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
@@ -35,6 +36,7 @@ class DataLogger(BaseLogger):
         super(DataLogger, self).__init__()
         self.tag_engine = CVTEngine()
 
+    @logging_error_handler
     def set_tag(
         self, 
         id:str,

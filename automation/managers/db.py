@@ -4,7 +4,6 @@
 This module implements Logger Manager.
 """
 import logging, queue
-from datetime import datetime
 from ..singleton import Singleton
 from ..logger.datalogger import DataLoggerEngine
 from ..logger.logdict import  LogTable
@@ -12,8 +11,9 @@ from ..logger.alarms import AlarmsLoggerEngine
 from ..logger.events import EventsLoggerEngine
 from ..logger.users import UsersLoggerEngine
 from ..logger.logs import LogsLoggerEngine
-from ..tags import CVTEngine, TagObserver, Tag
+from ..tags import CVTEngine, TagObserver
 from ..modules.users.users import User
+from ..utils.decorators import logging_error_handler
 from ..dbmodels import (
     Tags, 
     TagValue, 
@@ -168,6 +168,7 @@ class DBManager(Singleton):
 
         return self.alarms_logger.get_alarms()
 
+    @logging_error_handler
     def set_tag(
         self, 
         tag:str, 
@@ -225,46 +226,6 @@ class DBManager(Singleton):
                     max_value=max_value, 
                     tcp_source_address=tcp_source_address, 
                     node_namespace=node_namespace)
-        
-    # def set_period(self, period:float):
-    #     r"""
-    #     Sets period to log into database
-
-    #     **Parameters**
-
-    #     * **period** (float): Time scan to log into database
-    #     """
-    #     self._period = period
-
-    # def get_period(self)->float:
-    #     r"""
-    #     Gets the period wich is scan into database
-
-    #     **Returns**
-
-    #     * **period** (float): Time scan to log into database
-    #     """
-    #     return self._period
-
-    # def set_delay(self, delay:float):
-    #     r"""
-    #     Sets an initial time to delay some time before start to logging database
-
-    #     **Parameters**
-
-    #     * **delay** (float): Time in seconds to delay before start to logging database
-    #     """
-    #     self._delay = delay
-
-    # def get_delay(self)->float:
-    #     r"""
-    #     Gets time to delay some time before start to logging database
-
-    #     **Returns**
-
-    #     * **delay** (float): Time in seconds to delay before start to logging database
-    #     """
-    #     return self._delay
 
     def init_database(self):
         r"""
@@ -325,14 +286,3 @@ class DBManager(Singleton):
 
         observer = TagObserver(self._tag_queue)
         self.engine.attach(name=tag_name, observer=observer)
-
-    def attach_all(self):
-
-        def attach_observers(tag_name:str):
-
-            observer = TagObserver(self._tag_queue)
-            self.engine.attach(name=tag_name, observer=observer)
-
-        for tag in self.engine.get_tags():
-            
-            attach_observers(tag_name=tag["name"])

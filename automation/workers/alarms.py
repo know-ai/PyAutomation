@@ -16,7 +16,6 @@ class AlarmWorker(BaseWorker):
         
         self._manager = manager
         self._period = period
-        self._manager.attach_all()
 
     def run(self):
         r"""

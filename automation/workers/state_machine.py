@@ -146,7 +146,6 @@ class StateMachineWorker(BaseWorker):
         super(StateMachineWorker, self).__init__()
         
         self._manager = manager
-        self._manager.attach_all()
         self._sync_scheduler = MachineScheduler()
         self._async_scheduler = AsyncStateMachineWorker()
         self.jobs = list()

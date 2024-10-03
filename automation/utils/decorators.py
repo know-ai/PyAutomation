@@ -69,7 +69,6 @@ def set_event(message:str, classification:str, priority:int, criticity:int):
 
     return wrapper
 
-
 def validate_types(**validations):
     
     if "output" in validations:
@@ -124,3 +123,31 @@ def validate_types(**validations):
             return result
         return wrapper
     return decorator
+
+@decorator
+def logging_error_handler(func, args, kwargs):
+    r"""
+    Documentation here
+    """
+    try:
+                
+        result = func(*args, **kwargs)
+        return result
+
+    except Exception as ex:
+
+        trace = []
+        tb = ex.__traceback__
+        while tb is not None:
+            trace.append({
+                "filename": tb.tb_frame.f_code.co_filename,
+                "name": tb.tb_frame.f_code.co_name,
+                "lineno": tb.tb_lineno
+            })
+            tb = tb.tb_next
+        msg = str({
+            'type': type(ex).__name__,
+            'message': str(ex),
+            'trace': trace
+        })
+        logging.error(msg=msg)

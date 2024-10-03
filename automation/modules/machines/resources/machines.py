@@ -139,3 +139,56 @@ class MachineActionResource(Resource):
             return machine.serialize(), 200
         
         return message, 403
+    
+
+@ns.route('/subscribe/<machine_name>/to/<tag_name>')
+class SubscribeResource(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def post(self, machine_name:str, tag_name:str):
+        """
+        Subscribe Machine to Tags
+        """
+        machine = app.get_machine(name=StringType(machine_name))
+        tag = app.get_tag_by_name(name=tag_name)
+
+        if not machine:
+
+            return f"{machine_name} is not defined", 400
+
+        if not tag:
+
+            return f"{tag_name} is not defined", 400
+        
+        if machine.subscribe_to(tag=tag):
+
+            return f"{tag_name} subscribe to {machine_name} successfully", 200
+
+        return f"{tag_name} is already subscribed to {machine_name}", 403
+
+@ns.route('/unsubscribe/<machine_name>/to/<tag_name>')
+class UnsubscribeResource(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def post(self, machine_name:str, tag_name:str):
+        """
+        Unsubscribe Tag in Machine
+        """
+        machine = app.get_machine(name=StringType(machine_name))
+        tag = app.get_tag_by_name(name=tag_name)
+
+        if not machine:
+
+            return f"{machine_name} is not defined", 400
+
+        if not tag:
+
+            return f"{tag_name} is not defined", 400
+        
+        if machine.unsubscribe_to(tag=tag):
+
+            return f"{tag_name} unsubscribed to {machine_name} successfully", 200
+        
+        return f"{tag_name} is not subscribed to {machine_name}", 403

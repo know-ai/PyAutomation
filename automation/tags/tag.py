@@ -1,6 +1,7 @@
 import secrets
 from datetime import datetime
 from ..utils import Observer
+from ..utils.decorators import logging_error_handler
 from ..variables import (
     Temperature,
     Length,
@@ -77,6 +78,7 @@ class Tag:
         """
         self.name = name
 
+    @logging_error_handler
     def set_value(self, value:float|str|int|bool, timestamp:datetime=None):
         r"""
         Documentation here
@@ -250,7 +252,7 @@ class Tag:
         Documentation here
         """
         for observer in self._observers:
-
+            
             observer.update()
         
     def parser(self):
@@ -306,9 +308,27 @@ class TagObserver(Observer):
         This methods inserts the changing Tag into a 
         Producer-Consumer Queue Design Pattern
         """
-        
         result = dict()
         result["tag"] = self._subject.name
         result["value"] = self._subject.get_value()
         result["timestamp"] = self._subject.timestamp
         self._tag_queue.put(result)
+
+class MachineObserver(Observer):
+    """
+    Implement the Observer updating interface to keep its state
+    consistent with the subject's.
+    Store state that should stay consistent with the subject's.
+    """
+    def __init__(self, machine):
+
+        super(MachineObserver, self).__init__()
+        self.machine = machine
+
+    def update(self):
+
+        """
+        This methods inserts the changing Tag into a 
+        Producer-Consumer Queue Design Pattern
+        """
+        self.machine.notify(tag=self._subject.name, value=self._subject.value, timestamp=self._subject.timestamp)

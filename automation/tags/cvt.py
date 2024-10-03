@@ -4,7 +4,7 @@ from ..singleton import Singleton
 from ..models import FloatType, StringType, IntegerType, BooleanType
 from ..modules.users.users import User
 from ..modules.users.users import User
-from ..utils.decorators import set_event
+from ..utils.decorators import set_event, logging_error_handler
 from .tag import Tag
 
 class CVT:
@@ -360,6 +360,7 @@ class CVT:
             
         return data
     
+    @logging_error_handler
     def set_value(self, id:str, value, timestamp:datetime):
         """Sets a new value for a defined tag.
         
@@ -818,6 +819,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["tag"] = tag
         return self.__query(_query)
     
+    @logging_error_handler
     def set_value(self, id:str, value, timestamp:datetime):
         r"""Documentation here
 

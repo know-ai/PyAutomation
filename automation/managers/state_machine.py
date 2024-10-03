@@ -165,20 +165,11 @@ class StateMachineManager:
         """
         return len(self._machines) > 0
     
-    def attach_all(self):
-        r"""Documentation here
+    def attach(self, tag_name:str):
 
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
         cvt = CVTEngine()
 
-        def attach_observers(tag):
+        def attach_observer(tag):
 
             observer = TagObserver(self.get_queue())
             query = dict()
@@ -191,15 +182,11 @@ class StateMachineManager:
             cvt.response()
 
         tags_for_subscriptions = list()
+        tag = cvt.get_tag_by_name(name=tag_name)
 
-        for machine, _, _ in self.get_machines():
+        if tag not in tags_for_subscriptions:
 
-            for tag in machine.get_subscribed_tags():
-
-                if tag not in tags_for_subscriptions:
-
-                    tags_for_subscriptions.append(tag)
-        
-        for tag in tags_for_subscriptions:
+            tags_for_subscriptions.append(tag)
             
-            attach_observers(tag)
+            attach_observer(tag)
+    
