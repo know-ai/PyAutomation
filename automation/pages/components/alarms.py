@@ -74,7 +74,7 @@ class AlarmsComponents:
                                         dbc.Col(
                                             dbc.InputGroup(
                                                 [
-                                                    dbc.Input(placeholder="Trigger Value", type="number", step=0.1, id="alarm_trigger_value_input"), 
+                                                    dbc.Input(placeholder="Trigger Value", id="alarm_trigger_value_input"), 
                                                     dbc.InputGroupText('', id="alarm_trigger_unit")
                                                 ], 
                                                 size="md"

@@ -7,6 +7,7 @@ import logging, time
 from .worker import BaseWorker
 from ..managers import DBManager
 from ..logger.datalogger import DataLoggerEngine
+from ..tags.cvt import CVTEngine
 
 
 class LoggerWorker(BaseWorker):
@@ -18,6 +19,7 @@ class LoggerWorker(BaseWorker):
         self._manager = manager
         self._period = period
         self.logger = DataLoggerEngine()
+        self.cvt = CVTEngine()
 
     def run(self):
         r"""
@@ -32,10 +34,12 @@ class LoggerWorker(BaseWorker):
             while not _queue.empty():
 
                 item = _queue.get()
-                tag = item["tag"]
-                value = item["value"]
+                tag_name = item["tag"]
+                tag = self.cvt.get_tag_by_name(name=tag_name)
+                to_unit = tag.get_display_unit()
+                value = item['value'].convert(to_unit=to_unit)
                 timestamp = item["timestamp"]
-                tags.append({"tag":tag, "value":value, "timestamp":timestamp})
+                tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
 
             self.logger.write_tags(tags=tags)
 

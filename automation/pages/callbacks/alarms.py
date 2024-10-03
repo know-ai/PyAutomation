@@ -16,17 +16,19 @@ def init_callback(app:dash.Dash):
         tag:str,
         name:str,  
         type:str, 
-        trigger_value:str
+        trigger_value:int|float
         )->str:
         r"""
         Documentation here
         """
+        print(f"name: {name} - tag: {tag} - _type: {type} - trigger_value: {trigger_value}")
         if tag:
             _tag = tag_engine.get_tag_by_name(name=tag)
             dash.set_props("alarm_trigger_unit", {'children': _tag.get_display_unit()})
 
+        
         if name and tag and type and trigger_value:
-
+            
             dash.set_props("create_alarm_button", {'disabled': False})
 
         else:
@@ -132,7 +134,7 @@ def init_callback(app:dash.Dash):
                 name=alarm_name,
                 tag=tag_name,
                 alarm_type=alarm_type,
-                trigger_value=trigger_value,
+                trigger_value=float(trigger_value),
                 description=alarm_description
             )
             
