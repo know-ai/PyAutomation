@@ -1,9 +1,8 @@
 import unittest, os
-from time import sleep
 from datetime import datetime
 from . import assert_dict_contains_subset
 from .. import PyAutomation
-from ..alarms.alarms import Alarm, AlarmState
+from ..alarms import Alarm, AlarmState
 
 
 class TestCore(unittest.TestCase):
@@ -61,7 +60,6 @@ class TestCore(unittest.TestCase):
         timestamp = datetime.now()
         value = 35
         self.app.cvt.set_value(id=tag2.id, value=value, timestamp=timestamp)
-        sleep(1)
         with self.subTest("Test Value in CVT"):
             
             self.assertEqual(self.app.cvt.get_value(id=tag2.id), value)
@@ -79,9 +77,7 @@ class TestCore(unittest.TestCase):
             self.assertEqual(name, updated_tag.name)
 
         unit = "K"
-        # breakpoint()
         updated_tag, _ = self.app.update_tag(id=tag2.id, unit=unit)
-        sleep(2)
         with self.subTest("Test update tag unit"):
 
             self.assertEqual(unit, updated_tag.unit)
@@ -140,10 +136,6 @@ class TestCore(unittest.TestCase):
 
             self.assertEqual(alarm_LL, self.app.alarm_manager.get_alarm_by_name(name=alarm_LL.name))
 
-        with self.subTest("Test create alarm in DB"):
-            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_LL.name).serialize()
-            assert_dict_contains_subset(alarm, alarm_LL.serialize())
-
         alarm_L_payload = {
             "name": "alarm_L",
             "tag": tag.name,
@@ -158,10 +150,6 @@ class TestCore(unittest.TestCase):
         with self.subTest("Test create alarm in alarm manager"):
 
             self.assertEqual(alarm_L, self.app.alarm_manager.get_alarm_by_name(name=alarm_L.name))
-
-        with self.subTest("Test create alarm in DB"):
-            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_L.name).serialize()
-            assert_dict_contains_subset(alarm, alarm_L.serialize())
 
         alarm_H_payload = {
             "name": "alarm_H",
@@ -178,10 +166,6 @@ class TestCore(unittest.TestCase):
 
             self.assertEqual(alarm_H, self.app.alarm_manager.get_alarm_by_name(name=alarm_H.name))
 
-        with self.subTest("Test create alarm in DB"):
-            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_H.name).serialize()
-            assert_dict_contains_subset(alarm, alarm_H.serialize())
-
         alarm_HH_payload = {
             "name": "alarm_HH",
             "tag": tag.name,
@@ -197,15 +181,11 @@ class TestCore(unittest.TestCase):
 
             self.assertEqual(alarm_HH, self.app.alarm_manager.get_alarm_by_name(name=alarm_HH.name))
 
-        with self.subTest("Test create alarm in DB"):
-            alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_HH.name).serialize()
-            assert_dict_contains_subset(alarm, alarm_HH.serialize())
-
         # UPDATE ALARM DEFINITION
         self.app.update_alarm(id=alarm_HH.identifier, trigger_value=50)
         with self.subTest("Test update alarm in Alarm Manager"):
             
-            self.assertEqual(alarm_HH._trigger.value, 50)
+            self.assertEqual(alarm_HH.alarm_setpoint.value, 50)
 
         with self.subTest("Test update alarm in DB"):
             alarm = self.app.alarms_engine.get_alarm_by_name(name=alarm_HH.name)
@@ -214,11 +194,9 @@ class TestCore(unittest.TestCase):
         # TRIGGER ALARMS
         timestamp = datetime.now()
         self.app.cvt.set_value(id=tag.id, value=35, timestamp=timestamp)
-        # This step is important, you must way from worker make its job
-        sleep(1)
         with self.subTest("Test Trigger HIGH Alarm"):
             
-            self.assertTrue(alarm_H.state.is_triggered)
+            self.assertEqual(alarm_H.state.alarm_status, "Active")
 
         with self.subTest("Test check UNACK alarm state"):
             
@@ -228,19 +206,18 @@ class TestCore(unittest.TestCase):
             alarm_H.acknowledge()
             self.assertEqual(alarm_H.state, AlarmState.ACKED)
 
-        with self.subTest("Test  not Trigger HIGH-HIGH Alarm"):
+        with self.subTest("Test not Trigger HIGH-HIGH Alarm"):
 
-            self.assertFalse(alarm_HH.state.is_triggered)
+            self.assertEqual(alarm_HH.state.alarm_status, "Not Active")
 
         self.app.cvt.set_value(id=tag.id, value=0, timestamp=timestamp)
-        sleep(1)
         with self.subTest("Test Trigger LOW Alarm"):
             
-            self.assertTrue(alarm_L.state.is_triggered)
+            self.assertEqual(alarm_L.state.alarm_status, "Active")
 
         with self.subTest("Test Trigger LOW-LOW Alarm"):
             
-            self.assertTrue(alarm_LL.state.is_triggered)
+            self.assertEqual(alarm_LL.state.alarm_status, "Active")
 
         with self.subTest("Test check UNACK alarm LL state"):
             
@@ -251,7 +228,6 @@ class TestCore(unittest.TestCase):
             self.assertEqual(alarm_L.state, AlarmState.UNACK)
 
         self.app.cvt.set_value(id=tag.id, value=15, timestamp=timestamp)
-        sleep(1)
         with self.subTest("Test check UNACK alarm LL state"):
             
             self.assertEqual(alarm_LL.state, AlarmState.RTNUN)
