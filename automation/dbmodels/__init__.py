@@ -17,4 +17,4 @@ from .opcua import OPCUA
 from .users import Roles, Users
 from .events import Events
 from .logs import Logs
-from .machines import Machines
+from .machines import Machines, TagsMachines
