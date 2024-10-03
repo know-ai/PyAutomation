@@ -22,6 +22,7 @@ from .variables import (
     Force,
     Power,
     VolumetricFlow)
+from .logger.machines import MachinesLoggerEngine
 
 
 class Machine(Singleton):
@@ -29,7 +30,8 @@ class Machine(Singleton):
     """
     def __init__(self):
 
-        self._machine_manager = StateMachineManager()
+        self.machine_manager = StateMachineManager()
+        self.machines_engine = MachinesLoggerEngine()
 
     def append_machine(self, machine:StateMachine, interval:FloatType=FloatType(1), mode:str='sync'):
         r"""
@@ -45,13 +47,23 @@ class Machine(Singleton):
             machine.name = StringType(f"DAQ-{interval.value}")
         
         machine.set_interval(interval)
-        self._machine_manager.append_machine((machine, interval, mode))
+        self.machine_manager.append_machine((machine, interval, mode))
+        self.machines_engine.create(
+            name=machine.name.value,
+            interval=interval.value,
+            description=machine.description.value,
+            classification=machine.classification.value,
+            buffer_size=machine.buffer_size.value,
+            buffer_roll_type=machine.buffer_roll_type.value,
+            criticity=machine.criticity.value,
+            priority=machine.priority.value
+        )
 
     def drop(self, name:str):
         r"""
         Documentation here
         """
-        self._machine_manager.drop(name=name)
+        self.machine_manager.drop(name=name)
 
     def get_machine(self, name:str):
         r"""
@@ -68,7 +80,7 @@ class Machine(Singleton):
         ```
         """
 
-        return self._machine_manager.get_machine(name)
+        return self.machine_manager.get_machine(name)
 
     def get_machines(self)->list:
         r"""
@@ -83,7 +95,7 @@ class Machine(Singleton):
         ```
         """
 
-        return self._machine_manager.get_machines()
+        return self.machine_manager.get_machines()
 
     def get_state_machine_manager(self)->StateMachineManager:
         r"""
@@ -95,13 +107,15 @@ class Machine(Singleton):
         >>> state_manager = app.get_state_machine_manager()
         ```
         """
-        return self._machine_manager
+        return self.machine_manager
 
-    def start(self):
+    def start(self, machines:tuple=None):
         r"""
         Starts statemachine worker
         """
         # StateMachine Worker
+        for machine in machines:
+            self.append_machine(machine)
         state_manager = self.get_state_machine_manager()
         
         if state_manager.exist_machines():
@@ -146,7 +160,6 @@ class StateMachineCore(StateMachine):
             description:str="",
             classification:str=""
         ):
-
         self.criticity = IntegerType(default=2)
         self.priority = IntegerType(default=1)
         self.description = StringType(default=description)
@@ -421,7 +434,7 @@ class StateMachineCore(StateMachine):
         >>> machine = app.get_machine(name)
         >>> machine.set_interval(0.5)
         ```
-        """
+        """        
         self.put_attr(attr_name="machine_interval", value=interval, user=user)
 
     def _get_active_transitions(self):

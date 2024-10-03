@@ -11,6 +11,7 @@ from ..logger.alarms import AlarmsLoggerEngine
 from ..logger.events import EventsLoggerEngine
 from ..logger.users import UsersLoggerEngine
 from ..logger.logs import LogsLoggerEngine
+from ..logger.machines import MachinesLoggerEngine
 from ..tags import CVTEngine, TagObserver
 from ..modules.users.users import User
 from ..utils.decorators import logging_error_handler
@@ -53,6 +54,7 @@ class DBManager(Singleton):
         self.events_logger = EventsLoggerEngine()
         self.users_logger = UsersLoggerEngine()
         self.logs_logger = LogsLoggerEngine()
+        self.machines_logger = MachinesLoggerEngine()
         self._tables = [
             Variables, 
             Units, 
@@ -95,6 +97,7 @@ class DBManager(Singleton):
         self.events_logger.set_db(db)
         self.users_logger.set_db(db)
         self.logs_logger.set_db(db)
+        self.machines_logger.set_db(db)
 
     def get_db(self):
         r"""

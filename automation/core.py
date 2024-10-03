@@ -15,8 +15,9 @@ from .logger.datalogger import DataLoggerEngine
 from .logger.events import EventsLoggerEngine
 from .logger.alarms import AlarmsLoggerEngine
 from .logger.logs import LogsLoggerEngine
+from .logger.machines import MachinesLoggerEngine
 from .alarms import Alarm
-from .state_machine import Machine, DAQ, StateMachine, IAD, Filter, AutomationStateMachine
+from .state_machine import Machine, DAQ, AutomationStateMachine, StateMachine
 from .opcua.subscription import DAS
 from .buffer import Buffer
 from .models import StringType, FloatType, IntegerType
@@ -53,15 +54,12 @@ class PyAutomation(Singleton):
         self.events_engine = EventsLoggerEngine()
         self.alarms_engine = AlarmsLoggerEngine()
         self.logs_engine = LogsLoggerEngine()
+        self.machines_engine = MachinesLoggerEngine()
         self.db_manager = DBManager()
         self.opcua_client_manager = OPCUAClientManager()
         self.alarm_manager = AlarmManager()
         self.workers = list()
         self.das = DAS()
-        self.iad = IAD()
-        self.machine.append_machine(machine=self.iad, interval=FloatType(2.0), mode="async")
-        self.filter = Filter()
-        self.machine.append_machine(machine=self.filter, interval=FloatType(2.0), mode="async")
         self.set_log(level=logging.WARNING)
     
     @logging_error_handler
@@ -1217,8 +1215,7 @@ class PyAutomation(Singleton):
 
     # INIT APP
     @logging_error_handler
-    @validate_types(debug=bool, test=bool, create_tables=bool, alarm_worker=bool,output=None)
-    def run(self, debug:bool=False, test:bool=False, create_tables:bool=False, alarm_worker:bool=True)->None:
+    def run(self, debug:bool=False, test:bool=False, create_tables:bool=False, alarm_worker:bool=True, machines:tuple=None)->None:
         r"""
         Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
 
@@ -1230,7 +1227,7 @@ class PyAutomation(Singleton):
         >>> app.run()
         ```
         """
-        self.safe_start(test=test, create_tables=create_tables, alarm_worker=alarm_worker)
+        self.safe_start(test=test, create_tables=create_tables, alarm_worker=alarm_worker, machines=machines)
 
         if not test:
         
@@ -1239,15 +1236,14 @@ class PyAutomation(Singleton):
                 self.dash_app.run(debug=debug, use_reloader=False)
 
     @logging_error_handler
-    @validate_types(test=bool, create_tables=bool, alarm_worker=bool, output=None)
-    def safe_start(self, test:bool=False, create_tables:bool=True, alarm_worker:bool=False):
+    def safe_start(self, test:bool=False, create_tables:bool=True, alarm_worker:bool=False, machines:tuple=None):
         r"""
         Run the app without a main thread, only run the app with the threads and state machines define
         """
         self._create_tables = create_tables
         self._create_alarm_worker = alarm_worker
         self.__start_logger()
-        self.__start_workers(test=test)
+        self.__start_workers(test=test, machines=machines)
 
     @logging_error_handler
     @validate_types(output=None)
@@ -1268,8 +1264,7 @@ class PyAutomation(Singleton):
 
     # WORKERS
     @logging_error_handler
-    @validate_types(test=bool, output=None)
-    def __start_workers(self, test:bool=False)->None:
+    def __start_workers(self, test:bool=False, machines:tuple=None)->None:
         r"""
         Starts all workers.
 
@@ -1289,7 +1284,7 @@ class PyAutomation(Singleton):
             self.alarm_worker.daemon = True
             self.alarm_worker.start()
 
-        self.machine.start()
+        self.machine.start(machines=machines)
         self.is_starting = False
 
     @logging_error_handler
