@@ -41,6 +41,22 @@ class AlarmsCollection(Resource):
         """
         return app.alarm_manager.serialize(), 200
     
+@ns.route('/actions/<alarm_name>')
+class AlarmsActionsCollection(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def get(self, alarm_name:str):
+        """
+        Get allowed actions
+        """
+        alarm = app.alarm_manager.get_alarm_by_name(name=alarm_name)
+        if alarm:
+
+            return alarm.get_operator_actions(), 200
+        
+        return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
+    
 @ns.route('/add')
 class CreateAlarmResource(Resource):
 
@@ -88,7 +104,7 @@ class AlarmByNameResource(Resource):
     @Api.token_required(auth=True)
     def get(self, alarm_name):
         """
-        Gets all alarm names defined
+        Get alarm info
         """
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
@@ -99,18 +115,16 @@ class AlarmByNameResource(Resource):
         return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
     
     
-@ns.route('/name/acknowledge')
+@ns.route('/acknowledge/<alarm_name>')
 class AckAlarmByNameResource(Resource):
     
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
-    @ns.expect(alarm_resource_by_name_model)
-    def post(self):
+    def post(self, alarm_name:str):
         """
         Acknowledge alarm
         """
         result = dict()
-        alarm_name = api.payload['alarm_name']
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
         if alarm:
@@ -153,104 +167,21 @@ class AckAllAlarmsResource(Resource):
         return result, 200
     
 
-@ns.route('/silence_all')
-class SilenceAllAlarmsResource(Resource):
-
-    @api.doc(security='apikey')
-    @Api.token_required(auth=True)
-    def post(self):
-        """
-        Silence all alarms triggered
-        """
-        alarms = app.alarm_manager.get_alarms()
-        result = {
-            'message': "None"
-        }
-
-        for id, alarm in alarms.items():
-
-            if alarm.audible:
-                user = Api.get_current_user()
-                alarm.silence(user=user)
-        
-                result = {
-                    'message': "Alarms were silenced successfully"
-                }
-        
-        return result, 200
-    
-
-@ns.route('/name/enable')
-class EnableAlarmByNameResource(Resource):
-    
-    @api.doc(security='apikey')
-    @Api.token_required(auth=True)
-    @ns.expect(alarm_resource_by_name_model)
-    def post(self):
-        """
-        Enable alarm
-        """
-        result = dict()
-        alarm_name = api.payload['alarm_name']
-        alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
-
-        if alarm:
-            user = Api.get_current_user()
-            alarm.enable(user=user)
-            result['message'] = f"{alarm.name} was enabled successfully"
-            result['data'] = alarm.serialize()
-
-            return result, 200
-
-        return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
-
-
-@ns.route('/name/disable')
-class DisableAlarmByNameResource(Resource):
-    
-    @api.doc(security='apikey')
-    @Api.token_required(auth=True)
-    @ns.expect(alarm_resource_by_name_model)
-    def post(self):
-        """
-        Disable alarm
-        """
-        result = dict()
-        alarm_name = api.payload['alarm_name']
-        alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
-
-        if alarm:
-
-            if alarm.state in [AlarmState.NORM]:
-                user = Api.get_current_user()
-                alarm.disable(user=user)
-                result['message'] = f"{alarm.name} was disabled successfully"
-                result['data'] = alarm.serialize()
-
-                return result, 200
-
-            return {'message': f"You cannot disable an alarm if not in Normal state"}, 400
-
-        return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
-
-
-@ns.route('/name/suppress_by_design')
+@ns.route('/designed_suppression/<alarm_name>')
 class SuppressByDesignAlarmByNameResource(Resource):
     
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
-    @ns.expect(alarm_resource_by_name_model)
-    def post(self):
+    def post(self, alarm_name:str):
         """
         Suppressed by design alarm
         """
         result = dict()
-        alarm_name = api.payload['alarm_name']
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
         if alarm:
             user = Api.get_current_user()
-            alarm.suppress_by_design(user=user)
+            alarm.designed_suppression(user=user)
             result['message'] = f"{alarm.name} was suppressed by design successfully"
             result['data'] = alarm.serialize()
 
@@ -259,25 +190,23 @@ class SuppressByDesignAlarmByNameResource(Resource):
         return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
 
 
-@ns.route('/name/unsuppress_by_design')
-class UnsuppressByDesignAlarmByNameResource(Resource):
+@ns.route('/designed_unsuppression/<alarm_name>')
+class DesignedUnsuppressionAlarmByNameResource(Resource):
     
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
-    @ns.expect(alarm_resource_by_name_model)
-    def post(self):
+    def post(self, alarm_name:str):
         """
         Unsuppress by design alarm
         """
         result = dict()
-        alarm_name = api.payload['alarm_name']
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
         if alarm:
 
             if alarm.state in [AlarmState.DSUPR]:
                 user = Api.get_current_user()
-                alarm.unsuppress_by_design(user=user)
+                alarm.designed_unsuppression(user=user)
                 result['message'] = f"{alarm.name} was suppressed by design successfully"
                 result['data'] = alarm.serialize()
 
@@ -288,23 +217,21 @@ class UnsuppressByDesignAlarmByNameResource(Resource):
         return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
 
 
-@ns.route('/name/out_of_service')
+@ns.route('/remove_from_service/<alarm_name>')
 class OutOfServiceAlarmByNameResource(Resource):
     
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
-    @ns.expect(alarm_resource_by_name_model)
-    def post(self):
+    def post(self, alarm_name:str):
         """
         Out Of Service alarm
         """
         result = dict()
-        alarm_name = api.payload['alarm_name']
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
         if alarm:
             user = Api.get_current_user()
-            alarm.out_of_service(user=user)
+            alarm.remove_from_service(user=user)
             result['message'] = f"{alarm.name} was pusshed in out of service successfully"
             result['data'] = alarm.serialize()
 
@@ -313,18 +240,17 @@ class OutOfServiceAlarmByNameResource(Resource):
         return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
 
 
-@ns.route('/name/shelve')
+@ns.route('/shelve/<alarm_name>')
 class ShelveAlarmByNameResource(Resource):
     
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
     @ns.expect(shelve_alarm_resource_by_name_model)
-    def post(self):
+    def post(self, alarm_name:str):
         """
         Shelve alarm
         """
         result = dict()
-        alarm_name = api.payload['alarm_name']
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
         seconds = minutes = hours = days = weeks = 0
 
@@ -366,18 +292,16 @@ class ShelveAlarmByNameResource(Resource):
         return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
 
 
-@ns.route('/name/return_to_service')
+@ns.route('/return_to_service/<alarm_name>')
 class ReturnToServiceAlarmByNameResource(Resource):
     
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
-    @ns.expect(alarm_resource_by_name_model)
-    def post(self):
+    def post(self, alarm_name:str):
         """
         Return to service alarm
         """
         result = dict()
-        alarm_name = api.payload['alarm_name']
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
         if alarm:
@@ -394,59 +318,3 @@ class ReturnToServiceAlarmByNameResource(Resource):
 
         return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
 
-
-@ns.route('/name/silence')
-class SilenceAlarmByNameResource(Resource):
-    
-    @api.doc(security='apikey')
-    @Api.token_required(auth=True)
-    @ns.expect(alarm_resource_by_name_model)
-    def post(self):
-        """
-        Silence alarm
-        """
-        result = dict()
-        alarm_name = api.payload['alarm_name']
-        alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
-        if alarm:
-
-            if alarm.audible:
-                user = Api.get_current_user()
-                alarm.silence(user=user)
-                result['message'] = f"{alarm.name} was silenced successfully"
-                result['data'] = alarm.serialize()
-
-                return result, 200
-
-            return {'message': f"Alarm Name {alarm_name} is not sound"}, 400
-
-        return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
-
-
-@ns.route('/name/sound')
-class SoundAlarmByNameResource(Resource):
-    
-    @api.doc(security='apikey')
-    @Api.token_required(auth=True)
-    @ns.expect(alarm_resource_by_name_model)
-    def post(self):
-        """
-        Sound alarm
-        """
-        result = dict()
-        alarm_name = api.payload['alarm_name']
-        alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
-
-        if alarm:
-
-            if not alarm.audible:
-                user = Api.get_current_user()
-                alarm.sound(user=user)
-                result['message'] = f"{alarm.name} was returned to audible successfully"
-                result['data'] = alarm.serialize()
-
-                return result, 200 
-
-            return {'message': f"Alarm Name {alarm_name} is sound"}, 400
-
-        return {'message': f"Alarm Name {alarm_name} is not exist"}, 400

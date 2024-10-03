@@ -2,6 +2,7 @@ import dash
 from ...tags.cvt import CVTEngine
 from ...utils import find_differences_between_lists, generate_dropdown_conditional
 
+
 tag_engine = CVTEngine()
 
 def init_callback(app:dash.Dash):
@@ -75,15 +76,7 @@ def init_callback(app:dash.Dash):
         """
         if pathname=="/alarms":
 
-            data = [{
-                "id": alarm["identifier"],
-                "tag": alarm["tag"], 
-                "name": alarm["name"],
-                "description": alarm["description"],
-                "state": alarm["state"],
-                "alarm_type": alarm["alarm_type"],
-                "trigger_value": alarm["trigger_value"]
-                } for alarm in app.automation.alarm_manager.serialize()]
+            data = app.alarms_table_data()
 
             dropdown_options_type = [
                 {'label': 'HIGH-HIGH', 'value': 'HIGH-HIGH'},

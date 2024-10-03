@@ -370,7 +370,7 @@ class PyAutomation(Singleton):
             password=str,
             name=str|type(None),
             lastname=str|type(None),
-            output=tuple[User|None, str]
+            output=(User|None, str)
     )
     def signup(
             self,
@@ -417,12 +417,16 @@ class PyAutomation(Singleton):
         return jwt.encode(payload, server.config['TPT_TOKEN'], algorithm="HS256")
 
     @logging_error_handler
-    @validate_types(name=str, level=int, output=Role|None)
+    @validate_types(name=str, level=int, output=(Role|None, str))
     def set_role(self, name:str, level:int)->Role|None:
         r"""
         Documentation here
         """
         role = Role(name=name, level=level)
+        if roles.check_role_name(name=name):
+
+            return None, f"Role {name} exists"
+        
         role_id, message = roles.add(role=role)
         if role_id:
 
@@ -905,10 +909,9 @@ class PyAutomation(Singleton):
             trigger_value=bool|float|int,
             description=str|type(None),
             identifier=str|type(None),
-            tag_alarm=str|type(None),
             state=str,
             timestamp=str|type(None),
-            acknowledged_timestamp=str|type(None),
+            ack_timestamp=str|type(None),
             user=User|type(None),
             reload=bool,
             output=(Alarm, str)
@@ -921,10 +924,9 @@ class PyAutomation(Singleton):
             trigger_value:bool|float|int=True,
             description:str="",
             identifier:str=None,
-            tag_alarm:str=None,
             state:str="Normal",
             timestamp:str=None,
-            acknowledged_timestamp:str=None,
+            ack_timestamp:str=None,
             user:User=None,
             reload:bool=False
         )->tuple[Alarm, str]:
@@ -946,10 +948,9 @@ class PyAutomation(Singleton):
             trigger_value=trigger_value,
             description=description,
             identifier=identifier,
-            tag_alarm=tag_alarm,
             state=state,
             timestamp=timestamp,
-            acknowledged_timestamp=acknowledged_timestamp,
+            ack_timestamp=ack_timestamp,
             user=user,
             reload=reload
         )
@@ -967,8 +968,7 @@ class PyAutomation(Singleton):
                     tag=tag,
                     trigger_type=alarm_type,
                     trigger_value=trigger_value,
-                    description=description,
-                    tag_alarm=None
+                    description=description
                 )
             
             return alarm, message

@@ -213,20 +213,7 @@ class StateMachineCore(StateMachine):
         self.restart_buffer()
         self.send("restart_to_wait")
 
-    # Auxiliaries Methods
-    def get_queue(self)->queue.Queue:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        return self._tag_queue
-    
+    # Auxiliaries Methods   
     def put_attr(self, attr_name:str, value:StringType|FloatType|IntegerType|BooleanType, user:User=None):
 
         attr = getattr(self, attr_name)

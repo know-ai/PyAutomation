@@ -55,3 +55,10 @@ class Trigger:
             if isinstance(value, (float, int)):
 
                 self.__value = value
+
+    def serialize(self):
+
+        return {
+            "type": self.type.value,
+            "value": self.value
+        }

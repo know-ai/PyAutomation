@@ -26,17 +26,17 @@ class ConfigView(dash.Dash):
         return self.automation.get_tags()
     
     def alarms_table_data(self):
-        
-        return [{
+        data = [{
                 "id": alarm["identifier"],
                 "tag": alarm["tag"], 
                 "name": alarm["name"],
                 "description": alarm["description"],
-                "state": alarm["state"],
-                "alarm_type": alarm["alarm_type"],
-                "trigger_value": alarm["trigger_value"],
-                "operations": ""
+                "state": alarm["state"]["state"],
+                "alarm_type": alarm["alarm_setpoint"]["type"],
+                "trigger_value": alarm["alarm_setpoint"]["value"],
                 } for alarm in self.automation.alarm_manager.serialize()]
+
+        return data
     
     def machines_table_data(self):
 

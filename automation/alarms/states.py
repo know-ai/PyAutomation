@@ -43,14 +43,9 @@ class AlarmAttrs:
         mnemonic: str, 
         state: str, 
         process_condition: str,
-        is_triggered: bool, 
         alarm_status: str, 
         annunciate_status: str, 
         acknowledge_status: str,
-        audible: bool, 
-        color: bool, 
-        symbol: bool, 
-        blinking: bool
     ):
         self.__mnemonic = mnemonic
         self.__state = state
@@ -58,11 +53,6 @@ class AlarmAttrs:
         self.__alarm_status = alarm_status
         self.__annunciate_status = annunciate_status
         self.__acknowledge_status = acknowledge_status
-        self.__is_triggered = is_triggered
-        self.__audible = audible
-        self.__color = color
-        self.__symbol = symbol
-        self.__blinking = blinking
 
     @property
     def mnemonic(self):
@@ -93,13 +83,6 @@ class AlarmAttrs:
         return self.__alarm_status
 
     @property
-    def is_triggered(self):
-        r"""
-        Documentation here
-        """
-        return self.__is_triggered
-
-    @property
     def annunciate_status(self):
         r"""
         Documentation here
@@ -112,44 +95,6 @@ class AlarmAttrs:
         Documentation here
         """
         return self.__acknowledge_status
-
-    @property
-    def audible(self):
-        r"""
-        Documentation here
-        """
-        return self.__audible
-
-    def silence(self):
-        r"""
-        Documentation here
-        """
-        self.__audible = False
-
-    def return_to_audible(self):
-        r"""
-        Documentation here
-        """
-        self.__audible = True
-
-    @property
-    def color(self):
-        r"""
-        Documentation here
-        """
-        return self.__color
-
-    @property
-    def symbol(self):
-
-        return self.__symbol
-
-    @property
-    def blinking(self):
-        r"""
-        Documentation here
-        """
-        return self.__blinking
 
     def is_acknowledged(self):
         r"""
@@ -167,13 +112,8 @@ class AlarmAttrs:
             'state': self.state,
             'process_condition': self.process_condition,
             'alarm_status': self.alarm_status,
-            'is_triggered': self.is_triggered,
             'annunciate_status': self.annunciate_status,
-            'acknowledge_status': self.acknowledge_status,
-            'audible': self.audible,
-            'color': self.color,
-            'symbol': self.symbol,
-            'blinking': self.blinking
+            'acknowledge_status': self.acknowledge_status
         }
 
 
@@ -184,91 +124,56 @@ class AlarmState:
         state=States.NORM.value,
         process_condition=Status.NORM.value,
         alarm_status=Status.NACTV.value,
-        is_triggered=False,
         annunciate_status=Status.NANNCTD.value,
-        acknowledge_status=States.ACKED.value,
-        audible=False,
-        color=False,
-        symbol=False,
-        blinking=False
+        acknowledge_status=States.ACKED.value
     )
     UNACK = AlarmAttrs(
         mnemonic=States.UNACK.name,
         state=States.UNACK.value,
         process_condition=Status.ABNORM.value,
         alarm_status=Status.ACTV.value,
-        is_triggered=True,
         annunciate_status=Status.ANNCTD.value,
-        acknowledge_status=States.UNACK.value,
-        audible=True,
-        color=True,
-        symbol=True,
-        blinking=True
+        acknowledge_status=States.UNACK.value
     )
     ACKED = AlarmAttrs(
         mnemonic=States.ACKED.name,
         state=States.ACKED.value,
         process_condition=Status.ABNORM.value,
         alarm_status=Status.ACTV.value,
-        is_triggered=True,
         annunciate_status=Status.ANNCTD.value,
-        acknowledge_status=States.ACKED.value,
-        audible=False,
-        color=True,
-        symbol=True,
-        blinking=False
+        acknowledge_status=States.ACKED.value
     )
     RTNUN = AlarmAttrs(
         mnemonic=States.RTNUN.name,
         state=States.RTNUN.value,
         process_condition=Status.NORM.value,
         alarm_status=Status.NACTV.value,
-        is_triggered=False,
         annunciate_status=Status.ANNCTD.value,
-        acknowledge_status=States.UNACK.value,
-        audible=False,
-        color=True,
-        symbol=True,
-        blinking=False
+        acknowledge_status=States.UNACK.value
     )
     SHLVD = AlarmAttrs(
         mnemonic=States.SHLVD.name,
         state=States.SHLVD.value,
         process_condition=Status.NORM.value,
         alarm_status=Status.OR.value,
-        is_triggered=False,
         annunciate_status=Status.SUPR.value,
-        acknowledge_status=Status.NA.value,
-        audible=False,
-        color=False,
-        symbol=True,
-        blinking=False
+        acknowledge_status=Status.NA.value
     )
     DSUPR = AlarmAttrs(
         mnemonic=States.DSUPR.name,
         state=States.DSUPR.value,
         process_condition=Status.NORM.value,
         alarm_status=Status.OR.value,
-        is_triggered=False,
         annunciate_status=Status.SUPR.value,
-        acknowledge_status=Status.NA.value,
-        audible=False,
-        color=False,
-        symbol=True,
-        blinking=False
+        acknowledge_status=Status.NA.value
     )
     OOSRV = AlarmAttrs(
         mnemonic=States.OOSRV.name,
         state=States.OOSRV.value,
         process_condition=Status.NORM.value,
         alarm_status=Status.OR.value,
-        is_triggered=False,
         annunciate_status=Status.SUPR.value,
-        acknowledge_status=Status.NA.value,
-        audible=False,
-        color=False,
-        symbol=True,
-        blinking=False
+        acknowledge_status=Status.NA.value
     )
 
     _states = [NORM, UNACK, ACKED, RTNUN, SHLVD, DSUPR, OOSRV]

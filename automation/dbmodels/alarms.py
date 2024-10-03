@@ -1,4 +1,4 @@
-from peewee import CharField, FloatField, DateTimeField, ForeignKeyField, BooleanField
+from peewee import CharField, FloatField, ForeignKeyField, TimestampField
 from ..dbmodels.core import BaseModel
 from datetime import datetime
 from .tags import Tags
@@ -220,10 +220,8 @@ class Alarms(BaseModel):
     trigger_type = ForeignKeyField(AlarmTypes, backref='alarms')
     trigger_value = FloatField()
     description = CharField(null=True, max_length=256)
-    tag_alarm = CharField(null=True, max_length=64)
     state = ForeignKeyField(AlarmStates, backref='alarms')
-    timestamp = DateTimeField(null=True)
-    acknowledged_timestamp = DateTimeField(null=True)
+    timestamp = TimestampField(utc=True, null=True)
 
     @classmethod
     def create(
@@ -234,10 +232,8 @@ class Alarms(BaseModel):
         trigger_type:str,
         trigger_value:float,
         description:str=None,
-        tag_alarm:str=None,
         state:str=States.NORM.value,
-        timestamp:datetime=None,
-        acknowledged_timestamp:datetime=None
+        timestamp:datetime=None
         ):
         r"""Documentation here
 
@@ -261,10 +257,8 @@ class Alarms(BaseModel):
                 trigger_type=trigger_type,
                 trigger_value=trigger_value,
                 description=description,
-                tag_alarm=tag_alarm,
                 state=state,
-                timestamp=timestamp,
-                acknowledged_timestamp=acknowledged_timestamp
+                timestamp=timestamp
             )
             alarm.save()
 
@@ -345,11 +339,6 @@ class Alarms(BaseModel):
 
             timestamp = timestamp.strftime(tag_engine.DATETIME_FORMAT)
 
-        acknowledged_timestamp = self.acknowledged_timestamp
-        if acknowledged_timestamp:
-
-            acknowledged_timestamp = timestamp.strftime(tag_engine.DATETIME_FORMAT)
-
         return {
             'identifier': self.identifier,
             'name': self.name,
@@ -357,10 +346,8 @@ class Alarms(BaseModel):
             'alarm_type': self.trigger_type.name,
             'trigger_value': self.trigger_value,
             'description': self.description,
-            'tag_alarm': self.tag_alarm,
             'state': self.state.name,
-            'timestamp': timestamp,
-            'acknowledged_timestamp': acknowledged_timestamp
+            'timestamp': timestamp
         }
     
 
@@ -368,11 +355,11 @@ class AlarmSummary(BaseModel):
     
     alarm = ForeignKeyField(Alarms, backref='summary')
     state = ForeignKeyField(AlarmStates, backref='summary')
-    alarm_time = DateTimeField(default=datetime.now)
-    ack_time = DateTimeField(null=True)
+    alarm_time = TimestampField(utc=True)
+    ack_time = TimestampField(utc=True, null=True)
 
     @classmethod
-    def create(cls, name:str, state:str):
+    def create(cls, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
         _alarm = Alarms.read_by_name(name=name)
         _state = AlarmStates.read_by_name(name=state)
         
@@ -381,7 +368,7 @@ class AlarmSummary(BaseModel):
             if _state:
 
                 # Create record
-                query = cls(alarm=_alarm.id, state=_state.id)
+                query = cls(alarm=_alarm.id, state=_state.id, alarm_time=timestamp, ack_time=ack_timestamp)
                 query.save()
                 
                 return query

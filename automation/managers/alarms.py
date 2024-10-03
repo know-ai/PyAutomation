@@ -6,11 +6,11 @@ from datetime import datetime
 import queue
 from ..singleton import Singleton
 from ..tags import CVTEngine, TagObserver
-from ..alarms import AlarmState
-from ..alarms.alarms import Alarm, AlarmState
+from ..alarms import AlarmState, Alarm
 from ..dbmodels.alarms import AlarmSummary
 from ..modules.users.users import User
-from ..utils.decorators import set_event
+from ..models import FloatType, StringType
+from ..utils.decorators import set_event, logging_error_handler
 
 
 class AlarmManager(Singleton):
@@ -29,19 +29,19 @@ class AlarmManager(Singleton):
         Documentation here
         """
         return self._tag_queue
-    
+
+    @logging_error_handler
     def append_alarm(
-            self, 
-            name:str, 
-            tag:str, 
-            type:str="BOOL", 
-            trigger_value:bool|float=True, 
+            self,
+            name:str,
+            tag:str,
+            type:str="BOOL",
+            trigger_value:bool|float=True,
             description:str="",
             identifier:str=None,
-            tag_alarm:str=None,
             state:str="Normal",
             timestamp:str=None,
-            acknowledged_timestamp:str=None,
+            ack_timestamp:str=None,
             user:User=None,
             reload:bool=False
         )->tuple[Alarm, str]:
@@ -59,7 +59,7 @@ class AlarmManager(Singleton):
         # Check alarm name duplicated
         alarm = self.get_alarm_by_name(name)
         if alarm:
-            
+
             return alarm, f"Alarm {name} is already defined"
 
         # Check if alarm is associated to same tag with same alarm type
@@ -67,26 +67,36 @@ class AlarmManager(Singleton):
         if trigger_value_message:
 
             return None, trigger_value_message
-                
+
+        if timestamp:
+
+            timestamp = datetime.strptime(timestamp, self.tag_engine.DATETIME_FORMAT)
+
+        if ack_timestamp:
+
+            ack_timestamp = datetime.strptime(ack_timestamp, self.tag_engine.DATETIME_FORMAT)
+
         alarm = Alarm(
-            name=name, 
-            tag=tag, 
-            description=description, 
-            identifier=identifier, 
-            tag_alarm=tag_alarm, 
+            name=name,
+            tag=self.tag_engine.get_tag_by_name(name=tag),
+            description=description,
+            alarm_type=StringType(type),
+            alarm_setpoint=FloatType(trigger_value),
+            identifier=identifier,
             state=state,
             timestamp=timestamp,
-            acknowledged_timestamp=acknowledged_timestamp,
+            ack_timestamp=ack_timestamp,
             user=user,
-            reload=reload)
-        alarm.set_trigger(value=trigger_value, _type=type)
+            reload=reload
+        )
         self._alarms[alarm.identifier] = alarm
-        self.attach(alarm_name=name)
+
         return alarm, f"Alarm creation successful"
 
+    @logging_error_handler
     def put(
-            self, 
-            id:str, 
+            self,
+            id:str,
             name:str=None,
             tag:str=None,
             description:str=None,
@@ -112,29 +122,29 @@ class AlarmManager(Singleton):
         """
         alarm = self.get_alarm(id=id)
         if name:
-            
+
             if self.get_alarm_by_name(name=name):
-                
+
                 return f"Alarm {name} is already defined"
-            
+
         # Check if alarm is associated to same tag with same alarm type
         if not tag:
             tag = alarm.tag
         if not alarm_type:
-            alarm_type = alarm._trigger.type.value
+            alarm_type = alarm.alarm_setpoint.type
         if not trigger_value:
-            trigger_value = alarm._trigger.value
-        
+            trigger_value = FloatType(alarm.alarm_setpoint.value)
+
         trigger_value_message = self.__check_trigger_values(
-            name=alarm.name, 
-            tag=tag, 
-            type=alarm_type, 
+            name=alarm.name,
+            tag=tag,
+            type=alarm_type,
             trigger_value=trigger_value
             )
         if trigger_value_message:
 
             return None, trigger_value_message
-        
+
         alarm, message = alarm.put(
             user=user,
             name=name,
@@ -145,6 +155,7 @@ class AlarmManager(Singleton):
             )
         self._alarms[id] = alarm
 
+    @logging_error_handler
     @set_event(message=f"Deleted", classification="Alarm", priority=3, criticity=5)
     def delete_alarm(self, id:str):
         r"""
@@ -154,12 +165,13 @@ class AlarmManager(Singleton):
 
         * **id** (int): Alarm ID
         """
-        if id in self._alarms: 
-                
+        if id in self._alarms:
+
             alarm = self._alarms.pop(id)
 
         return alarm, f"Alarm: {alarm.name} - Tag: {alarm.tag}"
 
+    @logging_error_handler
     def get_alarm(self, id:str)->Alarm:
         r"""
         Gets alarm from the Alarm Manager by id
@@ -172,11 +184,12 @@ class AlarmManager(Singleton):
 
         * **alarm** (Alarm Object)
         """
-        
+
         if id in self._alarms:
 
             return self._alarms[id]
-    
+
+    @logging_error_handler
     def get_alarm_by_name(self, name:str)->Alarm:
         r"""
         Gets alarm from the Alarm Manager by name
@@ -190,11 +203,12 @@ class AlarmManager(Singleton):
         * **alarm** (Alarm Object)
         """
         for id, alarm in self._alarms.items():
-            
+
             if name == alarm.name:
 
                 return self._alarms[str(id)]
-        
+
+    @logging_error_handler
     def get_alarms_by_tag(self, tag:str)->dict:
         r"""
         Gets all alarms associated to some tag
@@ -209,13 +223,14 @@ class AlarmManager(Singleton):
         """
         alarms = dict()
         for id, alarm in self._alarms.items():
-            
+
             if tag == alarm.tag:
-                
+
                 alarms[id] = alarm
 
         return alarms
 
+    @logging_error_handler
     def get_alarm_by_tag(self, tag:str)->list[Alarm]:
         r"""
         Gets alarm associated to some tag
@@ -230,13 +245,14 @@ class AlarmManager(Singleton):
         """
         alarms = list()
         for _, alarm in self._alarms.items():
-            
+
             if tag == alarm.tag:
-                
+
                 alarms.append(alarm)
 
         return alarms
 
+    @logging_error_handler
     def get_alarms(self)->dict:
         r"""
         Gets all alarms
@@ -246,7 +262,8 @@ class AlarmManager(Singleton):
         * **alarms**: (dict) Alarm objects
         """
         return self._alarms
-    
+
+    @logging_error_handler
     def get_lasts_active_alarms(self, lasts:int=None)->list:
         r"""
         Documentation here
@@ -255,13 +272,14 @@ class AlarmManager(Singleton):
         filtered_list = [elem for elem in original_list if elem['triggered']]
         sorted_list = sorted(filtered_list, key=lambda x: x['timestamp'] if x['timestamp'] else '')
         if lasts:
-            
+
             if len(sorted_list)>lasts:
 
                 sorted_list = sorted_list[0:lasts]
 
         return sorted_list
-    
+
+    @logging_error_handler
     def serialize(self)->list:
         r"""
         Documentation here
@@ -269,6 +287,7 @@ class AlarmManager(Singleton):
 
         return [alarm.serialize() for _, alarm in self._alarms.items()]
 
+    @logging_error_handler
     def get_tag_alarms(self)->list:
         r"""
         Gets all tag alarms defined
@@ -281,6 +300,7 @@ class AlarmManager(Singleton):
 
         return result
 
+    @logging_error_handler
     def tags(self)->list:
         r"""
         Gets all tags variables binded into alarms
@@ -293,6 +313,7 @@ class AlarmManager(Singleton):
 
         return list(result)
 
+    @logging_error_handler
     def __check_trigger_values(self, name:str, tag:str, type:str, trigger_value:float)->None|str:
         r"""
         Documentation here
@@ -304,51 +325,52 @@ class AlarmManager(Singleton):
             for alarm in alarms:
 
                 if alarm.name!=name:
-                    
-                    if type==alarm._trigger.type.value:
+
+                    if type==alarm.alarm_setpoint.type.value:
 
                         return f"Alarm Type {type} and alarm's tag {tag} duplicated"
-                    
+
                     if type=="LOW-LOW":
 
-                        if trigger_value>=alarm._trigger.value:
+                        if trigger_value>=alarm.alarm_setpoint.value:
 
-                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
+                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm.alarm_setpoint.value}"
 
                     if type=="LOW":
 
-                        if alarm._trigger.type.value=="LOW-LOW":
+                        if alarm.alarm_setpoint.type.value=="LOW-LOW":
 
-                            if trigger_value<=alarm._trigger.value:
+                            if trigger_value<=alarm.alarm_setpoint.value:
 
-                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm.alarm_setpoint.value}"
 
                         else:
 
-                            if trigger_value>=alarm._trigger.value:
+                            if trigger_value>=alarm.alarm_setpoint.value:
 
-                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm._trigger.value}"
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}>={alarm.alarm_setpoint.value}"
 
                     if type=="HIGH":
 
-                        if alarm._trigger.type.value=="HIGH-HIGH":
+                        if alarm.alarm_setpoint.type.value=="HIGH-HIGH":
 
-                            if trigger_value>=alarm._trigger.value:
+                            if trigger_value>=alarm.alarm_setpoint.value:
 
-                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm.alarm_setpoint.value}"
 
                         else:
 
-                            if trigger_value<=alarm._trigger.value:
+                            if trigger_value<=alarm.alarm_setpoint.value:
 
-                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
+                                return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm.alarm_setpoint.value}"
 
                     if type=="HIGH-HIGH":
 
-                        if trigger_value<=alarm._trigger.value:
+                        if trigger_value<=alarm.alarm_setpoint.value:
 
-                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm._trigger.value}"
-                        
+                            return f"Conflict definition with {alarm.name} in trigger value {trigger_value}<={alarm.alarm_setpoint.value}"
+
+    @logging_error_handler
     def filter_by(self, **fields):
         r"""
         Documentation here
@@ -356,6 +378,7 @@ class AlarmManager(Singleton):
 
         return AlarmSummary.filter_by(**fields), 200
 
+    @logging_error_handler
     def get_lasts(self, lasts:int=10):
         r"""
         Documentation here
@@ -363,6 +386,7 @@ class AlarmManager(Singleton):
 
         return AlarmSummary.read_lasts(lasts=lasts), 200
 
+    @logging_error_handler
     def summary(self)->dict:
         r"""
         Summarizes all Alarm Manager
@@ -380,6 +404,7 @@ class AlarmManager(Singleton):
 
         return result
 
+    @logging_error_handler
     def attach(self, alarm_name:str):
 
         def attach_observer(entity):
@@ -392,9 +417,10 @@ class AlarmManager(Singleton):
         alarm = self.get_alarm_by_name(name=alarm_name)
         attach_observer(alarm)
 
+    @logging_error_handler
     def execute(self, tag_name:str):
         r"""
-        Execute update state value of alarm if the value store in cvt for tag 
+        Execute update state value of alarm if the value store in cvt for tag
         reach alarm threshold values
 
         **Paramters**
@@ -410,9 +436,9 @@ class AlarmManager(Singleton):
                 _now = datetime.now()
 
                 if _alarm._shelved_until:
-                    
+
                     if _now >= _alarm._shelved_until:
-                        
+
                         _alarm.unshelve()
                         continue
 
