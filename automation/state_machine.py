@@ -25,6 +25,7 @@ from .variables import (
 from .logger.machines import MachinesLoggerEngine
 
 
+
 class Machine(Singleton):
     r"""Documentation here
     """
@@ -32,8 +33,9 @@ class Machine(Singleton):
 
         self.machine_manager = StateMachineManager()
         self.machines_engine = MachinesLoggerEngine()
+        self.state_worker = None
 
-    def append_machine(self, machine:StateMachine, interval:FloatType=FloatType(1), mode:str='sync'):
+    def append_machine(self, machine:StateMachine, interval:FloatType=FloatType(1), mode:str='async'):
         r"""
         Append a state machine to the state machine manager.
 
@@ -114,8 +116,9 @@ class Machine(Singleton):
         Starts statemachine worker
         """
         # StateMachine Worker
-        for machine in machines:
-            self.append_machine(machine)
+        if machines:
+            for machine in machines:
+                self.append_machine(machine)
         state_manager = self.get_state_machine_manager()
         
         if state_manager.exist_machines():
@@ -123,6 +126,10 @@ class Machine(Singleton):
             self.state_worker = StateMachineWorker(state_manager)
             self.state_worker.daemon = True
             self.state_worker.start()
+
+    def join(self, machine):
+
+        self.state_worker._async_scheduler.join(machine)
 
     def stop(self):
         r"""
@@ -165,7 +172,7 @@ class StateMachineCore(StateMachine):
         self.description = StringType(default=description)
         self.classification = StringType(default=classification)
         self.name = StringType(default=name)
-        self.machine_interval = FloatType(default=None)
+        self.machine_interval = FloatType(default=1.0)
         self.buffer_size = IntegerType(default=10)
         self.buffer_roll_type = StringType(default='backward')
         self.__subscribed_to = dict()
@@ -174,6 +181,7 @@ class StateMachineCore(StateMachine):
         for state in self.states:
             transitions.extend(state.transitions)
         self.transitions = transitions
+        self.machine_engine = MachinesLoggerEngine()
         super(StateMachineCore, self).__init__()
 
     # State Methods
@@ -211,6 +219,7 @@ class StateMachineCore(StateMachine):
 
         Depending on you state machine goal, write your script here
         """
+        print(f"{self.name.value} Running")
         self.criticity.value = 1
 
     def while_resetting(self):
@@ -231,6 +240,10 @@ class StateMachineCore(StateMachine):
 
         attr = getattr(self, attr_name)
         attr.set_value(value=value, user=user, name=attr_name)
+        kwargs = {
+            f"{attr_name}": value
+        }
+        self.machine_engine.put(name=self.name, **kwargs)
 
     def add_process_variable(self, name:str, tag:Tag, read_only:bool=False):
         r"""
@@ -279,7 +292,7 @@ class StateMachineCore(StateMachine):
 
         - *size:* [int] buffer size
         """
-        self.put_attr(attr_name="buffer_size", value=IntegerType(size), user=user)
+        self.buffer_size.value = size
         self.restart_buffer()
 
     def restart_buffer(self):
@@ -435,7 +448,7 @@ class StateMachineCore(StateMachine):
         >>> machine.set_interval(0.5)
         ```
         """        
-        self.put_attr(attr_name="machine_interval", value=interval, user=user)
+        self.machine_interval = interval
 
     def _get_active_transitions(self):
         r"""
@@ -732,91 +745,5 @@ class AutomationStateMachine(StateMachineCore):
         """
         self.last_state = "sleep"
         self.criticity.value = 4
-
-
-class IAD(AutomationStateMachine):
-    r"""Documentation here
-    """
-    def __init__(
-            self,
-            name="IAD",
-            description:str="Instrument Anomaly Detection",
-            classification:str="Service"
-        ):
-
-        super(IAD, self).__init__(
-            name=name,
-            description=description,
-            classification=classification
-            )
-        
-    def while_waiting(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        super(IAD, self).while_waiting()
-
-    def while_running(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        super(IAD, self).while_running()
-
-
-class Filter(AutomationStateMachine):
-    r"""Documentation here
-    """
-    def __init__(
-            self,
-            name="Filter",
-            description:str="Gaussian an Process Filter",
-            classification:str="Service"
-        ):
-
-        super(Filter, self).__init__(
-            name=name,
-            description=description,
-            classification=classification
-            )
-        
-    def while_waiting(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        super(Filter, self).while_waiting()
-
-    def while_running(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
-        """
-        super(Filter, self).while_running()
 
 

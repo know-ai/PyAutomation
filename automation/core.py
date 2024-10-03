@@ -127,6 +127,8 @@ class PyAutomation(Singleton):
             scan_time=int|float|type(None),
             dead_band=int|float|type(None),
             id=str|type(None),
+            user=User,
+            reload=bool,
             output=(Tag|None, str)
     )
     def create_tag(self,
@@ -142,7 +144,8 @@ class PyAutomation(Singleton):
             scan_time:int=None,
             dead_band:float=None,
             id:str=None,
-            user:User|None=None
+            user:User|None=None,
+            reload:bool=False,
         )->tuple[Tag,str]:
         r"""Documentation here
 
@@ -199,7 +202,7 @@ class PyAutomation(Singleton):
                     "unit": display_unit
                 }
 
-            self.subscribe_opcua(tag=self.cvt.get_tag_by_name(name=name), opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time)
+            self.subscribe_opcua(tag=self.cvt.get_tag_by_name(name=name), opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time, reload=reload)
 
             return tag, message
         
@@ -513,8 +516,8 @@ class PyAutomation(Singleton):
             self.opcua_client_manager.add(client_name=client_name, host=host, port=port)
 
     @logging_error_handler
-    @validate_types(tag=Tag, opcua_address=str|type(None), node_namespace=str|type(None), scan_time=float|int|type(None), output=None)
-    def subscribe_opcua(self, tag:Tag, opcua_address:str, node_namespace:str, scan_time:float):
+    @validate_types(tag=Tag, opcua_address=str|type(None), node_namespace=str|type(None), scan_time=float|int|type(None), reload=bool, output=None)
+    def subscribe_opcua(self, tag:Tag, opcua_address:str, node_namespace:str, scan_time:float, reload:bool=False):
         r"""
         Documentation here
         """
@@ -534,15 +537,15 @@ class PyAutomation(Singleton):
 
             else:                                                                       # SUBSCRIBE BY DAQ
 
-                self.subscribe_tag(tag_name=tag.get_name(), scan_time=scan_time)
+                self.subscribe_tag(tag_name=tag.get_name(), scan_time=scan_time, reload=reload)
 
         self.das.buffer[tag.get_name()].update({
             "unit": tag.get_display_unit()
         })
 
     @logging_error_handler
-    @validate_types(tag_name=str, scan_time=float|int, output=None)
-    def subscribe_tag(self, tag_name:str, scan_time:float|int):
+    @validate_types(tag_name=str, scan_time=float|int, reload=bool, output=None)
+    def subscribe_tag(self, tag_name:str, scan_time:float|int, reload:bool=False):
         r"""
         Documentatio here
         """
@@ -557,10 +560,12 @@ class PyAutomation(Singleton):
             daq.set_opcua_client_manager(manager=self.opcua_client_manager)
             self.machine.append_machine(machine=daq, interval=interval, mode="async")
             
-            if not self.is_starting:
+            if not reload:
 
-                self.machine.stop()
-                self.machine.start()
+                if self.machine.state_worker:
+                    self.machine.join(machine=daq)
+                else:
+                    self.machine.start()
 
         daq.subscribe_to(tag=tag)
 
@@ -841,7 +846,7 @@ class PyAutomation(Singleton):
 
                 if active:
 
-                    self.create_tag(**tag)
+                    self.create_tag(reload=True, **tag)
 
     @logging_error_handler
     @validate_types(output=None)

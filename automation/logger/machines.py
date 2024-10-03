@@ -27,7 +27,6 @@ class MachinesLogger(BaseLogger):
         r"""
         Documentation here
         """
-        print(f"Machine name: {name} - DB: {self.get_db()}")
         if self.get_db():
 
             Machines.create(
@@ -45,7 +44,7 @@ class MachinesLogger(BaseLogger):
     def put(
         self,
         name:StringType,
-        interval:IntegerType=None,
+        machine_interval:IntegerType=None,
         description:StringType=None,
         classification:StringType=None,
         buffer_size:IntegerType=None,
@@ -55,8 +54,8 @@ class MachinesLogger(BaseLogger):
         ):
         fields = dict()
         machine = Machines.read_by_name(name=name.value)
-        if interval:
-            fields["interval"] = interval.value
+        if machine_interval:
+            fields["interval"] = machine_interval.value
         if description:
             fields["description"] = description.value
         if classification:
@@ -124,7 +123,7 @@ class MachinesLoggerEngine(BaseEngine):
     def put(
         self,
         name:StringType,
-        interval:IntegerType=None,
+        machine_interval:IntegerType=None,
         description:StringType=None,
         classification:StringType=None,
         buffer_size:IntegerType=None,
@@ -137,7 +136,7 @@ class MachinesLoggerEngine(BaseEngine):
         _query["action"] = "put"
         _query["parameters"] = dict()
         _query["parameters"]["name"] = name
-        _query["parameters"]["interval"] = interval
+        _query["parameters"]["machine_interval"] = machine_interval
         _query["parameters"]["classification"] = classification
         _query["parameters"]["description"] = description
         _query["parameters"]["buffer_size"] = buffer_size

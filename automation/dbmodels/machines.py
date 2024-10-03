@@ -1,4 +1,4 @@
-from peewee import CharField, IntegerField, ForeignKeyField
+from peewee import CharField, IntegerField, ForeignKeyField, FloatField
 from .core import BaseModel
 from .tags import Tags
 
@@ -6,7 +6,7 @@ from .tags import Tags
 class Machines(BaseModel):
 
     name = CharField(unique=True)
-    interval = IntegerField()
+    interval = FloatField()
     description = CharField(max_length=128)
     classification = CharField(max_length=128)
     buffer_size = IntegerField()

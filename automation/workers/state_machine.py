@@ -83,7 +83,7 @@ class SchedThread(Thread):
 
         self.scheduler.stop()
 
-    def loop_closure(self, machine, scheduler):
+    def loop_closure(self, machine, scheduler:MachineScheduler):
 
         def loop():
             machine.loop()
@@ -129,10 +129,18 @@ class AsyncStateMachineWorker(BaseWorker):
             sched.daemon = True
             sched.start()
 
+    def join(self, machine):
+
+        sched = SchedThread(machine)
+        self._schedulers.append(sched)
+        sched.daemon = True
+        sched.start()
+
     def stop(self):
 
         for sched in self._schedulers:
             try:
+                print(f"stop sched")
                 sched.stop()
             except Exception as e:
                 message = "Error on async scheduler stop"
@@ -168,6 +176,7 @@ class StateMachineWorker(BaseWorker):
             if mode == "async":
                 
                 self._async_scheduler.add_machine(machine)
+                # self._async_scheduler.run()
                 
                 
             else:
@@ -179,7 +188,7 @@ class StateMachineWorker(BaseWorker):
         
 
     def stop(self):
-
+        print(f"Stoping")
         self._async_scheduler.stop()
         self._sync_scheduler.stop()
     
