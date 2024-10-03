@@ -36,10 +36,11 @@ class LoggerWorker(BaseWorker):
                 item = _queue.get()
                 tag_name = item["tag"]
                 tag = self.cvt.get_tag_by_name(name=tag_name)
-                to_unit = tag.get_display_unit()
-                value = item['value'].convert(to_unit=to_unit)
-                timestamp = item["timestamp"]
-                tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
+                if tag:
+                    to_unit = tag.get_display_unit()
+                    value = item['value'].convert(to_unit=to_unit)
+                    timestamp = item["timestamp"]
+                    tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
 
             self.logger.write_tags(tags=tags)
 

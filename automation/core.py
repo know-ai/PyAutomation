@@ -1,5 +1,4 @@
 import sys, logging, json, os, jwt
-from time import sleep
 from math import ceil
 from datetime import datetime, timezone
 # DRIVERS IMPORTATION
@@ -23,7 +22,7 @@ from .buffer import Buffer
 from .models import StringType, FloatType, IntegerType
 from .modules.users.users import users, User
 from .modules.users.roles import roles, Role
-from .utils.decorators import validate_types
+from .utils.decorators import validate_types, logging_error_handler
 # DASH APP CONFIGURATION PAGES IMPORTATION
 from .pages.main import ConfigView
 from .pages.callbacks import init_callbacks
@@ -65,6 +64,7 @@ class PyAutomation(Singleton):
         self.machine.append_machine(machine=self.filter, interval=FloatType(2.0), mode="async")
         self.set_log(level=logging.WARNING)
     
+    @logging_error_handler
     def define_dash_app(self, **kwargs)->None:
         r"""
         Documentation here
@@ -74,6 +74,7 @@ class PyAutomation(Singleton):
         init_callbacks(app=self.dash_app)
 
     # MACHINES METHODS
+    @logging_error_handler
     @validate_types(machine=StateMachine, interval=FloatType|IntegerType, mode=str, output=None)
     def append_machine(self, machine, interval:float=FloatType(1.0), mode:str="async")->None:
         r"""
@@ -81,6 +82,7 @@ class PyAutomation(Singleton):
         """
         self.machine.append_machine(machine=machine, interval=interval, mode=mode)
 
+    @logging_error_handler
     @validate_types(name=StringType, output=StateMachine)
     def get_machine(self, name:StringType)->StateMachine:
         r"""
@@ -88,6 +90,7 @@ class PyAutomation(Singleton):
         """
         return self.machine_manager.get_machine(name=name)
 
+    @logging_error_handler
     @validate_types(output=[(Machine, int, str)])
     def get_machines(self)->list[tuple[Machine, int, str]]:
         r"""
@@ -95,6 +98,7 @@ class PyAutomation(Singleton):
         """
         return self.machine_manager.get_machines()
 
+    @logging_error_handler
     @validate_types(output=list)
     def serialize_machines(self)->list[dict]:
         r"""
@@ -102,6 +106,7 @@ class PyAutomation(Singleton):
         """
         return self.machine_manager.serialize_machines()
     
+    @logging_error_handler
     @validate_types(machine=AutomationStateMachine, tag=Tag, output=dict)
     def subscribe_tag_into_automation_machine(self, machine:AutomationStateMachine, tag:Tag)->dict:
         r"""
@@ -110,6 +115,7 @@ class PyAutomation(Singleton):
         machine.subscribe_to(tag)
 
     # TAGS METHODS
+    @logging_error_handler
     @validate_types(
             name=str,
             unit=str,
@@ -203,6 +209,7 @@ class PyAutomation(Singleton):
 
             return None, message
     
+    @logging_error_handler
     @validate_types(output=list)
     def get_tags(self)->list:
         r"""Documentation here
@@ -218,17 +225,20 @@ class PyAutomation(Singleton):
 
         return self.cvt.get_tags()
 
+    @logging_error_handler
     @validate_types(name=str, output=Tag|None)
     def get_tag_by_name(self, name:str)->Tag:
 
         return self.cvt.get_tag_by_name(name=name)
 
+    @logging_error_handler
     def get_trends(self, start:str, stop:str, timezone:str, *tags):
         r"""
         Documentation here
         """
         return self.logger_engine.read_trends(start, stop, timezone, *tags)
 
+    @logging_error_handler
     @validate_types(id=str, output=None|str)
     def delete_tag(self, id:str, user:User|None=None)->None|str:
         r"""
@@ -251,6 +261,7 @@ class PyAutomation(Singleton):
         self.cvt.delete_tag(id=id, user=user)
         self.das.buffer.pop(tag_name)
 
+    @logging_error_handler
     @validate_types(
             id=str,  
             name=str, 
@@ -330,6 +341,7 @@ class PyAutomation(Singleton):
         self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
         return result
 
+    @logging_error_handler
     @validate_types(name=str, output=None|str)
     def delete_tag_by_name(self, name:str, user:User|None=None):
         r"""
@@ -350,15 +362,16 @@ class PyAutomation(Singleton):
         self.cvt.delete_tag(id=tag.id, user=user)
 
     # USERS METHODS
-    # @validate_types(
-    #         username=str,
-    #         role_name=str,
-    #         email=str,
-    #         password=str,
-    #         name=str|type(None),
-    #         lastname=str|type(None),
-    #         output=tuple[User|None, str]
-    # )
+    @logging_error_handler
+    @validate_types(
+            username=str,
+            role_name=str,
+            email=str,
+            password=str,
+            name=str|type(None),
+            lastname=str|type(None),
+            output=tuple[User|None, str]
+    )
     def signup(
             self,
             username:str,
@@ -390,7 +403,8 @@ class PyAutomation(Singleton):
 
         return None, message
 
-    # @validate_types(role_name=str, output=str)
+    @logging_error_handler
+    @validate_types(role_name=str, output=str)
     def create_token(self, role_name:str)->str:
         r"""
         Documentation here
@@ -402,7 +416,8 @@ class PyAutomation(Singleton):
         }
         return jwt.encode(payload, server.config['TPT_TOKEN'], algorithm="HS256")
 
-    # @validate_types(name=str, level=int, output=Role|None)
+    @logging_error_handler
+    @validate_types(name=str, level=int, output=Role|None)
     def set_role(self, name:str, level:int)->Role|None:
         r"""
         Documentation here
@@ -421,8 +436,9 @@ class PyAutomation(Singleton):
         return None, message
 
     # OPCUA METHODS
-    # @validate_types(host=str|type(None), port=int|type(None), output=list[dict])
-    def find_opcua_servers(self, host:str='127.0.0.1', port:int=4840)->list[dict]:
+    @logging_error_handler
+    @validate_types(host=str|type(None), port=int|type(None), output=dict)
+    def find_opcua_servers(self, host:str='127.0.0.1', port:int=4840)->dict:
         r"""
         Documentation here
         """
@@ -441,21 +457,24 @@ class PyAutomation(Singleton):
 
         return result
 
-    # @validate_types(output=dict)
+    @logging_error_handler
+    @validate_types(output=dict)
     def get_opcua_clients(self):
         r"""
         Documentation here
         """
         return self.opcua_client_manager.serialize()
 
-    # @validate_types(client_name=str, output=Client)
+    @logging_error_handler
+    @validate_types(client_name=str, output=Client)
     def get_opcua_client(self, client_name:str):
         r"""
         Documentation here
         """
         return self.opcua_client_manager.get(client_name=client_name)
 
-    # @validate_types(client_name=str, namespaces=list, output=list)
+    @logging_error_handler
+    @validate_types(client_name=str, namespaces=list, output=list)
     def get_node_values(self, client_name:str, namespaces:list)->list:
         r"""
         Documentation here
@@ -463,7 +482,8 @@ class PyAutomation(Singleton):
 
         return self.opcua_client_manager.get_node_values(client_name=client_name, namespaces=namespaces)
 
-    # @validate_types(client_name=str, namespaces=list[str], output=list[dict])
+    @logging_error_handler
+    @validate_types(client_name=str, namespaces=list, output=list)
     def get_node_attributes(self, client_name:str, namespaces:list)->list[dict]:
         r"""
         Documentation here
@@ -471,14 +491,15 @@ class PyAutomation(Singleton):
 
         return self.opcua_client_manager.get_node_attributes(client_name=client_name, namespaces=namespaces)
 
-    # @validate_types(client_name=str, output=tuple[dict, int])
+    @logging_error_handler
     def get_opcua_tree(self, client_name:str):
         r"""
         Documentation here
         """
         return self.opcua_client_manager.get_opcua_tree(client_name=client_name)
 
-    # @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=None)
+    @logging_error_handler
+    @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=None)
     def add_opcua_client(self, client_name:str, host:str="127.0.0.1", port:int=4840):
         r"""
         Documentation here
@@ -489,6 +510,7 @@ class PyAutomation(Singleton):
 
             self.opcua_client_manager.add(client_name=client_name, host=host, port=port)
 
+    @logging_error_handler
     @validate_types(tag=Tag, opcua_address=str|type(None), node_namespace=str|type(None), scan_time=float|int|type(None), output=None)
     def subscribe_opcua(self, tag:Tag, opcua_address:str, node_namespace:str, scan_time:float):
         r"""
@@ -516,6 +538,7 @@ class PyAutomation(Singleton):
             "unit": tag.get_display_unit()
         })
 
+    @logging_error_handler
     @validate_types(tag_name=str, scan_time=float|int, output=None)
     def subscribe_tag(self, tag_name:str, scan_time:float|int):
         r"""
@@ -538,7 +561,8 @@ class PyAutomation(Singleton):
                 self.machine.start()
 
         daq.subscribe_to(tag=tag)
-        
+
+    @logging_error_handler    
     @validate_types(tag=Tag, output=None)
     def unsubscribe_opcua(self, tag:Tag):
         r"""
@@ -571,6 +595,7 @@ class PyAutomation(Singleton):
                     "values": Buffer()
                 })
 
+    @logging_error_handler
     def __update_buffer(self, tag:Tag):
         r"""
         Documentation here
@@ -592,6 +617,7 @@ class PyAutomation(Singleton):
             }
 
     # ERROR LOGS
+    @logging_error_handler
     @validate_types(level=int, file=str, output=None)
     def set_log(self, level:int=logging.INFO, file:str="app.log"):
         r"""
@@ -618,6 +644,7 @@ class PyAutomation(Singleton):
             self._log_file = file
 
     # DATABASES
+    @logging_error_handler
     @validate_types(
             dbtype=str, 
             drop_table=bool, 
@@ -687,6 +714,7 @@ class PyAutomation(Singleton):
         self.db_manager.set_db(self._db)
         self.db_manager.set_dropped(drop_table)
 
+    @logging_error_handler
     @validate_types(
             dbtype=str, 
             dbfile=str, 
@@ -731,6 +759,7 @@ class PyAutomation(Singleton):
 
             json.dump(db_config, json_file)
 
+    @logging_error_handler
     @validate_types(output=dict|None)
     def get_db_config(self):
         r"""
@@ -753,6 +782,7 @@ class PyAutomation(Singleton):
             logging.warning(message)
             return None
 
+    @logging_error_handler
     @validate_types(output=bool)
     def is_db_connected(self):
         r"""
@@ -764,6 +794,7 @@ class PyAutomation(Singleton):
 
         return False
 
+    @logging_error_handler
     @validate_types(test=bool|type(None), output=None)
     def connect_to_db(self, test:bool=False):
         r"""
@@ -784,6 +815,7 @@ class PyAutomation(Singleton):
             self.load_db_to_roles()
             self.load_db_to_users()
 
+    @logging_error_handler
     @validate_types(output=None)
     def disconnect_to_db(self):
         r"""
@@ -791,6 +823,7 @@ class PyAutomation(Singleton):
         """
         self.db_manager.stop_database()
 
+    @logging_error_handler
     @validate_types(output=None)
     def load_db_to_cvt(self):
         r"""
@@ -808,6 +841,7 @@ class PyAutomation(Singleton):
 
                     self.create_tag(**tag)
 
+    @logging_error_handler
     @validate_types(output=None)
     def load_db_to_alarm_manager(self):
         r"""
@@ -820,6 +854,7 @@ class PyAutomation(Singleton):
 
                     self.create_alarm(reload=True, **alarm)
 
+    @logging_error_handler
     @validate_types(output=None)
     def load_db_to_roles(self):
         r"""
@@ -829,6 +864,7 @@ class PyAutomation(Singleton):
 
             Roles.fill_cvt_roles()
 
+    @logging_error_handler
     @validate_types(output=None)
     def load_db_to_users(self):
         r"""
@@ -838,6 +874,7 @@ class PyAutomation(Singleton):
 
             Users.fill_cvt_users()
         
+    @logging_error_handler
     @validate_types(output=None)
     def load_opcua_clients_from_db(self):
         r"""
@@ -852,6 +889,7 @@ class PyAutomation(Singleton):
                 self.add_opcua_client(**client)
 
     # ALARMS METHODS
+    @logging_error_handler
     @validate_types(output=AlarmManager)
     def get_alarm_manager(self)->AlarmManager:
         r"""
@@ -859,6 +897,7 @@ class PyAutomation(Singleton):
         """
         return self.alarm_manager
 
+    @logging_error_handler
     @validate_types(
             name=str,
             tag=str,
@@ -936,6 +975,7 @@ class PyAutomation(Singleton):
 
         return None, message
 
+    @logging_error_handler
     @validate_types(lasts=int, output=list)
     def get_lasts_alarms(self, lasts:int=10)->list:
         r"""
@@ -945,6 +985,7 @@ class PyAutomation(Singleton):
             
             return self.alarms_engine.get_lasts(lasts=lasts)
 
+    @logging_error_handler
     def filter_alarms_by(self, **fields):
         r"""
         Documentation here
@@ -953,6 +994,7 @@ class PyAutomation(Singleton):
 
             return self.alarms_engine.filter_alarm_summary_by(**fields)
 
+    @logging_error_handler
     @validate_types(id=str, name=str|None, description=str|None, alarm_type=str|None, trigger_value=int|float|None, output=None)
     def update_alarm(
             self, 
@@ -997,6 +1039,7 @@ class PyAutomation(Singleton):
                 alarm_type=alarm_type,
                 trigger_value=trigger_value)
 
+    @logging_error_handler
     @validate_types(id=str, output=Alarm)
     def get_alarm(self, id:str)->Alarm:
         r"""
@@ -1012,6 +1055,7 @@ class PyAutomation(Singleton):
         """
         return self.alarm_manager.get_alarm(id=id)
 
+    @logging_error_handler
     @validate_types(output=list)
     def get_alarms(self)->list:
         r"""
@@ -1023,6 +1067,7 @@ class PyAutomation(Singleton):
         """
         return self.alarm_manager.get_alarms()
 
+    @logging_error_handler
     @validate_types(lasts=int|None, output=list)
     def get_lasts_active_alarms(self, lasts:int=None)->list:
         r"""
@@ -1030,6 +1075,7 @@ class PyAutomation(Singleton):
         """
         return self.alarm_manager.get_lasts_active_alarms(lasts=lasts)
 
+    @logging_error_handler
     @validate_types(name=str, output=Alarm)
     def get_alarm_by_name(self, name:str)->Alarm:
         r"""
@@ -1045,6 +1091,7 @@ class PyAutomation(Singleton):
         """
         return self.alarm_manager.get_alarm_by_name(name=name)
 
+    @logging_error_handler
     @validate_types(tag=str, output=list)
     def get_alarms_by_tag(self, tag:str)->list:
         r"""
@@ -1060,6 +1107,7 @@ class PyAutomation(Singleton):
         """
         return self.alarm_manager.get_alarms_by_tag(tag=tag)
 
+    @logging_error_handler
     @validate_types(id=str, output=None)
     def delete_alarm(self, id:str):
         r"""
@@ -1075,7 +1123,8 @@ class PyAutomation(Singleton):
             self.alarms_engine.delete(id=id)
 
     # EVENTS METHODS
-    # @validate_types(lasts=int, output=list)
+    @logging_error_handler
+    @validate_types(lasts=int, output=list)
     def get_lasts_events(self, lasts:int=10)->list:
         r"""
         Documentation here
@@ -1084,13 +1133,7 @@ class PyAutomation(Singleton):
 
             return self.events_engine.get_lasts(lasts=lasts)
 
-    # @validate_types(
-    #         usernames=list[str], 
-    #         priorities=list[int], 
-    #         criticities=list[int], 
-    #         greater_than_timestamp=datetime, 
-    #         less_than_timestamp=datetime, 
-    #         output=list)
+    @logging_error_handler
     def filter_events_by(
             self,
             usernames:list[str]=None,
@@ -1112,6 +1155,7 @@ class PyAutomation(Singleton):
             )
         
     # LOGS METHODS
+    @logging_error_handler
     def create_log(
         self, 
         message:str, 
@@ -1137,6 +1181,7 @@ class PyAutomation(Singleton):
                 timestamp=timestamp
             )
         
+    @logging_error_handler
     def filter_logs_by(
             self,
             usernames:list[str]=None,
@@ -1160,7 +1205,8 @@ class PyAutomation(Singleton):
                 less_than_timestamp=less_than_timestamp
             )
         
-    # @validate_types(lasts=int, output=list)
+    @logging_error_handler
+    @validate_types(lasts=int, output=list)
     def get_lasts_logs(self, lasts:int=10)->list:
         r"""
         Documentation here
@@ -1170,6 +1216,7 @@ class PyAutomation(Singleton):
             return self.logs_engine.get_lasts(lasts=lasts)
 
     # INIT APP
+    @logging_error_handler
     @validate_types(debug=bool, test=bool, create_tables=bool, alarm_worker=bool,output=None)
     def run(self, debug:bool=False, test:bool=False, create_tables:bool=False, alarm_worker:bool=True)->None:
         r"""
@@ -1191,6 +1238,7 @@ class PyAutomation(Singleton):
 
                 self.dash_app.run(debug=debug, use_reloader=False)
 
+    @logging_error_handler
     @validate_types(test=bool, create_tables=bool, alarm_worker=bool, output=None)
     def safe_start(self, test:bool=False, create_tables:bool=True, alarm_worker:bool=False):
         r"""
@@ -1201,6 +1249,7 @@ class PyAutomation(Singleton):
         self.__start_logger()
         self.__start_workers(test=test)
 
+    @logging_error_handler
     @validate_types(output=None)
     def safe_stop(self)->None:
         r"""
@@ -1208,6 +1257,7 @@ class PyAutomation(Singleton):
         """
         self.__stop_workers()
 
+    @logging_error_handler
     def state_machine_diagrams(self, folder_path:str):
         r"""
         Documentation here"""
@@ -1217,6 +1267,7 @@ class PyAutomation(Singleton):
             machine._graph().write_png(img_path)
 
     # WORKERS
+    @logging_error_handler
     @validate_types(test=bool, output=None)
     def __start_workers(self, test:bool=False)->None:
         r"""
@@ -1241,6 +1292,7 @@ class PyAutomation(Singleton):
         self.machine.start()
         self.is_starting = False
 
+    @logging_error_handler
     @validate_types(output=None)
     def __stop_workers(self)->None:
         r"""
@@ -1254,6 +1306,7 @@ class PyAutomation(Singleton):
             message = "Error on wokers stop"
             log_detailed(e, message)
 
+    @logging_error_handler
     @validate_types(output=None)
     def __start_logger(self)->None:
         r"""
