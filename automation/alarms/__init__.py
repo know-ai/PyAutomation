@@ -172,7 +172,7 @@ class Alarm(StateMachine):
 
         - *tag:* [Tag] tag Object
         - *value:* [int|float|bool] tag value
-        """        
+        """      
         if self.alarm_setpoint.type in (TriggerType.HH, TriggerType.H):
 
             if value.value > self.alarm_setpoint.value:
@@ -233,7 +233,7 @@ class Alarm(StateMachine):
 
     @logging_error_handler
     @set_event(message=f"Acknowledged", classification="Alarm", priority=2, criticity=3)
-    def acknowledge(self, user:User=None):
+    def acknowledge(self, usesr:User=None):
         r"""
         Documentation here
         """

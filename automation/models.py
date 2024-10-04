@@ -114,6 +114,7 @@ class ProcessType(FloatType):
 
         self.tag = tag
         self.read_only = read_only
+        
         super(ProcessType, self).__init__(default=default, unit=unit)
         
     def serialize(self):
