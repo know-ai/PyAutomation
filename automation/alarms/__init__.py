@@ -247,7 +247,7 @@ class Alarm(StateMachine):
 
             transition_name = f'{current_state}_to_normal'
 
-        tag = self.tag_engine.get_tag_by_name(name=self.name)
+        tag = self.tag_engine.get_tag_by_name(name=self.tag.name)
         self.__transition(transition_name=transition_name, ack_timestamp=tag.get_timestamp())
         return self, f"{self.tag.get_name()}"
 
