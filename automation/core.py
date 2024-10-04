@@ -1111,8 +1111,8 @@ class PyAutomation(Singleton):
         return self.alarm_manager.get_alarms_by_tag(tag=tag)
 
     @logging_error_handler
-    @validate_types(id=str, output=None)
-    def delete_alarm(self, id:str):
+    @validate_types(id=str, user=User, output=None)
+    def delete_alarm(self, id:str, user:User=None):
         r"""
         Removes alarm
 
@@ -1120,7 +1120,7 @@ class PyAutomation(Singleton):
 
         * **id** (int): Alarm ID
         """
-        self.alarm_manager.delete_alarm(id=id)
+        self.alarm_manager.delete_alarm(id=id, user=user)
         if self.is_db_connected():
 
             self.alarms_engine.delete(id=id)

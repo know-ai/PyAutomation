@@ -5,7 +5,7 @@ from .trigger import Trigger, TriggerType
 from ..tags.tag import Tag, MachineObserver
 from ..tags.cvt import CVTEngine
 from ..modules.users.users import User
-from ..utils.decorators import validate_types, logging_error_handler, set_event
+from ..utils.decorators import validate_types, logging_error_handler, set_event, put_alarm_state
 from ..models import FloatType, IntegerType, StringType
 from ..variables import *
 from statemachine import State, StateMachine
@@ -116,40 +116,47 @@ class Alarm(StateMachine):
         super(Alarm, self).__init__()
 
     @logging_error_handler
+    @put_alarm_state
     def on_enter_normal(self):
         self.state = AlarmState.NORM
         self.timestamp = None 
         self.ack_timestamp = None
 
     @logging_error_handler
+    @put_alarm_state
     def on_enter_unack_alarm(self, timestamp:datetime):
 
         self.state = AlarmState.UNACK
         self.timestamp = timestamp
 
     @logging_error_handler
+    @put_alarm_state
     def on_enter_ack_alarm(self, ack_timestamp:datetime):
 
         self.state = AlarmState.ACKED
         self.ack_timestamp = ack_timestamp
     
     @logging_error_handler
+    @put_alarm_state
     def on_enter_rtn_unack(self):
         
         self.timestamp = None
         self.state = AlarmState.RTNUN
     
     @logging_error_handler
+    @put_alarm_state
     def on_enter_shelved(self):
         
         self.state = AlarmState.SHLVD
 
     @logging_error_handler
+    @put_alarm_state
     def on_enter_suppressed_by_design(self):
         
         self.state = AlarmState.DSUPR
 
     @logging_error_handler
+    @put_alarm_state
     def on_enter_out_of_service(self):
         
         self.state = AlarmState.OOSRV
@@ -172,26 +179,27 @@ class Alarm(StateMachine):
 
         - *tag:* [Tag] tag Object
         - *value:* [int|float|bool] tag value
-        """      
-        if self.alarm_setpoint.type in (TriggerType.HH, TriggerType.H):
+        """ 
+        if self.state not in (AlarmState.DSUPR, AlarmState.SHLVD, AlarmState.OOSRV):     
+            if self.alarm_setpoint.type in (TriggerType.HH, TriggerType.H):
 
-            if value.value > self.alarm_setpoint.value:
+                if value.value > self.alarm_setpoint.value:
 
-                self.abnormal_condition(timestamp=timestamp)
-            
-            else: 
+                    self.abnormal_condition(timestamp=timestamp)
+                
+                else: 
 
-                self.normal_condition()
+                    self.normal_condition()
 
-        if self.alarm_setpoint.type in (TriggerType.L, TriggerType.LL):
+            if self.alarm_setpoint.type in (TriggerType.L, TriggerType.LL):
 
-            if value.value < self.alarm_setpoint.value:
+                if value.value < self.alarm_setpoint.value:
 
-                self.abnormal_condition(timestamp=timestamp)
+                    self.abnormal_condition(timestamp=timestamp)
 
-            else:
+                else:
 
-                self.normal_condition()
+                    self.normal_condition()
         
     @logging_error_handler
     def abnormal_condition(self, timestamp:datetime):
@@ -427,7 +435,7 @@ class Alarm(StateMachine):
                 self.send(transition_name, **kwargs)
 
     @logging_error_handler
-    def __return_to_service(self,):
+    def __return_to_service(self):
 
         current_state = self.current_state.name.lower()
 

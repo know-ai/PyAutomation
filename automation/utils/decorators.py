@@ -69,6 +69,21 @@ def set_event(message:str, classification:str, priority:int, criticity:int):
 
     return wrapper
 
+@decorator
+def put_alarm_state(func, args, kwargs):
+    r"""
+    Documentation here
+    """
+    from ..logger.alarms import AlarmsLoggerEngine
+    alarms_engine = AlarmsLoggerEngine()   
+    result = func(*args, **kwargs)
+    alarm = args[0]
+    alarms_engine.put(
+        id=alarm.identifier,
+        state=alarm.state.state
+    )
+    return result
+
 def validate_types(**validations):
     
     if "output" in validations:

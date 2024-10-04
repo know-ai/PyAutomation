@@ -62,7 +62,7 @@ class BaseModel(Model):
         The model's primary key will not change:
         """     
         if cls.id_exists(id):
-
+            
             query = cls.update(**fields).where(cls.id == id)
             query.execute()
             return query            

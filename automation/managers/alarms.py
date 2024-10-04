@@ -20,7 +20,7 @@ class AlarmManager(Singleton):
 
     def __init__(self):
 
-        self._alarms = dict()
+        self._alarms:dict[Alarm] = dict()
         self._tag_queue = queue.Queue()
         self.tag_engine = CVTEngine()
 
@@ -157,7 +157,7 @@ class AlarmManager(Singleton):
 
     @logging_error_handler
     @set_event(message=f"Deleted", classification="Alarm", priority=3, criticity=5)
-    def delete_alarm(self, id:str):
+    def delete_alarm(self, id:str, user:User=None):
         r"""
         Removes alarm
 
@@ -168,6 +168,7 @@ class AlarmManager(Singleton):
         if id in self._alarms:
 
             alarm = self._alarms.pop(id)
+            alarm.remove_from_service(user=user)
 
         return alarm, f"Alarm: {alarm.name} - Tag: {alarm.tag}"
 

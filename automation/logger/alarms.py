@@ -135,26 +135,30 @@ class AlarmsLogger(BaseLogger):
         tag:str=None,
         description:str=None,
         alarm_type:str=None,
-        trigger_value:str=None
+        trigger_value:str=None,
+        state:str=None
         ):
         fields = dict()
         alarm = Alarms.read_by_identifier(identifier=id)
-        if name:
-            fields["name"] = name
-        if tag:
-            fields["tag"] = tag
-        if description:
-            fields["description"] = description
-        if alarm_type:
-            
-            alarm_type = AlarmTypes.read_by_name(name=alarm_type)
-            fields["trigger_type"] = alarm_type
-        if trigger_value:
-            fields["trigger_value"] = trigger_value
-        query = Alarms.put(
-            id=alarm.id,
-            **fields
-        )
+        if alarm:
+            if name:
+                fields["name"] = name
+            if tag:
+                fields["tag"] = tag
+            if description:
+                fields["description"] = description
+            if alarm_type:
+                alarm_type = AlarmTypes.read_by_name(name=alarm_type)
+                fields["trigger_type"] = alarm_type
+            if trigger_value:
+                fields["trigger_value"] = trigger_value
+            if state:
+                alarm_state = AlarmStates.get_or_none(name=state)
+                fields["state"] = alarm_state
+            query = Alarms.put(
+                id=alarm.id,
+                **fields
+            )
 
         return query
 
@@ -163,8 +167,12 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        # alarm = Alarms.read_by_identifier(identifier=id)
-        Alarms.delete().where(Alarms.identifier==id)
+        alarm_state = AlarmStates.get_or_none(name="Out Of Service")
+        alarm = Alarms.read_by_identifier(identifier=id)
+        Alarms.put(
+            id=alarm.id,
+            state=alarm_state
+        )
 
     @logging_error_handler
     def create_record_on_alarm_summary(self, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
@@ -295,7 +303,8 @@ class AlarmsLoggerEngine(BaseEngine):
         tag:str=None,
         description:str=None,
         alarm_type:str=None,
-        trigger_value:str=None
+        trigger_value:str=None,
+        state:str=None
         ):
         _query = dict()
         _query["action"] = "put"
@@ -306,6 +315,7 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["description"] = description
         _query["parameters"]["alarm_type"] = alarm_type
         _query["parameters"]["trigger_value"] = trigger_value
+        _query["parameters"]["state"] = state
 
         return self.query(_query)
 
