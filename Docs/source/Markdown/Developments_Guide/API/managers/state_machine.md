@@ -1,13 +1,5 @@
-# API Documentation
+# Managers State Machine API Documentation
 
-Escribir un preambulo de contenido de la API
-
-::: automation.managers.StateMachineManager
-    :docstring:
-    :members: get_queue
-    :members: append_machine
-    :members: get_machines
-    :members: get_machine
-    :members: summary
-    :members: exist_machines
-    :members: attach_all
+```{eval-rst}
+.. automodule:: automation.managers.state_machine.Machine
+    :members: get_queue,append_machine,get_machines,get_machine,summary,exist_machines,attach_all

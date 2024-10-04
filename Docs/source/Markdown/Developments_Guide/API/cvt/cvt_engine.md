@@ -1,24 +1,5 @@
-Escribir un preambulo de contenido de la API
+# CVT Engine API  Documentation
 
-::: automation.tags.CVTEngine
-    :docstring:
-    :members: set_tag
-    :members: update_tag
-    :members: delete_tag
-    :members: get_tag
-    :members: get_tags
-    :members: get_tag_by_name
-    :members: get_tag_by_display_name
-    :members: get_tag_by_node_namespace
-    :members: get_value
-    :members: get_scan_time
-    :members: get_dead_band
-    :members: set_value
-    :members: set_data_type
-    :members: is_tag_defined
-    :members: attach
-    :members: detach
-    :members: serialize
-    :members: serialize_by_tag_name
-    :members: request
-    :members: response
+```{eval-rst}
+.. automodule:: automation.tags.cvt.CVTEngine
+    :members: set_tag, update_tag, delete_tag, get_tag, get_tags, get_tag_by_name, get_tag_by_display_name, get_tag_by_node_namespace, get_value, get_scan_time, get_dead_band, set_value, set_data_type, is_tag_defined, attach, detach, serialize, serialize_by_tag_name, request, response

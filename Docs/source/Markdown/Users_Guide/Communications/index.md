@@ -1,5 +1,6 @@
 # Communications
 <div style="text-align:justify;">
+
 This module allows for the creation and management of an OPCUA (Open Platform Communications Unified Architecture) server. OPCUA is an industrial communication standard that facilitates interoperability between different devices and systems in automation environments.
 </div>
 

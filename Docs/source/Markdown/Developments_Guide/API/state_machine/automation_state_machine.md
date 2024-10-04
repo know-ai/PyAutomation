@@ -1,38 +1,6 @@
-# API Documentation
+# Automation State Machine API Documentation
 
-Escribir un preambulo de contenido de la API
-
-::: automation.state_machine.AutomationStateMachine
-    :docstring:
-    :members: while_starting
-    :members: while_waiting
-    :members: while_running
-    :members: while_testing
-    :members: while_sleeping
-    :members: while_resetting
-    :members: while_restarting
-    :members: on_start_to_wait
-    :members: on_wait_to_reset
-    :members: on_run_to_restart
-    :members: on_run_to_reset
-    :members: on_test_to_restart
-    :members: on_test_to_reset
-    :members: on_sleep_to_restart
-    :members: on_sleep_to_reset
-    :members: on_reset_to_start
-    :members: on_restart_to_wait
-    :members: set_buffer_size
-    :members: get_state_interval
-    :members: get_subscribed_tags
-    :members: subscribe_to
-    :members: notify
-    :members: unsubscribe_to
-    :members: get_interval
-    :members: set_interval
-    :members: _get_active_transitions
-    :members: _activate_triggers
-    :members: loop
-    :members: info
-    :members: get_states
-    :members: serialize
+```{eval-rst}
+.. automodule:: automation.tags.AutomationStateMachine
+    :members: while_starting,while_waiting,while_running,while_testing,while_sleeping,while_resetting,while_restarting,on_start_to_wait,on_wait_to_reset,on_run_to_restart,on_run_to_reset,on_test_to_restart,on_test_to_reset,on_sleep_to_restart,on_sleep_to_reset,on_reset_to_start,on_restart_to_wait,set_buffer_size,get_state_interval,get_subscribed_tags,subscribe_to,notify,unsubscribe_to,get_interval,set_interval,_get_active_transitions,_activate_triggers,loop,info,get_states,serialize
     
