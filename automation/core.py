@@ -550,7 +550,7 @@ class PyAutomation(Singleton):
         Documentatio here
         """
         scan_time = float(scan_time)
-        daq_name = StringType(f"DAQ-{int(scan_time / 1000)}")
+        daq_name = StringType(f"DAQ-{int(scan_time)}")
         daq = self.machine_manager.get_machine(name=daq_name)
         tag = self.cvt.get_tag_by_name(name=tag_name)
         if not daq:

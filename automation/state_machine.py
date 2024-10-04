@@ -764,7 +764,6 @@ class DAQ(StateMachineCore):
                 self.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
-        
         super().while_running()
 
     # Auxiliaries Methods
