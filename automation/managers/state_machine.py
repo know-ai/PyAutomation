@@ -114,13 +114,12 @@ class StateMachineManager:
         index = 0
         for machine, _, _ in self._machines:
 
-            if name == machine.name:
+            if name == machine.name.value:
 
+                self._machines.pop(index)
                 break
-            
-            index += 1
 
-        self._machines.pop(index)
+            index += 1
 
     def unsubscribe_tag(self, tag:Tag):
         r"""
@@ -131,6 +130,12 @@ class StateMachineManager:
             if hasattr(machine, "unsubscribe_to"):
 
                 machine.unsubscribe_to(tag=tag)
+
+                if machine.classification.value.lower()=="data acquisition system":
+
+                    if not machine.subscribed_to:
+
+                        self.drop(name=machine.name.value)
 
     def summary(self)->dict:
         r"""

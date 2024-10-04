@@ -235,7 +235,7 @@ class StateMachineCore(StateMachine):
         self.machine_interval = FloatType(default=1.0)
         self.buffer_size = IntegerType(default=10)
         self.buffer_roll_type = StringType(default='backward')
-        self.__subscribed_to = dict()
+        self.subscribed_to = dict()
         self.restart_buffer()
         transitions = []
         for state in self.states:
@@ -372,7 +372,7 @@ class StateMachineCore(StateMachine):
 
         - 
         """
-        return self.__subscribed_to
+        return self.subscribed_to
     
     def subscribe_to(self, tag:Tag):
         r"""
@@ -388,7 +388,7 @@ class StateMachineCore(StateMachine):
             if not self.process_type_exists(name=tag_name):
 
                 setattr(self, tag_name, ProcessType(tag=tag, default=tag.value, read_only=True))
-                self.__subscribed_to[tag.name] = tag
+                self.subscribed_to[tag.name] = tag
                 self.attach(machine=self, tag=tag)
                 self.restart_buffer()
                 return True
@@ -405,9 +405,9 @@ class StateMachineCore(StateMachine):
 
         - 
         """
-        if tag.name in self.__subscribed_to:
+        if tag.name in self.subscribed_to:
             delattr(self, tag.name)
-            self.__subscribed_to.pop(tag.name)
+            self.subscribed_to.pop(tag.name)
             self.restart_buffer()
             return True
 
@@ -430,7 +430,7 @@ class StateMachineCore(StateMachine):
         - *value:* [int|float|bool] tag value
         """
         if tag in self.get_subscribed_tags():
-            _tag = self.__subscribed_to[tag]
+            _tag = self.subscribed_to[tag]
             attr = getattr(self, tag)
             value = value.convert(to_unit=_tag.get_display_unit())
             attr.value = value
@@ -764,6 +764,7 @@ class DAQ(StateMachineCore):
                 self.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
+
         super().while_running()
 
     # Auxiliaries Methods
