@@ -116,9 +116,32 @@ class Machine(Singleton):
         Starts statemachine worker
         """
         # StateMachine Worker
-        if machines:
-            for machine in machines:
-                self.append_machine(machine)
+        config = self.load_db_machines_config()
+
+        if config:
+
+            if machines:
+
+                for machine in machines:
+
+                    if machine.name.value in config:
+
+                        machine.description.value = config[machine.name.value]["description"]
+                        machine.classification.value = config[machine.name.value]["classification"]
+                        machine.buffer_size.value = config[machine.name.value]["buffer_size"]
+                        machine.buffer_roll_type.value = config[machine.name.value]["buffer_roll_type"]
+                        machine.criticity.value = config[machine.name.value]["criticity"]
+                        machine.priority.value = config[machine.name.value]["priority"]
+                        self.append_machine(machine=machine, interval=FloatType(config[machine.name.value]["interval"]))
+
+        else:
+
+            if machines:
+                
+                for machine in machines:
+
+                    self.append_machine(machine=machine)
+
         state_manager = self.get_state_machine_manager()
         
         if state_manager.exist_machines():
@@ -126,6 +149,10 @@ class Machine(Singleton):
             self.state_worker = StateMachineWorker(state_manager)
             self.state_worker.daemon = True
             self.state_worker.start()
+
+    def load_db_machines_config(self):
+
+        return self.machines_engine.read_config()
 
     def join(self, machine):
 

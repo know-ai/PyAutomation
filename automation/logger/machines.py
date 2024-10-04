@@ -81,6 +81,11 @@ class MachinesLogger(BaseLogger):
     def read_all(self):
 
         return Machines.read_all()
+    
+    @logging_error_handler
+    def read_config(self):
+
+        return Machines.read_config()
 
 class MachinesLoggerEngine(BaseEngine):
     r"""
@@ -152,5 +157,13 @@ class MachinesLoggerEngine(BaseEngine):
 
         _query = dict()
         _query["action"] = "read_all"
+        _query["parameters"] = dict()
+        return self.query(_query)
+    
+    @logging_error_handler
+    def read_config(self):
+
+        _query = dict()
+        _query["action"] = "read_config"
         _query["parameters"] = dict()
         return self.query(_query)

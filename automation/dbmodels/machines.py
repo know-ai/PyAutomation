@@ -75,6 +75,23 @@ class Machines(BaseModel):
         return None
 
     @classmethod
+    def read_config(cls):
+        r"""
+        Select all records
+
+        You can use this method to retrieve all instances matching in the database. 
+
+        This method is a shortcut that calls Model.select() with the given query.
+
+        **Parameters**
+
+        **Returns**
+
+        * **result:** (dict) --> {'message': (str), 'data': (list) row serialized}
+        """
+        return {f"{query.name}": query.serialize() for query in cls.select()}
+
+    @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
         Verify is a name exist into database
