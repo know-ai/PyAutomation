@@ -1,9 +1,10 @@
-import logging, queue
+import logging
 from datetime import datetime
 from statemachine import State, StateMachine
 from .workers.state_machine import StateMachineWorker
 from .managers.state_machine import StateMachineManager
 from .managers.opcua_client import OPCUAClientManager
+from .managers.db import DBManager
 from .singleton import Singleton
 from .buffer import Buffer
 from .models import StringType, IntegerType, FloatType, BooleanType, ProcessType
@@ -12,6 +13,7 @@ from .tags.tag import MachineObserver
 from .opcua.subscription import DAS
 from .modules.users.users import User
 from .utils.decorators import set_event, validate_types, logging_error_handler
+from .variables import VARIABLES
 from .variables import (
     Temperature,
     Length,
@@ -23,6 +25,7 @@ from .variables import (
     Power,
     VolumetricFlow)
 from .logger.machines import MachinesLoggerEngine
+from .logger.datalogger import DataLoggerEngine
 
 
 
@@ -33,6 +36,8 @@ class Machine(Singleton):
 
         self.machine_manager = StateMachineManager()
         self.machines_engine = MachinesLoggerEngine()
+        self.logger_engine = DataLoggerEngine()
+        self.db_manager = DBManager()
         self.state_worker = None
 
     def append_machine(self, machine:StateMachine, interval:FloatType=FloatType(1), mode:str='async'):
@@ -60,6 +65,7 @@ class Machine(Singleton):
             criticity=machine.criticity.value,
             priority=machine.priority.value
         )
+        self.create_tag_internal_process_type(machine=machine)
 
     def drop(self, name:str):
         r"""
@@ -157,6 +163,33 @@ class Machine(Singleton):
     def join(self, machine):
 
         self.state_worker._async_scheduler.join(machine)
+
+    def create_tag_internal_process_type(self, machine:StateMachine):
+        r"""
+        Documentation here
+        """
+        cvt = CVTEngine()
+        internal_variables = machine.get_internal_process_type_variables()
+        for tag_name, value in internal_variables.items():
+
+            for variable, units in VARIABLES.items():
+
+                if value.unit in units.values() or value.unit in units.keys():
+
+                    tag_name = f"{tag_name}_{machine.name.value}"
+                    cvt.set_tag(
+                        name=tag_name,
+                        unit=value.unit,
+                        data_type="float",
+                        variable=variable,
+                        description=f"process type variable"
+                    )
+                    # Persist Tag on Database
+                    tag = cvt.get_tag_by_name(name=tag_name)
+                    self.logger_engine.set_tag(tag=tag)
+                    self.db_manager.attach(tag_name=tag_name)
+                    break
+
 
     def stop(self):
         r"""
@@ -352,11 +385,13 @@ class StateMachineCore(StateMachine):
         
         if tag_name not in self.get_subscribed_tags():
 
-            setattr(self, tag_name, ProcessType(tag=tag, default=tag.value, read_only=True))
-            self.__subscribed_to[tag.name] = tag
-            self.attach(machine=self, tag=tag)
-            self.restart_buffer()
-            return True
+            if not self.process_type_exists(name=tag_name):
+
+                setattr(self, tag_name, ProcessType(tag=tag, default=tag.value, read_only=True))
+                self.__subscribed_to[tag.name] = tag
+                self.attach(machine=self, tag=tag)
+                self.restart_buffer()
+                return True
 
     @validate_types(tag=Tag, output=None|bool)
     def unsubscribe_to(self, tag:Tag):
@@ -569,6 +604,34 @@ class StateMachineCore(StateMachine):
                 else:
 
                     result[key] = value.value
+
+        return result
+    
+    @validate_types(name=str, output=bool)
+    def process_type_exists(self, name:str)->bool:
+
+        props = self.__dict__
+        if name in props:
+
+            if isinstance(props[name], ProcessType):
+
+                return True
+            
+        return False
+    
+    @validate_types(output=dict)
+    def get_internal_process_type_variables(self)->dict:
+
+        result = dict()
+        props = self.__dict__
+        
+        for name, value in props.items():
+
+            if isinstance(value, ProcessType):
+
+                if not value.read_only:
+
+                    result[name] = value
 
         return result
 

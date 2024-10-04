@@ -102,15 +102,11 @@ class ProcessType(FloatType):
     - tag: [Tag] Tag binded on CVT
     """
 
-    def __init__(self, tag:Tag|None=None, default=None, read_only:bool=True):
+    def __init__(self, tag:Tag|None=None, default=None, read_only:bool=True, unit:str=None):
         
         if tag:
             
             unit = tag.get_display_unit()
-        
-        else:
-            
-            unit = None
 
         self.tag = tag
         self.read_only = read_only
