@@ -13,7 +13,6 @@ alarm_resource_by_name_model = api.model("alarm_resource_by_name_model",{
 })
 
 shelve_alarm_resource_by_name_model = api.model("shelve_alarm_resource_by_name_model",{
-    'alarm_name': fields.String(required=True, description='Alarm Name'),
     'seconds': fields.Integer(required=False, description='Shelve time'),
     'minutes': fields.Integer(required=False, description='Shelve time'),
     'hours': fields.Integer(required=False, description='Shelve time'),

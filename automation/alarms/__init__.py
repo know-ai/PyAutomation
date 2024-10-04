@@ -108,7 +108,17 @@ class Alarm(StateMachine):
             self.identifier = identifier
         else:
             self.identifier = secrets.token_hex(4)
-
+        self._shelved_time:datetime = None
+        self._shelved_until:datetime = None
+        self._shelved_options_time = {
+            'days': 0,
+            'seconds': 0,
+            'microseconds': 0,
+            'milliseconds': 0,
+            'minutes': 0,
+            'hours': 0,
+            'weeks': 0
+        }
         transitions = []
         for state in self.states:
             transitions.extend(state.transitions)
@@ -200,6 +210,12 @@ class Alarm(StateMachine):
                 else:
 
                     self.normal_condition()
+
+        if self.state==AlarmState.SHLVD:
+
+            if datetime.now(timezone.utc) >= self._shelved_until:
+
+                self.unshelve()
         
     @logging_error_handler
     def abnormal_condition(self, timestamp:datetime):
