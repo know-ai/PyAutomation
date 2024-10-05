@@ -59,6 +59,10 @@ class MachineAttrResource(Resource):
         """
         user = Api.get_current_user()
         machine = app.get_machine(name=StringType(machine_name))
+        if machine.classification.lower()=="data acquisition system":
+
+            return "You can not change data acquisition system attributes from this way", 403
+
         if not machine:
 
             return f"{machine_name} is not defined", 400
@@ -69,12 +73,7 @@ class MachineAttrResource(Resource):
         
         if attr in ("name", "state"):
 
-            if attr=="machine_interval" and machine.classification.lower()=="data acquisition system":
-
-                return "You can not change daq machine interval from this way", 403
-
             return f"{attr} is not allowed", 403
-        
         
         attrs = machine.get_serialized_models()
         if attr not in attrs:

@@ -40,4 +40,14 @@ class ConfigView(dash.Dash):
     
     def machines_table_data(self):
 
-        return self.automation.serialize_machines()
+        data = [{
+                "name": machine["name"],
+                "sampling_time": machine["machine_interval"], 
+                "description": machine["description"],
+                "state": machine["state"],
+                "criticity": machine["criticity"],
+                "priority": machine["priority"],
+                "classification": machine["classification"],
+                } for machine in self.automation.machine_manager.serialize_machines()]
+
+        return data

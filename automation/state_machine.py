@@ -51,7 +51,7 @@ class Machine(Singleton):
         """
         if isinstance(machine, DAQ):
             
-            machine.name = StringType(f"DAQ-{interval.value}")
+            machine.name = StringType(f"DAQ-{int(interval.value * 1000)}")
         
         machine.set_interval(interval)
         self.machine_manager.append_machine((machine, interval, mode))
@@ -236,11 +236,11 @@ class StateMachineCore(StateMachine):
         self.buffer_roll_type = StringType(default='backward')
         self.subscribed_to = dict()
         self.restart_buffer()
+        self.machine_engine = MachinesLoggerEngine()
         transitions = []
         for state in self.states:
             transitions.extend(state.transitions)
         self.transitions = transitions
-        self.machine_engine = MachinesLoggerEngine()
         super(StateMachineCore, self).__init__()
 
     # State Methods
@@ -764,6 +764,7 @@ class DAQ(StateMachineCore):
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
 
+        print(f"[{datetime.now()}] {self.name.value}")
         super().while_running()
 
     # Auxiliaries Methods

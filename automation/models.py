@@ -125,7 +125,7 @@ class ProcessType(FloatType):
         value = None
         if self.value:
 
-            value = self.value.value
+            value = self.value
 
         return {
             "value": value,
