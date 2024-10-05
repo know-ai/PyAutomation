@@ -419,6 +419,11 @@ class Tags(BaseModel):
     scan_time = IntegerField(null=True)
     dead_band = FloatField(null=True)
     active = BooleanField(default=True)
+    process_filter = BooleanField(default=False)
+    gaussian_filter = BooleanField(default=False)
+    out_of_range_detection = BooleanField(default=False)
+    outlier_detection = BooleanField(default=False)
+    frozen_data_detection = BooleanField(default=False)
 
     @classmethod
     def create(
@@ -434,7 +439,12 @@ class Tags(BaseModel):
         node_namespace:str="",
         scan_time:int=0,
         dead_band:float=0.0,
-        active:bool=True
+        active:bool=True,
+        process_filter:bool=False,
+        gaussian_filter:bool=False,
+        out_of_range_detection:bool=False,
+        outlier_detection:bool=False,
+        frozen_data_detection:bool=False
         ):
         r"""
         Documentation here
@@ -466,7 +476,12 @@ class Tags(BaseModel):
                             node_namespace=node_namespace,
                             scan_time=scan_time,
                             dead_band=dead_band,
-                            active=active
+                            active=active,
+                            process_filter=process_filter,
+                            gaussian_filter=gaussian_filter,
+                            out_of_range_detection=out_of_range_detection,
+                            outlier_detection=outlier_detection,
+                            frozen_data_detection=frozen_data_detection
                             )
                         query.save()
                         message = f"{name} tag created successfully"
@@ -642,7 +657,12 @@ class Tags(BaseModel):
             'scan_time': self.scan_time,
             'dead_band': self.dead_band,
             'variable': self.unit.variable_id.name,
-            'active': self.active
+            'active': self.active,
+            'process_filter': self.process_filter,
+            'gaussian_filter': self.gaussian_filter,
+            'out_of_range_detection': self.out_of_range_detection,
+            'frozen_data_detection': self.frozen_data_detection,
+            'outlier_detection': self.outlier_detection
         }
 
 

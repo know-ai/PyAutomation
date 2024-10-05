@@ -139,7 +139,7 @@ class Buffer(list):
             
             _len = len(self)
             
-            if _len > self.size:
+            if _len >= self.size:
                 
                 if _len == self.size:
                     
@@ -157,7 +157,7 @@ class Buffer(list):
 
             _len = len(self)
             
-            if _len > self.size:
+            if _len >= self.size:
                 
                 if _len == self.size:
                     

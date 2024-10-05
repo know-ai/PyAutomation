@@ -31,6 +31,11 @@ class Tag:
             scan_time:int=None,
             dead_band:float=None,
             timestamp:datetime=None,
+            process_filter:bool=False,
+            gaussian_filter:bool=False,
+            outlier_detection:bool=False,
+            out_of_range_detection:bool=False,
+            frozen_data_detection:bool=False,
             id:str=None
     ):
         self.id = secrets.token_hex(4)
@@ -70,6 +75,11 @@ class Tag:
         self.scan_time = scan_time
         self.dead_band = dead_band
         self.timestamp = timestamp
+        self.process_filter = process_filter
+        self.gaussian_filter = gaussian_filter
+        self.outlier_detection = outlier_detection
+        self.out_of_range_detection = out_of_range_detection
+        self.frozen_data_detection = frozen_data_detection
         self._observers = set()
 
     def set_name(self, name:str):
@@ -254,23 +264,6 @@ class Tag:
         for observer in self._observers:
             
             observer.update()
-        
-    def parser(self):
-        r"""
-        Documentation here
-        """
-        return (
-            self.name,
-            self.get_unit(),
-            self.get_data_type(),
-            self.get_description(),
-            self.get_display_name(),
-            self.get_opcua_address(),
-            self.get_node_namespace(),
-            self.get_scan_time(),
-            self.get_dead_band(),
-            self.get_timestamp()
-        )
 
     def serialize(self):
 
@@ -287,7 +280,13 @@ class Tag:
             "opcua_address": self.get_opcua_address(),
             "node_namespace": self.get_node_namespace(),
             "scan_time": self.get_scan_time(),
-            "dead_band": self.get_dead_band()
+            "dead_band": self.get_dead_band(),
+            "timestamp": self.get_timestamp(),
+            "process_filter": self.process_filter,
+            "gaussian_filter": self.gaussian_filter,
+            "out_of_range_detection": self.out_of_range_detection,
+            "frozen_data_detection": self.frozen_data_detection,
+            "outlier_detection": self.outlier_detection
         }
 
 

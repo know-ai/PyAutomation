@@ -5,6 +5,8 @@ from ..models import FloatType, StringType, IntegerType, BooleanType
 from ..modules.users.users import User
 from ..modules.users.users import User
 from ..utils.decorators import set_event, logging_error_handler
+from ..filter import gaussian_noise_filter, process_noise_filter
+from ..iad import iad_outlier, iad_frozen_data, iad_out_of_range
 from .tag import Tag
 
 class CVT:
@@ -361,6 +363,11 @@ class CVT:
         return data
     
     @logging_error_handler
+    @gaussian_noise_filter
+    @process_noise_filter
+    @iad_frozen_data
+    @iad_out_of_range
+    @iad_outlier
     def set_value(self, id:str, value, timestamp:datetime):
         """Sets a new value for a defined tag.
         
