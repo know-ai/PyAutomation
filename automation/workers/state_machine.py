@@ -136,6 +136,20 @@ class AsyncStateMachineWorker(BaseWorker):
         sched.daemon = True
         sched.start()
 
+    def drop(self, machine):
+        r"""
+        Documentation here
+        """
+        sched_to_drop = None
+        for index, sched in enumerate(self._schedulers):
+            if machine==sched.machine:
+
+                sched_to_drop = self._schedulers.pop(index)
+                break
+        
+        if sched_to_drop:
+            sched.stop()
+
     def stop(self):
 
         for sched in self._schedulers:

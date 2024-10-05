@@ -67,11 +67,11 @@ class Machine(Singleton):
         )
         self.create_tag_internal_process_type(machine=machine)
 
-    def drop(self, name:str):
+    def drop(self, machine:StateMachine):
         r"""
         Documentation here
         """
-        self.machine_manager.drop(name=name)
+        self.state_worker._async_scheduler.drop(machine=machine)
 
     def get_machine(self, name:str):
         r"""
@@ -189,7 +189,6 @@ class Machine(Singleton):
                     self.logger_engine.set_tag(tag=tag)
                     self.db_manager.attach(tag_name=tag_name)
                     break
-
 
     def stop(self):
         r"""

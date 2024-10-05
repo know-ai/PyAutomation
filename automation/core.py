@@ -253,14 +253,12 @@ class PyAutomation(Singleton):
             return f"Tag {tag_name} has an alarm associated"
 
         self.unsubscribe_opcua(tag=tag)
-        
+        self.cvt.delete_tag(id=id, user=user)
+        self.das.buffer.pop(tag_name)
         # Persist Tag on Database
         if self.is_db_connected():
 
             self.logger_engine.delete_tag(id=id)
-
-        self.cvt.delete_tag(id=id, user=user)
-        self.das.buffer.pop(tag_name)
 
     @logging_error_handler
     @validate_types(
@@ -587,7 +585,11 @@ class PyAutomation(Singleton):
                     self.das.unsubscribe(client_name=client_name, node_id=node_id)
                     break
 
-            self.machine_manager.unsubscribe_tag(tag=tag)
+            drop_machine_from_worker, _, _ = self.machine_manager.unsubscribe_tag(tag=tag)
+            if drop_machine_from_worker:
+                
+                self.machine.drop(machine=drop_machine_from_worker)
+
             # CLEAR BUFFER
             scan_time = tag.get_scan_time()
             if scan_time:

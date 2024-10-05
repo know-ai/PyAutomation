@@ -116,10 +116,14 @@ class StateMachineManager:
 
             if name == machine.name.value:
 
-                self._machines.pop(index)
+                machine_to_revome_from_worker = self._machines.pop(index)
                 break
 
             index += 1
+
+        if machine_to_revome_from_worker:
+
+            return machine_to_revome_from_worker
 
     def unsubscribe_tag(self, tag:Tag):
         r"""
@@ -134,8 +138,13 @@ class StateMachineManager:
                 if machine.classification.value.lower()=="data acquisition system":
 
                     if not machine.subscribed_to:
+                
+                        machine_to_revome_from_worker = self.drop(name=machine.name.value)
+                        break
 
-                        self.drop(name=machine.name.value)
+        if machine_to_revome_from_worker:
+
+            return machine_to_revome_from_worker
 
     def summary(self)->dict:
         r"""
@@ -170,28 +179,4 @@ class StateMachineManager:
         """
         return len(self._machines) > 0
     
-    def attach(self, tag_name:str):
-
-        cvt = CVTEngine()
-
-        def attach_observer(tag):
-
-            observer = TagObserver(self.get_queue())
-            query = dict()
-            query["action"] = "attach_observer"
-            query["parameters"] = {
-                "name": tag,
-                "observer": observer,
-            }
-            cvt.request(query)
-            cvt.response()
-
-        tags_for_subscriptions = list()
-        tag = cvt.get_tag_by_name(name=tag_name)
-
-        if tag not in tags_for_subscriptions:
-
-            tags_for_subscriptions.append(tag)
-            
-            attach_observer(tag)
     
