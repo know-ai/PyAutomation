@@ -190,6 +190,12 @@ class Machine(Singleton):
                     self.db_manager.attach(tag_name=tag_name)
                     break
 
+    def create_process_variable_into_db_bound_field_data(self, machine:StateMachine):
+        r"""
+        Documentation here
+        """
+        pass
+
     def stop(self):
         r"""
         Safe stop workers execution
@@ -234,7 +240,7 @@ class StateMachineCore(StateMachine):
         self.machine_interval = FloatType(default=1.0)
         self.buffer_size = IntegerType(default=10)
         self.buffer_roll_type = StringType(default='backward')
-        self.subscribed_to = dict()
+        # self.subscribed_to = dict()
         self.restart_buffer()
         self.machine_engine = MachinesLoggerEngine()
         transitions = []
@@ -312,6 +318,7 @@ class StateMachineCore(StateMachine):
         if name not in props.items():
             process_variable = ProcessType(tag=Tag, default=tag.value, read_only=read_only)
             setattr(self, name, process_variable)
+            self.machine_engine.bind_tag(tag=tag, machine=self)
 
     def get_process_variables(self):
         r"""
@@ -371,7 +378,18 @@ class StateMachineCore(StateMachine):
 
         - 
         """
-        return self.subscribed_to
+        result = dict()
+        props = self.__dict__
+        
+        for name, value in props.items():
+
+            if isinstance(value, ProcessType):
+
+                if value.read_only:
+
+                    result[name] = value
+
+        return result
     
     def subscribe_to(self, tag:Tag):
         r"""
@@ -387,7 +405,6 @@ class StateMachineCore(StateMachine):
             if not self.process_type_exists(name=tag_name):
 
                 setattr(self, tag_name, ProcessType(tag=tag, default=tag.value, read_only=True))
-                self.subscribed_to[tag.name] = tag
                 self.attach(machine=self, tag=tag)
                 self.restart_buffer()
                 return True
@@ -428,10 +445,11 @@ class StateMachineCore(StateMachine):
         - *tag:* [Tag] tag Object
         - *value:* [int|float|bool] tag value
         """
-        if tag in self.get_subscribed_tags():
-            _tag = self.subscribed_to[tag]
+        subscribed_to = self.get_subscribed_tags()
+        if tag in subscribed_to:
+            process_type = subscribed_to[tag]
             attr = getattr(self, tag)
-            value = value.convert(to_unit=_tag.get_display_unit())
+            value = value.convert(to_unit=process_type.tag.get_display_unit())
             attr.value = value
             # IMPORTANTE A CAMBIAR SEGUN LA UNIDAD QUE NECESITEN LOS MODELOS
             self.data[tag](value)
@@ -744,8 +762,8 @@ class DAQ(StateMachineCore):
 
     def while_running(self):
 
-        for tag_name, tag in self.get_subscribed_tags().items():
-
+        for tag_name, process_type in self.get_subscribed_tags().items():
+            tag = process_type.tag
             namespace = tag.get_node_namespace()
             opcua_address = tag.get_opcua_address()
             values = self.opcua_client_manager.get_node_value_by_opcua_address(opcua_address=opcua_address, namespace=namespace)
@@ -757,7 +775,7 @@ class DAQ(StateMachineCore):
                 self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
-
+                
         super().while_running()
 
     # Auxiliaries Methods

@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """pyhades/logger/machines.py
 """
-from ..dbmodels import Machines
+from ..dbmodels import Machines, TagsMachines, Tags
 from .core import BaseEngine, BaseLogger
 from ..utils.decorators import logging_error_handler
 from ..models import IntegerType, StringType
+from ..tags.tag import Tag
 
 
 class MachinesLogger(BaseLogger):
@@ -86,6 +87,14 @@ class MachinesLogger(BaseLogger):
     def read_config(self):
 
         return Machines.read_config()
+    
+    @logging_error_handler
+    def bind_tag(self, tag:Tag, machine):
+
+        tag_from_db = Tags.get_or_create(name=tag.name)
+        machine_from_db = Machines.get_or_create(name=machine.name.value)
+        TagsMachines.create(tag=tag_from_db, machine=machine_from_db)
+    
 
 class MachinesLoggerEngine(BaseEngine):
     r"""
@@ -167,3 +176,15 @@ class MachinesLoggerEngine(BaseEngine):
         _query["action"] = "read_config"
         _query["parameters"] = dict()
         return self.query(_query)
+    
+    @logging_error_handler
+    def bind_tag(self, tag:Tag, machine):
+
+        _query = dict()
+        _query["action"] = "bind_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["tag"] = tag
+        _query["parameters"]["machine"] = machine
+        return self.query(_query)
+    
+

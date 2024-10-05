@@ -137,7 +137,7 @@ class StateMachineManager:
 
                 if machine.classification.value.lower()=="data acquisition system":
 
-                    if not machine.subscribed_to:
+                    if not machine.get_subscribed_tags():
                 
                         machine_to_revome_from_worker = self.drop(name=machine.name.value)
                         break

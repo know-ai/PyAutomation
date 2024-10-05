@@ -42,6 +42,11 @@ class CVT:
         node_namespace:str="",
         scan_time:int=None,
         dead_band:float=None,
+        process_filter:bool=False,
+        gaussian_filter:bool=False,
+        outlier_detection:bool=False,
+        out_of_range_detection:bool=False,
+        frozen_data_detection:bool=False,
         id:str=None,
         user:User=None
         )->tuple[Tag, str]:
@@ -94,6 +99,11 @@ class CVT:
             node_namespace=node_namespace,
             scan_time=scan_time,
             dead_band=dead_band,
+            process_filter=process_filter,
+            gaussian_filter=gaussian_filter,
+            outlier_detection=outlier_detection,
+            out_of_range_detection=out_of_range_detection,
+            frozen_data_detection=frozen_data_detection,
             id=id
         )
         self._tags[tag.id] = tag
@@ -545,6 +555,11 @@ class CVTEngine(Singleton):
         node_namespace:str="",
         scan_time:int=0,
         dead_band:float=0.0,
+        process_filter:bool=False,
+        gaussian_filter:bool=False,
+        outlier_detection:bool=False,
+        out_of_range_detection:bool=False,
+        frozen_data_detection:bool=False,
         id:str="",
         user:User|None=None
         )->tuple[Tag, str]:
@@ -572,6 +587,11 @@ class CVTEngine(Singleton):
         _query["parameters"]["node_namespace"] = node_namespace
         _query["parameters"]["scan_time"] = scan_time
         _query["parameters"]["dead_band"] = dead_band
+        _query["parameters"]["process_filter"] = process_filter
+        _query["parameters"]["gaussian_filter"] = gaussian_filter
+        _query["parameters"]["outlier_detection"] = outlier_detection
+        _query["parameters"]["out_of_range_detection"] = out_of_range_detection
+        _query["parameters"]["frozen_data_detection"] = frozen_data_detection
         _query["parameters"]["id"] = id
         _query["parameters"]["user"] = user
         return self.__query(_query)
