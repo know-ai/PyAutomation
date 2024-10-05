@@ -407,7 +407,18 @@ class StateMachineCore(StateMachine):
                 setattr(self, tag_name, ProcessType(tag=tag, default=tag.value, read_only=True))
                 self.attach(machine=self, tag=tag)
                 self.restart_buffer()
+                self.machine_engine.bind_tag(tag=tag, machine=self)
                 return True
+            
+            else:
+
+                process_type = getattr(self, tag_name)
+
+                if not process_type.tag:
+
+                    process_type.tag = tag
+                    self.machine_engine.bind_tag(tag=tag, machine=self)
+                    return True
 
     @validate_types(tag=Tag, output=None|bool)
     def unsubscribe_to(self, tag:Tag):
@@ -421,10 +432,10 @@ class StateMachineCore(StateMachine):
 
         - 
         """
-        if tag.name in self.subscribed_to:
+        if tag.name in self.get_subscribed_tags():
             delattr(self, tag.name)
-            self.subscribed_to.pop(tag.name)
             self.restart_buffer()
+            self.machine_engine.unbind_tag(tag=tag, machine=self)
             return True
 
     @validate_types(
@@ -775,7 +786,7 @@ class DAQ(StateMachineCore):
                 self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
-                
+
         super().while_running()
 
     # Auxiliaries Methods

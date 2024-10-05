@@ -91,9 +91,18 @@ class MachinesLogger(BaseLogger):
     @logging_error_handler
     def bind_tag(self, tag:Tag, machine):
 
-        tag_from_db = Tags.get_or_create(name=tag.name)
-        machine_from_db = Machines.get_or_create(name=machine.name.value)
+        tag_from_db = Tags.get_or_none(name=tag.name)
+        machine_from_db = Machines.get_or_none(name=machine.name.value)
         TagsMachines.create(tag=tag_from_db, machine=machine_from_db)
+
+    @logging_error_handler
+    def unbind_tag(self, tag:Tag, machine):
+
+        tag_from_db = Tags.get_or_none(name=tag.name)
+        machine_from_db= Machines.get_or_none(name=machine.name.value)
+        tags_machine = TagsMachines.get((TagsMachines.tag == tag_from_db) & (TagsMachines.machine == machine_from_db))
+        tags_machine.delete_instance()
+        # TagsMachines.delete().where
     
 
 class MachinesLoggerEngine(BaseEngine):
@@ -182,6 +191,16 @@ class MachinesLoggerEngine(BaseEngine):
 
         _query = dict()
         _query["action"] = "bind_tag"
+        _query["parameters"] = dict()
+        _query["parameters"]["tag"] = tag
+        _query["parameters"]["machine"] = machine
+        return self.query(_query)
+    
+    @logging_error_handler
+    def unbind_tag(self, tag:Tag, machine):
+
+        _query = dict()
+        _query["action"] = "unbind_tag"
         _query["parameters"] = dict()
         _query["parameters"]["tag"] = tag
         _query["parameters"]["machine"] = machine

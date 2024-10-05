@@ -129,6 +129,7 @@ class StateMachineManager:
         r"""
         Documentation here
         """
+        machine_to_revome_from_worker = (None, None, None)
         for machine, _, _ in self._machines:
 
             if hasattr(machine, "unsubscribe_to"):
