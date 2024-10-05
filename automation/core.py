@@ -7,7 +7,7 @@ from .dbmodels.users import Roles, Users
 # PYAUTOMATION MODULES IMPORTATION
 from .utils import log_detailed
 from .singleton import Singleton
-from .workers import LoggerWorker, AlarmWorker
+from .workers import LoggerWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .opcua.models import Client
 from .tags import CVTEngine, Tag
@@ -1222,7 +1222,7 @@ class PyAutomation(Singleton):
 
     # INIT APP
     @logging_error_handler
-    def run(self, debug:bool=False, test:bool=False, create_tables:bool=False, alarm_worker:bool=True, machines:tuple=None)->None:
+    def run(self, debug:bool=False, test:bool=False, create_tables:bool=False, machines:tuple=None)->None:
         r"""
         Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
 
@@ -1234,7 +1234,7 @@ class PyAutomation(Singleton):
         >>> app.run()
         ```
         """
-        self.safe_start(test=test, create_tables=create_tables, alarm_worker=alarm_worker, machines=machines)
+        self.safe_start(test=test, create_tables=create_tables, machines=machines)
 
         if not test:
         
@@ -1243,12 +1243,11 @@ class PyAutomation(Singleton):
                 self.dash_app.run(debug=debug, use_reloader=False)
 
     @logging_error_handler
-    def safe_start(self, test:bool=False, create_tables:bool=True, alarm_worker:bool=False, machines:tuple=None):
+    def safe_start(self, test:bool=False, create_tables:bool=True, machines:tuple=None):
         r"""
         Run the app without a main thread, only run the app with the threads and state machines define
         """
         self._create_tables = create_tables
-        self._create_alarm_worker = alarm_worker
         self.__start_logger()
         self.__start_workers(test=test, machines=machines)
 
@@ -1276,7 +1275,6 @@ class PyAutomation(Singleton):
         Starts all workers.
 
         * LoggerWorker
-        * AlarmWorker
         * StateMachineWorker
         """
         if self._create_tables:
@@ -1284,12 +1282,6 @@ class PyAutomation(Singleton):
             self.db_worker = LoggerWorker(self.db_manager)
             self.connect_to_db(test=test)
             self.db_worker.start()
-
-        if self._create_alarm_worker:
-            alarm_manager = self.get_alarm_manager()
-            self.alarm_worker = AlarmWorker(alarm_manager)
-            self.alarm_worker.daemon = True
-            self.alarm_worker.start()
 
         self.machine.start(machines=machines)
         self.is_starting = False
@@ -1302,7 +1294,6 @@ class PyAutomation(Singleton):
         """
         try:
             self.machine.stop()
-            self.alarm_worker.stop()
             self.db_worker.stop()
         except Exception as e:
             message = "Error on wokers stop"

@@ -12,7 +12,7 @@ from ..tags.cvt import CVTEngine
 
 class LoggerWorker(BaseWorker):
 
-    def __init__(self, manager:DBManager, period:int=2.0):
+    def __init__(self, manager:DBManager, period:int=10.0):
 
         super(LoggerWorker, self).__init__()
         
@@ -37,8 +37,7 @@ class LoggerWorker(BaseWorker):
                 tag_name = item["tag"]
                 tag = self.cvt.get_tag_by_name(name=tag_name)
                 if tag:
-                    to_unit = tag.get_display_unit()
-                    value = item['value'].convert(to_unit=to_unit)
+                    value = item['value']
                     timestamp = item["timestamp"]
                     tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
 

@@ -73,16 +73,16 @@ class Temperature(EngUnit):
             return None  
 
     @classmethod
-    def convert_value(cls, value, _from:str, to_unit:str):
+    def convert_value(cls, value, from_unit:str, to_unit:str):
         
         temperature_kelvin = 0
-        if _from.upper() == 'K':
+        if from_unit.upper() == 'K':
             temperature_kelvin = value
-        elif _from.upper() == 'R':
+        elif from_unit.upper() == 'R':
             temperature_kelvin = value * 5.0 / 9.0
-        elif _from.upper() == 'C':
+        elif from_unit.upper() == 'C':
             temperature_kelvin = value + 273.15
-        elif _from.upper() == 'F':
+        elif from_unit.upper() == 'F':
             temperature_kelvin = (value + 459.67) / 9.0 * 5.0
         else:
             return None

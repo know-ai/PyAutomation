@@ -14,7 +14,6 @@ def init_callback(app:dash.Dash):
         if pathname=="/machines":
 
             data = app.machines_table_data()
-            print(f"Data: {data}")
             return data
         
         return dash.no_update

@@ -160,7 +160,7 @@ class AlarmsLogger(BaseLogger):
                 **fields
             )
 
-        return query
+            return query
 
     @logging_error_handler
     def delete(self, id:str):

@@ -12,7 +12,7 @@ class TestCore(unittest.TestCase):
         if os.path.exists(file_path):
             os.remove(file_path)
         self.app = PyAutomation()
-        self.app.run(debug=True, test=True, create_tables=True, alarm_worker=True)
+        self.app.run(debug=True, test=True, create_tables=True)
         return super().setUp()
 
     def tearDown(self) -> None:

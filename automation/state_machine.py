@@ -744,8 +744,6 @@ class DAQ(StateMachineCore):
 
     def while_running(self):
 
-        tags = list()
-
         for tag_name, tag in self.get_subscribed_tags().items():
 
             namespace = tag.get_node_namespace()
@@ -755,16 +753,11 @@ class DAQ(StateMachineCore):
                 data_value = values[0][0]["DataValue"]
                 value = data_value.Value.Value
                 timestamp = data_value.SourceTimestamp
-                tags.append({
-                    "tag": tag_name,
-                    "value": value,
-                    "timestamp": timestamp
-                })
-                self.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
+                val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
+                self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
 
-        print(f"[{datetime.now()}] {self.name.value}")
         super().while_running()
 
     # Auxiliaries Methods
