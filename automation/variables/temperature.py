@@ -1,8 +1,48 @@
 from ..utils.units import EngUnit, UnitSerializer, UnitError
 
 class Temperature(EngUnit):
-    """Creates a temperature object that can store a temperature value and
-    convert between units of temperature."""
+    """Creates a temperature object that can store a temperature value and 
+    convert between units of temperature.
+
+    :param value: [int|float] Engineering value
+    :param unit: [str] Engineering unit
+    :return: [Temperature Object]
+
+    ```python
+    >>> from automation.variables.temperature import Temperature
+    >>> temperature = Temperature(value=25, unit="C")
+    >>> temperature.value
+    25
+    >>> temperature.unit
+    'C'
+    >>> temperature.convert(to_unit="F")
+    76.99999999999994
+    >>> Temperature.convert_value(value=1.0, from_unit="C", to_unit="K")
+    274.15
+    >>> temperature.change_unit(unit="F")
+    76.99999999999994
+    >>> temperature.unit
+    'F'
+    >>> temperature.get_value()
+    [76.99999999999994, 'F']
+    >>> print(temperature)
+    76.99999999999994 F
+    >>> temperature2 = Temperature(value=3.0, unit="K")
+    >>> temperature_result = temperature + temperature2
+    >>> print(temperature_result)
+    82.39999999999992 F
+    >>> temperature_result = temperature * temperature2
+    >>> print(temperature_result)
+    894.4499999999999 K
+    >>> temperature_result = temperature / temperature2
+    >>> print(temperature_result)
+    99.38333333333333 K
+    >>> temperature_result = temperature ** temperature2
+    >>> print(temperature_result)
+    26503573.918374993 K
+
+    ```
+    """
     
     class Units(UnitSerializer):
         degKelvin = 'K'
