@@ -412,8 +412,7 @@ class StateMachineCore(StateMachine):
         for name, value in props.items():
 
             if isinstance(value, ProcessType):
-                print(f"[{name}] - read_only: {value.read_only} - tag: {value.tag}")
-                print(value.read_only and not value.tag)
+                
                 if value.read_only and not value.tag:
 
                     result[name] = value
@@ -440,7 +439,7 @@ class StateMachineCore(StateMachine):
                         process_type.tag = tag
                         self.attach(machine=self, tag=tag)
                         self.restart_buffer()
-                        self.machine_engine.bind_tag(tag=tag, machine=self)
+                        self.machine_engine.bind_tag(tag=tag, machine=self, default_tag_name=default_tag_name)
                         return True, f"successful subscription"
                     
                     return False, f"{default_tag_name} already has a subscription"
@@ -550,8 +549,7 @@ class StateMachineCore(StateMachine):
         - *value:* [int|float|bool] tag value
         """
         subscribed_to = self.get_subscribed_tags()
-        # print(f"NOTIFY Tag: {tag}")
-        # print(f"NOTIFY SUBSCRIBED: {subscribed_to}")
+
         if tag in subscribed_to:
             process_type = subscribed_to[tag]
             # attr = getattr(self, tag.name)

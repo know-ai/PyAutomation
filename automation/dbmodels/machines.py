@@ -138,12 +138,14 @@ class TagsMachines(BaseModel):
 
     tag = ForeignKeyField(Tags, backref="machines")
     machine = ForeignKeyField(Machines, backref="tags")
+    default_tag_name = CharField(max_length=64, null=True)
 
     @classmethod
     def create(
         cls, 
         tag_name:str,
-        machine_name:str
+        machine_name:str,
+        default_tag_name:str=None
         )-> dict:
 
         tag = Tags.get_or_none(name=tag_name)
@@ -153,7 +155,8 @@ class TagsMachines(BaseModel):
 
             query = cls(
                 tag=tag,
-                machine=machine
+                machine=machine,
+                default_tag_name=default_tag_name
                 )
             query.save()
 
@@ -161,5 +164,6 @@ class TagsMachines(BaseModel):
 
         return {
             "machine": self.machine.serialize(),
-            "tag": self.tag.serialize()
+            "tag": self.tag.serialize(),
+            "default_tag_name": self.default_tag_name
         }

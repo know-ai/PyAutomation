@@ -89,12 +89,9 @@ class MachinesLogger(BaseLogger):
         return Machines.read_config()
     
     @logging_error_handler
-    def bind_tag(self, tag:Tag, machine):
+    def bind_tag(self, tag:Tag, machine, default_tag_name:str=None):
 
-        # tag_from_db = Tags.get_or_none(name=tag.name)
-        # machine_from_db = Machines.get_or_none(name=machine.name.value)
-        # TagsMachines.create(tag=tag_from_db, machine=machine_from_db)
-        TagsMachines.create(tag_name=tag.name, machine_name=machine.name.value)
+        TagsMachines.create(tag_name=tag.name, machine_name=machine.name.value, default_tag_name=default_tag_name)
 
 
     @logging_error_handler
@@ -189,13 +186,14 @@ class MachinesLoggerEngine(BaseEngine):
         return self.query(_query)
     
     @logging_error_handler
-    def bind_tag(self, tag:Tag, machine):
+    def bind_tag(self, tag:Tag, machine, default_tag_name:str=None):
 
         _query = dict()
         _query["action"] = "bind_tag"
         _query["parameters"] = dict()
         _query["parameters"]["tag"] = tag
         _query["parameters"]["machine"] = machine
+        _query["parameters"]["default_tag_name"] = default_tag_name
         return self.query(_query)
     
     @logging_error_handler

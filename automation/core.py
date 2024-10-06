@@ -916,23 +916,27 @@ class PyAutomation(Singleton):
 
     @logging_error_handler
     def load_db_tags_to_machine(self):
+
         machines = self.machine_manager.get_machines()
-        for machine in machines:
+        for machine, _, _ in machines:
 
             if machine.classification.value.lower()!="data acquisition system":
 
                 machine_name = machine.name.value
-                machine = Machines.get_or_none(name=machine_name)
+                machine_db = Machines.get_or_none(name=machine_name)
 
-                if not machine:
+                if not machine_db:
 
-                    return f"{machine} not found", 404
+                    return f"{machine_name} not found into DB", 404
                 
-                tags_machine = machine.get_tags()
+                tags_machine = machine_db.get_tags()
                 
                 for tag_machine in tags_machine:
 
-                    print(f"Tag: {tag_machine.serialize()}")
+                    _tag = tag_machine.serialize()
+                    tag_name = _tag["tag"]["name"]
+                    tag = self.cvt.get_tag_by_name(name=tag_name)
+                    machine.subscribe_to(tag=tag, default_tag_name=_tag["default_tag_name"])
 
     # ALARMS METHODS
     @logging_error_handler
@@ -1314,13 +1318,14 @@ class PyAutomation(Singleton):
         * LoggerWorker
         * StateMachineWorker
         """
+        self.machine.start(machines=machines)
+
         if self._create_tables:
 
             self.db_worker = LoggerWorker(self.db_manager)
             self.connect_to_db(test=test)
             self.db_worker.start()
-
-        self.machine.start(machines=machines)
+    
         self.is_starting = False
 
     @logging_error_handler
