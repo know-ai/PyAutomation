@@ -840,7 +840,6 @@ class PyAutomation(Singleton):
             self.load_db_to_alarm_manager()
             self.load_db_to_roles()
             self.load_db_to_users()
-            self.load_db_tags_to_machine()
 
     @logging_error_handler
     @validate_types(output=None)
@@ -1313,13 +1312,20 @@ class PyAutomation(Singleton):
         * LoggerWorker
         * StateMachineWorker
         """
-        self.machine.start(machines=machines)
-
         if self._create_tables:
 
             self.db_worker = LoggerWorker(self.db_manager)
             self.connect_to_db(test=test)
             self.db_worker.start()
+
+        self.machine.start(machines=machines)
+        if not test:
+            db_config = self.get_db_config()
+        else:
+            db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
+            
+        if db_config:
+            self.load_db_tags_to_machine()
     
         self.is_starting = False
 
@@ -1329,12 +1335,8 @@ class PyAutomation(Singleton):
         r"""
         Safe stop workers execution
         """
-        try:
-            self.machine.stop()
-            self.db_worker.stop()
-        except Exception as e:
-            message = "Error on wokers stop"
-            log_detailed(e, message)
+        self.machine.stop()
+        self.db_worker.stop()
 
     @logging_error_handler
     @validate_types(output=None)

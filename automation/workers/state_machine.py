@@ -188,19 +188,18 @@ class StateMachineWorker(BaseWorker):
     
             if mode == "async":
                 
-                self._async_scheduler.add_machine(machine)
-                # self._async_scheduler.run()
-                
+                self._async_scheduler.add_machine(machine)                
                 
             else:
+
                 func = self.loop_closure(machine)
                 self._sync_scheduler.call_soon(func)
 
         self._async_scheduler.run()
         self._sync_scheduler.run()
-        
 
     def stop(self):
+        
         self._async_scheduler.stop()
         self._sync_scheduler.stop()
     

@@ -196,16 +196,14 @@ class Machine(Singleton):
         """
         pass
 
+    @logging_error_handler
     def stop(self):
         r"""
         Safe stop workers execution
         """
-        try:
-            self.state_worker.stop()
+        if self.state_worker:
 
-        except Exception as e:
-            message = f"Error on wokers stop, {e}"
-            logging.error(message)
+            self.state_worker.stop()
 
 
 class StateMachineCore(StateMachine):
