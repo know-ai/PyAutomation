@@ -41,8 +41,19 @@ class EngUnit(object):
     
     @classmethod
     def convert_value(cls, value:int|float, from_unit:str, to_unit:str)->float:
-        r"""
-        Documentation here
+        """Unit value conversion
+
+        :param value: [int|float] Value to convert
+        :param from_unit: [str] Value's unit
+        :param to_unit: [str] Unit which you want to convert the value
+        :return: [float] Converted value into "to_unit"
+
+        ```python
+        >>> from automation.variables.pressure import Pressure
+        >>> Pressure.convert_value(value=2, from_unit="atm", to_unit="Pa")
+        202650.05476617732
+        
+        ```
         """
         return float(value) / float(cls.conversions[from_unit]) * float(cls.conversions[to_unit])
         
@@ -91,3 +102,8 @@ class EngUnit(object):
     def __pow__(self, other):
         new_value = self.value ** other
         return self.__class__(new_value, self.unit)
+    
+
+# if __name__ == "__main__":
+#     import doctest
+#     doctest.testmod()

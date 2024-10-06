@@ -35,14 +35,6 @@ class PyAutomation(Singleton):
     r"""
     Automation is a [singleton](https://en.wikipedia.org/wiki/Singleton_pattern) class to develop multi threads web application
     for general purposes.
-
-    Usage:
-
-    ```python
-    >>> from pyautomation import PyAutomation
-    >>> app = PyAutomation()
-    >>> app.run()
-    ```
     """
     PORTS = 65535
     def __init__(self):
@@ -158,15 +150,24 @@ class PyAutomation(Singleton):
             user:User|None=None,
             reload:bool=False,
         )->tuple[Tag,str]:
-        r"""Documentation here
+        """Create tag to automation app.
 
-        # Parameters
+        Addding tag from this way, you get the following features.
 
-        -
+        - Add tag to CVT.
+        - 
 
-        # Returns
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> tag_name = "tag1"
+        >>> unit = "Pa"
+        >>> variable = "Pressure"
+        >>> app.create_tag(name=tag_name, unit=unit, variable=variable)
+        tag, message
 
-        -
+        ```
+
         """
         if not display_name:
 
@@ -1268,12 +1269,6 @@ class PyAutomation(Singleton):
         Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
 
         **Returns:** `None`
-
-        Usage
-
-        ```python
-        >>> app.run()
-        ```
         """
         self.safe_start(test=test, create_tables=create_tables, machines=machines)
 
