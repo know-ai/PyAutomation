@@ -268,15 +268,18 @@ class StateMachineCore(StateMachine):
         It was designed to check your buffer data in self.data, if your buffer is full, so they pass to run state
         """
         ready_to_run = True
-        for _, value in self.data.items():
 
-            if len(value) < value.max_length:
-                ready_to_run=False
-                break
+        if self.data:
 
-        if ready_to_run:
+            for _, value in self.data.items():
 
-            self.send('wait_to_run')
+                if len(value) < value.size:
+                    ready_to_run=False
+                    break
+
+            if ready_to_run:
+
+                self.send('wait_to_run')
 
     def while_running(self):
         r"""
@@ -385,43 +388,14 @@ class StateMachineCore(StateMachine):
 
             if isinstance(value, ProcessType):
 
-                if value.read_only:
+                if value.read_only and value.tag:
 
-                    result[name] = value
+                    result[value.tag.name] = value
 
         return result
     
-    def subscribe_to(self, tag:Tag):
-        r"""
-
-        # Parameters
-
-        - *tags:* [list] 
-        """
-        tag_name = tag.get_name()
-        
-        if tag_name not in self.get_subscribed_tags():
-
-            if not self.process_type_exists(name=tag_name):
-
-                setattr(self, tag_name, ProcessType(tag=tag, default=tag.value, read_only=True))
-                self.attach(machine=self, tag=tag)
-                self.restart_buffer()
-                self.machine_engine.bind_tag(tag=tag, machine=self)
-                return True
-            
-            else:
-
-                process_type = getattr(self, tag_name)
-
-                if not process_type.tag:
-
-                    process_type.tag = tag
-                    self.machine_engine.bind_tag(tag=tag, machine=self)
-                    return True
-
-    @validate_types(tag=Tag, output=None|bool)
-    def unsubscribe_to(self, tag:Tag):
+    @validate_types(output=dict)
+    def get_not_subscribed_tags(self)->dict:
         r"""Documentation here
 
         # Parameters
@@ -432,11 +406,130 @@ class StateMachineCore(StateMachine):
 
         - 
         """
-        if tag.name in self.get_subscribed_tags():
-            delattr(self, tag.name)
-            self.restart_buffer()
-            self.machine_engine.unbind_tag(tag=tag, machine=self)
-            return True
+        result = dict()
+        props = self.__dict__
+        
+        for name, value in props.items():
+
+            if isinstance(value, ProcessType):
+                print(f"[{name}] - read_only: {value.read_only} - tag: {value.tag}")
+                print(value.read_only and not value.tag)
+                if value.read_only and not value.tag:
+
+                    result[name] = value
+
+        return result
+    
+    def subscribe_to(self, tag:Tag, default_tag_name:str=None):
+        r"""
+
+        # Parameters
+
+        - *tags:* [list] 
+        """
+        if default_tag_name and tag:    # Designed to default tags into State Machine
+
+            if self.process_type_exists(name=default_tag_name):
+                
+                if default_tag_name in self.get_not_subscribed_tags():
+
+                    process_type = getattr(self, default_tag_name)
+
+                    if not process_type.tag:
+
+                        process_type.tag = tag
+                        self.attach(machine=self, tag=tag)
+                        self.restart_buffer()
+                        self.machine_engine.bind_tag(tag=tag, machine=self)
+                        return True, f"successful subscription"
+                    
+                    return False, f"{default_tag_name} already has a subscription"
+                
+                return False, f"{default_tag_name} already has a subscription"
+        
+            return False, f"{default_tag_name} is not a Process Type Variable"
+
+        elif tag and not default_tag_name:
+            
+            tag_name = tag.get_name()
+            
+            if tag_name not in self.get_subscribed_tags():
+
+                if not self.process_type_exists(name=tag_name):
+
+                    setattr(self, tag_name, ProcessType(tag=tag, default=tag.value, read_only=True))
+                    self.attach(machine=self, tag=tag)
+                    self.restart_buffer()
+                    self.machine_engine.bind_tag(tag=tag, machine=self)
+                    return True
+                
+                else:
+
+                    process_type = getattr(self, tag_name)
+
+                    if not process_type.tag:
+
+                        process_type.tag = tag
+                        self.machine_engine.bind_tag(tag=tag, machine=self)
+                        return True
+
+    @validate_types(tag=Tag, output=None|bool)
+    def unsubscribe_to(self, tag:Tag=None, default_tag_name:str=None):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        if tag:
+
+            if tag.name in self.get_subscribed_tags():
+                delattr(self, tag.name)
+                self.restart_buffer()
+                self.machine_engine.unbind_tag(tag=tag, machine=self)
+                return True
+            
+        elif default_tag_name: # Default tags on leak state machine
+
+            if default_tag_name in self.get_subscribed_tags():
+                process_type = self.get_subscribed_tags[default_tag_name]
+                tag = process_type.tag
+                delattr(self, tag.name)
+                self.restart_buffer()
+                self.machine_engine.unbind_tag(tag=tag, machine=self)
+                return True
+
+    @validate_types(name=str, output=bool)
+    def process_type_exists(self, name:str)->bool:
+
+        props = self.__dict__
+        if name in props:
+
+            if isinstance(props[name], ProcessType):
+
+                return True
+            
+        return False
+    
+    @validate_types(output=dict)
+    def get_internal_process_type_variables(self)->dict:
+
+        result = dict()
+        props = self.__dict__
+        
+        for name, value in props.items():
+
+            if isinstance(value, ProcessType):
+
+                if not value.read_only:
+
+                    result[name] = value
+
+        return result
 
     @validate_types(
             tag=str, 
@@ -457,11 +550,13 @@ class StateMachineCore(StateMachine):
         - *value:* [int|float|bool] tag value
         """
         subscribed_to = self.get_subscribed_tags()
+        # print(f"NOTIFY Tag: {tag}")
+        # print(f"NOTIFY SUBSCRIBED: {subscribed_to}")
         if tag in subscribed_to:
             process_type = subscribed_to[tag]
-            attr = getattr(self, tag)
+            # attr = getattr(self, tag.name)
             value = value.convert(to_unit=process_type.tag.get_display_unit())
-            attr.value = value
+            # attr.value = value
             # IMPORTANTE A CAMBIAR SEGUN LA UNIDAD QUE NECESITEN LOS MODELOS
             self.data[tag](value)
 
@@ -632,34 +727,6 @@ class StateMachineCore(StateMachine):
                 else:
 
                     result[key] = value.value
-
-        return result
-    
-    @validate_types(name=str, output=bool)
-    def process_type_exists(self, name:str)->bool:
-
-        props = self.__dict__
-        if name in props:
-
-            if isinstance(props[name], ProcessType):
-
-                return True
-            
-        return False
-    
-    @validate_types(output=dict)
-    def get_internal_process_type_variables(self)->dict:
-
-        result = dict()
-        props = self.__dict__
-        
-        for name, value in props.items():
-
-            if isinstance(value, ProcessType):
-
-                if not value.read_only:
-
-                    result[name] = value
 
         return result
 

@@ -111,6 +111,10 @@ class Machines(BaseModel):
             return True
         
         return False
+    
+    def get_tags(self):
+
+        return self.tags
 
     def serialize(self)-> dict:
         r"""
@@ -134,3 +138,28 @@ class TagsMachines(BaseModel):
 
     tag = ForeignKeyField(Tags, backref="machines")
     machine = ForeignKeyField(Machines, backref="tags")
+
+    @classmethod
+    def create(
+        cls, 
+        tag_name:str,
+        machine_name:str
+        )-> dict:
+
+        tag = Tags.get_or_none(name=tag_name)
+        machine = Machines.get_or_none(name=machine_name)
+
+        if not cls.get_or_none(tag=tag, machine=machine):
+
+            query = cls(
+                tag=tag,
+                machine=machine
+                )
+            query.save()
+
+    def serialize(self):
+
+        return {
+            "machine": self.machine.serialize(),
+            "tag": self.tag.serialize()
+        }

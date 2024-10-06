@@ -7,7 +7,6 @@ def __iad(data:Buffer):
     r"""
     Frozen Data Algorithm
     """
-    print(f"Frozen Data Algorithm")
     return data.current()
 
 @decorator

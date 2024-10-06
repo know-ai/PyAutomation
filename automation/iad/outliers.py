@@ -7,7 +7,6 @@ def __iad(data:Buffer):
     r"""
     Outliers Algorithm
     """
-    print(f"Outliers Algorithm")
     return data.current()
 
 @decorator

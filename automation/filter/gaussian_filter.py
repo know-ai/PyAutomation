@@ -7,7 +7,6 @@ def __filter(data:Buffer):
     r"""
     Wavelet filter noise
     """
-    print(f"Gaussian Filter")
     return data.current()
 
 @decorator

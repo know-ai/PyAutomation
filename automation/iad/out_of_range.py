@@ -7,7 +7,6 @@ def __iad(data:Buffer):
     r"""
     Out Of Range Algorithm
     """
-    print(f"Out Of Range Algorithm")
     return data.current()
 
 @decorator

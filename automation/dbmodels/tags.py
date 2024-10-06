@@ -561,7 +561,6 @@ class Tags(BaseModel):
         )
         return result
 
-
     @classmethod
     def put(cls, id:int, **fields)-> dict:
         r""""
@@ -639,6 +638,10 @@ class Tags(BaseModel):
             return True
         
         return False
+
+    def get_machines(self):
+
+        return self.machines
 
     def serialize(self):
         r"""

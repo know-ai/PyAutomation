@@ -7,7 +7,6 @@ def __filter(data:Buffer):
     r"""
     Kalman Filter Algorithm
     """
-    print(f"Kalman Filter")
     return data.current()
 
 @decorator

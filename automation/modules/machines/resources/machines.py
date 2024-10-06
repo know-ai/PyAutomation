@@ -3,6 +3,7 @@ from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
 from ....models import IntegerType, FloatType, StringType, BooleanType
+from ....dbmodels.machines import Machines
 
 
 ns = Namespace('Machines', description='State Machines')
@@ -133,12 +134,12 @@ class MachineActionResource(Resource):
         return message, 403
     
 
-@ns.route('/subscribe/<machine_name>/to/<tag_name>')
+@ns.route('/subscribe/<machine_name>/<tag_name>/to/<default_tag_name>')
 class SubscribeResource(Resource):
 
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
-    def post(self, machine_name:str, tag_name:str):
+    def post(self, machine_name:str, tag_name:str, default_tag_name:str):
         """
         Subscribe Machine to Tags
         """
@@ -153,11 +154,13 @@ class SubscribeResource(Resource):
 
             return f"{tag_name} is not defined", 400
         
-        if machine.subscribe_to(tag=tag):
+        subscribed, message = machine.subscribe_to(tag=tag, default_tag_name=default_tag_name)
+        
+        if subscribed:
 
-            return f"{tag_name} subscribe to {machine_name} successfully", 200
+            return f"{tag_name} subscribe to {machine_name} {default_tag_name} successfully", 200
 
-        return f"{tag_name} is already subscribed to {machine_name}", 403
+        return message, 403
 
 
 @ns.route('/unsubscribe/<machine_name>/to/<tag_name>')
@@ -185,3 +188,27 @@ class UnsubscribeResource(Resource):
             return f"{tag_name} unsubscribed to {machine_name} successfully", 200
         
         return f"{tag_name} is not subscribed to {machine_name}", 403
+
+
+@ns.route('/tags/<machine_name>')
+class TagsMachineCollection(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def get(self, machine_name:str):
+        """
+        Get subscribed tags in machines
+        """
+        machine = Machines.get_or_none(name=machine_name)
+
+        if not machine:
+
+            return f"{machine} not found", 404
+        
+        tags = machine.get_tags()
+        
+        if tags:
+            
+            return [tag.serialize() for tag in tags], 200
+        
+        return list(), 200

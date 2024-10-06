@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 # DRIVERS IMPORTATION
 from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
 from .dbmodels.users import Roles, Users
+from .dbmodels.machines import Machines
 # PYAUTOMATION MODULES IMPORTATION
 from .utils import log_detailed
 from .singleton import Singleton
@@ -838,6 +839,7 @@ class PyAutomation(Singleton):
             self.load_db_to_alarm_manager()
             self.load_db_to_roles()
             self.load_db_to_users()
+            self.load_db_tags_to_machine()
 
     @logging_error_handler
     @validate_types(output=None)
@@ -911,6 +913,26 @@ class PyAutomation(Singleton):
             for client in clients:
 
                 self.add_opcua_client(**client)
+
+    @logging_error_handler
+    def load_db_tags_to_machine(self):
+        machines = self.machine_manager.get_machines()
+        for machine in machines:
+
+            if machine.classification.value.lower()!="data acquisition system":
+
+                machine_name = machine.name.value
+                machine = Machines.get_or_none(name=machine_name)
+
+                if not machine:
+
+                    return f"{machine} not found", 404
+                
+                tags_machine = machine.get_tags()
+                
+                for tag_machine in tags_machine:
+
+                    print(f"Tag: {tag_machine.serialize()}")
 
     # ALARMS METHODS
     @logging_error_handler
