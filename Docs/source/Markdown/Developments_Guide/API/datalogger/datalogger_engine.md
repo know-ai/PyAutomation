@@ -2,4 +2,4 @@
 
 ```{eval-rst}
 .. automodule:: automation.logger.datalogger.DataLoggerEngine
-    :members: set_db,get_db,create_tables,drop_tables,set_tag,update_tag,delete_tag,write_tag,write_tags,read_tag,request,response
+    :members: create_tables,drop_tables,set_tag,get_tags,get_tag_by_name,update_tag,delete_tag,write_tag,write_tags,read_trends,

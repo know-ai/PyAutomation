@@ -207,6 +207,9 @@ class Machine(Singleton):
 
 
 class StateMachineCore(StateMachine):
+    r"""
+    Documentation here
+    """
 
     starting = State('start', initial=True)
     waiting = State('wait')

@@ -1,13 +1,5 @@
-# API Documentation
+# Core API Documentation
 
-Escribir un preambulo de contenido de la API
-
-::: automation.PyAutomation
-    :docstring:
-    :members: get_tags
-    :members: create_tag
-    :members: init_db
-    :members: stop_db
-    :members: safe_start
-    :members: safe_stop
-    :members: run
+```{eval-rst}
+.. automodule:: automation.core.PyAutomation
+    :members: define_dash_app,append_machine,get_machine,get_machines,serialize_machines,subscribe_tag_into_automation_machine,get_tags,get_tag_by_name,get_trends,delete_tag,update_tag,delete_tag_by_name,create_tag,init_db,stop_db,safe_start,safe_stop,run,signup,create_token,set_role,find_opcua_servers,get_opcua_clients,get_opcua_client,get_node_values,get_node_attributes,get_opcua_tree,add_opcua_client,subscribe_opcua,subscribe_tag,unsubscribe_opcua,
