@@ -2,7 +2,49 @@ from ..utils.units import *
 
 class Force(EngUnit):
     """Creates a force object that can store a force value and 
-    convert between units of force."""
+    convert between units of force.
+
+    :param value: [int|float] Engineering value
+    :param unit: [str] Engineering unit
+    :return: [Force Object]
+
+    ```python
+    >>> from automation.variables.force import Force
+    >>> force = Force(value=1.0, unit="N")
+    >>> force.value
+    1.0
+    >>> force.unit
+    'N'
+    >>> force.convert(to_unit="kgf")
+    0.1019716213
+    >>> Force.convert_value(value=1.0, from_unit="N", to_unit="lbf")
+    0.2248089431
+    >>> Force.convert_values(values=[1.0, 10.0], from_unit="N", to_unit="lbf")
+    [0.2248089431, 2.248089431]
+    >>> force.change_unit(unit="kgf")
+    0.1019716213
+    >>> force.unit
+    'kgf'
+    >>> force.get_value()
+    [0.1019716213, 'kgf']
+    >>> print(force)
+    0.1019716213 kgf
+    >>> force2 = Force(value=3.0, unit="lbf")
+    >>> force_result = force + force2
+    >>> print(force_result)
+    1.4627487313277014 kgf
+    >>> force_result = force * force2
+    >>> print(force_result)
+    0.1387606481374532 kgf
+    >>> force_result = force / force2
+    >>> print(force_result)
+    0.07493631436666666 kgf
+    >>> force_result = force ** force2
+    >>> print(force_result)
+    0.04474673588461198 kgf
+
+    ```
+    """
 
     class Units(UnitSerializer):
         N = 'N'
