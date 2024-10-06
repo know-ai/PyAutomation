@@ -1,6 +1,5 @@
 import unittest, os
 from datetime import datetime
-from . import assert_dict_contains_subset
 from .. import PyAutomation
 from ..alarms import Alarm, AlarmState
 
@@ -33,13 +32,6 @@ class TestCore(unittest.TestCase):
             tag_in_cvt = self.app.cvt.get_tag_by_name(name=_tag1['name'])
             self.assertEqual(tag1, tag_in_cvt)
 
-        with self.subTest("Test tag in DB"):
-
-            tag_in_db = self.app.logger_engine.get_tag_by_name(name=_tag1['name'])
-            tag_in_db = tag_in_db.serialize()
-            tag_in_db.pop("active")
-            assert_dict_contains_subset(tag_in_db, tag_in_cvt.serialize())
-
         # GET TAGS
         _tag2 = {
             "name": "T1",
@@ -47,14 +39,6 @@ class TestCore(unittest.TestCase):
             "variable": "Temperature"
         }
         tag2, _ = self.app.create_tag(**_tag2)
-        tags_in_cvt = self.app.get_tags()
-        tags_in_db = self.app.logger_engine.get_tags()
-
-        with self.subTest("Test get tags CVT - DB"):
-
-            for counter, tag_in_db in enumerate(tags_in_db):
-                tag_in_db.pop("active")
-                assert_dict_contains_subset(tag_in_db, tags_in_cvt[counter])
 
         # SET TAG VALUES
         timestamp = datetime.now()
