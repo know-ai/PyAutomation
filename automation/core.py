@@ -34,7 +34,30 @@ import dash_bootstrap_components as dbc
 class PyAutomation(Singleton):
     r"""
     Automation is a [singleton](https://en.wikipedia.org/wiki/Singleton_pattern) class to develop multi threads web application
-    for general purposes.
+    for Industrial Applications.
+
+    If you want to use only PyAutomation Framework, you can initialize from this way
+
+    ```python
+    from automation import PyAutomation, server
+    app = PyAutomation()
+    app.define_dash_app(server=server)                         # This is configuration page
+    app.run(debug=True, create_tables=True)                                    
+
+    ```
+
+    If you want to extend PyAutomation Framework with Flask Application, you can initialize using this snippet code
+
+    ```python
+    from automation import PyAutomation
+    from app import CreateApp
+    application = CreateApp()
+    server = application()                                      # Flask App
+    app = PyAutomation()
+    app.define_dash_app(server=server)                          # This is configuration page
+    app.run(create_tables=True)
+
+    ```
     """
     PORTS = 65535
     def __init__(self):
