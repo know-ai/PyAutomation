@@ -2,7 +2,49 @@ from ..utils.units import EngUnit, UnitSerializer, UnitError
 
 class Length(EngUnit):
     """Creates a length object that can store a length value and 
-    convert between units of length."""
+    convert between units of length.
+
+    :param value: [int|float] Engineering value
+    :param unit: [str] Engineering unit
+    :return: [Length Object]
+
+    ```python
+    >>> from automation.variables.length import Length
+    >>> length = Length(value=1.0, unit="m")
+    >>> length.value
+    1.0
+    >>> length.unit
+    'm'
+    >>> length.convert(to_unit="inch")
+    39.3701
+    >>> Length.convert_value(value=1.0, from_unit="m", to_unit="cm")
+    100.0
+    >>> Length.convert_values(values=[1.0, 10.0], from_unit="m", to_unit="cm")
+    [100.0, 1000.0]
+    >>> length.change_unit(unit="inch")
+    39.3701
+    >>> length.unit
+    'inch'
+    >>> length.get_value()
+    [39.3701, 'inch']
+    >>> print(length)
+    39.3701 inch
+    >>> length2 = Length(value=3.0, unit="cm")
+    >>> length_result = length + length2
+    >>> print(length_result)
+    40.551203 inch
+    >>> length_result = length * length2
+    >>> print(length_result)
+    46.500143220300004 inch
+    >>> length_result = length / length2
+    >>> print(length_result)
+    33.333333333333336 inch
+    >>> length_result = length ** length2
+    >>> print(length_result)
+    76.56952620577046 inch
+
+    ```
+    """
     
     class Units(UnitSerializer):
         fm = 'fm' 
