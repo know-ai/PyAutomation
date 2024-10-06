@@ -2,7 +2,49 @@ from ..utils.units import *
 
 class Pressure(EngUnit):
     """Creates a pressure object that can store a pressure value and 
-    convert between units of pressure."""
+    convert between units of pressure.
+
+    :param value: [int|float] Engineering value
+    :param unit: [str] Engineering unit
+    :return: [Pressure Object]
+
+    ```python
+    >>> from automation.variables.pressure import Pressure
+    >>> pressure = Pressure(value=1.0, unit="atm")
+    >>> pressure.value
+    1.0
+    >>> pressure.unit
+    'atm'
+    >>> pressure.convert(to_unit="psi")
+    14.695979321588414
+    >>> Pressure.convert_value(value=1.0, from_unit="atm", to_unit="bar")
+    1.0132502738308866
+    >>> Pressure.convert_values(values=[1.0, 10.0], from_unit="atm", to_unit="bar")
+    [1.0132502738308866, 10.132502738308865]
+    >>> pressure.change_unit(unit="psi")
+    14.695979321588414
+    >>> pressure.unit
+    'psi'
+    >>> pressure.get_value()
+    [14.695979321588414, 'psi']
+    >>> print(pressure)
+    14.695979321588414 psi
+    >>> pressure2 = Pressure(value=3.0, unit="bar")
+    >>> pressure_result = pressure + pressure2
+    >>> print(pressure_result)
+    58.20737932158842 psi
+    >>> pressure_result = pressure * pressure2
+    >>> print(pressure_result)
+    639.4426346533621 psi
+    >>> pressure_result = pressure / pressure2
+    >>> print(pressure_result)
+    0.3377500912769622 psi
+    >>> pressure_result = pressure ** pressure2
+    >>> print(pressure_result)
+    6.115644251483115e+50 psi
+
+    ```
+    """
     
     class Units(UnitSerializer):
         bar = 'bar' 

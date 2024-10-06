@@ -33,6 +33,7 @@ class EngUnit(object):
         to_unit = to_unit
         return float(self.value) / float(self.conversions[from_unit]) * float(self.conversions[to_unit])
     
+    @classmethod
     def convert_values(self, values:list, from_unit:str, to_unit:str)->list:
         r"""
         Documentation here
@@ -56,7 +57,7 @@ class EngUnit(object):
         ```
         """
         return float(value) / float(cls.conversions[from_unit]) * float(cls.conversions[to_unit])
-        
+       
     def change_unit(self, unit):
         """Converts the current value of the object to a new unit.  Returns a float of the new value."""
         self.value = self.convert(unit)
@@ -84,26 +85,22 @@ class EngUnit(object):
         return self.__class__(new_value, self.unit)
 
     def __mul__(self, other):
-        new_value = self.value * other
+        new_value = self.value * other.change_unit(self.unit)
         return self.__class__(new_value, self.unit)
 
     def __rmul__(self, other):
-        new_value = self.value * other
+        new_value = self.value * other.change_unit(self.unit)
         return self.__class__(new_value, self.unit)
 
     def __truediv__(self, other):
-        new_value = self.value / other
+        new_value = self.value / other.change_unit(self.unit)
         return self.__class__(new_value, self.unit)
 
     def __floordiv__(self, other):
-        new_value = self.value // other
+        new_value = self.value // other.change_unit(self.unit)
         return self.__class__(new_value, self.unit)
 
     def __pow__(self, other):
-        new_value = self.value ** other
+        new_value = self.value ** other.change_unit(self.unit)
         return self.__class__(new_value, self.unit)
     
-
-# if __name__ == "__main__":
-#     import doctest
-#     doctest.testmod()

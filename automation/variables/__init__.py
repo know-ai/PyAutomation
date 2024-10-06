@@ -7,6 +7,8 @@ from .mass import Mass
 from .force import Force
 from .power import Power
 from .volumetric_flow import VolumetricFlow
+from .mass_flow import MassFlow
+from .density import Density
 
 
 temperature_base = Temperature(value=1, unit='K')
@@ -17,7 +19,9 @@ pressure_base = Pressure(value=1, unit="bar")
 mass_base = Mass(value=1, unit="kg")
 force_base = Force(value=1, unit="J/m")
 power_base = Power(value=1, unit="kW")
-volumetric_flow_base = VolumetricFlow(value=1, unit="BBL/sec")
+volumetric_flow_base = VolumetricFlow(value=1, unit="bbl/sec")
+mass_flow_base = MassFlow(value=1.0, unit="kg/day")
+density_base = Density(value=1.0, unit="kg/bbl")
 
 VARIABLES = {
     f"{temperature_base.__class__.__name__}": temperature_base.Units.serialize(),
@@ -28,7 +32,9 @@ VARIABLES = {
     f"{mass_base.__class__.__name__}": mass_base.Units.serialize(),
     f"{force_base.__class__.__name__}": force_base.Units.serialize(),
     f"{power_base.__class__.__name__}": power_base.Units.serialize(),
-    f"{volumetric_flow_base.__class__.__name__}": volumetric_flow_base.Units.serialize()
+    f"{volumetric_flow_base.__class__.__name__}": volumetric_flow_base.Units.serialize(),
+    f"{mass_flow_base.__class__.__name__}": mass_flow_base.Units.serialize(),
+    f"{density_base.__class__.__name__}": density_base.Units.serialize()
 }
 
 DATATYPES = [
