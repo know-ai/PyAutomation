@@ -12,7 +12,8 @@ from automation.variables import (
     mass_flow,
     density,
     length,
-    mass
+    mass,
+    power
 )
 from automation import core
 
@@ -37,6 +38,7 @@ def suite():
     doctests.append(density)
     doctests.append(length)
     doctests.append(mass)
+    doctests.append(power)
     doctests.append(core)
 
     suite = TestSuite(tests)

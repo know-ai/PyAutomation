@@ -2,7 +2,46 @@ from ..utils.units import *
 
 class Power(EngUnit):
     """Creates a power object that can store a power value and 
-    convert between units of power."""
+    convert between units of power.
+
+    :param value: [int|float] Engineering value
+    :param unit: [str] Engineering unit
+    :return: [Power Object]
+
+    ```python
+    >>> from automation.variables.power import Power
+    >>> power = Power(value=1.0, unit="BTU/hr")
+    >>> power.value
+    1.0
+    >>> power.unit
+    'BTU/hr'
+    >>> power.convert(to_unit="mW")
+    293.0712104427134
+    >>> Power.convert_value(value=1.0, from_unit="BTU/hr", to_unit="kCal/sec")
+    7.03370905062512e-05
+    >>> Power.convert_values(values=[1.0, 10.0], from_unit="BTU/hr", to_unit="kCal/sec")
+    [7.03370905062512e-05, 0.0007033709050625121]
+    >>> power.change_unit(unit="mW")
+    293.0712104427134
+    >>> power.unit
+    'mW'
+    >>> power.get_value()
+    [293.0712104427134, 'mW']
+    >>> print(power)
+    293.0712104427134 mW
+    >>> power2 = Power(value=3.0, unit="kCal/sec")
+    >>> power_result = power + power2
+    >>> print(power_result)
+    12500293.071210442 mW
+    >>> power_result = power * power2
+    >>> print(power_result)
+    3663390130.5339174 mW
+    >>> power_result = power / power2
+    >>> print(power_result)
+    2.344569683541707e-05 mW
+
+    ```
+    """
 
     class Units(UnitSerializer):
         kW = 'kW'
