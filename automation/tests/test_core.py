@@ -224,6 +224,31 @@ class TestCore(unittest.TestCase):
             alarm_L.acknowledge()
             self.assertEqual(alarm_L.state, AlarmState.ACKED)
 
+
+        # Boolean Alarm
+        tag_payload = {
+            "name": "Bool1",
+            "unit": "adim",
+            "variable": "Adimentional"
+        }
+        tag, _ = self.app.create_tag(**tag_payload)
+        alarm_B_payload = {
+            "name": "alarm_B",
+            "tag": tag.name,
+            "alarm_type": "BOOL",
+            "trigger_value": True,
+        }
+        alarm_B, _ = self.app.create_alarm(**alarm_B_payload)
+
+        with self.subTest("Test Not Trigger BOOL Alarm"):
+            
+            self.assertEqual(alarm_B.state.alarm_status, "Not Active")
+
+        self.app.cvt.set_value(id=tag.id, value=True, timestamp=timestamp)
+        with self.subTest("Test Trigger BOOL Alarm"):
+            
+            self.assertEqual(alarm_B.state.alarm_status, "Active")
+
         # DELETE TAG
         self.app.delete_alarm(id=alarm_LL.identifier)
         self.app.delete_alarm(id=alarm_L.identifier)

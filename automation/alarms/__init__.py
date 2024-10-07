@@ -174,13 +174,13 @@ class Alarm(StateMachine):
     @logging_error_handler
     @validate_types(
             tag=str, 
-            value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow, 
+            value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density|Percentage|Adimentional, 
             timestamp=datetime, 
             output=None)
     def notify(
         self, 
         tag:str, 
-        value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow, 
+        value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density|Percentage|Adimentional, 
         timestamp:datetime):
         r"""
         This method provide an interface to CVT to notify if tag value has change
@@ -201,7 +201,7 @@ class Alarm(StateMachine):
 
                     self.normal_condition()
 
-            if self.alarm_setpoint.type in (TriggerType.L, TriggerType.LL):
+            elif self.alarm_setpoint.type in (TriggerType.L, TriggerType.LL):
 
                 if value.value < self.alarm_setpoint.value:
 
@@ -210,6 +210,16 @@ class Alarm(StateMachine):
                 else:
 
                     self.normal_condition()
+
+            else: # Boolean Alarm
+                print(f"Value: {value.value} - Setpoint: {self.alarm_setpoint.value}")
+                if value.value == bool(self.alarm_setpoint.value):
+
+                    self.abnormal_condition(timestamp=timestamp)
+
+                else:
+
+                    self.normal_condition()                    
 
         if self.state==AlarmState.SHLVD:
 
