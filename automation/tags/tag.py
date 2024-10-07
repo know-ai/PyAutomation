@@ -11,7 +11,9 @@ from ..variables import (
     Mass,
     Force,
     Power,
-    VolumetricFlow
+    VolumetricFlow,
+    MassFlow,
+    Density
 )
 
 
@@ -70,6 +72,10 @@ class Tag:
             self.value = Current(value=0.0, unit=self.unit)
         elif variable.lower()=="volumetricflow":
             self.value = VolumetricFlow(value=0.0, unit=self.unit)
+        elif variable.lower()=="massflow":
+            self.value = MassFlow(value=0.0, unit=self.unit)
+        elif variable.lower()=="density":
+            self.value = Density(value=0.0, unit=self.unit)
         self.opcua_address = opcua_address
         self.node_namespace = node_namespace
         self.scan_time = scan_time

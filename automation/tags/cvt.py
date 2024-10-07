@@ -245,8 +245,12 @@ class CVT:
     def get_tags(self)->list:
         r"""
         Returns a list of the defined tags names.
-        """        
-        return [tag.serialize() for _, tag in self._tags.items()]
+        """
+        if self._tags:
+
+            return [tag.serialize() for _, tag in self._tags.items()]
+        
+        return list()
     
     def get_tag_by_name(self, name:str)->Tag|None:
         r"""Documentation here
