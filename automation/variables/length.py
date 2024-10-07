@@ -8,6 +8,7 @@ class Length(EngUnit):
     :param unit: [str] Engineering unit
     :return: [Length Object]
 
+    ```python
     >>> from automation.variables.length import Length
     >>> length = Length(value=1.0, unit="m")
     >>> length.value
@@ -41,7 +42,8 @@ class Length(EngUnit):
     >>> length_result = length ** length2
     >>> print(length_result)
     76.56952620577046 inch
-
+    
+    ```
     """
     
     class Units(UnitSerializer):

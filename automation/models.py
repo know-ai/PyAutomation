@@ -6,7 +6,7 @@ modelling the subjects involved in the core of the engine.
 """
 from .modules.users.users import User
 from .tags.tag import Tag
-from .utils.decorators import set_event
+from .utils.decorators import set_event, logging_error_handler
 
 FLOAT = "float"
 INTEGER = "int"
@@ -109,6 +109,7 @@ class ProcessType(FloatType):
         
         super(ProcessType, self).__init__(default=default, unit=unit)
         
+    @logging_error_handler
     def serialize(self):
         r"""
         Documentation here
@@ -120,7 +121,7 @@ class ProcessType(FloatType):
 
         value = None
         if self.value:
-
+            
             value = self.value.value
 
         return {
