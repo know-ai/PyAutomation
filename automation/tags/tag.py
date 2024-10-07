@@ -13,7 +13,9 @@ from ..variables import (
     Power,
     VolumetricFlow,
     MassFlow,
-    Density
+    Density,
+    Percentage,
+    Adimentional
 )
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
@@ -77,6 +79,10 @@ class Tag:
             self.value = MassFlow(value=0.0, unit=self.unit)
         elif variable.lower()=="density":
             self.value = Density(value=0.0, unit=self.unit)
+        elif variable.lower()=="percentage":
+            self.value = Percentage(value=0.0, unit=self.unit)
+        elif variable.lower()=="adimentional":
+            self.value = Adimentional(value=0.0, unit=self.unit)
         self.opcua_address = opcua_address
         self.node_namespace = node_namespace
         self.scan_time = scan_time
