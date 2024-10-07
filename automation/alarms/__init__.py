@@ -212,7 +212,7 @@ class Alarm(StateMachine):
                     self.normal_condition()
 
             else: # Boolean Alarm
-                print(f"Value: {value.value} - Setpoint: {self.alarm_setpoint.value}")
+                
                 if value.value == bool(self.alarm_setpoint.value):
 
                     self.abnormal_condition(timestamp=timestamp)
