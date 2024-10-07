@@ -4,9 +4,9 @@ class Density(EngUnit):
     """Creates a density object that can store a density value and 
     convert between units of density.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [Density Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [Density Object]\n
 
     ```python
     >>> from automation.variables.density import Density

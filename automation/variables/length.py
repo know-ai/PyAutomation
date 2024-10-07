@@ -4,9 +4,9 @@ class Length(EngUnit):
     """Creates a length object that can store a length value and 
     convert between units of length.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [Length Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [Length Object]\n
 
     ```python
     >>> from automation.variables.length import Length

@@ -4,9 +4,9 @@ class Force(EngUnit):
     """Creates a force object that can store a force value and 
     convert between units of force.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [Force Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [Force Object]\n
 
     ```python
     >>> from automation.variables.force import Force

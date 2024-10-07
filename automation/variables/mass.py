@@ -4,9 +4,9 @@ class Mass(EngUnit):
     """Creates a mass object that can store a mass value and 
     convert between units of mass.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [Mass Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [Mass Object]\n
 
     ```python
     >>> from automation.variables.mass import Mass
