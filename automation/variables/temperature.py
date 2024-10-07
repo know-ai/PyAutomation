@@ -8,6 +8,7 @@ class Temperature(EngUnit):
     :param unit: [str] Engineering unit
     :return: [Temperature Object]
 
+    ```python
     >>> from automation.variables.temperature import Temperature
     >>> temperature = Temperature(value=25, unit="C")
     >>> temperature.value
@@ -40,6 +41,7 @@ class Temperature(EngUnit):
     >>> print(temperature_result)
     26503573.918374993 K
 
+    ```
     """
     
     class Units(UnitSerializer):

@@ -8,6 +8,7 @@ class Mass(EngUnit):
     :param unit: [str] Engineering unit
     :return: [Mass Object]
 
+    ```python
     >>> from automation.variables.mass import Mass
     >>> mass = Mass(value=1.0, unit="kg")
     >>> mass.value
@@ -42,6 +43,7 @@ class Mass(EngUnit):
     >>> print(mass_result)
     1.0052423283919558 lb
 
+    ```
     """
     
     class Units(UnitSerializer):

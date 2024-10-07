@@ -8,6 +8,7 @@ class Pressure(EngUnit):
     :param unit: [str] Engineering unit
     :return: [Pressure Object]
 
+    ```python
     >>> from automation.variables.pressure import Pressure
     >>> pressure = Pressure(value=1.0, unit="atm")
     >>> pressure.value
@@ -41,6 +42,8 @@ class Pressure(EngUnit):
     >>> pressure_result = pressure ** pressure2
     >>> print(pressure_result)
     6.115644251483115e+50 psi
+
+    ```
 
     """
     

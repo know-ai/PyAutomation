@@ -8,6 +8,7 @@ class Force(EngUnit):
     :param unit: [str] Engineering unit
     :return: [Force Object]
 
+    ```python
     >>> from automation.variables.force import Force
     >>> force = Force(value=1.0, unit="N")
     >>> force.value
@@ -42,6 +43,7 @@ class Force(EngUnit):
     >>> print(force_result)
     0.04474673588461198 kgf
 
+    ```
     """
 
     class Units(UnitSerializer):

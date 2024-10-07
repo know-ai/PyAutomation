@@ -8,6 +8,7 @@ class Power(EngUnit):
     :param unit: [str] Engineering unit
     :return: [Power Object]
 
+    ```python
     >>> from automation.variables.power import Power
     >>> power = Power(value=1.0, unit="BTU/hr")
     >>> power.value
@@ -39,6 +40,7 @@ class Power(EngUnit):
     >>> print(power_result)
     2.344569683541707e-05 mW
 
+    ```
     """
 
     class Units(UnitSerializer):
