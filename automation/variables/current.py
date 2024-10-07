@@ -1,13 +1,13 @@
 from ..utils.units import EngUnit, UnitError, UnitSerializer
 
 class Current(EngUnit):
-    """Creates a current object that can store a current value and 
+    r"""
+    Creates a current object that can store a current value and 
     convert between units of current.
 
     :param value: [int|float] Engineering value
     :param unit: [str] Engineering unit
     :return: [Current Object]
-
     ```python
     >>> from automation.variables.current import Current
     >>> current = Current(value=1.0, unit="A")

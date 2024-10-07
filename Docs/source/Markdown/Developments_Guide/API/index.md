@@ -31,4 +31,6 @@ workers/state_machine.md
 
 core.md
 
+variables/current.md
+
 
