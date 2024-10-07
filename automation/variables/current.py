@@ -8,7 +8,7 @@ class Current(EngUnit):
     :param value: [int|float] Engineering value
     :param unit: [str] Engineering unit
     :return: [Current Object]
-    ```python
+
     >>> from automation.variables.current import Current
     >>> current = Current(value=1.0, unit="A")
     >>> current.value
@@ -43,7 +43,6 @@ class Current(EngUnit):
     >>> print(current_result)
     0.9999792769488884 kA
 
-    ```
     """
     
     class Units(UnitSerializer):

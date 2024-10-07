@@ -104,10 +104,6 @@ class ProcessType(FloatType):
 
     def __init__(self, tag:Tag|None=None, default=None, read_only:bool=True, unit:str=None):
         
-        if tag:
-            
-            unit = tag.get_display_unit()
-
         self.tag = tag
         self.read_only = read_only
         
@@ -125,7 +121,7 @@ class ProcessType(FloatType):
         value = None
         if self.value:
 
-            value = self.value
+            value = self.value.value
 
         return {
             "value": value,

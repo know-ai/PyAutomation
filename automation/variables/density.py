@@ -8,7 +8,6 @@ class Density(EngUnit):
     :param unit: [str] Engineering unit
     :return: [Density Object]
 
-    ```python
     >>> from automation.variables.density import Density
     >>> density = Density(value=1.0, unit="kg/m3")
     >>> density.value
@@ -43,7 +42,6 @@ class Density(EngUnit):
     >>> print(density_result)
     0.9174608905185654 lb/ml
 
-    ```
     """
     
     class Units(UnitSerializer):

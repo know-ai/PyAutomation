@@ -8,7 +8,6 @@ class MassFlow(EngUnit):
     :param unit: [str] Engineering unit
     :return: [MassFlow Object]
 
-    ```python
     >>> from automation.variables.mass_flow import MassFlow
     >>> mass_flow = MassFlow(value=1.0, unit="kg/hr")
     >>> mass_flow.value
@@ -43,7 +42,6 @@ class MassFlow(EngUnit):
     >>> print(mass_flow_result)
     2.2966524349040475e-10 lb/sec
 
-    ```
     """
     
     class Units(UnitSerializer):
