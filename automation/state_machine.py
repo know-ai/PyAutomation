@@ -23,7 +23,9 @@ from .variables import (
     Mass,
     Force,
     Power,
-    VolumetricFlow)
+    VolumetricFlow,
+    MassFlow,
+    Density)
 from .logger.machines import MachinesLoggerEngine
 from .logger.datalogger import DataLoggerEngine
 
@@ -533,13 +535,13 @@ class StateMachineCore(StateMachine):
 
     @validate_types(
             tag=str, 
-            value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow, 
+            value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density, 
             timestamp=datetime, 
             output=None)
     def notify(
         self, 
         tag:str, 
-        value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow, 
+        value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density, 
         timestamp:datetime):
         r"""
         This method provide an interface to CVT to notify if tag value has change

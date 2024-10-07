@@ -16,6 +16,7 @@ from ..variables import (
     Density
 )
 
+DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 class Tag:
 
@@ -273,6 +274,11 @@ class Tag:
 
     def serialize(self):
 
+        timestamp = self.get_timestamp()
+        if timestamp:
+
+            timestamp = timestamp.strftime(DATETIME_FORMAT)
+
         return {
             "id": self.get_id(),
             "value": self.get_value(),
@@ -287,7 +293,7 @@ class Tag:
             "node_namespace": self.get_node_namespace(),
             "scan_time": self.get_scan_time(),
             "dead_band": self.get_dead_band(),
-            "timestamp": self.get_timestamp(),
+            "timestamp": timestamp,
             "process_filter": self.process_filter,
             "gaussian_filter": self.gaussian_filter,
             "out_of_range_detection": self.out_of_range_detection,

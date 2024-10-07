@@ -8,7 +8,6 @@ class Time(EngUnit):
     :param unit: [str] Engineering unit
     :return: [Time Object]
 
-    ```python
     >>> from automation.variables.eng_time import Time
     >>> eng_time = Time(value=1.0, unit="hr")
     >>> eng_time.value
@@ -40,7 +39,6 @@ class Time(EngUnit):
     >>> print(eng_time_result)
     1200.0 minute
 
-    ```
     """
     
     class Units(UnitSerializer):
