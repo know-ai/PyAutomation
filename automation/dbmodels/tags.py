@@ -3,6 +3,170 @@ from .core import BaseModel
 from datetime import datetime
 
 
+class Manufacturer(BaseModel):
+
+    name = CharField(unique=True)
+
+    @classmethod
+    def create(cls, name:str)-> dict:
+        r"""
+
+        """
+        result = dict()
+        data = dict()
+
+        if not cls.name_exist(name):
+
+            query = cls(name=name)
+            query.save()
+            
+            message = f"{name} variable created successfully"
+            data.update(query.serialize())
+
+            result.update(
+                {
+                    'message': message, 
+                    'data': data
+                }
+            )
+            return result
+
+        message = f"{name} variable is already into database"
+        result.update(
+            {
+                'message': message, 
+                'data': data
+            }
+        )
+        return result
+
+    @classmethod
+    def read_by_name(cls, name:str)->bool:
+        r"""
+        Get instance by its a name
+
+        **Parameters**
+
+        * **name:** (str) Variable name
+
+        **Returns**
+
+        * **bool:** If True, name exist into database 
+        """
+        query = cls.get_or_none(name=name)
+        
+        if query is not None:
+
+            return query
+        
+        return None
+
+    @classmethod
+    def name_exist(cls, name:str)->bool:
+        r"""
+        Verify is a name exist into database
+
+        **Parameters**
+
+        * **name:** (str) Variable name
+
+        **Returns**
+
+        * **bool:** If True, name exist into database 
+        """
+        query = cls.get_or_none(name=name)
+        
+        if query is not None:
+
+            return True
+        
+        return False
+
+    def serialize(self)-> dict:
+        r"""
+        Serialize database record to a jsonable object
+        """
+
+        return {
+            "id": self.id,
+            "name": self.name
+        }
+    
+
+class Segment(BaseModel):
+
+    name = CharField(unique=True)
+    manufacturer= ForeignKeyField(Manufacturer, backref='segments', on_delete='CASCADE')
+
+    @classmethod
+    def create(cls, name:str)-> dict:
+        r"""
+        """
+        result = dict()
+        data = dict()
+
+        if not cls.name_exist(name):
+
+            query = cls(name=name)
+            query.save()
+            
+            message = f"{name} variable created successfully"
+            data.update(query.serialize())
+
+            result.update(
+                {
+                    'message': message, 
+                    'data': data
+                }
+            )
+            return result
+
+        message = f"{name} variable is already into database"
+        result.update(
+            {
+                'message': message, 
+                'data': data
+            }
+        )
+        return result
+
+    @classmethod
+    def read_by_name(cls, name:str)->bool:
+        r"""
+ 
+        """
+        query = cls.get_or_none(name=name)
+        
+        if query is not None:
+
+            return query
+        
+        return None
+
+    @classmethod
+    def name_exist(cls, name:str)->bool:
+        r"""
+
+        """
+        query = cls.get_or_none(name=name)
+        
+        if query is not None:
+
+            return True
+        
+        return False
+
+    def serialize(self)-> dict:
+        r"""
+        Serialize database record to a jsonable object
+        """
+
+        return {
+            "id": self.id,
+            "name": self.name
+        }
+
+
 class Variables(BaseModel):
 
     name = CharField(unique=True)

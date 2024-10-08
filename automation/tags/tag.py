@@ -108,7 +108,7 @@ class Tag:
         """
         if not timestamp:
             timestamp = datetime.now()
-        self.value.set_value(value=value, unit=self.unit)
+        self.value.set_value(value=value, unit=self.display_unit)
         self.timestamp = timestamp
         self.notify()
 
