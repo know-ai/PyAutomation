@@ -852,10 +852,13 @@ class DAQ(StateMachineCore):
                 data_value = values[0][0]["DataValue"]
                 value = data_value.Value.Value
                 timestamp = data_value.SourceTimestamp
+                print(f"DAQ Value: {value}")
                 val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
+                tag.value.set_value(value=val, unit=tag.get_display_unit()) 
+                print(f"Tag Value: {tag.value} - {val}")
                 self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
-                self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
+                self.das.buffer[tag_name]["values"](val)
 
         super().while_running()
 

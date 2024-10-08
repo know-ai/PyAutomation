@@ -157,14 +157,12 @@ class DAS(Singleton):
         r"""
         Documentation here
         """
-        print(f"Val: {val} - Node: {node} - Data: {data}")
         namespace = node.nodeid.to_string()
         timestamp = data.monitored_item.Value.SourceTimestamp
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
         tag_name = tag.get_name()
         val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-        tag.value.set_value(value=val, unit=tag.get_display_unit())
-        print(f"Tag Value: {tag.value} - Val: {val}")        
+        tag.value.set_value(value=val, unit=tag.get_display_unit())        
         self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
         self.buffer[tag_name]["timestamp"](timestamp)
         self.buffer[tag_name]["values"](val)
