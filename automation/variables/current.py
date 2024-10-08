@@ -5,9 +5,9 @@ class Current(EngUnit):
     Creates a current object that can store a current value and 
     convert between units of current.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [Current Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [Current Object]\n
 
     ```python
     >>> from automation.variables.current import Current

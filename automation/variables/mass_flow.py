@@ -4,9 +4,9 @@ class MassFlow(EngUnit):
     """Creates a mass flow object that can store a mass flow value and 
     convert between units of mass flow.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [MassFlow Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [MassFlow Object]\n
 
     ```python
     >>> from automation.variables.mass_flow import MassFlow

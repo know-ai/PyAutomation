@@ -4,9 +4,9 @@ class Temperature(EngUnit):
     """Creates a temperature object that can store a temperature value and 
     convert between units of temperature.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [Temperature Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [Temperature Object]\n
 
     ```python
     >>> from automation.variables.temperature import Temperature

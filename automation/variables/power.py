@@ -4,9 +4,9 @@ class Power(EngUnit):
     """Creates a power object that can store a power value and 
     convert between units of power.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [Power Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [Power Object]\n
 
     ```python
     >>> from automation.variables.power import Power

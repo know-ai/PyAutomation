@@ -4,9 +4,9 @@ class VolumetricFlow(EngUnit):
     """Creates a flow object that can store a flow value and 
     convert between units of flow.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [VolumetricFlow Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [VolumetricFlow Object]\n
 
     ```python
     >>> from automation.variables.volumetric_flow import VolumetricFlow

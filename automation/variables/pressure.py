@@ -4,9 +4,9 @@ class Pressure(EngUnit):
     """Creates a pressure object that can store a pressure value and 
     convert between units of pressure.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [Pressure Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [Pressure Object]\n
 
     ```python
     >>> from automation.variables.pressure import Pressure

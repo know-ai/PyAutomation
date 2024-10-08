@@ -4,9 +4,9 @@ class Time(EngUnit):
     """Creates a eng_time object that can store a eng_time value and 
     convert between units of eng_time.
 
-    :param value: [int|float] Engineering value
-    :param unit: [str] Engineering unit
-    :return: [Time Object]
+    :param value: [int|float] Engineering value\n
+    :param unit: [str] Engineering unit\n
+    :return: [Time Object]\n
 
     ```python
     >>> from automation.variables.eng_time import Time
