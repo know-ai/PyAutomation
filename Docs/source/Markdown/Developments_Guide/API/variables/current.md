@@ -1,13 +1,5 @@
 # Current Module
 
 ```{eval-rst}
-.. automodule:: automation.variables.current.Current
-    
-
-    
-
-    
-   
-
-
-
+.. autoclass:: automation.variables.current.Current
+    :members:
