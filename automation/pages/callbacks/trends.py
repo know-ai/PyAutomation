@@ -86,14 +86,14 @@ def init_callback(app:dash.Dash):
 
     @app.callback(
         dash.Input('trends_last_values_dropdown', 'value'),
+        dash.State('trends_tags_dropdown', 'value'),
         prevent_initial_call=True
         )
-    def last_values(last_values):
+    def last_values(last_values, tags):
         r"""
         Documentation here
         """
-        
-        for tag_name, _ in app.automation.das.buffer.items():
+        for tag_name in tags:
 
             # COMPUTATION OF MAX LENGTH OF THE BUFFER
             buffer_size = get_buffer_size(tag_name=tag_name, last_values=last_values)            

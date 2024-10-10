@@ -39,7 +39,6 @@ class Buffer(list):
         Returns last registered value of the buffer
         """
         if self:
-
             if self.roll == 'forward':
 
                 return self[-1]
@@ -50,8 +49,7 @@ class Buffer(list):
         r"""
         Returns lastest registered value of the buffer
         """  
-        if self: 
-
+        if self:
             if self.roll == 'forward':
                 
                 return self[0]
@@ -61,53 +59,13 @@ class Buffer(list):
     def previous_current(self):
         r"""
         Returns lastest registered value of the buffer
-        """  
-        if self: 
-
+        """
+        if self:
             if self.roll == 'forward':
                 
                 return self[1]
             
             return self[-2]
-    
-    def apply_each(self, fn, start:int=None, stop:int=None):
-        r"""
-        Applies a function to each item of a subset of the buffer, and returns the modified buffer
-        """
-        foo = self
-
-        if start <= stop:
-
-            if start:
-                foo = foo[start:]
-
-            if stop:
-                foo = foo[:stop]
-
-        if hasattr(fn, '__call__'):
-            foo = map(lambda x: fn(x), foo)
-
-        return foo
-    
-    def apply(self, fn, start:int=None, stop:int=None):
-        r"""
-        Applies a function to a subset of the buffer, and returns the result
-        """
-
-        foo = self
-
-        if start <= stop:
-
-            if start:
-                foo = foo[start:]
-
-            if stop:
-                foo = foo[:stop]
-
-        if hasattr(fn, '__call__'):
-            foo = fn(foo)
-
-        return foo    
 
     @property
     def roll(self):
