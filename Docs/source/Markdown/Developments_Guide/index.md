@@ -1,7 +1,5 @@
 # Development's Guide
 
-
-
 ```{toctree}
 :caption: Development' Guide Contents
 :maxdepth: 2

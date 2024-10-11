@@ -21,7 +21,7 @@ Alarm
     
    digraph AlarmStates {
        node [shape=circle, style=filled, color=lightblue2, fontname="Arial", fontsize=12];  // Estilo general de los nodos
-       edge [fontname="Arial", fontsize=10, color=black];  // Estilo general de los bordes
+       edge [fontname="Arial", fontsize=12, color=black];  // Estilo general de los bordes
 
        A [label="A\nNormal\nProcess: Normal\nAlarm: Not Active\nAck: Acknowledged"];
        B [label="B\nUnacknowledged alarm\nProcess: Abnormal\nAlarm: Active\nAck: Unacknowledged"];
