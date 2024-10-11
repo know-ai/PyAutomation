@@ -25,7 +25,9 @@ from .variables import (
     Power,
     VolumetricFlow,
     MassFlow,
-    Density)
+    Density,
+    Percentage,
+    Adimentional)
 from .logger.machines import MachinesLoggerEngine
 from .logger.datalogger import DataLoggerEngine
 
@@ -535,13 +537,13 @@ class StateMachineCore(StateMachine):
 
     @validate_types(
             tag=str, 
-            value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density, 
+            value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density|Percentage|Adimentional, 
             timestamp=datetime, 
             output=None)
     def notify(
         self, 
         tag:str, 
-        value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density, 
+        value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density|Percentage|Adimentional, 
         timestamp:datetime):
         r"""
         This method provide an interface to CVT to notify if tag value has change
@@ -851,9 +853,10 @@ class DAQ(StateMachineCore):
                 value = data_value.Value.Value
                 timestamp = data_value.SourceTimestamp
                 val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
+                tag.value.set_value(value=val, unit=tag.get_display_unit()) 
                 self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
-                self.das.buffer[tag_name]["values"](self.cvt.get_value(id=tag.id))
+                self.das.buffer[tag_name]["values"](val)
 
         super().while_running()
 

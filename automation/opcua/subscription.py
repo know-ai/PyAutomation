@@ -162,6 +162,7 @@ class DAS(Singleton):
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
         tag_name = tag.get_name()
         val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
+        tag.value.set_value(value=val, unit=tag.get_display_unit())        
         self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
         self.buffer[tag_name]["timestamp"](timestamp)
         self.buffer[tag_name]["values"](val)
