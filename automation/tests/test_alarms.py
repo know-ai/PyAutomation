@@ -58,15 +58,17 @@ class TestAlarms(unittest.TestCase):
             alarm_setpoint=FloatType(50.0)
         )
 
-        tag.set_value(value=55)
         with self.subTest("Test alarm Unack status"):
-            
+            tag.set_value(value=55)
             self.assertEqual(alarm.state.state.lower(), "unacknowledged")
 
-        tag.set_value(value=45)
-        with self.subTest("Test alarm RTN Unack status"):
-        
-            self.assertEqual(alarm.state.state.lower(), "RTN Unacknowledged".lower())
+        with self.subTest("Test alarm Ack status"):
+            alarm.acknowledge()
+            self.assertEqual(alarm.state.state.lower(), "acknowledged")
+
+        with self.subTest("Test alarm Normal status"):
+            tag.set_value(value=45)
+            self.assertEqual(alarm.state.state.lower(), "normal")
 
     def test_alarm_state_machine(self):
         r"""
@@ -90,5 +92,16 @@ class TestAlarms(unittest.TestCase):
 
         tag.set_value(value=55)
         with self.subTest("Test alarm Unack status"):
-            
             self.assertEqual(alarm.current_state.value.lower(), "unack_alarm")
+
+        with self.subTest("Test alarm Ack status"):
+            alarm.acknowledge()
+            self.assertEqual(alarm.current_state.value.lower(), "ack_alarm")
+
+        with self.subTest("Test alarm Normal status"):
+            tag.set_value(value=45)
+            self.assertEqual(alarm.current_state.value.lower(), "normal")
+
+            
+
+    
