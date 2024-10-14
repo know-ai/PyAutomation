@@ -10,19 +10,20 @@ from ..iad import iad_outlier, iad_frozen_data, iad_out_of_range
 from .tag import Tag
 
 class CVT:
-    """Current Value Table class for Tag based repository.
-
-    This class is intended hold in memory tag based values and 
-    observers for those required tags, this class is intended to be
-    used by PyAutomation itself and not for other purposes
-
-    Usage:
-    
-    ```python
-    >>> from automation.tags import CVT
-    >>> _cvt = CVT()
-    ```
     """
+    Current Value Table (CVT) class for a tag-based repository.
+
+    This class is designed to hold in-memory tag-based values and manage observers for the required tags. It is intended to be used exclusively by PyAutomation and should not be used for other purposes.
+
+    **Usage Example**:
+
+    .. code-block:: python
+
+        >>> from automation.tags import CVT
+        >>> _cvt = CVT()
+
+    """
+
     def __init__(self):
 
         self._tags = dict()
@@ -520,20 +521,19 @@ class CVT:
 
 
 class CVTEngine(Singleton):
-    """Current Value Table Engine class for Tag thread-safe based repository.
-
-    This class is intended hold in memory tag based values and 
-    observers for those required tags, it is implemented as a singleton
-    so each sub-thread within the PyAutomation application can access tags
-    in a thread-safe mechanism.
-
-    Usage:
-    
-    ```python
-    >>> from automation.tags import CVTEngine
-    >>> tag_egine = CVTEngine()
-    ```
     """
+    Current Value Table (CVT) Engine class for a tag-based, thread-safe repository.
+
+    This class is designed to hold in-memory tag-based values and manage observers for the required tags. It is implemented as a singleton, ensuring that each sub-thread within the PyAutomation application can access and modify tags in a thread-safe manner.
+
+    **Usage Example**:
+
+    .. code-block:: python
+
+        >>> from automation.tags import CVTEngine
+        >>> tag_engine = CVTEngine()
+    """
+
 
     def __init__(self):
 

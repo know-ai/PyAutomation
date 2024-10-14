@@ -69,7 +69,7 @@ class TestAlarms(unittest.TestCase):
         with self.subTest("Test alarm Normal status"):
             tag.set_value(value=45)
             self.assertEqual(alarm.state.state.lower(), "normal")
-
+        
     def test_alarm_state_machine(self):
         r"""
         Documentation here
@@ -102,6 +102,9 @@ class TestAlarms(unittest.TestCase):
             tag.set_value(value=45)
             self.assertEqual(alarm.current_state.value.lower(), "normal")
 
-            
+    
+
+
+    
 
     
