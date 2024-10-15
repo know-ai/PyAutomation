@@ -172,7 +172,8 @@ class PyAutomation(Singleton):
             user:User|None=None,
             reload:bool=False,
         )->tuple[Tag,str]:
-        """Create tag to automation app.
+        r"""
+        Create tag to automation app.
 
         Addding tag from this way, you get the following features.
 
