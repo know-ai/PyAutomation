@@ -146,6 +146,8 @@ class PyAutomation(Singleton):
             outlier_detection=bool,
             out_of_range_detection=bool,
             frozen_data_detection=bool,
+            manufacturer=str,
+            segment=str,
             id=str|type(None),
             user=User,
             reload=bool,
@@ -168,6 +170,8 @@ class PyAutomation(Singleton):
             outlier_detection:bool=False,
             out_of_range_detection:bool=False,
             frozen_data_detection:bool=False,
+            segment:str="",
+            manufacturer:str="",
             id:str=None,
             user:User|None=None,
             reload:bool=False,
@@ -213,6 +217,8 @@ class PyAutomation(Singleton):
             outlier_detection=outlier_detection,
             out_of_range_detection=out_of_range_detection,
             frozen_data_detection=frozen_data_detection,
+            segment=segment,
+            manufacturer=manufacturer,
             id=id,
             user=user
         )

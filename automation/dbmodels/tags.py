@@ -12,33 +12,12 @@ class Manufacturer(BaseModel):
         r"""
 
         """
-        result = dict()
-        data = dict()
-
         if not cls.name_exist(name):
 
             query = cls(name=name)
             query.save()
             
-            message = f"{name} variable created successfully"
-            data.update(query.serialize())
-
-            result.update(
-                {
-                    'message': message, 
-                    'data': data
-                }
-            )
-            return result
-
-        message = f"{name} variable is already into database"
-        result.update(
-            {
-                'message': message, 
-                'data': data
-            }
-        )
-        return result
+            return query
 
     @classmethod
     def read_by_name(cls, name:str)->bool:
@@ -102,34 +81,20 @@ class Segment(BaseModel):
     def create(cls, name:str, manufacturer:str)-> dict:
         r"""
         """
-        result = dict()
-        data = dict()
-
         if not cls.name_exist(name):
 
-            manufacturer_obj = Manufacturer.get_or_create(name=manufacturer)
+            if Manufacturer.name_exist(name=manufacturer):
+                
+                manufacturer_obj = Manufacturer.read_by_name(name=manufacturer)
+            
+            else:
+                
+                manufacturer_obj = Manufacturer.create(name=manufacturer)
+            
             query = cls(name=name, manufacturer=manufacturer_obj)
             query.save()
             
-            message = f"{name} variable created successfully"
-            data.update(query.serialize())
-
-            result.update(
-                {
-                    'message': message, 
-                    'data': data
-                }
-            )
-            return result
-
-        message = f"{name} variable is already into database"
-        result.update(
-            {
-                'message': message, 
-                'data': data
-            }
-        )
-        return result
+            return query
 
     @classmethod
     def read_by_name(cls, name:str)->bool:
@@ -635,47 +600,54 @@ class Tags(BaseModel):
 
                         if segment and manufacturer:
 
-                            segment_obj = Segment.get_or_create(name=segment, manufacturer=manufacturer)
+                            if Segment.name_exist(name=segment):
+
+                                segment_obj = Segment.read_by_name(name=segment)
+                            
+                            else:
+
+                                segment_obj = Segment.create(name=segment, manufacturer=manufacturer)
+
                             query = cls(
-                            identifier=id,
-                            name=name, 
-                            unit=_unit,
-                            data_type=_data_type,
-                            description=description,
-                            display_name=display_name,
-                            display_unit=_display_unit,
-                            opcua_address=opcua_address,
-                            node_namespace=node_namespace,
-                            scan_time=scan_time,
-                            dead_band=dead_band,
-                            active=active,
-                            process_filter=process_filter,
-                            gaussian_filter=gaussian_filter,
-                            out_of_range_detection=out_of_range_detection,
-                            outlier_detection=outlier_detection,
-                            frozen_data_detection=frozen_data_detection,
-                            segment=segment_obj
-                            )
-                        
-                        query = cls(
-                            identifier=id,
-                            name=name, 
-                            unit=_unit,
-                            data_type=_data_type,
-                            description=description,
-                            display_name=display_name,
-                            display_unit=_display_unit,
-                            opcua_address=opcua_address,
-                            node_namespace=node_namespace,
-                            scan_time=scan_time,
-                            dead_band=dead_band,
-                            active=active,
-                            process_filter=process_filter,
-                            gaussian_filter=gaussian_filter,
-                            out_of_range_detection=out_of_range_detection,
-                            outlier_detection=outlier_detection,
-                            frozen_data_detection=frozen_data_detection
-                            )
+                                identifier=id,
+                                name=name, 
+                                unit=_unit,
+                                data_type=_data_type,
+                                description=description,
+                                display_name=display_name,
+                                display_unit=_display_unit,
+                                opcua_address=opcua_address,
+                                node_namespace=node_namespace,
+                                scan_time=scan_time,
+                                dead_band=dead_band,
+                                active=active,
+                                process_filter=process_filter,
+                                gaussian_filter=gaussian_filter,
+                                out_of_range_detection=out_of_range_detection,
+                                outlier_detection=outlier_detection,
+                                frozen_data_detection=frozen_data_detection,
+                                segment=segment_obj
+                                )
+                        else:
+                            query = cls(
+                                identifier=id,
+                                name=name, 
+                                unit=_unit,
+                                data_type=_data_type,
+                                description=description,
+                                display_name=display_name,
+                                display_unit=_display_unit,
+                                opcua_address=opcua_address,
+                                node_namespace=node_namespace,
+                                scan_time=scan_time,
+                                dead_band=dead_band,
+                                active=active,
+                                process_filter=process_filter,
+                                gaussian_filter=gaussian_filter,
+                                out_of_range_detection=out_of_range_detection,
+                                outlier_detection=outlier_detection,
+                                frozen_data_detection=frozen_data_detection
+                                )
                         query.save()
                         message = f"{name} tag created successfully"
                         

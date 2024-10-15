@@ -78,7 +78,6 @@ class TagsComponents:
                                                 ),
                                                 dbc.InputGroup(
                                                     [
-                                                        dbc.InputGroupText(dbc.RadioButton(id="manufacturer_radio_button"), className="radiobutton-box"), 
                                                         dbc.Input(placeholder="Manufacturer (Optional)", id="manufacturer_input", disabled=True)
                                                     ], 
                                                     size="md"

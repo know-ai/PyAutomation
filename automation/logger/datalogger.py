@@ -49,7 +49,9 @@ class DataLogger(BaseLogger):
         opcua_address:str=None, 
         node_namespace:str=None,
         scan_time:int=None,
-        dead_band:float=None
+        dead_band:float=None,
+        manufacturer:str="",
+        segment:str=""
         ):
         r"""
         Documentation here
@@ -65,7 +67,9 @@ class DataLogger(BaseLogger):
             opcua_address=opcua_address,
             node_namespace=node_namespace,
             scan_time=scan_time,
-            dead_band=dead_band
+            dead_band=dead_band,
+            manufacturer=manufacturer,
+            segment=segment
             )
         
     def delete_tag(self, id:str):
@@ -230,6 +234,8 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"]["node_namespace"] = tag.node_namespace
         _query["parameters"]["scan_time"] = tag.scan_time
         _query["parameters"]["dead_band"] = tag.dead_band
+        _query["parameters"]["manufacturer"] = tag.manufacturer
+        _query["parameters"]["segment"] = tag.segment
         
         return self.query(_query)
 
