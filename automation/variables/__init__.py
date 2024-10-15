@@ -9,7 +9,7 @@ from .power import Power
 from .volumetric_flow import VolumetricFlow
 from .mass_flow import MassFlow
 from .density import Density
-from .percentaje import Percentage
+from .percentage import Percentage
 from .adimentional import Adimentional
 
 

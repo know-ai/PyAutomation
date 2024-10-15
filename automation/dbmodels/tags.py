@@ -99,7 +99,7 @@ class Segment(BaseModel):
     manufacturer= ForeignKeyField(Manufacturer, backref='segments', on_delete='CASCADE')
 
     @classmethod
-    def create(cls, name:str)-> dict:
+    def create(cls, name:str, manufacturer:str)-> dict:
         r"""
         """
         result = dict()
@@ -107,7 +107,8 @@ class Segment(BaseModel):
 
         if not cls.name_exist(name):
 
-            query = cls(name=name)
+            manufacturer_obj = Manufacturer.get_or_create(name=manufacturer)
+            query = cls(name=name, manufacturer=manufacturer_obj)
             query.save()
             
             message = f"{name} variable created successfully"
@@ -163,7 +164,8 @@ class Segment(BaseModel):
 
         return {
             "id": self.id,
-            "name": self.name
+            "name": self.name,
+            "manufacturer": self.manufacturer.serialize()
         }
 
 
@@ -575,6 +577,7 @@ class Tags(BaseModel):
     name = CharField(unique=True)
     unit = ForeignKeyField(Units, backref='tags')
     data_type = ForeignKeyField(DataTypes, backref='tags')
+    segment = ForeignKeyField(Segment, backref='tags', null=True)
     description = CharField(null=True, max_length=256)
     display_name = CharField(unique=True)
     display_unit = ForeignKeyField(Units)
@@ -601,6 +604,8 @@ class Tags(BaseModel):
         display_unit:str,
         opcua_address:str="",
         node_namespace:str="",
+        segment:str="",
+        manufacturer:str="",
         scan_time:int=0,
         dead_band:float=0.0,
         active:bool=True,
@@ -627,6 +632,30 @@ class Tags(BaseModel):
                 if _unit is not None and _display_unit is not None:
 
                     if _data_type is not None:
+
+                        if segment and manufacturer:
+
+                            segment_obj = Segment.get_or_create(name=segment, manufacturer=manufacturer)
+                            query = cls(
+                            identifier=id,
+                            name=name, 
+                            unit=_unit,
+                            data_type=_data_type,
+                            description=description,
+                            display_name=display_name,
+                            display_unit=_display_unit,
+                            opcua_address=opcua_address,
+                            node_namespace=node_namespace,
+                            scan_time=scan_time,
+                            dead_band=dead_band,
+                            active=active,
+                            process_filter=process_filter,
+                            gaussian_filter=gaussian_filter,
+                            out_of_range_detection=out_of_range_detection,
+                            outlier_detection=outlier_detection,
+                            frozen_data_detection=frozen_data_detection,
+                            segment=segment_obj
+                            )
                         
                         query = cls(
                             identifier=id,
@@ -811,6 +840,11 @@ class Tags(BaseModel):
         r"""
         Documentation here
         """
+        segment = None
+        if self.segment:
+
+            segment = self.segment.serialize()
+
         return {
             'id': self.identifier,
             'name': self.name,
@@ -829,7 +863,8 @@ class Tags(BaseModel):
             'gaussian_filter': self.gaussian_filter,
             'out_of_range_detection': self.out_of_range_detection,
             'frozen_data_detection': self.frozen_data_detection,
-            'outlier_detection': self.outlier_detection
+            'outlier_detection': self.outlier_detection,
+            'segment': segment
         }
 
 

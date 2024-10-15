@@ -105,7 +105,6 @@ class PyAutomation(Singleton):
         return self.machine_manager.get_machine(name=name)
 
     @logging_error_handler
-    @validate_types(output=[(Machine, int, str)])
     def get_machines(self)->list[tuple[Machine, int, str]]:
         r"""
         Documentation here
