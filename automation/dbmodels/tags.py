@@ -836,7 +836,8 @@ class Tags(BaseModel):
             'out_of_range_detection': self.out_of_range_detection,
             'frozen_data_detection': self.frozen_data_detection,
             'outlier_detection': self.outlier_detection,
-            'segment': segment
+            'segment': segment["name"],
+            "manufacturer": segment["manufacturer"]["name"]
         }
 
 
