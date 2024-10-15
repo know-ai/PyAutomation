@@ -813,9 +813,12 @@ class Tags(BaseModel):
         Documentation here
         """
         segment = None
+        manufacturer = None
         if self.segment:
 
             segment = self.segment.serialize()
+            manufacturer = segment["manufacturer"]["name"]
+            segment = segment["name"]
 
         return {
             'id': self.identifier,
@@ -836,8 +839,8 @@ class Tags(BaseModel):
             'out_of_range_detection': self.out_of_range_detection,
             'frozen_data_detection': self.frozen_data_detection,
             'outlier_detection': self.outlier_detection,
-            'segment': segment["name"],
-            "manufacturer": segment["manufacturer"]["name"]
+            'segment': segment,
+            "manufacturer": manufacturer
         }
 
 
