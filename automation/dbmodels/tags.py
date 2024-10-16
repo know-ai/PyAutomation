@@ -812,8 +812,8 @@ class Tags(BaseModel):
         r"""
         Documentation here
         """
-        segment = None
-        manufacturer = None
+        segment = ""
+        manufacturer = ""
         if self.segment:
 
             segment = self.segment.serialize()
