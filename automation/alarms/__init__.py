@@ -9,7 +9,7 @@ from ..utils.decorators import validate_types, logging_error_handler, set_event,
 from ..models import FloatType, IntegerType, StringType
 from ..variables import *
 from statemachine import State, StateMachine
-
+from flask_socketio import SocketIO
 
 
 class Alarm(StateMachine):
@@ -170,6 +170,12 @@ class Alarm(StateMachine):
     def on_enter_out_of_service(self):
         
         self.state = AlarmState.OOSRV
+
+    def set_socketio(self, sio:SocketIO):
+        r"""
+        Documentation here
+        """
+        self.sio:SocketIO = sio
 
     @logging_error_handler
     @validate_types(

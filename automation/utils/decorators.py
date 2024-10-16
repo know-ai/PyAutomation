@@ -82,6 +82,9 @@ def put_alarm_state(func, args, kwargs):
         id=alarm.identifier,
         state=alarm.state.state
     )
+    if alarm.sio:
+        print(f"on.alarm: {alarm.serialize()}")
+        alarm.sio.emit("on.alarm", data=alarm.serialize())
     return result
 
 def validate_types(**validations):

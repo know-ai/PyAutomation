@@ -11,6 +11,7 @@ from ..dbmodels.alarms import AlarmSummary
 from ..modules.users.users import User
 from ..models import FloatType, StringType
 from ..utils.decorators import set_event, logging_error_handler
+from flask_socketio import SocketIO
 
 
 class AlarmManager(Singleton):
@@ -43,7 +44,8 @@ class AlarmManager(Singleton):
             timestamp:str=None,
             ack_timestamp:str=None,
             user:User=None,
-            reload:bool=False
+            reload:bool=False,
+            sio:SocketIO|None=None
         )->tuple[Alarm, str]:
         r"""
         Append alarm to the Alarm Manager
@@ -89,6 +91,7 @@ class AlarmManager(Singleton):
             user=user,
             reload=reload
         )
+        alarm.set_socketio(sio=sio)
         self._alarms[alarm.identifier] = alarm
 
         return alarm, f"Alarm creation successful"

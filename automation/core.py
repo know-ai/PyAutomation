@@ -1046,7 +1046,8 @@ class PyAutomation(Singleton):
             timestamp=timestamp,
             ack_timestamp=ack_timestamp,
             user=user,
-            reload=reload
+            reload=reload,
+            sio=self.sio
         )
 
         if alarm:
