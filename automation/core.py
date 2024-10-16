@@ -113,6 +113,7 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
+        machine.set_socketio(sio=self.sio)
         self.machine.append_machine(machine=machine, interval=interval, mode=mode)
 
     @logging_error_handler

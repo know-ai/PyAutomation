@@ -38,10 +38,18 @@ class PropertyType:
         self.__value = value
     
     @set_event(message=f"Attribute updated", classification="State Machine", priority=2, criticity=3)
-    def set_value(self, value, user:User=None, name:str=None):
+    def set_value(self, value, user:User=None, name:str=None, machine=None):
         
         self.value = value.value
+        if machine:
+            from automation import PyAutomation
+            app = PyAutomation()
+            if app.sio:
+
+                app.sio.emit("on.machine", data=machine.serialize())
+
         if name=="machine_interval":
+            
             return value, f"{name} To: {value.value} s."
         
         return value, f"{name} To: {value.value}"

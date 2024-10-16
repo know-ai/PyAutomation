@@ -30,6 +30,7 @@ from .variables import (
     Adimentional)
 from .logger.machines import MachinesLoggerEngine
 from .logger.datalogger import DataLoggerEngine
+from flask_socketio import SocketIO
 
 
 
@@ -245,7 +246,7 @@ class StateMachineCore(StateMachine):
         self.machine_interval = FloatType(default=1.0)
         self.buffer_size = IntegerType(default=10)
         self.buffer_roll_type = StringType(default='backward')
-        # self.subscribed_to = dict()
+        self.sio:SocketIO|None = None
         self.restart_buffer()
         self.machine_engine = MachinesLoggerEngine()
         transitions = []
@@ -307,14 +308,23 @@ class StateMachineCore(StateMachine):
         self.restart_buffer()
         self.send("restart_to_wait")
 
-    # Auxiliaries Methods   
-    def put_attr(self, attr_name:str, value:StringType|FloatType|IntegerType|BooleanType, user:User=None):
+    # Auxiliaries Methods 
+    def set_socketio(self, sio:SocketIO):
+
+        self.sio:SocketIO = sio
+
+    def put_attr(self, attr_name:str, value:StringType|FloatType|IntegerType|BooleanType|ProcessType, user:User=None):
         
         attr = getattr(self, attr_name)
         attr.set_value(value=value, user=user, name=attr_name)
         kwargs = {
             f"{attr_name}": value
         }
+        if self.sio:
+            print(f"ON.MACHINE: {self.serialize()}")
+            self.sio.emit("on.machine", data=self.serialize())
+
+        # Update on DB
         self.machine_engine.put(name=self.name, **kwargs)
 
     def add_process_variable(self, name:str, tag:Tag, read_only:bool=False):
