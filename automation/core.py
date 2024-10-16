@@ -1283,8 +1283,8 @@ class PyAutomation(Singleton):
         Documentation here
         """
         if self.is_db_connected():
-
-            return self.logs_engine.create(
+            
+            log = self.logs_engine.create(
                 message=message, 
                 user=user, 
                 description=description, 
@@ -1293,6 +1293,12 @@ class PyAutomation(Singleton):
                 event_id=event_id,
                 timestamp=timestamp
             )
+
+            if self.sio:
+
+                self.sio.emit("on.log", data=log.serialize())
+
+            return log
         
     @logging_error_handler
     def filter_logs_by(

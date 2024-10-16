@@ -37,10 +37,10 @@ def decorator(declared_decorator):
     return final_decorator
 
 def set_event(message:str, classification:str, priority:int, criticity:int):
-
     @decorator
     def wrapper(func, args, kwargs):
-        
+        from automation import PyAutomation
+        app = PyAutomation()
         result = func(*args, **kwargs)
 
         if result:
@@ -56,7 +56,7 @@ def set_event(message:str, classification:str, priority:int, criticity:int):
 
                         description = result[-1]
 
-                    events_engine.create(
+                    event = events_engine.create(
                         message=message,
                         description=description,
                         classification=classification,
@@ -64,6 +64,9 @@ def set_event(message:str, classification:str, priority:int, criticity:int):
                         criticity=criticity,
                         user=user
                     )
+                    if app.sio:
+
+                        app.sio.emit("on.event", data=event.serialize())
 
         return result
 
