@@ -90,6 +90,7 @@ class PyAutomation(Singleton):
         self.dash_app.set_automation_app(self)
         init_callbacks(app=self.dash_app)
         self.sio = SocketIO(self.dash_app.server, async_mode='gevent', handler_class=WebSocketHandler)
+        self.cvt._cvt.set_socketio(sio=self.sio)
 
         @self.sio.on('connect')
         def handle_connect():
