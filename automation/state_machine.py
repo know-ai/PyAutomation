@@ -320,9 +320,6 @@ class StateMachineCore(StateMachine):
         kwargs = {
             f"{attr_name}": value
         }
-        if self.sio:
-            print(f"ON.MACHINE: {self.serialize()}")
-            self.sio.emit("on.machine", data=self.serialize())
 
         # Update on DB
         self.machine_engine.put(name=self.name, **kwargs)

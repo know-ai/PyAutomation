@@ -1385,6 +1385,9 @@ class PyAutomation(Singleton):
             self.connect_to_db(test=test)
             self.db_worker.start()
 
+        for machine in machines:
+            machine.set_socketio(sio=self.sio)
+            
         self.machine.start(machines=machines)
         if not test:
             db_config = self.get_db_config()
