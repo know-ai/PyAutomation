@@ -35,32 +35,33 @@ import dash_bootstrap_components as dbc
 
 class PyAutomation(Singleton):
     r"""
-    Automation is a [singleton](https://en.wikipedia.org/wiki/Singleton_pattern) class to develop multi threads web application
-    for Industrial Applications.
+    Automation is a `singleton <https://en.wikipedia.org/wiki/Singleton_pattern>`_ class designed to develop multi-threaded web applications for Industrial Applications.
 
-    If you want to use only PyAutomation Framework, you can initialize from this way
+    You can initialize and run PyAutomation Framework in different ways depending on your requirements.
 
-    ```python
-    from automation import PyAutomation, server
-    app = PyAutomation()
-    app.define_dash_app(server=server)                         # This is configuration page
-    app.run(debug=True, create_tables=True)                                    
+    **Example 1**: Using only PyAutomation Framework
 
-    ```
+    .. code-block:: python
 
-    If you want to extend PyAutomation Framework with Flask Application, you can initialize using this snippet code
+        from automation import PyAutomation, server
+        app = PyAutomation()
+        app.define_dash_app(server=server)  # This is the configuration page
+        app.run(debug=True, create_tables=True)
 
-    ```python
-    from automation import PyAutomation
-    from app import CreateApp
-    application = CreateApp()
-    server = application()                                      # Flask App
-    app = PyAutomation()
-    app.define_dash_app(server=server)                          # This is configuration page
-    app.run(create_tables=True)
+    **Example 2**: Extending PyAutomation Framework with Flask Application
 
-    ```
-    """
+    .. code-block:: python
+
+        from automation import PyAutomation
+        from app import CreateApp
+        application = CreateApp()
+        server = application()  # Flask App
+        app = PyAutomation()
+        app.define_dash_app(server=server)  # This is the configuration page
+        app.run(create_tables=True)
+
+"""
+
     PORTS = 65535
     def __init__(self):
 
