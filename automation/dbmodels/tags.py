@@ -607,7 +607,7 @@ class Tags(BaseModel):
                             else:
 
                                 segment_obj = Segment.create(name=segment, manufacturer=manufacturer)
-
+                            
                             query = cls(
                                 identifier=id,
                                 name=name, 

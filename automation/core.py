@@ -82,14 +82,20 @@ class PyAutomation(Singleton):
         self.set_log(level=logging.WARNING)
     
     @logging_error_handler
-    def define_dash_app(self, **kwargs)->None:
+    def define_dash_app(self,  certfile:str=None, keyfile:str=None, **kwargs)->None:
         r"""
         Documentation here
         """
         self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
         self.dash_app.set_automation_app(self)
         init_callbacks(app=self.dash_app)
-        self.sio = SocketIO(self.dash_app.server, async_mode='gevent', handler_class=WebSocketHandler)
+        if certfile and keyfile:
+            print(f"certfile: {certfile} - keyfile: {keyfile}")
+            self.sio = SocketIO(self.dash_app.server, async_mode='gevent', ssl_context=(certfile, keyfile), handler_class=WebSocketHandler)
+        
+        else:
+            self.sio = SocketIO(self.dash_app.server, async_mode='gevent', handler_class=WebSocketHandler)
+
         self.cvt._cvt.set_socketio(sio=self.sio)
 
         @self.sio.on('connect')
@@ -247,10 +253,10 @@ class PyAutomation(Singleton):
         if tag:
 
             # Persist Tag on Database
-            if self.is_db_connected():
-
-                self.logger_engine.set_tag(tag=tag)
-                self.db_manager.attach(tag_name=name)
+            if not reload:
+                if self.is_db_connected():
+                    self.logger_engine.set_tag(tag=tag)
+                    self.db_manager.attach(tag_name=name)
 
             if scan_time:
 
@@ -796,7 +802,7 @@ class PyAutomation(Singleton):
             user=str|type(None), 
             password=str|type(None), 
             host=str|type(None), 
-            port=int|type(None), 
+            port=int|str|type(None), 
             name=str|type(None), 
             output=None)
     def set_db_config(
@@ -806,7 +812,7 @@ class PyAutomation(Singleton):
             user:str|None="admin",
             password:str|None="admin",
             host:str|None="127.0.0.1",
-            port:int|None=5432,
+            port:int|str|None=5432,
             name:str|None="app_db"
         ):
         r"""
@@ -875,12 +881,12 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        if not test:
-            db_config = self.get_db_config()
-        else:
+        db_config = self.get_db_config()
+        if test:
             db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
             
         if db_config:
+        
             dbtype = db_config.pop("dbtype")
             self.set_db(dbtype=dbtype, **db_config)
             self.db_manager.init_database()
@@ -913,7 +919,7 @@ class PyAutomation(Singleton):
                 active = tag.pop("active")
 
                 if active:
-
+                    
                     self.create_tag(reload=True, **tag)
 
     @logging_error_handler
@@ -1054,18 +1060,19 @@ class PyAutomation(Singleton):
         if alarm:
 
             # Persist Tag on Database
-            if self.is_db_connected():
-                
-                alarm = self.alarm_manager.get_alarm_by_name(name=name)
-                
-                self.alarms_engine.create(
-                    id=alarm.identifier,
-                    name=name,
-                    tag=tag,
-                    trigger_type=alarm_type,
-                    trigger_value=trigger_value,
-                    description=description
-                )
+            if not reload:
+                if self.is_db_connected():
+                    
+                    alarm = self.alarm_manager.get_alarm_by_name(name=name)
+                    
+                    self.alarms_engine.create(
+                        id=alarm.identifier,
+                        name=name,
+                        tag=tag,
+                        trigger_type=alarm_type,
+                        trigger_value=trigger_value,
+                        description=description
+                    )
             
             return alarm, message
 
@@ -1389,18 +1396,16 @@ class PyAutomation(Singleton):
 
             self.db_worker = LoggerWorker(self.db_manager)
             self.connect_to_db(test=test)
-            self.db_worker.start()
+            if self.is_db_connected():
+                self.db_worker.start()
 
-        for machine in machines:
-            machine.set_socketio(sio=self.sio)
+        if machines:
+            for machine in machines:
+                machine.set_socketio(sio=self.sio)
             
         self.machine.start(machines=machines)
-        if not test:
-            db_config = self.get_db_config()
-        else:
-            db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
-            
-        if db_config:
+        if self.is_db_connected():
+
             self.load_db_tags_to_machine()
     
         self.is_starting = False

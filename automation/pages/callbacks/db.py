@@ -84,6 +84,7 @@ def init_callback(app:dash.Dash):
                 port=db_port_value,
                 name=db_name_value
             )
+            
             app.automation.connect_to_db()
             if app.automation.is_db_connected():
 

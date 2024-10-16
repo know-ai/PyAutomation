@@ -80,13 +80,13 @@ class MachinesLogger(BaseLogger):
     
     @logging_error_handler
     def read_all(self):
-
-        return Machines.read_all()
+        if self.get_db():
+            return Machines.read_all()
     
     @logging_error_handler
     def read_config(self):
-
-        return Machines.read_config()
+        if self.get_db():
+            return Machines.read_config()
     
     @logging_error_handler
     def bind_tag(self, tag:Tag, machine, default_tag_name:str=None):
