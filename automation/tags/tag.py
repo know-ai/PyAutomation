@@ -329,7 +329,6 @@ class TagObserver(Observer):
         This methods inserts the changing Tag into a 
         Producer-Consumer Queue Design Pattern
         """
-        # print(f"Subject {self._subject}: Tag {self._subject.name} - Value: {self._subject.value.value} - {self._subject.value}")
         result = dict()
         result["tag"] = self._subject.name
         result["value"] = self._subject.value.convert(self._subject.get_display_unit())
