@@ -90,7 +90,7 @@ class PyAutomation(Singleton):
         self.dash_app.set_automation_app(self)
         init_callbacks(app=self.dash_app)
         if certfile and keyfile:
-            print(f"certfile: {certfile} - keyfile: {keyfile}")
+            
             self.sio = SocketIO(self.dash_app.server, async_mode='gevent', ssl_context=(certfile, keyfile), handler_class=WebSocketHandler)
         
         else:
