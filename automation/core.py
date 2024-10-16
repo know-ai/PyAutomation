@@ -25,6 +25,8 @@ from .models import StringType, FloatType, IntegerType
 from .modules.users.users import users, User
 from .modules.users.roles import roles, Role
 from .utils.decorators import validate_types, logging_error_handler
+from flask_socketio import SocketIO
+from geventwebsocket.handler import WebSocketHandler
 # DASH APP CONFIGURATION PAGES IMPORTATION
 from .pages.main import ConfigView
 from .pages.callbacks import init_callbacks
@@ -76,6 +78,7 @@ class PyAutomation(Singleton):
         self.alarm_manager = AlarmManager()
         self.workers = list()
         self.das = DAS()
+        self._sio = None
         self.set_log(level=logging.WARNING)
     
     @logging_error_handler
@@ -86,6 +89,21 @@ class PyAutomation(Singleton):
         self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
         self.dash_app.set_automation_app(self)
         init_callbacks(app=self.dash_app)
+        self.sio = SocketIO(self.dash_app.server, async_mode='gevent', handler_class=WebSocketHandler)
+
+        @self.sio.on('connect')
+        def handle_connect():
+
+            payload= {
+                "tags": self.get_tags() or list(),
+                "alarms": self.serialize_alarms() or list(),
+                "machines": self.serialize_machines() or list(),
+                "last_alarms": self.get_lasts_alarms(lasts=10) or list(),
+                "last_active_alarms": self.get_lasts_active_alarms(lasts=3) or list(),
+                "last_events": self.get_lasts_events(lasts=10) or list(),
+                "last_logs": self.get_lasts_logs(lasts=10) or list()
+            }
+            self.sio.emit("on_connection", data=payload)
 
     # MACHINES METHODS
     @logging_error_handler
@@ -1131,8 +1149,8 @@ class PyAutomation(Singleton):
         return self.alarm_manager.get_alarm(id=id)
 
     @logging_error_handler
-    @validate_types(output=list)
-    def get_alarms(self)->list:
+    @validate_types(output=dict)
+    def get_alarms(self)->dict:
         r"""
         Gets all alarms
 
@@ -1141,6 +1159,23 @@ class PyAutomation(Singleton):
         * **alarms**: (dict) Alarm objects
         """
         return self.alarm_manager.get_alarms()
+    
+    @logging_error_handler
+    @validate_types(output=list)
+    def serialize_alarms(self)->list:
+        r"""
+        Gets all alarms
+
+        **Returns**
+
+        * **alarms**: (dict) Alarm objects
+        """
+        result = list()
+        for _, alarm in self.alarm_manager.get_alarms().items():
+
+            result.append(alarm.serialize())
+
+        return result
 
     @logging_error_handler
     @validate_types(lasts=int|None, output=list)
@@ -1148,7 +1183,7 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        return self.alarm_manager.get_lasts_active_alarms(lasts=lasts)
+        return self.alarm_manager.get_lasts_active_alarms(lasts=lasts) or list()
 
     @logging_error_handler
     @validate_types(name=str, output=Alarm)
@@ -1288,7 +1323,7 @@ class PyAutomation(Singleton):
         """
         if self.is_db_connected():
 
-            return self.logs_engine.get_lasts(lasts=lasts)
+            return self.logs_engine.get_lasts(lasts=lasts) or list()
 
     # INIT APP
     @logging_error_handler
@@ -1303,7 +1338,7 @@ class PyAutomation(Singleton):
         if not test:
         
             if debug:
-
+                
                 self.dash_app.run(debug=debug, use_reloader=False)
 
     @logging_error_handler

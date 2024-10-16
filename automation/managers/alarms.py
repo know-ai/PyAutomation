@@ -270,7 +270,7 @@ class AlarmManager(Singleton):
         Documentation here
         """
         original_list = [alarm.serialize() for _, alarm in self.get_alarms().items()]
-        filtered_list = [elem for elem in original_list if elem['triggered']]
+        filtered_list = [elem for elem in original_list if elem['state']['alarm_status'].lower()=="active"]
         sorted_list = sorted(filtered_list, key=lambda x: x['timestamp'] if x['timestamp'] else '')
         if lasts:
 
