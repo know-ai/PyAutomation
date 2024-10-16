@@ -104,3 +104,15 @@ class EngUnit(object):
         new_value = self.value ** other.change_unit(self.unit)
         return self.__class__(new_value, self.unit)
     
+    def __lt__(self, other):
+        return self.value < other.change_unit(self.unit)
+
+    def __le__(self, other):
+        return self.value <= other.change_unit(self.unit)
+
+    def __gt__(self, other):
+        return self.value > other.change_unit(self.unit)
+
+    def __ge__(self, other):
+        return self.value >= other.change_unit(self.unit)
+    

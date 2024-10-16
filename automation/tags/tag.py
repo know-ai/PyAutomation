@@ -41,6 +41,8 @@ class Tag:
             outlier_detection:bool=False,
             out_of_range_detection:bool=False,
             frozen_data_detection:bool=False,
+            manufacturer:str="",
+            segment:str="",
             id:str=None
     ):
         self.id = secrets.token_hex(4)
@@ -93,6 +95,8 @@ class Tag:
         self.outlier_detection = outlier_detection
         self.out_of_range_detection = out_of_range_detection
         self.frozen_data_detection = frozen_data_detection
+        self.manufacturer = manufacturer
+        self.segment = segment
         self._observers = set()
 
     def set_name(self, name:str):

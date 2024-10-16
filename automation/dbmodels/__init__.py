@@ -1,5 +1,7 @@
 from .core import BaseModel, proxy
 from .tags import (
+    Manufacturer,
+    Segment,
     Tags,
     TagValue,
     Variables,

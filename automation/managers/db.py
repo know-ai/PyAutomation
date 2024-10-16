@@ -16,6 +16,8 @@ from ..tags import CVTEngine, TagObserver
 from ..modules.users.users import User
 from ..utils.decorators import logging_error_handler
 from ..dbmodels import (
+    Manufacturer,
+    Segment,
     Tags, 
     TagValue, 
     AlarmTypes,
@@ -56,6 +58,8 @@ class DBManager(Singleton):
         self.logs_logger = LogsLoggerEngine()
         self.machines_logger = MachinesLoggerEngine()
         self._tables = [
+            Manufacturer,
+            Segment,
             Variables, 
             Units, 
             DataTypes, 

@@ -10,10 +10,9 @@ def init_callback(app:dash.Dash):
         dash.Input("datatype_input", "value"),
         dash.Input("unit_input", "value"),  
         dash.Input("display_unit_input", "value"), 
-        dash.Input("display_name_input", "value"), 
-        dash.Input("description_input", "value"),
-        dash.Input("opcua_address_input", "value"),
-        dash.Input("node_namespace_input", "value")
+        dash.Input("manufacturer_input", "value"), 
+        dash.Input("segment_input", "value"),
+        dash.Input("segment_radio_button", "value")
         )
     def create_tag(
         name:str, 
@@ -21,10 +20,9 @@ def init_callback(app:dash.Dash):
         datatype:str, 
         unit:str, 
         display_unit:str,
-        display_name:str, 
-        description:str, 
-        opcua_address:str, 
-        node_namespace:str
+        manufacturer:str,
+        segment:str,
+        segment_bool:bool
         )->str:
         r"""
         Documentation here
@@ -41,13 +39,25 @@ def init_callback(app:dash.Dash):
             dash.set_props("display_unit_input", {'value': unit})
             dash.set_props("display_unit_input", {'disabled': False})
 
-        if name and datatype and unit and variable and display_unit:
+        if not segment_bool:
 
-            dash.set_props("create_tag_button", {'disabled': False})
+            if name and datatype and unit and variable and display_unit:
+
+                dash.set_props("create_tag_button", {'disabled': False})
+
+            else:
+                
+                dash.set_props("create_tag_button", {'disabled': True})
 
         else:
-            
-            dash.set_props("create_tag_button", {'disabled': True})
+
+            if name and datatype and unit and variable and display_unit and manufacturer and segment:
+
+                dash.set_props("create_tag_button", {'disabled': False})
+
+            else:
+                
+                dash.set_props("create_tag_button", {'disabled': True})
 
     @app.callback(
         dash.Output("description_input", "value"),
@@ -59,6 +69,19 @@ def init_callback(app:dash.Dash):
         """
         dash.set_props("description_input", {'disabled': not enable})
         return ""
+    
+    @app.callback(
+        dash.Output("segment_input", "value"),
+        dash.Output("manufacturer_input", "value", allow_duplicate=True),
+        dash.Input("segment_radio_button", "value")
+    )
+    def enable_segment(enable:bool):
+        r"""
+        Documentation here
+        """
+        dash.set_props("segment_input", {'disabled': not enable})
+        dash.set_props("manufacturer_input", {'disabled': not enable})
+        return "", ""
     
     @app.callback(
         dash.Output("node_namespace_input", "value"),
@@ -201,6 +224,8 @@ def init_callback(app:dash.Dash):
         dash.State("variable_input", "value"),
         dash.State("display_name_input", "value"), 
         dash.State("description_input", "value"),
+        dash.State("manufacturer_input", "value"),
+        dash.State("segment_input", "value"),
         dash.State("opcua_address_input", "value"),
         dash.State("node_namespace_input", "value"),
         dash.State("scan_time_input", "value"),
@@ -216,6 +241,8 @@ def init_callback(app:dash.Dash):
         variable,
         display_name,
         description,
+        manufacturer,
+        segment,
         opcua_address,
         node_namespace,
         scan_time:int|None=None,
@@ -245,7 +272,9 @@ def init_callback(app:dash.Dash):
                 opcua_address=opcua_address,
                 node_namespace=node_namespace,
                 scan_time=scan_time,
-                dead_band=dead_band
+                dead_band=dead_band,
+                manufacturer=manufacturer,
+                segment=segment
             )
             
             if not tag:

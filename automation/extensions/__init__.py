@@ -8,7 +8,7 @@ def init_app(app):
     """
     Application extensions initialization.
     """
-    extensions = ( _api, _cors, )
+    extensions = ( _api, _cors)
 
     for extension in extensions:
         

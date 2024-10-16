@@ -73,8 +73,15 @@ class TagsComponents:
                                                     [
                                                         dbc.InputGroupText("Display Unit"), dbc.Select(options=[], id="display_unit_input", disabled=True )
                                                     ],
-                                                    size="md"
+                                                    size="md",
+                                                    className="mb-3"
                                                 ),
+                                                dbc.InputGroup(
+                                                    [
+                                                        dbc.Input(placeholder="Manufacturer (Optional)", id="manufacturer_input", disabled=True)
+                                                    ], 
+                                                    size="md"
+                                                )
                                             
                                             ],
                                             width=12,
@@ -95,6 +102,14 @@ class TagsComponents:
                                                     [
                                                         dbc.InputGroupText(dbc.RadioButton(id="display_name_radio_button"), className="radiobutton-box"), 
                                                         dbc.Input(placeholder="Display Name (Optional)", id="display_name_input", disabled=True)
+                                                    ], 
+                                                    size="md",
+                                                    className="mb-3"
+                                                ),
+                                                dbc.InputGroup(
+                                                    [
+                                                        dbc.InputGroupText(dbc.RadioButton(id="segment_radio_button"), className="radiobutton-box"), 
+                                                        dbc.Input(placeholder="Segment (Optional)", id="segment_input", disabled=True)
                                                     ], 
                                                     size="md"
                                                 )

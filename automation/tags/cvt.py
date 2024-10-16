@@ -48,6 +48,8 @@ class CVT:
         outlier_detection:bool=False,
         out_of_range_detection:bool=False,
         frozen_data_detection:bool=False,
+        manufacturer:str="",
+        segment:str="",
         id:str=None,
         user:User=None
         )->tuple[Tag, str]:
@@ -105,6 +107,8 @@ class CVT:
             outlier_detection=outlier_detection,
             out_of_range_detection=out_of_range_detection,
             frozen_data_detection=frozen_data_detection,
+            manufacturer=manufacturer,
+            segment=segment,
             id=id
         )
         self._tags[tag.id] = tag
@@ -564,6 +568,8 @@ class CVTEngine(Singleton):
         outlier_detection:bool=False,
         out_of_range_detection:bool=False,
         frozen_data_detection:bool=False,
+        manufacturer:str="",
+        segment:str="",
         id:str="",
         user:User|None=None
         )->tuple[Tag, str]:
@@ -596,6 +602,8 @@ class CVTEngine(Singleton):
         _query["parameters"]["outlier_detection"] = outlier_detection
         _query["parameters"]["out_of_range_detection"] = out_of_range_detection
         _query["parameters"]["frozen_data_detection"] = frozen_data_detection
+        _query["parameters"]["manufacturer"] = manufacturer
+        _query["parameters"]["segment"] = segment
         _query["parameters"]["id"] = id
         _query["parameters"]["user"] = user
         return self.__query(_query)
