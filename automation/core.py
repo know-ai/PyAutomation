@@ -78,7 +78,7 @@ class PyAutomation(Singleton):
         self.alarm_manager = AlarmManager()
         self.workers = list()
         self.das = DAS()
-        self._sio = None
+        self.sio = None
         self.set_log(level=logging.WARNING)
     
     @logging_error_handler

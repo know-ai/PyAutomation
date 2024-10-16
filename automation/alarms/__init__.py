@@ -123,6 +123,7 @@ class Alarm(StateMachine):
         for state in self.states:
             transitions.extend(state.transitions)
         self.transitions = transitions
+        self.sio:SocketIO|None = None
         super(Alarm, self).__init__()
 
     @logging_error_handler
