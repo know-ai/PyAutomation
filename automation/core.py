@@ -180,7 +180,7 @@ class PyAutomation(Singleton):
             manufacturer=str,
             segment=str,
             id=str|type(None),
-            user=User,
+            user=User|type(None),
             reload=bool,
             output=(Tag|None, str)
     )
@@ -1250,7 +1250,7 @@ class PyAutomation(Singleton):
         return self.alarm_manager.get_alarms_by_tag(tag=tag)
 
     @logging_error_handler
-    @validate_types(id=str, user=User, output=None)
+    @validate_types(id=str, user=User|type(None), output=None)
     def delete_alarm(self, id:str, user:User=None):
         r"""
         Removes alarm

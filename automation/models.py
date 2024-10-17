@@ -7,6 +7,8 @@ modelling the subjects involved in the core of the engine.
 from .modules.users.users import User
 from .tags.tag import Tag
 from .utils.decorators import set_event, logging_error_handler
+from datetime import datetime, timezone
+
 
 FLOAT = "float"
 INTEGER = "int"
@@ -20,10 +22,13 @@ class PropertyType:
     """
 
     def __init__(self, _type, default=None, unit=None):
-        
+        from .tags.cvt import CVTEngine
+        from .opcua.subscription import DAS
         self._type = _type
         self.unit = unit
         self.__value = default
+        self.cvt = CVTEngine()
+        self.das = DAS()
 
     @property
     def value(self):
@@ -34,6 +39,18 @@ class PropertyType:
 
     @value.setter
     def value(self, value):
+        # print(f"type: {type(self)}")
+        # if hasattr(self, "tag"):
+        #     if self.tag:
+        #         print(f"PRoPERTY TYPE: {self.tag.get_name()}")
+        #         print(f"Value: {value}")
+        #         timestamp = datetime.now(timezone.utc)
+        #         val = self.tag.value.convert_value(value=value, from_unit=self.tag.get_unit(), to_unit=self.tag.get_display_unit())
+        #         print(f"VAL: {val}")
+        #         self.tag.value.set_value(value=val, unit=self.tag.get_display_unit()) 
+        #         self.cvt.set_value(id=self.tag.id, value=val, timestamp=timestamp)
+        #         self.das.buffer[self.tag.get_name()]["timestamp"](timestamp)
+        #         self.das.buffer[self.tag.get_name()]["values"](val)
         
         self.__value = value
     

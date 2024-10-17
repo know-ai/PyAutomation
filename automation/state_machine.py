@@ -155,7 +155,7 @@ class Machine(Singleton):
                 
                 for machine in machines:
 
-                    self.append_machine(machine=machine)
+                    self.append_machine(machine=machine, interval=FloatType(machine.get_interval()))
 
         state_manager = self.get_state_machine_manager()
         
@@ -240,14 +240,15 @@ class StateMachineCore(StateMachine):
             self,
             name:str,
             description:str="",
-            classification:str=""
+            classification:str="",
+            interval:float=1.0
         ):
         self.criticity = IntegerType(default=2)
         self.priority = IntegerType(default=1)
         self.description = StringType(default=description)
         self.classification = StringType(default=classification)
         self.name = StringType(default=name)
-        self.machine_interval = FloatType(default=1.0)
+        self.machine_interval = FloatType(default=interval)
         self.buffer_size = IntegerType(default=10)
         self.buffer_roll_type = StringType(default='backward')
         self.sio:SocketIO|None = None
@@ -592,7 +593,7 @@ class StateMachineCore(StateMachine):
         attach_observer(machine, tag)
 
     @set_event(message=f"Switched", classification="State Machine", priority=2, criticity=3)
-    @validate_types(to=str, user=User, output=tuple)
+    @validate_types(to=str, user=User|type(None), output=tuple)
     def transition(self, to:str, user:User=None):
         r"""
         Documentation here
@@ -630,7 +631,7 @@ class StateMachineCore(StateMachine):
         """
         return self.machine_interval.value
 
-    @validate_types(interval=IntegerType|FloatType, user=User, output=None)
+    @validate_types(interval=IntegerType|FloatType, user=User|type(None), output=None)
     def set_interval(self, interval:IntegerType|FloatType, user:User=None):
         r"""
         Sets overall machine interval
