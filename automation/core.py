@@ -115,7 +115,7 @@ class PyAutomation(Singleton):
                 "last_events": self.get_lasts_events(lasts=10) or list(),
                 "last_logs": self.get_lasts_logs(lasts=10) or list()
             }
-            self.sio.emit("on_connection", data=payload)
+            self.sio.emit("on.connect", data=payload)
 
     # MACHINES METHODS
     @logging_error_handler
@@ -953,9 +953,10 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             alarms = self.db_manager.get_alarms()
-            for alarm in alarms:
+            if alarms:
+                for alarm in alarms:
 
-                    self.create_alarm(reload=True, **alarm)
+                        self.create_alarm(reload=True, **alarm)
 
     @logging_error_handler
     @validate_types(output=None)
