@@ -4,7 +4,7 @@
 This module implements a database logger for the CVT instance, 
 will create a time-serie for each tag in a short memory data base.
 """
-import logging, sys, os, pytz
+import pytz
 from datetime import datetime
 from ..tags.tag import Tag
 from ..dbmodels import Tags, TagValue, Units
@@ -12,7 +12,7 @@ from ..modules.users.users import User
 from ..tags.cvt import CVTEngine
 from .core import BaseLogger, BaseEngine
 from ..variables import *
-from ..utils.decorators import logging_error_handler, db_rollback
+from ..utils.decorators import db_rollback
 
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
@@ -36,7 +36,7 @@ class DataLogger(BaseLogger):
         super(DataLogger, self).__init__()
         self.tag_engine = CVTEngine()
 
-    @logging_error_handler
+    @db_rollback
     def set_tag(
         self, 
         id:str,
@@ -57,6 +57,7 @@ class DataLogger(BaseLogger):
         Documentation here
         """
         if self.get_db():
+            
             Tags.create(
                 id=id,
                 name=name, 

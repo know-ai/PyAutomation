@@ -258,10 +258,11 @@ class PyAutomation(Singleton):
         if tag:
 
             # Persist Tag on Database
-            if not reload:
-                if self.is_db_connected():
-                    self.logger_engine.set_tag(tag=tag)
-                    self.db_manager.attach(tag_name=name)
+            # if not reload:
+                
+            if self.is_db_connected():
+                self.logger_engine.set_tag(tag=tag)
+                self.db_manager.attach(tag_name=name)
 
             if scan_time:
 
@@ -893,8 +894,8 @@ class PyAutomation(Singleton):
         return False
 
     @logging_error_handler
-    @validate_types(test=bool|type(None), output=None)
-    def connect_to_db(self, test:bool=False):
+    @validate_types(test=bool|type(None), reload=bool|type(None), output=None)
+    def connect_to_db(self, test:bool=False, reload:bool=False):
         r"""
         Documentation here
         """
@@ -912,6 +913,10 @@ class PyAutomation(Singleton):
             self.load_db_to_alarm_manager()
             self.load_db_to_roles()
             self.load_db_to_users()
+
+        if reload:
+
+            self.load_db_tags_to_machine()
 
     @logging_error_handler
     @validate_types(output=None)

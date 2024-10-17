@@ -6,7 +6,7 @@ from ..dbmodels import Alarms, AlarmSummary, AlarmTypes, AlarmStates
 from .core import BaseEngine, BaseLogger
 from ..alarms.trigger import TriggerType
 from ..alarms.states import AlarmState
-from ..utils.decorators import logging_error_handler, db_rollback
+from ..utils.decorators import db_rollback
 
 
 class AlarmsLogger(BaseLogger):
@@ -15,7 +15,6 @@ class AlarmsLogger(BaseLogger):
 
         super(AlarmsLogger, self).__init__()
 
-    @logging_error_handler
     @db_rollback
     def create_tables(self, tables):
         r"""
@@ -28,7 +27,6 @@ class AlarmsLogger(BaseLogger):
         self._db.create_tables(tables, safe=True)
         self.__init_default_alarms_schema()
 
-    @logging_error_handler
     @db_rollback
     def __init_default_alarms_schema(self):
         r"""
@@ -47,7 +45,6 @@ class AlarmsLogger(BaseLogger):
             status = alarm_state.alarm_status
             AlarmStates.create(name=name, mnemonic=mnemonic, condition=condition, status=status)
 
-    @logging_error_handler
     @db_rollback
     def create(
             self,
@@ -73,7 +70,6 @@ class AlarmsLogger(BaseLogger):
             description=description
         )
 
-    @logging_error_handler
     @db_rollback
     def get_alarms(self):
         r"""
@@ -89,7 +85,6 @@ class AlarmsLogger(BaseLogger):
 
             return alarms
     
-    @logging_error_handler
     @db_rollback
     def get_alarm_by_name(self, name:str)->Alarms|None:
         r"""
@@ -101,7 +96,6 @@ class AlarmsLogger(BaseLogger):
         
         return Alarms.read_by_name(name=name)
 
-    @logging_error_handler
     @db_rollback        
     def get_lasts(self, lasts:int=10):
         r"""
@@ -113,7 +107,6 @@ class AlarmsLogger(BaseLogger):
         
         return AlarmSummary.read_lasts(lasts=lasts)
     
-    @logging_error_handler
     @db_rollback
     def filter_alarm_summary_by(
             self,
@@ -138,7 +131,6 @@ class AlarmsLogger(BaseLogger):
             less_than_timestamp=less_than_timestamp
         )
     
-    @logging_error_handler
     @db_rollback
     def put(
         self,
@@ -178,7 +170,6 @@ class AlarmsLogger(BaseLogger):
 
             return query
 
-    @logging_error_handler
     @db_rollback
     def delete(self, id:str):
         r"""
@@ -195,7 +186,6 @@ class AlarmsLogger(BaseLogger):
             state=alarm_state
         )
 
-    @logging_error_handler
     @db_rollback
     def create_record_on_alarm_summary(self, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
         r"""
@@ -205,7 +195,6 @@ class AlarmsLogger(BaseLogger):
             
             AlarmSummary.create(name=name, state=state, timestamp=timestamp, ack_timestamp=ack_timestamp)
 
-    @logging_error_handler
     @db_rollback
     def get_alarm_summary(self):
         r"""
@@ -229,7 +218,6 @@ class AlarmsLoggerEngine(BaseEngine):
         super(AlarmsLoggerEngine, self).__init__()
         self.logger = AlarmsLogger()
 
-    @logging_error_handler
     def create(
         self,
         id:str,
@@ -252,7 +240,6 @@ class AlarmsLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    @logging_error_handler
     def get_lasts(
         self,
         lasts:int=1
@@ -265,7 +252,6 @@ class AlarmsLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    @logging_error_handler
     def get_alarms(self):
 
         _query = dict()
@@ -274,7 +260,6 @@ class AlarmsLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    @logging_error_handler
     def get_alarm_by_name(self, name:str):
 
         _query = dict()
@@ -284,7 +269,6 @@ class AlarmsLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    @logging_error_handler
     def filter_alarm_summary_by(
         self,
         usernames:list[str]=None,
@@ -305,7 +289,6 @@ class AlarmsLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    @logging_error_handler
     def create_record_on_alarm_summary(self, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
 
         _query = dict()
@@ -318,7 +301,6 @@ class AlarmsLoggerEngine(BaseEngine):
         
         return self.query(_query)
 
-    @logging_error_handler
     def put(
         self,
         id:str,
@@ -342,7 +324,6 @@ class AlarmsLoggerEngine(BaseEngine):
 
         return self.query(_query)
 
-    @logging_error_handler
     def delete(self, id:str):
         r"""
         Documentation here
@@ -353,7 +334,6 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["id"] = id
         return self.query(_query)
 
-    @logging_error_handler
     def get_alarm_summary(self):
         r"""
         Documentation here
@@ -364,7 +344,6 @@ class AlarmsLoggerEngine(BaseEngine):
         
         return self.query(_query)
 
-    @logging_error_handler
     def create_tables(self, tables):
         r"""
         Create default PyHades database tables

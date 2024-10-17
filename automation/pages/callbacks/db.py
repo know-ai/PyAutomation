@@ -102,7 +102,7 @@ def init_callback(app:dash.Dash):
                 name=db_name_value
             )
             
-            app.automation.connect_to_db()
+            app.automation.connect_to_db(reload=True)
             if app.automation.is_db_connected():
 
                 message = f"Connection to db was successfully?"

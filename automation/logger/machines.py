@@ -3,7 +3,7 @@
 """
 from ..dbmodels import Machines, TagsMachines, Tags
 from .core import BaseEngine, BaseLogger
-from ..utils.decorators import logging_error_handler, db_rollback
+from ..utils.decorators import db_rollback
 from ..models import IntegerType, StringType
 from ..tags.tag import Tag
 
@@ -14,7 +14,6 @@ class MachinesLogger(BaseLogger):
 
         super(MachinesLogger, self).__init__()
 
-    @logging_error_handler
     @db_rollback
     def create(
             self,
@@ -42,7 +41,6 @@ class MachinesLogger(BaseLogger):
                 priority=priority
             )
 
-    @logging_error_handler
     @db_rollback
     def put(
         self,
@@ -81,25 +79,21 @@ class MachinesLogger(BaseLogger):
 
             return query
     
-    @logging_error_handler
     @db_rollback
     def read_all(self):
         if self.get_db():
             return Machines.read_all()
     
-    @logging_error_handler
     @db_rollback
     def read_config(self):
         if self.get_db():
             return Machines.read_config()
     
-    @logging_error_handler
     @db_rollback
     def bind_tag(self, tag:Tag, machine, default_tag_name:str=None):
         if self.get_db():
             TagsMachines.create(tag_name=tag.name, machine_name=machine.name.value, default_tag_name=default_tag_name)
 
-    @logging_error_handler
     @db_rollback
     def unbind_tag(self, tag:Tag, machine):
         if self.get_db():
@@ -119,7 +113,6 @@ class MachinesLoggerEngine(BaseEngine):
         super(MachinesLoggerEngine, self).__init__()
         self.logger = MachinesLogger()
 
-    @logging_error_handler
     def create(
         self,
         name:str,
@@ -146,7 +139,6 @@ class MachinesLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    @logging_error_handler
     def put(
         self,
         name:StringType,
@@ -173,7 +165,6 @@ class MachinesLoggerEngine(BaseEngine):
 
         return self.query(_query)
 
-    @logging_error_handler
     def read_all(self):
 
         _query = dict()
@@ -181,7 +172,6 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         return self.query(_query)
     
-    @logging_error_handler
     def read_config(self):
 
         _query = dict()
@@ -189,7 +179,6 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         return self.query(_query)
     
-    @logging_error_handler
     def bind_tag(self, tag:Tag, machine, default_tag_name:str=None):
 
         _query = dict()
@@ -200,7 +189,6 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"]["default_tag_name"] = default_tag_name
         return self.query(_query)
     
-    @logging_error_handler
     def unbind_tag(self, tag:Tag, machine):
 
         _query = dict()

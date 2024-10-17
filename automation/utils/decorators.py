@@ -184,10 +184,9 @@ def db_rollback(func, args, kwargs):
 
     except Exception as e:
         _, _, e_traceback = sys.exc_info()
-        e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
         e_message = str(e)
         e_line_number = e_traceback.tb_lineno
-        logging.warning(f"Rollback in {func.__name__}: {e_line_number} - {e_filename} - {e_message}")
+        logging.warning(f"Rollback in [line {e_line_number}] {self.__class__.__name__}.{func.__name__} - {e_message}")
         conn = self._db.connection()
         conn.rollback()
 
