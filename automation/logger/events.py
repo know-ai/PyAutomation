@@ -67,7 +67,7 @@ class EventsLogger(BaseLogger):
                 greater_than_timestamp=greater_than_timestamp,
                 less_than_timestamp=less_than_timestamp
             )
-        
+
     def get_summary(self)->tuple[list, str]:
         r"""
         Documentation here

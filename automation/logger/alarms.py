@@ -6,7 +6,7 @@ from ..dbmodels import Alarms, AlarmSummary, AlarmTypes, AlarmStates
 from .core import BaseEngine, BaseLogger
 from ..alarms.trigger import TriggerType
 from ..alarms.states import AlarmState
-from ..utils.decorators import logging_error_handler, validate_types
+from ..utils.decorators import logging_error_handler, db_rollback
 
 
 class AlarmsLogger(BaseLogger):
@@ -16,6 +16,7 @@ class AlarmsLogger(BaseLogger):
         super(AlarmsLogger, self).__init__()
 
     @logging_error_handler
+    @db_rollback
     def create_tables(self, tables):
         r"""
         Documentation here
@@ -28,6 +29,7 @@ class AlarmsLogger(BaseLogger):
         self.__init_default_alarms_schema()
 
     @logging_error_handler
+    @db_rollback
     def __init_default_alarms_schema(self):
         r"""
         Documentation here
@@ -46,6 +48,7 @@ class AlarmsLogger(BaseLogger):
             AlarmStates.create(name=name, mnemonic=mnemonic, condition=condition, status=status)
 
     @logging_error_handler
+    @db_rollback
     def create(
             self,
             id:str,
@@ -57,53 +60,61 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if self.get_db():
+        if not self._db:
+            
+            return
 
-            query = Alarms.create(
-                identifier=id,
-                name=name,
-                tag=tag,
-                trigger_type=trigger_type,
-                trigger_value=trigger_value,
-                description=description
-            )
+        query = Alarms.create(
+            identifier=id,
+            name=name,
+            tag=tag,
+            trigger_type=trigger_type,
+            trigger_value=trigger_value,
+            description=description
+        )
 
     @logging_error_handler
+    @db_rollback
     def get_alarms(self):
         r"""
         Documentation here
         """
-        if self.get_db():
-        
-            alarms = Alarms.read_all()
-
-            if alarms:
-
-                return alarms
+        if not self._db:
             
-        return list()
+            return list()
+        
+        alarms = Alarms.read_all()
+
+        if alarms:
+
+            return alarms
     
     @logging_error_handler
+    @db_rollback
     def get_alarm_by_name(self, name:str)->Alarms|None:
         r"""
         Documentation here
         """
-        if self.get_db():
+        if not self._db:
+            
+            return None
         
-            return Alarms.read_by_name(name=name)
+        return Alarms.read_by_name(name=name)
 
-    @logging_error_handler        
+    @logging_error_handler
+    @db_rollback        
     def get_lasts(self, lasts:int=10):
         r"""
         Documentation here
         """
-        if self.get_db():
+        if not self._db:
+            
+            return list()
         
-            return AlarmSummary.read_lasts(lasts=lasts)
-        
-        return list()
+        return AlarmSummary.read_lasts(lasts=lasts)
     
     @logging_error_handler
+    @db_rollback
     def filter_alarm_summary_by(
             self,
             states:list[str]=None,
@@ -115,19 +126,20 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if self.get_db():
+        if not self._db:
+            
+            return list()
         
-            return AlarmSummary.filter_by(
-                states=states,
-                names=names,
-                tags=tags,
-                greater_than_timestamp=greater_than_timestamp,
-                less_than_timestamp=less_than_timestamp
-            )
-        
-        return list()
+        return AlarmSummary.filter_by(
+            states=states,
+            names=names,
+            tags=tags,
+            greater_than_timestamp=greater_than_timestamp,
+            less_than_timestamp=less_than_timestamp
+        )
     
     @logging_error_handler
+    @db_rollback
     def put(
         self,
         id:str,
@@ -138,6 +150,10 @@ class AlarmsLogger(BaseLogger):
         trigger_value:str=None,
         state:str=None
         ):
+        if not self._db:
+            
+            return None
+        
         fields = dict()
         alarm = Alarms.read_by_identifier(identifier=id)
         if alarm:
@@ -163,10 +179,15 @@ class AlarmsLogger(BaseLogger):
             return query
 
     @logging_error_handler
+    @db_rollback
     def delete(self, id:str):
         r"""
         Documentation here
         """
+        if not self._db:
+            
+            return None
+        
         alarm_state = AlarmStates.get_or_none(name="Out Of Service")
         alarm = Alarms.read_by_identifier(identifier=id)
         Alarms.put(
@@ -175,6 +196,7 @@ class AlarmsLogger(BaseLogger):
         )
 
     @logging_error_handler
+    @db_rollback
     def create_record_on_alarm_summary(self, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
         r"""
         Documentation here
@@ -184,15 +206,16 @@ class AlarmsLogger(BaseLogger):
             AlarmSummary.create(name=name, state=state, timestamp=timestamp, ack_timestamp=ack_timestamp)
 
     @logging_error_handler
+    @db_rollback
     def get_alarm_summary(self):
         r"""
         Documentation here
         """
-        if self.get_db():
+        if not self._db:
+            
+            return list()
         
-            return AlarmSummary.read_all()
-        
-        return list()
+        return AlarmSummary.read_all()
     
     
 class AlarmsLoggerEngine(BaseEngine):

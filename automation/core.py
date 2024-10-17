@@ -6,7 +6,6 @@ from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
 from .dbmodels.users import Roles, Users
 from .dbmodels.machines import Machines
 # PYAUTOMATION MODULES IMPORTATION
-from .utils import log_detailed
 from .singleton import Singleton
 from .workers import LoggerWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
@@ -79,7 +78,13 @@ class PyAutomation(Singleton):
         self.workers = list()
         self.das = DAS()
         self.sio = None
-        self.set_log(level=logging.WARNING)
+        folder_path = os.path.join(".", "logs")
+
+        if not os.path.exists(folder_path):
+            
+            os.makedirs(folder_path)
+
+        self.set_log(file=os.path.join(folder_path, "app.log") ,level=logging.WARNING)
     
     @logging_error_handler
     def define_dash_app(self,  certfile:str=None, keyfile:str=None, **kwargs)->None:
@@ -836,7 +841,13 @@ class PyAutomation(Singleton):
                 'name': name,
             }
 
-        with open('./db_config.json', 'w') as json_file:
+        folder_path = './db'
+
+        if not os.path.exists(folder_path):
+            
+            os.makedirs(folder_path)
+
+        with open('./db/db_config.json', 'w') as json_file:
 
             json.dump(db_config, json_file)
 
@@ -848,7 +859,13 @@ class PyAutomation(Singleton):
         """
         try:
 
-            with open('./db_config.json', 'r') as json_file:
+            folder_path = './db'
+
+            if not os.path.exists(folder_path):
+                
+                os.makedirs(folder_path)
+
+            with open('./db/db_config.json', 'r') as json_file:
 
                 db_config = json.load(json_file)
 
@@ -1396,8 +1413,7 @@ class PyAutomation(Singleton):
 
             self.db_worker = LoggerWorker(self.db_manager)
             self.connect_to_db(test=test)
-            if self.is_db_connected():
-                self.db_worker.start()
+            self.db_worker.start()
 
         if machines:
             for machine in machines:

@@ -1,4 +1,4 @@
-import functools, logging
+import functools, logging, os, sys
 from ..modules.users.users import User
 from ..logger.events import EventsLoggerEngine
 
@@ -173,3 +173,22 @@ def logging_error_handler(func, args, kwargs):
             'trace': trace
         })
         logging.error(msg=msg)
+
+
+@decorator
+def db_rollback(func, args, kwargs):
+    try:
+        self = args[0]
+        result = func(*args, **kwargs)
+        return result
+
+    except Exception as e:
+        _, _, e_traceback = sys.exc_info()
+        e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
+        e_message = str(e)
+        e_line_number = e_traceback.tb_lineno
+        logging.warning(f"Rollback in {func.__name__}: {e_line_number} - {e_filename} - {e_message}")
+        conn = self._db.connection()
+        conn.rollback()
+
+    return result

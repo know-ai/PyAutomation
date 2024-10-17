@@ -15,6 +15,8 @@ db_config.json
 build/
 develop-eggs/
 dist/
+db/
+logs/
 downloads/
 eggs/
 .eggs/

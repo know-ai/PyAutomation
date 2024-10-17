@@ -60,17 +60,19 @@ class Machine(Singleton):
         
         machine.set_interval(interval)
         self.machine_manager.append_machine((machine, interval, mode))
-        self.machines_engine.create(
-            name=machine.name.value,
-            interval=interval.value,
-            description=machine.description.value,
-            classification=machine.classification.value,
-            buffer_size=machine.buffer_size.value,
-            buffer_roll_type=machine.buffer_roll_type.value,
-            criticity=machine.criticity.value,
-            priority=machine.priority.value
-        )
-        self.create_tag_internal_process_type(machine=machine)
+        
+        if self.machines_engine.get_db():
+            self.machines_engine.create(
+                name=machine.name.value,
+                interval=interval.value,
+                description=machine.description.value,
+                classification=machine.classification.value,
+                buffer_size=machine.buffer_size.value,
+                buffer_roll_type=machine.buffer_roll_type.value,
+                criticity=machine.criticity.value,
+                priority=machine.priority.value
+            )
+            self.create_tag_internal_process_type(machine=machine)
 
     def drop(self, machine:StateMachine):
         r"""
@@ -127,7 +129,9 @@ class Machine(Singleton):
         Starts statemachine worker
         """
         # StateMachine Worker
-        config = self.load_db_machines_config()
+        config = None
+        if self.machines_engine.get_db():
+            config = self.load_db_machines_config()
 
         if config:
 

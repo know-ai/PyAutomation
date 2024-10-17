@@ -5,6 +5,7 @@ from datetime import datetime
 from ..dbmodels.logs import Logs
 from ..modules.users.users import User
 from .core import BaseEngine, BaseLogger
+from ..utils.decorators import db_rollback
 
 
 class LogsLogger(BaseLogger):
@@ -13,6 +14,7 @@ class LogsLogger(BaseLogger):
 
         super(LogsLogger, self).__init__()
 
+    @db_rollback
     def create(
         self, 
         message:str, 
@@ -42,6 +44,7 @@ class LogsLogger(BaseLogger):
 
         return None, f"DB Not Initialized"
 
+    @db_rollback
     def get_lasts(self, lasts:int=1):
         r"""
         Documentation here
@@ -52,6 +55,7 @@ class LogsLogger(BaseLogger):
         
         return list(), f"DB Not Initialized"
     
+    @db_rollback
     def filter_by(
         self,
         usernames:list[str]=None,
@@ -76,7 +80,8 @@ class LogsLogger(BaseLogger):
             )
         
         return list(), f"DB Not Initialized"
-        
+
+    @db_rollback  
     def get_summary(self)->tuple[list, str]:
         r"""
         Documentation here
