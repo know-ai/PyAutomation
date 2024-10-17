@@ -39,18 +39,6 @@ class PropertyType:
 
     @value.setter
     def value(self, value):
-        # print(f"type: {type(self)}")
-        # if hasattr(self, "tag"):
-        #     if self.tag:
-        #         print(f"PRoPERTY TYPE: {self.tag.get_name()}")
-        #         print(f"Value: {value}")
-        #         timestamp = datetime.now(timezone.utc)
-        #         val = self.tag.value.convert_value(value=value, from_unit=self.tag.get_unit(), to_unit=self.tag.get_display_unit())
-        #         print(f"VAL: {val}")
-        #         self.tag.value.set_value(value=val, unit=self.tag.get_display_unit()) 
-        #         self.cvt.set_value(id=self.tag.id, value=val, timestamp=timestamp)
-        #         self.das.buffer[self.tag.get_name()]["timestamp"](timestamp)
-        #         self.das.buffer[self.tag.get_name()]["values"](val)
         
         self.__value = value
     
@@ -58,6 +46,26 @@ class PropertyType:
     def set_value(self, value, user:User=None, name:str=None, machine=None):
         
         self.value = value
+        
+        if isinstance(self, ProcessType):
+
+            if not self.read_only:
+
+                if hasattr(self, "tag"):
+
+                    if self.tag:
+
+                        if hasattr(machine, "data_timestamp"):
+                            timestamp = machine.data_timestamp
+                        else:
+                            timestamp = datetime.now(timezone.utc)
+                            
+                        val = self.tag.value.convert_value(value=value.value, from_unit=self.tag.get_unit(), to_unit=self.tag.get_display_unit())
+                        self.tag.value.set_value(value=val, unit=self.tag.get_display_unit()) 
+                        self.cvt.set_value(id=self.tag.id, value=val, timestamp=timestamp)
+                        self.das.buffer[self.tag.get_name()]["timestamp"](timestamp)
+                        self.das.buffer[self.tag.get_name()]["values"](val)
+
         if machine:
             
             if machine.sio:

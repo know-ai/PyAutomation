@@ -179,13 +179,13 @@ class Machine(Singleton):
         """
         cvt = CVTEngine()
         internal_variables = machine.get_internal_process_type_variables()
-        for tag_name, value in internal_variables.items():
+        for _tag_name, value in internal_variables.items():
 
             for variable, units in VARIABLES.items():
 
                 if value.unit in units.values() or value.unit in units.keys():
 
-                    tag_name = f"{tag_name}_{machine.name.value}"
+                    tag_name = f"{_tag_name}_{machine.name.value}"
                     cvt.set_tag(
                         name=tag_name,
                         unit=value.unit,
@@ -195,6 +195,8 @@ class Machine(Singleton):
                     )
                     # Persist Tag on Database
                     tag = cvt.get_tag_by_name(name=tag_name)
+                    attr = getattr(machine, _tag_name)
+                    attr.tag = tag
                     self.logger_engine.set_tag(tag=tag)
                     self.db_manager.attach(tag_name=tag_name)
                     break
