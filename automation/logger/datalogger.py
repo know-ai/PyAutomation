@@ -137,11 +137,12 @@ class DataLogger(BaseLogger):
             _tags = tags.copy()
             for counter, tag in enumerate(tags):
                 _tag = Tags.read_by_name(tag['tag'])
-                unit = Units.get_or_none(id=_tag.display_unit.id)
-                _tags[counter].update({
-                    'tag': _tag,
-                    'unit': unit
-                })
+                if _tag:
+                    unit = Units.get_or_none(id=_tag.display_unit.id)
+                    _tags[counter].update({
+                        'tag': _tag,
+                        'unit': unit
+                    })
             
             TagValue.insert_many(_tags).execute()
 
