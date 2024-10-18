@@ -31,7 +31,7 @@ class TrendsComponents:
                 {'label': 'last 5 min.', 'value': 5 * 60},
                 {'label': 'last 10 min.', 'value': 10 * 60}
             ],
-            value=10,
+            value=10 * 60,
             clearable=False,
             id="trends_last_values_dropdown"
         )

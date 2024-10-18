@@ -4,6 +4,7 @@
 from ..modules.users.users import User
 from ..dbmodels import Users, Roles
 from .core import BaseEngine, BaseLogger
+from ..utils.decorators import db_rollback
 
 
 class UsersLogger(BaseLogger):
@@ -12,6 +13,7 @@ class UsersLogger(BaseLogger):
 
         super(UsersLogger, self).__init__()
 
+    @db_rollback
     def set_role(self, name:str, level:int, identifier:str):
         r"""
         Documentation here
@@ -22,6 +24,7 @@ class UsersLogger(BaseLogger):
             identifier=identifier
         )
 
+    @db_rollback
     def set_user(
             self, 
             user:User

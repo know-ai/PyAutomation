@@ -3,7 +3,7 @@
 """
 from ..dbmodels import Machines, TagsMachines, Tags
 from .core import BaseEngine, BaseLogger
-from ..utils.decorators import logging_error_handler
+from ..utils.decorators import db_rollback
 from ..models import IntegerType, StringType
 from ..tags.tag import Tag
 
@@ -14,7 +14,7 @@ class MachinesLogger(BaseLogger):
 
         super(MachinesLogger, self).__init__()
 
-    @logging_error_handler
+    @db_rollback
     def create(
             self,
             name:str,
@@ -41,7 +41,7 @@ class MachinesLogger(BaseLogger):
                 priority=priority
             )
 
-    @logging_error_handler
+    @db_rollback
     def put(
         self,
         name:StringType,
@@ -53,56 +53,54 @@ class MachinesLogger(BaseLogger):
         criticity:IntegerType=None,
         priority:IntegerType=None
         ):
-        fields = dict()
-        machine = Machines.read_by_name(name=name.value)
-        if machine_interval:
-            
-            fields["interval"] = machine_interval.value
-        if description:
-            fields["description"] = description.value
-        if classification:
-            fields["classification"] = classification.value
-        if buffer_size:
-            fields["buffer_size"] = buffer_size.value
-        if buffer_roll_type:
-            fields["buffer_roll_type"] = buffer_roll_type.value
-        if criticity:
-            fields["criticity"] = criticity.value
-        if priority:
-            fields["priority"] = priority.value
-            
-        query = Machines.put(
-            id=machine.id,
-            **fields
-        )
+        if self.get_db():
+            fields = dict()
+            machine = Machines.read_by_name(name=name.value)
+            if machine_interval:
+                
+                fields["interval"] = machine_interval.value
+            if description:
+                fields["description"] = description.value
+            if classification:
+                fields["classification"] = classification.value
+            if buffer_size:
+                fields["buffer_size"] = buffer_size.value
+            if buffer_roll_type:
+                fields["buffer_roll_type"] = buffer_roll_type.value
+            if criticity:
+                fields["criticity"] = criticity.value
+            if priority:
+                fields["priority"] = priority.value
+                
+            query = Machines.put(
+                id=machine.id,
+                **fields
+            )
 
-        return query
+            return query
     
-    @logging_error_handler
+    @db_rollback
     def read_all(self):
-
-        return Machines.read_all()
+        if self.get_db():
+            return Machines.read_all()
     
-    @logging_error_handler
+    @db_rollback
     def read_config(self):
-
-        return Machines.read_config()
+        if self.get_db():
+            return Machines.read_config()
     
-    @logging_error_handler
+    @db_rollback
     def bind_tag(self, tag:Tag, machine, default_tag_name:str=None):
+        if self.get_db():
+            TagsMachines.create(tag_name=tag.name, machine_name=machine.name.value, default_tag_name=default_tag_name)
 
-        TagsMachines.create(tag_name=tag.name, machine_name=machine.name.value, default_tag_name=default_tag_name)
-
-
-    @logging_error_handler
+    @db_rollback
     def unbind_tag(self, tag:Tag, machine):
-
-        tag_from_db = Tags.get_or_none(name=tag.name)
-        machine_from_db= Machines.get_or_none(name=machine.name.value)
-        tags_machine = TagsMachines.get((TagsMachines.tag == tag_from_db) & (TagsMachines.machine == machine_from_db))
-        tags_machine.delete_instance()
-        # TagsMachines.delete().where
-    
+        if self.get_db():
+            tag_from_db = Tags.get_or_none(name=tag.name)
+            machine_from_db= Machines.get_or_none(name=machine.name.value)
+            tags_machine = TagsMachines.get((TagsMachines.tag == tag_from_db) & (TagsMachines.machine == machine_from_db))
+            tags_machine.delete_instance()    
 
 class MachinesLoggerEngine(BaseEngine):
     r"""
@@ -115,7 +113,6 @@ class MachinesLoggerEngine(BaseEngine):
         super(MachinesLoggerEngine, self).__init__()
         self.logger = MachinesLogger()
 
-    @logging_error_handler
     def create(
         self,
         name:str,
@@ -142,7 +139,6 @@ class MachinesLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    @logging_error_handler
     def put(
         self,
         name:StringType,
@@ -169,7 +165,6 @@ class MachinesLoggerEngine(BaseEngine):
 
         return self.query(_query)
 
-    @logging_error_handler
     def read_all(self):
 
         _query = dict()
@@ -177,7 +172,6 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         return self.query(_query)
     
-    @logging_error_handler
     def read_config(self):
 
         _query = dict()
@@ -185,7 +179,6 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         return self.query(_query)
     
-    @logging_error_handler
     def bind_tag(self, tag:Tag, machine, default_tag_name:str=None):
 
         _query = dict()
@@ -196,7 +189,6 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"]["default_tag_name"] = default_tag_name
         return self.query(_query)
     
-    @logging_error_handler
     def unbind_tag(self, tag:Tag, machine):
 
         _query = dict()

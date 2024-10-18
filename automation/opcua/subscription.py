@@ -98,13 +98,13 @@ class DAS(Singleton):
         if scan_time:
             
             self.buffer[tag.get_name()].update({
-                "timestamp": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
-                "values": Buffer(size=ceil(10 / ceil(scan_time / 1000)))
+                "timestamp": Buffer(size=ceil(600/ ceil(scan_time / 1000))),
+                "values": Buffer(size=ceil(600 / ceil(scan_time / 1000)))
             })
         else:
             self.buffer[tag.get_name()].update({
-                "timestamp": Buffer(),
-                "values": Buffer()
+                "timestamp": Buffer(size=600),
+                "values": Buffer(size=600)
             })
 
     def subscribe(self, subscription, client_name, node_id):

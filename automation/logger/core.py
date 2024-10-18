@@ -76,8 +76,6 @@ class BaseLogger(Singleton):
 
         self._db.drop_tables(tables, safe=True)
 
-
-
 class BaseEngine(Singleton):
     r"""
     Alarms logger Engine class for Tag thread-safe database logging.

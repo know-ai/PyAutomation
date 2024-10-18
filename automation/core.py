@@ -6,7 +6,6 @@ from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
 from .dbmodels.users import Roles, Users
 from .dbmodels.machines import Machines
 # PYAUTOMATION MODULES IMPORTATION
-from .utils import log_detailed
 from .singleton import Singleton
 from .workers import LoggerWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
@@ -79,18 +78,31 @@ class PyAutomation(Singleton):
         self.alarm_manager = AlarmManager()
         self.workers = list()
         self.das = DAS()
-        self._sio = None
-        self.set_log(level=logging.WARNING)
+        self.sio = None
+        folder_path = os.path.join(".", "logs")
+
+        if not os.path.exists(folder_path):
+            
+            os.makedirs(folder_path)
+
+        self.set_log(file=os.path.join(folder_path, "app.log") ,level=logging.WARNING)
     
     @logging_error_handler
-    def define_dash_app(self, **kwargs)->None:
+    def define_dash_app(self,  certfile:str=None, keyfile:str=None, **kwargs)->None:
         r"""
         Documentation here
         """
         self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
         self.dash_app.set_automation_app(self)
         init_callbacks(app=self.dash_app)
-        self.sio = SocketIO(self.dash_app.server, async_mode='gevent', handler_class=WebSocketHandler)
+        if certfile and keyfile:
+            
+            self.sio = SocketIO(self.dash_app.server, async_mode='gevent', ssl_context=(certfile, keyfile), handler_class=WebSocketHandler)
+        
+        else:
+            self.sio = SocketIO(self.dash_app.server, async_mode='gevent', handler_class=WebSocketHandler)
+
+        self.cvt._cvt.set_socketio(sio=self.sio)
 
         @self.sio.on('connect')
         def handle_connect():
@@ -104,7 +116,7 @@ class PyAutomation(Singleton):
                 "last_events": self.get_lasts_events(lasts=10) or list(),
                 "last_logs": self.get_lasts_logs(lasts=10) or list()
             }
-            self.sio.emit("on_connection", data=payload)
+            self.sio.emit("on.connect", data=payload)
 
     # MACHINES METHODS
     @logging_error_handler
@@ -113,6 +125,7 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
+        machine.set_socketio(sio=self.sio)
         self.machine.append_machine(machine=machine, interval=interval, mode=mode)
 
     @logging_error_handler
@@ -168,7 +181,7 @@ class PyAutomation(Singleton):
             manufacturer=str,
             segment=str,
             id=str|type(None),
-            user=User,
+            user=User|type(None),
             reload=bool,
             output=(Tag|None, str)
     )
@@ -246,8 +259,9 @@ class PyAutomation(Singleton):
         if tag:
 
             # Persist Tag on Database
+            # if not reload:
+                
             if self.is_db_connected():
-
                 self.logger_engine.set_tag(tag=tag)
                 self.db_manager.attach(tag_name=name)
 
@@ -795,7 +809,7 @@ class PyAutomation(Singleton):
             user=str|type(None), 
             password=str|type(None), 
             host=str|type(None), 
-            port=int|type(None), 
+            port=int|str|type(None), 
             name=str|type(None), 
             output=None)
     def set_db_config(
@@ -805,7 +819,7 @@ class PyAutomation(Singleton):
             user:str|None="admin",
             password:str|None="admin",
             host:str|None="127.0.0.1",
-            port:int|None=5432,
+            port:int|str|None=5432,
             name:str|None="app_db"
         ):
         r"""
@@ -829,7 +843,13 @@ class PyAutomation(Singleton):
                 'name': name,
             }
 
-        with open('./db_config.json', 'w') as json_file:
+        folder_path = './db'
+
+        if not os.path.exists(folder_path):
+            
+            os.makedirs(folder_path)
+
+        with open('./db/db_config.json', 'w') as json_file:
 
             json.dump(db_config, json_file)
 
@@ -841,7 +861,13 @@ class PyAutomation(Singleton):
         """
         try:
 
-            with open('./db_config.json', 'r') as json_file:
+            folder_path = './db'
+
+            if not os.path.exists(folder_path):
+                
+                os.makedirs(folder_path)
+
+            with open('./db/db_config.json', 'r') as json_file:
 
                 db_config = json.load(json_file)
 
@@ -869,17 +895,17 @@ class PyAutomation(Singleton):
         return False
 
     @logging_error_handler
-    @validate_types(test=bool|type(None), output=None)
-    def connect_to_db(self, test:bool=False):
+    @validate_types(test=bool|type(None), reload=bool|type(None), output=None)
+    def connect_to_db(self, test:bool=False, reload:bool=False):
         r"""
         Documentation here
         """
-        if not test:
-            db_config = self.get_db_config()
-        else:
+        db_config = self.get_db_config()
+        if test:
             db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
             
         if db_config:
+        
             dbtype = db_config.pop("dbtype")
             self.set_db(dbtype=dbtype, **db_config)
             self.db_manager.init_database()
@@ -888,6 +914,10 @@ class PyAutomation(Singleton):
             self.load_db_to_alarm_manager()
             self.load_db_to_roles()
             self.load_db_to_users()
+
+        if reload:
+
+            self.load_db_tags_to_machine()
 
     @logging_error_handler
     @validate_types(output=None)
@@ -912,7 +942,7 @@ class PyAutomation(Singleton):
                 active = tag.pop("active")
 
                 if active:
-
+                    
                     self.create_tag(reload=True, **tag)
 
     @logging_error_handler
@@ -924,9 +954,10 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             alarms = self.db_manager.get_alarms()
-            for alarm in alarms:
+            if alarms:
+                for alarm in alarms:
 
-                    self.create_alarm(reload=True, **alarm)
+                        self.create_alarm(reload=True, **alarm)
 
     @logging_error_handler
     @validate_types(output=None)
@@ -1046,24 +1077,26 @@ class PyAutomation(Singleton):
             timestamp=timestamp,
             ack_timestamp=ack_timestamp,
             user=user,
-            reload=reload
+            reload=reload,
+            sio=self.sio
         )
 
         if alarm:
 
             # Persist Tag on Database
-            if self.is_db_connected():
-                
-                alarm = self.alarm_manager.get_alarm_by_name(name=name)
-                
-                self.alarms_engine.create(
-                    id=alarm.identifier,
-                    name=name,
-                    tag=tag,
-                    trigger_type=alarm_type,
-                    trigger_value=trigger_value,
-                    description=description
-                )
+            if not reload:
+                if self.is_db_connected():
+                    
+                    alarm = self.alarm_manager.get_alarm_by_name(name=name)
+                    
+                    self.alarms_engine.create(
+                        id=alarm.identifier,
+                        name=name,
+                        tag=tag,
+                        trigger_type=alarm_type,
+                        trigger_value=trigger_value,
+                        description=description
+                    )
             
             return alarm, message
 
@@ -1219,7 +1252,7 @@ class PyAutomation(Singleton):
         return self.alarm_manager.get_alarms_by_tag(tag=tag)
 
     @logging_error_handler
-    @validate_types(id=str, user=User, output=None)
+    @validate_types(id=str, user=User|type(None), output=None)
     def delete_alarm(self, id:str, user:User=None):
         r"""
         Removes alarm
@@ -1281,8 +1314,8 @@ class PyAutomation(Singleton):
         Documentation here
         """
         if self.is_db_connected():
-
-            return self.logs_engine.create(
+            
+            log = self.logs_engine.create(
                 message=message, 
                 user=user, 
                 description=description, 
@@ -1291,6 +1324,12 @@ class PyAutomation(Singleton):
                 event_id=event_id,
                 timestamp=timestamp
             )
+
+            if self.sio:
+
+                self.sio.emit("on.log", data=log.serialize())
+
+            return log
         
     @logging_error_handler
     def filter_logs_by(
@@ -1383,13 +1422,13 @@ class PyAutomation(Singleton):
             self.connect_to_db(test=test)
             self.db_worker.start()
 
-        self.machine.start(machines=machines)
-        if not test:
-            db_config = self.get_db_config()
-        else:
-            db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
+        if machines:
+            for machine in machines:
+                machine.set_socketio(sio=self.sio)
             
-        if db_config:
+        self.machine.start(machines=machines)
+        if self.is_db_connected():
+
             self.load_db_tags_to_machine()
     
         self.is_starting = False

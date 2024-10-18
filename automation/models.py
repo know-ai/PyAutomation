@@ -7,6 +7,8 @@ modelling the subjects involved in the core of the engine.
 from .modules.users.users import User
 from .tags.tag import Tag
 from .utils.decorators import set_event, logging_error_handler
+from datetime import datetime, timezone
+
 
 FLOAT = "float"
 INTEGER = "int"
@@ -20,10 +22,13 @@ class PropertyType:
     """
 
     def __init__(self, _type, default=None, unit=None):
-        
+        from .tags.cvt import CVTEngine
+        from .opcua.subscription import DAS
         self._type = _type
         self.unit = unit
         self.__value = default
+        self.cvt = CVTEngine()
+        self.das = DAS()
 
     @property
     def value(self):
@@ -38,13 +43,40 @@ class PropertyType:
         self.__value = value
     
     @set_event(message=f"Attribute updated", classification="State Machine", priority=2, criticity=3)
-    def set_value(self, value, user:User=None, name:str=None):
+    def set_value(self, value, user:User=None, name:str=None, machine=None):
         
-        self.value = value.value
+        self.value = value
+        
+        if isinstance(self, ProcessType):
+
+            if not self.read_only:
+
+                if hasattr(self, "tag"):
+
+                    if self.tag:
+
+                        if hasattr(machine, "data_timestamp"):
+                            timestamp = machine.data_timestamp
+                        else:
+                            timestamp = datetime.now(timezone.utc)
+                            
+                        val = self.tag.value.convert_value(value=value.value, from_unit=self.tag.get_unit(), to_unit=self.tag.get_display_unit())
+                        self.tag.value.set_value(value=val, unit=self.tag.get_display_unit()) 
+                        self.cvt.set_value(id=self.tag.id, value=val, timestamp=timestamp)
+                        self.das.buffer[self.tag.get_name()]["timestamp"](timestamp)
+                        self.das.buffer[self.tag.get_name()]["values"](val)
+
+        if machine:
+            
+            if machine.sio:
+                
+                machine.sio.emit("on.machine", data=machine.serialize())
+
         if name=="machine_interval":
-            return value, f"{name} To: {value.value} s."
+            
+            return value, f"{name} To: {self.value.value} s."
         
-        return value, f"{name} To: {value.value}"
+        return value, f"{name} To: {self.value.value}"
 
 
 class StringType(PropertyType):
@@ -122,7 +154,13 @@ class ProcessType(FloatType):
         value = None
         if self.value:
             
-            value = self.value.value
+            if isinstance(self.value, (bool, float, int, str)):
+
+                value = self.value
+
+            elif isinstance(self.value, (BooleanType, FloatType, IntegerType, StringType)):
+
+                value= self.value.value
 
         return {
             "value": value,

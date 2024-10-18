@@ -607,7 +607,7 @@ class Tags(BaseModel):
                             else:
 
                                 segment_obj = Segment.create(name=segment, manufacturer=manufacturer)
-
+                            
                             query = cls(
                                 identifier=id,
                                 name=name, 
@@ -740,26 +740,29 @@ class Tags(BaseModel):
             if "unit" in fields:
 
                 unit = fields["unit"]
-                query = Units.read_by_unit(unit=unit)
-                if query:
+                if isinstance(unit, str):
+                    query = Units.read_by_unit(unit=unit)
+                    if query:
 
-                    fields["unit"] = query
+                        fields["unit"] = query
 
             if "display_unit" in fields:
 
                 display_unit = fields["display_unit"]
-                query = Units.read_by_unit(unit=display_unit)
-                if query:
+                if isinstance(display_unit, str):
+                    query = Units.read_by_unit(unit=display_unit)
+                    if query:
 
-                    fields["display_unit"] = query
+                        fields["display_unit"] = query
 
             if "data_type" in fields:
 
                 data_type = fields["data_type"]
-                query = DataTypes.read_by_name(name=data_type)
-                if query:
+                if isinstance(data_type, str):
+                    query = DataTypes.read_by_name(name=data_type)
+                    if query:
 
-                    fields["data_type"] = query
+                        fields["data_type"] = query
 
             query = cls.update(**fields).where(cls.id == id)
             query.execute()

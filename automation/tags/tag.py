@@ -331,7 +331,7 @@ class TagObserver(Observer):
         """
         result = dict()
         result["tag"] = self._subject.name
-        result["value"] = self._subject.value.value
+        result["value"] = self._subject.value.convert(self._subject.get_display_unit())
         result["timestamp"] = self._subject.timestamp
         self._tag_queue.put(result, block=False)
 

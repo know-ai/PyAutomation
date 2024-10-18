@@ -40,8 +40,10 @@ class LoggerWorker(BaseWorker):
                     value = item['value']
                     timestamp = item["timestamp"]
                     tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
-
-            self.logger.write_tags(tags=tags)
+            
+            if tags:
+                
+                self.logger.write_tags(tags=tags)
 
             if self.stop_event.is_set():
                 

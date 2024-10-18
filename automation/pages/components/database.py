@@ -68,7 +68,7 @@ class DatabaseComponents:
                                             [
                                                 dbc.InputGroup(
                                                     [
-                                                        dbc.Input(placeholder="DB Port", id="db_port_input")
+                                                        dbc.Input(placeholder="DB Port", id="db_port_input", type="number")
                                                     ], 
                                                     size="md"
                                                 )

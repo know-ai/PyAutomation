@@ -8,6 +8,7 @@ from ..utils.decorators import set_event, logging_error_handler
 from ..filter import gaussian_noise_filter, process_noise_filter
 from ..iad import iad_outlier, iad_frozen_data, iad_out_of_range
 from .tag import Tag
+from flask_socketio import SocketIO
 
 class CVT:
     """
@@ -28,7 +29,14 @@ class CVT:
 
         self._tags = dict()
         self.data_types = ["float", "int", "bool", "str"]
-    
+        self.sio:SocketIO|None = None
+
+    def set_socketio(self, sio:SocketIO):
+        r"""
+        Documentation here
+        """
+        self.sio:SocketIO = sio
+
     @set_event(message=f"Created", classification="Tag", priority=1, criticity=1)
     def set_tag(
         self, 
@@ -397,6 +405,8 @@ class CVT:
             Tag value ("int", "float", "bool")
         """
         self._tags[id].set_value(value=value, timestamp=timestamp)
+        if self.sio:
+            self.sio.emit("on.tag", data=self._tags[id].serialize())
 
     def set_data_type(self, data_type):
         r"""Documentation here

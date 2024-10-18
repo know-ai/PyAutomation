@@ -1,4 +1,4 @@
-import functools, logging
+import functools, logging, os, sys
 from ..modules.users.users import User
 from ..logger.events import EventsLoggerEngine
 
@@ -37,10 +37,10 @@ def decorator(declared_decorator):
     return final_decorator
 
 def set_event(message:str, classification:str, priority:int, criticity:int):
-
     @decorator
     def wrapper(func, args, kwargs):
-        
+        from automation import PyAutomation
+        app = PyAutomation()
         result = func(*args, **kwargs)
 
         if result:
@@ -56,7 +56,7 @@ def set_event(message:str, classification:str, priority:int, criticity:int):
 
                         description = result[-1]
 
-                    events_engine.create(
+                    event = events_engine.create(
                         message=message,
                         description=description,
                         classification=classification,
@@ -64,6 +64,9 @@ def set_event(message:str, classification:str, priority:int, criticity:int):
                         criticity=criticity,
                         user=user
                     )
+                    if app.sio:
+
+                        app.sio.emit("on.event", data=event.serialize())
 
         return result
 
@@ -82,6 +85,10 @@ def put_alarm_state(func, args, kwargs):
         id=alarm.identifier,
         state=alarm.state.state
     )
+    if alarm.sio:
+        
+        alarm.sio.emit("on.alarm", data=alarm.serialize())
+        
     return result
 
 def validate_types(**validations):
@@ -166,3 +173,21 @@ def logging_error_handler(func, args, kwargs):
             'trace': trace
         })
         logging.error(msg=msg)
+
+
+@decorator
+def db_rollback(func, args, kwargs):
+    try:
+        self = args[0]
+        result = func(*args, **kwargs)
+        return result
+
+    except Exception as e:
+        _, _, e_traceback = sys.exc_info()
+        e_message = str(e)
+        e_line_number = e_traceback.tb_lineno
+        logging.warning(f"Rollback in [line {e_line_number}] {self.__class__.__name__}.{func.__name__} - {e_message}")
+        conn = self._db.connection()
+        conn.rollback()
+
+    return result

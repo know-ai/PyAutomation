@@ -30,6 +30,7 @@ from .variables import (
     Adimentional)
 from .logger.machines import MachinesLoggerEngine
 from .logger.datalogger import DataLoggerEngine
+from flask_socketio import SocketIO
 
 
 
@@ -59,17 +60,19 @@ class Machine(Singleton):
         
         machine.set_interval(interval)
         self.machine_manager.append_machine((machine, interval, mode))
-        self.machines_engine.create(
-            name=machine.name.value,
-            interval=interval.value,
-            description=machine.description.value,
-            classification=machine.classification.value,
-            buffer_size=machine.buffer_size.value,
-            buffer_roll_type=machine.buffer_roll_type.value,
-            criticity=machine.criticity.value,
-            priority=machine.priority.value
-        )
-        self.create_tag_internal_process_type(machine=machine)
+        
+        if self.machines_engine.get_db():
+            self.machines_engine.create(
+                name=machine.name.value,
+                interval=interval.value,
+                description=machine.description.value,
+                classification=machine.classification.value,
+                buffer_size=machine.buffer_size.value,
+                buffer_roll_type=machine.buffer_roll_type.value,
+                criticity=machine.criticity.value,
+                priority=machine.priority.value
+            )
+            self.create_tag_internal_process_type(machine=machine)
 
     def drop(self, machine:StateMachine):
         r"""
@@ -126,7 +129,9 @@ class Machine(Singleton):
         Starts statemachine worker
         """
         # StateMachine Worker
-        config = self.load_db_machines_config()
+        config = None
+        if self.machines_engine.get_db():
+            config = self.load_db_machines_config()
 
         if config:
 
@@ -150,7 +155,7 @@ class Machine(Singleton):
                 
                 for machine in machines:
 
-                    self.append_machine(machine=machine)
+                    self.append_machine(machine=machine, interval=FloatType(machine.get_interval()))
 
         state_manager = self.get_state_machine_manager()
         
@@ -174,13 +179,13 @@ class Machine(Singleton):
         """
         cvt = CVTEngine()
         internal_variables = machine.get_internal_process_type_variables()
-        for tag_name, value in internal_variables.items():
+        for _tag_name, value in internal_variables.items():
 
             for variable, units in VARIABLES.items():
 
                 if value.unit in units.values() or value.unit in units.keys():
 
-                    tag_name = f"{tag_name}_{machine.name.value}"
+                    tag_name = f"{_tag_name}_{machine.name.value}"
                     cvt.set_tag(
                         name=tag_name,
                         unit=value.unit,
@@ -190,6 +195,8 @@ class Machine(Singleton):
                     )
                     # Persist Tag on Database
                     tag = cvt.get_tag_by_name(name=tag_name)
+                    attr = getattr(machine, _tag_name)
+                    attr.tag = tag
                     self.logger_engine.set_tag(tag=tag)
                     self.db_manager.attach(tag_name=tag_name)
                     break
@@ -235,17 +242,18 @@ class StateMachineCore(StateMachine):
             self,
             name:str,
             description:str="",
-            classification:str=""
+            classification:str="",
+            interval:float=1.0
         ):
         self.criticity = IntegerType(default=2)
         self.priority = IntegerType(default=1)
         self.description = StringType(default=description)
         self.classification = StringType(default=classification)
         self.name = StringType(default=name)
-        self.machine_interval = FloatType(default=1.0)
+        self.machine_interval = FloatType(default=interval)
         self.buffer_size = IntegerType(default=10)
         self.buffer_roll_type = StringType(default='backward')
-        # self.subscribed_to = dict()
+        self.sio:SocketIO|None = None
         self.restart_buffer()
         self.machine_engine = MachinesLoggerEngine()
         transitions = []
@@ -307,14 +315,20 @@ class StateMachineCore(StateMachine):
         self.restart_buffer()
         self.send("restart_to_wait")
 
-    # Auxiliaries Methods   
-    def put_attr(self, attr_name:str, value:StringType|FloatType|IntegerType|BooleanType, user:User=None):
+    # Auxiliaries Methods 
+    def set_socketio(self, sio:SocketIO):
+
+        self.sio:SocketIO = sio
+
+    def put_attr(self, attr_name:str, value:StringType|FloatType|IntegerType|BooleanType|ProcessType, user:User=None):
         
         attr = getattr(self, attr_name)
         attr.set_value(value=value, user=user, name=attr_name)
         kwargs = {
             f"{attr_name}": value
         }
+
+        # Update on DB
         self.machine_engine.put(name=self.name, **kwargs)
 
     def add_process_variable(self, name:str, tag:Tag, read_only:bool=False):
@@ -581,7 +595,7 @@ class StateMachineCore(StateMachine):
         attach_observer(machine, tag)
 
     @set_event(message=f"Switched", classification="State Machine", priority=2, criticity=3)
-    @validate_types(to=str, user=User, output=tuple)
+    @validate_types(to=str, user=User|type(None), output=tuple)
     def transition(self, to:str, user:User=None):
         r"""
         Documentation here
@@ -619,7 +633,7 @@ class StateMachineCore(StateMachine):
         """
         return self.machine_interval.value
 
-    @validate_types(interval=IntegerType|FloatType, user=User, output=None)
+    @validate_types(interval=IntegerType|FloatType, user=User|type(None), output=None)
     def set_interval(self, interval:IntegerType|FloatType, user:User=None):
         r"""
         Sets overall machine interval

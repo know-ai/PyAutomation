@@ -112,7 +112,7 @@ def init_callback(app:dash.Dash):
             current_timestamp = app.automation.das.buffer[tag_name]["timestamp"].current()
             previous_last = app.automation.das.buffer[tag_name]["timestamp"].previous_current()
             dt = current_timestamp - previous_last
-            return ceil(last_values / dt.seconds)
+            return ceil(last_values / dt.total_seconds())
         
         scan_time = scan_time / 1000
         return ceil(last_values / scan_time)

@@ -9,7 +9,7 @@ from ..utils.decorators import validate_types, logging_error_handler, set_event,
 from ..models import FloatType, IntegerType, StringType
 from ..variables import *
 from statemachine import State, StateMachine
-
+from flask_socketio import SocketIO
 
 
 class Alarm(StateMachine):
@@ -123,6 +123,7 @@ class Alarm(StateMachine):
         for state in self.states:
             transitions.extend(state.transitions)
         self.transitions = transitions
+        self.sio:SocketIO|None = None
         super(Alarm, self).__init__()
 
     @logging_error_handler
@@ -134,17 +135,17 @@ class Alarm(StateMachine):
 
     @logging_error_handler
     @put_alarm_state
-    def on_enter_unack_alarm(self, timestamp:datetime):
+    def on_enter_unack_alarm(self):
 
         self.state = AlarmState.UNACK
-        self.timestamp = timestamp
+        self.timestamp = self.__timestamp
 
     @logging_error_handler
     @put_alarm_state
-    def on_enter_ack_alarm(self, ack_timestamp:datetime):
+    def on_enter_ack_alarm(self):
 
         self.state = AlarmState.ACKED
-        self.ack_timestamp = ack_timestamp
+        self.ack_timestamp = self.__timestamp
     
     @logging_error_handler
     @put_alarm_state
@@ -171,6 +172,12 @@ class Alarm(StateMachine):
         
         self.state = AlarmState.OOSRV
 
+    def set_socketio(self, sio:SocketIO):
+        r"""
+        Documentation here
+        """
+        self.sio:SocketIO = sio
+
     @logging_error_handler
     @validate_types(
             tag=str, 
@@ -190,12 +197,13 @@ class Alarm(StateMachine):
         - *tag:* [Tag] tag Object
         - *value:* [int|float|bool] tag value
         """ 
+        self.__timestamp = timestamp
         if self.state not in (AlarmState.DSUPR, AlarmState.SHLVD, AlarmState.OOSRV):     
             if self.alarm_setpoint.type in (TriggerType.HH, TriggerType.H):
 
                 if value.value > self.alarm_setpoint.value:
 
-                    self.abnormal_condition(timestamp=timestamp)
+                    self.abnormal_condition()
                 
                 else: 
 
@@ -205,7 +213,7 @@ class Alarm(StateMachine):
 
                 if value.value < self.alarm_setpoint.value:
 
-                    self.abnormal_condition(timestamp=timestamp)
+                    self.abnormal_condition()
 
                 else:
 
@@ -215,7 +223,7 @@ class Alarm(StateMachine):
                 
                 if value.value == bool(self.alarm_setpoint.value):
 
-                    self.abnormal_condition(timestamp=timestamp)
+                    self.abnormal_condition()
 
                 else:
 
@@ -228,13 +236,13 @@ class Alarm(StateMachine):
                 self.unshelve()
         
     @logging_error_handler
-    def abnormal_condition(self, timestamp:datetime):
+    def abnormal_condition(self):
         r"""
         Documentation here
         """
         current_state = self.current_state.name.lower()
         transition_name = f'{current_state}_to_unack_alarm'
-        self.__transition(transition_name=transition_name, timestamp=timestamp)
+        self.__transition(transition_name=transition_name)
 
     @logging_error_handler
     def normal_condition(self):
@@ -267,7 +275,7 @@ class Alarm(StateMachine):
 
     @logging_error_handler
     @set_event(message=f"Acknowledged", classification="Alarm", priority=2, criticity=3)
-    def acknowledge(self, usesr:User=None):
+    def acknowledge(self, user:User=None):
         r"""
         Documentation here
         """
@@ -282,7 +290,7 @@ class Alarm(StateMachine):
             transition_name = f'{current_state}_to_normal'
 
         tag = self.tag_engine.get_tag_by_name(name=self.tag.name)
-        self.__transition(transition_name=transition_name, ack_timestamp=tag.get_timestamp())
+        self.__transition(transition_name=transition_name)
         return self, f"{self.tag.get_name()}"
 
     @logging_error_handler
@@ -451,14 +459,14 @@ class Alarm(StateMachine):
         return result
     
     @logging_error_handler
-    def __transition(self, transition_name:str, **kwargs):
+    def __transition(self, transition_name:str):
 
         allowed_transitions = self._get_active_transitions()
         for _transition in allowed_transitions:
             
             if f"{_transition.source.name}_to_{_transition.target.name}"==transition_name:
                 
-                self.send(transition_name, **kwargs)
+                self.send(transition_name)
 
     @logging_error_handler
     def __return_to_service(self):

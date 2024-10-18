@@ -4,7 +4,7 @@
 This module implements a database logger for the CVT instance, 
 will create a time-serie for each tag in a short memory data base.
 """
-import logging, sys, os, pytz
+import pytz
 from datetime import datetime
 from ..tags.tag import Tag
 from ..dbmodels import Tags, TagValue, Units
@@ -12,7 +12,7 @@ from ..modules.users.users import User
 from ..tags.cvt import CVTEngine
 from .core import BaseLogger, BaseEngine
 from ..variables import *
-from ..utils.decorators import logging_error_handler
+from ..utils.decorators import db_rollback
 
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
@@ -37,7 +37,7 @@ class DataLogger(BaseLogger):
         super(DataLogger, self).__init__()
         self.tag_engine = CVTEngine()
 
-    @logging_error_handler
+    @db_rollback
     def set_tag(
         self, 
         id:str,
@@ -57,121 +57,120 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """
-        Tags.create(
-            id=id,
-            name=name, 
-            unit=unit,
-            data_type=data_type,
-            description=description,
-            display_name=display_name,
-            display_unit=display_unit,
-            opcua_address=opcua_address,
-            node_namespace=node_namespace,
-            scan_time=scan_time,
-            dead_band=dead_band,
-            manufacturer=manufacturer,
-            segment=segment
-            )
-        
+        if self.get_db():
+            
+            Tags.create(
+                id=id,
+                name=name, 
+                unit=unit,
+                data_type=data_type,
+                description=description,
+                display_name=display_name,
+                display_unit=display_unit,
+                opcua_address=opcua_address,
+                node_namespace=node_namespace,
+                scan_time=scan_time,
+                dead_band=dead_band,
+                manufacturer=manufacturer,
+                segment=segment
+                )
+            
+    @db_rollback
     def delete_tag(self, id:str):
         r"""
         Documentation here
         """
-        tag, _ = Tags.get_or_create(identifier=id)
-        Tags.put(id=tag.id, active=False)
+        if self.get_db():
+            tag, _ = Tags.get_or_create(identifier=id)
+            Tags.put(id=tag.id, active=False)
 
+    @db_rollback
     def get_tag_by_name(self, name:str):
         r"""
         Documentation here
         """
-        return Tags.read_by_name(name=name)
+        if self.get_db():
+            return Tags.read_by_name(name=name)
 
+    @db_rollback
     def update_tag(self, id:str, **kwargs):
         r"""
         Documentation here
         """
-        tag = Tags.get(identifier=id)
-        Tags.put(id=tag.id, **kwargs)
+        if self.get_db():
+            tag = Tags.get(identifier=id)
+            Tags.put(id=tag.id, **kwargs)
 
+    @db_rollback
     def set_tags(self, tags):
         r"""
         Documentation here
         """
-        for tag in tags:
+        if self.get_db():
+            for tag in tags:
 
-            self.set_tag(tag)
+                self.set_tag(tag)
 
+    @db_rollback
     def get_tags(self):
         r"""
         Documentation here
         """
-        return Tags.read_all()
+        if self.get_db():
+            return Tags.read_all()
     
+    @db_rollback
     def write_tag(self, tag, value, timestamp):
         r"""
         Documentation here
         """
-        try:
+        if self.get_db():
             trend = Tags.read_by_name(tag)
             unit = Units.read_by_unit(unit=trend.display_unit.unit)
             TagValue.create(tag=trend, value=value, timestamp=timestamp, unit=unit)
-        except Exception as e:
-            _, _, e_traceback = sys.exc_info()
-            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
-            e_message = str(e)
-            e_line_number = e_traceback.tb_lineno
-            logging.warning(f"Rollback done in database due to conflicts writing tag: {e_line_number} - {e_filename} - {e_message}")
-            conn = self._db.connection()
-            conn.rollback()
 
+    @db_rollback
     def write_tags(self, tags:list):
         r"""
         Documentation here
         """
-        _tags = tags.copy()
-        try:
+        if self.get_db():
+            _tags = tags.copy()
             for counter, tag in enumerate(tags):
                 _tag = Tags.read_by_name(tag['tag'])
-                unit = Units.get_or_none(id=_tag.display_unit.id)
-                _tags[counter].update({
-                    'tag': _tag,
-                    'unit': unit
-                })
+                if _tag:
+                    unit = Units.get_or_none(id=_tag.display_unit.id)
+                    _tags[counter].update({
+                        'tag': _tag,
+                        'unit': unit
+                    })
             
             TagValue.insert_many(_tags).execute()
 
-        except Exception as e:
-            _, _, e_traceback = sys.exc_info()
-            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
-            e_message = str(e)
-            e_line_number = e_traceback.tb_lineno
-            logging.warning(f"Rollback done in database due to conflicts writing tags: {e_line_number} - {e_filename} - {e_message}")
-            conn = self._db.connection()
-            conn.rollback()
-
+    @db_rollback
     def read_trends(self, start:str, stop:str, timezone:str, tags):
         r"""
         Documentation here
         """  
-        _timezone = pytz.timezone(timezone)
-        start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
-        stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
-        result = {tag: {
-            'values': list(),
-            'unit': self.tag_engine.get_display_unit_by_tag(tag)
-        } for tag in tags}
-        
+        if self.get_db():
+            _timezone = pytz.timezone(timezone)
+            start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
+            stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
+            result = {tag: {
+                'values': list(),
+                'unit': self.tag_engine.get_display_unit_by_tag(tag)
+            } for tag in tags}
+            
+            for tag in tags:
 
-        for tag in tags:
+                trend = Tags.select().where(Tags.name==tag).get()
+                _tag = self.tag_engine.get_tag_by_name(name=tag)
+                variable = _tag.get_variable()
+                values = trend.values.select().where((TagValue.timestamp > start) & (TagValue.timestamp < stop)).order_by(TagValue.timestamp.asc())
+                for value in values:
+                    result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": eval(f"{variable}.convert_value({value.value}, from_unit={'value.unit.unit'}, to_unit={'_tag.get_display_unit()'})")})
 
-            trend = Tags.select().where(Tags.name==tag).get()
-            _tag = self.tag_engine.get_tag_by_name(name=tag)
-            variable = _tag.get_variable()
-            values = trend.values.select().where((TagValue.timestamp > start) & (TagValue.timestamp < stop)).order_by(TagValue.timestamp.asc())
-            for value in values:
-                result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": eval(f"{variable}.convert_value({value.value}, from_unit={'value.unit.unit'}, to_unit={'_tag.get_display_unit()'})")})
-
-        return result
+            return result
 
 class DataLoggerEngine(BaseEngine):
     r"""

@@ -19,21 +19,37 @@ def init_callback(app:dash.Dash):
         r"""
         Documentation here
         """
-        
-        if db_type_value.lower()=="sqlite":
+        if db_type_value:
 
-            dash.set_props("db_host_input", {'disabled': True})
-            dash.set_props("db_port_input", {'disabled': True})
-            dash.set_props("db_user_input", {'disabled': True})
-            dash.set_props("db_password_input", {'disabled': True})
+            if db_type_value.lower()=="sqlite":
 
-            if db_name_value:
+                dash.set_props("db_host_input", {'disabled': True})
+                dash.set_props("db_port_input", {'disabled': True})
+                dash.set_props("db_user_input", {'disabled': True})
+                dash.set_props("db_password_input", {'disabled': True})
 
-                dash.set_props("connect_disconnect_db_button", {'disabled': False})
+                if db_name_value:
+
+                    dash.set_props("connect_disconnect_db_button", {'disabled': False})
+
+                else:
+                
+                    dash.set_props("connect_disconnect_db_button", {'disabled': True})
 
             else:
-            
-                dash.set_props("connect_disconnect_db_button", {'disabled': True})
+
+                dash.set_props("db_host_input", {'disabled': False})
+                dash.set_props("db_port_input", {'disabled': False})
+                dash.set_props("db_user_input", {'disabled': False})
+                dash.set_props("db_password_input", {'disabled': False})
+
+                if db_name_value and db_host_value and db_port_value and db_user_value:
+
+                    dash.set_props("connect_disconnect_db_button", {'disabled': False})
+
+                else:
+                
+                    dash.set_props("connect_disconnect_db_button", {'disabled': True})
 
         else:
 
@@ -49,6 +65,7 @@ def init_callback(app:dash.Dash):
             else:
             
                 dash.set_props("connect_disconnect_db_button", {'disabled': True})
+
 
     @app.callback(
         dash.Input('connect_disconnect_db_button', 'n_clicks'),
@@ -84,7 +101,8 @@ def init_callback(app:dash.Dash):
                 port=db_port_value,
                 name=db_name_value
             )
-            app.automation.connect_to_db()
+            
+            app.automation.connect_to_db(reload=True)
             if app.automation.is_db_connected():
 
                 message = f"Connection to db was successfully?"
