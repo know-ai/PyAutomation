@@ -63,8 +63,9 @@ class PropertyType:
                         val = self.tag.value.convert_value(value=value.value, from_unit=self.tag.get_unit(), to_unit=self.tag.get_display_unit())
                         self.tag.value.set_value(value=val, unit=self.tag.get_display_unit()) 
                         self.cvt.set_value(id=self.tag.id, value=val, timestamp=timestamp)
-                        self.das.buffer[self.tag.get_name()]["timestamp"](timestamp)
-                        self.das.buffer[self.tag.get_name()]["values"](val)
+                        if self.tag.get_name() in self.das.buffer:
+                            self.das.buffer[self.tag.get_name()]["timestamp"](timestamp)
+                            self.das.buffer[self.tag.get_name()]["values"](val)
 
         if machine:
             
