@@ -104,7 +104,7 @@ class PyAutomation(Singleton):
         self.cvt._cvt.set_socketio(sio=self.sio)
 
         @self.sio.on('connect')
-        def handle_connect():
+        def handle_connect(auth=None):
 
             payload= {
                 "tags": self.get_tags() or list(),
@@ -115,7 +115,7 @@ class PyAutomation(Singleton):
                 "last_events": self.get_lasts_events(lasts=10) or list(),
                 "last_logs": self.get_lasts_logs(lasts=10) or list()
             }
-            self.sio.emit("on.connect", data=payload)
+            self.sio.emit("on_connection", data=payload)
 
     # MACHINES METHODS
     @logging_error_handler
