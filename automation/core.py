@@ -96,10 +96,18 @@ class PyAutomation(Singleton):
         init_callbacks(app=self.dash_app)
         if certfile and keyfile:
             
-            self.sio = SocketIO(self.dash_app.server, async_mode='gevent', ssl_context=(certfile, keyfile), handler_class=WebSocketHandler)
+            self.sio = SocketIO(
+                self.dash_app.server, 
+                cors_allowed_origins='*', 
+                ping_timeout=10, 
+                ping_interval=10, 
+                async_mode='gevent', 
+                ssl_context=(certfile, keyfile), 
+                handler_class=WebSocketHandler
+            )
         
         else:
-            self.sio = SocketIO(self.dash_app.server, async_mode='gevent', handler_class=WebSocketHandler)
+            self.sio = SocketIO(self.dash_app.server, cors_allowed_origins='*', ping_timeout=10, ping_interval=10, async_mode='gevent', handler_class=WebSocketHandler)
 
         self.cvt._cvt.set_socketio(sio=self.sio)
 
