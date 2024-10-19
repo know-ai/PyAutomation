@@ -1,4 +1,5 @@
-import sys, logging, json, os, jwt
+import sys, logging, json, os, jwt, requests, urllib3
+from logging.handlers import TimedRotatingFileHandler
 from math import ceil
 from datetime import datetime, timezone
 # DRIVERS IMPORTATION
@@ -714,7 +715,7 @@ class PyAutomation(Singleton):
     # ERROR LOGS
     @logging_error_handler
     @validate_types(level=int, file=str, output=None)
-    def set_log(self, level:int=logging.INFO, file:str="app.log"):
+    def set_log(self, level:int=logging.INFO, file:str="logs/app.log"):
         r"""
         Sets the log file and level.
 
@@ -733,10 +734,8 @@ class PyAutomation(Singleton):
         """
 
         self._logging_level = level
-
-        if file:
-
-            self._log_file = file
+        self._log_file = file
+        
 
     # DATABASES
     @logging_error_handler
@@ -1455,13 +1454,17 @@ class PyAutomation(Singleton):
         r"""
         Starts logger in log file
         """
+        requests.urllib3.disable_warnings()
+        urllib3.disable_warnings()
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("requests").setLevel(logging.WARNING)
+        logging.getLogger('peewee').setLevel(logging.WARNING)
+        logging.getLogger('opcua').setLevel(logging.WARNING)
+        logger = logging.getLogger("pyautomation")
+        logger.setLevel(self._logging_level)
+        handler = TimedRotatingFileHandler(self._log_file, when='midnight', backupCount=365)
+        handler.suffix = "%Y-%m-%d_%H"
         log_format = "%(asctime)s:%(levelname)s:%(message)s"
-
-        level = self._logging_level
-        log_file = self._log_file
-
-        if not log_file:
-            logging.basicConfig(level=level, format=log_format)
-            return
-
-        logging.basicConfig(filename=log_file, level=level, format=log_format)
+        formatter = logging.Formatter(log_format)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)

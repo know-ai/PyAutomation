@@ -116,7 +116,8 @@ def validate_types(**validations):
                     
                 else:
                     message = f"You didn't define {key} argument to validate in {func}"
-                    logging.error(message)
+                    logger = logging.getLogger("pyautomation")
+                    logger.error(message)
                     raise KeyError(message)
 
             # Call the wrapped function
@@ -132,14 +133,16 @@ def validate_types(**validations):
                         if not isinstance(result[counter], expected):
 
                             message = f"Expected output type ({counter}) {expected}, but got {type(result[counter])} in func {func}"
-                            logging.error(message)
+                            logger = logging.getLogger("pyautomation")
+                            logger.error(message)
                             raise TypeError(message)
                         
                 else:
 
                     if not isinstance(result, _output):
                         message = f"Expected output type {_output}, but got {type(result)} in func {func}"
-                        logging.error(message)
+                        logger = logging.getLogger("pyautomation")
+                        logger.error(message)
                         raise TypeError(message)
 
             return result
@@ -172,7 +175,8 @@ def logging_error_handler(func, args, kwargs):
             'message': str(ex),
             'trace': trace
         })
-        logging.error(msg=msg)
+        logger = logging.getLogger("pyautomation")
+        logger.error(msg=msg)
 
 
 @decorator
@@ -186,7 +190,8 @@ def db_rollback(func, args, kwargs):
         _, _, e_traceback = sys.exc_info()
         e_message = str(e)
         e_line_number = e_traceback.tb_lineno
-        logging.warning(f"Rollback in [line {e_line_number}] {self.__class__.__name__}.{func.__name__} - {e_message}")
+        logger = logging.getLogger("pyautomation")
+        logger.warning(f"Rollback in [line {e_line_number}] {self.__class__.__name__}.{func.__name__} - {e_message}")
         conn = self._db.connection()
         conn.rollback()
 

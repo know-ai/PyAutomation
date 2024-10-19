@@ -48,8 +48,8 @@ class Client(OPCClient):
                 # Now you're connected again!
                 
             except Exception as e:
-
-                logging.error(f"Error during connection: {e}")
+                logger = logging.getLogger("pyautomation")
+                logger.error(f"Error during connection: {e}")
 
             self._is_open = True
             self._id = str(uuid.uuid4())

@@ -450,8 +450,8 @@ class CVT:
             self._tags[tag.id].attach(observer)
         
         else:
-            
-            logging.warning(f"{name} tag Not exists in CVT.attach_observer method")
+            logger = logging.getLogger("pyautomation")
+            logger.warning(f"{name} tag Not exists in CVT.attach_observer method")
 
     def detach_observer(self, name, observer):
         r"""

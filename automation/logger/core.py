@@ -176,7 +176,8 @@ class BaseEngine(Singleton):
         r"""
         Documentation here
         """
-        logging.error(f"{e} Message: {msg}")
+        logger = logging.getLogger("pyautomation")
+        logger.error(f"{e} Message: {msg}")
         self._response = {
             "result": False,
             "response": None

@@ -247,7 +247,8 @@ class DBManager(Singleton):
                 self.drop_tables()
             except Exception as e:
                 error = str(e)
-                logging.error("Database:{}".format(error))
+                logger = logging.getLogger("pyautomation")
+                logger.error("Database:{}".format(error))
         
         self.create_tables()
         self.set_tags()

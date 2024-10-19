@@ -103,8 +103,8 @@ class Api(Singleton):
                         return {'message' : 'Invalid token'}, 401                  
                 
                 except Exception as err:
-
-                    logging.ERROR(str(err))
+                    logger = logging.getLogger("pyautomation")
+                    logger.error(str(err))
 
             return decorated
 

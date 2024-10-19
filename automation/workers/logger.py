@@ -46,6 +46,6 @@ class LoggerWorker(BaseWorker):
                 self.logger.write_tags(tags=tags)
 
             if self.stop_event.is_set():
-                
-                logging.info("Alarm worker shutdown successfully!")
+                logger = logging.getLogger("pyautomation")
+                logger.info("Alarm worker shutdown successfully!")
                 break

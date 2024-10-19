@@ -4,9 +4,9 @@ from ..variables import VARIABLES
 from ..alarms.states import ACTIONS
 
 def log_detailed(e, message):
-    
-    logging.error(message)
-    logging.error(e, exc_info=True)
+    logger = logging.getLogger("pyautomation")
+    logger.error(message)
+    logger.error(e, exc_info=True)
 
 def chunks(lst, n):
     for i in range(0, len(lst), n):

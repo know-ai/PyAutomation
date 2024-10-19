@@ -68,7 +68,8 @@ class MachineScheduler():
             self.set_last()
         except ValueError:
             self.set_last()
-            logging.warning(f"State Machine: {machine.name.value} NOT executed on time - Execution Interval: {interval} - Elapsed: {elapsed}")
+            logger = logging.getLogger("pyautomation")
+            logger.warning(f"State Machine: {machine.name.value} NOT executed on time - Execution Interval: {interval} - Elapsed: {elapsed}")
 
 
 class SchedThread(Thread):
@@ -157,7 +158,8 @@ class AsyncStateMachineWorker(BaseWorker):
                 sched.stop()
             except Exception as e:
                 message = "Error on async scheduler stop"
-                logging.error(f"{message} - {e}")
+                logger = logging.getLogger("pyautomation")
+                logger.error(f"{message} - {e}")
     
 
 class StateMachineWorker(BaseWorker):

@@ -613,7 +613,8 @@ class StateMachineCore(StateMachine):
             
         except Exception as err:
 
-            logging.warning(f"Transition from {_from} state to {to} state for {self.name.value} is not allowed")
+            logger = logging.getLogger("pyautomation")
+            logger.warning(f"Transition from {_from} state to {to} state for {self.name.value} is not allowed")
 
     @validate_types(output=int|float)
     def get_interval(self)->int|float:
