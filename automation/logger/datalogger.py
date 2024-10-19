@@ -18,19 +18,20 @@ from ..utils.decorators import db_rollback
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
 
 class DataLogger(BaseLogger):
-
-    """Data Logger class.
-
-    This class is intended to be an API for tags 
-    settings and tags logged access.
-
-    # Example
-    
-    ```python
-    >>> from pyhades import DataLogger
-    >>> _logger = DataLogger()
-    ```
     """
+    Data Logger class.
+
+    This class serves as an API for managing tag settings and accessing logged tags.
+
+    **Usage Example**:
+
+    .. code-block:: python
+
+        >>> from pyhades import DataLogger
+        >>> _logger = DataLogger()
+
+    """
+
     def __init__(self):
 
         super(DataLogger, self).__init__()
