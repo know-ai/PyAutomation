@@ -1454,6 +1454,7 @@ class PyAutomation(Singleton):
         r"""
         Starts logger in log file
         """
+
         requests.urllib3.disable_warnings()
         urllib3.disable_warnings()
         logging.getLogger("urllib3").setLevel(logging.WARNING)
@@ -1463,8 +1464,9 @@ class PyAutomation(Singleton):
         logger = logging.getLogger("pyautomation")
         logger.setLevel(self._logging_level)
         handler = TimedRotatingFileHandler(self._log_file, when='midnight', backupCount=365)
-        handler.suffix = "%Y-%m-%d_%H"
+        handler.suffix = "%Y-%m-%d"
         log_format = "%(asctime)s:%(levelname)s:%(message)s"
         formatter = logging.Formatter(log_format)
         handler.setFormatter(formatter)
+        
         logger.addHandler(handler)
