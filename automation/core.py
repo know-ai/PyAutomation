@@ -784,7 +784,7 @@ class PyAutomation(Singleton):
 
             dbfile = kwargs.get("dbfile", ":memory:")
 
-            self._db = SqliteDatabase(dbfile, pragmas={
+            self._db = SqliteDatabase(os.path.join(".", "db", dbfile), pragmas={
                 'journal_mode': 'wal',
                 'journal_size_limit': 1024,
                 'cache_size': -1024 * 64,  # 64MB
@@ -907,6 +907,12 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
+        folder_path = './db'
+
+        if not os.path.exists(folder_path):
+            
+            os.makedirs(folder_path)
+
         db_config = self.get_db_config()
         if test:
             db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
