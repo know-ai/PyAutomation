@@ -69,3 +69,73 @@ pip install dist/PyAutomation-1.0.0-py3-none-any.whl
 ```
 
 After that, you can run mkdocs serve
+
+
+
+# Deploy
+
+Make the following `.env` file:
+
+```
+REACT_VERSION=18.2.0
+PORT=5000
+```
+
+## Docker
+
+Export environment variables
+
+```
+export $(grep -v '^#' .env | xargs)
+```
+
+Start the app
+
+```
+sudo docker run -d \
+  --name PyAutomation \
+  -p ${PORT}:${PORT}\
+  -v $(pwd)/temp/db:/app/db \
+  -v $(pwd)/temp/logs:/app/logs \
+  -e PORT=${PORT} \
+  -e REACT_VERSION=${REACT_VERSION} \
+  knowai/automation:1.0.0
+```
+
+## Docker Compose
+
+If you want to deploy it using docker compose, make the following `docker-compose.yml` file:
+
+```YaMl
+version: '3.3'
+
+services:
+
+  automation:
+    container_name: "PyAutomation"
+    image: "knowai/automation:1.0.0"
+    restart: always
+    ports:
+      - ${PORT}:${PORT}
+    volumes:
+      - ./temp/db:/app/db
+      - ./temp/logs:/app/logs
+    environment:
+      PORT: ${PORT}
+      REACT_VERSION: ${REACT_VERSION}
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail -s -k http://0.0.0.0:${PORT}/api/healthcheck/ || curl --fail -s -k https://0.0.0.0:${PORT}/api/healthcheck/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+
+```
+
+Start the docker compose file
+
+```
+sudo docker-compose --env-file .env up -d
+```
+
+
+Go to http://host:${PORT} to view the config page

@@ -1,0 +1,21 @@
+version: '3.3'
+
+services:
+
+  automation:
+    container_name: "PyAutomation"
+    image: "knowai/automation:1.0.0"
+    restart: always
+    ports:
+      - ${PORT}:${PORT}
+    volumes:
+      - ./temp/db:/app/db
+      - ./temp/logs:/app/logs
+    environment:
+      PORT: ${PORT}
+      REACT_VERSION: ${REACT_VERSION}
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail -s -k http://0.0.0.0:${PORT}/api/healthcheck/ || curl --fail -s -k https://0.0.0.0:${PORT}/api/healthcheck/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
