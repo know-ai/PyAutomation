@@ -1469,5 +1469,4 @@ class PyAutomation(Singleton):
         log_format = "%(asctime)s:%(levelname)s:%(message)s"
         formatter = logging.Formatter(log_format)
         handler.setFormatter(formatter)
-        
         logger.addHandler(handler)
