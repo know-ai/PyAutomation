@@ -19,6 +19,12 @@ layout = dbc.Container(
             button_close_id="close-centered",
             body_id="modal-body"
         ),
+        Components.modal_error(
+            title="Success",
+            modal_id="modal-success",
+            button_close_id="close-success",
+            body_id="modal-success-body"
+        ),
         Components.modal_confirm(
             title="Confirmation",
             modal_id="modal-update_delete-centered",

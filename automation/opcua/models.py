@@ -8,7 +8,7 @@ class Client(OPCClient):
     r"""
     Documentation here
     """
-    def __init__(self, url, client_name:str, timeout=4):
+    def __init__(self, url, client_name:str, timeout=10):
         r"""
         Documentation here
         """
@@ -32,25 +32,16 @@ class Client(OPCClient):
         Documentation here
         """
         try:
+            # Connect to the server
+            super(Client, self).connect()
 
-            
+            # # Re-establish the connection by creating a new SecureChannel
+            # super(Client, self).open_secure_channel()
 
-            try:
-                # Connect to the server
-                super(Client, self).connect()
+            # # Activate a session (you can create a new session if needed)
+            # super(Client, self).activate_session()
 
-                # Re-establish the connection by creating a new SecureChannel
-                super(Client, self).open_secure_channel()
-
-                # Activate a session (you can create a new session if needed)
-                super(Client, self).activate_session()
-
-                # Now you're connected again!
-                
-            except Exception as e:
-                logger = logging.getLogger("pyautomation")
-                logger.error(f"Error during connection: {e}")
-
+            # Now you're connected again!
             self._is_open = True
             self._id = str(uuid.uuid4())
             result = {
@@ -60,9 +51,10 @@ class Client(OPCClient):
                 'id': self.get_id()
                 }
             return result, 200
-
-        except Exception as _err:
             
+        except Exception as _err:
+            logger = logging.getLogger("pyautomation")
+            logger.error(f"Error during connection: {_err}")
             self._is_open = False
             result = {
                 'message': 'Connection could not be established',

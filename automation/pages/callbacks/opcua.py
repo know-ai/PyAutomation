@@ -78,6 +78,28 @@ def init_callback(app:dash.Dash):
         return is_open
     
     @app.callback(
+        dash.Output("remove_server_modal", "is_open"),
+        dash.Input("remove_server_button", "n_clicks"),
+        [dash.State("remove_server_modal", "is_open")],
+    )
+    def remove_server_button(n, is_open):
+        r"""
+        Documentation here
+        """
+        if n:
+            clients = list()
+            for client_name in app.automation.get_opcua_clients().keys():
+
+                clients.append(
+                    {"label": client_name, "value": client_name}
+                )
+
+            dash.set_props("opcua_client_names_options", {"options": clients})
+            return not is_open
+        
+        return is_open
+    
+    @app.callback(
         dash.Output("add_server_modal", "is_open", allow_duplicate=True),
         dash.Output("server_tree", "children"),
         dash.Input("add_server_ok_button_modal", "n_clicks"),
@@ -89,17 +111,52 @@ def init_callback(app:dash.Dash):
         r"""
         Documentation here
         """
-        app.automation.add_opcua_client(client_name=client_name, host=host, port=port)
-        data = OPCUAComponents.get_opcua_tree(app)
-        subscription_handler.unsubscribe_all()        
+        resp, _ = app.automation.add_opcua_client(client_name=client_name, host=host, port=port)
+        if resp:
 
-        return False, data
+            data = OPCUAComponents.get_opcua_tree(app)
+            subscription_handler.unsubscribe_all()        
+
+            return False, data
+        
+        message = f"Connection refused on opc.tcp://{host}:{port}"
+        dash.set_props("modal-error-opcua-connection-body", {"children": message})
+        dash.set_props("modal-error-opcua-connection", {'is_open': True})
+
+        return False, {}
     
     @app.callback(
         dash.Output("add_server_modal", "is_open", allow_duplicate=True),
         dash.Input("add_server_cancel_button_modal", "n_clicks"),
     )
     def cancel_add_server_button(n):
+        r"""
+        Documentation here
+        """
+        return False
+    
+    @app.callback(
+        dash.Output("remove_server_modal", "is_open", allow_duplicate=True),
+        dash.Input("remove_server_ok_button_modal", "n_clicks"),
+        dash.State("opcua_client_names_options", "value")
+    )
+    def ok_remove_server_button(n, client_name:str):
+        r"""
+        Documentation here
+        """
+        if client_name:
+
+            app.automation.remove_opcua_client(client_name=client_name)
+
+        data = OPCUAComponents.get_opcua_tree(app)
+        dash.set_props("server_tree", {"children": data})
+        return False
+    
+    @app.callback(
+        dash.Output("remove_server_modal", "is_open", allow_duplicate=True),
+        dash.Input("remove_server_cancel_button_modal", "n_clicks"),
+    )
+    def cancel_remove_server_button(n):
         r"""
         Documentation here
         """
@@ -120,3 +177,33 @@ def init_callback(app:dash.Dash):
             subscription_handler.unsubscribe_all()
             
             return data
+        
+    @app.callback(
+        dash.Output("modal-success-opcua-connection", "is_open"),
+        dash.Input("close-success-opcua-connection", "n_clicks"),
+        [dash.State("modal-success-opcua-connection", "is_open")],
+    )
+    def close_success_button(n, is_open):
+        r"""
+        Documentation here
+        """
+        if n:
+
+            return not is_open
+        
+        return is_open
+    
+    @app.callback(
+        dash.Output("modal-error-opcua-connection", "is_open"),
+        dash.Input("close-error-opcua-connection", "n_clicks"),
+        [dash.State("modal-error-opcua-connection", "is_open")],
+    )
+    def close_error_opcua_connection_button(n, is_open):
+        r"""
+        Documentation here
+        """
+        if n:
+
+            return not is_open
+        
+        return is_open

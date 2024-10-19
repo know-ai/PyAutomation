@@ -3,11 +3,17 @@
 
 This module implements Logger Worker.
 """
-import logging, time
+import logging, time, datetime, os, shutil
 from .worker import BaseWorker
 from ..managers import DBManager
 from ..logger.datalogger import DataLoggerEngine
 from ..tags.cvt import CVTEngine
+import sqlite3
+from peewee import SqliteDatabase
+from ..dbmodels.tags import TagValue
+from ..dbmodels.alarms import AlarmSummary
+from ..dbmodels.events import Events
+from ..dbmodels.logs import Logs
 
 
 class LoggerWorker(BaseWorker):
@@ -20,6 +26,52 @@ class LoggerWorker(BaseWorker):
         self._period = period
         self.logger = DataLoggerEngine()
         self.cvt = CVTEngine()
+        self.sqlite_db = None
+        self.sqlite_db_name = None
+
+    def sqlite_db_backup(self):
+        if self.sqlite_db:
+            file_size_mb = os.path.getsize(self.sqlite_db_name) / 1024 / 1024 
+            if file_size_mb > 1 * 1024: # 1 Gb: 
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                name = self.sqlite_db_name.split(".db")[0]
+                name = name.split(os.path.sep)[-1]
+                backup_file = os.path.join(".", "db", "backups", f"{name}_{timestamp}.db")
+                shutil.copy2(os.path.join(".", "db", "app.db"), backup_file)
+                logger = logging.getLogger("pyautomation")
+                logger.info(f"Backup creado: {backup_file}")
+                # Empty TagValue 
+                query = TagValue.delete()
+                query.execute()
+                # Empty Alarm Summary
+                query = AlarmSummary.delete()
+                query.execute()
+                # Empty Events
+                query = Events.delete()
+                query.execute()
+                # Empty Logs
+                query = Logs.delete()
+                query.execute()
+                # Execute Vacuum to compact DB
+                self.sqlite_db.close()
+                conn = sqlite3.connect(self.sqlite_db_name)
+                cur = conn.cursor()
+                cur.execute("VACUUM;")
+                conn.commit()
+                conn.close()
+                # Reopen DB connection
+                from ..dbmodels import proxy
+                self._db = self._manager.get_db()
+                proxy.initialize(self._db)
+                # self._manager.set_db(self._db)
+                print(f"Everythin is OK")
+
+        else:
+            db = self.logger.logger.get_db()
+            if db:
+                if isinstance(db, SqliteDatabase):
+                    self.sqlite_db = db
+                    self.sqlite_db_name = db.database
 
     def run(self):
         r"""
@@ -28,9 +80,10 @@ class LoggerWorker(BaseWorker):
         _queue = self._manager.get_queue()
 
         while True:
-
+            self.sqlite_db_backup()
             time.sleep(self._period)
             tags = list()
+
             while not _queue.empty():
 
                 item = _queue.get(block=False)

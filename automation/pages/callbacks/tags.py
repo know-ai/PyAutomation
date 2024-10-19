@@ -282,6 +282,11 @@ def init_callback(app:dash.Dash):
                 dash.set_props("modal-body", {"children": message})
                 dash.set_props("modal-centered", {'is_open': True})
             
+            else:
+
+                dash.set_props("modal-success-body", {"children": message})
+                dash.set_props("modal-success", {'is_open': True})
+            
             return app.tags_table_data(), generate_dropdown_conditional()
         
     @app.callback(
@@ -321,7 +326,22 @@ def init_callback(app:dash.Dash):
         dash.Input("close-centered", "n_clicks"),
         [dash.State("modal-centered", "is_open")],
     )
-    def toggle_modal(n, is_open):
+    def close_error_button(n, is_open):
+        r"""
+        Documentation here
+        """
+        if n:
+
+            return not is_open
+        
+        return is_open
+    
+    @app.callback(
+        dash.Output("modal-success", "is_open"),
+        dash.Input("close-success", "n_clicks"),
+        [dash.State("modal-success", "is_open")],
+    )
+    def close_success_button(n, is_open):
         r"""
         Documentation here
         """

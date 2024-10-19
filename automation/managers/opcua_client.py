@@ -31,8 +31,8 @@ class OPCUAClientManager:
         endpoint_url = f"opc.tcp://{host}:{port}"
         if client_name in self._clients:
 
-            return KeyError(f"Client Name {client_name} duplicated")
-        
+            return True, f"Client Name {client_name} duplicated"
+
         opcua_client = Client(endpoint_url, client_name=client_name)
         message, status_connection = opcua_client.connect()
         if status_connection==200:
@@ -57,21 +57,31 @@ class OPCUAClientManager:
 
                     self.das.restart_buffer(tag=self.cvt.get_tag(id=tag["id"]))
         
-        return message
+            return True, message
+        
+        return False, message
 
     def remove(self, client_name:str):
         r"""
         Documentation here
         """
         if client_name in self._clients:
+            try:
+                opcua_client = self._clients.pop(client_name)
+                opcua_client.disconnect()
+                # DATABASE PERSISTENCY
+                opcua = OPCUA.get_by_client_name(client_name=client_name)
+                if opcua:
+                    if self.logger.get_db():
+                        query = OPCUA.delete().where(OPCUA.client_name == client_name)
+                        query.execute()
 
-            opcua_client = self._clients.pop(client_name)
-            opcua_client.disconnect()
-            # DATABASE PERSISTENCY
-            opcua = OPCUA.get_by_client_name(client_name=client_name)
-            if opcua:
-                if self.logger.get_db():
-                    OPCUA.delete(id=opcua.id)
+                return True
+            except Exception as err:
+
+                return False
+        
+        return False
 
     def connect(self, client_name:str)->dict:
         r"""

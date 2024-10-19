@@ -1,6 +1,7 @@
 import dash
 import dash_mantine_components as dmc
 import dash_bootstrap_components as dbc
+from automation.pages.components import Components
 from automation.pages.components.opcua import OPCUAComponents
 
 # Set React version to 18.2.0
@@ -15,6 +16,18 @@ layout = dmc.MantineProvider(
             [
                 dash.html.Div(
                     [
+                        Components.modal_error(
+                            title="Success",
+                            modal_id="modal-success-opcua-connection",
+                            button_close_id="close-success-opcua-connection",
+                            body_id="modal-success-opcua-connection-body"
+                        ),
+                        Components.modal_error(
+                            title="Error",
+                            modal_id="modal-error-opcua-connection",
+                            button_close_id="close-error-opcua-connection",
+                            body_id="modal-error-opcua-connection-body"
+                        ),
                         dbc.Row(
                             [
                                 dbc.Col(
@@ -39,7 +52,7 @@ layout = dmc.MantineProvider(
                                                     "Remove",  
                                                     color="danger", 
                                                     outline=True,
-                                                    disabled=True, 
+                                                    disabled=False, 
                                                     id="remove_server_button"
                                                 ),   
                                             ],
@@ -85,6 +98,13 @@ layout = dmc.MantineProvider(
                     body_id="add_server_body_modal", 
                     ok_button_id="add_server_ok_button_modal", 
                     cancel_button_id="add_server_cancel_button_modal"
+                ),
+                OPCUAComponents.remove_server(
+                    title="Remove Server", 
+                    modal_id="remove_server_modal", 
+                    body_id="remove_server_body_modal", 
+                    ok_button_id="remove_server_ok_button_modal", 
+                    cancel_button_id="remove_server_cancel_button_modal"
                 )
             ],
             fluid=False,

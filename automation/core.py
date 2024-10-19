@@ -86,6 +86,18 @@ class PyAutomation(Singleton):
             
             os.makedirs(folder_path)
 
+        folder_db = os.path.join(".", "db")
+
+        if not os.path.exists(folder_db):
+            
+            os.makedirs(folder_db)
+
+        folder_db_backups = os.path.join(".", "db", "backups")
+
+        if not os.path.exists(folder_db_backups):
+            
+            os.makedirs(folder_db_backups)
+
         self.set_log(file=os.path.join(folder_path, "app.log") ,level=logging.WARNING)
     
     @logging_error_handler
@@ -590,7 +602,7 @@ class PyAutomation(Singleton):
         return self.opcua_client_manager.get_opcua_tree(client_name=client_name)
 
     @logging_error_handler
-    @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=None)
+    @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=(bool, str|dict))
     def add_opcua_client(self, client_name:str, host:str="127.0.0.1", port:int=4840):
         r"""
         Documentation here
@@ -599,7 +611,15 @@ class PyAutomation(Singleton):
 
         if servers:
 
-            self.opcua_client_manager.add(client_name=client_name, host=host, port=port)
+            return self.opcua_client_manager.add(client_name=client_name, host=host, port=port)
+        
+    @logging_error_handler
+    @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=bool)
+    def remove_opcua_client(self, client_name:str):
+        r"""
+        Documentation here
+        """
+        return self.opcua_client_manager.remove(client_name=client_name)
 
     @logging_error_handler
     @validate_types(tag=Tag, opcua_address=str|type(None), node_namespace=str|type(None), scan_time=float|int|type(None), reload=bool, output=None)
@@ -783,14 +803,16 @@ class PyAutomation(Singleton):
         if dbtype.lower()=='sqlite':
 
             dbfile = kwargs.get("dbfile", ":memory:")
-
+            if not dbfile.endswith(".db"):
+                dbfile = f"{dbfile}.db"
             self._db = SqliteDatabase(os.path.join(".", "db", dbfile), pragmas={
                 'journal_mode': 'wal',
-                'journal_size_limit': 1024,
-                'cache_size': -1024 * 64,  # 64MB
+                'wal_checkpoint': 1,
+                'cache_size': -1024 * 10,  # 1MB
                 'foreign_keys': 1,
                 'ignore_check_constraints': 0,
-                'synchronous': 0}
+                'synchronous': 1
+                }
             )
 
         elif dbtype.lower()=='mysql':
@@ -850,12 +872,6 @@ class PyAutomation(Singleton):
                 'name': name,
             }
 
-        folder_path = './db'
-
-        if not os.path.exists(folder_path):
-            
-            os.makedirs(folder_path)
-
         with open('./db/db_config.json', 'w') as json_file:
 
             json.dump(db_config, json_file)
@@ -867,12 +883,6 @@ class PyAutomation(Singleton):
         Documentation here
         """
         try:
-
-            folder_path = './db'
-
-            if not os.path.exists(folder_path):
-                
-                os.makedirs(folder_path)
 
             with open('./db/db_config.json', 'r') as json_file:
 
@@ -907,12 +917,6 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        folder_path = './db'
-
-        if not os.path.exists(folder_path):
-            
-            os.makedirs(folder_path)
-
         db_config = self.get_db_config()
         if test:
             db_config = {"dbtype": "sqlite", "dbfile": "test.db"}

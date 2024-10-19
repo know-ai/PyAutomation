@@ -7,7 +7,7 @@ from ..alarms import Alarm, AlarmState
 class TestCore(unittest.TestCase):
 
     def setUp(self) -> None:
-        file_path = "./test.db"
+        file_path = os.path.join(".", "db", "test.db")
         if os.path.exists(file_path):
             os.remove(file_path)
         self.app = PyAutomation()

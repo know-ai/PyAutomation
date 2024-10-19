@@ -207,6 +207,56 @@ class OPCUAComponents(Singleton):
         )
     
     @classmethod
+    def remove_server(cls, title:str, modal_id:str, body_id:str, ok_button_id:str, cancel_button_id:str):
+
+        return dash.html.Div(
+            [
+                dash.dcc.Location(id='communications_page', refresh=False),
+                dbc.Modal(
+                    [
+                        dbc.ModalHeader(dbc.ModalTitle(title), close_button=True),
+                        dbc.ModalBody(
+                            dash.html.Div(
+                                [
+                                    dash.html.H6('Server Information'),  # This is the title
+                                    dash.html.Div([
+                                        dbc.InputGroup([dbc.InputGroupText("Client Name"), dbc.Select(
+                                                        options=[
+                                                            {"label": "postgresql", "value": "postgresql"},
+                                                            {"label": "mysql", "value": "mysql"},
+                                                            {"label": "sqlite", "value": "sqlite"}
+                                                        ],
+                                                        id="opcua_client_names_options"
+                                                    )], size="sm", className="mb-1")
+                                    ], style={'border': '1px solid black', 'padding': '10px'}, className="mb-2"),
+                                ]
+                            ),
+                            id=body_id),
+                        dbc.ModalFooter(
+                            [
+                                dbc.Button(
+                                    "OK",
+                                    id=ok_button_id,
+                                    className="float-start",
+                                    n_clicks=0,
+                                ),
+                                dbc.Button(
+                                    "Cancel",
+                                    id=cancel_button_id,
+                                    className="ms-auto",
+                                    n_clicks=0,
+                                )
+                            ]
+                        ),
+                    ],
+                    id=modal_id,
+                    centered=True,
+                    is_open=False,
+                ),
+            ]
+        )
+    
+    @classmethod
     def get_opcua_tree(cls, app):
 
         clients = app.automation.get_opcua_clients()
@@ -260,7 +310,6 @@ class OPCUAComponents(Singleton):
             className="mx-0 px-0"
         ) 
         
-    
     def update_data_access_view(self, namespace, value, timestamp)->dash.dash_table.DataTable:
         r"""
         Documentation here
