@@ -7,7 +7,7 @@ will create a time-serie for each tag in a short memory data base.
 import pytz
 from datetime import datetime
 from ..tags.tag import Tag
-from ..dbmodels import Tags, TagValue, Units
+from ..dbmodels import Tags, TagValue, Units, Segment
 from ..modules.users.users import User
 from ..tags.cvt import CVTEngine
 from .core import BaseLogger, BaseEngine
@@ -99,7 +99,12 @@ class DataLogger(BaseLogger):
         """
         if self.get_db():
             tag = Tags.get(identifier=id)
-            Tags.put(id=tag.id, **kwargs)
+            if "segment" in kwargs:
+                segment_name = kwargs.pop('segment')
+                segment_obj = Segment.get_or_none(name=segment_name)
+                if segment_obj:
+                    kwargs["segment"] = segment_obj
+            return Tags.put(id=tag.id, **kwargs)
 
     @db_rollback
     def set_tags(self, tags):
@@ -171,6 +176,18 @@ class DataLogger(BaseLogger):
                     result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": eval(f"{variable}.convert_value({value.value}, from_unit={'value.unit.unit'}, to_unit={'_tag.get_display_unit()'})")})
 
             return result
+        
+    @db_rollback
+    def read_segments(self):
+        r"""
+        Documentation here
+        """
+        if self.get_db():
+
+            return Segment.read_all()
+        
+        return list()
+
 
 class DataLoggerEngine(BaseEngine):
     r"""
@@ -274,6 +291,7 @@ class DataLoggerEngine(BaseEngine):
             node_namespace:str="",
             scan_time:int=None,
             dead_band:int|float=None,
+            segment:str="",
             user:User|None=None
             ):
         r"""Documentation here
@@ -335,6 +353,10 @@ class DataLoggerEngine(BaseEngine):
 
             _query["parameters"]["dead_band"] = dead_band
         
+        if segment:
+
+            _query["parameters"]["segment"] = segment
+    
         return self.query(_query)
     
     def delete_tag(self, id:str):
@@ -412,3 +434,12 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"]["tags"] = tags
         return self.query(_query)
 
+    def read_segments(self):
+        r"""
+        Documentation here
+        """
+        _query = dict()
+        _query["action"] = "read_segments"
+        _query["parameters"] = dict()
+        return self.query(_query)
+    

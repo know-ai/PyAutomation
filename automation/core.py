@@ -338,6 +338,13 @@ class PyAutomation(Singleton):
         Documentation here
         """
         return self.logger_engine.read_trends(start, stop, timezone, *tags)
+    
+    @logging_error_handler
+    def get_segments(self):
+        r"""
+        Documentation here
+        """
+        return self.logger_engine.read_segments()
 
     @logging_error_handler
     @validate_types(id=str, output=None|str)
@@ -373,6 +380,7 @@ class PyAutomation(Singleton):
             opcua_address=str,
             node_namespace=str,
             scan_time=int|float|type(None),
+            segment=str,
             dead_band=int|float|type(None),
             user=User|type(None),
             output=(Tag, str)
@@ -390,6 +398,7 @@ class PyAutomation(Singleton):
             opcua_address:str="",
             node_namespace:str="",
             scan_time:int=None,
+            segment:str="",
             dead_band:int|float=None,
             user:User|None=None, 
         )->dict:
@@ -403,7 +412,7 @@ class PyAutomation(Singleton):
         # Persist Tag on Database
         if self.is_db_connected():
 
-            self.logger_engine.update_tag(
+            updated_fields = self.logger_engine.update_tag(
                 id=id,  
                 name=name, 
                 unit=unit, 
@@ -414,9 +423,21 @@ class PyAutomation(Singleton):
                 display_unit=display_unit,
                 opcua_address=opcua_address,
                 node_namespace=node_namespace,
+                segment=segment,
                 scan_time=scan_time,
                 dead_band=dead_band
             )
+
+            for key, value in updated_fields._update.items():
+
+                updated_field = key.name
+                field_value = value
+
+        manufacturer = ""
+        if updated_field=="segment":
+            
+            segment = field_value.name
+            manufacturer = field_value.manufacturer.name
 
         result = self.cvt.update_tag(
             id=id,  
@@ -429,6 +450,8 @@ class PyAutomation(Singleton):
             display_unit=display_unit,
             opcua_address=opcua_address,
             node_namespace=node_namespace,
+            segment=segment,
+            manufacturer=manufacturer,
             scan_time=scan_time,
             dead_band=dead_band,
             user=user

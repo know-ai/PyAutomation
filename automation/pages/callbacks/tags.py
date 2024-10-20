@@ -146,8 +146,8 @@ def init_callback(app:dash.Dash):
     @app.callback(
         dash.Output('tags_datatable', 'data', allow_duplicate=True),
         dash.Output('opcua_address_input', 'options'),
-        dash.Output('tags_datatable', 'dropdown'),
-        dash.Output('tags_datatable', 'dropdown_conditional'),
+        dash.Output('tags_datatable', 'dropdown', allow_duplicate=True),
+        dash.Output('tags_datatable', 'dropdown_conditional', allow_duplicate=True),
         dash.Input('tags_page', 'pathname'),
         prevent_initial_call=True
         )
@@ -174,6 +174,9 @@ def init_callback(app:dash.Dash):
             },
             'opcua_address': {
                 'options': opcua_client_options
+            },
+            'segment': {
+                'options': [{'label': f"{segment['manufacturer']['name']}->{segment['name']}", 'value': segment['name']} for segment in app.automation.get_segments() if app.automation.get_segments()]
             }
         }
 
@@ -216,6 +219,7 @@ def init_callback(app:dash.Dash):
     @app.callback(
         dash.Output('tags_datatable', 'data', allow_duplicate=True),
         dash.Output('tags_datatable', 'dropdown_conditional', allow_duplicate=True),
+        dash.Output('tags_datatable', 'dropdown', allow_duplicate=True),
         dash.Input('create_tag_button', 'n_clicks'),
         dash.State("tag_name_input", "value"), 
         dash.State("datatype_input", "value"), 
@@ -284,10 +288,33 @@ def init_callback(app:dash.Dash):
             
             else:
 
+                opcua_client_options = [{"label": "", "value": ""}]
+
+                for opcua_client, info in app.automation.get_opcua_clients().items():
+                    
+                    opcua_client_options.append({
+                        "label": opcua_client, "value": info['server_url']
+                    })
+                dropdown = {
+                    'data_type': {
+                        'options': [
+                            {'label': 'Float', 'value': 'float'},
+                            {'label': 'Integer', 'value': 'integer'},
+                            {'label': 'Boolean', 'value': 'boolean'},
+                            {'label': 'String', 'value': 'string'}
+                        ]
+                    },
+                    'opcua_address': {
+                        'options': opcua_client_options
+                    },
+                    'segment': {
+                        'options': [{'label': f"{segment['manufacturer']['name']}->{segment['name']}", 'value': segment['name']} for segment in app.automation.get_segments() if app.automation.get_segments()]
+                    }
+                }
+
                 dash.set_props("modal-success-body", {"children": message})
                 dash.set_props("modal-success", {'is_open': True})
-            
-            return app.tags_table_data(), generate_dropdown_conditional()
+            return app.tags_table_data(), generate_dropdown_conditional(), dropdown
         
     @app.callback(
         dash.Input('tags_datatable', 'data_timestamp'),

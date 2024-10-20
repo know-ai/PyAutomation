@@ -138,6 +138,8 @@ class CVT:
         node_namespace:str="",
         scan_time:int=None,
         dead_band:float=None,
+        segment:str="",
+        manufacturer:str="",
         user:User=None, 
         )->tuple[Tag|None, str]:
         r"""Documentation here
@@ -178,6 +180,10 @@ class CVT:
             tag.set_scan_time(scan_time=scan_time)
         if dead_band:
             tag.set_dead_band(dead_band=dead_band)
+        if segment:
+            tag.segment = segment
+        if manufacturer:
+            tag.manufacturer = manufacturer
         
         self._tags[id] = tag
 
@@ -630,6 +636,8 @@ class CVTEngine(Singleton):
             display_unit:str="",
             opcua_address:str="",
             node_namespace:str="",
+            segment:str="",
+            manufacturer:str="",
             scan_time:int=None,
             dead_band:float=None,
             user:User=None, 
@@ -660,6 +668,8 @@ class CVTEngine(Singleton):
         _query["parameters"]["dead_band"] = dead_band
         _query["parameters"]["node_namespace"] = node_namespace
         _query["parameters"]["opcua_address"] = opcua_address
+        _query["parameters"]["segment"] = segment
+        _query["parameters"]["manufacturer"] = manufacturer
         return self.__query(_query)
     
     def delete_tag(self, id:str, user:User|None=None):

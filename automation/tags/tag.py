@@ -304,6 +304,8 @@ class Tag:
             "scan_time": self.get_scan_time(),
             "dead_band": self.get_dead_band(),
             "timestamp": timestamp,
+            "segment": self.segment,
+            "manufacturer": self.manufacturer,
             "process_filter": self.process_filter,
             "gaussian_filter": self.gaussian_filter,
             "out_of_range_detection": self.out_of_range_detection,
