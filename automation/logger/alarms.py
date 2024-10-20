@@ -271,7 +271,7 @@ class AlarmsLoggerEngine(BaseEngine):
     
     def filter_alarm_summary_by(
         self,
-        usernames:list[str]=None,
+        names:list[str]=None,
         priorities:list[int]=None,
         criticities:list[int]=None,
         greater_than_timestamp:datetime=None,
@@ -281,7 +281,7 @@ class AlarmsLoggerEngine(BaseEngine):
         _query = dict()
         _query["action"] = "filter_alarm_summary_by"
         _query["parameters"] = dict()
-        _query["parameters"]["usernames"] = usernames
+        _query["parameters"]["names"] = names
         _query["parameters"]["priorities"] = priorities
         _query["parameters"]["criticities"] = criticities
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp

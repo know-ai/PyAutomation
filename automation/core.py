@@ -1047,12 +1047,12 @@ class PyAutomation(Singleton):
 
                 machine_name = machine.name.value
                 machine_db = Machines.get_or_none(name=machine_name)
-                machine.identifier.value = machine_db.identifier
                 
                 if not machine_db:
 
                     return f"{machine_name} not found into DB", 404
                 
+                machine.identifier.value = machine_db.identifier
                 tags_machine = machine_db.get_tags()
                 
                 for tag_machine in tags_machine:
