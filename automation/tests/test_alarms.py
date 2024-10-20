@@ -102,7 +102,79 @@ class TestAlarms(unittest.TestCase):
             tag.set_value(value=45)
             self.assertEqual(alarm.current_state.value.lower(), "normal")
 
+    def test_alarm_setpoint_edge_cases(self):
+        r"""
+        Documentation here
+        """
+        name = "alarm_edge"
+        cvt.set_tag(
+            name="tag4",
+            variable="Temperature",
+            unit="C",
+            data_type="FLOAT",
+            description="tag_edge"
+        )
+        tag = cvt.get_tag_by_name(name="tag4")
+        alarm = Alarm(
+            name=name,
+            tag=tag,
+            alarm_type=StringType("HIGH"),
+            alarm_setpoint=FloatType(50.0)
+        )
+
+        with self.subTest("Test at exactly setpoint"):
+            tag.set_value(value=50.0)
+            self.assertEqual(alarm.state.state.lower(), "normal", "Alarm triggered incorrectly at setpoint")
+
+        with self.subTest("Test just below setpoint"):
+            tag.set_value(value=49.99)
+            self.assertEqual(alarm.state.state.lower(), "normal", "Alarm triggered incorrectly just below setpoint")
+
+        with self.subTest("Test just above setpoint"):
+            tag.set_value(value=50.01)
+            self.assertEqual(alarm.state.state.lower(), "unacknowledged", "Alarm did not trigger just above setpoint")
+
+    def test_low_type_alarm(self):
+        r"""
+        Documentation here
+        """
+        name = "alarm_edge"
+        cvt.set_tag(
+            name="tag5",
+            variable="Temperature",
+            unit="C",
+            data_type="FLOAT",
+            description="tag_low"
+        )
+        tag = cvt.get_tag_by_name(name="tag5")
+        alarm = Alarm(
+            name=name,
+            tag=tag,
+            alarm_type=StringType("LOW"),
+            alarm_setpoint=FloatType(50.0)
+        )
+
+        with self.subTest("Test low alarm"):
+            tag.set_value(value=45)
+            self.assertEqual(alarm.state.state.lower(), "unacknowledged", "Low alarm did not trigger correctly")
     
+
+    
+
+    
+
+
+
+
+
+        
+
+        
+
+
+        
+
+
 
 
     
