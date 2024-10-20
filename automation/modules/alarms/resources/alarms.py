@@ -39,22 +39,7 @@ class AlarmsCollection(Resource):
         Get Alarms
         """
         return app.alarm_manager.serialize(), 200
-    
-@ns.route('/actions/<alarm_name>')
-class AlarmsActionsCollection(Resource):
 
-    @api.doc(security='apikey')
-    @Api.token_required(auth=True)
-    def get(self, alarm_name:str):
-        """
-        Get allowed actions
-        """
-        alarm = app.alarm_manager.get_alarm_by_name(name=alarm_name)
-        if alarm:
-
-            return alarm.get_operator_actions(), 200
-        
-        return {'message': f"Alarm Name {alarm_name} is not exist"}, 400
     
 @ns.route('/add')
 class CreateAlarmResource(Resource):
