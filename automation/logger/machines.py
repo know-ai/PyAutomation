@@ -17,6 +17,7 @@ class MachinesLogger(BaseLogger):
     @db_rollback
     def create(
             self,
+            identifier:str,
             name:str,
             interval:int,
             description:str,
@@ -31,6 +32,7 @@ class MachinesLogger(BaseLogger):
         if self.get_db():
 
             Machines.create(
+                identifier=identifier,
                 name=name,
                 interval=interval,
                 description=description,
@@ -115,6 +117,7 @@ class MachinesLoggerEngine(BaseEngine):
 
     def create(
         self,
+        identifier:str,
         name:str,
         interval:int,
         description:str,
@@ -128,6 +131,7 @@ class MachinesLoggerEngine(BaseEngine):
         _query = dict()
         _query["action"] = "create"
         _query["parameters"] = dict()
+        _query["parameters"]["identifier"] = identifier
         _query["parameters"]["name"] = name
         _query["parameters"]["interval"] = interval
         _query["parameters"]["classification"] = classification

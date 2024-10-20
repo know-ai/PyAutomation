@@ -1038,15 +1038,17 @@ class PyAutomation(Singleton):
 
     @logging_error_handler
     def load_db_tags_to_machine(self):
-
+        
         machines = self.machine_manager.get_machines()
+
         for machine, _, _ in machines:
 
             if machine.classification.value.lower()!="data acquisition system":
 
                 machine_name = machine.name.value
                 machine_db = Machines.get_or_none(name=machine_name)
-
+                machine.identifier.value = machine_db.identifier
+                
                 if not machine_db:
 
                     return f"{machine_name} not found into DB", 404
@@ -1059,6 +1061,12 @@ class PyAutomation(Singleton):
                     tag_name = _tag["tag"]["name"]
                     tag = self.cvt.get_tag_by_name(name=tag_name)
                     machine.subscribe_to(tag=tag, default_tag_name=_tag["default_tag_name"])
+
+            else:
+
+                machine_name = machine.name.value
+                machine_db = Machines.get_or_none(name=machine_name)
+                machine.identifier.value = machine_db.identifier
 
     # ALARMS METHODS
     @logging_error_handler

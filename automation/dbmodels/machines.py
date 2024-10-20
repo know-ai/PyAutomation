@@ -5,6 +5,7 @@ from .tags import Tags
 
 class Machines(BaseModel):
 
+    identifier = CharField(unique=True)
     name = CharField(unique=True)
     interval = FloatField()
     description = CharField(max_length=128)
@@ -17,6 +18,7 @@ class Machines(BaseModel):
     @classmethod
     def create(
         cls, 
+        identifier:str,
         name:str,
         interval:int,
         description:str,
@@ -33,6 +35,7 @@ class Machines(BaseModel):
         if not cls.name_exist(name):
 
             query = cls(
+                identifier=identifier,
                 name=name,
                 interval=interval,
                 description=description,
@@ -123,6 +126,7 @@ class Machines(BaseModel):
 
         return {
             "id": self.id,
+            "identifier": self.identifier,
             "name": self.name,
             "interval": self.interval,
             "description": self.description,

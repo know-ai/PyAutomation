@@ -1,4 +1,4 @@
-import logging
+import logging, secrets
 from datetime import datetime
 from statemachine import State, StateMachine
 from .workers.state_machine import StateMachineWorker
@@ -63,6 +63,7 @@ class Machine(Singleton):
         
         if self.machines_engine.get_db():
             self.machines_engine.create(
+                identifier=machine.identifier.value,
                 name=machine.name.value,
                 interval=interval.value,
                 description=machine.description.value,
@@ -147,6 +148,7 @@ class Machine(Singleton):
                         machine.buffer_roll_type.value = config[machine.name.value]["buffer_roll_type"]
                         machine.criticity.value = config[machine.name.value]["criticity"]
                         machine.priority.value = config[machine.name.value]["priority"]
+                        machine.identifier.value = config[machine.name.value]['identifier']
                         self.append_machine(machine=machine, interval=FloatType(config[machine.name.value]["interval"]))
 
         else:
@@ -243,8 +245,16 @@ class StateMachineCore(StateMachine):
             name:str,
             description:str="",
             classification:str="",
-            interval:float=1.0
+            interval:float=1.0,
+            identifier:str=None
         ):
+        _identifier = secrets.token_hex(4)
+        
+        if identifier:
+
+            _identifier = identifier
+
+        self.identifier = StringType(default=_identifier)
         self.criticity = IntegerType(default=2)
         self.priority = IntegerType(default=1)
         self.description = StringType(default=description)
@@ -758,7 +768,7 @@ class StateMachineCore(StateMachine):
         - dict: Serialized state machine
         """
         result = {
-            "state": self.current_state.value
+            "state": self.current_state.value,
         }
         result.update(self.get_serialized_models())
         
