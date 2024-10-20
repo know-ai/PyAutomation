@@ -10,7 +10,7 @@ app = PyAutomation()
 
 
 alarms_summary_filter_model = api.model("alarms_summary_filter_model",{
-    'names': fields.List(fields.String(), required=False),
+    'usernames': fields.List(fields.String(), required=False),
     'states': fields.List(fields.String(), required=False),
     'tags': fields.List(fields.String(), required=False),
     'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now() - timedelta(minutes=2), description=f'Greater than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
