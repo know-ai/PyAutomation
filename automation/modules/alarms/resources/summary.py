@@ -41,8 +41,8 @@ class LastsAlarmsResource(Resource):
         r"""
         Get lasts alarms
         """
-        
-        return app.get_lasts_alarms(lasts=lasts)
+
+        return app.get_lasts_alarms(lasts=int(lasts))
     
 
 @ns.route('/<id>/comments')
