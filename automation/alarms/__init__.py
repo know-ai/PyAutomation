@@ -546,6 +546,7 @@ class Alarm(StateMachine):
             "alarm_setpoint": self.alarm_setpoint.serialize(),
             "ack_timestamp": ack_timestamp,
             "description": self.description,
+            "actions": self.get_operator_actions()
         }
 
 
