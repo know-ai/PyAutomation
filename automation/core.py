@@ -381,6 +381,7 @@ class PyAutomation(Singleton):
             node_namespace=str,
             scan_time=int|float|type(None),
             segment=str,
+            manufacturer=str,
             dead_band=int|float|type(None),
             user=User|type(None),
             output=(Tag, str)
@@ -399,6 +400,7 @@ class PyAutomation(Singleton):
             node_namespace:str="",
             scan_time:int=None,
             segment:str="",
+            manufacturer:str="",
             dead_band:int|float=None,
             user:User|None=None, 
         )->dict:
@@ -424,20 +426,21 @@ class PyAutomation(Singleton):
                 opcua_address=opcua_address,
                 node_namespace=node_namespace,
                 segment=segment,
+                manufacturer=manufacturer,
                 scan_time=scan_time,
                 dead_band=dead_band
             )
 
-            for key, value in updated_fields._update.items():
+            # for key, value in updated_fields._update.items():
 
-                updated_field = key.name
-                field_value = value
+            #     updated_field = key.name
+            #     field_value = value
 
-        manufacturer = ""
-        if updated_field=="segment":
+        # manufacturer = ""
+        # if updated_field=="segment":
             
-            segment = field_value.name
-            manufacturer = field_value.manufacturer.name
+        #     segment = field_value.name
+        #     manufacturer = field_value.manufacturer.name
 
         result = self.cvt.update_tag(
             id=id,  

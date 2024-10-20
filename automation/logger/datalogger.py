@@ -99,11 +99,7 @@ class DataLogger(BaseLogger):
         """
         if self.get_db():
             tag = Tags.get(identifier=id)
-            if "segment" in kwargs:
-                segment_name = kwargs.pop('segment')
-                segment_obj = Segment.get_or_none(name=segment_name)
-                if segment_obj:
-                    kwargs["segment"] = segment_obj
+
             return Tags.put(id=tag.id, **kwargs)
 
     @db_rollback
@@ -292,6 +288,7 @@ class DataLoggerEngine(BaseEngine):
             scan_time:int=None,
             dead_band:int|float=None,
             segment:str="",
+            manufacturer:str="",
             user:User|None=None
             ):
         r"""Documentation here
@@ -356,6 +353,10 @@ class DataLoggerEngine(BaseEngine):
         if segment:
 
             _query["parameters"]["segment"] = segment
+        
+        if manufacturer:
+
+            _query["parameters"]["manufacturer"] = manufacturer
     
         return self.query(_query)
     

@@ -1,3 +1,4 @@
+import logging
 from peewee import CharField, BooleanField, FloatField, ForeignKeyField, IntegerField, fn, TimestampField, BooleanField
 from .core import BaseModel
 from datetime import datetime
@@ -74,26 +75,30 @@ class Manufacturer(BaseModel):
 
 class Segment(BaseModel):
 
-    name = CharField(unique=True)
-    manufacturer= ForeignKeyField(Manufacturer, backref='segments', on_delete='CASCADE')
+    name = CharField()
+    manufacturer = ForeignKeyField(Manufacturer, backref='segments')
+
+    class Meta:
+        indexes = (
+            (('name', 'manufacturer'), True),
+        )
 
     @classmethod
     def create(cls, name:str, manufacturer:str)-> dict:
-        r"""
+        r"""Documentation here
         """
-        if not cls.name_exist(name):
+        if Manufacturer.name_exist(name=manufacturer):
+            
+            manufacturer_obj = Manufacturer.read_by_name(name=manufacturer)
+        
+        else:
+            
+            manufacturer_obj = Manufacturer.create(name=manufacturer)
 
-            if Manufacturer.name_exist(name=manufacturer):
-                
-                manufacturer_obj = Manufacturer.read_by_name(name=manufacturer)
-            
-            else:
-                
-                manufacturer_obj = Manufacturer.create(name=manufacturer)
-            
+        segment_obj = cls.select().join(Manufacturer).where(Manufacturer.id==manufacturer_obj.id)
+        if not segment_obj:
             query = cls(name=name, manufacturer=manufacturer_obj)
-            query.save()
-            
+            query.save()    
             return query
 
     @classmethod
@@ -600,13 +605,19 @@ class Tags(BaseModel):
 
                         if segment and manufacturer:
 
-                            if Segment.name_exist(name=segment):
+                            segment_obj = Segment.create(name=segment, manufacturer=manufacturer)
 
-                                segment_obj = Segment.read_by_name(name=segment)
-                            
-                            else:
+                            if not segment_obj:
 
-                                segment_obj = Segment.create(name=segment, manufacturer=manufacturer)
+                                result.update(
+                                    {
+                                        'message': f"Duplicated {manufacturer}->{segment}", 
+                                        'data': data
+                                    }
+                                )
+
+                                return result
+
                             
                             query = cls(
                                 identifier=id,
@@ -764,6 +775,21 @@ class Tags(BaseModel):
 
                         fields["data_type"] = query
 
+            if "segment" in fields:
+
+                if "manufacturer" in fields:
+
+                    segment = fields["segment"]
+                    manufacturer = fields.pop("manufacturer")
+                    if isinstance(segment, str) and isinstance(manufacturer, str):
+                        manufacturer_obj = Manufacturer.get_or_none(name=manufacturer)
+                        if manufacturer_obj:
+                            query = Segment.get_or_none((Segment.name == segment) & (Segment.manufacturer == manufacturer_obj))
+
+                            if query:
+                                
+                                fields["segment"] = query
+                            
             query = cls.update(**fields).where(cls.id == id)
             query.execute()
             return query

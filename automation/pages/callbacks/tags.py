@@ -176,14 +176,12 @@ def init_callback(app:dash.Dash):
                 'options': opcua_client_options
             },
             'segment': {
-                'options': [{'label': f"{segment['manufacturer']['name']}->{segment['name']}", 'value': segment['name']} for segment in app.automation.get_segments() if app.automation.get_segments()]
+                'options': [{'label': f"{segment['manufacturer']['name']}->{segment['name']}", 'value': f"{segment['manufacturer']['name']}->{segment['name']}"} for segment in app.automation.get_segments() if app.automation.get_segments()]
             }
         }
-
         dropdown_conditional = generate_dropdown_conditional()
 
         if pathname=="/tags":
-            
             return app.tags_table_data(), opcua_client_options, dropdown, dropdown_conditional
         
         return dash.no_update, opcua_client_options, dropdown, dropdown_conditional
@@ -280,40 +278,42 @@ def init_callback(app:dash.Dash):
                 manufacturer=manufacturer,
                 segment=segment
             )
-            
             if not tag:
-                
+                segment = {
+                    'options': []
+                }
                 dash.set_props("modal-body", {"children": message})
                 dash.set_props("modal-centered", {'is_open': True})
             
             else:
-
-                opcua_client_options = [{"label": "", "value": ""}]
-
-                for opcua_client, info in app.automation.get_opcua_clients().items():
-                    
-                    opcua_client_options.append({
-                        "label": opcua_client, "value": info['server_url']
-                    })
-                dropdown = {
-                    'data_type': {
-                        'options': [
-                            {'label': 'Float', 'value': 'float'},
-                            {'label': 'Integer', 'value': 'integer'},
-                            {'label': 'Boolean', 'value': 'boolean'},
-                            {'label': 'String', 'value': 'string'}
-                        ]
-                    },
-                    'opcua_address': {
-                        'options': opcua_client_options
-                    },
-                    'segment': {
-                        'options': [{'label': f"{segment['manufacturer']['name']}->{segment['name']}", 'value': segment['name']} for segment in app.automation.get_segments() if app.automation.get_segments()]
-                    }
+                segment = {
+                    'options': [{'label': f"{segment['manufacturer']['name']}->{segment['name']}", 'value': f"{segment['manufacturer']['name']}->{segment['name']}"} for segment in app.automation.get_segments() if app.automation.get_segments()]
                 }
-
                 dash.set_props("modal-success-body", {"children": message})
                 dash.set_props("modal-success", {'is_open': True})
+
+            opcua_client_options = [{"label": "", "value": ""}]
+
+            for opcua_client, info in app.automation.get_opcua_clients().items():
+                
+                opcua_client_options.append({
+                    "label": opcua_client, "value": info['server_url']
+                })
+            dropdown = {
+                'data_type': {
+                    'options': [
+                        {'label': 'Float', 'value': 'float'},
+                        {'label': 'Integer', 'value': 'integer'},
+                        {'label': 'Boolean', 'value': 'boolean'},
+                        {'label': 'String', 'value': 'string'}
+                    ]
+                },
+                'opcua_address': {
+                    'options': opcua_client_options
+                },
+                'segment': segment
+            }
+
             return app.tags_table_data(), generate_dropdown_conditional(), dropdown
         
     @app.callback(
@@ -419,6 +419,14 @@ def init_callback(app:dash.Dash):
                     to_updates = find_differences_between_lists(previous, current)
                     tag_to_update = to_updates[0]
                     tag_id = tag_to_update.pop("id")
+                    if "segment" in tag_to_update:
+                        manufacturer_segment = tag_to_update['segment'].split("->")
+                        manufacturer = manufacturer_segment[0]
+                        segment = manufacturer_segment[1]
+                        tag_to_update.update({
+                            "segment": segment,
+                            "manufacturer": manufacturer
+                        })
                     tag, message = app.automation.update_tag(id=tag_id, **tag_to_update)
                     
                     if not tag:

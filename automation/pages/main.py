@@ -22,8 +22,16 @@ class ConfigView(dash.Dash):
         self.automation = automation_app
         
     def tags_table_data(self):
-        
-        return self.automation.get_tags()
+    
+        tags = list()
+
+        for tag in self.automation.get_tags():
+            tag.update({
+                "segment": f"{tag['manufacturer']}->{tag['segment']}"
+            })
+            tags.append(tag)        
+
+        return tags
     
     def alarms_table_data(self):
         data = [{
