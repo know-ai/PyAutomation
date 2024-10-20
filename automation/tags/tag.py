@@ -2,6 +2,7 @@ import secrets
 from datetime import datetime
 from ..utils import Observer
 from ..utils.decorators import logging_error_handler
+from ..buffer import Buffer
 from ..variables import (
     Temperature,
     Length,
@@ -85,6 +86,9 @@ class Tag:
             self.value = Percentage(value=0.0, unit=self.unit)
         elif variable.lower()=="adimentional":
             self.value = Adimentional(value=0.0, unit=self.unit)
+
+        self.values = Buffer()
+        self.timestamps = Buffer()
         self.opcua_address = opcua_address
         self.node_namespace = node_namespace
         self.scan_time = scan_time
@@ -114,6 +118,8 @@ class Tag:
             timestamp = datetime.now()
         self.value.set_value(value=value, unit=self.display_unit)
         self.timestamp = timestamp
+        self.values(self.get_value())
+        self.timestamps(timestamp.strftime(DATETIME_FORMAT))
         self.notify()
 
     def set_display_name(self, name:str):
@@ -292,6 +298,9 @@ class Tag:
         return {
             "id": self.get_id(),
             "value": self.get_value(),
+            "timestamp": timestamp,
+            "values": list(self.values),
+            "timestamps": list(self.timestamps),
             "name": self.name,
             "unit": self.get_unit(),
             "display_unit": self.get_display_unit(),
@@ -303,7 +312,6 @@ class Tag:
             "node_namespace": self.get_node_namespace(),
             "scan_time": self.get_scan_time(),
             "dead_band": self.get_dead_band(),
-            "timestamp": timestamp,
             "segment": self.segment,
             "manufacturer": self.manufacturer,
             "process_filter": self.process_filter,
