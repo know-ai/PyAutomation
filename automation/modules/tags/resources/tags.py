@@ -50,6 +50,12 @@ class QueryTrendsResource(Resource):
 
             return f"Invalid Timezone", 400
         
+        for tag in tags:
+
+            if not app.get_tag_by_name(name=tag):
+
+                return f"{tag} not exist into db", 404
+        
         separator = '.'
         greater_than_timestamp = api.payload['greater_than_timestamp']
         start = greater_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
