@@ -1326,13 +1326,13 @@ class PyAutomation(Singleton):
         alarm_summary_id:int=None,
         event_id:int=None,
         timestamp:datetime=None
-        )->list:
+        )->tuple:
         r"""
         Documentation here
         """
         if self.is_db_connected():
             
-            log = self.logs_engine.create(
+            log, message = self.logs_engine.create(
                 message=message, 
                 user=user, 
                 description=description, 
@@ -1346,7 +1346,9 @@ class PyAutomation(Singleton):
 
                 self.sio.emit("on.log", data=log.serialize())
 
-            return log
+            return log, message
+        
+        return None, "Logs DB is not up"
         
     @logging_error_handler
     def filter_logs_by(
