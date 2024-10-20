@@ -100,6 +100,8 @@ class Segment(BaseModel):
             query = cls(name=name, manufacturer=manufacturer_obj)
             query.save()    
             return query
+        
+        return segment_obj
 
     @classmethod
     def read_by_name(cls, name:str)->bool:
