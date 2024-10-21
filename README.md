@@ -35,7 +35,14 @@ pip install -r requirements.txt
 ## Run Config page
 
 ```python
-python wsgi.py
+python run.py
+```
+
+or 
+
+```python
+
+./docker-entrypoint.sh
 ```
 
 ## Deploy documentation on Development mode With mkautodoc
