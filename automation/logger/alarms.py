@@ -196,6 +196,34 @@ class AlarmsLogger(BaseLogger):
             AlarmSummary.create(name=name, state=state, timestamp=timestamp, ack_timestamp=ack_timestamp)
 
     @db_rollback
+    def put_record_on_alarm_summary(self, name:str, state:str=None, ack_timestamp:datetime=None):
+        r"""
+        Documentation here
+        """
+        if not self._db:
+            
+            return None
+        
+        fields = dict()
+        alarm = AlarmSummary.read_by_name(name=name)
+        # print(f"Name: {name} - State: {state} - acktimestamp: {ack_timestamp}")
+        if alarm:
+
+            if ack_timestamp:
+                fields["ack_time"] = ack_timestamp
+            if state:
+                alarm_state = AlarmStates.get_or_none(name=state)
+                fields["state"] = alarm_state
+
+            if fields:
+                query = AlarmSummary.put(
+                    id=alarm.id,
+                    **fields
+                )
+
+                return query
+
+    @db_rollback
     def get_alarm_summary(self):
         r"""
         Documentation here
@@ -299,6 +327,21 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["timestamp"] = timestamp
         _query["parameters"]["ack_timestamp"] = ack_timestamp
         
+        return self.query(_query)
+    
+    def put_record_on_alarm_summary(
+        self,
+        name:str,
+        state:str=None,
+        ack_timestamp:datetime=None
+        ):
+        _query = dict()
+        _query["action"] = "put_record_on_alarm_summary"
+        _query["parameters"] = dict()
+        _query["parameters"]["name"] = name
+        _query["parameters"]["state"] = state
+        _query["parameters"]["ack_timestamp"] = ack_timestamp
+
         return self.query(_query)
 
     def put(

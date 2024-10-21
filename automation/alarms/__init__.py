@@ -139,6 +139,12 @@ class Alarm(StateMachine):
 
         self.state = AlarmState.UNACK
         self.timestamp = self.__timestamp
+        self.alarm_engine.create_record_on_alarm_summary(
+                name=self.name, 
+                state=self.state.state, 
+                timestamp=self.timestamp,
+                ack_timestamp=self.ack_timestamp
+            )
 
     @logging_error_handler
     @put_alarm_state
@@ -146,6 +152,11 @@ class Alarm(StateMachine):
 
         self.state = AlarmState.ACKED
         self.ack_timestamp = self.__timestamp
+        self.alarm_engine.put_record_on_alarm_summary(
+            name=self.name, 
+            state=self.state.state, 
+            ack_timestamp=self.ack_timestamp
+        )
     
     @logging_error_handler
     @put_alarm_state
@@ -153,6 +164,10 @@ class Alarm(StateMachine):
         
         self.timestamp = None
         self.state = AlarmState.RTNUN
+        self.alarm_engine.put_record_on_alarm_summary(
+            name=self.name, 
+            state=self.state.state
+        )
     
     @logging_error_handler
     @put_alarm_state
@@ -254,23 +269,11 @@ class Alarm(StateMachine):
         if current_state=="unack_alarm":
 
             transition_name = f'{current_state}_to_rtn_unack'
-            self.alarm_engine.create_record_on_alarm_summary(
-                name=self.name, 
-                state=self.state.state, 
-                timestamp=self.timestamp,
-                ack_timestamp=self.ack_timestamp
-            )
             self.__transition(transition_name=transition_name)
 
         elif current_state=="ack_alarm":
 
             transition_name = f'{current_state}_to_normal'
-            self.alarm_engine.create_record_on_alarm_summary(
-                name=self.name, 
-                state=self.state.state, 
-                timestamp=self.timestamp,
-                ack_timestamp=self.ack_timestamp
-            )
             self.__transition(transition_name=transition_name)
 
     @logging_error_handler
@@ -288,6 +291,11 @@ class Alarm(StateMachine):
         elif current_state=="rtn_unack":
 
             transition_name = f'{current_state}_to_normal'
+
+        self.alarm_engine.put_record_on_alarm_summary(
+            name=self.name, 
+            ack_timestamp=self.ack_timestamp
+        )
 
         tag = self.tag_engine.get_tag_by_name(name=self.tag.name)
         self.__transition(transition_name=transition_name)
