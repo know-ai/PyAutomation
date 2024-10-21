@@ -619,7 +619,7 @@ class StateMachineCore(StateMachine):
                     self.send(transition_name)
                     return self, f"from: {_from} to: {to}"
                 
-            return None, f"Transitio to {to} not allowed"
+            return None, f"Transition to {to} not allowed"
             
         except Exception as err:
 
@@ -661,6 +661,25 @@ class StateMachineCore(StateMachine):
         ```
         """        
         self.machine_interval = interval
+
+    def get_allowed_actions(self):
+        r"""Documentation here
+        """
+        result = list()
+
+        current_state = self.current_state
+        transitions = self.transitions
+
+        for transition in transitions:
+
+            if transition.source == current_state:
+                if transition.target.name not in ("run", "switch", "wait", "start"):
+                    result.append(transition.target.name)
+                    if "confirm" in transition.target.name:
+
+                        result.append(transition.target.name.replace("confirm", "deny"))
+
+        return result
 
     def _get_active_transitions(self):
         r"""
@@ -769,7 +788,7 @@ class StateMachineCore(StateMachine):
         """
         result = {
             "state": self.current_state.value,
-            "actions": self._get_active_transitions()
+            "actions": self.get_allowed_actions()
         }
         result.update(self.get_serialized_models())
         
