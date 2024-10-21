@@ -42,7 +42,7 @@ class LastsEventsResource(Resource):
         Get lasts events
         """
         
-        return app.get_lasts_events(lasts=lasts)
+        return app.get_lasts_events(lasts=int(lasts))
     
 
 @ns.route('/<id>/comments')

@@ -452,6 +452,7 @@ class AlarmSummary(BaseModel):
         r"""
         Documentation here
         """
+        _query = None
         if states:
             subquery = AlarmStates.select(AlarmStates.id).where(AlarmStates.name.in_(states))
             _query = cls.select().join(AlarmStates).where(AlarmStates.id.in_(subquery)).order_by(cls.id.desc())
@@ -483,6 +484,10 @@ class AlarmSummary(BaseModel):
             else:
                 _query = cls.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
 
+        if _query:
+            return [alarm.serialize() for alarm in _query]
+        
+        _query = cls.select().order_by(cls.id.desc())
         return [alarm.serialize() for alarm in _query]
 
     @classmethod

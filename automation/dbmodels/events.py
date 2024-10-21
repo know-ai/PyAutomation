@@ -76,6 +76,7 @@ class Events(BaseModel):
         r"""
         Documentation here
         """
+        _query = None
         if usernames:
             
             subquery = Users.select(Users.id).where(Users.username.in_(usernames))
@@ -119,7 +120,11 @@ class Events(BaseModel):
 
                 _query = cls.select().where(cls.timestamp < less_than_timestamp).order_by(cls.id.desc())
 
-
+        if _query:
+            
+            return [event.serialize() for event in _query]
+        
+        _query = cls.select().order_by(cls.id.desc())
         return [event.serialize() for event in _query]
     
     @classmethod

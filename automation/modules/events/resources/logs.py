@@ -83,4 +83,4 @@ class LastsEventsResource(Resource):
         Get lasts events
         """
         
-        return app.get_lasts_logs(lasts=lasts), 200
+        return app.get_lasts_logs(lasts=int(lasts)), 200

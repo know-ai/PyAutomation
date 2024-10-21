@@ -80,6 +80,7 @@ class Logs(BaseModel):
         r"""
         Documentation here
         """
+        _query = None
         if usernames:
             subquery = Users.select(Users.id).where(Users.username.in_(usernames))
             _query = cls.select().join(Users).where(Users.id.in_(subquery)).order_by(cls.id.desc())
@@ -127,8 +128,13 @@ class Logs(BaseModel):
 
                 _query = cls.select().where(cls.timestamp < less_than_timestamp).order_by(cls.id.desc())
 
+        if _query:
 
-        return [event.serialize() for event in _query]
+            return [event.serialize() for event in _query]
+    
+        _query = cls.select().order_by(cls.id.desc())
+        return [log.serialize() for log in _query]
+
 
     def serialize(self)-> dict:
 
