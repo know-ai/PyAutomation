@@ -1,6 +1,5 @@
 # Industrial Protocols
 
-
 ```{toctree}
 :maxdepth: 2
 
