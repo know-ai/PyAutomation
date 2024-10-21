@@ -6,7 +6,7 @@ LABEL author="KnowAI"
 
 LABEL description="PyAutomation System"
 
-RUN apk update && apk add --no-cache curl util-linux
+RUN apk update && apk add curl util-linux
 
 RUN pip3 install --upgrade pip
 

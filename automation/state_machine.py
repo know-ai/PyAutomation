@@ -769,6 +769,7 @@ class StateMachineCore(StateMachine):
         """
         result = {
             "state": self.current_state.value,
+            "actions": self._get_active_transitions()
         }
         result.update(self.get_serialized_models())
         
@@ -781,6 +782,8 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "start"
         self.criticity.value = 1
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_wait_to_run(self):
         r"""
@@ -788,6 +791,8 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "wait"
         self.criticity.value = 1
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_wait_to_restart(self):
         r"""
@@ -795,6 +800,8 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "wait"
         self.criticity.value = 5
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_wait_to_reset(self):
         r"""
@@ -802,6 +809,8 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "wait"
         self.criticity.value = 5
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_run_to_restart(self):
         r"""
@@ -809,6 +818,8 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "run"
         self.criticity.value = 5
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_run_to_reset(self):
         r"""
@@ -816,6 +827,8 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "run"
         self.criticity.value = 5
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_reset_to_start(self):
         r"""
@@ -823,6 +836,8 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "reset"
         self.criticity.value = 2
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_restart_to_wait(self):
         r"""
@@ -830,6 +845,8 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "restart"
         self.criticity.value = 2
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
 
 class DAQ(StateMachineCore):
@@ -931,6 +948,8 @@ class AutomationStateMachine(StateMachineCore):
         """
         self.last_state = "test"
         self.criticity.value = 4
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_test_to_reset(self):
         r"""
@@ -938,6 +957,8 @@ class AutomationStateMachine(StateMachineCore):
         """
         self.last_state = "test"
         self.criticity.value = 4
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_sleep_to_restart(self):
         r"""
@@ -945,6 +966,8 @@ class AutomationStateMachine(StateMachineCore):
         """
         self.last_state = "sleep"
         self.criticity.value = 4
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_sleep_to_reset(self):
         r"""
@@ -952,5 +975,7 @@ class AutomationStateMachine(StateMachineCore):
         """
         self.last_state = "sleep"
         self.criticity.value = 4
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
 

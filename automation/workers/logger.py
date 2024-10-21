@@ -63,8 +63,6 @@ class LoggerWorker(BaseWorker):
                 from ..dbmodels import proxy
                 self._db = self._manager.get_db()
                 proxy.initialize(self._db)
-                # self._manager.set_db(self._db)
-                print(f"Everythin is OK")
 
         else:
             db = self.logger.logger.get_db()
