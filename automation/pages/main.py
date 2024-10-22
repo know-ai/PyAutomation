@@ -24,7 +24,6 @@ class ConfigView(dash.Dash):
     def tags_table_data(self):
     
         tags = list()
-
         for tag in self.automation.get_tags():
             if tag["segment"] and tag["manufacturer"]:
                 tag.update({

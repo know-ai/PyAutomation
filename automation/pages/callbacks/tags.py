@@ -155,6 +155,7 @@ def init_callback(app:dash.Dash):
         r"""
         Documentation here
         """
+        
         opcua_client_options = [{"label": "", "value": ""}]
 
         for opcua_client, info in app.automation.get_opcua_clients().items():
@@ -180,7 +181,7 @@ def init_callback(app:dash.Dash):
             }
         }
         dropdown_conditional = generate_dropdown_conditional()
-
+        
         if pathname=="/tags":
             return app.tags_table_data(), opcua_client_options, dropdown, dropdown_conditional
         

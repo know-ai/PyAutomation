@@ -1,4 +1,4 @@
-import logging, json, os, jwt, requests, urllib3, sqlite3
+import sys, logging, json, os, jwt, requests, urllib3
 from logging.handlers import TimedRotatingFileHandler
 from math import ceil
 from datetime import datetime, timezone
@@ -914,7 +914,7 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        if os.path.isfile('./db/db_config.json'):
+        try:
 
             with open('./db/db_config.json', 'r') as json_file:
 
@@ -922,7 +922,14 @@ class PyAutomation(Singleton):
 
             return db_config
         
-        return None
+        except Exception as e:
+            _, _, e_traceback = sys.exc_info()
+            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
+            e_message = str(e)
+            e_line_number = e_traceback.tb_lineno
+            message = f"Database is not configured: {e_line_number} - {e_filename} - {e_message}"
+            logging.warning(message)
+            return None
 
     @logging_error_handler
     @validate_types(output=bool)
@@ -943,6 +950,7 @@ class PyAutomation(Singleton):
         Documentation here
         """
         db_config = self.get_db_config()
+
         if test:
             
             db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
@@ -987,7 +995,7 @@ class PyAutomation(Singleton):
                 active = tag.pop("active")
 
                 if active:
-
+                    
                     self.create_tag(reload=True, **tag)
 
     @logging_error_handler
@@ -1030,6 +1038,7 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
+        
         if self.is_db_connected():
 
             clients = self.db_manager.get_opcua_clients()
