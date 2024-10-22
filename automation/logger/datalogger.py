@@ -179,7 +179,7 @@ class DataLogger(BaseLogger):
                 trend = Tags.select().where(Tags.name==tag).get()
                 _tag = self.tag_engine.get_tag_by_name(name=tag)
                 variable = _tag.get_variable()
-                values = trend.values.select().where((TagValue.timestamp > start) & (TagValue.timestamp < stop)).order_by(TagValue.timestamp.asc())
+                values = trend.values.select().where((TagValue.timestamp > start) & (TagValue.timestamp < stop)).order_by(TagValue.timestamp.asc()).limit(1000000) #  
                 for value in values:
                     result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": eval(f"{variable}.convert_value({value.value}, from_unit={'value.unit.unit'}, to_unit={'_tag.get_display_unit()'})")})
 

@@ -882,6 +882,11 @@ class TagValue(BaseModel):
     value = FloatField()
     timestamp = TimestampField(utc=True)
 
+    class Meta:
+        indexes = (
+            (('timestamp',), False),
+        )
+
     @classmethod
     def create(
         cls, 
