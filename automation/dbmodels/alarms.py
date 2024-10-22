@@ -1,3 +1,4 @@
+import pytz
 from peewee import CharField, FloatField, ForeignKeyField, TimestampField
 from ..dbmodels.core import BaseModel
 from datetime import datetime
@@ -447,11 +448,13 @@ class AlarmSummary(BaseModel):
         names:list[str]=None,
         tags:list[str]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
         r"""
         Documentation here
         """
+        _timezone = pytz.timezone(timezone)        
         _query = None
         if states:
             subquery = AlarmStates.select(AlarmStates.id).where(AlarmStates.name.in_(states))
@@ -472,22 +475,29 @@ class AlarmSummary(BaseModel):
             else:
                 _query = cls.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
 
+        
         if greater_than_timestamp:
+            greater_than_timestamp = _timezone.localize(datetime.strptime(greater_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC).timestamp()
             if _query:
                 _query = _query.select().where(cls.alarm_time > greater_than_timestamp).order_by(cls.id.desc())
             else:
                 _query = cls.select().where(cls.alarm_time > greater_than_timestamp).order_by(cls.id.desc())
-
+        
         if less_than_timestamp:
+            less_than_timestamp = _timezone.localize(datetime.strptime(less_than_timestamp, "%Y-%m-%d %H:%M:%S.%f")).astimezone(pytz.UTC).timestamp()
             if _query:
+                
                 _query = _query.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
+                
             else:
                 _query = cls.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
 
         if _query:
+
             return [alarm.serialize() for alarm in _query]
         
         _query = cls.select().order_by(cls.id.desc())
+    
         return [alarm.serialize() for alarm in _query]
 
     @classmethod

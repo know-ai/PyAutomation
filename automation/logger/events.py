@@ -60,7 +60,8 @@ class EventsLogger(BaseLogger):
         priorities:list[int]=None,
         criticities:list[int]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str="UTC"
         ):
         r"""
         Documentation here
@@ -76,7 +77,8 @@ class EventsLogger(BaseLogger):
                 priorities=priorities,
                 criticities=criticities,
                 greater_than_timestamp=greater_than_timestamp,
-                less_than_timestamp=less_than_timestamp
+                less_than_timestamp=less_than_timestamp,
+                timezone=timezone
             )
 
     def get_summary(self)->tuple[list, str]:
@@ -146,7 +148,8 @@ class EventsLoggerEngine(BaseEngine):
         priorities:list[int]=None,
         criticities:list[int]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
 
         _query = dict()
@@ -157,6 +160,7 @@ class EventsLoggerEngine(BaseEngine):
         _query["parameters"]["criticities"] = criticities
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
+        _query["parameters"]["timezone"] = timezone
         
         return self.query(_query)
 

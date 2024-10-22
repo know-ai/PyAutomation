@@ -1,4 +1,5 @@
-from peewee import CharField, DateTimeField, ForeignKeyField, IntegerField
+import pytz
+from peewee import CharField, TimestampField, ForeignKeyField, IntegerField
 from ..dbmodels.core import BaseModel
 from datetime import datetime
 from .users import Users
@@ -9,7 +10,7 @@ DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 class Events(BaseModel):
 
-    timestamp = DateTimeField()
+    timestamp = TimestampField(utc=True)
     message = CharField(max_length=256)
     description = CharField(max_length=256, null=True)
     classification = CharField(max_length=128, null=True)
@@ -72,10 +73,12 @@ class Events(BaseModel):
         priorities:list[int]=None,
         criticities:list[int]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None):
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'):
         r"""
         Documentation here
         """
+        _timezone = pytz.timezone(timezone) 
         _query = None
         if usernames:
             
@@ -101,7 +104,7 @@ class Events(BaseModel):
                 _query = cls.select().where(cls.in_(criticities)).order_by(cls.id.desc())
 
         if greater_than_timestamp:
-            
+            greater_than_timestamp = _timezone.localize(datetime.strptime(greater_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC).timestamp()
             if _query:
 
                 _query = _query.select().where(cls.timestamp > greater_than_timestamp).order_by(cls.id.desc())
@@ -111,7 +114,7 @@ class Events(BaseModel):
                 _query = cls.select().where(cls.timestamp > greater_than_timestamp).order_by(cls.id.desc())
 
         if less_than_timestamp:
-            
+            less_than_timestamp = _timezone.localize(datetime.strptime(less_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC).timestamp()
             if _query:
 
                 _query = _query.select().where(cls.timestamp < less_than_timestamp).order_by(cls.id.desc())

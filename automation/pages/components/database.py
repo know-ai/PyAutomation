@@ -104,7 +104,7 @@ class DatabaseComponents:
 
                                         dbc.Col(
                                             dbc.Button(
-                                                "Create DB",
+                                                "Connect",
                                                 color="primary",
                                                 outline=True,
                                                 disabled=True,

@@ -1,3 +1,4 @@
+import pytz
 from datetime import datetime, timedelta
 from flask_restx import Namespace, Resource, fields
 from .... import PyAutomation
@@ -14,7 +15,8 @@ events_filter_model = api.model("events_filter_model",{
     'priorities': fields.List(fields.Integer(), required=False),
     'criticities': fields.List(fields.Integer(), required=False),
     'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now() - timedelta(minutes=2), description=f'Greater than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
-    'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(), description=f'Less than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}')
+    'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(), description=f'Less than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
+    'timezone': fields.String(required=False, default='UTC')
 })
 
     
@@ -28,6 +30,25 @@ class EventsSummaryFilterByResource(Resource):
         r"""
         Events Summary Filter By
         """
+        timezone = 'UTC'
+        if "timezone" in api.payload:
+
+            timezone = api.payload["timezone"]
+
+        if timezone not in pytz.all_timezones:
+
+            return f"Invalid Timezone", 400
+        
+        separator = '.'
+        if 'greater_than_timestamp' in api.payload:
+            
+            greater_than_timestamp = api.payload['greater_than_timestamp']
+            api.payload['greater_than_timestamp'] = greater_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+        
+        if "less_than_timestamp" in api.payload:
+
+            less_than_timestamp = api.payload['less_than_timestamp']
+            api.payload['less_than_timestamp'] = less_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
         
         return app.filter_events_by(**api.payload)
     

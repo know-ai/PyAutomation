@@ -71,7 +71,8 @@ class LogsLogger(BaseLogger):
         event_ids:list[int]=None,
         classifications:list[str]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
         r"""
         Documentation here
@@ -88,7 +89,8 @@ class LogsLogger(BaseLogger):
                 event_ids=event_ids,
                 classifications=classifications,
                 greater_than_timestamp=greater_than_timestamp,
-                less_than_timestamp=less_than_timestamp
+                less_than_timestamp=less_than_timestamp,
+                timezone=timezone
             )
         
         return list(), f"DB Not Initialized"
@@ -162,7 +164,8 @@ class LogsLoggerEngine(BaseEngine):
         event_ids:list[int]=None,
         classifications:list[str]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
 
         _query = dict()
@@ -174,6 +177,7 @@ class LogsLoggerEngine(BaseEngine):
         _query["parameters"]["classifications"] = classifications
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
+        _query["parameters"]["timezone"] = timezone
         
         return self.query(_query)
 

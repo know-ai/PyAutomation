@@ -118,7 +118,8 @@ class AlarmsLogger(BaseLogger):
             names:list[str]=None,
             tags:list[str]=None,
             greater_than_timestamp:datetime=None,
-            less_than_timestamp:datetime=None
+            less_than_timestamp:datetime=None,
+            timezone:str="UTC"
         ):
         r"""
         Documentation here
@@ -136,7 +137,8 @@ class AlarmsLogger(BaseLogger):
             names=names,
             tags=tags,
             greater_than_timestamp=greater_than_timestamp,
-            less_than_timestamp=less_than_timestamp
+            less_than_timestamp=less_than_timestamp,
+            timezone=timezone
         )
     
     @db_rollback
@@ -323,7 +325,8 @@ class AlarmsLoggerEngine(BaseEngine):
         states:list[int]=None,
         tags:list[int]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
 
         _query = dict()
@@ -334,6 +337,7 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["tags"] = tags
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
+        _query["parameters"]["timezone"] = timezone
         
         return self.query(_query)
     

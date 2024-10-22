@@ -160,9 +160,10 @@ def init_callback(app:dash.Dash):
     
     @app.callback(
         # dash.Output("modal-db-connection", "is_open"),
-        dash.Input('timestamp-interval', 'n_intervals')
+        dash.Input('timestamp-interval', 'n_intervals'),
+        dash.State("db_type_input", "value")
     )
-    def connection_notification(n_interval):
+    def connection_notification(n_interval, db_type_value):
         r"""
         Documentation here
         """
@@ -207,10 +208,21 @@ def init_callback(app:dash.Dash):
         
         else:
 
-            dash.set_props("connect_disconnect_db_button", {'children': "Connect"})
-            dash.set_props("db_type_input", {'disabled': False})
-            dash.set_props("db_name_input", {'disabled': False})
-            dash.set_props("db_host_input", {'disabled': False})
-            dash.set_props("db_port_input", {'disabled': False})
-            dash.set_props("db_user_input", {'disabled': False})
-            dash.set_props("db_password_input", {'disabled': False})
+            if db_type_value:
+
+                if db_type_value.lower()=="sqlite":
+
+                    dash.set_props("db_host_input", {'disabled': True})
+                    dash.set_props("db_port_input", {'disabled': True})
+                    dash.set_props("db_user_input", {'disabled': True})
+                    dash.set_props("db_password_input", {'disabled': True})
+
+                else:
+
+                    dash.set_props("connect_disconnect_db_button", {'children': "Connect"})
+                    dash.set_props("db_type_input", {'disabled': False})
+                    dash.set_props("db_name_input", {'disabled': False})
+                    dash.set_props("db_host_input", {'disabled': False})
+                    dash.set_props("db_port_input", {'disabled': False})
+                    dash.set_props("db_user_input", {'disabled': False})
+                    dash.set_props("db_password_input", {'disabled': False})

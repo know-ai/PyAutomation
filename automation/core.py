@@ -1346,18 +1346,20 @@ class PyAutomation(Singleton):
             priorities:list[int]=None,
             criticities:list[int]=None,
             greater_than_timestamp:datetime=None,
-            less_than_timestamp:datetime=None)->list:
+            less_than_timestamp:datetime=None,
+            timezone:str="UTC")->list:
         r"""
         Documentation here
         """
         if self.is_db_connected():
-
+            
             return self.events_engine.filter_by(
                 usernames=usernames,
                 priorities=priorities,
                 criticities=criticities,
                 greater_than_timestamp=greater_than_timestamp,
-                less_than_timestamp=less_than_timestamp
+                less_than_timestamp=less_than_timestamp,
+                timezone=timezone
             )
         
     # LOGS METHODS
@@ -1403,7 +1405,8 @@ class PyAutomation(Singleton):
             event_ids:list[int]=None,
             classifications:list[str]=None,
             greater_than_timestamp:datetime=None,
-            less_than_timestamp:datetime=None
+            less_than_timestamp:datetime=None,
+            timezone:str="UTC"
         )->list:
         r"""
         Documentation here
@@ -1416,7 +1419,8 @@ class PyAutomation(Singleton):
                 event_ids=event_ids,
                 classifications=classifications,
                 greater_than_timestamp=greater_than_timestamp,
-                less_than_timestamp=less_than_timestamp
+                less_than_timestamp=less_than_timestamp,
+                timezone=timezone
             )
         
     @logging_error_handler

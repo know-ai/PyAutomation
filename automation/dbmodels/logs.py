@@ -1,4 +1,5 @@
-from peewee import CharField, DateTimeField, ForeignKeyField
+import pytz
+from peewee import CharField, TimestampField, ForeignKeyField
 from ..dbmodels.core import BaseModel
 from datetime import datetime
 from .users import Users
@@ -11,7 +12,7 @@ DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 class Logs(BaseModel):
 
-    timestamp = DateTimeField()
+    timestamp = TimestampField(utc=True)
     message = CharField(max_length=256)
     description = CharField(max_length=256, null=True)
     classification = CharField(max_length=128, null=True)
@@ -75,11 +76,13 @@ class Logs(BaseModel):
         event_ids:list[int]=None,
         classifications:list[str]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
         r"""
         Documentation here
         """
+        _timezone = pytz.timezone(timezone) 
         _query = None
         if usernames:
             subquery = Users.select(Users.id).where(Users.username.in_(usernames))
@@ -109,7 +112,7 @@ class Logs(BaseModel):
                 _query = cls.select().where(cls.in_(classifications)).order_by(cls.id.desc())
 
         if greater_than_timestamp:
-            
+            greater_than_timestamp = _timezone.localize(datetime.strptime(greater_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC).timestamp()
             if _query:
 
                 _query = _query.select().where(cls.timestamp > greater_than_timestamp).order_by(cls.id.desc())
@@ -119,7 +122,7 @@ class Logs(BaseModel):
                 _query = cls.select().where(cls.timestamp > greater_than_timestamp).order_by(cls.id.desc())
 
         if less_than_timestamp:
-            
+            less_than_timestamp = _timezone.localize(datetime.strptime(less_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC).timestamp()
             if _query:
 
                 _query = _query.select().where(cls.timestamp < less_than_timestamp).order_by(cls.id.desc())
