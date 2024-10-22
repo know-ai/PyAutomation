@@ -28,6 +28,10 @@ class LogsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             
             query, message = Logs.create(
@@ -49,6 +53,10 @@ class LogsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
         
             return Logs.read_lasts(lasts=lasts)
@@ -68,6 +76,10 @@ class LogsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
         
             return Logs.filter_by(
@@ -86,6 +98,10 @@ class LogsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             
             return Logs.serialize()

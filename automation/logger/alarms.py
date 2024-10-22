@@ -101,6 +101,10 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if not self._db:
             
             return list()
@@ -119,6 +123,10 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if not self._db:
             
             return list()
@@ -191,6 +199,10 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             
             AlarmSummary.create(name=name, state=state, timestamp=timestamp, ack_timestamp=ack_timestamp)
@@ -202,6 +214,10 @@ class AlarmsLogger(BaseLogger):
         """
         if not self._db:
             
+            return None
+        
+        if not self.is_history_logged:
+
             return None
         
         fields = dict()
@@ -228,6 +244,10 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if not self._db:
             
             return list()

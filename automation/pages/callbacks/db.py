@@ -167,30 +167,40 @@ def init_callback(app:dash.Dash):
 
             dash.set_props("connect_disconnect_db_button", {'children': "Disconnect"})
             db_config = app.automation.get_db_config()
+
+            if db_config:
             
-            if db_config['dbtype']=="sqlite":
+                if db_config['dbtype']=="sqlite":
+                    
+                    dash.set_props("db_type_input", {'value': "sqlite"})
+                    dash.set_props("db_name_input", {'value': db_config['dbfile']})
+                    dash.set_props("db_type_input", {'disabled': True})
+                    dash.set_props("db_name_input", {'disabled': True})
                 
-                dash.set_props("db_type_input", {'value': "sqlite"})
-                dash.set_props("db_name_input", {'value': db_config['dbfile']})
-                dash.set_props("db_type_input", {'disabled': True})
-                dash.set_props("db_name_input", {'disabled': True})
-            
-            else:
+                else:
 
-                dash.set_props("db_type_input", {'value': db_config['dbtype']})
-                dash.set_props("db_name_input", {'value': db_config['name']})
-                dash.set_props("db_host_input", {'value': db_config['host']})
-                dash.set_props("db_port_input", {'value': db_config['port']})
-                dash.set_props("db_user_input", {'value': db_config['user']})
-                dash.set_props("db_password_input", {'value': db_config['password']})
+                    dash.set_props("db_type_input", {'value': db_config['dbtype']})
+                    dash.set_props("db_name_input", {'value': db_config['name']})
+                    dash.set_props("db_host_input", {'value': db_config['host']})
+                    dash.set_props("db_port_input", {'value': db_config['port']})
+                    dash.set_props("db_user_input", {'value': db_config['user']})
+                    dash.set_props("db_password_input", {'value': db_config['password']})
 
 
-                dash.set_props("db_type_input", {'disabled': True})
-                dash.set_props("db_name_input", {'disabled': True})
-                dash.set_props("db_host_input", {'disabled': True})
-                dash.set_props("db_port_input", {'disabled': True})
-                dash.set_props("db_user_input", {'disabled': True})
-                dash.set_props("db_password_input", {'disabled': True})
+                    dash.set_props("db_type_input", {'disabled': True})
+                    dash.set_props("db_name_input", {'disabled': True})
+                    dash.set_props("db_host_input", {'disabled': True})
+                    dash.set_props("db_port_input", {'disabled': True})
+                    dash.set_props("db_user_input", {'disabled': True})
+                    dash.set_props("db_password_input", {'disabled': True})
+
+            dash.set_props("connect_disconnect_db_button", {'children': "Connect"})
+            dash.set_props("db_type_input", {'disabled': False})
+            dash.set_props("db_name_input", {'disabled': False})
+            dash.set_props("db_host_input", {'disabled': False})
+            dash.set_props("db_port_input", {'disabled': False})
+            dash.set_props("db_user_input", {'disabled': False})
+            dash.set_props("db_password_input", {'disabled': False})
         
         else:
 

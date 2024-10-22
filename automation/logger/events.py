@@ -26,6 +26,9 @@ class EventsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
         
         if self.get_db():
             
@@ -43,6 +46,10 @@ class EventsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
         
             return Events.read_lasts(lasts=lasts)
@@ -58,6 +65,10 @@ class EventsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
         
             return Events.filter_by(
@@ -72,6 +83,10 @@ class EventsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             
             return Events.serialize()

@@ -99,6 +99,7 @@ class PyAutomation(Singleton):
             os.makedirs(folder_db_backups)
 
         self.set_log(file=os.path.join(folder_path, "app.log") ,level=logging.WARNING)
+        self.__log_histories = False
     
     @logging_error_handler
     def define_dash_app(self,  certfile:str=None, keyfile:str=None, **kwargs)->None:
@@ -783,7 +784,6 @@ class PyAutomation(Singleton):
         self._logging_level = level
         self._log_file = file
         
-
     # DATABASES
     @logging_error_handler
     @validate_types(
@@ -854,7 +854,7 @@ class PyAutomation(Singleton):
             self._db = PostgresqlDatabase(db_name, **kwargs)
 
         proxy.initialize(self._db)
-        self.db_manager.set_db(self._db)
+        self.db_manager.set_db(self._db, is_history_logged=self.__log_histories)
         self.db_manager.set_dropped(drop_table)
 
     @logging_error_handler
@@ -908,22 +908,15 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        try:
+        if os.path.isfile('./db/db_config.json'):
 
             with open('./db/db_config.json', 'r') as json_file:
 
                 db_config = json.load(json_file)
 
             return db_config
-
-        except Exception as e:
-            _, _, e_traceback = sys.exc_info()
-            e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
-            e_message = str(e)
-            e_line_number = e_traceback.tb_lineno
-            message = f"Database is not configured: {e_line_number} - {e_filename} - {e_message}"
-            logging.warning(message)
-            return None
+        
+        return None
 
     @logging_error_handler
     @validate_types(output=bool)
@@ -945,18 +938,26 @@ class PyAutomation(Singleton):
         """
         db_config = self.get_db_config()
         if test:
-            db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
             
+            db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
+        
         if db_config:
         
             dbtype = db_config.pop("dbtype")
-            self.set_db(dbtype=dbtype, **db_config)
-            self.db_manager.init_database()
-            self.load_opcua_clients_from_db()
-            self.load_db_to_cvt()
-            self.load_db_to_alarm_manager()
-            self.load_db_to_roles()
-            self.load_db_to_users()
+            self.__log_histories = True
+
+        else:
+            db_config = {"dbtype": "sqlite", "dbfile": "app.config.db"}
+            dbtype = db_config.pop("dbtype")
+            self.__log_histories = False
+
+        self.set_db(dbtype=dbtype, **db_config)
+        self.db_manager.init_database()
+        self.load_opcua_clients_from_db()
+        self.load_db_to_cvt()
+        self.load_db_to_alarm_manager()
+        self.load_db_to_roles()
+        self.load_db_to_users()
 
         if reload:
 

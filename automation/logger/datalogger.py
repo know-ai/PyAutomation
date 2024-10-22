@@ -125,6 +125,10 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             trend = Tags.read_by_name(tag)
             unit = Units.read_by_unit(unit=trend.display_unit.unit)
@@ -135,6 +139,10 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             _tags = tags.copy()
             for counter, tag in enumerate(tags):
@@ -153,6 +161,10 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """  
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             _timezone = pytz.timezone(timezone)
             start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()

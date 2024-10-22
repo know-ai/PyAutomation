@@ -12,6 +12,7 @@ class BaseLogger(Singleton):
     def __init__(self):
 
         self._db = None
+        self.is_history_logged = True
 
     def set_db(self, db):
         r"""Documentation here
@@ -23,6 +24,11 @@ class BaseLogger(Singleton):
         Documentation here
         """
         return self._db
+    
+    def set_is_history_logged(self, value:bool=False):
+        r"""Documentation here
+        """
+        self.is_history_logged = value
     
     def stop_db(self):
         r""""
