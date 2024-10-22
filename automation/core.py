@@ -1,4 +1,4 @@
-import sys, logging, json, os, jwt, requests, urllib3
+import logging, json, os, jwt, requests, urllib3, sqlite3
 from logging.handlers import TimedRotatingFileHandler
 from math import ceil
 from datetime import datetime, timezone
@@ -797,7 +797,12 @@ class PyAutomation(Singleton):
             port=int|type(None),
             name=str|type(None),
             output=None)
-    def set_db(self, dbtype:str='sqlite', drop_table=False, clear_default_tables=False, **kwargs):
+    def set_db(
+        self, 
+        dbtype:str='sqlite', 
+        drop_table:bool=False, 
+        clear_default_tables:bool=False,
+        **kwargs):
         r"""
         Sets the database, it supports SQLite and Postgres,
         in case of SQLite, the filename must be provided.
@@ -831,10 +836,11 @@ class PyAutomation(Singleton):
             dbfile = kwargs.get("dbfile", ":memory:")
             if not dbfile.endswith(".db"):
                 dbfile = f"{dbfile}.db"
+            
             self._db = SqliteDatabase(os.path.join(".", "db", dbfile), pragmas={
                 'journal_mode': 'wal',
                 'wal_checkpoint': 1,
-                'cache_size': -1024 * 10,  # 1MB
+                'cache_size': -1024 * 10,  # 10MB
                 'foreign_keys': 1,
                 'ignore_check_constraints': 0,
                 'synchronous': 1
@@ -946,22 +952,17 @@ class PyAutomation(Singleton):
             dbtype = db_config.pop("dbtype")
             self.__log_histories = True
 
-        else:
-            db_config = {"dbtype": "sqlite", "dbfile": "app.config.db"}
-            dbtype = db_config.pop("dbtype")
-            self.__log_histories = False
+            self.set_db(dbtype=dbtype, **db_config)
+            self.db_manager.init_database()
+            self.load_opcua_clients_from_db()
+            self.load_db_to_cvt()
+            self.load_db_to_alarm_manager()
+            self.load_db_to_roles()
+            self.load_db_to_users()
 
-        self.set_db(dbtype=dbtype, **db_config)
-        self.db_manager.init_database()
-        self.load_opcua_clients_from_db()
-        self.load_db_to_cvt()
-        self.load_db_to_alarm_manager()
-        self.load_db_to_roles()
-        self.load_db_to_users()
+            if reload:
 
-        if reload:
-
-            self.load_db_tags_to_machine()
+                self.load_db_tags_to_machine()
 
     @logging_error_handler
     @validate_types(output=None)
@@ -969,7 +970,8 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        self.db_manager.stop_database()
+        self.__log_histories = False
+        self._db.close()
 
     @logging_error_handler
     @validate_types(output=None)

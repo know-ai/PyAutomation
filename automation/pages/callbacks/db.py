@@ -92,6 +92,7 @@ def init_callback(app:dash.Dash):
         """
         
         if connect_action.lower()=="connect":
+
             app.automation.set_db_config(
                 dbtype=db_type_value,
                 dbfile=db_name_value,
@@ -101,7 +102,6 @@ def init_callback(app:dash.Dash):
                 port=db_port_value,
                 name=db_name_value
             )
-            
             app.automation.connect_to_db(reload=True)
             if app.automation.is_db_connected():
 
