@@ -5,6 +5,7 @@ This module implements a database logger for the CVT instance,
 will create a time-serie for each tag in a short memory data base.
 """
 import pytz
+from collections import defaultdict
 from datetime import datetime
 from ..tags.tag import Tag
 from ..dbmodels import Tags, TagValue, Units, Segment
@@ -166,24 +167,109 @@ class DataLogger(BaseLogger):
             return None
         
         if self.get_db():
+
             _timezone = pytz.timezone(timezone)
             start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
-            stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
-            result = {tag: {
-                'values': list(),
-                'unit': self.tag_engine.get_display_unit_by_tag(tag)
-            } for tag in tags}
+            stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()           
+            query = (TagValue
+                    .select(Tags.name, TagValue.value, TagValue.timestamp)
+                    .join(Tags)
+                    .where((TagValue.timestamp.between(start, stop)) & (Tags.name.in_(tags)))
+                    .order_by(TagValue.timestamp)
+                    .dicts()) 
             
+            # Structure the data
+            time_span = (stop - start ) / 60 # span in minutes
+            result = defaultdict(lambda: {"values": []})
+            if time_span > 60 * 24 * 7 * 4:  # 1 month
+                # Aggregate data every 30 minutes
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=1800)
+
+            elif time_span > 60 * 24 * 7:  # 1 week
+                # Aggregate data every 10 minutes
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=600)
+
+            elif time_span > 60 * 24:  # 1 dia
+                # Aggregate data every 4 minutes
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=240)
+
+            elif time_span > 60 * 12:  # 12 horas
+                # Aggregate data every 2 minutes
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=120)
+            
+            elif time_span > 60 * 6:  # 6 horas
+                # Aggregate data every 60 seconds
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=60)
+            
+            elif time_span > 60 * 5:  # 90 minutes
+                # Aggregate data every 15 seconds
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=50)
+            
+            elif time_span > 60 * 4:  # 90 minutes
+                # Aggregate data every 15 seconds
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=40)
+            
+            elif time_span > 60 * 3:  # 90 minutes
+                # Aggregate data every 15 seconds
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=30)
+            
+            elif time_span > 60 * 2.5:  # 90 minutes
+                # Aggregate data every 25 seconds
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=25)
+
+            elif time_span > 60 * 2:  # 120 minutes
+                # Aggregate data every 20 seconds
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=20)
+
+            elif time_span > 60 * 1.5:  # 90 minutes
+                # Aggregate data every 15 seconds
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=15)
+
+            elif time_span > 60 * 1:  # 60 minutes
+                # Aggregate data every 10 seconds
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=10)
+
+            elif time_span > 60 * 0.5:  # 30 minutes
+                # Aggregate data every 5 seconds
+                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=5)
+
+            else:
+                # Use original data
+                for entry in query:
+                    result[entry['name']]["values"].append({
+                        "x": entry['timestamp'].strftime(self.tag_engine.DATETIME_FORMAT),
+                        "y": entry['value']
+                    })
+
             for tag in tags:
 
-                trend = Tags.select().where(Tags.name==tag).get()
-                _tag = self.tag_engine.get_tag_by_name(name=tag)
-                variable = _tag.get_variable()
-                values = trend.values.select().where((TagValue.timestamp > start) & (TagValue.timestamp < stop)).order_by(TagValue.timestamp.asc()).limit(1000000) #  
-                for value in values:
-                    result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": eval(f"{variable}.convert_value({value.value}, from_unit={'value.unit.unit'}, to_unit={'_tag.get_display_unit()'})")})
-
+                result[tag]['unit'] = self.tag_engine.get_display_unit_by_tag(tag)
+            
             return result
+        
+    def __agregate_data_every_seconds(self, query, result, seconds:int):
+        r"""Documentation here
+        """
+        # Aggregate data every 5 seconds
+        buffer = defaultdict(lambda: {"sum": 0, "count": 0, "last_timestamp": None})
+
+        for entry in query:
+            bucket = entry['timestamp'].replace(second=(entry['timestamp'].second // seconds) * seconds, microsecond=0)
+            buffer_key = (entry['name'], bucket)
+
+            buffer[buffer_key]["sum"] += entry['value']
+            buffer[buffer_key]["count"] += 1
+            buffer[buffer_key]["last_timestamp"] = entry['timestamp']
+
+        for (tag_name, bucket), data in buffer.items():
+            avg_value = data["sum"] / data["count"]
+            last_timestamp = data["last_timestamp"]
+            result[tag_name]["values"].append({
+                "x": last_timestamp.strftime(self.tag_engine.DATETIME_FORMAT),
+                "y":  avg_value
+            })
+
+        return result
         
     @db_rollback
     def read_segments(self):
