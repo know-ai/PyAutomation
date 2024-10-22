@@ -92,7 +92,7 @@ def init_callback(app:dash.Dash):
         """
         
         if connect_action.lower()=="connect":
-
+            
             app.automation.set_db_config(
                 dbtype=db_type_value,
                 dbfile=db_name_value,
@@ -110,6 +110,7 @@ def init_callback(app:dash.Dash):
                 # OPEN MODAL TO CONFIRM CHANGES
                 dash.set_props("modal-body-db-connection", {"children": message})
                 dash.set_props("modal-db-connection", {'is_open': True})
+                dash.set_props("connect_disconnect_db_button", {"children": "disconnect"})
         else:
             
             db_config = app.automation.get_db_config()
@@ -138,6 +139,8 @@ def init_callback(app:dash.Dash):
                 dash.set_props("db_port_input", {'disabled': False})
                 dash.set_props("db_user_input", {'disabled': False})
                 dash.set_props("db_password_input", {'disabled': False})
+
+            dash.set_props("connect_disconnect_db_button", {"children": "connect"})
 
 
     @app.callback(
@@ -194,13 +197,13 @@ def init_callback(app:dash.Dash):
                     dash.set_props("db_user_input", {'disabled': True})
                     dash.set_props("db_password_input", {'disabled': True})
 
-            dash.set_props("connect_disconnect_db_button", {'children': "Connect"})
-            dash.set_props("db_type_input", {'disabled': False})
-            dash.set_props("db_name_input", {'disabled': False})
-            dash.set_props("db_host_input", {'disabled': False})
-            dash.set_props("db_port_input", {'disabled': False})
-            dash.set_props("db_user_input", {'disabled': False})
-            dash.set_props("db_password_input", {'disabled': False})
+            # dash.set_props("connect_disconnect_db_button", {'children': "Connect"})
+            # dash.set_props("db_type_input", {'disabled': False})
+            # dash.set_props("db_name_input", {'disabled': False})
+            # dash.set_props("db_host_input", {'disabled': False})
+            # dash.set_props("db_port_input", {'disabled': False})
+            # dash.set_props("db_user_input", {'disabled': False})
+            # dash.set_props("db_password_input", {'disabled': False})
         
         else:
 

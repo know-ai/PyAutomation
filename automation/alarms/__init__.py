@@ -244,6 +244,7 @@ class Alarm(StateMachine):
 
                     self.normal_condition()                    
 
+        print(self.tag_engine.get_tags())
         if self.state==AlarmState.SHLVD:
 
             if datetime.now(timezone.utc) >= self._shelved_until:

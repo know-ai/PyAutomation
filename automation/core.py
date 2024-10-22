@@ -959,7 +959,6 @@ class PyAutomation(Singleton):
             self.load_db_to_alarm_manager()
             self.load_db_to_roles()
             self.load_db_to_users()
-
             if reload:
 
                 self.load_db_tags_to_machine()
@@ -988,7 +987,7 @@ class PyAutomation(Singleton):
                 active = tag.pop("active")
 
                 if active:
-                    
+
                     self.create_tag(reload=True, **tag)
 
     @logging_error_handler
