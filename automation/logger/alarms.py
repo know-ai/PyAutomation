@@ -222,7 +222,7 @@ class AlarmsLogger(BaseLogger):
         
         fields = dict()
         alarm = AlarmSummary.read_by_name(name=name)
-        # print(f"Name: {name} - State: {state} - acktimestamp: {ack_timestamp}")
+
         if alarm:
 
             if ack_timestamp:
@@ -320,8 +320,8 @@ class AlarmsLoggerEngine(BaseEngine):
     def filter_alarm_summary_by(
         self,
         names:list[str]=None,
-        priorities:list[int]=None,
-        criticities:list[int]=None,
+        states:list[int]=None,
+        tags:list[int]=None,
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None
         ):
@@ -330,8 +330,8 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["action"] = "filter_alarm_summary_by"
         _query["parameters"] = dict()
         _query["parameters"]["names"] = names
-        _query["parameters"]["priorities"] = priorities
-        _query["parameters"]["criticities"] = criticities
+        _query["parameters"]["states"] = states
+        _query["parameters"]["tags"] = tags
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
         
