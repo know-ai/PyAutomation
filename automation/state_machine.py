@@ -672,7 +672,12 @@ class StateMachineCore(StateMachine):
 
         for transition in transitions:
 
-            if transition.source == current_state:
+            if current_state.value.lower() in ("con_restart", "con_reset"):
+
+                result.append(current_state.value.lower().replace("con_", "confirm_"))
+                result.append(current_state.value.lower().replace("con_", "deny_"))
+
+            elif transition.source == current_state:
                 if transition.target.name not in ("run", "switch", "wait", "start"):
                     result.append(transition.target.name)
                     if "confirm" in transition.target.name:
