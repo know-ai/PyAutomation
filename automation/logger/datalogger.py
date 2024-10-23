@@ -8,7 +8,7 @@ import pytz
 from collections import defaultdict
 from datetime import datetime
 from ..tags.tag import Tag
-from ..dbmodels import Tags, TagValue, Units, Segment
+from ..dbmodels import Tags, TagValue, Units, Segment, Variables
 from ..modules.users.users import User
 from ..tags.cvt import CVTEngine
 from .core import BaseLogger, BaseEngine
@@ -172,8 +172,11 @@ class DataLogger(BaseLogger):
             start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
             stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()           
             query = (TagValue
-                    .select(Tags.name, TagValue.value, TagValue.timestamp)
+                    .select(Tags.name, TagValue.value, TagValue.timestamp,
+                            Units.unit.alias('tag_value_unit'), Variables.name.alias('variable_name'))
                     .join(Tags)
+                    .join(Units, on=(Tags.unit == Units.id))
+                    .join(Variables, on=(Units.variable_id == Variables.id))
                     .where((TagValue.timestamp.between(start, stop)) & (Tags.name.in_(tags)))
                     .order_by(TagValue.timestamp)
                     .dicts()) 
@@ -183,61 +186,68 @@ class DataLogger(BaseLogger):
             result = defaultdict(lambda: {"values": []})
             if time_span > 60 * 24 * 7 * 4:  # 1 month
                 # Aggregate data every 30 minutes
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=1800)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=1800, timezone=timezone)
 
             elif time_span > 60 * 24 * 7:  # 1 week
                 # Aggregate data every 10 minutes
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=600)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=600, timezone=timezone)
 
             elif time_span > 60 * 24:  # 1 dia
                 # Aggregate data every 4 minutes
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=240)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=240, timezone=timezone)
 
             elif time_span > 60 * 12:  # 12 horas
                 # Aggregate data every 2 minutes
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=120)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=120, timezone=timezone)
             
             elif time_span > 60 * 6:  # 6 horas
                 # Aggregate data every 60 seconds
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=60)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=60, timezone=timezone)
             
             elif time_span > 60 * 5:  # 90 minutes
                 # Aggregate data every 15 seconds
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=50)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=50, timezone=timezone)
             
             elif time_span > 60 * 4:  # 90 minutes
                 # Aggregate data every 15 seconds
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=40)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=40, timezone=timezone)
             
             elif time_span > 60 * 3:  # 90 minutes
                 # Aggregate data every 15 seconds
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=30)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=30, timezone=timezone)
             
             elif time_span > 60 * 2.5:  # 90 minutes
                 # Aggregate data every 25 seconds
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=25)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=25, timezone=timezone)
 
             elif time_span > 60 * 2:  # 120 minutes
                 # Aggregate data every 20 seconds
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=20)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=20, timezone=timezone)
 
             elif time_span > 60 * 1.5:  # 90 minutes
                 # Aggregate data every 15 seconds
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=15)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=15, timezone=timezone)
 
             elif time_span > 60 * 1:  # 60 minutes
                 # Aggregate data every 10 seconds
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=10)
+                # breakpoint()
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=10, timezone=timezone)
 
             elif time_span > 60 * 0.5:  # 30 minutes
                 # Aggregate data every 5 seconds
-                result = self.__agregate_data_every_seconds(query=query, result=result, seconds=5)
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=5, timezone=timezone)
 
             else:
                 # Use original data
                 for entry in query:
+                    # _tag = self.tag_engine._cvt.get_tag_by_name(name=entry['name'])
+                    # variable = entry['variable_name']
+                    # unit = entry["tag_value_unit"]
+                    from_timezone = pytz.timezone('UTC')
+                    timestamp = entry['timestamp']
+                    timestamp = from_timezone.localize(timestamp)
                     result[entry['name']]["values"].append({
-                        "x": entry['timestamp'].strftime(self.tag_engine.DATETIME_FORMAT),
+                        "x": timestamp.astimezone(_timezone).strftime(self.tag_engine.DATETIME_FORMAT),
                         "y": entry['value']
                     })
 
@@ -247,28 +257,36 @@ class DataLogger(BaseLogger):
             
             return result
         
-    def __agregate_data_every_seconds(self, query, result, seconds:int):
+    def _agregate_data_every_seconds(self, query, result, seconds:int, timezone:str="UTC"):
         r"""Documentation here
         """
         # Aggregate data every 5 seconds
+        target_timezone = pytz.timezone(timezone)
         buffer = defaultdict(lambda: {"sum": 0, "count": 0, "last_timestamp": None})
 
         for entry in query:
             bucket = entry['timestamp'].replace(second=(entry['timestamp'].second // seconds) * seconds, microsecond=0)
             buffer_key = (entry['name'], bucket)
-
             buffer[buffer_key]["sum"] += entry['value']
             buffer[buffer_key]["count"] += 1
             buffer[buffer_key]["last_timestamp"] = entry['timestamp']
+            buffer[buffer_key]['unit'] = entry["tag_value_unit"]
+            buffer[buffer_key]['variable'] = entry['variable_name']
 
         for (tag_name, bucket), data in buffer.items():
+            # _tag = self.tag_engine._cvt.get_tag_by_name(name=entry['name'])
+            # variable = data['variable']
+            # unit = data['unit']
             avg_value = data["sum"] / data["count"]
             last_timestamp = data["last_timestamp"]
+            from_timezone = pytz.timezone('UTC')
+            last_timestamp = from_timezone.localize(last_timestamp)
             result[tag_name]["values"].append({
-                "x": last_timestamp.strftime(self.tag_engine.DATETIME_FORMAT),
-                "y":  avg_value
+                "x": last_timestamp.astimezone(target_timezone).strftime(self.tag_engine.DATETIME_FORMAT),
+                # "y": eval(f"{variable}.convert_value({avg_value}, from_unit={'unit'}, to_unit={'_tag.get_display_unit()'})")
+                "y": avg_value
             })
-
+        
         return result
         
     @db_rollback
