@@ -806,8 +806,6 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "start"
         self.criticity.value = 1
-        if self.sio:
-            self.sio.emit("on.machine", data=self.serialize())
 
     def on_wait_to_run(self):
         r"""
@@ -815,8 +813,6 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "wait"
         self.criticity.value = 1
-        if self.sio:
-            self.sio.emit("on.machine", data=self.serialize())
 
     def on_wait_to_restart(self):
         r"""
@@ -824,8 +820,6 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "wait"
         self.criticity.value = 5
-        if self.sio:
-            self.sio.emit("on.machine", data=self.serialize())
 
     def on_wait_to_reset(self):
         r"""
@@ -833,8 +827,6 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "wait"
         self.criticity.value = 5
-        if self.sio:
-            self.sio.emit("on.machine", data=self.serialize())
 
     def on_run_to_restart(self):
         r"""
@@ -842,8 +834,6 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "run"
         self.criticity.value = 5
-        if self.sio:
-            self.sio.emit("on.machine", data=self.serialize())
 
     def on_run_to_reset(self):
         r"""
@@ -851,8 +841,6 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "run"
         self.criticity.value = 5
-        if self.sio:
-            self.sio.emit("on.machine", data=self.serialize())
 
     def on_reset_to_start(self):
         r"""
@@ -860,8 +848,6 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "reset"
         self.criticity.value = 2
-        if self.sio:
-            self.sio.emit("on.machine", data=self.serialize())
 
     def on_restart_to_wait(self):
         r"""
@@ -869,7 +855,36 @@ class StateMachineCore(StateMachine):
         """
         self.last_state = "restart"
         self.criticity.value = 2
+
+    # ON ENTER TRANSITION
+    def on_enter_starting(self):
+
         if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
+    def on_enter_waiting(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
+    def on_enter_running(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
+    def on_enter_restarting(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
+    def on_enter_resetting(self):
+
+        if self.sio:
+
             self.sio.emit("on.machine", data=self.serialize())
 
 

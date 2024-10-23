@@ -69,7 +69,9 @@ class LogsLogger(BaseLogger):
         usernames:list[str]=None,
         alarm_names:list[str]=None,
         event_ids:list[int]=None,
-        classifications:list[str]=None,
+        classification:str="",
+        message:str="",
+        description:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
         timezone:str='UTC'
@@ -87,7 +89,9 @@ class LogsLogger(BaseLogger):
                 usernames=usernames,
                 alarm_names=alarm_names,
                 event_ids=event_ids,
-                classifications=classifications,
+                message=message,
+                description=description,
+                classification=classification,
                 greater_than_timestamp=greater_than_timestamp,
                 less_than_timestamp=less_than_timestamp,
                 timezone=timezone
@@ -162,7 +166,9 @@ class LogsLoggerEngine(BaseEngine):
         usernames:list[str]=None,
         alarm_names:list[str]=None,
         event_ids:list[int]=None,
-        classifications:list[str]=None,
+        classification:str="",
+        message:str="",
+        description:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
         timezone:str='UTC'
@@ -174,7 +180,9 @@ class LogsLoggerEngine(BaseEngine):
         _query["parameters"]["usernames"] = usernames
         _query["parameters"]["alarm_names"] = alarm_names
         _query["parameters"]["event_ids"] = event_ids
-        _query["parameters"]["classifications"] = classifications
+        _query["parameters"]["classification"] = classification
+        _query["parameters"]["message"] = message
+        _query["parameters"]["description"] = description
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
         _query["parameters"]["timezone"] = timezone

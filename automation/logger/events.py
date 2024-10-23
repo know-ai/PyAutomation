@@ -59,6 +59,9 @@ class EventsLogger(BaseLogger):
         usernames:list[str]=None,
         priorities:list[int]=None,
         criticities:list[int]=None,
+        message:str="",
+        description:str="",
+        classification:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
         timezone:str="UTC"
@@ -76,6 +79,9 @@ class EventsLogger(BaseLogger):
                 usernames=usernames,
                 priorities=priorities,
                 criticities=criticities,
+                message=message,
+                classification=classification,
+                description=description,
                 greater_than_timestamp=greater_than_timestamp,
                 less_than_timestamp=less_than_timestamp,
                 timezone=timezone
@@ -147,6 +153,9 @@ class EventsLoggerEngine(BaseEngine):
         usernames:list[str]=None,
         priorities:list[int]=None,
         criticities:list[int]=None,
+        message:str="",
+        classification:str="",
+        description:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
         timezone:str='UTC'
@@ -158,6 +167,9 @@ class EventsLoggerEngine(BaseEngine):
         _query["parameters"]["usernames"] = usernames
         _query["parameters"]["priorities"] = priorities
         _query["parameters"]["criticities"] = criticities
+        _query["parameters"]["message"] = message
+        _query["parameters"]["classification"] = classification
+        _query["parameters"]["description"] = description
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
         _query["parameters"]["timezone"] = timezone

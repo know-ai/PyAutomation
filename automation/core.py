@@ -1345,6 +1345,9 @@ class PyAutomation(Singleton):
             usernames:list[str]=None,
             priorities:list[int]=None,
             criticities:list[int]=None,
+            message:str="",
+            classification:str="",
+            description:str="",
             greater_than_timestamp:datetime=None,
             less_than_timestamp:datetime=None,
             timezone:str="UTC")->list:
@@ -1357,6 +1360,9 @@ class PyAutomation(Singleton):
                 usernames=usernames,
                 priorities=priorities,
                 criticities=criticities,
+                message=message,
+                description=description,
+                classification=classification,
                 greater_than_timestamp=greater_than_timestamp,
                 less_than_timestamp=less_than_timestamp,
                 timezone=timezone
@@ -1403,7 +1409,9 @@ class PyAutomation(Singleton):
             usernames:list[str]=None,
             alarm_names:list[str]=None,
             event_ids:list[int]=None,
-            classifications:list[str]=None,
+            classification:str="",
+            message:str="",
+            description:str="",
             greater_than_timestamp:datetime=None,
             less_than_timestamp:datetime=None,
             timezone:str="UTC"
@@ -1417,7 +1425,9 @@ class PyAutomation(Singleton):
                 usernames=usernames,
                 alarm_names=alarm_names,
                 event_ids=event_ids,
-                classifications=classifications,
+                classification=classification,
+                message=message,
+                description=description,
                 greater_than_timestamp=greater_than_timestamp,
                 less_than_timestamp=less_than_timestamp,
                 timezone=timezone
