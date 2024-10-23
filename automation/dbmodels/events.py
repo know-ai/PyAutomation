@@ -76,7 +76,7 @@ class Events(BaseModel):
         less_than_timestamp:datetime=None,
         description:str="",
         message:str="",
-        classification:str="None",
+        classification:str="",
         timezone:str='UTC'):
         r"""
         Documentation here

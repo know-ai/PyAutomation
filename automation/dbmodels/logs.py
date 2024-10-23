@@ -1,5 +1,5 @@
 import pytz
-from peewee import CharField, TimestampField, ForeignKeyField
+from peewee import CharField, TimestampField, ForeignKeyField, fn
 from ..dbmodels.core import BaseModel
 from datetime import datetime
 from .users import Users
@@ -74,7 +74,9 @@ class Logs(BaseModel):
         usernames:list[str]=None,
         alarm_names:list[str]=None,
         event_ids:list[int]=None,
-        classifications:list[str]=None,
+        description:str="",
+        message:str="",
+        classification:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
         timezone:str='UTC'
@@ -104,12 +106,35 @@ class Logs(BaseModel):
             else:
                 _query = cls.select().join(AlarmSummary).where(cls.in_(subquery)).order_by(cls.id.desc())
 
-        if classifications:
-            
+        if description:
+
             if _query:
-                _query = _query.select().where(cls.in_(classifications)).order_by(cls.id.desc())
+
+                _query = _query.select().where(fn.LOWER(cls.description).contains(description.lower()))
+
             else:
-                _query = cls.select().where(cls.in_(classifications)).order_by(cls.id.desc())
+
+                _query = cls.select().where(fn.LOWER(cls.description).contains(description.lower()))
+
+        if message:
+
+            if _query:
+
+                _query = _query.select().where(fn.LOWER(cls.message).contains(message.lower()))
+
+            else:
+
+                _query = cls.select().where(fn.LOWER(cls.message).contains(message.lower()))
+
+        if classification:
+
+            if _query:
+
+                _query = _query.select().where(fn.LOWER(cls.classification).contains(classification.lower()))
+
+            else:
+
+                _query = cls.select().where(fn.LOWER(cls.classification).contains(classification.lower()))
 
         if greater_than_timestamp:
             greater_than_timestamp = _timezone.localize(datetime.strptime(greater_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC).timestamp()
