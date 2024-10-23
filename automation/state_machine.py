@@ -679,10 +679,10 @@ class StateMachineCore(StateMachine):
 
                         result.append(transition.target.name.replace("confirm", "deny"))
 
-                    if current_state.value.lower() in ("con_restart", "con_reset"):
+                    # if current_state.value.lower() in ("con_restart", "con_reset"):
 
-                        result.append(current_state.value.lower().replace("con_", "confirm_"))
-                        result.append(current_state.value.lower().replace("con_", "deny_"))
+                    #     result.append(current_state.value.lower().replace("con_", "confirm_"))
+                    #     result.append(current_state.value.lower().replace("con_", "deny_"))
 
         return result
 

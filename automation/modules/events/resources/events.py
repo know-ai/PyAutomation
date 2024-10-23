@@ -14,6 +14,9 @@ events_filter_model = api.model("events_filter_model",{
     'usernames': fields.List(fields.String(), required=False),
     'priorities': fields.List(fields.Integer(), required=False),
     'criticities': fields.List(fields.Integer(), required=False),
+    'message': fields.String(required=False),
+    'classification': fields.String(required=False),
+    'description': fields.String(required=False),
     'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now() - timedelta(minutes=2), description=f'Greater than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
     'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(), description=f'Less than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
     'timezone': fields.String(required=False, default='UTC')
