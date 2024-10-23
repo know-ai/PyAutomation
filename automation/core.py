@@ -940,7 +940,7 @@ class PyAutomation(Singleton):
         if self.db_manager.get_db():
 
             return True
-
+        
         return False
 
     @logging_error_handler
@@ -978,7 +978,7 @@ class PyAutomation(Singleton):
         Documentation here
         """
         self.__log_histories = False
-        self._db.close()
+        self.db_manager._logger.logger.stop_db()
 
     @logging_error_handler
     @validate_types(output=None)

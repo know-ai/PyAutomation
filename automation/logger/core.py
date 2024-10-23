@@ -34,6 +34,7 @@ class BaseLogger(Singleton):
         r""""
         Documentation here
         """
+        self._db.close()
         self._db = None
 
     def create_tables(self, tables):
