@@ -1502,11 +1502,13 @@ class PyAutomation(Singleton):
 
         if machines:
             for machine in machines:
-                machine.set_socketio(sio=self.sio)
             
+                machine.set_socketio(sio=self.sio)
+ 
         self.machine.start(machines=machines)
+        
         if self.is_db_connected():
-
+            
             self.load_db_tags_to_machine()
     
         self.is_starting = False

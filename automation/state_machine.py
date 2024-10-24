@@ -150,6 +150,10 @@ class Machine(Singleton):
                         machine.priority.value = config[machine.name.value]["priority"]
                         machine.identifier.value = config[machine.name.value]['identifier']
                         self.append_machine(machine=machine, interval=FloatType(config[machine.name.value]["interval"]))
+                    
+                    else:
+                        
+                        self.append_machine(machine=machine, interval=FloatType(machine.get_interval()))
 
         else:
 
