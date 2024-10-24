@@ -1,4 +1,4 @@
-import threading, copy, logging
+import threading, copy, logging, pytz
 from datetime import datetime
 from ..singleton import Singleton
 from ..models import FloatType, StringType, IntegerType, BooleanType
@@ -26,7 +26,7 @@ class CVT:
     """
 
     def __init__(self):
-
+        
         self._tags = dict()
         self.data_types = ["float", "int", "bool", "str"]
         self.sio:SocketIO|None = None
@@ -410,8 +410,11 @@ class CVT:
         value (float, int, bool): 
             Tag value ("int", "float", "bool")
         """
+        from .. import TIMEZONE
         self._tags[id].set_value(value=value, timestamp=timestamp)
         if self.sio:
+            timestamp = pytz.UTC.localize(timestamp).astimezone(TIMEZONE)
+            self._tags[id].timestamp = timestamp
             self.sio.emit("on.tag", data=self._tags[id].serialize())
 
     def set_data_type(self, data_type):

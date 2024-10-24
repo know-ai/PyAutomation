@@ -1,3 +1,4 @@
+import pytz
 from math import ceil
 from ..singleton import Singleton
 from ..tags.cvt import CVTEngine
@@ -157,7 +158,7 @@ class DAS(Singleton):
         r"""
         Documentation here
         """
-        from .. import SEGMENT, MANUFACTURER
+        from .. import SEGMENT, MANUFACTURER, TIMEZONE
         namespace = node.nodeid.to_string()
         timestamp = data.monitored_item.Value.SourceTimestamp
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
@@ -168,6 +169,8 @@ class DAS(Singleton):
             self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
         elif not MANUFACTURER and not SEGMENT:
             self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+
+        timestamp = pytz.UTC.localize(timestamp).astimezone(TIMEZONE)
         self.buffer[tag_name]["timestamp"](timestamp)
         self.buffer[tag_name]["values"](val)
         

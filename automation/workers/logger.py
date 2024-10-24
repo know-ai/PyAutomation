@@ -89,7 +89,7 @@ class LoggerWorker(BaseWorker):
                 tag_name = item["tag"]
                 tag = self.cvt.get_tag_by_name(name=tag_name)
                 if tag:
-                
+
                     if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:
 
                         value = item['value']
@@ -101,7 +101,7 @@ class LoggerWorker(BaseWorker):
                         value = item['value']
                         timestamp = item["timestamp"]
                         tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
-            
+    
             if tags:
                 
                 self.logger.write_tags(tags=tags)

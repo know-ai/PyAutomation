@@ -1,4 +1,4 @@
-import os
+import os, pytz
 from flask import Flask
 from .core import PyAutomation
 
@@ -7,7 +7,8 @@ app = Flask(__name__, instance_relative_config=False)
 
 MANUFACTURER = os.environ.get('MANUFACTURER')
 SEGMENT = os.environ.get('SEGMENT')
-TIMEZONE = os.environ.get('TIMEZONE') or "UTC"
+TIMEZONE = os.environ.get('TIMEZONE') or "America/Caracas"
+TIMEZONE = pytz.timezone(TIMEZONE)
 CERT_FILE = os.path.join(".", "ssl", os.environ.get('CERT_FILE') or "")
 KEY_FILE = os.path.join(".", "ssl", os.environ.get('KEY_FILE') or "")
 if not os.path.isfile(CERT_FILE):
