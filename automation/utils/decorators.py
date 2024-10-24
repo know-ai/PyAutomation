@@ -1,4 +1,4 @@
-import functools, logging, os, sys
+import functools, logging, os, sys, pytz
 from ..modules.users.users import User
 from ..logger.events import EventsLoggerEngine
 
@@ -78,6 +78,7 @@ def put_alarm_state(func, args, kwargs):
     Documentation here
     """
     from ..logger.alarms import AlarmsLoggerEngine
+    from .. import TIMEZONE
     alarms_engine = AlarmsLoggerEngine()   
     result = func(*args, **kwargs)
     alarm = args[0]
@@ -86,6 +87,13 @@ def put_alarm_state(func, args, kwargs):
         state=alarm.state.state
     )
     if alarm.sio:
+        timestamp = alarm.timestamp
+        timestamp = pytz.UTC.localize(timestamp).astimezone(TIMEZONE)
+        alarm.timestamp = timestamp
+        if alarm.ack_timestamp:
+            ack_timestamp = alarm.ack_timestamp
+            ack_timestamp = pytz.UTC.localize(ack_timestamp).astimezone(TIMEZONE)
+            alarm.ack_timestamp = ack_timestamp
         
         alarm.sio.emit("on.alarm", data=alarm.serialize())
         
