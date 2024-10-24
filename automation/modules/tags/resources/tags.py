@@ -4,16 +4,16 @@ from flask_restx import Namespace, Resource, fields
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
-
+from .... import _TIMEZONE, TIMEZONE
 
 ns = Namespace('Tags', description='Tags')
 app = PyAutomation()
 
 query_trends_model = api.model("query_trends_model",{
     'tags':  fields.List(fields.String(), required=True),
-    'greater_than_timestamp': fields.DateTime(required=True, default=datetime.now().astimezone(pytz.UTC) - timedelta(minutes=5), description='Greater than DateTime'),
-    'less_than_timestamp': fields.DateTime(required=True, default=datetime.now().astimezone(pytz.UTC), description='Less than DateTime'),
-    'timezone': fields.String(required=True, default='UTC')
+    'greater_than_timestamp': fields.DateTime(required=True, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description='Greater than DateTime'),
+    'less_than_timestamp': fields.DateTime(required=True, default=datetime.now(pytz.utc).astimezone(TIMEZONE), description='Less than DateTime'),
+    'timezone': fields.String(required=True, default=_TIMEZONE)
 })
 
 
@@ -40,7 +40,7 @@ class QueryTrendsResource(Resource):
 
         Authorized Roles: {0}
         """
-        timezone = 'UTC'
+        timezone = _TIMEZONE
         tags = api.payload['tags']
         if "timezone" in api.payload:
 

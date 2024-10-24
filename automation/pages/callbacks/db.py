@@ -43,7 +43,7 @@ def init_callback(app:dash.Dash):
                     dash.set_props("connect_disconnect_db_button", {'disabled': True})
 
             else:
-                print(f"DB IS CONNECTED: {app.automation.is_db_connected()}")
+                
                 if not app.automation.is_db_connected():
 
                     dash.set_props("db_host_input", {'disabled': False})

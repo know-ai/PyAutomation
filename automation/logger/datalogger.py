@@ -463,7 +463,7 @@ class DataLoggerEngine(BaseEngine):
 
             _query["parameters"]["node_namespace"] = node_namespace
 
-        if scan_time:
+        if isinstance(scan_time, int):
 
             _query["parameters"]["scan_time"] = scan_time
 

@@ -344,7 +344,6 @@ def init_callback(app:dash.Dash):
                 tag_to_update = to_updates[0]
                 tag_id = tag_to_update.pop("id")
                 message = f"Do you want to update tag {tag_id} To {tag_to_update}?"
-
                 # OPEN MODAL TO CONFIRM CHANGES
                 dash.set_props("modal-update-delete-tag-body", {"children": message})
                 dash.set_props("modal-update_delete-centered", {'is_open': True})

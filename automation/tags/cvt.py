@@ -176,7 +176,7 @@ class CVT:
             tag.set_opcua_address(opcua_address=opcua_address)
         if node_namespace:
             tag.set_node_namespace(node_namespace=node_namespace)
-        if scan_time:
+        if isinstance(scan_time, int):
             tag.set_scan_time(scan_time=scan_time)
         if dead_band:
             tag.set_dead_band(dead_band=dead_band)
@@ -413,7 +413,7 @@ class CVT:
         from .. import TIMEZONE
         self._tags[id].set_value(value=value, timestamp=timestamp)
         if self.sio:
-            timestamp = pytz.UTC.localize(timestamp).astimezone(TIMEZONE)
+            timestamp = timestamp.astimezone(TIMEZONE)
             self._tags[id].timestamp = timestamp
             self.sio.emit("on.tag", data=self._tags[id].serialize())
 

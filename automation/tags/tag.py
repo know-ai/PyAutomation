@@ -172,6 +172,12 @@ class Tag:
         """            
         return round(self.value.convert(to_unit=self.display_unit), 3)
     
+    def set_description(self, description:str):
+        r"""
+        Documentation here
+        """
+        self.description = description
+    
     def set_scan_time(self, scan_time:int):
         r"""
         Documentation here

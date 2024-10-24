@@ -391,7 +391,7 @@ class PyAutomation(Singleton):
             manufacturer=str,
             dead_band=int|float|type(None),
             user=User|type(None),
-            output=(Tag, str)
+            output=(Tag|None, str)
         )
     def update_tag(
             self, 
@@ -410,18 +410,32 @@ class PyAutomation(Singleton):
             manufacturer:str="",
             dead_band:int|float=None,
             user:User|None=None, 
-        )->dict:
+        )->tuple[Tag|None, str]:
         r"""
         Documentation here
         """
-        tag = self.cvt.get_tag(id=id)
+        tag = self.cvt.get_tag(id=id)         
         self.unsubscribe_opcua(tag)
         if name:
+            print(f"Changing Name: {name}")
             tag_name = tag.get_name()
+            machines_with_tags_subscribed = list()
+            print(f"MACHINES: {self.get_machines()}")
+            for _machine, _, _ in self.get_machines():
+                
+                if tag_name in _machine.get_subscribed_tags():
+
+                    machines_with_tags_subscribed.append(_machine.name.value)
+            
+            if machines_with_tags_subscribed:
+
+                return None, f"{tag_name} is subscribed into {machines_with_tags_subscribed}"
+
+        
         # Persist Tag on Database
         if self.is_db_connected():
 
-            updated_fields = self.logger_engine.update_tag(
+            self.logger_engine.update_tag(
                 id=id,  
                 name=name, 
                 unit=unit, 
@@ -437,18 +451,7 @@ class PyAutomation(Singleton):
                 scan_time=scan_time,
                 dead_band=dead_band
             )
-
-            # for key, value in updated_fields._update.items():
-
-            #     updated_field = key.name
-            #     field_value = value
-
-        # manufacturer = ""
-        # if updated_field=="segment":
-            
-        #     segment = field_value.name
-        #     manufacturer = field_value.manufacturer.name
-
+        
         result = self.cvt.update_tag(
             id=id,  
             name=name, 
@@ -469,8 +472,11 @@ class PyAutomation(Singleton):
         if name:
             self.das.buffer.pop(tag_name)
             self.__update_buffer(tag=tag)
-
-        self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
+        
+        if isinstance(scan_time, int):
+            self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
+        else:
+            self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
         return result
 
     @logging_error_handler
@@ -683,8 +689,8 @@ class PyAutomation(Singleton):
         """
         if opcua_address and node_namespace:
 
-            if not scan_time:                                                           # SUBSCRIBE BY DAS
-
+            if not scan_time or scan_time<=100:                                                           # SUBSCRIBE BY DAS
+                
                 for client_name, info in self.get_opcua_clients().items():
 
                     if opcua_address==info["server_url"]:
@@ -696,7 +702,7 @@ class PyAutomation(Singleton):
                         break
 
             else:                                                                       # SUBSCRIBE BY DAQ
-
+                
                 self.subscribe_tag(tag_name=tag.get_name(), scan_time=scan_time, reload=reload)
 
         self.das.buffer[tag.get_name()].update({

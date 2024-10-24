@@ -4,6 +4,7 @@ from flask_restx import Namespace, Resource, fields
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
+from .... import _TIMEZONE, TIMEZONE
 
 ns = Namespace('Operation Logs', description='Operation Logs')
 app = PyAutomation()
@@ -16,9 +17,9 @@ logs_filter_model = api.model("logs_filter_model",{
     'classification': fields.String(required=False),
     'message': fields.String(required=False),
     'description': fields.String(required=False),
-    'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now() - timedelta(minutes=2), description=f'Greater than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
-    'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(), description=f'Less than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}',),
-    'timezone': fields.String(required=False, default='UTC')
+    'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description=f'Greater than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
+    'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE), description=f'Less than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}',),
+    'timezone': fields.String(required=False, default=_TIMEZONE)
 })
 
 logs_model = api.model("logs_model",{
@@ -73,7 +74,7 @@ class LogsFilterByResource(Resource):
         r"""
         Logs Filter By
         """
-        timezone = 'UTC'
+        timezone = _TIMEZONE
         if "timezone" in api.payload:
 
             timezone = api.payload["timezone"]
