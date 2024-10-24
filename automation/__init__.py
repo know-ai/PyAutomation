@@ -1,8 +1,12 @@
+import os
 from flask import Flask
 from .core import PyAutomation
 
 
 app = Flask(__name__, instance_relative_config=False)
+
+MANUFACTURER = os.environ.get('MANUFACTURER')
+SEGMENT = os.environ.get('SEGMENT')
 
 class CreateApp():
     """Initialize the core application."""

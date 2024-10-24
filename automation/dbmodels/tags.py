@@ -78,10 +78,10 @@ class Segment(BaseModel):
     name = CharField()
     manufacturer = ForeignKeyField(Manufacturer, backref='segments')
 
-    class Meta:
-        indexes = (
-            (('name', 'manufacturer'), True),
-        )
+    # class Meta:
+    #     indexes = (
+    #         (('name', 'manufacturer'), True),
+    #     )
 
     @classmethod
     def create(cls, name:str, manufacturer:str)-> dict:
@@ -95,13 +95,14 @@ class Segment(BaseModel):
             
             manufacturer_obj = Manufacturer.create(name=manufacturer)
 
-        segment_obj = cls.select().join(Manufacturer).where(Manufacturer.id==manufacturer_obj.id)
+        segment_obj = Segment.select().where(Segment.name == name, Segment.manufacturer == manufacturer_obj).exists()
+        
         if not segment_obj:
             query = cls(name=name, manufacturer=manufacturer_obj)
-            query.save()    
+            query.save()  
             return query
         
-        return segment_obj
+        return Segment.read_by_name(name=name)
 
     @classmethod
     def read_by_name(cls, name:str)->bool:
