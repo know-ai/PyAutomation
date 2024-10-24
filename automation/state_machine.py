@@ -927,7 +927,7 @@ class DAQ(StateMachineCore):
         self.send('wait_to_run')
 
     def while_running(self):
-
+        from . import SEGMENT, MANUFACTURER
         for tag_name, process_type in self.get_subscribed_tags().items():
             tag = process_type.tag
             namespace = tag.get_node_namespace()
@@ -939,7 +939,11 @@ class DAQ(StateMachineCore):
                 timestamp = data_value.SourceTimestamp
                 val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
                 tag.value.set_value(value=val, unit=tag.get_display_unit()) 
-                self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
+                    self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                elif not MANUFACTURER and not SEGMENT:
+                    self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                # self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](val)
 
