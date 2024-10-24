@@ -415,12 +415,9 @@ class PyAutomation(Singleton):
         Documentation here
         """
         tag = self.cvt.get_tag(id=id)         
-        self.unsubscribe_opcua(tag)
         if name:
-            print(f"Changing Name: {name}")
             tag_name = tag.get_name()
             machines_with_tags_subscribed = list()
-            print(f"MACHINES: {self.get_machines()}")
             for _machine, _, _ in self.get_machines():
                 
                 if tag_name in _machine.get_subscribed_tags():
@@ -431,7 +428,7 @@ class PyAutomation(Singleton):
 
                 return None, f"{tag_name} is subscribed into {machines_with_tags_subscribed}"
 
-        
+        self.unsubscribe_opcua(tag)
         # Persist Tag on Database
         if self.is_db_connected():
 

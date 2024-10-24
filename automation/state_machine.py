@@ -518,22 +518,22 @@ class StateMachineCore(StateMachine):
         - 
         """
         if tag:
-
-            if tag.name in self.get_subscribed_tags():
-                delattr(self, tag.name)
-                self.restart_buffer()
+            tags_subscribed = self.get_subscribed_tags()
+            if tag.name in tags_subscribed:
                 self.machine_engine.unbind_tag(tag=tag, machine=self)
+                tags_subscribed[tag.name].tag = None
+                self.restart_buffer()
                 return True
             
-        elif default_tag_name: # Default tags on leak state machine
+        # elif default_tag_name: # Default tags on leak state machine
 
-            if default_tag_name in self.get_subscribed_tags():
-                process_type = self.get_subscribed_tags[default_tag_name]
-                tag = process_type.tag
-                delattr(self, tag.name)
-                self.restart_buffer()
-                self.machine_engine.unbind_tag(tag=tag, machine=self)
-                return True
+        #     if default_tag_name in self.get_subscribed_tags():
+        #         process_type = self.get_subscribed_tags[default_tag_name]
+        #         tag = process_type.tag
+        #         tags_subscribed[tag.name].tag
+        #         self.restart_buffer()
+        #         self.machine_engine.unbind_tag(tag=tag, machine=self)
+        #         return True
 
     @validate_types(name=str, output=bool)
     def process_type_exists(self, name:str)->bool:
