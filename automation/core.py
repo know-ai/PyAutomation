@@ -491,6 +491,27 @@ class PyAutomation(Singleton):
     @logging_error_handler
     @validate_types(
             username=str,
+            email=str,
+            password=str,
+            name=str|type(None),
+            output=tuple
+    )
+    def login(
+            self,
+            password:str,
+            username:str="",
+            email:str=""
+        )->tuple[User|None, str]:
+        # Check Token on Database
+        if self.is_db_connected():
+
+            return self.db_manager.login(password=password, username=username, email=email)
+        
+        return users.login(password=password, username=username, email=email)
+
+    @logging_error_handler
+    @validate_types(
+            username=str,
             role_name=str,
             email=str,
             password=str,
@@ -613,7 +634,7 @@ class PyAutomation(Singleton):
         return self.opcua_client_manager.get_node_values(client_name=client_name, namespaces=namespaces)
 
     @logging_error_handler
-    @validate_types(client_name=str, namespaces=list, output=list)
+    @validate_types(client_name=str, namespaces=list, output=list|None)
     def get_node_attributes(self, client_name:str, namespaces:list)->list[dict]:
         r"""
         Documentation here

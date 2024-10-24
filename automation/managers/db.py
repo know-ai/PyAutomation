@@ -281,6 +281,12 @@ class DBManager(Singleton):
         Documentation here
         """
         return self.users_logger.set_user(user=user)
+    
+    def login(self, password:str, username:str="", email:str=""):
+        r"""
+        Documentation here
+        """
+        return self.users_logger.login(password=password, username=username, email=email)
 
     def summary(self)->dict:
         r"""
