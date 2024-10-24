@@ -98,6 +98,12 @@ class PyAutomation(Singleton):
             
             os.makedirs(folder_db_backups)
 
+        folder_ssl = os.path.join(".", "ssl")
+
+        if not os.path.exists(folder_ssl):
+            
+            os.makedirs(folder_ssl)
+
         self.set_log(file=os.path.join(folder_path, "app.log") ,level=logging.WARNING)
         self.__log_histories = False
     
