@@ -1025,4 +1025,16 @@ class AutomationStateMachine(StateMachineCore):
         if self.sio:
             self.sio.emit("on.machine", data=self.serialize())
 
+    def on_enter_sleeping(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
+    def on_enter_testing(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
 
