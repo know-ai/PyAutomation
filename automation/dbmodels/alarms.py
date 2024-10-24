@@ -513,9 +513,17 @@ class AlarmSummary(BaseModel):
         r"""
         Documentation here
         """
+        from .. import TIMEZONE
         ack_time = None
         if self.ack_time:
-            ack_time = self.ack_time.strftime(tag_engine.DATETIME_FORMAT)
+            ack_time = self.ack_time
+            ack_time = pytz.UTC.localize(ack_time).astimezone(TIMEZONE)
+            ack_time = ack_time.strftime(tag_engine.DATETIME_FORMAT)
+
+        alarm_time = self.alarm_time
+        alarm_time = pytz.UTC.localize(alarm_time).astimezone(TIMEZONE)
+        alarm_time = alarm_time.strftime(tag_engine.DATETIME_FORMAT)
+
         return {
             'id': self.id,
             'name': self.alarm.name,
@@ -524,7 +532,7 @@ class AlarmSummary(BaseModel):
             'state': self.state.name,
             'mnemonic': self.state.mnemonic,
             'status': self.state.status,
-            'alarm_time': self.alarm_time.strftime(tag_engine.DATETIME_FORMAT),
+            'alarm_time': alarm_time,
             'ack_time': ack_time
         }
     

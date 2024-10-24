@@ -173,10 +173,11 @@ class Events(BaseModel):
         return [comment.serialize() for comment in query.logs]
 
     def serialize(self)-> dict:
-
+        from .. import TIMEZONE
         timestamp = self.timestamp
         if timestamp:
 
+            timestamp = pytz.UTC.localize(timestamp).astimezone(TIMEZONE)
             timestamp = timestamp.strftime(DATETIME_FORMAT)
 
         return {

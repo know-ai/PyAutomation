@@ -163,12 +163,11 @@ class Logs(BaseModel):
         _query = cls.select().order_by(cls.id.desc())
         return [log.serialize() for log in _query]
 
-
     def serialize(self)-> dict:
-
+        from .. import TIMEZONE
         timestamp = self.timestamp
         if timestamp:
-
+            timestamp = pytz.UTC.localize(timestamp).astimezone(TIMEZONE)
             timestamp = timestamp.strftime(DATETIME_FORMAT)
 
         _event = None
