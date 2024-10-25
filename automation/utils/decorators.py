@@ -89,11 +89,11 @@ def put_alarm_state(func, args, kwargs):
     if alarm.sio:
         if alarm.timestamp:
             timestamp = alarm.timestamp
-            timestamp = pytz.UTC.localize(timestamp).astimezone(TIMEZONE)
+            timestamp = timestamp.astimezone(TIMEZONE)
             alarm.timestamp = timestamp
             if alarm.ack_timestamp:
                 ack_timestamp = alarm.ack_timestamp
-                ack_timestamp = pytz.UTC.localize(ack_timestamp).astimezone(TIMEZONE)
+                ack_timestamp = ack_timestamp.astimezone(TIMEZONE)
                 alarm.ack_timestamp = ack_timestamp
         
         alarm.sio.emit("on.alarm", data=alarm.serialize())

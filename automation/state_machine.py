@@ -183,6 +183,7 @@ class Machine(Singleton):
         r"""
         Documentation here
         """
+        from . import SEGMENT, MANUFACTURER
         cvt = CVTEngine()
         internal_variables = machine.get_internal_process_type_variables()
         for _tag_name, value in internal_variables.items():
@@ -197,7 +198,9 @@ class Machine(Singleton):
                         unit=value.unit,
                         data_type="float",
                         variable=variable,
-                        description=f"process type variable"
+                        description=f"process type variable",
+                        segment=SEGMENT,
+                        manufacturer=MANUFACTURER
                     )
                     # Persist Tag on Database
                     tag = cvt.get_tag_by_name(name=tag_name)
@@ -252,6 +255,7 @@ class StateMachineCore(StateMachine):
             interval:float=1.0,
             identifier:str=None
         ):
+        from . import SEGMENT, MANUFACTURER
         _identifier = secrets.token_hex(4)
         
         if identifier:
@@ -274,6 +278,8 @@ class StateMachineCore(StateMachine):
         for state in self.states:
             transitions.extend(state.transitions)
         self.transitions = transitions
+        self.manufacturer = MANUFACTURER
+        self.segment = SEGMENT
         super(StateMachineCore, self).__init__()
 
     # State Methods
@@ -518,22 +524,26 @@ class StateMachineCore(StateMachine):
         - 
         """
         if tag:
+
             tags_subscribed = self.get_subscribed_tags()
+            
             if tag.name in tags_subscribed:
+               
                 self.machine_engine.unbind_tag(tag=tag, machine=self)
                 tags_subscribed[tag.name].tag = None
                 self.restart_buffer()
                 return True
             
-        # elif default_tag_name: # Default tags on leak state machine
+        elif default_tag_name: # Default tags on leak state machine
 
-        #     if default_tag_name in self.get_subscribed_tags():
-        #         process_type = self.get_subscribed_tags[default_tag_name]
-        #         tag = process_type.tag
-        #         tags_subscribed[tag.name].tag
-        #         self.restart_buffer()
-        #         self.machine_engine.unbind_tag(tag=tag, machine=self)
-        #         return True
+            if default_tag_name in self.get_subscribed_tags():
+                
+                process_type = self.get_subscribed_tags[default_tag_name]
+                tag = process_type.tag
+                tags_subscribed[tag.name].tag = None
+                self.restart_buffer()
+                self.machine_engine.unbind_tag(tag=tag, machine=self)
+                return True
 
     @validate_types(name=str, output=bool)
     def process_type_exists(self, name:str)->bool:
@@ -669,7 +679,7 @@ class StateMachineCore(StateMachine):
     def get_allowed_actions(self):
         r"""Documentation here
         """
-        result = list()
+        result = set()
 
         current_state = self.current_state
         transitions = self.transitions
@@ -677,18 +687,21 @@ class StateMachineCore(StateMachine):
         for transition in transitions:
 
             if transition.source == current_state:
+
                 if transition.target.name not in ("run", "switch", "wait", "start"):
-                    result.append(transition.target.name)
+
+                    result.add(transition.target.name)
+
                     if "confirm" in transition.target.name:
 
-                        result.append(transition.target.name.replace("confirm", "deny"))
+                        result.add(transition.target.name.replace("confirm", "deny"))
 
-                    # if current_state.value.lower() in ("con_restart", "con_reset"):
+                if current_state.value.lower() in ("con_restart", "con_reset"):
 
-                    #     result.append(current_state.value.lower().replace("con_", "confirm_"))
-                    #     result.append(current_state.value.lower().replace("con_", "deny_"))
+                    result.add(current_state.value.lower().replace("con_", "confirm_"))
+                    result.add(current_state.value.lower().replace("con_", "deny_"))
 
-        return result
+        return list(result)
 
     def _get_active_transitions(self):
         r"""
@@ -797,7 +810,9 @@ class StateMachineCore(StateMachine):
         """
         result = {
             "state": self.current_state.value,
-            "actions": self.get_allowed_actions()
+            "actions": self.get_allowed_actions(),
+            "manufacturer": self.manufacturer,
+            "segment": self.segment
         }
         result.update(self.get_serialized_models())
         
@@ -903,7 +918,7 @@ class DAQ(StateMachineCore):
             description:str="",
             classification:str="Data Acquisition System"
         ):
-
+        
         self.das = DAS()
         self.cvt = CVTEngine()
 
@@ -927,7 +942,7 @@ class DAQ(StateMachineCore):
         self.send('wait_to_run')
 
     def while_running(self):
-        from . import SEGMENT, MANUFACTURER
+        
         for tag_name, process_type in self.get_subscribed_tags().items():
             tag = process_type.tag
             namespace = tag.get_node_namespace()
@@ -939,9 +954,9 @@ class DAQ(StateMachineCore):
                 timestamp = data_value.SourceTimestamp
                 val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
                 tag.value.set_value(value=val, unit=tag.get_display_unit()) 
-                if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
+                if tag.manufacturer==self.MANUFACTURER and tag.segment==self.SEGMENT:      
                     self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-                elif not MANUFACTURER and not SEGMENT:
+                elif not self.MANUFACTURER and not self.SEGMENT:
                     self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 # self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)

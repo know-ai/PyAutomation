@@ -31,7 +31,6 @@ class Logs(BaseModel):
         event_id:int=None,
         timestamp:datetime=None
         )->tuple:
-
         if not isinstance(user, User):
 
             return None, f"User {user} - {type(user)} must be an User Object"
@@ -84,87 +83,49 @@ class Logs(BaseModel):
         r"""
         Documentation here
         """
-        _timezone = pytz.timezone(timezone) 
-        _query = None
+        _timezone = pytz.timezone(timezone)
+        query = cls.select()
+        
         if usernames:
             subquery = Users.select(Users.id).where(Users.username.in_(usernames))
-            _query = cls.select().join(Users).where(Users.id.in_(subquery)).order_by(cls.id.desc())
-
+            query = query.join(Users).where(Users.id.in_(subquery))
+        
         if event_ids:
-
             subquery = Events.select(Events.id).where(Events.id.in_(event_ids))
-            if _query:
-                _query = _query.select().join(Events).where(cls.in_(subquery)).order_by(cls.id.desc())
-            else:
-                _query = cls.select().join(Events).where(cls.in_(subquery)).order_by(cls.id.desc())
-
+            query = query.join(Events).where(Events.id.in_(subquery))
+        
         if alarm_names:
             subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(alarm_names))
-            subquery = subquery.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(AlarmSummary.id.desc())
-            if _query:
-                _query = _query.select().join(AlarmSummary).where(cls.in_(subquery)).order_by(cls.id.desc())
-            else:
-                _query = cls.select().join(AlarmSummary).where(cls.in_(subquery)).order_by(cls.id.desc())
-
+            alarm_subquery = AlarmSummary.select(AlarmSummary.id).join(Alarms).where(Alarms.id.in_(subquery))
+            query = query.join(AlarmSummary).where(AlarmSummary.id.in_(alarm_subquery))
+        
         if description:
-
-            if _query:
-
-                _query = _query.select().where(fn.LOWER(cls.description).contains(description.lower()))
-
-            else:
-
-                _query = cls.select().where(fn.LOWER(cls.description).contains(description.lower()))
-
+            query = query.where(fn.LOWER(cls.description).contains(description.lower()))
+        
         if message:
-
-            if _query:
-
-                _query = _query.select().where(fn.LOWER(cls.message).contains(message.lower()))
-
-            else:
-
-                _query = cls.select().where(fn.LOWER(cls.message).contains(message.lower()))
-
+            query = query.where(fn.LOWER(cls.message).contains(message.lower()))
+        
         if classification:
-
-            if _query:
-
-                _query = _query.select().where(fn.LOWER(cls.classification).contains(classification.lower()))
-
-            else:
-
-                _query = cls.select().where(fn.LOWER(cls.classification).contains(classification.lower()))
-
+            query = query.where(fn.LOWER(cls.classification).contains(classification.lower()))
+        
         if greater_than_timestamp:
-            greater_than_timestamp = _timezone.localize(datetime.strptime(greater_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC).timestamp()
-            if _query:
-
-                _query = _query.select().where(cls.timestamp > greater_than_timestamp).order_by(cls.id.desc())
-
-            else:
-
-                _query = cls.select().where(cls.timestamp > greater_than_timestamp).order_by(cls.id.desc())
-
+            greater_than_timestamp = _timezone.localize(datetime.strptime(greater_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC)
+            query = query.where(cls.timestamp > greater_than_timestamp)
+        
         if less_than_timestamp:
-            less_than_timestamp = _timezone.localize(datetime.strptime(less_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC).timestamp()
-            if _query:
+            less_than_timestamp = _timezone.localize(datetime.strptime(less_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC)
+            query = query.where(cls.timestamp < less_than_timestamp)
+        
+        query = query.order_by(cls.id.desc())
 
-                _query = _query.select().where(cls.timestamp < less_than_timestamp).order_by(cls.id.desc())
-
-            else:
-
-                _query = cls.select().where(cls.timestamp < less_than_timestamp).order_by(cls.id.desc())
-
-        if _query:
-
-            return [event.serialize() for event in _query]
-    
-        _query = cls.select().order_by(cls.id.desc())
-        return [log.serialize() for log in _query]
+        if not query.exists():
+            
+            return []
+        
+        return [log.serialize() for log in query]
 
     def serialize(self)-> dict:
-        from .. import TIMEZONE
+        from .. import MANUFACTURER, SEGMENT, TIMEZONE
         timestamp = self.timestamp
         if timestamp:
             timestamp = pytz.UTC.localize(timestamp).astimezone(TIMEZONE)
@@ -188,5 +149,7 @@ class Logs(BaseModel):
             "description": self.description,
             "classification": self.classification,
             "event": _event,
-            "alarm": _alarm
+            "alarm": _alarm,
+            "segment": SEGMENT,
+            "manufacturer": MANUFACTURER
         }

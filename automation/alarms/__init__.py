@@ -76,12 +76,13 @@ class Alarm(StateMachine):
             user:User=None,
             reload:bool=False
         ):
-        # self.events_engine = EventsLoggerEngine()
         from ..logger.alarms import AlarmsLoggerEngine
         self.alarm_engine = AlarmsLoggerEngine()
         self.tag_engine = CVTEngine()
         self.name = name
         self.tag = tag
+        self.segment = tag.segment
+        self.manufacturer = tag.manufacturer
         self.attach(machine=self, tag=tag)
         self.description = description        
         self.alarm_setpoint = Trigger()
@@ -547,6 +548,8 @@ class Alarm(StateMachine):
 
         return {
             "identifier": self.identifier,
+            "segment": self.segment,
+            "manufacturer": self.manufacturer,
             "timestamp": timestamp,
             "name": self.name,
             "tag": self.tag.name,

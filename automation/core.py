@@ -157,7 +157,7 @@ class PyAutomation(Singleton):
         self.machine.append_machine(machine=machine, interval=interval, mode=mode)
 
     @logging_error_handler
-    @validate_types(name=StringType, output=StateMachine)
+    @validate_types(name=StringType, output=StateMachine|None)
     def get_machine(self, name:StringType)->StateMachine:
         r"""
         Documentation here
