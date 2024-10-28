@@ -103,7 +103,7 @@ class AlarmsLogger(BaseLogger):
         """
         if not self.is_history_logged:
 
-            return None
+            return list()
         
         if not self._db:
             

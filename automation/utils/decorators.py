@@ -56,7 +56,7 @@ def set_event(message:str, classification:str, priority:int, criticity:int):
 
                         description = result[-1]
                     
-                    event = events_engine.create(
+                    event, _ = events_engine.create(
                         message=message,
                         description=description,
                         classification=classification,

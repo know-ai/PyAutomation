@@ -11,6 +11,7 @@ from .mass_flow import MassFlow
 from .density import Density
 from .percentage import Percentage
 from .adimentional import Adimentional
+from .volume import Volume
 
 
 temperature_base = Temperature(value=1, unit='K')
@@ -26,6 +27,7 @@ mass_flow_base = MassFlow(value=1.0, unit="kg/day")
 density_base = Density(value=1.0, unit="kg/bbl")
 percentage_base = Percentage(value=0.0, unit="%")
 adimentional_base = Adimentional(value=0.0, unit="adim")
+volume_base = Volume(value=0.0, unit="m3")
 
 
 VARIABLES = {
@@ -41,7 +43,8 @@ VARIABLES = {
     f"{mass_flow_base.__class__.__name__}": mass_flow_base.Units.serialize(),
     f"{density_base.__class__.__name__}": density_base.Units.serialize(),
     f"{percentage_base.__class__.__name__}": percentage_base.Units.serialize(),
-    f"{adimentional_base.__class__.__name__}": adimentional_base.Units.serialize()
+    f"{adimentional_base.__class__.__name__}": adimentional_base.Units.serialize(),
+    f"{volume_base.__class__.__name__}": volume_base.Units.serialize()
 }
 
 DATATYPES = [

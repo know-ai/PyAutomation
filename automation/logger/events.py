@@ -32,7 +32,7 @@ class EventsLogger(BaseLogger):
         
         if self.get_db():
             
-            Events.create(
+            return Events.create(
                 message=message, 
                 user=user, 
                 description=description, 
@@ -48,7 +48,7 @@ class EventsLogger(BaseLogger):
         """
         if not self.is_history_logged:
 
-            return None
+            return list()
         
         if self.get_db():
         

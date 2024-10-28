@@ -631,7 +631,7 @@ class StateMachineCore(StateMachine):
             for _transition in allowed_transitions:
                 if f"{_transition.source.name}_to_{_transition.target.name}"==transition_name:
                     self.send(transition_name)
-                    return self, f"from: {_from} to: {to}"
+                    return self, f"[{self.name.value}] from: {_from} to: {to}"
                 
             return None, f"Transition to {to} not allowed"
             
