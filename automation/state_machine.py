@@ -192,7 +192,7 @@ class Machine(Singleton):
 
                 if value.unit in units.values() or value.unit in units.keys():
 
-                    tag_name = f"{_tag_name}_{machine.name.value}"
+                    tag_name = f"{machine.name.value}.{_tag_name}"
                     cvt.set_tag(
                         name=tag_name,
                         unit=value.unit,
