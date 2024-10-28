@@ -55,7 +55,7 @@ def set_event(message:str, classification:str, priority:int, criticity:int):
                     if isinstance(result, tuple):
 
                         description = result[-1]
-
+                    
                     event = events_engine.create(
                         message=message,
                         description=description,
