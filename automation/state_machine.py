@@ -1022,6 +1022,7 @@ class OPCUAServer(StateMachineCore):
         # SET
         self.__set_cvt()
         self.__set_alarms()
+        self.__set_engines()
         self.server.start()
         logging.getLogger('opcua').setLevel(logging.ERROR)
 
@@ -1037,6 +1038,7 @@ class OPCUAServer(StateMachineCore):
         r"""
         Documentation here
         """
+        self.__update_tags()
         print(f"[{self.name.value}] - [{self.current_state.value}]")
 
     def while_resetting(self):
@@ -1049,7 +1051,40 @@ class OPCUAServer(StateMachineCore):
         r"""
         documentation here
         """
-        pass
+        segment = "Engines"
+        # print(f"Engines: {self.machine_manager.get_machines()}")
+        for engine, _, _ in self.machine_manager.get_machines():
+
+            print(engine)
+
+        # engine_name = engine.pop('name')
+        # engine_name = engine_name['value']
+        
+        # if not hasattr(self, f"{segment}_{engine_name}"):
+        #     ID = blake2b(key=f"{segment}_{engine_name}".encode('utf-8'), digest_size=4).hexdigest()
+        #     setattr(self, f"{segment}_{engine_name}", self.my_folders[f"{segment}"].add_variable(
+        #         ua.NodeId(identifier=ID, namespaceidx=self.idx), 
+        #         engine_name, 
+        #         0)
+        #     )
+
+        #     var = getattr(self, f"{segment}_{engine_name}")
+        #     browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
+        #     browse_name.Value.Value.Name = ""
+            
+        #     for attr, value in engine.items():
+
+        #         if 'value' in value.keys():
+        #             key = f"{segment}_{engine_name}_{attr}"
+        #             try:
+        #                 ID = blake2b(key=key.encode('utf-8'), digest_size=4).hexdigest()
+        #             except:
+        #                 continue
+        #             prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), attr, value['value'])
+        #             description = prop.get_attribute(ua.AttributeIds.Description)
+        #             description.Value.Value.Text = str(value['unit'])    
+        #             browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+        #             browse_name.Value.Value.Name = ""
 
     def __set_alarms(self):
         r"""
@@ -1183,6 +1218,32 @@ class OPCUAServer(StateMachineCore):
                     prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)  
                     browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                     browse_name.Value.Value.Name = "" 
+
+    def __update_tags(self):
+        r"""
+        Documentation here
+        """
+        for tag in self.cvt.get_tags():
+            
+            segment = "CVT"
+            value = tag["value"]
+
+            if tag['segment']:
+
+                segment = tag['segment']
+
+            var_name = f"{segment}_{tag['name']}"
+            if hasattr(self, var_name):
+
+                _tag = getattr(self, var_name)
+
+                if isinstance(value, (float, int)):
+                    
+                    _tag.set_value(round(value, 4))
+
+                else:
+
+                    _tag.set_value(value)
 
 class AutomationStateMachine(StateMachineCore):
     r"""
