@@ -1039,6 +1039,7 @@ class OPCUAServer(StateMachineCore):
         Documentation here
         """
         self.__update_tags()
+        self.__update_alarms()
         print(f"[{self.name.value}] - [{self.current_state.value}]")
 
     def while_resetting(self):
@@ -1052,7 +1053,7 @@ class OPCUAServer(StateMachineCore):
         documentation here
         """
         segment = "Engines"
-        # print(f"Engines: {self.machine_manager.get_machines()}")
+
         for engine, _, _ in self.machine_manager.get_machines():
 
             print(engine)
@@ -1131,7 +1132,6 @@ class OPCUAServer(StateMachineCore):
                     browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
                     browse_name.Value.Value.Name = ""
 
-                    # print(alarm.serialize())
                     # Add State Properties
                     for state_key, state_value in alarm.state.serialize().items():
                         ID = blake2b(key=f"{segment}_{alarm_name}_{state_key}".encode('utf-8'), digest_size=4).hexdigest()
@@ -1139,7 +1139,6 @@ class OPCUAServer(StateMachineCore):
                         browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                         browse_name.Value.Value.Name = "" 
 
-                    # print(alarm.serialize())
                     # Add SETPOINT PROPERTIES
                     for setpoint_key, setpoint_value in alarm.alarm_setpoint.serialize().items():
                         ID = blake2b(key=f"{segment}_{alarm_name}_{setpoint_key}".encode('utf-8'), digest_size=4).hexdigest()
@@ -1244,6 +1243,43 @@ class OPCUAServer(StateMachineCore):
                 else:
 
                     _tag.set_value(value)
+
+    def __update_alarms(self):
+        r"""
+        Documentation here
+        """
+        alarms = self.alarm_manager.get_alarms()
+        segment = "Alarms"
+        for _, alarm in alarms.items():
+
+            alarm_name = alarm.name
+
+            if alarm.tag.segment:
+
+                segment = alarm.tag.segment
+
+            if segment.lower()!="alarms":
+                
+                segment = f"{segment}_alarms"
+            
+            var_name = f"{segment}_{alarm_name}"
+            if hasattr(self, var_name):
+                    
+                var = getattr(self, var_name)
+                props = var.get_properties()
+
+                for prop in props:
+                    
+                    display_name = prop.get_display_name().Text                   
+
+                    if display_name.startswith("setpoint"):
+                        display_name = display_name.replace("setpoint_", "")
+                        attr = getattr(alarm.alarm_setpoint, display_name)
+                        prop.set_value(attr)
+
+                    else:
+                        attr = getattr(alarm.state, display_name)
+                        prop.set_value(attr)
 
 class AutomationStateMachine(StateMachineCore):
     r"""
