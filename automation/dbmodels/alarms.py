@@ -1,6 +1,6 @@
 import pytz
 from peewee import CharField, FloatField, ForeignKeyField, TimestampField
-from ..dbmodels.core import BaseModel
+from ..dbmodels.core import BaseModel 
 from datetime import datetime
 from .tags import Tags
 from ..alarms.states import States
@@ -499,6 +499,7 @@ class AlarmSummary(BaseModel):
         Documentation here
         """
         from .. import TIMEZONE
+
         ack_time = None
         if self.ack_time:
             ack_time = self.ack_time
@@ -518,6 +519,7 @@ class AlarmSummary(BaseModel):
             'mnemonic': self.state.mnemonic,
             'status': self.state.status,
             'alarm_time': alarm_time,
-            'ack_time': ack_time
+            'ack_time': ack_time,
+            'has_comments': True if self.logs else False
         }
     

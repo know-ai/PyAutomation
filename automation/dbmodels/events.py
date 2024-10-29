@@ -146,7 +146,8 @@ class Events(BaseModel):
             "priority": self.priority,
             "criticity": self.criticity,
             "segment": SEGMENT,
-            "manufacturer": MANUFACTURER
+            "manufacturer": MANUFACTURER,
+            "has_comments": True if self.logs else False
         }
     
 

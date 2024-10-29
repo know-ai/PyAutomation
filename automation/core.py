@@ -1203,6 +1203,8 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
             
             return self.alarms_engine.get_lasts(lasts=lasts)
+        
+        return list()
 
     @logging_error_handler
     def filter_alarms_by(self, **fields):
