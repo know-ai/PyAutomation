@@ -988,7 +988,7 @@ class OPCUAServer(StateMachineCore):
         
         self.cvt = CVTEngine()
         self.alarm_manager = AlarmManager()
-        self.machine_manager = StateMachineManager()
+        self.machine = Machine()
         self.my_folders = dict()
 
         if isinstance(name, StringType):
@@ -1053,39 +1053,67 @@ class OPCUAServer(StateMachineCore):
         documentation here
         """
         segment = "Engines"
+        engines = self.machine.machine_manager.get_machines()
 
-        for engine, _, _ in self.machine_manager.get_machines():
+        for engine, _, _ in engines:
 
-            print(engine)
+            engine = engine.serialize()
+            print(f"ENGINE: {engine}")
+            engine_name = engine["name"]
+            engine_description = engine["description"] or ""
 
-        # engine_name = engine.pop('name')
-        # engine_name = engine_name['value']
-        
-        # if not hasattr(self, f"{segment}_{engine_name}"):
-        #     ID = blake2b(key=f"{segment}_{engine_name}".encode('utf-8'), digest_size=4).hexdigest()
-        #     setattr(self, f"{segment}_{engine_name}", self.my_folders[f"{segment}"].add_variable(
-        #         ua.NodeId(identifier=ID, namespaceidx=self.idx), 
-        #         engine_name, 
-        #         0)
-        #     )
+            if not hasattr(self, engine_name):
 
-        #     var = getattr(self, f"{segment}_{engine_name}")
-        #     browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
-        #     browse_name.Value.Value.Name = ""
-            
-        #     for attr, value in engine.items():
+                if engine["segment"]:
 
-        #         if 'value' in value.keys():
-        #             key = f"{segment}_{engine_name}_{attr}"
-        #             try:
-        #                 ID = blake2b(key=key.encode('utf-8'), digest_size=4).hexdigest()
-        #             except:
-        #                 continue
-        #             prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), attr, value['value'])
-        #             description = prop.get_attribute(ua.AttributeIds.Description)
-        #             description.Value.Value.Text = str(value['unit'])    
-        #             browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
-        #             browse_name.Value.Value.Name = ""
+                    segment = engine["segment"]
+
+                    if segment not in self.my_folders.keys():
+
+                        self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
+                    
+                    segment = f"{engine['segment']}.engines"
+                    if segment not in self.my_folders.keys():
+                        
+                        self.my_folders[segment] = self.my_folders[engine['segment']].add_folder(self.idx, 'Engines')
+
+                if segment not in self.my_folders.keys():
+                            
+                    self.my_folders[segment] = self.my_folders[segment]
+                    
+                var_name = f"{segment}.{engine_name}"
+
+                if not hasattr(self, var_name):
+                        
+                    ID = blake2b(key=f"{var_name}".encode('utf-8'), digest_size=4).hexdigest()
+
+                    setattr(self, var_name, self.my_folders[segment].add_variable(
+                        ua.NodeId(identifier=ID, namespaceidx=self.idx), 
+                        engine_name, 
+                        0)
+                    )
+                    var = getattr(self, var_name)
+
+                    description = var.get_attribute(ua.AttributeIds.Description)
+                    description.Value.Value.Text = engine_description
+                    browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
+                    browse_name.Value.Value.Name = ""
+
+                    # Add Properties
+                    pop_list = (
+                        "name",
+                        "identifier",
+                        "actions",
+                        "buffer_size",
+                        "buffer_roll_type"
+                        )
+                    for key in pop_list:
+                        engine.pop(key)
+                    for key, value in engine.items():
+                        ID = blake2b(key=f"{segment}.{engine_name}.{key}".encode('utf-8'), digest_size=4).hexdigest()
+                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)  
+                        browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+                        browse_name.Value.Value.Name = "" 
 
     def __set_alarms(self):
         r"""
@@ -1127,7 +1155,6 @@ class OPCUAServer(StateMachineCore):
                         0)
                     )
                     var = getattr(self, var_name)
-                    # var.set_writeable()
 
                     description = var.get_attribute(ua.AttributeIds.Description)
                     description.Value.Value.Text = alarm_description
