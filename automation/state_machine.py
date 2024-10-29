@@ -1,9 +1,12 @@
 import logging, secrets
 from datetime import datetime
+from opcua import Server, ua
+from hashlib import blake2b
 from statemachine import State, StateMachine
 from .workers.state_machine import StateMachineWorker
 from .managers.state_machine import StateMachineManager
 from .managers.opcua_client import OPCUAClientManager
+from .managers.alarms import AlarmManager
 from .managers.db import DBManager
 from .singleton import Singleton
 from .buffer import Buffer
@@ -919,7 +922,6 @@ class DAQ(StateMachineCore):
             classification:str="Data Acquisition System"
         ):
         
-        self.das = DAS()
         self.cvt = CVTEngine()
 
         if isinstance(name, StringType):
@@ -970,7 +972,217 @@ class DAQ(StateMachineCore):
         Documentation here
         """
         self.opcua_client_manager = manager
-    
+
+
+class OPCUAServer(StateMachineCore):
+    r"""
+    Documentation here
+    """    
+
+    def __init__(
+            self,
+            name:str="OPCUAServer",
+            description:str="",
+            classification:str="OPC UA Server"
+        ):
+        
+        self.cvt = CVTEngine()
+        self.alarm_manager = AlarmManager()
+        self.machine_manager = StateMachineManager()
+        self.my_folders = dict()
+
+        if isinstance(name, StringType):
+
+            name = name.value
+
+        super(OPCUAServer, self).__init__(
+            name=name,
+            description=description,
+            classification=classification
+            )
+        
+    @logging_error_handler
+    def while_starting(self):
+        r"""
+        Documentation here
+        """
+        self.server = Server()
+        self.server.set_endpoint(f'opc.tcp://0.0.0.0:53530/OPCUAServer/')
+        
+        # setup our own namespace, not really necessary but should as spec
+        uri = "http://examples.freeopcua.github.io"
+        self.idx = self.server.register_namespace(uri)
+        # get Objects node, this is where we should put our node
+        self.objects = self.server.get_objects_node()
+        # populating our address space
+        self.my_folders['CVT'] = self.objects.add_folder(self.idx, "CVT")
+        self.my_folders['Alarms'] = self.objects.add_folder(self.idx, "Alarms")
+        self.my_folders['Engines'] = self.objects.add_folder(self.idx, "Engines")
+
+        # SET
+        self.__set_cvt()
+        self.__set_alarms()
+        self.server.start()
+        logging.getLogger('opcua').setLevel(logging.ERROR)
+
+        self.send('start_to_wait')
+
+    def while_waiting(self):
+        r"""
+        Documentation here
+        """
+        self.send('wait_to_run')
+
+    def while_running(self):
+        r"""
+        Documentation here
+        """
+        print(f"[{self.name.value}] - [{self.current_state.value}]")
+
+    def while_resetting(self):
+        r"""
+        Documentation here
+        """
+        self.send('reset_to_starting')
+
+    def __set_engines(self):
+        r"""
+        documentation here
+        """
+        pass
+
+    def __set_alarms(self):
+        r"""
+        Documentation here
+        """
+        alarms = self.alarm_manager.get_alarms()
+        segment = "Alarms"
+        for _, alarm in alarms.items():
+
+            alarm_name = alarm.name
+            alarm_description = alarm.description or ""
+
+            if not hasattr(self, alarm_name):
+
+                if alarm.tag.segment:
+
+                    segment = alarm.tag.segment
+
+                if segment.lower()=="alarms":
+                    
+                    if f"{segment}_alarms" not in self.my_folders.keys():
+                            
+                        self.my_folders[f"{segment}_alarms"] = self.my_folders[segment]
+                else:
+                    
+                    if f"{segment}_alarms" not in self.my_folders.keys():
+                            
+                        self.my_folders[f"{segment}_alarms"] = self.my_folders[segment].add_folder(self.idx, 'Alarms')
+
+                if not hasattr(self, f"{segment}_{alarm_name}"):
+                        
+                    ID = blake2b(key=f"{segment}_{alarm_name}".encode('utf-8'), digest_size=4).hexdigest()
+
+                    setattr(self, f"{segment}_{alarm_name}", self.my_folders[f"{segment}_alarms"].add_variable(
+                        ua.NodeId(identifier=ID, namespaceidx=self.idx), 
+                        alarm_name, 
+                        0)
+                    )
+                    var = getattr(self, f"{segment}_{alarm_name}")
+                    # var.set_writeable()
+
+                    description = var.get_attribute(ua.AttributeIds.Description)
+                    description.Value.Value.Text = alarm_description
+                    browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
+                    browse_name.Value.Value.Name = ""
+
+                    # print(alarm.serialize())
+                    # Add State Properties
+                    for state_key, state_value in alarm.state.serialize().items():
+                        ID = blake2b(key=f"{segment}_{alarm_name}_{state_key}".encode('utf-8'), digest_size=4).hexdigest()
+                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), state_key, state_value)  
+                        browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+                        browse_name.Value.Value.Name = "" 
+
+                    # print(alarm.serialize())
+                    # Add SETPOINT PROPERTIES
+                    for setpoint_key, setpoint_value in alarm.alarm_setpoint.serialize().items():
+                        ID = blake2b(key=f"{segment}_{alarm_name}_{setpoint_key}".encode('utf-8'), digest_size=4).hexdigest()
+                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), f"setpoint_{setpoint_key}", f"setpoint_{setpoint_value}")  
+                        browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+                        browse_name.Value.Value.Name = "" 
+
+    def __set_cvt(self):
+        r"""
+        Documentation here
+        """
+        segment = "CVT"
+        for tag in self.cvt.get_tags():
+            
+            if tag["segment"]:
+
+                segment = tag["segment"]
+
+                if segment not in self.my_folders.keys():
+                    
+                    self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
+            
+            tag_name = tag['name']
+            # identifier = tag["id"]
+            display_unit = tag["display_unit"]
+            data_type = tag["data_type"]
+            tag_description = tag["description"] or ""
+
+            var_name = f"{segment}_{tag_name}"
+            identifier = blake2b(key=var_name.encode('utf-8'), digest_size=4).hexdigest()
+
+            if not hasattr(self, var_name):
+
+                if data_type.lower()=='str':
+                        setattr(self, var_name, self.my_folders[f"{segment}"].add_variable(
+                            ua.NodeId(identifier=identifier, namespaceidx=self.idx), 
+                            tag_name, 
+                            "")
+                        )
+
+                else:
+
+                    setattr(self, var_name, self.my_folders[f"{segment}"].add_variable(
+                        ua.NodeId(identifier=identifier, namespaceidx=self.idx), 
+                        tag_name, 
+                        0)
+                    )
+
+                var = getattr(self, var_name)
+                description = var.get_attribute(ua.AttributeIds.Description)
+                description.Value.Value.Text = tag_description
+                browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
+                browse_name.Value.Value.Name = display_unit
+
+                pop_list = (
+                    "id", 
+                    "value", 
+                    "timestamp", 
+                    "timestamps", 
+                    "values", 
+                    "name", 
+                    "description", 
+                    "opcua_address", 
+                    "node_namespace", 
+                    "process_filter",
+                    "gaussian_filter",
+                    "out_of_range_detection",
+                    "frozen_data_detection",
+                    "outlier_detection"
+                    )
+                for key in pop_list:
+                    tag.pop(key)
+                # Add State Properties
+                for key, value in tag.items():
+                    ID = blake2b(key=f"{var_name}_{key}".encode('utf-8'), digest_size=4).hexdigest()
+                    prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)  
+                    browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+                    browse_name.Value.Value.Name = "" 
 
 class AutomationStateMachine(StateMachineCore):
     r"""
@@ -1051,5 +1263,4 @@ class AutomationStateMachine(StateMachineCore):
         if self.sio:
 
             self.sio.emit("on.machine", data=self.serialize())
-
 

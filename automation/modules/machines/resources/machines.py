@@ -6,6 +6,7 @@ from ....models import IntegerType, FloatType, StringType, BooleanType
 from ....dbmodels.machines import Machines
 
 
+
 ns = Namespace('Machines', description='State Machines')
 app = PyAutomation()
 

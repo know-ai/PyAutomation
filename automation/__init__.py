@@ -1,7 +1,7 @@
 import os, pytz
 from flask import Flask
 from .core import PyAutomation
-
+from .state_machine import OPCUAServer
 
 app = Flask(__name__, instance_relative_config=False)
 
@@ -41,3 +41,4 @@ class CreateApp():
 __application = CreateApp()
 server = __application()    
 server.config['TPT_TOKEN'] = '073821603fcc483f9afee3f1500782a4'
+opcua_server = OPCUAServer()
