@@ -189,65 +189,22 @@ class DataLogger(BaseLogger):
             # Structure the data
             time_span = (stop - start ) / 60 # span in minutes
             result = defaultdict(lambda: {"values": []})
-            if time_span > 60 * 24 * 7 * 4:  # 1 month
-                # Aggregate data every 30 minutes
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=1800, timezone=timezone)
+            if time_span > 60 * 24 * 7:  # 1 week
+                # Aggregate data every 1 day
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600 * 24, timezone=timezone)
 
-            elif time_span > 60 * 24 * 7:  # 1 week
-                # Aggregate data every 10 minutes
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=600, timezone=timezone)
+            elif time_span > 60 * 24 * 2:  # 2 days
+                # Aggregate data every 1 hora
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600, timezone=timezone)
 
-            elif time_span > 60 * 24:  # 1 dia
-                # Aggregate data every 4 minutes
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=240, timezone=timezone)
-
-            elif time_span > 60 * 12:  # 12 horas
-                # Aggregate data every 2 minutes
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=120, timezone=timezone)
-            
-            elif time_span > 60 * 6:  # 6 horas
-                # Aggregate data every 60 seconds
+            elif time_span > 60 * 2:  # 2 horas
+                # Aggregate data every 1 minute
                 result = self._agregate_data_every_seconds(query=query, result=result, seconds=60, timezone=timezone)
-            
-            elif time_span > 60 * 5:  # 90 minutes
-                # Aggregate data every 15 seconds
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=50, timezone=timezone)
-            
-            elif time_span > 60 * 4:  # 90 minutes
-                # Aggregate data every 15 seconds
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=40, timezone=timezone)
-            
-            elif time_span > 60 * 3:  # 90 minutes
-                # Aggregate data every 15 seconds
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=30, timezone=timezone)
-            
-            elif time_span > 60 * 2.5:  # 90 minutes
-                # Aggregate data every 25 seconds
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=25, timezone=timezone)
-
-            elif time_span > 60 * 2:  # 120 minutes
-                # Aggregate data every 20 seconds
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=20, timezone=timezone)
-
-            elif time_span > 60 * 1.5:  # 90 minutes
-                # Aggregate data every 15 seconds
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=15, timezone=timezone)
-
-            elif time_span > 60 * 1:  # 60 minutes
-                # Aggregate data every 10 seconds
-                # breakpoint()
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=10, timezone=timezone)
-
-            elif time_span > 60 * 0.5:  # 30 minutes
-                # Aggregate data every 5 seconds
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=5, timezone=timezone)
 
             else:
                 # Use original data
                 for entry in query:
-                    # _tag = self.tag_engine._cvt.get_tag_by_name(name=entry['name'])
-                    # variable = entry['variable_name']
-                    # unit = entry["tag_value_unit"]
+
                     from_timezone = pytz.timezone('UTC')
                     timestamp = entry['timestamp']
                     timestamp = from_timezone.localize(timestamp)

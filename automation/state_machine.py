@@ -1041,7 +1041,6 @@ class OPCUAServer(StateMachineCore):
         self.__update_tags()
         self.__update_alarms()
         self.__update_engines()
-        print(f"[{self.name.value}] - [{self.current_state.value}]")
 
     def while_resetting(self):
         r"""
@@ -1332,9 +1331,7 @@ class OPCUAServer(StateMachineCore):
 
                 for prop in props:
                     
-                    display_name = prop.get_display_name().Text  
-                    # print(f"Display Name: {display_name}") 
-                    # print(f"Engine: {engine}")                
+                    display_name = prop.get_display_name().Text                
                     attr = engine[display_name]
                     prop.set_value(attr)
 
