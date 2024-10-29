@@ -1040,6 +1040,7 @@ class OPCUAServer(StateMachineCore):
         """
         self.__update_tags()
         self.__update_alarms()
+        self.__update_engines()
         print(f"[{self.name.value}] - [{self.current_state.value}]")
 
     def while_resetting(self):
@@ -1058,7 +1059,6 @@ class OPCUAServer(StateMachineCore):
         for engine, _, _ in engines:
 
             engine = engine.serialize()
-            print(f"ENGINE: {engine}")
             engine_name = engine["name"]
             engine_description = engine["description"] or ""
 
@@ -1306,6 +1306,37 @@ class OPCUAServer(StateMachineCore):
                     else:
                         attr = getattr(alarm.state, display_name)
                         prop.set_value(attr)
+
+    def __update_engines(self):
+        r"""
+        Documentation here
+        """
+        segment = "Engines"
+        engines = self.machine.machine_manager.get_machines()
+
+        for engine, _, _ in engines:
+
+            engine = engine.serialize()
+            engine_name = engine["name"]
+
+            if engine["segment"]:
+
+                segment = engine["segment"]
+                segment = f"{segment}.engines"
+
+            var_name = f"{segment}.{engine_name}"
+            if hasattr(self, var_name):
+                    
+                var = getattr(self, var_name)
+                props = var.get_properties()
+
+                for prop in props:
+                    
+                    display_name = prop.get_display_name().Text  
+                    # print(f"Display Name: {display_name}") 
+                    # print(f"Engine: {engine}")                
+                    attr = engine[display_name]
+                    prop.set_value(attr)
 
 class AutomationStateMachine(StateMachineCore):
     r"""
