@@ -1104,27 +1104,29 @@ class OPCUAServer(StateMachineCore):
 
                     segment = alarm.tag.segment
 
-                if segment.lower()=="alarms":
+                    if segment not in self.my_folders.keys():
+                        self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
                     
-                    if f"{segment}_alarms" not in self.my_folders.keys():
-                            
-                        self.my_folders[f"{segment}_alarms"] = self.my_folders[segment]
-                else:
-                    
-                    if f"{segment}_alarms" not in self.my_folders.keys():
-                            
-                        self.my_folders[f"{segment}_alarms"] = self.my_folders[segment].add_folder(self.idx, 'Alarms')
+                    segment = f"{alarm.tag.segment}.alarms"
+                    if segment not in self.my_folders.keys():
+                        self.my_folders[segment] = self.my_folders[alarm.tag.segment].add_folder(self.idx, 'Alarms')
 
-                if not hasattr(self, f"{segment}_{alarm_name}"):
+                if segment not in self.my_folders.keys():
+                            
+                    self.my_folders[segment] = self.my_folders[segment]
+                    
+                var_name = f"{segment}.{alarm_name}"
+
+                if not hasattr(self, var_name):
                         
-                    ID = blake2b(key=f"{segment}_{alarm_name}".encode('utf-8'), digest_size=4).hexdigest()
+                    ID = blake2b(key=f"{var_name}".encode('utf-8'), digest_size=4).hexdigest()
 
-                    setattr(self, f"{segment}_{alarm_name}", self.my_folders[f"{segment}_alarms"].add_variable(
+                    setattr(self, var_name, self.my_folders[segment].add_variable(
                         ua.NodeId(identifier=ID, namespaceidx=self.idx), 
                         alarm_name, 
                         0)
                     )
-                    var = getattr(self, f"{segment}_{alarm_name}")
+                    var = getattr(self, var_name)
                     # var.set_writeable()
 
                     description = var.get_attribute(ua.AttributeIds.Description)
@@ -1134,15 +1136,15 @@ class OPCUAServer(StateMachineCore):
 
                     # Add State Properties
                     for state_key, state_value in alarm.state.serialize().items():
-                        ID = blake2b(key=f"{segment}_{alarm_name}_{state_key}".encode('utf-8'), digest_size=4).hexdigest()
+                        ID = blake2b(key=f"{segment}.{alarm_name}.{state_key}".encode('utf-8'), digest_size=4).hexdigest()
                         prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), state_key, state_value)  
                         browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                         browse_name.Value.Value.Name = "" 
 
                     # Add SETPOINT PROPERTIES
                     for setpoint_key, setpoint_value in alarm.alarm_setpoint.serialize().items():
-                        ID = blake2b(key=f"{segment}_{alarm_name}_{setpoint_key}".encode('utf-8'), digest_size=4).hexdigest()
-                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), f"setpoint_{setpoint_key}", f"setpoint_{setpoint_value}")  
+                        ID = blake2b(key=f"{segment}.{alarm_name}.{setpoint_key}".encode('utf-8'), digest_size=4).hexdigest()
+                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), f"setpoint.{setpoint_key}", f"setpoint.{setpoint_value}")  
                         browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                         browse_name.Value.Value.Name = "" 
 
@@ -1257,12 +1259,9 @@ class OPCUAServer(StateMachineCore):
             if alarm.tag.segment:
 
                 segment = alarm.tag.segment
+                segment = f"{segment}.alarms"
 
-            if segment.lower()!="alarms":
-                
-                segment = f"{segment}_alarms"
-            
-            var_name = f"{segment}_{alarm_name}"
+            var_name = f"{segment}.{alarm_name}"
             if hasattr(self, var_name):
                     
                 var = getattr(self, var_name)
@@ -1273,7 +1272,7 @@ class OPCUAServer(StateMachineCore):
                     display_name = prop.get_display_name().Text                   
 
                     if display_name.startswith("setpoint"):
-                        display_name = display_name.replace("setpoint_", "")
+                        display_name = display_name.replace("setpoint.", "")
                         attr = getattr(alarm.alarm_setpoint, display_name)
                         prop.set_value(attr)
 
