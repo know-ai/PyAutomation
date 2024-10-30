@@ -1099,18 +1099,19 @@ class OPCUAServer(StateMachineCore):
                     browse_name.Value.Value.Name = ""
 
                     # Add Properties
-                    pop_list = (
-                        "name",
-                        "identifier",
-                        "actions",
-                        "buffer_size",
-                        "buffer_roll_type"
+                    keep_list = (
+                        "state",
+                        "manufacturer",
+                        "segment",
+                        "criticity",
+                        "priority",
+                        "classification",
+                        "machine_interval"
                         )
-                    for key in pop_list:
-                        engine.pop(key)
-                    for key, value in engine.items():
+
+                    for key in keep_list:
                         ID = blake2b(key=f"{segment}.{engine_name}.{key}".encode('utf-8'), digest_size=4).hexdigest()
-                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)  
+                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, engine[key])  
                         browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                         browse_name.Value.Value.Name = "" 
 
