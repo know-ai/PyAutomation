@@ -146,7 +146,19 @@ class DBManager(Singleton):
         * **cls* (BaseModel): A class that inherit from BaseModel
 
         """
-        self._extra_tables.append(cls)
+        self._tables.append(cls)
+
+    def get_db_table(self, tablename:str):
+        r"""
+        Documentation here
+        """
+        for table in self._tables:
+
+            if table._meta.table_name.lower()==tablename.lower():
+
+                return table
+            
+        return None
 
     def create_tables(self):
         r"""

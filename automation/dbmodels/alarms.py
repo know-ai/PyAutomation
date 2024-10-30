@@ -216,7 +216,7 @@ class AlarmStates(BaseModel):
 class Alarms(BaseModel):
 
     identifier = CharField(unique=True)
-    name = CharField(unique=True, max_length=64)
+    name = CharField(unique=True, max_length=128)
     tag = ForeignKeyField(Tags, backref='alarms')
     trigger_type = ForeignKeyField(AlarmTypes, backref='alarms')
     trigger_value = FloatField()

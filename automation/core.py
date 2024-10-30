@@ -24,6 +24,7 @@ from .buffer import Buffer
 from .models import StringType, FloatType, IntegerType
 from .modules.users.users import users, User
 from .modules.users.roles import roles, Role
+from .dbmodels.core import BaseModel
 from .utils.decorators import validate_types, logging_error_handler
 from flask_socketio import SocketIO
 from geventwebsocket.handler import WebSocketHandler
@@ -1108,6 +1109,20 @@ class PyAutomation(Singleton):
                 machine_name = machine.name.value
                 machine_db = Machines.get_or_none(name=machine_name)
                 machine.identifier.value = machine_db.identifier
+
+    @logging_error_handler
+    def add_db_table(self, table:BaseModel):
+        r"""
+        Documentation here
+        """
+        self.db_manager.register_table(table)
+
+    @logging_error_handler
+    def get_db_table(self, tablename:str):
+        r"""
+        Documentation here
+        """
+        return self.db_manager.get_db_table(tablename=tablename)
 
     # ALARMS METHODS
     @logging_error_handler
