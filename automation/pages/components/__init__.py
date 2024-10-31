@@ -69,6 +69,7 @@ class Components:
 
     @classmethod
     def navbar(cls)->dbc.NavbarSimple:
+
         return dbc.NavbarSimple(
             children=[
                 dbc.NavItem(dbc.NavLink("Communications", href="/")),
@@ -93,7 +94,16 @@ class Components:
                     in_navbar=True,
                     label="Alarms",
                 ),
-                dbc.NavItem(dbc.NavLink("Machines", href="/machines")),
+                dbc.DropdownMenu(
+                    children=[
+                        dbc.DropdownMenuItem("Machines", header=True),
+                        dbc.DropdownMenuItem("Summary", href="/machines"),
+                        dbc.DropdownMenuItem("Detailed", href="/machines-detailed"),
+                    ],
+                    nav=True,
+                    in_navbar=True,
+                    label="Machines",
+                ),
             ],
             fluid=True, # Navbar container is modified.
             brand=html.Span("PyAutomation Configuration", className="custom-brand-class mx-2"), # Styles are applied to the HTML brand element.

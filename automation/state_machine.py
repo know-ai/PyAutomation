@@ -575,6 +575,21 @@ class StateMachineCore(StateMachine):
                     result[name] = value
 
         return result
+    
+    def get_read_only_process_type_variables(self)->dict:
+
+        result = dict()
+        props = self.__dict__
+        
+        for name, value in props.items():
+
+            if isinstance(value, ProcessType):
+
+                if value.read_only:
+
+                    result[name] = value
+
+        return result
 
     @validate_types(
             tag=str, 
