@@ -706,7 +706,7 @@ class StateMachineCore(StateMachine):
 
             if transition.source == current_state:
 
-                if transition.target.name not in ("run", "switch", "wait", "start"):
+                if transition.target.name not in ("run", "switch", "wait", "start", "pre_alarm"):
 
                     result.add(transition.target.name)
 

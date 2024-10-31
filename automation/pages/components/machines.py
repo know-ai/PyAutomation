@@ -17,14 +17,9 @@ class MachinesComponents:
                 dbc.Col([
                     dbc.InputGroup(
                         [
-                            dbc.InputGroupText("Actions"),
+                            dbc.InputGroupText(id="machine_state_input"),
                             dbc.Select(
-                                options=[
-                                    {'label': 'Float', 'value': 'float'},
-                                    {'label': 'Integer', 'value': 'integer'},
-                                    {'label': 'Boolean', 'value': 'boolean'},
-                                    {'label': 'String', 'value': 'string'}
-                                ],
+                                options=[],
                                 id="machine_actions_input"
                             ),
                         ],

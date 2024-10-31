@@ -21,6 +21,13 @@ layout = dbc.Container(
             button_close_id="close-modal-error-button-subscription",
             body_id="modal-error-body-subscription"
         ),
+        Components.modal_confirm(
+            title="Confirmation",
+            modal_id="modal-question-action-machine",
+            body_id="modal-question-body-action-machine",
+            yes_button_id="question-action-machine-yes",
+            no_button_id="question-action-machine-no"
+        ),
     ],
     fluid=False,
     className="my-3",

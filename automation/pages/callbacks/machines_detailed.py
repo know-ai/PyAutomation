@@ -65,7 +65,69 @@ def init_callback(app:dash.Dash):
 
         return data
     
+    @app.callback(
+        dash.Output('subscribed_tag_machine_input', 'options', allow_duplicate=True),
+        dash.Output('field_tag_input', 'options', allow_duplicate=True),
+        dash.Output('internal_tag_input', 'options', allow_duplicate=True),
+        dash.Input('machines_detailed_tabs', 'active_tab'),
+        prevent_initial_call=False
+    )
+    def update_subscription_form(active_tab:str):
+        machine_name = active_tab.split("-")[-1]
+        machine = app.automation.get_machine(name=StringType(machine_name))
+        internal_variables = machine.get_read_only_process_type_variables()
+        subscribed_tags_machine = [{"label": "", "value": ""}]
+        not_subscribed = [{"label": "", "value": ""}]
+        available_tags = [{"label": "", "value": ""}]
+        tags = app.automation.cvt._cvt.get_field_tags_names()
+        for _tag_name, value in internal_variables.items():
 
+            if value.tag:
+                subscribed_tags_machine.append({
+                    "label": f"{value.tag.name}->{_tag_name}", "value": value.tag.name
+                    })
+                tags.remove(value.tag.name)
+                
+            else:
+
+                not_subscribed.append({
+                    "label": _tag_name, "value": _tag_name
+                })
+
+        for tag in tags:
+
+            available_tags.append({
+                "label": tag, "value": tag
+            })
+        return subscribed_tags_machine, available_tags, not_subscribed
+    
+    @app.callback(
+        dash.Output('machine_state_input', 'children'),
+        dash.Input('timestamp-interval', 'n_intervals'),
+        dash.State('machines_detailed_tabs', 'active_tab'),
+        dash.State('machine_state_input', 'children'),
+        prevent_initial_call=False
+    )
+    def update_state( n_intervals, active_tab:str, previous_machine_state):
+        r"""
+        Documentation here
+        """
+        machine_name = active_tab.split("-")[-1]
+        machine = app.automation.get_machine(name=StringType(machine_name))
+        state = machine.current_state.value
+
+        if state!=previous_machine_state:
+            actions = [{"label": "", "value": ""}]
+            for action in machine.get_allowed_actions():
+                actions.append({"label": action, "value": action})
+            dash.set_props("machine_actions_input", {
+                'options': actions
+                })
+
+            return state
+
+        return previous_machine_state
+    
     @app.callback(
         dash.Input("field_tag_input", "value"),
         dash.Input("internal_tag_input", "value"),
@@ -101,7 +163,6 @@ def init_callback(app:dash.Dash):
         else:
             
             dash.set_props("unsubscribe_tag_machine_button", {'disabled': True})
-
 
     @app.callback(
         dash.Output("field_tag_input", "value", allow_duplicate=True),
@@ -161,7 +222,6 @@ def init_callback(app:dash.Dash):
 
             return "", "", "", field_tag_options, internal_tag_options, tags_machine_options
 
-
     @app.callback(
         dash.Output('subscribed_tag_machine_input', 'value', allow_duplicate=True),
         dash.Output('subscribed_tag_machine_input', 'options', allow_duplicate=True),
@@ -208,6 +268,22 @@ def init_callback(app:dash.Dash):
             return "", tags_machine_options, field_tags_options, internal_tags_options
 
     @app.callback(
+        dash.Input('machine_actions_input', 'value'),
+        dash.State('machines_detailed_tabs', 'active_tab'),
+        prevent_initial_call=True
+    )
+    def dropdown_actions(action:str, active_tab:str,):
+        r"""
+        documentation here
+        """
+        if action:
+
+            machine_name = active_tab.split("-")[-1]
+            message = f'are you sure you want to {action} {machine_name} state machine?'
+            dash.set_props("modal-question-body-action-machine", {"children": message})
+            dash.set_props("modal-question-action-machine", {'is_open': True})
+
+    @app.callback(
         dash.Output("modal-error-subscription", "is_open"),
         dash.Input("close-modal-error-button-subscription", "n_clicks"),
         [dash.State("modal-error-subscription", "is_open")],
@@ -221,3 +297,50 @@ def init_callback(app:dash.Dash):
             return not is_open
         
         return is_open
+    
+    @app.callback(
+        dash.Output("modal-question-action-machine", "is_open"), 
+        dash.Output("question-action-machine-yes", "n_clicks"),
+        dash.Output("question-action-machine-no", "n_clicks"),
+        dash.Input("question-action-machine-yes", "n_clicks"), 
+        dash.Input("question-action-machine-no", "n_clicks"),
+        dash.Input('machine_actions_input', 'value'),
+        dash.State('machines_detailed_tabs', 'active_tab'),
+        dash.State("modal-question-action-machine", "is_open"),
+        prevent_initial_call=True
+    )
+    def question_action_machine_yes_or_no(yes_n, no_n, action:str, active_tab:str, is_open):
+        r"""
+        Documentation here
+        """
+        if action:
+
+            if yes_n:
+
+                machine_name = active_tab.split("-")[-1]
+                machine = app.automation.get_machine(name=StringType(machine_name))
+
+                if action=="confirm_restart":
+                    machine.transition(to='wait')
+                elif action=="confirm_reset":
+                    machine.transition(to='start')
+                elif action=="deny_restart":
+                    machine.transition(to=machine.last_state)
+                elif action=="deny_reset":
+                    machine.transition(to=machine.last_state)
+                else:
+                    machine.transition(to=action)
+
+                return not is_open, 0, 0
+
+            elif no_n:
+
+                return not is_open, 0, 0
+            
+            else:
+
+                return True, 0, 0
+        
+        else:
+
+            return False, 0, 0
