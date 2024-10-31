@@ -16,7 +16,8 @@ from ..variables import (
     MassFlow,
     Density,
     Percentage,
-    Adimentional
+    Adimentional,
+    Volume
 )
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
@@ -86,6 +87,8 @@ class Tag:
             self.value = Percentage(value=0.0, unit=self.unit)
         elif variable.lower()=="adimentional":
             self.value = Adimentional(value=0.0, unit=self.unit)
+        elif variable.lower()=="volume":
+            self.value = Volume(value=0.0, unit=self.unit)
 
         self.values = Buffer()
         self.timestamps = Buffer()

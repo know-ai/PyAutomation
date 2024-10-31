@@ -121,7 +121,7 @@ class CVT:
         )
         self._tags[tag.id] = tag
 
-        return tag, f"Tag: {name} - {unit}"
+        return tag, message
 
     @set_event(message=f"Updated", classification="Tag", priority=1, criticity=3)
     def update_tag(
