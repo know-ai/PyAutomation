@@ -1,8 +1,10 @@
 from flask import Blueprint, request
+from flask_restx import abort
 from flask_restx import Api as API
 from ..singleton import Singleton
 from functools import wraps
 import logging, jwt
+from ..utils.decorators import decorator
 from ..dbmodels.users import Users
 from ..modules.users.users import Users as CVTUsers
 
@@ -64,7 +66,22 @@ class Api(Singleton):
 
         except:
 
-            return False
+            return 
+        
+    @classmethod
+    def validate_reqparser(cls, reqparser):
+        def _validate_reqparser(f):
+                
+            @wraps(f)
+            def decorated(*args, **kwargs):
+                
+                reqparser.parse_args() 
+                result = f(*args, **kwargs)
+                return result
+
+            return decorated
+        
+        return _validate_reqparser
     
     @classmethod
     def token_required(cls, auth:bool=False):
@@ -91,7 +108,6 @@ class Api(Singleton):
                             
                             return {'message' : 'Key is missing.'}, 401
                         
-                        # user = users.get_active_user(token=token)
                         user = Users.get_or_none(token=token)
 
                         if user:

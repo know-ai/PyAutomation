@@ -1,17 +1,13 @@
-from flask_restx import Namespace, Resource, fields
+from flask_restx import Namespace, Resource
 from .... import PyAutomation
 from ....modules.users.roles import roles
 from ....extensions.api import api
 from ....extensions import _api as Api
+from .models.roles import create_role_parser
 
 
 ns = Namespace('Roles', description='Roles')
 app = PyAutomation()
-
-create_role_model = api.model("create_role_model", {
-    'name': fields.String(required=True, description='Role Name'),
-    'level': fields.Integer(required=True, description='Role Level')
-})
 
 @ns.route('/')
 class UsersByRoleResource(Resource):
@@ -26,12 +22,14 @@ class UsersByRoleResource(Resource):
 @ns.route('/add')
 class CreateRoleResource(Resource):
     
+    @Api.validate_reqparser(reqparser=create_role_parser)
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
-    @ns.expect(create_role_model)
+    @ns.expect(create_role_parser)
     def post(self):
-        """User signup"""
-        role, message = app.set_role(**api.payload)
+        """Add Role"""  
+        args = create_role_parser.parse_args()
+        role, message = app.set_role(**args)
         
         if role:
 

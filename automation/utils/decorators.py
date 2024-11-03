@@ -1,4 +1,4 @@
-import functools, logging, os, sys, pytz
+import functools, logging, sys
 from ..modules.users.users import User
 from ..logger.events import EventsLoggerEngine
 
@@ -186,7 +186,6 @@ def logging_error_handler(func, args, kwargs):
         })
         logger = logging.getLogger("pyautomation")
         logger.error(msg=msg)
-
 
 @decorator
 def db_rollback(func, args, kwargs):

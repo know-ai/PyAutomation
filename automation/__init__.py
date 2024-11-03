@@ -41,4 +41,5 @@ class CreateApp():
 __application = CreateApp()
 server = __application()    
 server.config['TPT_TOKEN'] = '073821603fcc483f9afee3f1500782a4'
+server.config['BUNDLE_ERRORS'] = True
 opcua_server = OPCUAServer()
