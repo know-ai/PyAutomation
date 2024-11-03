@@ -15,6 +15,14 @@ class Roles(BaseModel):
     identifier = CharField(unique=True, max_length=16)
     name = CharField(unique=True, max_length=32)
     level = IntegerField()
+    __defaults__ = [
+        {"name": "sudo", "level": 0, "identifier": secrets.token_hex(4)},
+        {"name": "admin", "level": 1, "identifier": secrets.token_hex(4)},
+        {"name": "supervisor", "level": 2, "identifier": secrets.token_hex(4)},
+        {"name": "operator", "level": 10, "identifier": secrets.token_hex(4)},
+        {"name": "auditor", "level": 100, "identifier": secrets.token_hex(4)},
+        {"name": "guess", "level": 256, "identifier": secrets.token_hex(4)}
+    ]
 
     @classmethod
     def create(cls, name:str, level:int, identifier:str)->tuple:

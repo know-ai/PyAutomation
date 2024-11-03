@@ -48,6 +48,18 @@ class BaseLogger(Singleton):
         self._db.create_tables(tables, safe=True)
         self.__init_default_variables_schema()
         self.__init_default_datatypes_schema()
+        self.__init_default_roles_schema()
+
+    def __init_default_roles_schema(self):
+        r"""
+        Documentatio here
+        """
+        from ..dbmodels import Roles
+        for role in Roles.__defaults__:
+
+            if not Roles.name_exist(name=role['name']):
+
+                Roles.create(**role)
 
     def __init_default_variables_schema(self):
         r"""
