@@ -236,9 +236,7 @@ class DataLogger(BaseLogger):
             buffer[buffer_key]['variable'] = entry['variable_name']
 
         for (tag_name, bucket), data in buffer.items():
-            # _tag = self.tag_engine._cvt.get_tag_by_name(name=entry['name'])
-            # variable = data['variable']
-            # unit = data['unit']
+
             avg_value = data["sum"] / data["count"]
             last_timestamp = data["last_timestamp"]
             from_timezone = pytz.timezone('UTC')
