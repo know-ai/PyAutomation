@@ -86,7 +86,7 @@ class DBManager(Singleton):
         """
         return self._tag_queue
 
-    def set_db(self, db):
+    def set_db(self, db, is_history_logged:bool=False):
         r"""
         Initialize a new DB Object SQLite - Postgres - MySQL
 
@@ -97,10 +97,14 @@ class DBManager(Singleton):
         **Returns** `None`
         """
         self._logger.set_db(db)
+        self._logger.logger.set_is_history_logged(value=is_history_logged)
         self.alarms_logger.set_db(db)
+        self.alarms_logger.logger.set_is_history_logged(value=is_history_logged)
         self.events_logger.set_db(db)
+        self.events_logger.logger.set_is_history_logged(value=is_history_logged)
         self.users_logger.set_db(db)
         self.logs_logger.set_db(db)
+        self.logs_logger.logger.set_is_history_logged(value=is_history_logged)
         self.machines_logger.set_db(db)
 
     def get_db(self):
@@ -142,7 +146,19 @@ class DBManager(Singleton):
         * **cls* (BaseModel): A class that inherit from BaseModel
 
         """
-        self._extra_tables.append(cls)
+        self._tables.append(cls)
+
+    def get_db_table(self, tablename:str):
+        r"""
+        Documentation here
+        """
+        for table in self._tables:
+
+            if table._meta.table_name.lower()==tablename.lower():
+
+                return table
+            
+        return None
 
     def create_tables(self):
         r"""
@@ -277,6 +293,12 @@ class DBManager(Singleton):
         Documentation here
         """
         return self.users_logger.set_user(user=user)
+    
+    def login(self, password:str, username:str="", email:str=""):
+        r"""
+        Documentation here
+        """
+        return self.users_logger.login(password=password, username=username, email=email)
 
     def summary(self)->dict:
         r"""

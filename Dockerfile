@@ -6,7 +6,7 @@ LABEL author="KnowAI"
 
 LABEL description="PyAutomation System"
 
-RUN apk update && apk add --no-cache curl util-linux
+RUN apk update && apk add curl util-linux
 
 RUN pip3 install --upgrade pip
 
@@ -17,8 +17,7 @@ RUN pip3 install -r requirements.txt
 
 RUN chmod +x ./docker-entrypoint.sh
 
-ENV PORT=8050 \
-    REACT_VERSION=18.2.0
+ENV PORT=8050
 
 EXPOSE ${PORT}
 

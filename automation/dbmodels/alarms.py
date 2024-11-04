@@ -1,5 +1,6 @@
+import pytz
 from peewee import CharField, FloatField, ForeignKeyField, TimestampField
-from ..dbmodels.core import BaseModel
+from ..dbmodels.core import BaseModel 
 from datetime import datetime
 from .tags import Tags
 from ..alarms.states import States
@@ -215,7 +216,7 @@ class AlarmStates(BaseModel):
 class Alarms(BaseModel):
 
     identifier = CharField(unique=True)
-    name = CharField(unique=True, max_length=64)
+    name = CharField(unique=True, max_length=128)
     tag = ForeignKeyField(Tags, backref='alarms')
     trigger_type = ForeignKeyField(AlarmTypes, backref='alarms')
     trigger_value = FloatField()
@@ -447,43 +448,42 @@ class AlarmSummary(BaseModel):
         names:list[str]=None,
         tags:list[str]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
         r"""
         Documentation here
         """
+        _timezone = pytz.timezone(timezone)
+        query = cls.select()
+        
         if states:
             subquery = AlarmStates.select(AlarmStates.id).where(AlarmStates.name.in_(states))
-            _query = cls.select().join(AlarmStates).where(AlarmStates.id.in_(subquery)).order_by(cls.id.desc())
-
+            query = query.join(AlarmStates).where(AlarmStates.id.in_(subquery))
+        
         if names:
             subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(names))
-            if _query:
-                _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
-            else:
-                _query = cls.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
-
+            query = query.join(Alarms).where(Alarms.id.in_(subquery))
+        
         if tags:
             subquery = Tags.select(Tags.id).where(Tags.name.in_(tags))
             subquery = Alarms.select(Alarms.id).join(Tags).where(Tags.id.in_(subquery))
-            if _query:
-                _query = _query.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
-            else:
-                _query = cls.select().join(Alarms).where(Alarms.id.in_(subquery)).order_by(cls.id.desc())
-
+            query = query.join(Alarms).where(Alarms.id.in_(subquery))
+        
         if greater_than_timestamp:
-            if _query:
-                _query = _query.select().where(cls.alarm_time > greater_than_timestamp).order_by(cls.id.desc())
-            else:
-                _query = cls.select().where(cls.alarm_time > greater_than_timestamp).order_by(cls.id.desc())
-
+            greater_than_timestamp = _timezone.localize(datetime.strptime(greater_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC)
+            query = query.where(cls.alarm_time > greater_than_timestamp)
+        
         if less_than_timestamp:
-            if _query:
-                _query = _query.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
-            else:
-                _query = cls.select().where(cls.alarm_time < less_than_timestamp).order_by(cls.id.desc())
-
-        return [alarm.serialize() for alarm in _query]
+            less_than_timestamp = _timezone.localize(datetime.strptime(less_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC)
+            query = query.where(cls.alarm_time < less_than_timestamp)
+        
+        query = query.order_by(cls.id.desc())
+        if not query.exists():
+            
+            return []
+        
+        return [alarm.serialize() for alarm in query]
 
     @classmethod
     def get_alarm_summary_comments(cls, id:int):
@@ -498,9 +498,18 @@ class AlarmSummary(BaseModel):
         r"""
         Documentation here
         """
+        from .. import TIMEZONE
+
         ack_time = None
         if self.ack_time:
-            ack_time = self.ack_time.strftime(tag_engine.DATETIME_FORMAT)
+            ack_time = self.ack_time
+            ack_time = pytz.UTC.localize(ack_time).astimezone(TIMEZONE)
+            ack_time = ack_time.strftime(tag_engine.DATETIME_FORMAT)
+
+        alarm_time = self.alarm_time
+        alarm_time = pytz.UTC.localize(alarm_time).astimezone(TIMEZONE)
+        alarm_time = alarm_time.strftime(tag_engine.DATETIME_FORMAT)
+
         return {
             'id': self.id,
             'name': self.alarm.name,
@@ -509,7 +518,8 @@ class AlarmSummary(BaseModel):
             'state': self.state.name,
             'mnemonic': self.state.mnemonic,
             'status': self.state.status,
-            'alarm_time': self.alarm_time.strftime(tag_engine.DATETIME_FORMAT),
-            'ack_time': ack_time
+            'alarm_time': alarm_time,
+            'ack_time': ack_time,
+            'has_comments': True if self.logs else False
         }
     

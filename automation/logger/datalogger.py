@@ -5,9 +5,10 @@ This module implements a database logger for the CVT instance,
 will create a time-serie for each tag in a short memory data base.
 """
 import pytz
+from collections import defaultdict
 from datetime import datetime
 from ..tags.tag import Tag
-from ..dbmodels import Tags, TagValue, Units, Segment
+from ..dbmodels import Tags, TagValue, Units, Segment, Variables
 from ..modules.users.users import User
 from ..tags.cvt import CVTEngine
 from .core import BaseLogger, BaseEngine
@@ -125,6 +126,10 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             trend = Tags.read_by_name(tag)
             unit = Units.read_by_unit(unit=trend.display_unit.unit)
@@ -135,11 +140,20 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
+            
             _tags = tags.copy()
+            
             for counter, tag in enumerate(tags):
+                
                 _tag = Tags.read_by_name(tag['tag'])
+                
                 if _tag:
+
                     unit = Units.get_or_none(id=_tag.display_unit.id)
                     _tags[counter].update({
                         'tag': _tag,
@@ -153,25 +167,89 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """  
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
+
             _timezone = pytz.timezone(timezone)
             start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
-            stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
-            result = {tag: {
-                'values': list(),
-                'unit': self.tag_engine.get_display_unit_by_tag(tag)
-            } for tag in tags}
+            stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()           
+            query = (TagValue
+                    .select(Tags.name, TagValue.value, TagValue.timestamp,
+                            Units.unit.alias('tag_value_unit'), Variables.name.alias('variable_name'))
+                    .join(Tags)
+                    .join(Units, on=(Tags.unit == Units.id))
+                    .join(Variables, on=(Units.variable_id == Variables.id))
+                    .where((TagValue.timestamp.between(start, stop)) & (Tags.name.in_(tags)))
+                    .order_by(TagValue.timestamp)
+                    .dicts()) 
             
+            # Structure the data
+            time_span = (stop - start ) / 60 # span in minutes
+            result = defaultdict(lambda: {"values": []})
+            if time_span > 60 * 24 * 7:  # 1 week
+                # Aggregate data every 1 day
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600 * 24, timezone=timezone)
+
+            elif time_span > 60 * 24 * 2:  # 2 days
+                # Aggregate data every 1 hora
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600, timezone=timezone)
+
+            elif time_span > 60 * 2:  # 2 horas
+                # Aggregate data every 1 minute
+                result = self._agregate_data_every_seconds(query=query, result=result, seconds=60, timezone=timezone)
+
+            else:
+                # Use original data
+                for entry in query:
+
+                    from_timezone = pytz.timezone('UTC')
+                    timestamp = entry['timestamp']
+                    timestamp = from_timezone.localize(timestamp)
+                    result[entry['name']]["values"].append({
+                        "x": timestamp.astimezone(_timezone).strftime(self.tag_engine.DATETIME_FORMAT),
+                        "y": entry['value']
+                    })
+
             for tag in tags:
 
-                trend = Tags.select().where(Tags.name==tag).get()
-                _tag = self.tag_engine.get_tag_by_name(name=tag)
-                variable = _tag.get_variable()
-                values = trend.values.select().where((TagValue.timestamp > start) & (TagValue.timestamp < stop)).order_by(TagValue.timestamp.asc())
-                for value in values:
-                    result[tag]['values'].append({"x": value.timestamp.strftime(self.tag_engine.DATETIME_FORMAT), "y": eval(f"{variable}.convert_value({value.value}, from_unit={'value.unit.unit'}, to_unit={'_tag.get_display_unit()'})")})
-
+                result[tag]['unit'] = self.tag_engine.get_display_unit_by_tag(tag)
+            
             return result
+        
+    def _agregate_data_every_seconds(self, query, result, seconds:int, timezone:str="UTC"):
+        r"""Documentation here
+        """
+        # Aggregate data every 5 seconds
+        target_timezone = pytz.timezone(timezone)
+        buffer = defaultdict(lambda: {"sum": 0, "count": 0, "last_timestamp": None})
+
+        for entry in query:
+            bucket = entry['timestamp'].replace(second=(entry['timestamp'].second // seconds) * seconds, microsecond=0)
+            buffer_key = (entry['name'], bucket)
+            buffer[buffer_key]["sum"] += entry['value']
+            buffer[buffer_key]["count"] += 1
+            buffer[buffer_key]["last_timestamp"] = entry['timestamp']
+            buffer[buffer_key]['unit'] = entry["tag_value_unit"]
+            buffer[buffer_key]['variable'] = entry['variable_name']
+
+        for (tag_name, bucket), data in buffer.items():
+            # _tag = self.tag_engine._cvt.get_tag_by_name(name=entry['name'])
+            # variable = data['variable']
+            # unit = data['unit']
+            avg_value = data["sum"] / data["count"]
+            last_timestamp = data["last_timestamp"]
+            from_timezone = pytz.timezone('UTC')
+            last_timestamp = from_timezone.localize(last_timestamp)
+            result[tag_name]["values"].append({
+                "x": last_timestamp.astimezone(target_timezone).strftime(self.tag_engine.DATETIME_FORMAT),
+                # "y": eval(f"{variable}.convert_value({avg_value}, from_unit={'unit'}, to_unit={'_tag.get_display_unit()'})")
+                "y": avg_value
+            })
+        
+        return result
         
     @db_rollback
     def read_segments(self):
@@ -342,7 +420,7 @@ class DataLoggerEngine(BaseEngine):
 
             _query["parameters"]["node_namespace"] = node_namespace
 
-        if scan_time:
+        if isinstance(scan_time, int):
 
             _query["parameters"]["scan_time"] = scan_time
 

@@ -36,6 +36,22 @@ class UsersLogger(BaseLogger):
             user=user
         )
     
+    @db_rollback
+    def login(
+            self, 
+            password:str,
+            username:str="",
+            email:str=""
+        ):
+        r"""
+        Documentation here
+        """
+        return Users.login(
+            password=password,
+            username=username,
+            email=email
+        )
+    
 class UsersLoggerEngine(BaseEngine):
     r"""
     Users logger Engine class for Tag thread-safe database logging.
@@ -64,6 +80,17 @@ class UsersLoggerEngine(BaseEngine):
         _query["action"] = "set_user"
         _query["parameters"] = dict()
         _query["parameters"]["user"] = user
+        
+        return self.query(_query)
+    
+    def login(self,password:str, username:str="", email:str=""):
+
+        _query = dict()
+        _query["action"] = "login"
+        _query["parameters"] = dict()
+        _query["parameters"]["password"] = password
+        _query["parameters"]["username"] = username
+        _query["parameters"]["email"] = email
         
         return self.query(_query)
     

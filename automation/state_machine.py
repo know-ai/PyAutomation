@@ -1,9 +1,12 @@
 import logging, secrets
 from datetime import datetime
+from opcua import Server, ua
+from hashlib import blake2b
 from statemachine import State, StateMachine
 from .workers.state_machine import StateMachineWorker
 from .managers.state_machine import StateMachineManager
 from .managers.opcua_client import OPCUAClientManager
+from .managers.alarms import AlarmManager
 from .managers.db import DBManager
 from .singleton import Singleton
 from .buffer import Buffer
@@ -150,6 +153,10 @@ class Machine(Singleton):
                         machine.priority.value = config[machine.name.value]["priority"]
                         machine.identifier.value = config[machine.name.value]['identifier']
                         self.append_machine(machine=machine, interval=FloatType(config[machine.name.value]["interval"]))
+                    
+                    else:
+                        
+                        self.append_machine(machine=machine, interval=FloatType(machine.get_interval()))
 
         else:
 
@@ -179,6 +186,7 @@ class Machine(Singleton):
         r"""
         Documentation here
         """
+        from . import SEGMENT, MANUFACTURER
         cvt = CVTEngine()
         internal_variables = machine.get_internal_process_type_variables()
         for _tag_name, value in internal_variables.items():
@@ -187,13 +195,15 @@ class Machine(Singleton):
 
                 if value.unit in units.values() or value.unit in units.keys():
 
-                    tag_name = f"{_tag_name}_{machine.name.value}"
+                    tag_name = f"{machine.name.value}.{_tag_name}"
                     cvt.set_tag(
                         name=tag_name,
                         unit=value.unit,
                         data_type="float",
                         variable=variable,
-                        description=f"process type variable"
+                        description=f"process type variable",
+                        segment=SEGMENT,
+                        manufacturer=MANUFACTURER
                     )
                     # Persist Tag on Database
                     tag = cvt.get_tag_by_name(name=tag_name)
@@ -248,6 +258,7 @@ class StateMachineCore(StateMachine):
             interval:float=1.0,
             identifier:str=None
         ):
+        from . import SEGMENT, MANUFACTURER
         _identifier = secrets.token_hex(4)
         
         if identifier:
@@ -270,6 +281,8 @@ class StateMachineCore(StateMachine):
         for state in self.states:
             transitions.extend(state.transitions)
         self.transitions = transitions
+        self.manufacturer = MANUFACTURER
+        self.segment = SEGMENT
         super(StateMachineCore, self).__init__()
 
     # State Methods
@@ -515,18 +528,22 @@ class StateMachineCore(StateMachine):
         """
         if tag:
 
-            if tag.name in self.get_subscribed_tags():
-                delattr(self, tag.name)
-                self.restart_buffer()
+            tags_subscribed = self.get_subscribed_tags()
+            
+            if tag.name in tags_subscribed:
+               
                 self.machine_engine.unbind_tag(tag=tag, machine=self)
+                tags_subscribed[tag.name].tag = None
+                self.restart_buffer()
                 return True
             
         elif default_tag_name: # Default tags on leak state machine
 
             if default_tag_name in self.get_subscribed_tags():
+                
                 process_type = self.get_subscribed_tags[default_tag_name]
                 tag = process_type.tag
-                delattr(self, tag.name)
+                tags_subscribed[tag.name].tag = None
                 self.restart_buffer()
                 self.machine_engine.unbind_tag(tag=tag, machine=self)
                 return True
@@ -554,6 +571,21 @@ class StateMachineCore(StateMachine):
             if isinstance(value, ProcessType):
 
                 if not value.read_only:
+
+                    result[name] = value
+
+        return result
+    
+    def get_read_only_process_type_variables(self)->dict:
+
+        result = dict()
+        props = self.__dict__
+        
+        for name, value in props.items():
+
+            if isinstance(value, ProcessType):
+
+                if value.read_only:
 
                     result[name] = value
 
@@ -617,9 +649,9 @@ class StateMachineCore(StateMachine):
             for _transition in allowed_transitions:
                 if f"{_transition.source.name}_to_{_transition.target.name}"==transition_name:
                     self.send(transition_name)
-                    return self, f"from: {_from} to: {to}"
+                    return self, f"[{self.name.value}] from: {_from} to: {to}"
                 
-            return None, f"Transitio to {to} not allowed"
+            return None, f"Transition to {to} not allowed"
             
         except Exception as err:
 
@@ -661,6 +693,33 @@ class StateMachineCore(StateMachine):
         ```
         """        
         self.machine_interval = interval
+
+    def get_allowed_actions(self):
+        r"""Documentation here
+        """
+        result = set()
+
+        current_state = self.current_state
+        transitions = self.transitions
+
+        for transition in transitions:
+
+            if transition.source == current_state:
+
+                if transition.target.name not in ("run", "switch", "wait", "start", "pre_alarm"):
+
+                    result.add(transition.target.name)
+
+                    if "confirm" in transition.target.name:
+
+                        result.add(transition.target.name.replace("confirm", "deny"))
+
+                if current_state.value.lower() in ("con_restart", "con_reset"):
+
+                    result.add(current_state.value.lower().replace("con_", "confirm_"))
+                    result.add(current_state.value.lower().replace("con_", "deny_"))
+
+        return list(result)
 
     def _get_active_transitions(self):
         r"""
@@ -769,6 +828,9 @@ class StateMachineCore(StateMachine):
         """
         result = {
             "state": self.current_state.value,
+            "actions": self.get_allowed_actions(),
+            "manufacturer": self.manufacturer,
+            "segment": self.segment
         }
         result.update(self.get_serialized_models())
         
@@ -831,6 +893,37 @@ class StateMachineCore(StateMachine):
         self.last_state = "restart"
         self.criticity.value = 2
 
+    # ON ENTER TRANSITION
+    def on_enter_starting(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
+    def on_enter_waiting(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
+    def on_enter_running(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
+    def on_enter_restarting(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
+    def on_enter_resetting(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
 
 class DAQ(StateMachineCore):
     r"""
@@ -843,8 +936,7 @@ class DAQ(StateMachineCore):
             description:str="",
             classification:str="Data Acquisition System"
         ):
-
-        self.das = DAS()
+        
         self.cvt = CVTEngine()
 
         if isinstance(name, StringType):
@@ -867,7 +959,7 @@ class DAQ(StateMachineCore):
         self.send('wait_to_run')
 
     def while_running(self):
-
+        
         for tag_name, process_type in self.get_subscribed_tags().items():
             tag = process_type.tag
             namespace = tag.get_node_namespace()
@@ -879,7 +971,11 @@ class DAQ(StateMachineCore):
                 timestamp = data_value.SourceTimestamp
                 val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
                 tag.value.set_value(value=val, unit=tag.get_display_unit()) 
-                self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                if tag.manufacturer==self.MANUFACTURER and tag.segment==self.SEGMENT:      
+                    self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                elif not self.MANUFACTURER and not self.SEGMENT:
+                    self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                # self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](val)
 
@@ -891,7 +987,369 @@ class DAQ(StateMachineCore):
         Documentation here
         """
         self.opcua_client_manager = manager
-    
+
+
+class OPCUAServer(StateMachineCore):
+    r"""
+    Documentation here
+    """    
+
+    def __init__(
+            self,
+            name:str="OPCUAServer",
+            description:str="",
+            classification:str="OPC UA Server"
+        ):
+        
+        self.cvt = CVTEngine()
+        self.alarm_manager = AlarmManager()
+        self.machine = Machine()
+        self.my_folders = dict()
+
+        if isinstance(name, StringType):
+
+            name = name.value
+
+        super(OPCUAServer, self).__init__(
+            name=name,
+            description=description,
+            classification=classification
+            )
+        
+    @logging_error_handler
+    def while_starting(self):
+        r"""
+        Documentation here
+        """
+        self.server = Server()
+        self.server.set_endpoint(f'opc.tcp://0.0.0.0:53530/OPCUAServer/')
+        
+        # setup our own namespace, not really necessary but should as spec
+        uri = "http://examples.freeopcua.github.io"
+        self.idx = self.server.register_namespace(uri)
+        # get Objects node, this is where we should put our node
+        self.objects = self.server.get_objects_node()
+        # populating our address space
+        self.my_folders['CVT'] = self.objects.add_folder(self.idx, "CVT")
+        self.my_folders['Alarms'] = self.objects.add_folder(self.idx, "Alarms")
+        self.my_folders['Engines'] = self.objects.add_folder(self.idx, "Engines")
+
+        # SET
+        self.__set_cvt()
+        self.__set_alarms()
+        self.__set_engines()
+        self.server.start()
+        logging.getLogger('opcua').setLevel(logging.ERROR)
+
+        self.send('start_to_wait')
+
+    def while_waiting(self):
+        r"""
+        Documentation here
+        """
+        self.send('wait_to_run')
+
+    def while_running(self):
+        r"""
+        Documentation here
+        """
+        self.__update_tags()
+        self.__update_alarms()
+        self.__update_engines()
+
+    def while_resetting(self):
+        r"""
+        Documentation here
+        """
+        self.send('reset_to_starting')
+
+    def __set_engines(self):
+        r"""
+        documentation here
+        """
+        segment = "Engines"
+        engines = self.machine.machine_manager.get_machines()
+
+        for engine, _, _ in engines:
+
+            engine = engine.serialize()
+            engine_name = engine["name"]
+            engine_description = engine["description"] or ""
+
+            if not hasattr(self, engine_name):
+
+                if engine["segment"]:
+
+                    segment = engine["segment"]
+
+                    if segment not in self.my_folders.keys():
+
+                        self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
+                    
+                    segment = f"{engine['segment']}.engines"
+                    if segment not in self.my_folders.keys():
+                        
+                        self.my_folders[segment] = self.my_folders[engine['segment']].add_folder(self.idx, 'Engines')
+
+                if segment not in self.my_folders.keys():
+                            
+                    self.my_folders[segment] = self.my_folders[segment]
+                    
+                var_name = f"{segment}.{engine_name}"
+
+                if not hasattr(self, var_name):
+                        
+                    ID = blake2b(key=f"{var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
+
+                    setattr(self, var_name, self.my_folders[segment].add_variable(
+                        ua.NodeId(identifier=ID, namespaceidx=self.idx), 
+                        engine_name, 
+                        0)
+                    )
+                    var = getattr(self, var_name)
+
+                    description = var.get_attribute(ua.AttributeIds.Description)
+                    description.Value.Value.Text = engine_description
+                    browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
+                    browse_name.Value.Value.Name = ""
+
+                    # Add Properties
+                    keep_list = (
+                        "state",
+                        "manufacturer",
+                        "segment",
+                        "criticity",
+                        "priority",
+                        "classification",
+                        "machine_interval"
+                        )
+
+                    for key in keep_list:
+                        ID = blake2b(key=f"{segment}.{engine_name}.{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, engine[key])  
+                        browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+                        browse_name.Value.Value.Name = "" 
+
+    def __set_alarms(self):
+        r"""
+        Documentation here
+        """
+        alarms = self.alarm_manager.get_alarms()
+        segment = "Alarms"
+        for _, alarm in alarms.items():
+
+            alarm_name = alarm.name
+            alarm_description = alarm.description or ""
+
+            if not hasattr(self, alarm_name):
+
+                if alarm.tag.segment:
+
+                    segment = alarm.tag.segment
+
+                    if segment not in self.my_folders.keys():
+                        self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
+                    
+                    segment = f"{alarm.tag.segment}.alarms"
+                    if segment not in self.my_folders.keys():
+                        self.my_folders[segment] = self.my_folders[alarm.tag.segment].add_folder(self.idx, 'Alarms')
+
+                if segment not in self.my_folders.keys():
+                            
+                    self.my_folders[segment] = self.my_folders[segment]
+                    
+                var_name = f"{segment}.{alarm_name}"
+
+                if not hasattr(self, var_name):
+                        
+                    ID = blake2b(key=f"{var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
+
+                    setattr(self, var_name, self.my_folders[segment].add_variable(
+                        ua.NodeId(identifier=ID, namespaceidx=self.idx), 
+                        alarm_name, 
+                        0)
+                    )
+                    var = getattr(self, var_name)
+
+                    description = var.get_attribute(ua.AttributeIds.Description)
+                    description.Value.Value.Text = alarm_description
+                    browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
+                    browse_name.Value.Value.Name = ""
+
+                    # Add State Properties
+                    for state_key, state_value in alarm.state.serialize().items():
+                        ID = blake2b(key=f"{segment}.{alarm_name}.{state_key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), state_key, state_value)  
+                        browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+                        browse_name.Value.Value.Name = "" 
+
+                    # Add SETPOINT PROPERTIES
+                    for setpoint_key, setpoint_value in alarm.alarm_setpoint.serialize().items():
+                        ID = blake2b(key=f"{segment}.{alarm_name}.{setpoint_key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), f"setpoint.{setpoint_key}", f"setpoint.{setpoint_value}")  
+                        browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+                        browse_name.Value.Value.Name = "" 
+
+    def __set_cvt(self):
+        r"""
+        Documentation here
+        """
+        segment = "CVT"
+        for tag in self.cvt.get_tags():
+            
+            if tag["segment"]:
+
+                segment = tag["segment"]
+
+                if segment not in self.my_folders.keys():
+                    
+                    self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
+            
+            tag_name = tag['name']
+            # identifier = tag["id"]
+            display_unit = tag["display_unit"]
+            data_type = tag["data_type"]
+            tag_description = tag["description"] or ""
+
+            var_name = f"{segment}_{tag_name}"
+            identifier = blake2b(key=var_name.encode('utf-8')[:64], digest_size=4).hexdigest()
+
+            if not hasattr(self, var_name):
+
+                if data_type.lower()=='str':
+                        setattr(self, var_name, self.my_folders[f"{segment}"].add_variable(
+                            ua.NodeId(identifier=identifier, namespaceidx=self.idx), 
+                            tag_name, 
+                            "")
+                        )
+
+                else:
+
+                    setattr(self, var_name, self.my_folders[f"{segment}"].add_variable(
+                        ua.NodeId(identifier=identifier, namespaceidx=self.idx), 
+                        tag_name, 
+                        0)
+                    )
+
+                var = getattr(self, var_name)
+                description = var.get_attribute(ua.AttributeIds.Description)
+                description.Value.Value.Text = tag_description
+                browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
+                browse_name.Value.Value.Name = display_unit
+
+                pop_list = (
+                    "id", 
+                    "value", 
+                    "timestamp", 
+                    "timestamps", 
+                    "values", 
+                    "name", 
+                    "description", 
+                    "opcua_address", 
+                    "node_namespace", 
+                    "process_filter",
+                    "gaussian_filter",
+                    "out_of_range_detection",
+                    "frozen_data_detection",
+                    "outlier_detection"
+                    )
+                for key in pop_list:
+                    tag.pop(key)
+                # Add State Properties
+                for key, value in tag.items():
+                    ID = blake2b(key=f"{var_name}_{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                    prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)  
+                    browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+                    browse_name.Value.Value.Name = "" 
+
+    def __update_tags(self):
+        r"""
+        Documentation here
+        """
+        for tag in self.cvt.get_tags():
+            
+            segment = "CVT"
+            value = tag["value"]
+
+            if tag['segment']:
+
+                segment = tag['segment']
+
+            var_name = f"{segment}_{tag['name']}"
+            if hasattr(self, var_name):
+
+                _tag = getattr(self, var_name)
+
+                if isinstance(value, (float, int)):
+                    
+                    _tag.set_value(round(value, 4))
+
+                else:
+
+                    _tag.set_value(value)
+
+    def __update_alarms(self):
+        r"""
+        Documentation here
+        """
+        alarms = self.alarm_manager.get_alarms()
+        segment = "Alarms"
+        for _, alarm in alarms.items():
+
+            alarm_name = alarm.name
+
+            if alarm.tag.segment:
+
+                segment = alarm.tag.segment
+                segment = f"{segment}.alarms"
+
+            var_name = f"{segment}.{alarm_name}"
+            if hasattr(self, var_name):
+                    
+                var = getattr(self, var_name)
+                props = var.get_properties()
+
+                for prop in props:
+                    
+                    display_name = prop.get_display_name().Text                   
+
+                    if display_name.startswith("setpoint"):
+                        display_name = display_name.replace("setpoint.", "")
+                        attr = getattr(alarm.alarm_setpoint, display_name)
+                        prop.set_value(attr)
+
+                    else:
+                        attr = getattr(alarm.state, display_name)
+                        prop.set_value(attr)
+
+    def __update_engines(self):
+        r"""
+        Documentation here
+        """
+        segment = "Engines"
+        engines = self.machine.machine_manager.get_machines()
+
+        for engine, _, _ in engines:
+
+            engine = engine.serialize()
+            engine_name = engine["name"]
+
+            if engine["segment"]:
+
+                segment = engine["segment"]
+                segment = f"{segment}.engines"
+
+            var_name = f"{segment}.{engine_name}"
+            if hasattr(self, var_name):
+                    
+                var = getattr(self, var_name)
+                props = var.get_properties()
+
+                for prop in props:
+                    
+                    display_name = prop.get_display_name().Text                
+                    attr = engine[display_name]
+                    prop.set_value(attr)
 
 class AutomationStateMachine(StateMachineCore):
     r"""
@@ -931,6 +1389,8 @@ class AutomationStateMachine(StateMachineCore):
         """
         self.last_state = "test"
         self.criticity.value = 4
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_test_to_reset(self):
         r"""
@@ -938,6 +1398,8 @@ class AutomationStateMachine(StateMachineCore):
         """
         self.last_state = "test"
         self.criticity.value = 4
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_sleep_to_restart(self):
         r"""
@@ -945,6 +1407,8 @@ class AutomationStateMachine(StateMachineCore):
         """
         self.last_state = "sleep"
         self.criticity.value = 4
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
     def on_sleep_to_reset(self):
         r"""
@@ -952,5 +1416,18 @@ class AutomationStateMachine(StateMachineCore):
         """
         self.last_state = "sleep"
         self.criticity.value = 4
+        if self.sio:
+            self.sio.emit("on.machine", data=self.serialize())
 
+    def on_enter_sleeping(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
+
+    def on_enter_testing(self):
+
+        if self.sio:
+
+            self.sio.emit("on.machine", data=self.serialize())
 

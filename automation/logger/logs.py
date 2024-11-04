@@ -28,6 +28,10 @@ class LogsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             
             query, message = Logs.create(
@@ -49,6 +53,10 @@ class LogsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
         
             return Logs.read_lasts(lasts=lasts)
@@ -61,22 +69,32 @@ class LogsLogger(BaseLogger):
         usernames:list[str]=None,
         alarm_names:list[str]=None,
         event_ids:list[int]=None,
-        classifications:list[str]=None,
+        classification:str="",
+        message:str="",
+        description:str="",
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
         
             return Logs.filter_by(
                 usernames=usernames,
                 alarm_names=alarm_names,
                 event_ids=event_ids,
-                classifications=classifications,
+                message=message,
+                description=description,
+                classification=classification,
                 greater_than_timestamp=greater_than_timestamp,
-                less_than_timestamp=less_than_timestamp
+                less_than_timestamp=less_than_timestamp,
+                timezone=timezone
             )
         
         return list(), f"DB Not Initialized"
@@ -86,6 +104,10 @@ class LogsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             
             return Logs.serialize()
@@ -144,9 +166,12 @@ class LogsLoggerEngine(BaseEngine):
         usernames:list[str]=None,
         alarm_names:list[str]=None,
         event_ids:list[int]=None,
-        classifications:list[str]=None,
+        classification:str="",
+        message:str="",
+        description:str="",
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
 
         _query = dict()
@@ -155,9 +180,12 @@ class LogsLoggerEngine(BaseEngine):
         _query["parameters"]["usernames"] = usernames
         _query["parameters"]["alarm_names"] = alarm_names
         _query["parameters"]["event_ids"] = event_ids
-        _query["parameters"]["classifications"] = classifications
+        _query["parameters"]["classification"] = classification
+        _query["parameters"]["message"] = message
+        _query["parameters"]["description"] = description
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
+        _query["parameters"]["timezone"] = timezone
         
         return self.query(_query)
 

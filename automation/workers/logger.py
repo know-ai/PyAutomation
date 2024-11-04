@@ -63,8 +63,6 @@ class LoggerWorker(BaseWorker):
                 from ..dbmodels import proxy
                 self._db = self._manager.get_db()
                 proxy.initialize(self._db)
-                # self._manager.set_db(self._db)
-                print(f"Everythin is OK")
 
         else:
             db = self.logger.logger.get_db()
@@ -77,6 +75,7 @@ class LoggerWorker(BaseWorker):
         r"""
         Documentation here
         """
+        from .. import SEGMENT, MANUFACTURER
         _queue = self._manager.get_queue()
 
         while True:
@@ -90,10 +89,19 @@ class LoggerWorker(BaseWorker):
                 tag_name = item["tag"]
                 tag = self.cvt.get_tag_by_name(name=tag_name)
                 if tag:
-                    value = item['value']
-                    timestamp = item["timestamp"]
-                    tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
-            
+
+                    if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:
+
+                        value = item['value']
+                        timestamp = item["timestamp"]
+                        tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
+
+                    elif not MANUFACTURER and not SEGMENT:
+
+                        value = item['value']
+                        timestamp = item["timestamp"]
+                        tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
+    
             if tags:
                 
                 self.logger.write_tags(tags=tags)

@@ -101,6 +101,10 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return list()
+        
         if not self._db:
             
             return list()
@@ -114,11 +118,16 @@ class AlarmsLogger(BaseLogger):
             names:list[str]=None,
             tags:list[str]=None,
             greater_than_timestamp:datetime=None,
-            less_than_timestamp:datetime=None
+            less_than_timestamp:datetime=None,
+            timezone:str="UTC"
         ):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if not self._db:
             
             return list()
@@ -128,7 +137,8 @@ class AlarmsLogger(BaseLogger):
             names=names,
             tags=tags,
             greater_than_timestamp=greater_than_timestamp,
-            less_than_timestamp=less_than_timestamp
+            less_than_timestamp=less_than_timestamp,
+            timezone=timezone
         )
     
     @db_rollback
@@ -191,15 +201,55 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             
             AlarmSummary.create(name=name, state=state, timestamp=timestamp, ack_timestamp=ack_timestamp)
+
+    @db_rollback
+    def put_record_on_alarm_summary(self, name:str, state:str=None, ack_timestamp:datetime=None):
+        r"""
+        Documentation here
+        """
+        if not self._db:
+            
+            return None
+        
+        if not self.is_history_logged:
+
+            return None
+        
+        fields = dict()
+        alarm = AlarmSummary.read_by_name(name=name)
+
+        if alarm:
+
+            if ack_timestamp:
+                fields["ack_time"] = ack_timestamp
+            if state:
+                alarm_state = AlarmStates.get_or_none(name=state)
+                fields["state"] = alarm_state
+
+            if fields:
+                query = AlarmSummary.put(
+                    id=alarm.id,
+                    **fields
+                )
+
+                return query
 
     @db_rollback
     def get_alarm_summary(self):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if not self._db:
             
             return list()
@@ -272,20 +322,22 @@ class AlarmsLoggerEngine(BaseEngine):
     def filter_alarm_summary_by(
         self,
         names:list[str]=None,
-        priorities:list[int]=None,
-        criticities:list[int]=None,
+        states:list[int]=None,
+        tags:list[int]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
 
         _query = dict()
         _query["action"] = "filter_alarm_summary_by"
         _query["parameters"] = dict()
         _query["parameters"]["names"] = names
-        _query["parameters"]["priorities"] = priorities
-        _query["parameters"]["criticities"] = criticities
+        _query["parameters"]["states"] = states
+        _query["parameters"]["tags"] = tags
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
+        _query["parameters"]["timezone"] = timezone
         
         return self.query(_query)
     
@@ -299,6 +351,21 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["timestamp"] = timestamp
         _query["parameters"]["ack_timestamp"] = ack_timestamp
         
+        return self.query(_query)
+    
+    def put_record_on_alarm_summary(
+        self,
+        name:str,
+        state:str=None,
+        ack_timestamp:datetime=None
+        ):
+        _query = dict()
+        _query["action"] = "put_record_on_alarm_summary"
+        _query["parameters"] = dict()
+        _query["parameters"]["name"] = name
+        _query["parameters"]["state"] = state
+        _query["parameters"]["ack_timestamp"] = ack_timestamp
+
         return self.query(_query)
 
     def put(

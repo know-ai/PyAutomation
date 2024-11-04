@@ -55,13 +55,19 @@ class Auth:
     Documentation here
     """
 
-    def login(self, user:User, password:str)->bool:
+    def login(self, user:User, password:str, token:str)->bool:
         r"""
         Documentation here
         """            
         if self.decode_password(user=user, password=password):
             
-            user.token = self.encode(secrets.token_hex(4))
+            if token:
+                
+                user.token = token
+            
+            else:
+            
+                user.token = self.encode(secrets.token_hex(4))
             
             return True
         
@@ -138,7 +144,7 @@ class Users(Singleton):
         self.__by_username = dict()
         self.__by_email = dict()
 
-    def login(self, password:str, username:str=None, email:str=None):
+    def login(self, password:str, token:str=None, username:str=None, email:str=None):
         r"""
         Documentation here
         """
@@ -160,7 +166,7 @@ class Users(Singleton):
                 
                 user = self.get_by_email(email=email)
 
-            if self.__auth.login(user=user, password=password):
+            if self.__auth.login(user=user, password=password, token=token):
                 
                 self.active_users[user.token] = user
 

@@ -24,11 +24,13 @@ class ConfigView(dash.Dash):
     def tags_table_data(self):
     
         tags = list()
-
         for tag in self.automation.get_tags():
-            tag.update({
-                "segment": f"{tag['manufacturer']}->{tag['segment']}"
-            })
+            if tag["segment"] and tag["manufacturer"]:
+                tag.update({
+                    "segment": f"{tag['manufacturer']}->{tag['segment']}"
+                })
+            tag.pop('values')
+            tag.pop("timestamps")
             tags.append(tag)        
 
         return tags

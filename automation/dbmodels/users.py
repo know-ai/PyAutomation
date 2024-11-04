@@ -1,9 +1,11 @@
+import secrets
 from peewee import CharField, IntegerField, ForeignKeyField
 from ..dbmodels.core import BaseModel
 from ..modules.users.users import Users as CVTUsers
 from ..modules.users.roles import Roles as CVTRoles
 from ..modules.users.roles import Role
 from ..modules.users.users import User
+from werkzeug.security import generate_password_hash, check_password_hash
 
 users = CVTUsers()
 roles = CVTRoles()
@@ -91,9 +93,10 @@ class Users(BaseModel):
     username = CharField(unique=True, max_length=64)
     role = ForeignKeyField(Roles, backref='users', on_delete='CASCADE')
     email = CharField(unique=True, max_length=128)
-    password = CharField(unique=True)
-    name = CharField(unique=True, max_length=64, null=True)
-    lastname = CharField(unique=True, max_length=64, null=True)
+    password = CharField()
+    token = CharField(null=True)
+    name = CharField(max_length=64, null=True)
+    lastname = CharField(max_length=64, null=True)
 
     @classmethod
     def create(cls, user:User)-> dict:
@@ -117,11 +120,58 @@ class Users(BaseModel):
             password=user.password,
             identifier=user.identifier,
             name=user.name,
-            lastname=user.lastname
+            lastname=user.lastname,
+            token=user.token
             )
         query.save()
 
         return query, f"User creation successful"
+    
+    @classmethod
+    def login(cls, password:str, username:str="", email:str=""):
+        r"""
+        Documentation here
+        """
+        if username:
+
+            user = cls.get_or_none(username=username)
+
+        if email:
+
+            user = cls.get_or_none(email=email)
+        
+        if user:
+
+            if user.decode_password(password):
+                
+                if not user.token:
+                    
+                    user.token = cls.encode(secrets.token_hex(4))
+                    user.save()
+                
+                users.login(password=password, token=user.token, username=username, email=email)
+
+                return user, f"Login successfull"
+
+            return None, f"Invalid credentials" 
+
+        return None, f"Invalid Username or Email"      
+    
+    @classmethod
+    def logout(cls, token:str):
+        r"""
+        Documentation here
+        """
+        user = cls.get_or_none(token=token)
+
+        if user:
+
+            user.token = None
+            user.save()
+
+            return user, "Logout successfull"
+        
+        return None, "Invalid Token"
 
     @classmethod
     def read_by_username(cls, username:str):
@@ -152,6 +202,20 @@ class Users(BaseModel):
     def identifier_exist(cls, identifier:str)->bool:
 
         return True if cls.get_or_none(identifier=identifier) else False
+    
+    @classmethod
+    def encode(cls, value:str)->str:
+
+        return generate_password_hash(value)
+    
+
+    def decode_password(self, password:str)->str:
+
+        return check_password_hash(self.password, password)
+    
+    def decode_token(self, token:str)->str:
+
+        return check_password_hash(self.token, token)
     
     @classmethod
     def fill_cvt_users(cls):

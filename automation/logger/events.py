@@ -26,10 +26,13 @@ class EventsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
         
         if self.get_db():
             
-            Events.create(
+            return Events.create(
                 message=message, 
                 user=user, 
                 description=description, 
@@ -43,6 +46,10 @@ class EventsLogger(BaseLogger):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return list()
+        
         if self.get_db():
         
             return Events.read_lasts(lasts=lasts)
@@ -52,26 +59,42 @@ class EventsLogger(BaseLogger):
         usernames:list[str]=None,
         priorities:list[int]=None,
         criticities:list[int]=None,
+        message:str="",
+        description:str="",
+        classification:str="",
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str="UTC"
         ):
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
         
             return Events.filter_by(
                 usernames=usernames,
                 priorities=priorities,
                 criticities=criticities,
+                message=message,
+                classification=classification,
+                description=description,
                 greater_than_timestamp=greater_than_timestamp,
-                less_than_timestamp=less_than_timestamp
+                less_than_timestamp=less_than_timestamp,
+                timezone=timezone
             )
 
     def get_summary(self)->tuple[list, str]:
         r"""
         Documentation here
         """
+        if not self.is_history_logged:
+
+            return None
+        
         if self.get_db():
             
             return Events.serialize()
@@ -130,8 +153,12 @@ class EventsLoggerEngine(BaseEngine):
         usernames:list[str]=None,
         priorities:list[int]=None,
         criticities:list[int]=None,
+        message:str="",
+        classification:str="",
+        description:str="",
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None
+        less_than_timestamp:datetime=None,
+        timezone:str='UTC'
         ):
 
         _query = dict()
@@ -140,8 +167,12 @@ class EventsLoggerEngine(BaseEngine):
         _query["parameters"]["usernames"] = usernames
         _query["parameters"]["priorities"] = priorities
         _query["parameters"]["criticities"] = criticities
+        _query["parameters"]["message"] = message
+        _query["parameters"]["classification"] = classification
+        _query["parameters"]["description"] = description
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
+        _query["parameters"]["timezone"] = timezone
         
         return self.query(_query)
 

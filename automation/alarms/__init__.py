@@ -76,12 +76,13 @@ class Alarm(StateMachine):
             user:User=None,
             reload:bool=False
         ):
-        # self.events_engine = EventsLoggerEngine()
         from ..logger.alarms import AlarmsLoggerEngine
         self.alarm_engine = AlarmsLoggerEngine()
         self.tag_engine = CVTEngine()
         self.name = name
         self.tag = tag
+        self.segment = tag.segment
+        self.manufacturer = tag.manufacturer
         self.attach(machine=self, tag=tag)
         self.description = description        
         self.alarm_setpoint = Trigger()
@@ -139,6 +140,12 @@ class Alarm(StateMachine):
 
         self.state = AlarmState.UNACK
         self.timestamp = self.__timestamp
+        self.alarm_engine.create_record_on_alarm_summary(
+                name=self.name, 
+                state=self.state.state, 
+                timestamp=self.timestamp,
+                ack_timestamp=self.ack_timestamp
+            )
 
     @logging_error_handler
     @put_alarm_state
@@ -146,6 +153,11 @@ class Alarm(StateMachine):
 
         self.state = AlarmState.ACKED
         self.ack_timestamp = self.__timestamp
+        self.alarm_engine.put_record_on_alarm_summary(
+            name=self.name, 
+            state=self.state.state, 
+            ack_timestamp=self.ack_timestamp
+        )
     
     @logging_error_handler
     @put_alarm_state
@@ -153,6 +165,10 @@ class Alarm(StateMachine):
         
         self.timestamp = None
         self.state = AlarmState.RTNUN
+        self.alarm_engine.put_record_on_alarm_summary(
+            name=self.name, 
+            state=self.state.state
+        )
     
     @logging_error_handler
     @put_alarm_state
@@ -227,7 +243,7 @@ class Alarm(StateMachine):
 
                 else:
 
-                    self.normal_condition()                    
+                    self.normal_condition()
 
         if self.state==AlarmState.SHLVD:
 
@@ -254,23 +270,11 @@ class Alarm(StateMachine):
         if current_state=="unack_alarm":
 
             transition_name = f'{current_state}_to_rtn_unack'
-            self.alarm_engine.create_record_on_alarm_summary(
-                name=self.name, 
-                state=self.state.state, 
-                timestamp=self.timestamp,
-                ack_timestamp=self.ack_timestamp
-            )
             self.__transition(transition_name=transition_name)
 
         elif current_state=="ack_alarm":
 
             transition_name = f'{current_state}_to_normal'
-            self.alarm_engine.create_record_on_alarm_summary(
-                name=self.name, 
-                state=self.state.state, 
-                timestamp=self.timestamp,
-                ack_timestamp=self.ack_timestamp
-            )
             self.__transition(transition_name=transition_name)
 
     @logging_error_handler
@@ -289,7 +293,12 @@ class Alarm(StateMachine):
 
             transition_name = f'{current_state}_to_normal'
 
+
         tag = self.tag_engine.get_tag_by_name(name=self.tag.name)
+        self.alarm_engine.put_record_on_alarm_summary(
+            name=self.name, 
+            ack_timestamp=tag.get_timestamp()
+        )
         self.__transition(transition_name=transition_name)
         return self, f"{self.tag.get_name()}"
 
@@ -539,6 +548,8 @@ class Alarm(StateMachine):
 
         return {
             "identifier": self.identifier,
+            "segment": self.segment,
+            "manufacturer": self.manufacturer,
             "timestamp": timestamp,
             "name": self.name,
             "tag": self.tag.name,

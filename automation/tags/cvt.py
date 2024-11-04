@@ -1,4 +1,4 @@
-import threading, copy, logging
+import threading, copy, logging, pytz
 from datetime import datetime
 from ..singleton import Singleton
 from ..models import FloatType, StringType, IntegerType, BooleanType
@@ -26,7 +26,7 @@ class CVT:
     """
 
     def __init__(self):
-
+        
         self._tags = dict()
         self.data_types = ["float", "int", "bool", "str"]
         self.sio:SocketIO|None = None
@@ -121,7 +121,7 @@ class CVT:
         )
         self._tags[tag.id] = tag
 
-        return tag, f"Tag: {name} - {unit}"
+        return tag, message
 
     @set_event(message=f"Updated", classification="Tag", priority=1, criticity=3)
     def update_tag(
@@ -176,7 +176,7 @@ class CVT:
             tag.set_opcua_address(opcua_address=opcua_address)
         if node_namespace:
             tag.set_node_namespace(node_namespace=node_namespace)
-        if scan_time:
+        if isinstance(scan_time, int):
             tag.set_scan_time(scan_time=scan_time)
         if dead_band:
             tag.set_dead_band(dead_band=dead_band)
@@ -268,6 +268,16 @@ class CVT:
         if self._tags:
 
             return [tag.serialize() for _, tag in self._tags.items()]
+        
+        return list()
+    
+    def get_field_tags_names(self)->list:
+        r"""
+        Returns a list of the defined tags names.
+        """
+        if self._tags:
+
+            return [tag.name for _, tag in self._tags.items() if tag.opcua_address and tag.node_namespace]
         
         return list()
     
@@ -410,8 +420,11 @@ class CVT:
         value (float, int, bool): 
             Tag value ("int", "float", "bool")
         """
+        from .. import TIMEZONE
         self._tags[id].set_value(value=value, timestamp=timestamp)
         if self.sio:
+            timestamp = timestamp.astimezone(TIMEZONE)
+            self._tags[id].timestamp = timestamp
             self.sio.emit("on.tag", data=self._tags[id].serialize())
 
     def set_data_type(self, data_type):

@@ -45,8 +45,6 @@ class PropertyType:
     @set_event(message=f"Attribute updated", classification="State Machine", priority=2, criticity=3)
     def set_value(self, value, user:User=None, name:str=None, machine=None):
         
-        self.value = value
-        
         if isinstance(self, ProcessType):
 
             if not self.read_only:
@@ -66,18 +64,23 @@ class PropertyType:
                         if self.tag.get_name() in self.das.buffer:
                             self.das.buffer[self.tag.get_name()]["timestamp"](timestamp)
                             self.das.buffer[self.tag.get_name()]["values"](val)
-
-        if machine:
-            
-            if machine.sio:
-                
-                machine.sio.emit("on.machine", data=machine.serialize())
+        
+        if self.value:
+            if value.value!=self.value.value:
+                if machine:
+                    if machine.sio:
+                        if name:
+                            payload = {machine.name.value: {name: value.value}}
+                            machine.sio.emit("on.machine.property", data=payload)
+                            machine.sio.emit("on.machine", data=machine.serialize())
 
         if name=="machine_interval":
             
-            return value, f"{name} To: {self.value.value} s."
+            return value, f"{name} To: {value.value} s."
         
-        return value, f"{name} To: {self.value.value}"
+        self.value = value
+        
+        return value, f"{name} To: {value.value}"
 
 
 class StringType(PropertyType):
@@ -161,7 +164,7 @@ class ProcessType(FloatType):
 
             elif isinstance(self.value, (BooleanType, FloatType, IntegerType, StringType)):
 
-                value= self.value.value
+                value = self.value.value
 
         return {
             "value": value,

@@ -1,4 +1,5 @@
-from peewee import CharField, DateTimeField, ForeignKeyField, IntegerField
+import pytz
+from peewee import CharField, TimestampField, ForeignKeyField, IntegerField, fn
 from ..dbmodels.core import BaseModel
 from datetime import datetime
 from .users import Users
@@ -9,7 +10,7 @@ DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 class Events(BaseModel):
 
-    timestamp = DateTimeField()
+    timestamp = TimestampField(utc=True)
     message = CharField(max_length=256)
     description = CharField(max_length=256, null=True)
     classification = CharField(max_length=128, null=True)
@@ -72,55 +73,51 @@ class Events(BaseModel):
         priorities:list[int]=None,
         criticities:list[int]=None,
         greater_than_timestamp:datetime=None,
-        less_than_timestamp:datetime=None):
+        less_than_timestamp:datetime=None,
+        description:str="",
+        message:str="",
+        classification:str="",
+        timezone:str='UTC'):
         r"""
         Documentation here
         """
+        _timezone = pytz.timezone(timezone)
+        query = cls.select()
+        
         if usernames:
-            
             subquery = Users.select(Users.id).where(Users.username.in_(usernames))
-            _query = cls.select().join(Users).where(Users.id.in_(subquery)).order_by(cls.id.desc())
-
+            query = query.join(Users).where(Users.id.in_(subquery))
+        
         if priorities:
-
-            if _query:
-
-                _query = _query.select().where(cls.in_(priorities)).order_by(cls.id.desc())
-
-            else:
-                _query = cls.select().where(cls.in_(priorities)).order_by(cls.id.desc())
-
+            query = query.where(cls.priority.in_(priorities))
+            
         if criticities:
-
-            if _query:
-
-                _query = _query.select().where(cls.in_(criticities)).order_by(cls.id.desc())
-
-            else:
-                _query = cls.select().where(cls.in_(criticities)).order_by(cls.id.desc())
-
+            query = query.where(cls.criticity.in_(criticities))
+            
+        if description:
+            query = query.where(fn.LOWER(cls.description).contains(description.lower()))
+            
+        if message:
+            query = query.where(fn.LOWER(cls.message).contains(message.lower()))
+            
+        if classification:
+            query = query.where(fn.LOWER(cls.classification).contains(classification.lower()))
+            
         if greater_than_timestamp:
+            greater_than_timestamp = _timezone.localize(datetime.strptime(greater_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC)
+            query = query.where(cls.timestamp > greater_than_timestamp)
             
-            if _query:
-
-                _query = _query.select().where(cls.timestamp > greater_than_timestamp).order_by(cls.id.desc())
-
-            else:
-
-                _query = cls.select().where(cls.timestamp > greater_than_timestamp).order_by(cls.id.desc())
-
         if less_than_timestamp:
+            less_than_timestamp = _timezone.localize(datetime.strptime(less_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC)
+            query = query.where(cls.timestamp < less_than_timestamp)
             
-            if _query:
+        query = query.order_by(cls.id.desc())
 
-                _query = _query.select().where(cls.timestamp < less_than_timestamp).order_by(cls.id.desc())
-
-            else:
-
-                _query = cls.select().where(cls.timestamp < less_than_timestamp).order_by(cls.id.desc())
-
-
-        return [event.serialize() for event in _query]
+        if not query.exists():
+            
+            return []
+        
+        return [event.serialize() for event in query]
     
     @classmethod
     def get_comments(cls, id:int):
@@ -132,10 +129,11 @@ class Events(BaseModel):
         return [comment.serialize() for comment in query.logs]
 
     def serialize(self)-> dict:
-
+        from .. import TIMEZONE, MANUFACTURER, SEGMENT
         timestamp = self.timestamp
         if timestamp:
 
+            timestamp = pytz.UTC.localize(timestamp).astimezone(TIMEZONE)
             timestamp = timestamp.strftime(DATETIME_FORMAT)
 
         return {
@@ -146,7 +144,10 @@ class Events(BaseModel):
             "description": self.description,
             "classification": self.classification,
             "priority": self.priority,
-            "criticity": self.criticity
+            "criticity": self.criticity,
+            "segment": SEGMENT,
+            "manufacturer": MANUFACTURER,
+            "has_comments": True if self.logs else False
         }
     
 

@@ -4,6 +4,7 @@ from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
 from ....modules.users.users import Users as CVTUsers
+from ....dbmodels.users import Users
 
 
 ns = Namespace('Users', description='Users')
@@ -58,7 +59,8 @@ class LoginResource(Resource):
     @ns.expect(login_model)
     def post(self):
         """User login"""
-        user, message = users.login(**api.payload)
+        user, message = app.login(**api.payload)
+        # user, message = users.login(**api.payload)
 
         if user:
 
@@ -125,6 +127,6 @@ class LogoutResource(Resource):
             
             token = request.headers['Authorization'].split('Token ')[-1]
         
-        users.logout(token=token)
+        _, message = Users.logout(token=token)
 
-        return f"Logout successful", 200
+        return message, 200

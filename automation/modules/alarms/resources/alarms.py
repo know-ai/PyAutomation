@@ -1,4 +1,4 @@
-from flask_restx import Namespace, Resource, fields
+from flask_restx import Namespace, Resource, fields, reqparse
 from .... import PyAutomation
 from automation.alarms import AlarmState
 from ....extensions.api import api
@@ -8,10 +8,6 @@ from ....extensions import _api as Api
 ns = Namespace('Alarms', description='Alarms')
 app = PyAutomation()
 
-alarm_resource_by_name_model = api.model("alarm_resource_by_name_model",{
-    'alarm_name': fields.String(required=True, description='Alarm Name')
-})
-
 shelve_alarm_resource_by_name_model = api.model("shelve_alarm_resource_by_name_model",{
     'seconds': fields.Integer(required=False, description='Shelve time'),
     'minutes': fields.Integer(required=False, description='Shelve time'),
@@ -19,6 +15,12 @@ shelve_alarm_resource_by_name_model = api.model("shelve_alarm_resource_by_name_m
     'days': fields.Integer(required=False, description='Shelve time'),
     'weeks': fields.Integer(required=False, description='Shelve time')
 })
+shelve_alarm_parser = reqparse.RequestParser()
+shelve_alarm_parser.add_argument("seconds", type=int, required=False, help='Shelve time', default=0)
+shelve_alarm_parser.add_argument("minutes", type=int, required=False, help='Shelve time', default=0)
+shelve_alarm_parser.add_argument("hours", type=int, required=False, help='Shelve time', default=0)
+shelve_alarm_parser.add_argument("days", type=int, required=False, help='Shelve time', default=0)
+shelve_alarm_parser.add_argument("weeks", type=int, required=False, help='Shelve time', default=0)
 
 append_alarm_resource_model = api.model("append_alarm_resource_model",{
     'name': fields.String(required=True, description='Alarm Name'),
@@ -27,6 +29,12 @@ append_alarm_resource_model = api.model("append_alarm_resource_model",{
     'type': fields.String(required=True, description='Alarm Type - Allowed ["HIGH-HIGH", "HIGH", "BOOL", "LOW", "LOW-LOW"]'),
     'trigger_value': fields.Float(required=True, description="Alarm trigger value")
 })
+append_alarm_parser = reqparse.RequestParser()
+append_alarm_parser.add_argument('name', type=str, required=True, help='Alarm Name')
+append_alarm_parser.add_argument('tag', type=str, required=True, help='Tag to whom the alarm will be subscribed')
+append_alarm_parser.add_argument('description', type=str, required=False, help='Alarm description', default="")
+append_alarm_parser.add_argument('type', type=str, required=True, help='Alarm Type', choices=["HIGH-HIGH", "HIGH", "BOOL", "LOW", "LOW-LOW"])
+append_alarm_parser.add_argument('trigger_value', type=float, required=True, help="Alarm trigger value")
 
 
 @ns.route('/')
@@ -40,28 +48,6 @@ class AlarmsCollection(Resource):
         """
         return app.alarm_manager.serialize(), 200
 
-    
-@ns.route('/add')
-class CreateAlarmResource(Resource):
-
-    @api.doc(security='apikey')
-    @Api.token_required(auth=True)
-    @ns.expect(append_alarm_resource_model)
-    def post(self):
-        """
-        Create Alarm
-        """
-        user = Api.get_current_user()
-        alarm_name = api.payload["name"]
-        message = app.create_alarm(user=user, **api.payload)
-
-        if message:
-
-            return app.create_alarm(user=user, **api.payload), 400
-        
-        alarm = app.get_alarm_by_name(name=alarm_name)
-
-        return alarm.serialize(), 200
     
 @ns.route('/<id>')
 class AlarmResource(Resource):
@@ -235,38 +221,13 @@ class ShelveAlarmByNameResource(Resource):
         Shelve alarm
         """
         result = dict()
+        args = shelve_alarm_parser.parse_args()
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
-        seconds = minutes = hours = days = weeks = 0
-
-        if "seconds" in api.payload:
-
-            seconds = api.payload['seconds']
-
-        if "minutes" in api.payload:
-
-            minutes = api.payload['minutes']
-
-        if "hours" in api.payload:
-
-            hours = api.payload['hours']
-
-        if "days" in api.payload:
-
-            days = api.payload['days']
-
-        if "weeks" in api.payload:
-
-            weeks = api.payload['weeks']
-
         if alarm:
             user = Api.get_current_user()
             alarm.shelve(
                 user=user,
-                seconds=seconds,
-                minutes=minutes,
-                hours=hours,
-                days=days,
-                weeks=weeks
+                **args
             )
             result['message'] = f"{alarm.name} was shelved successfully"
             result['data'] = alarm.serialize()
