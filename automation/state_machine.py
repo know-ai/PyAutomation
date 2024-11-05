@@ -34,6 +34,7 @@ from .variables import (
 from .logger.machines import MachinesLoggerEngine
 from .logger.datalogger import DataLoggerEngine
 from flask_socketio import SocketIO
+from . import OPCUA_SERVER_PORT
 
 
 
@@ -1022,7 +1023,7 @@ class OPCUAServer(StateMachineCore):
         Documentation here
         """
         self.server = Server()
-        self.server.set_endpoint(f'opc.tcp://0.0.0.0:53530/OPCUAServer/')
+        self.server.set_endpoint(f'opc.tcp://0.0.0.0:{OPCUA_SERVER_PORT}/OPCUAServer/')
         
         # setup our own namespace, not really necessary but should as spec
         uri = "http://examples.freeopcua.github.io"

@@ -129,7 +129,7 @@ services:
       - ./temp/logs:/app/logs
     environment:
       PORT: ${PORT}
-      REACT_VERSION: ${REACT_VERSION}
+      OPCUA_SERVER_PORT: ${OPCUA_SERVER_PORT}
     healthcheck:
       test: ["CMD-SHELL", "curl --fail -s -k http://0.0.0.0:${PORT}/api/healthcheck/ || curl --fail -s -k https://0.0.0.0:${PORT}/api/healthcheck/ || exit 1"]
       interval: 15s

@@ -16,6 +16,7 @@ if not os.path.isfile(CERT_FILE):
 
 if not os.path.isfile(KEY_FILE):
     KEY_FILE = None
+OPCUA_SERVER_PORT = os.environ.get('OPCUA_SERVER_PORT') or "53530"
 
 class CreateApp():
     """Initialize the core application."""

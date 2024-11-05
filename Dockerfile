@@ -18,8 +18,10 @@ RUN pip3 install -r requirements.txt
 RUN chmod +x ./docker-entrypoint.sh
 
 ENV PORT=8050
+ENV OPCUA_SERVER_PORT=53530
 
 EXPOSE ${PORT}
+EXPOSE ${OPCUA_SERVER_PORT}
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
 
