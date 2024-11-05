@@ -469,7 +469,8 @@ class PyAutomation(Singleton):
         )
         if name:
             self.das.buffer.pop(tag_name)
-            self.__update_buffer(tag=tag)
+        
+        self.__update_buffer(tag=tag)
         
         if isinstance(scan_time, int):
             self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
