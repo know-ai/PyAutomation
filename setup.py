@@ -20,7 +20,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     license="GNU AFFERO GENERAL PUBLIC LICENSE",
     url="https://github.com/know-ai/PyAutomation",
-    package_data={'src': ['*.json']},
+    package_data={ 'automation': ['pages/assets/*'], },
     include_package_data=True,
     packages=setuptools.find_packages(),
     install_requires=_requirements,

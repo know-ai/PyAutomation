@@ -90,13 +90,13 @@ def generate_dropdown_conditional():
                 'options': options
             })
 
-    # dropdown conditional for operations in alarms definition table
-    for state, actions in ACTIONS.items():
+    # # dropdown conditional for operations in alarms definition table
+    # for state, actions in ACTIONS.items():
 
-        dropdown_conditional.append({
-                'if': {'column_id': 'operations', 'filter_query': f'{{state}} eq "{state}"'},
-                'options': [{'label': action, 'value': action.replace(" ", "_")} for action in actions]
-            })
+    #     dropdown_conditional.append({
+    #             'if': {'column_id': 'operations', 'filter_query': f'{{state}} eq "{state}"'},
+    #             'options': [{'label': action, 'value': action.replace(" ", "_")} for action in actions]
+    #         })
 
     return dropdown_conditional
 

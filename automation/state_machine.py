@@ -213,6 +213,43 @@ class Machine(Singleton):
                     self.db_manager.attach(tag_name=tag_name)
                     break
 
+        internal_variables = machine.get_read_only_process_type_variables()
+        for _tag_name, value in internal_variables.items():
+
+            for variable, units in VARIABLES.items():
+
+                if value.unit in units.values() or value.unit in units.keys():
+                    
+                    if hasattr(machine, "internal_tags_relationships"):
+                        tag_name = f"{machine.internal_tags_relationships[_tag_name]['tag']}"
+                        if SEGMENT:
+                            tag_name = f"{SEGMENT}.{tag_name}"
+                        if MANUFACTURER:
+                            tag_name = f"{MANUFACTURER}.{tag_name}"
+                        description = machine.internal_tags_relationships[_tag_name]['description']
+
+                        attr = getattr(machine, _tag_name)
+                        unit = attr.unit
+                        
+                        tag, _ = cvt.set_tag(
+                            name=tag_name,
+                            unit=unit,
+                            data_type="float",
+                            variable=variable,
+                            description=description,
+                            segment=SEGMENT,
+                            manufacturer=MANUFACTURER
+                        )
+
+                        if tag:
+                            # Persist Tag on Database
+                            tag = cvt.get_tag_by_name(name=tag_name)
+                            attr = getattr(machine, _tag_name)
+                            attr.tag = tag
+                            self.logger_engine.set_tag(tag=tag)
+                            self.db_manager.attach(tag_name=tag_name)
+                            break
+
     def create_process_variable_into_db_bound_field_data(self, machine:StateMachine):
         r"""
         Documentation here

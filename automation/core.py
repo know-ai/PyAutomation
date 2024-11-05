@@ -500,8 +500,8 @@ class PyAutomation(Singleton):
     # USERS METHODS
     @logging_error_handler
     @validate_types(
-            username=str,
-            email=str,
+            username=str|type(None),
+            email=str|type(None),
             password=str,
             name=str|type(None),
             output=tuple
