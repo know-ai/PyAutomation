@@ -34,7 +34,6 @@ from .variables import (
 from .logger.machines import MachinesLoggerEngine
 from .logger.datalogger import DataLoggerEngine
 from flask_socketio import SocketIO
-from . import OPCUA_SERVER_PORT
 
 
 
@@ -1001,11 +1000,12 @@ class OPCUAServer(StateMachineCore):
             description:str="",
             classification:str="OPC UA Server"
         ):
-        
+        from . import OPCUA_SERVER_PORT
         self.cvt = CVTEngine()
         self.alarm_manager = AlarmManager()
         self.machine = Machine()
         self.my_folders = dict()
+        self.port = OPCUA_SERVER_PORT
 
         if isinstance(name, StringType):
 
@@ -1023,7 +1023,7 @@ class OPCUAServer(StateMachineCore):
         Documentation here
         """
         self.server = Server()
-        self.server.set_endpoint(f'opc.tcp://0.0.0.0:{OPCUA_SERVER_PORT}/OPCUAServer/')
+        self.server.set_endpoint(f'opc.tcp://0.0.0.0:{self.port}/OPCUAServer/')
         
         # setup our own namespace, not really necessary but should as spec
         uri = "http://examples.freeopcua.github.io"
