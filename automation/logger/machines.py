@@ -86,7 +86,7 @@ class MachinesLogger(BaseLogger):
             if threshold:
                 if hasattr(threshold.value, "value"):
                     threshold.value = threshold.value.value
-                fields["threshold"] = threshold.value.value
+                fields["threshold"] = threshold.value
                 
             query = Machines.put(
                 id=machine.id,

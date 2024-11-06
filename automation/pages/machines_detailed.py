@@ -28,6 +28,13 @@ layout = dbc.Container(
             yes_button_id="question-action-machine-yes",
             no_button_id="question-action-machine-no"
         ),
+        Components.modal_confirm(
+            title="Confirmation",
+            modal_id="modal-update-attr-machine",
+            body_id="modal-update-body-attr-machine",
+            yes_button_id="update-attr-machine-yes",
+            no_button_id="update-attr-machine-no"
+        ),
     ],
     fluid=False,
     className="my-3",

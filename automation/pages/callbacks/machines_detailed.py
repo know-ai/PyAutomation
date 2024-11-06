@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from automation.models import StringType
+from automation.models import StringType, IntegerType, FloatType
 from ..components.machines import MachinesComponents
 from ...variables import *
 
@@ -86,7 +86,8 @@ def init_callback(app:dash.Dash):
                 subscribed_tags_machine.append({
                     "label": f"{value.tag.name}->{_tag_name}", "value": value.tag.name
                     })
-                tags.remove(value.tag.name)
+                if value.tag.name in tags:
+                    tags.remove(value.tag.name)
                 
             else:
 
@@ -109,6 +110,10 @@ def init_callback(app:dash.Dash):
         dash.Output("buffer_size_input", 'placeholder', allow_duplicate=True),
         dash.Output("buffer_size_input", 'disabled', allow_duplicate=True),
         dash.Output("on_delay_input", 'placeholder', allow_duplicate=True),
+        dash.Output("machine_threshold_input", "value", allow_duplicate=True),
+        dash.Output("machine_interval_input", 'value', allow_duplicate=True),
+        dash.Output("buffer_size_input", 'value', allow_duplicate=True),
+        dash.Output("on_delay_input", 'value', allow_duplicate=True),
         dash.Input('machines_detailed_tabs', 'active_tab'),
         prevent_initial_call=False
     )
@@ -134,7 +139,7 @@ def init_callback(app:dash.Dash):
             disable = True
         on_delay = f"Current on delay: {on_delay.value}"
         
-        return machine_threshold_place, disable, threshold_input_text, machine_interval, buffer_size, disable, on_delay
+        return machine_threshold_place, disable, threshold_input_text, machine_interval, buffer_size, disable, on_delay, "", "", "", ""
     
     @app.callback(
         dash.Output('machine_state_input', 'children'),
@@ -379,3 +384,183 @@ def init_callback(app:dash.Dash):
         else:
 
             return False, 0, 0
+        
+    @app.callback(
+        dash.Output('machine_threshold_input', "n_submit"),
+        dash.Input('machine_threshold_input', "n_submit"),
+        dash.State('machine_threshold_input', 'value'),
+        dash.State('machines_detailed_tabs', 'active_tab'),
+        prevent_initial_call=True
+    )
+    def update_threshold(n, threshold:float, active_tab:str):
+        r"""
+        Documentation here
+        """
+        try:
+            threshold = float(threshold)
+        except Exception as err:
+            return 0
+        machine_name = active_tab.split("-")[-1]
+        machine = app.automation.get_machine(name=StringType(machine_name))
+        machine_threshold = machine.threshold.value
+        if hasattr(machine_threshold, "value"):
+
+            machine_threshold = machine_threshold.value
+
+        if threshold != machine_threshold:
+
+            message = f'Do you want to change machine {machine_name} threshold from [{machine_threshold}] to: {threshold}?'
+            dash.set_props("modal-update-body-attr-machine", {"children": message})
+            dash.set_props("modal-update-attr-machine", {'is_open': True})
+
+        return 0
+
+    @app.callback(
+        dash.Output('machine_interval_input', "n_submit"),
+        dash.Input('machine_interval_input', "n_submit"),
+        dash.State('machine_interval_input', 'value'),
+        dash.State('machines_detailed_tabs', 'active_tab'),
+        prevent_initial_call=True
+    )
+    def update_machine_interval(n, interval:float, active_tab:str):
+        r"""
+        Documentation here
+        """
+        try:
+            interval = float(interval)
+        except Exception as err:
+            return 0
+        machine_name = active_tab.split("-")[-1]
+        machine = app.automation.get_machine(name=StringType(machine_name))
+
+        if interval != machine.get_interval():
+
+            message = f'Do you want to change machine {machine_name} interval from [{machine.get_interval()}] to: {interval}?'
+            dash.set_props("modal-update-body-attr-machine", {"children": message})
+            dash.set_props("modal-update-attr-machine", {'is_open': True})
+
+        return 0
+
+    @app.callback(
+        dash.Output('buffer_size_input', "n_submit"),
+        dash.Input('buffer_size_input', "n_submit"),
+        dash.State('buffer_size_input', 'value'),
+        dash.State('machines_detailed_tabs', 'active_tab'),
+        prevent_initial_call=True
+    )
+    def update_buffer_size(n, buffer_size:int, active_tab:str):
+        r"""
+        Documentation here
+        """
+        try:
+            buffer_size = int(buffer_size)
+        except Exception as err:
+            return 0
+        machine_name = active_tab.split("-")[-1]
+        machine = app.automation.get_machine(name=StringType(machine_name))
+
+        if buffer_size != machine.buffer_size.value:
+
+            message = f'Do you want to change machine {machine_name} buffer size from [{machine.buffer_size.value}] to: {buffer_size}?'
+            dash.set_props("modal-update-body-attr-machine", {"children": message})
+            dash.set_props("modal-update-attr-machine", {'is_open': True})
+
+        return 0
+
+    @app.callback(
+        dash.Output('on_delay_input', "n_submit"),
+        dash.Input('on_delay_input', "n_submit"),
+        dash.State('on_delay_input', 'value'),
+        dash.State('machines_detailed_tabs', 'active_tab'),
+        prevent_initial_call=True
+    )
+    def update_on_delay(n, on_delay:int, active_tab:str):
+        r"""
+        Documentation here
+        """
+        try:
+            on_delay = int(on_delay)
+        except Exception as err:
+            return 0
+        machine_name = active_tab.split("-")[-1]
+        machine = app.automation.get_machine(name=StringType(machine_name))
+
+        if on_delay != machine.on_delay.value:
+
+            message = f'Do you want to change machine {machine_name} on delay from [{machine.on_delay.value}] to: {on_delay}?'
+            dash.set_props("modal-update-body-attr-machine", {"children": message})
+            dash.set_props("modal-update-attr-machine", {'is_open': True})
+
+        return 0
+    
+    @app.callback(
+        dash.Output("modal-update-attr-machine", "is_open"), 
+        dash.Output("update-attr-machine-yes", "n_clicks"),
+        dash.Output("update-attr-machine-no", "n_clicks"),
+        dash.Output('machine_threshold_input', "value"),
+        dash.Output('machine_interval_input', "value"),
+        dash.Output('buffer_size_input', "value"),
+        dash.Output('on_delay_input', "value"),
+        dash.Input("update-attr-machine-yes", "n_clicks"), 
+        dash.Input("update-attr-machine-no", "n_clicks"),
+        dash.State('machines_detailed_tabs', 'active_tab'),
+        dash.State("modal-update-attr-machine", "is_open"),
+        dash.State('machine_threshold_input', 'value'),
+        dash.State('machine_interval_input', 'value'),
+        dash.State('buffer_size_input', 'value'),
+        dash.State('on_delay_input', 'value'),
+        prevent_initial_call=True
+    )
+    def update_attr_machine_yes_or_no(
+        yes_n, 
+        no_n, 
+        active_tab:str, 
+        is_open, 
+        threshold:float=None, 
+        interval:int=None, 
+        buffer_size:int=None, 
+        on_delay:int=None
+    ):
+        r"""
+        Documentation here
+        """
+        machine_name = active_tab.split("-")[-1]
+        machine = app.automation.get_machine(name=StringType(machine_name))
+
+        if yes_n:
+            
+            if threshold:
+
+                machine.threshold.value.value = threshold
+                # UPDATE DB
+                if app.automation.is_db_connected():
+                    app.automation.machines_engine.put(name=StringType(machine_name), threshold=FloatType(threshold))
+                dash.set_props("machine_threshold_input", {"placeholder": f"Current threshold {machine.threshold.value.value}"})
+
+            elif interval:
+
+                machine.set_interval(interval=IntegerType(interval))
+                # UPDATE DB
+                if app.automation.is_db_connected():
+                    app.automation.machines_engine.put(name=StringType(machine_name), machine_interval=IntegerType(interval))
+                dash.set_props("machine_interval_input", {"placeholder": f"Current machine interval {machine.get_interval()}"})
+                
+            elif buffer_size:
+
+                machine.set_buffer_size(size=buffer_size)
+                machine.transition(to="restart")
+                if app.automation.is_db_connected():
+                    app.automation.machines_engine.put(name=StringType(machine_name), buffer_size=IntegerType(buffer_size))
+                machine.transition(to="wait")
+                # UPDATE DB
+                dash.set_props("buffer_size_input", {"placeholder": f"Current buffer size {machine.buffer_size.value}"})
+
+            elif on_delay:
+
+                machine.on_delay.value = on_delay
+                if app.automation.is_db_connected():
+                    app.automation.machines_engine.put(name=StringType(machine_name), on_delay=IntegerType(on_delay))
+                # UPDATE DB
+                dash.set_props("on_delay_input", {"placeholder": f"Current on delay {machine.on_delay.value}"})
+            
+        return not is_open, 0, 0, "", "", "", ""

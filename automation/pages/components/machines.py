@@ -42,7 +42,7 @@ class MachinesComponents:
         on_delay = machine.on_delay
         disable = True
         if hasattr(machine, "buffer_size"):
-            disable_buffer_size = False
+            disable = False
         if "pfm" in machine_name.lower():
             disable = True
         elif "observer" in  machine_name.lower():
@@ -58,7 +58,7 @@ class MachinesComponents:
                                         [
                                             dbc.InputGroup(
                                                 [
-                                                    dbc.Input(placeholder=f"{machine_name} Current threshold {threshold.value}", type="number", step=0.1, min=0.0, max=600000, id="machine_threshold_input", disabled=disable), 
+                                                    dbc.Input(placeholder=f"{machine_name} Current threshold {threshold.value}", type="number", step=0.1, min=0.0, max=600000, id="machine_threshold_input", disabled=disable, n_submit=0), 
                                                     dbc.InputGroupText(threshold.unit, id="threshold_input_text")
                                                 ], 
                                                 size="md",
@@ -72,7 +72,7 @@ class MachinesComponents:
                                         [
                                             dbc.InputGroup(
                                                 [
-                                                    dbc.Input(placeholder=f"Current Machine Interval {machine_interval}", type="number", step=0.5, min=0.5, max=600000, id="machine_interval_input", disabled=False), 
+                                                    dbc.Input(placeholder=f"Current Machine Interval {machine_interval}", type="number", step=0.5, min=0.5, max=600000, id="machine_interval_input", disabled=False, n_submit=0), 
                                                     dbc.InputGroupText('s')
                                                 ], 
                                                 size="md",
@@ -86,7 +86,7 @@ class MachinesComponents:
                                         [
                                             dbc.InputGroup(
                                                 [
-                                                    dbc.Input(placeholder="Buffer Size", type="number", step=1, min=2, max=600000, id="buffer_size_input", disabled=disable), 
+                                                    dbc.Input(placeholder="Buffer Size", type="number", step=1, min=2, max=600000, id="buffer_size_input", disabled=disable, n_submit=0), 
                                                 ], 
                                                 size="md",
                                                 className="mb-1"
@@ -99,7 +99,7 @@ class MachinesComponents:
                                         [
                                             dbc.InputGroup(
                                                 [
-                                                    dbc.Input(placeholder=f"Current On Delay: {on_delay.value}", type="number", step=1, min=1, max=600000, id="on_delay_input", disabled=False), 
+                                                    dbc.Input(placeholder=f"Current On Delay: {on_delay.value}", type="number", step=1, min=1, max=600000, id="on_delay_input", disabled=False, n_submit=0), 
                                                     dbc.InputGroupText('s')
                                                 ], 
                                                 size="md",

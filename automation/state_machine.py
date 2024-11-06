@@ -163,7 +163,7 @@ class Machine(Singleton):
                         if config[machine.name.value]['on_delay']:
                             machine.on_delay.value = config[machine.name.value]['on_delay']
                         if config[machine.name.value]['threshold']:
-                            machine.threshold.value = config[machine.name.value]['threshold']
+                            machine.threshold.value = Percentage(config[machine.name.value]['threshold'], unit="%")
                         self.append_machine(machine=machine, interval=FloatType(config[machine.name.value]["interval"]))
                     
                     else:
