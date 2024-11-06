@@ -293,7 +293,8 @@ class StateMachineCore(StateMachine):
             description:str="",
             classification:str="",
             interval:float=1.0,
-            identifier:str=None
+            identifier:str=None,
+            buffer_size:int=10
         ):
         from . import SEGMENT, MANUFACTURER
         _identifier = secrets.token_hex(4)
@@ -309,7 +310,7 @@ class StateMachineCore(StateMachine):
         self.classification = StringType(default=classification)
         self.name = StringType(default=name)
         self.machine_interval = FloatType(default=interval)
-        self.buffer_size = IntegerType(default=10)
+        self.buffer_size = IntegerType(default=buffer_size)
         self.buffer_roll_type = StringType(default='backward')
         self.sio:SocketIO|None = None
         self.restart_buffer()
@@ -1406,8 +1407,26 @@ class AutomationStateMachine(StateMachineCore):
     wait_to_test = StateMachineCore.waiting.to(testing)
     run_to_sleep = StateMachineCore.running.to(sleeping)
     wait_to_sleep = StateMachineCore.waiting.to(sleeping)
-    
 
+    # def __init__(
+    #         self,
+    #         name:str,
+    #         description:str="",
+    #         classification:str="",
+    #         interval:float=1.0,
+    #         identifier:str=None,
+    #         buffer_size:int=10
+    #     ):
+
+    #     super(AutomationStateMachine, self).__init__(
+    #         name=name,
+    #         description=description,
+    #         classification=classification,
+    #         interval=interval,
+    #         identifier=identifier,
+    #         buffer_size=buffer_size
+    #         )
+    
     def while_testing(self):
         r"""
         This method is executed every machine loop when it is on Test state

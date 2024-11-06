@@ -102,6 +102,40 @@ def init_callback(app:dash.Dash):
         return subscribed_tags_machine, available_tags, not_subscribed
     
     @app.callback(
+        dash.Output("machine_threshold_input", "placeholder", allow_duplicate=True),
+        dash.Output("threshold_input_text", 'children', allow_duplicate=True),
+        dash.Output("machine_interval_input", 'placeholder', allow_duplicate=True),
+        dash.Output("buffer_size_input", 'placeholder', allow_duplicate=True),
+        dash.Output("buffer_size_input", 'disabled', allow_duplicate=True),
+        dash.Output("on_delay_input", 'placeholder', allow_duplicate=True),
+        dash.Input('machines_detailed_tabs', 'active_tab'),
+        prevent_initial_call=False
+    )
+    def update_attributes_form(active_tab:str):
+        machine_name = active_tab.split("-")[-1]
+        machine = app.automation.get_machine(name=StringType(machine_name))
+        machine_interval = machine.get_interval()
+        threshold = machine.threshold
+        on_delay = machine.on_delay
+
+        machine_threshold_place = f"Current threshold {threshold.value}"
+        machine_interval = f"Current machine interval {machine_interval}"
+        threshold_input_text = threshold.unit
+        buffer_size = f"Buffer Size"
+        disable_buffer_size = True
+        if hasattr(machine, "buffer_size"):
+            disable_buffer_size = False
+            buffer_size = machine.buffer_size
+            buffer_size = f"Current buffer size: {buffer_size.value}"
+        if "pfm" in machine_name.lower():
+            disable_buffer_size = True
+        elif "observer" in  machine_name.lower():
+            disable_buffer_size = True
+        on_delay = f"Current on delay: {on_delay.value}"
+        
+        return machine_threshold_place, threshold_input_text, machine_interval, buffer_size, disable_buffer_size, on_delay
+    
+    @app.callback(
         dash.Output('machine_state_input', 'children'),
         dash.Input('timestamp-interval', 'n_intervals'),
         dash.State('machines_detailed_tabs', 'active_tab'),

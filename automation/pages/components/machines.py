@@ -30,6 +30,94 @@ class MachinesComponents:
                 className="col-sm-12 col-md-12")
             ])
         ])
+    
+    @classmethod
+    def machine_attributes(cls, app, machine_name:str):
+        r"""
+        Documentation here
+        """
+        machine = app.get_machine(name=StringType(machine_name))
+        machine_interval = machine.get_interval()
+        threshold = machine.threshold
+        on_delay = machine.on_delay
+        disable_buffer_size = True
+        if hasattr(machine, "buffer_size"):
+            disable_buffer_size = False
+        if "pfm" in machine_name.lower():
+            disable_buffer_size = True
+        elif "observer" in  machine_name.lower():
+            disable_buffer_size = True
+        return dash.html.Div([
+            dash.dcc.Location(id='machine_attributes_page', refresh=False),
+            dbc.Accordion(
+                    [
+                        dbc.AccordionItem(
+                            [
+                                dbc.Row([
+                                    dbc.Col(
+                                        [
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.Input(placeholder=f"{machine_name} Current threshold {threshold.value}", type="number", step=0.1, min=0.0, max=600000, id="machine_threshold_input", disabled=False), 
+                                                    dbc.InputGroupText(threshold.unit, id="threshold_input_text")
+                                                ], 
+                                                size="md",
+                                                className="mb-1"
+                                            )
+                                        ],
+                                        width=12,
+                                        className="col-sm-12 col-md-12 col-lg-12"
+                                    ),
+                                    dbc.Col(
+                                        [
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.Input(placeholder=f"Current Machine Interval {machine_interval}", type="number", step=0.5, min=0.5, max=600000, id="machine_interval_input", disabled=False), 
+                                                    dbc.InputGroupText('s')
+                                                ], 
+                                                size="md",
+                                                className="mb-1"
+                                            )
+                                        ],
+                                        width=12,
+                                        className="col-sm-12 col-md-12 col-lg-12"
+                                    ),
+                                    dbc.Col(
+                                        [
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.Input(placeholder="Buffer Size", type="number", step=1, min=2, max=600000, id="buffer_size_input", disabled=disable_buffer_size), 
+                                                ], 
+                                                size="md",
+                                                className="mb-1"
+                                            )
+                                        ],
+                                        width=12,
+                                        className="col-sm-12 col-md-12 col-lg-12"
+                                    ),
+                                    dbc.Col(
+                                        [
+                                            dbc.InputGroup(
+                                                [
+                                                    dbc.Input(placeholder=f"Current On Delay: {on_delay.value}", type="number", step=1, min=1, max=600000, id="on_delay_input", disabled=False), 
+                                                    dbc.InputGroupText('s')
+                                                ], 
+                                                size="md",
+                                                className="mb-1"
+                                            )
+                                        ],
+                                        width=12,
+                                        className="col-sm-12 col-md-12 col-lg-12"
+                                    ),
+                                ])
+                            ],
+                            title="Machine Attributes",
+                            className="my-3"
+                        )
+                    ],
+                    start_collapsed=False,
+                )
+            ])
 
     @classmethod
     def subscription_tag_form(cls, app, machine_name:str):
@@ -48,7 +136,10 @@ class MachinesComponents:
                 subscribed_tags_machine.append({
                     "label": f"{value.tag.name}->{_tag_name}", "value": value.tag.name
                     })
-                tags.remove(value.tag.name)
+                
+                if value.tag.name in tags:
+
+                    tags.remove(value.tag.name)
                 
             else:
 
@@ -292,7 +383,10 @@ class MachinesComponents:
                             ]),
                             dbc.Row([
                                 cls.machine_actions()
-                            ])
+                            ]),
+                            dbc.Row([
+                                cls.machine_attributes(app=app, machine_name=machine_name)
+                            ]),
                         ],
                         width=6,
                         className="col-sm-12 col-md-6"
