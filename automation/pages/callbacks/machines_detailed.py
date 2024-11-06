@@ -103,6 +103,7 @@ def init_callback(app:dash.Dash):
     
     @app.callback(
         dash.Output("machine_threshold_input", "placeholder", allow_duplicate=True),
+        dash.Output("machine_threshold_input", "disabled", allow_duplicate=True),
         dash.Output("threshold_input_text", 'children', allow_duplicate=True),
         dash.Output("machine_interval_input", 'placeholder', allow_duplicate=True),
         dash.Output("buffer_size_input", 'placeholder', allow_duplicate=True),
@@ -122,18 +123,18 @@ def init_callback(app:dash.Dash):
         machine_interval = f"Current machine interval {machine_interval}"
         threshold_input_text = threshold.unit
         buffer_size = f"Buffer Size"
-        disable_buffer_size = True
+        disable = True
         if hasattr(machine, "buffer_size"):
-            disable_buffer_size = False
+            disable = False
             buffer_size = machine.buffer_size
             buffer_size = f"Current buffer size: {buffer_size.value}"
         if "pfm" in machine_name.lower():
-            disable_buffer_size = True
+            disable = True
         elif "observer" in  machine_name.lower():
-            disable_buffer_size = True
+            disable = True
         on_delay = f"Current on delay: {on_delay.value}"
         
-        return machine_threshold_place, threshold_input_text, machine_interval, buffer_size, disable_buffer_size, on_delay
+        return machine_threshold_place, disable, threshold_input_text, machine_interval, buffer_size, disable, on_delay
     
     @app.callback(
         dash.Output('machine_state_input', 'children'),

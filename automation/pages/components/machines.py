@@ -40,13 +40,13 @@ class MachinesComponents:
         machine_interval = machine.get_interval()
         threshold = machine.threshold
         on_delay = machine.on_delay
-        disable_buffer_size = True
+        disable = True
         if hasattr(machine, "buffer_size"):
             disable_buffer_size = False
         if "pfm" in machine_name.lower():
-            disable_buffer_size = True
+            disable = True
         elif "observer" in  machine_name.lower():
-            disable_buffer_size = True
+            disable = True
         return dash.html.Div([
             dash.dcc.Location(id='machine_attributes_page', refresh=False),
             dbc.Accordion(
@@ -58,7 +58,7 @@ class MachinesComponents:
                                         [
                                             dbc.InputGroup(
                                                 [
-                                                    dbc.Input(placeholder=f"{machine_name} Current threshold {threshold.value}", type="number", step=0.1, min=0.0, max=600000, id="machine_threshold_input", disabled=False), 
+                                                    dbc.Input(placeholder=f"{machine_name} Current threshold {threshold.value}", type="number", step=0.1, min=0.0, max=600000, id="machine_threshold_input", disabled=disable), 
                                                     dbc.InputGroupText(threshold.unit, id="threshold_input_text")
                                                 ], 
                                                 size="md",
@@ -86,7 +86,7 @@ class MachinesComponents:
                                         [
                                             dbc.InputGroup(
                                                 [
-                                                    dbc.Input(placeholder="Buffer Size", type="number", step=1, min=2, max=600000, id="buffer_size_input", disabled=disable_buffer_size), 
+                                                    dbc.Input(placeholder="Buffer Size", type="number", step=1, min=2, max=600000, id="buffer_size_input", disabled=disable), 
                                                 ], 
                                                 size="md",
                                                 className="mb-1"
