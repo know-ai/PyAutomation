@@ -4,7 +4,7 @@
 from ..dbmodels import Machines, TagsMachines, Tags
 from .core import BaseEngine, BaseLogger
 from ..utils.decorators import db_rollback
-from ..models import IntegerType, StringType
+from ..models import IntegerType, StringType, FloatType
 from ..tags.tag import Tag
 
 
@@ -25,12 +25,16 @@ class MachinesLogger(BaseLogger):
             buffer_size:int,
             buffer_roll_type:str,
             criticity:int,
-            priority:int):
+            priority:int,
+            on_delay:int=None,
+            threshold:float=None
+            ):
         r"""
         Documentation here
         """
         if self.get_db():
-
+            if hasattr(threshold, "value"):
+                threshold = threshold.value
             Machines.create(
                 identifier=identifier,
                 name=name,
@@ -40,7 +44,9 @@ class MachinesLogger(BaseLogger):
                 buffer_size=buffer_size,
                 buffer_roll_type=buffer_roll_type,
                 criticity=criticity,
-                priority=priority
+                priority=priority,
+                on_delay=on_delay,
+                threshold=threshold
             )
 
     @db_rollback
@@ -53,7 +59,9 @@ class MachinesLogger(BaseLogger):
         buffer_size:IntegerType=None,
         buffer_roll_type:StringType=None,
         criticity:IntegerType=None,
-        priority:IntegerType=None
+        priority:IntegerType=None,
+        on_delay:IntegerType=None,
+        threshold:FloatType=None
         ):
         if self.get_db():
             fields = dict()
@@ -73,6 +81,12 @@ class MachinesLogger(BaseLogger):
                 fields["criticity"] = criticity.value
             if priority:
                 fields["priority"] = priority.value
+            if on_delay:
+                fields["on_delay"] = on_delay.value
+            if threshold:
+                if hasattr(threshold.value, "value"):
+                    threshold.value = threshold.value.value
+                fields["threshold"] = threshold.value.value
                 
             query = Machines.put(
                 id=machine.id,
@@ -125,7 +139,9 @@ class MachinesLoggerEngine(BaseEngine):
         buffer_size:int,
         buffer_roll_type:str,
         criticity:int,
-        priority:int
+        priority:int,
+        on_delay:int=None,
+        threshold:float=None
         ):
 
         _query = dict()
@@ -140,6 +156,8 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"]["buffer_roll_type"] = buffer_roll_type
         _query["parameters"]["criticity"] = criticity
         _query["parameters"]["priority"] = priority
+        _query["parameters"]["on_delay"] = on_delay
+        _query["parameters"]["threshold"] = threshold
         
         return self.query(_query)
     
@@ -152,7 +170,9 @@ class MachinesLoggerEngine(BaseEngine):
         buffer_size:IntegerType=None,
         buffer_roll_type:StringType=None,
         criticity:IntegerType=None,
-        priority:IntegerType=None
+        priority:IntegerType=None,
+        on_delay:IntegerType=None,
+        threshold:FloatType=None
         ):
 
         _query = dict()
@@ -166,6 +186,8 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"]["buffer_roll_type"] = buffer_roll_type
         _query["parameters"]["criticity"] = criticity
         _query["parameters"]["priority"] = priority
+        _query["parameters"]["on_delay"] = on_delay
+        _query["parameters"]["threshold"] = threshold
 
         return self.query(_query)
 

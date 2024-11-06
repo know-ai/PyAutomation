@@ -63,6 +63,12 @@ class Machine(Singleton):
         
         machine.set_interval(interval)
         self.machine_manager.append_machine((machine, interval, mode))
+        on_delay = None
+        if hasattr(machine, "on_delay"):
+            on_delay = machine.on_delay.value
+        threshold = None
+        if hasattr(machine, "threshold"):
+            threshold = machine.threshold.value
         
         if self.machines_engine.get_db():
             self.machines_engine.create(
@@ -74,7 +80,9 @@ class Machine(Singleton):
                 buffer_size=machine.buffer_size.value,
                 buffer_roll_type=machine.buffer_roll_type.value,
                 criticity=machine.criticity.value,
-                priority=machine.priority.value
+                priority=machine.priority.value,
+                on_delay=on_delay,
+                threshold=threshold
             )
             self.create_tag_internal_process_type(machine=machine)
 
@@ -152,6 +160,10 @@ class Machine(Singleton):
                         machine.criticity.value = config[machine.name.value]["criticity"]
                         machine.priority.value = config[machine.name.value]["priority"]
                         machine.identifier.value = config[machine.name.value]['identifier']
+                        if config[machine.name.value]['on_delay']:
+                            machine.on_delay.value = config[machine.name.value]['on_delay']
+                        if config[machine.name.value]['threshold']:
+                            machine.threshold.value = config[machine.name.value]['threshold']
                         self.append_machine(machine=machine, interval=FloatType(config[machine.name.value]["interval"]))
                     
                     else:

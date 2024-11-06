@@ -8,6 +8,8 @@ class Machines(BaseModel):
     identifier = CharField(unique=True)
     name = CharField(unique=True)
     interval = FloatField()
+    threshold = FloatField(null=True)
+    on_delay = IntegerField(null=True)
     description = CharField(max_length=128)
     classification = CharField(max_length=128)
     buffer_size = IntegerField()
@@ -26,7 +28,9 @@ class Machines(BaseModel):
         buffer_size:int,
         buffer_roll_type:str,
         criticity:int,
-        priority:int
+        priority:int,
+        threshold:float=None,
+        on_delay:int=None
         )-> dict:
 
         result = dict()
@@ -43,7 +47,9 @@ class Machines(BaseModel):
                 buffer_size=buffer_size,
                 buffer_roll_type=buffer_roll_type,
                 criticity=criticity,
-                priority=priority
+                priority=priority,
+                threshold=threshold,
+                on_delay=on_delay
                 )
             query.save()
             
@@ -134,7 +140,9 @@ class Machines(BaseModel):
             "buffer_size": self.buffer_size,
             "buffer_roll_type": self.buffer_roll_type,
             "criticity": self.criticity,
-            "priority": self.priority
+            "priority": self.priority,
+            "threshold": self.threshold,
+            "on_delay": self.on_delay
         }
 
 
