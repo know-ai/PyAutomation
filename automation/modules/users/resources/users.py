@@ -1,13 +1,14 @@
 from flask import request
+from datetime import datetime
 from flask_restx import Namespace, Resource
 from .models.users import signup_parser, login_parser
-from .... import PyAutomation
+from .... import PyAutomation, TIMEZONE, _TIMEZONE
 from ....extensions.api import api
 from ....extensions import _api as Api
 from ....modules.users.users import Users as CVTUsers
 from ....dbmodels.users import Users
 
-
+DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S"
 ns = Namespace('Users', description='Users')
 app = PyAutomation()
 users = CVTUsers()
@@ -54,7 +55,9 @@ class LoginResource(Resource):
             return {
                 "apiKey": user.token,
                 "role": user.role.name,
-                "role_level": user.role.level
+                "role_level": user.role.level,
+                "datetime": datetime.now(TIMEZONE).strftime(DATETIME_FORMAT),
+                "timezone": _TIMEZONE
                 }, 200
 
         return message, 403

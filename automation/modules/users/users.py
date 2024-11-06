@@ -329,7 +329,7 @@ class Users(Singleton):
         r"""
         Documentation here
         """
-        return [user.serialize() for user in self.__by_username.values()]
+        return [user.serialize() for user in self.__by_username.values() if user.role.name.lower()!="sudo"]
     
 users = Users()
         

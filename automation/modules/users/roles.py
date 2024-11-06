@@ -116,6 +116,6 @@ class Roles(Singleton):
         r"""
         Documentation here
         """
-        return [role.serialize() for _, role in self.roles.items()]
+        return [role.serialize() for _, role in self.roles.items() if role.name.lower()!="sudo"]
     
 roles = Roles()
