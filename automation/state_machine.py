@@ -1,4 +1,4 @@
-import logging, secrets
+import logging, secrets, pytz
 from datetime import datetime
 from opcua import Server, ua
 from hashlib import blake2b
@@ -1013,7 +1013,7 @@ class DAQ(StateMachineCore):
         self.send('wait_to_run')
 
     def while_running(self):
-        
+        from . import TIMEZONE
         for tag_name, process_type in self.get_subscribed_tags().items():
             tag = process_type.tag
             namespace = tag.get_node_namespace()
@@ -1023,13 +1023,15 @@ class DAQ(StateMachineCore):
                 data_value = values[0][0]["DataValue"]
                 value = data_value.Value.Value
                 timestamp = data_value.SourceTimestamp
+                timestamp = timestamp.replace(tzinfo=pytz.UTC)
                 val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
                 tag.value.set_value(value=val, unit=tag.get_display_unit()) 
                 if tag.manufacturer==self.MANUFACTURER and tag.segment==self.SEGMENT:      
                     self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 elif not self.MANUFACTURER and not self.SEGMENT:
                     self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-                # self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                
+                timestamp = timestamp.astimezone(TIMEZONE)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](val)
 
