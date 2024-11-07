@@ -166,7 +166,6 @@ class Machine(Singleton):
                             threshold_value = config[machine.name.value]['threshold']
                             threshold_unit = machine.threshold.unit
                             class_name = machine.threshold.value.__class__.__name__
-                            print(f"[{machine.name.value}] {class_name} {threshold_value} {threshold_unit}")
                             machine.threshold.value = eval(f"{class_name}({threshold_value}, unit='{threshold_unit}')")
                         self.append_machine(machine=machine, interval=FloatType(config[machine.name.value]["interval"]))
                     
