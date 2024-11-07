@@ -352,20 +352,8 @@ class DataLoggerEngine(BaseEngine):
     def update_tag(
             self, 
             id:str, 
-            name:str="", 
-            unit:str="", 
-            data_type:str="", 
-            description:str="", 
-            variable:str="",
-            display_name:str="",
-            display_unit:str="",
-            opcua_address:str="",
-            node_namespace:str="",
-            scan_time:int=None,
-            dead_band:int|float=None,
-            segment:str="",
-            manufacturer:str="",
-            user:User|None=None
+            user:User|None=None,
+            **kwargs
             ):
         r"""Documentation here
 
@@ -382,57 +370,9 @@ class DataLoggerEngine(BaseEngine):
         _query["action"] = "update_tag"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
-        if name:
+        for key, value in kwargs.items():
 
-            _query["parameters"]["name"] = name
-        
-        if unit:
-
-            _query["parameters"]["unit"] = unit
-
-        if data_type:
-
-            _query["parameters"]["data_type"] = data_type
-
-        if description:
-
-            _query["parameters"]["description"] = description
-
-        if variable:
-
-            _query["parameters"]["variable"] = variable
-
-        if display_name:
-
-            _query["parameters"]["display_name"] = display_name
-
-        if display_unit:
-
-            _query["parameters"]["display_unit"] = display_unit
-
-        if opcua_address:
-
-            _query["parameters"]["opcua_address"] = opcua_address
-
-        if node_namespace:
-
-            _query["parameters"]["node_namespace"] = node_namespace
-
-        if isinstance(scan_time, int):
-
-            _query["parameters"]["scan_time"] = scan_time
-
-        if dead_band:
-
-            _query["parameters"]["dead_band"] = dead_band
-        
-        if segment:
-
-            _query["parameters"]["segment"] = segment
-        
-        if manufacturer:
-
-            _query["parameters"]["manufacturer"] = manufacturer
+            _query["parameters"][key] = value
     
         return self.query(_query)
     

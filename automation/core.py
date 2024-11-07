@@ -376,47 +376,17 @@ class PyAutomation(Singleton):
             self.logger_engine.delete_tag(id=id)
 
     @logging_error_handler
-    @validate_types(
-            id=str,  
-            name=str, 
-            unit=str, 
-            data_type=str, 
-            description=str, 
-            variable=str,
-            display_name=str,
-            display_unit=str,
-            opcua_address=str,
-            node_namespace=str,
-            scan_time=int|float|type(None),
-            segment=str,
-            manufacturer=str,
-            dead_band=int|float|type(None),
-            user=User|type(None),
-            output=(Tag|None, str)
-        )
     def update_tag(
             self, 
             id:str,  
-            name:str="", 
-            unit:str="", 
-            data_type:str="", 
-            description:str="", 
-            variable:str="",
-            display_name:str="",
-            display_unit:str="",
-            opcua_address:str="",
-            node_namespace:str="",
-            scan_time:int=None,
-            segment:str="",
-            manufacturer:str="",
-            dead_band:int|float=None,
-            user:User|None=None, 
+            user:User|None=None,
+            **kwargs
         )->tuple[Tag|None, str]:
         r"""
         Documentation here
         """
-        tag = self.cvt.get_tag(id=id)         
-        if name:
+        tag = self.cvt.get_tag(id=id)       
+        if "name" in kwargs:
             tag_name = tag.get_name()
             machines_with_tags_subscribed = list()
             for _machine, _, _ in self.get_machines():
@@ -435,47 +405,25 @@ class PyAutomation(Singleton):
 
             self.logger_engine.update_tag(
                 id=id,  
-                name=name, 
-                unit=unit, 
-                data_type=data_type, 
-                description=description, 
-                variable=variable,
-                display_name=display_name,
-                display_unit=display_unit,
-                opcua_address=opcua_address,
-                node_namespace=node_namespace,
-                segment=segment,
-                manufacturer=manufacturer,
-                scan_time=scan_time,
-                dead_band=dead_band
+                **kwargs
             )
         
         result = self.cvt.update_tag(
             id=id,  
-            name=name, 
-            unit=unit, 
-            data_type=data_type, 
-            description=description, 
-            variable=variable,
-            display_name=display_name,
-            display_unit=display_unit,
-            opcua_address=opcua_address,
-            node_namespace=node_namespace,
-            segment=segment,
-            manufacturer=manufacturer,
-            scan_time=scan_time,
-            dead_band=dead_band,
-            user=user
+            user=user,
+            **kwargs
         )
-        if name:
+        if "name" in kwargs:
             self.das.buffer.pop(tag_name)
         
         self.__update_buffer(tag=tag)
-        
-        if isinstance(scan_time, int):
-            self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
-        else:
-            self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
+
+        if "scan_time" in kwargs:
+            scan_time = kwargs["scan_time"]
+            if isinstance(scan_time, int):
+                self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
+            else:
+                self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
         return result
 
     @logging_error_handler

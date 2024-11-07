@@ -127,20 +127,8 @@ class CVT:
     def update_tag(
         self, 
         id:str,  
-        name:str, 
-        unit:str, 
-        data_type:str, 
-        description:str, 
-        variable:str,
-        display_name:str="",
-        display_unit:str="",
-        opcua_address:str="",
-        node_namespace:str="",
-        scan_time:int=None,
-        dead_band:float=None,
-        segment:str="",
-        manufacturer:str="",
         user:User=None, 
+        **kwargs
         )->tuple[Tag|None, str]:
         r"""Documentation here
 
@@ -152,38 +140,48 @@ class CVT:
 
         - 
         """
-        has_duplicates, message = self.has_duplicates(name=name, display_name=display_name, node_namespace=node_namespace, opcua_address=opcua_address)
+        check = dict()
+        if "name" in kwargs:
+            check["name"] = kwargs["name"]
+        if "display_name" in kwargs:
+            check["display_name"] = kwargs["display_name"]
+        if "node_namespace" in kwargs:
+            check["node_namespace"] = kwargs["node_namespace"]
+        if "opcua_address" in kwargs:
+            check["opcua_address"] = kwargs["opcua_address"]
+        has_duplicates, message = self.has_duplicates(**check)
         if has_duplicates:
 
             return None, message
         
         tag = self._tags[id]
-        if name:
-            tag.set_name(name=name)
-        if unit:
-            tag.set_unit(unit=unit)
-        if data_type:
-            tag.set_data_type(data_type=data_type)
-        if description:
-            tag.set_description(description=description)
-        if variable:
-            tag.set_variable(variable=variable)
-        if display_name:
-            tag.set_display_name(name=display_name)
-        if display_unit:
-            tag.set_display_unit(unit=display_unit)
-        if opcua_address:
-            tag.set_opcua_address(opcua_address=opcua_address)
-        if node_namespace:
-            tag.set_node_namespace(node_namespace=node_namespace)
-        if isinstance(scan_time, int):
-            tag.set_scan_time(scan_time=scan_time)
-        if dead_band:
-            tag.set_dead_band(dead_band=dead_band)
-        if segment:
-            tag.segment = segment
-        if manufacturer:
-            tag.manufacturer = manufacturer
+        if "name" in kwargs:
+            tag.set_name(name=kwargs["name"])
+        if "unit" in kwargs:
+            tag.set_unit(unit=kwargs["unit"])
+        if "data_type" in kwargs:
+            tag.set_data_type(data_type=kwargs["data_type"])
+        if "description" in kwargs:
+            tag.set_description(description=kwargs["description"])
+        if "variable" in kwargs:
+            tag.set_variable(variable=kwargs["variable"])
+        if "display_name" in kwargs:
+            tag.set_display_name(name=kwargs["display_name"])
+        if "display_unit" in kwargs:
+            tag.set_display_unit(unit=kwargs["display_unit"])
+        if "opcua_address" in kwargs:
+            tag.set_opcua_address(opcua_address=kwargs["opcua_address"])
+        if "node_namespace" in kwargs:
+            tag.set_node_namespace(node_namespace=kwargs["node_namespace"])
+        if "scan_time" in kwargs:
+            if isinstance(kwargs["scan_time"], int):
+                tag.set_scan_time(scan_time=kwargs["scan_time"])
+        if "dead_band" in kwargs:
+            tag.set_dead_band(dead_band=kwargs["dead_band"])
+        if "segment" in kwargs:
+            tag.segment = kwargs["segment"]
+        if "manufacturer" in kwargs:
+            tag.manufacturer = kwargs["manufacturer"]
         
         self._tags[id] = tag
 
@@ -640,20 +638,8 @@ class CVTEngine(Singleton):
     def update_tag(
             self, 
             id:str,  
-            name:str, 
-            unit:str, 
-            data_type:str, 
-            description:str, 
-            variable:str,
-            display_name:str="",
-            display_unit:str="",
-            opcua_address:str="",
-            node_namespace:str="",
-            segment:str="",
-            manufacturer:str="",
-            scan_time:int=None,
-            dead_band:float=None,
             user:User=None, 
+            **kwargs
         ):
         r"""Documentation here
 
@@ -670,19 +656,9 @@ class CVTEngine(Singleton):
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
         _query["parameters"]["user"] = user
-        _query["parameters"]["name"] = name
-        _query["parameters"]["unit"] = unit
-        _query["parameters"]["data_type"] = data_type
-        _query["parameters"]["description"] = description
-        _query["parameters"]["variable"] = variable
-        _query["parameters"]["display_name"] = display_name
-        _query["parameters"]["display_unit"] = display_unit
-        _query["parameters"]["scan_time"] = scan_time
-        _query["parameters"]["dead_band"] = dead_band
-        _query["parameters"]["node_namespace"] = node_namespace
-        _query["parameters"]["opcua_address"] = opcua_address
-        _query["parameters"]["segment"] = segment
-        _query["parameters"]["manufacturer"] = manufacturer
+        for key, value in kwargs.items():
+
+            _query["parameters"][key] = value
         return self.__query(_query)
     
     def delete_tag(self, id:str, user:User|None=None):
