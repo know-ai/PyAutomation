@@ -1266,9 +1266,16 @@ class OPCUAServer(StateMachineCore):
             display_unit = tag["display_unit"]
             data_type = tag["data_type"]
             tag_description = tag["description"] or ""
-
+            
             var_name = f"{segment}_{tag_name}"
-            identifier = blake2b(key=var_name.encode('utf-8')[:64], digest_size=4).hexdigest()
+            __var_name = tag_name
+            if "." in tag_name:
+                __var_name = tag_name.split(".")
+                if len(__var_name) >= 3:
+                    __var_name = ".".join(__var_name[1:])
+                else:
+                    __var_name = ".".join(__var_name)
+            identifier = blake2b(key=__var_name.encode('utf-8')[:64], digest_size=4).hexdigest()
 
             if not hasattr(self, var_name):
 
