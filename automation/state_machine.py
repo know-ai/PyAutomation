@@ -1239,12 +1239,12 @@ class OPCUAServer(StateMachineCore):
                         browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                         browse_name.Value.Value.Name = "" 
 
-                    # Add SETPOINT PROPERTIES
-                    for setpoint_key, setpoint_value in alarm.alarm_setpoint.serialize().items():
-                        ID = blake2b(key=f"{segment}.{alarm_name}.{setpoint_key}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), f"setpoint.{setpoint_key}", f"setpoint.{setpoint_value}")  
-                        browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
-                        browse_name.Value.Value.Name = "" 
+                    # # Add SETPOINT PROPERTIES
+                    # for setpoint_key, setpoint_value in alarm.alarm_setpoint.serialize().items():
+                    #     ID = blake2b(key=f"{segment}.{alarm_name}.{setpoint_key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                    #     prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), f"setpoint.{setpoint_key}", f"setpoint.{setpoint_value}")  
+                    #     browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+                    #     browse_name.Value.Value.Name = "" 
 
     def __set_cvt(self):
         r"""

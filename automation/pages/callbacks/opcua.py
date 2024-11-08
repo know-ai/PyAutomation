@@ -1,4 +1,4 @@
-import dash
+import dash, csv, io
 from ...utils import get_nodes_info, get_data_to_update_into_opcua_table
 from ...pages.components.opcua import OPCUAComponents
 from ...opcua.subscription import SubHandler
@@ -207,3 +207,60 @@ def init_callback(app:dash.Dash):
             return not is_open
         
         return is_open
+    
+    @app.callback(
+        dash.Output("download_node_info_modal", "is_open"),
+        dash.Input("download_node_info_button", "n_clicks"),
+        [dash.State("download_node_info_modal", "is_open")],
+    )
+    def download_node_info_button(n, is_open):
+        r"""
+        Documentation here
+        """
+        if n:
+            clients = list()
+            for client_name in app.automation.get_opcua_clients().keys():
+
+                clients.append(
+                    {"label": client_name, "value": client_name}
+                )
+
+            dash.set_props("download_opcua_client_names_options", {"options": clients})
+            return not is_open
+        
+        return is_open
+    
+    @app.callback(
+        dash.Output("download_node_info_modal", "is_open", allow_duplicate=True),
+        dash.Output("download", "data"),
+        dash.Input("download_node_info_ok_button_modal", "n_clicks"),
+        dash.State("download_opcua_client_names_options", "value")
+    )
+    def ok_download_node_info_button(n, client_name:str):
+        r"""
+        Documentation here
+        """
+        if client_name:
+
+            opcua_tree = app.automation.get_opcua_tree(client_name=client_name)
+            opcua_tree = opcua_tree[0]['Objects']
+            flat = list()
+            for tree in opcua_tree:
+                
+                flat.extend(OPCUAComponents.flatten_dict(tree))
+            output = io.StringIO() 
+            writer = csv.DictWriter(output, fieldnames=["name", "namespace", "NodeClass"]) 
+            writer.writeheader() 
+            writer.writerows(flat)
+            
+        return False, dict(content=output.getvalue(), filename=f"opcua_server_node_{client_name}.csv")
+    
+    @app.callback(
+        dash.Output("download_node_info_modal", "is_open", allow_duplicate=True),
+        dash.Input("download_node_info_cancel_button_modal", "n_clicks"),
+    )
+    def cancel_remove_server_button(n):
+        r"""
+        Documentation here
+        """
+        return False

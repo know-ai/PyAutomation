@@ -35,12 +35,6 @@ class Client(OPCClient):
             # Connect to the server
             super(Client, self).connect()
 
-            # # Re-establish the connection by creating a new SecureChannel
-            # super(Client, self).open_secure_channel()
-
-            # # Activate a session (you can create a new session if needed)
-            # super(Client, self).activate_session()
-
             # Now you're connected again!
             self._is_open = True
             self._id = str(uuid.uuid4())
@@ -371,6 +365,51 @@ class Client(OPCClient):
                 result.append(('Organizes', node_name))
 
         return result, 200
+
+    def browse_tree(self, node):
+        children_list = []
+        if node.get_node_class() == ua.NodeClass.Object:
+            children = node.get_children()
+            for child_id in children:
+                child_node = self.get_node(child_id)
+                display_name = child_node.get_display_name().Text or "Unnamed Node"
+                if display_name not in ('Aliases', 'MyObjects', 'Server', 'StaticData', 'Types', 'ReferenceTypes', 'EventTypes', 'InterfaceTypes', 'Views'):
+                    child_dict = {
+                        "title": display_name,
+                        "key": child_node.nodeid.to_string(),
+                        "NodeClass": child_node.get_node_class().name,
+                        "children": self.browse_tree(child_node) if child_node.get_node_class() == ua.NodeClass.Object else []
+                    }
+                    if child_node.get_node_class() == ua.NodeClass.Variable:
+                        variable_info = {
+                            "title": display_name,
+                            "key": child_node.nodeid.to_string(),
+                            "NodeClass": child_node.get_node_class().name,
+                            "children": []
+                        }
+                        for prop_id in child_node.get_properties():
+                            prop_node = self.get_node(prop_id)
+                            prop_display_name = prop_node.get_display_name().Text or "Unnamed Property"
+                            try:
+                                prop_dict = {
+                                    "title": prop_display_name,
+                                    "key": prop_node.nodeid.to_string(),
+                                    "NodeClass": prop_node.get_node_class().name,
+                                    "value": prop_node.get_value(),
+                                    "children": []
+                                }
+                                variable_info["children"].append(prop_dict)
+                            except ua.uaerrors.BadWaitingForInitialData:
+                                variable_info["children"].append({
+                                    "title": prop_display_name,
+                                    "key": prop_node.nodeid.to_string(),
+                                    "NodeClass": prop_node.get_node_class().name,
+                                    "value": None,
+                                    "children": []
+                                })
+                        child_dict = variable_info
+                    children_list.append(child_dict)
+        return children_list
 
     def serialize(self):
         r"""

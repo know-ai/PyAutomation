@@ -257,6 +257,65 @@ class OPCUAComponents(Singleton):
         )
     
     @classmethod
+    def download_node_info(cls, title:str, modal_id:str, body_id:str, ok_button_id:str, cancel_button_id:str):
+
+        return dash.html.Div(
+            [
+                dash.dcc.Location(id='communications_page', refresh=False),
+                dbc.Modal(
+                    [
+                        dbc.ModalHeader(dbc.ModalTitle(title), close_button=True),
+                        dbc.ModalBody(
+                            dash.html.Div(
+                                [
+                                    dash.html.H6('Server Information'),  # This is the title
+                                    dash.html.Div([
+                                        dbc.InputGroup([dbc.InputGroupText("Client Name"), dbc.Select(
+                                                        options=[],
+                                                        id="download_opcua_client_names_options"
+                                                    )], size="sm", className="mb-1")
+                                    ], style={'border': '1px solid black', 'padding': '10px'}, className="mb-2"),
+                                ]
+                            ),
+                            id=body_id),
+                        dbc.ModalFooter(
+                            [
+                                dbc.Button(
+                                    "OK",
+                                    id=ok_button_id,
+                                    className="float-start",
+                                    n_clicks=0,
+                                ),
+                                dbc.Button(
+                                    "Cancel",
+                                    id=cancel_button_id,
+                                    className="ms-auto",
+                                    n_clicks=0,
+                                )
+                            ]
+                        ),
+                    ],
+                    id=modal_id,
+                    centered=True,
+                    is_open=False,
+                ),
+            ]
+        )
+    
+    @classmethod
+    def flatten_dict(cls, d, parent_name=''): 
+        flattened_data = [] 
+        current_name = f"{parent_name}.{d['title']}" if parent_name else d['title'] 
+        current_info = { 
+            'name': current_name, 
+            'namespace': d['key'], 
+            'NodeClass': d['NodeClass'] 
+        } 
+        flattened_data.append(current_info) 
+        for child in d.get('children', []): 
+            flattened_data.extend(cls.flatten_dict(child, current_name)) 
+        return flattened_data
+    @classmethod
     def get_opcua_tree(cls, app):
 
         clients = app.automation.get_opcua_clients()

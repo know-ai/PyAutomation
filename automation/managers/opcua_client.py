@@ -112,7 +112,14 @@ class OPCUAClientManager:
         Documentation here
         """
         client = self.get(client_name=client_name)
-        return client.get_opc_ua_tree()
+        # tree = client.get_opc_ua_tree()
+        root_node = client.get_root_node()
+        _tree = client.browse_tree(root_node)
+        result = {
+            "Objects": _tree[0]["children"]
+        }
+        # print(_tree)
+        return result, 200
         
     def get_node_values(self, client_name:str, namespaces:list)->list:
 

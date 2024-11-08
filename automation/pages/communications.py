@@ -54,6 +54,13 @@ layout = dmc.MantineProvider(
                                                     outline=True,
                                                     disabled=False, 
                                                     id="remove_server_button"
+                                                ),
+                                                dbc.Button(
+                                                    "Download",  
+                                                    color="primary", 
+                                                    outline=True,
+                                                    disabled=False, 
+                                                    id="download_node_info_button"
                                                 ),   
                                             ],
                                             className="d-grid gap-2 d-flex justify-content-end",
@@ -105,7 +112,15 @@ layout = dmc.MantineProvider(
                     body_id="remove_server_body_modal", 
                     ok_button_id="remove_server_ok_button_modal", 
                     cancel_button_id="remove_server_cancel_button_modal"
-                )
+                ),
+                OPCUAComponents.download_node_info(
+                    title="Download Node Info", 
+                    modal_id="download_node_info_modal", 
+                    body_id="download_node_info_body_modal", 
+                    ok_button_id="download_node_info_ok_button_modal", 
+                    cancel_button_id="download_node_info_cancel_button_modal"
+                ),
+                dash.dcc.Download(id="download")
             ],
             fluid=False,
             className="my-3"
