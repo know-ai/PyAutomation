@@ -171,7 +171,8 @@ def init_callback(app:dash.Dash):
                     {'label': 'Integer', 'value': 'integer'},
                     {'label': 'Boolean', 'value': 'boolean'},
                     {'label': 'String', 'value': 'string'}
-                ]
+                ],
+                'clearable': False
             },
             'opcua_address': {
                 'options': opcua_client_options
@@ -307,7 +308,8 @@ def init_callback(app:dash.Dash):
                         {'label': 'Integer', 'value': 'integer'},
                         {'label': 'Boolean', 'value': 'boolean'},
                         {'label': 'String', 'value': 'string'}
-                    ]
+                    ],
+                    'clearable': False
                 },
                 'opcua_address': {
                     'options': opcua_client_options
@@ -323,7 +325,8 @@ def init_callback(app:dash.Dash):
         dash.State('tags_datatable', 'data'),
         )
     def delete_update_tags(timestamp, previous, current):
-
+        message = None
+        attr_not_clearable = ("name", "unit", "display_name", "display_unit", "data_type")
         if timestamp:
             
             if len(previous) > len(current): # DELETE TAG
@@ -343,6 +346,15 @@ def init_callback(app:dash.Dash):
                 to_updates = find_differences_between_lists(previous, current)
                 tag_to_update = to_updates[0]
                 tag_id = tag_to_update.pop("id")
+                for attr in attr_not_clearable:
+                    if attr in tag_to_update:
+                        if not tag_to_update[attr]:
+                            message = f"You can not empty {attr} attribute"
+                    
+                if message:
+                    dash.set_props("modal-body", {"children": message})
+                    dash.set_props("modal-centered", {'is_open': True})
+                    return
                 message = f"Do you want to update tag {tag_id} To {tag_to_update}?"
                 # OPEN MODAL TO CONFIRM CHANGES
                 dash.set_props("modal-update-delete-tag-body", {"children": message})

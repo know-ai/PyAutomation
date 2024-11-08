@@ -204,7 +204,7 @@ class TagsComponents:
                             {'name': 'name', 'id': 'name'}, 
                             {'name': 'unit', 'id': 'unit', 'presentation': 'dropdown'},
                             {'name': 'display_unit', 'id': 'display_unit', 'presentation': 'dropdown'},  
-                            {'name': 'data_type', 'id': 'data_type', 'presentation': 'dropdown'}, 
+                            {'name': 'data_type', 'id': 'data_type', 'presentation': 'dropdown', 'clearable': False}, 
                             {'name': 'description', 'id': 'description'}, 
                             {'name': 'display_name', 'id': 'display_name'}, 
                             {'name': 'segment', 'id': 'segment', 'presentation': 'dropdown'},
@@ -226,7 +226,8 @@ class TagsComponents:
                                     {'label': 'Integer', 'value': 'integer'},
                                     {'label': 'Boolean', 'value': 'boolean'},
                                     {'label': 'String', 'value': 'string'}
-                                ]
+                                ],
+                                'clearable': False
                             },
                             'opcua_address': {
                                 'options': []

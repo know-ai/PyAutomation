@@ -89,9 +89,11 @@ def init_callback(app:dash.Dash):
             dropdown = {
                 "alarm_type": {
                     "options": dropdown_options_type,
+                    "clearable": False
                 },
                 "tag": {
-                    "options": dropdown_options_tag
+                    "options": dropdown_options_tag,
+                    "clearable": False
                 }
             }
 

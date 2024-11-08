@@ -62,12 +62,14 @@ def generate_dropdown_conditional():
             
             dropdown_conditional.append({
                 'if': {'column_id': 'unit', 'filter_query': f'{{unit}} eq "{unit}"'},
-                'options': options
+                'options': options,
+                'clearable': False
             })
 
             dropdown_conditional.append({
                 'if': {'column_id': 'display_unit', 'filter_query': f'{{unit}} eq "{unit}"'},
-                'options': options
+                'options': options,
+                'clearable': False
             })
 
     # dropdown conditional for node_namespace column in table
@@ -89,14 +91,6 @@ def generate_dropdown_conditional():
                 'if': {'column_id': 'node_namespace', 'filter_query': f'{{opcua_address}} eq "{server}"'},
                 'options': options
             })
-
-    # # dropdown conditional for operations in alarms definition table
-    # for state, actions in ACTIONS.items():
-
-    #     dropdown_conditional.append({
-    #             'if': {'column_id': 'operations', 'filter_query': f'{{state}} eq "{state}"'},
-    #             'options': [{'label': action, 'value': action.replace(" ", "_")} for action in actions]
-    #         })
 
     return dropdown_conditional
 
