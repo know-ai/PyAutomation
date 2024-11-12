@@ -4,7 +4,6 @@ from automation.tests.test_user import TestUsers
 from automation.tests.test_core import TestCore
 from automation.tests.test_unit import TestConversions
 from automation.tests.test_alarms import TestAlarms
-# from automation.tests.doctests.eng_unit import TestDoctestsEngUnit
 from automation.utils import units
 from automation.variables import (
     volumetric_flow,
@@ -59,5 +58,5 @@ if __name__=='__main__':
     unittests, doctests = suite()
     runner.run(unittests)
     for _doctest in doctests:
-    
+        # print(f"_doctest: {_doctest}")
         doctest.testmod(_doctest, verbose=False)

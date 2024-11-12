@@ -42,24 +42,26 @@ class PyAutomation(Singleton):
 
     **Example 1**: Using only PyAutomation Framework
 
-    .. code-block:: python
+    ```python
+    from automation import PyAutomation, server
+    app = PyAutomation()
+    app.define_dash_app(server=server)  # This is the configuration page
+    app.run(debug=True, create_tables=True)
 
-        from automation import PyAutomation, server
-        app = PyAutomation()
-        app.define_dash_app(server=server)  # This is the configuration page
-        app.run(debug=True, create_tables=True)
+    ```
 
     **Example 2**: Extending PyAutomation Framework with Flask Application
 
-    .. code-block:: python
+    ```python
+    from automation import PyAutomation
+    from app import CreateApp
+    application = CreateApp()
+    server = application()  # Flask App
+    app = PyAutomation()
+    app.define_dash_app(server=server)  # This is the configuration page
+    app.run(create_tables=True)
 
-        from automation import PyAutomation
-        from app import CreateApp
-        application = CreateApp()
-        server = application()  # Flask App
-        app = PyAutomation()
-        app.define_dash_app(server=server)  # This is the configuration page
-        app.run(create_tables=True)
+    ```
 
 """
 
