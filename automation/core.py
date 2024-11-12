@@ -150,14 +150,14 @@ class PyAutomation(Singleton):
             self.sio.emit("on_connection", data=payload)
 
     # MACHINES METHODS
-    @logging_error_handler
-    @validate_types(machine=StateMachine, interval=FloatType|IntegerType, mode=str, output=None)
-    def append_machine(self, machine, interval:float=FloatType(1.0), mode:str="async")->None:
-        r"""
-        Documentation here
-        """
-        machine.set_socketio(sio=self.sio)
-        self.machine.append_machine(machine=machine, interval=interval, mode=mode)
+    # @logging_error_handler
+    # @validate_types(machine=StateMachine, interval=FloatType|IntegerType, mode=str, output=None)
+    # def append_machine(self, machine, interval:float=FloatType(1.0), mode:str="async")->None:
+    #     r"""
+    #     Documentation here
+    #     """
+    #     machine.set_socketio(sio=self.sio)
+    #     self.machine.append_machine(machine=machine, interval=interval, mode=mode)
 
     @logging_error_handler
     @validate_types(name=StringType, output=StateMachine|None)

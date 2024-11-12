@@ -16,7 +16,8 @@ from automation.variables import (
     force,
     current,
     eng_time,
-    temperature
+    temperature,
+    volume
 )
 from automation import core
 
@@ -36,6 +37,7 @@ def suite():
     doctests = list()
     doctests.append(units)
     doctests.append(volumetric_flow)
+    doctests.append(volume)
     doctests.append(pressure)
     doctests.append(mass_flow)
     doctests.append(density)

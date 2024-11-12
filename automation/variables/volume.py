@@ -32,16 +32,16 @@ class Volume(EngUnit):
     >>> volume2 = Volume(value=120.0, unit="lt")
     >>> volume_result = volume + volume2
     >>> print(volume_result)
-    44.0 gal/sec
+    73.7006462829778 gal
     >>> volume_result = volume * volume2
     >>> print(volume_result)
-    84.0 gal
+    1331.4271438850678 gal
     >>> volume_result = volume / volume2
     >>> print(volume_result)
-    21.0 gal
+    1.3248941244 gal
     >>> volume_result = volume ** volume2
     >>> print(volume_result)
-    1764.0 gal
+    2.8711215836780378e+51 gal
 
     ```
     """
