@@ -12,16 +12,11 @@ Escribir un preambulo de contenido de la API
     :members: create_tables
     :members: drop_tables
     :members: clear_default_tables
-    :members: add_tag
     :members: get_tags
     :members: get_alarms
     :members: set_tag
     :members: set_tags
-    :members: get_table
-    :members: set_period
-    :members: get_period
-    :members: set_delay
-    :members: get_delay
+    :members: get_db_table
     :members: init_database
     :members: stop_database
     :members: get_opcua_clients

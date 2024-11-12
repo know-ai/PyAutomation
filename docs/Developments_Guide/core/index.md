@@ -26,8 +26,6 @@
     :members: unsubscribe_opcua
     :members: set_log
     :members: set_db
-    :members: init_db
-    :members: stop_db
     :members: set_db_config
     :members: get_db_config
     :members: is_db_connected

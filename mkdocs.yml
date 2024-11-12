@@ -11,6 +11,7 @@ site_dir: _build/html
 nav:
     - Summary: 'index.md'
     - Architecture: 'architecture.md'
+    - Setup: 'setup.md'
     - User' Guide:
       - Summary: 'Users_Guide/index.md'
       - Alarms: 
@@ -25,7 +26,6 @@ nav:
         - Update Tag: 'Users_Guide/Tags/Update.md' 
         - Delete Tag: 'Users_Guide/Tags/Delete.md'
         - Trends: 'Users_Guide/Tags/Trends.md'
-    - Setup: 'setup.md'
     - Development's Guide:
       - Summary: 'Developments_Guide/index.md'
       - Core:
@@ -46,7 +46,6 @@ nav:
         - State Machines:
           - Summary: Developments_Guide/API/state_machine/index.md
           - Automation State Machine: Developments_Guide/API/state_machine/automation_state_machine.md
-          - Leak State Machine: Developments_Guide/API/state_machine/leak_state_machine.md
           - Machine: Developments_Guide/API/state_machine/machine.md
         - CVT:
           - Summary: 'Developments_Guide/API/cvt/index.md'

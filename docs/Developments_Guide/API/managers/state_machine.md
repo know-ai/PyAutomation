@@ -10,4 +10,3 @@ Escribir un preambulo de contenido de la API
     :members: get_machine
     :members: summary
     :members: exist_machines
-    :members: attach_all

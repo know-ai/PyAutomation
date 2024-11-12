@@ -1154,8 +1154,14 @@ class OPCUAServer(StateMachineCore):
                 var_name = f"{segment}.{engine_name}"
 
                 if not hasattr(self, var_name):
-                        
-                    ID = blake2b(key=f"{var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                    __var_name = engine_name
+                    if "." in engine_name:
+                        __var_name = engine_name.split(".")
+                        if len(__var_name) >= 3:
+                            __var_name = ".".join(__var_name[1:])
+                        else:
+                            __var_name = ".".join(__var_name)
+                    ID = blake2b(key=f"{__var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
 
                     setattr(self, var_name, self.my_folders[segment].add_variable(
                         ua.NodeId(identifier=ID, namespaceidx=self.idx), 
@@ -1181,7 +1187,7 @@ class OPCUAServer(StateMachineCore):
                         )
 
                     for key in keep_list:
-                        ID = blake2b(key=f"{segment}.{engine_name}.{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                        ID = blake2b(key=f"{__var_name}.{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
                         prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, engine[key])  
                         browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                         browse_name.Value.Value.Name = "" 
@@ -1217,8 +1223,15 @@ class OPCUAServer(StateMachineCore):
                 var_name = f"{segment}.{alarm_name}"
 
                 if not hasattr(self, var_name):
-                        
-                    ID = blake2b(key=f"{var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                    __var_name = alarm_name
+                    if "." in alarm_name:
+                        __var_name = alarm_name.split(".")
+                        if len(__var_name) >= 3:
+                            __var_name.pop(1)
+                            __var_name = ".".join(__var_name)
+                        else:
+                            __var_name = ".".join(__var_name)
+                    ID = blake2b(key=f"{__var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
 
                     setattr(self, var_name, self.my_folders[segment].add_variable(
                         ua.NodeId(identifier=ID, namespaceidx=self.idx), 
@@ -1234,7 +1247,7 @@ class OPCUAServer(StateMachineCore):
 
                     # Add State Properties
                     for state_key, state_value in alarm.state.serialize().items():
-                        ID = blake2b(key=f"{segment}.{alarm_name}.{state_key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                        ID = blake2b(key=f"{__var_name}.{state_key}".encode('utf-8')[:64], digest_size=4).hexdigest()
                         prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), state_key, state_value)  
                         browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                         browse_name.Value.Value.Name = "" 
@@ -1320,7 +1333,7 @@ class OPCUAServer(StateMachineCore):
                     tag.pop(key)
                 # Add State Properties
                 for key, value in tag.items():
-                    ID = blake2b(key=f"{var_name}_{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                    ID = blake2b(key=f"{__var_name}_{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
                     prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)  
                     browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                     browse_name.Value.Value.Name = "" 

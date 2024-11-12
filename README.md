@@ -78,13 +78,11 @@ pip install dist/PyAutomation-1.0.0-py3-none-any.whl
 After that, you can run mkdocs serve
 
 
-
 # Deploy
 
 Make the following `.env` file:
 
 ```
-REACT_VERSION=18.2.0
 PORT=5000
 ```
 
@@ -105,7 +103,6 @@ sudo docker run -d \
   -v $(pwd)/temp/db:/app/db \
   -v $(pwd)/temp/logs:/app/logs \
   -e PORT=${PORT} \
-  -e REACT_VERSION=${REACT_VERSION} \
   knowai/automation:1.0.0
 ```
 

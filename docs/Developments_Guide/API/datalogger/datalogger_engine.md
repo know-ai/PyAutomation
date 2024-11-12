@@ -13,6 +13,5 @@ Escribir un preambulo de contenido de la API
     :members: delete_tag
     :members: write_tag
     :members: write_tags
-    :members: read_tag
     :members: request
     :members: response

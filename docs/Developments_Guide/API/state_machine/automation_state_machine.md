@@ -22,7 +22,6 @@ Escribir un preambulo de contenido de la API
     :members: on_reset_to_start
     :members: on_restart_to_wait
     :members: set_buffer_size
-    :members: get_state_interval
     :members: get_subscribed_tags
     :members: subscribe_to
     :members: notify
@@ -32,7 +31,6 @@ Escribir un preambulo de contenido de la API
     :members: _get_active_transitions
     :members: _activate_triggers
     :members: loop
-    :members: info
     :members: get_states
     :members: serialize
     
