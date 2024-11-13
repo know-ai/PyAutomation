@@ -68,10 +68,12 @@ class VerifyCredentialsResource(Resource):
     
     @api.doc(security='apikey')
     @Api.token_required(auth=True)
+    @Api.validate_reqparser(reqparser=login_parser)
     @ns.expect(login_parser)
     def post(self):
         """Verify user credentials"""
-        credentials_valid, _ = users.verify_credentials(**api.payload)
+        args = login_parser.parse_args()
+        credentials_valid, _ = users.verify_credentials(**args)
         return credentials_valid, 200
     
 @ns.route('/<username>')
