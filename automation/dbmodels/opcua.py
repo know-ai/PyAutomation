@@ -2,7 +2,7 @@ from peewee import CharField, IntegerField
 from ..dbmodels.core import BaseModel
 
 class OPCUA(BaseModel):
-
+    
     client_name = CharField(unique=True)
     host = CharField()
     port = IntegerField()

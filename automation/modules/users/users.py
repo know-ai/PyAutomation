@@ -16,7 +16,7 @@ class User:
             email:str, 
             password:str, 
             name:str=None, 
-            lastname:str=None, 
+            lastname:str=None,
             identifier:str=None):
 
         self.identifier = secrets.token_hex(4)
@@ -27,7 +27,7 @@ class User:
         self.email = email
         self.password = password
         self.name = name
-        self.lastname = lastname 
+        self.lastname = lastname
         self.token = None
 
     def logout(self):
@@ -107,7 +107,7 @@ class Auth:
             role:Role, 
             email:str, 
             password:str, 
-            name:str=None, 
+            name:str=None,
             lastname:str=None,
             identifier:str=None,
             encode_password:bool=True
@@ -191,7 +191,7 @@ class Users(Singleton):
             role_name:str, 
             email:str, 
             password:str, 
-            name:str=None, 
+            name:str=None,
             lastname:str=None,
             identifier:str=None,
             encode_password:bool=True

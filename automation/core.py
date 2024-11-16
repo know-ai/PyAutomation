@@ -4,6 +4,7 @@ from math import ceil
 from datetime import datetime, timezone
 # DRIVERS IMPORTATION
 from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
+# from peewee_migrations import Router
 from .dbmodels.users import Roles, Users
 from .dbmodels.machines import Machines
 # PYAUTOMATION MODULES IMPORTATION
@@ -148,16 +149,6 @@ class PyAutomation(Singleton):
                 "last_logs": self.get_lasts_logs(lasts=10) or list()
             }
             self.sio.emit("on_connection", data=payload)
-
-    # MACHINES METHODS
-    # @logging_error_handler
-    # @validate_types(machine=StateMachine, interval=FloatType|IntegerType, mode=str, output=None)
-    # def append_machine(self, machine, interval:float=FloatType(1.0), mode:str="async")->None:
-    #     r"""
-    #     Documentation here
-    #     """
-    #     machine.set_socketio(sio=self.sio)
-    #     self.machine.append_machine(machine=machine, interval=interval, mode=mode)
 
     @logging_error_handler
     @validate_types(name=StringType, output=StateMachine|None)
@@ -845,6 +836,22 @@ class PyAutomation(Singleton):
         self.db_manager.set_db(self._db, is_history_logged=self.__log_histories)
         self.db_manager.set_dropped(drop_table)
 
+
+    # def __migrate_db(self):
+    #     r"""
+    #     Documentaion here
+    #     """
+    #     # Verificar y aplicar todas las migraciones pendientes 
+        
+    #     # router = Router(self._db)
+    #     print("Router methods:", dir(router))
+    #     print("Type of router.diff:", type(router.diff))
+
+        # if router.diff:
+        # # migration_name = f"automation_{int(datetime.now(timezone.utc).timestamp())}"
+        # router.create("initial")
+        # router.run()
+
     @logging_error_handler
     @validate_types(
             dbtype=str, 
@@ -941,7 +948,6 @@ class PyAutomation(Singleton):
         
             dbtype = db_config.pop("dbtype")
             self.__log_histories = True
-
             self.set_db(dbtype=dbtype, **db_config)
             self.db_manager.init_database()
             self.load_opcua_clients_from_db()
@@ -952,6 +958,8 @@ class PyAutomation(Singleton):
             if reload:
 
                 self.load_db_tags_to_machine()
+
+            # self.__migrate_db()
 
     @logging_error_handler
     @validate_types(output=None)

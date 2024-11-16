@@ -9,7 +9,7 @@ DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 
 class Events(BaseModel):
-
+    
     timestamp = TimestampField(utc=True)
     message = CharField(max_length=256)
     description = CharField(max_length=256, null=True)

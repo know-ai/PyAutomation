@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class Manufacturer(BaseModel):
-
+    
     name = CharField(unique=True)
 
     @classmethod
@@ -74,14 +74,9 @@ class Manufacturer(BaseModel):
     
 
 class Segment(BaseModel):
-
+    
     name = CharField()
     manufacturer = ForeignKeyField(Manufacturer, backref='segments')
-
-    # class Meta:
-    #     indexes = (
-    #         (('name', 'manufacturer'), True),
-    #     )
 
     @classmethod
     def create(cls, name:str, manufacturer:str)-> dict:
@@ -143,7 +138,7 @@ class Segment(BaseModel):
 
 
 class Variables(BaseModel):
-
+    
     name = CharField(unique=True)
 
     @classmethod
@@ -255,7 +250,7 @@ class Variables(BaseModel):
 
 
 class Units(BaseModel):
-
+    
     name = CharField(unique=True)
     unit = CharField(unique=True)
     variable_id = ForeignKeyField(Variables, backref='units', on_delete='CASCADE')
@@ -433,7 +428,7 @@ class Units(BaseModel):
 
 
 class DataTypes(BaseModel):
-
+    
     name = CharField(unique=True)
 
     @classmethod
@@ -545,7 +540,7 @@ class DataTypes(BaseModel):
 
 
 class Tags(BaseModel):
-
+    
     identifier = CharField(unique=True)
     name = CharField(unique=True)
     unit = ForeignKeyField(Units, backref='tags')
@@ -877,7 +872,7 @@ class Tags(BaseModel):
 
 
 class TagValue(BaseModel):
-
+    
     tag = ForeignKeyField(Tags, backref='values')
     unit = ForeignKeyField(Units, backref='values')
     value = FloatField()

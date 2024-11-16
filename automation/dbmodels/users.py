@@ -11,7 +11,7 @@ users = CVTUsers()
 roles = CVTRoles()
 
 class Roles(BaseModel):
-
+    
     identifier = CharField(unique=True, max_length=16)
     name = CharField(unique=True, max_length=32)
     level = IntegerField()
@@ -96,7 +96,7 @@ class Roles(BaseModel):
 
 
 class Users(BaseModel):
-
+    
     identifier = CharField(unique=True, max_length=16)
     username = CharField(unique=True, max_length=64)
     role = ForeignKeyField(Roles, backref='users', on_delete='CASCADE')

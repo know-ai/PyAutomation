@@ -119,7 +119,6 @@ class AlarmStates(BaseModel):
     r"""
     Based on ISA 18.2
     """
-
     name = CharField(unique=True)
     mnemonic = CharField(max_length=20)
     condition = CharField(max_length=20)
@@ -214,7 +213,7 @@ class AlarmStates(BaseModel):
 
 
 class Alarms(BaseModel):
-
+    
     identifier = CharField(unique=True)
     name = CharField(unique=True, max_length=128)
     tag = ForeignKeyField(Tags, backref='alarms')

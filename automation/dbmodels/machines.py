@@ -4,7 +4,7 @@ from .tags import Tags
 
 
 class Machines(BaseModel):
-
+    
     identifier = CharField(unique=True)
     name = CharField(unique=True)
     interval = FloatField()
@@ -147,7 +147,7 @@ class Machines(BaseModel):
 
 
 class TagsMachines(BaseModel):
-
+    
     tag = ForeignKeyField(Tags, backref="machines")
     machine = ForeignKeyField(Machines, backref="tags")
     default_tag_name = CharField(max_length=64, null=True)
