@@ -1183,14 +1183,16 @@ class OPCUAServer(StateMachineCore):
                         "criticity",
                         "priority",
                         "classification",
-                        "machine_interval"
+                        "machine_interval",
+                        "maneuver"
                         )
 
                     for key in keep_list:
-                        ID = blake2b(key=f"{__var_name}.{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, engine[key])  
-                        browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
-                        browse_name.Value.Value.Name = "" 
+                        if key in engine:
+                            ID = blake2b(key=f"{__var_name}.{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                            prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, engine[key])  
+                            browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+                            browse_name.Value.Value.Name = "" 
 
     def __set_alarms(self):
         r"""
