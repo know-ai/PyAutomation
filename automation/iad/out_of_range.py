@@ -27,7 +27,7 @@ def iad_out_of_range(func, args, kwargs):
         data[tag.name](value)
         # Apply IAD logic
         if len(data[tag.name]) >= data[tag.name].size:
-            kwargs["value"] = __iad(data[tag.name])
-            return func(*args, **kwargs)
+            
+            __iad(data[tag.name])
 
     return func(*args, **kwargs)

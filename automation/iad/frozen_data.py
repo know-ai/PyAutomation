@@ -1,14 +1,31 @@
 from ..utils.decorators import decorator
 from ..buffer import Buffer
+import math
 
 data = dict()
 
-
-def __iad(data:Buffer):
+def __iad(data:Buffer, tag_name:str):
     r"""
     Frozen Data Algorithm
     """
-    return data.current()
+    from ..managers.alarms import AlarmManager
+    alarm_manager = AlarmManager()
+    alarm = alarm_manager.get_alarm_by_name(name=f"alarm.iad.{tag_name}")
+    if alarm.state.alarm_status.lower() == "not active":
+
+        mean = sum(data) / len(data)
+        variance = sum((x - mean) ** 2 for x in data) / len(data)
+        std_dev = math.sqrt(variance)
+        
+        if abs(std_dev) < 0.01:
+            
+            alarm.description = f"The measurement has been the same for a long time"
+            alarm.abnormal_condition()
+        
+        else:
+            
+            alarm.description = ""
+            alarm.normal_condition()
 
 @decorator
 def iad_frozen_data(func, args, kwargs):
@@ -29,7 +46,7 @@ def iad_frozen_data(func, args, kwargs):
         data[tag.name](value)
         # Apply IAD logic
         if len(data[tag.name]) >= data[tag.name].size:
-            kwargs["value"] = __iad(data[tag.name])
-            return func(*args, **kwargs)
+            
+            __iad(data[tag.name], tag_name=tag.name)
 
     return func(*args, **kwargs)
