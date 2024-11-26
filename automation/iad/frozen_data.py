@@ -17,9 +17,9 @@ def __iad(data:Buffer, tag_name:str):
         variance = sum((x - mean) ** 2 for x in data) / len(data)
         std_dev = math.sqrt(variance)
         
-        if abs(std_dev) < 0.01:
+        if abs(std_dev) < 0.001:
             
-            alarm.description = f"The measurement has been the same for a long time"
+            alarm.description = f"Frozen data anomaly"
             alarm.abnormal_condition()
         
         else:
