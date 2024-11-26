@@ -54,20 +54,20 @@ def generate_dropdown_conditional():
     data = VARIABLES
     dropdown_conditional = []
     # dropdown conditional for unit column in table
-    for _, sub_dict in data.items():
+    for variable, sub_dict in data.items():
 
         for unit in sub_dict.values():
 
             options = find_keys_values_by_unit(data, unit)
             
             dropdown_conditional.append({
-                'if': {'column_id': 'unit', 'filter_query': f'{{unit}} eq "{unit}"'},
+                'if': {'column_id': 'unit', 'filter_query': f'{{variable}} eq "{variable}"'},
                 'options': options,
                 'clearable': False
             })
 
             dropdown_conditional.append({
-                'if': {'column_id': 'display_unit', 'filter_query': f'{{unit}} eq "{unit}"'},
+                'if': {'column_id': 'display_unit', 'filter_query': f'{{variable}} eq "{variable}"'},
                 'options': options,
                 'clearable': False
             })

@@ -21,6 +21,8 @@ def iad_frozen_data(func, args, kwargs):
     if tag.name not in data:
         data[tag.name] = Buffer()
     data[tag.name](value)
+    print(f"[{tag.name}]: {value}")
+    print(f"Data: {data[tag.name]}")
     # Apply IAD logic
     if len(data[tag.name]) >= data[tag.name].size:
         kwargs["value"] = __iad(data[tag.name])

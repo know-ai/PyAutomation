@@ -144,6 +144,34 @@ class Tag:
         """
 
         self.variable = variable
+        if variable.lower()=="temperature":
+            self.value = Temperature(value=0.0, unit=self.unit)
+        elif variable.lower()=="length":
+            self.value = Length(value=0.0, unit=self.unit)
+        elif variable.lower()=="time":
+            self.value = Time(value=0.0, unit=self.unit)
+        elif variable.lower()=="pressure":
+            self.value = Pressure(value=0.0, unit=self.unit)
+        elif variable.lower()=="mass":
+            self.value = Mass(value=0.0, unit=self.unit)
+        elif variable.lower()=="force":
+            self.value = Force(value=0.0, unit=self.unit)
+        elif variable.lower()=="power":
+            self.value = Power(value=0.0, unit=self.unit)
+        elif variable.lower()=="current":
+            self.value = Current(value=0.0, unit=self.unit)
+        elif variable.lower()=="volumetricflow":
+            self.value = VolumetricFlow(value=0.0, unit=self.unit)
+        elif variable.lower()=="massflow":
+            self.value = MassFlow(value=0.0, unit=self.unit)
+        elif variable.lower()=="density":
+            self.value = Density(value=0.0, unit=self.unit)
+        elif variable.lower()=="percentage":
+            self.value = Percentage(value=0.0, unit=self.unit)
+        elif variable.lower()=="adimentional":
+            self.value = Adimentional(value=0.0, unit=self.unit)
+        elif variable.lower()=="volume":
+            self.value = Volume(value=0.0, unit=self.unit)
 
     def set_opcua_address(self, opcua_address:str):
         r"""

@@ -29,6 +29,7 @@ from .dbmodels.core import BaseModel
 from .utils.decorators import validate_types, logging_error_handler
 from flask_socketio import SocketIO
 from geventwebsocket.handler import WebSocketHandler
+from .variables import VARIABLES
 # DASH APP CONFIGURATION PAGES IMPORTATION
 from .pages.main import ConfigView
 from .pages.callbacks import init_callbacks
@@ -394,29 +395,35 @@ class PyAutomation(Singleton):
 
         self.unsubscribe_opcua(tag)
         # Persist Tag on Database
-        if self.is_db_connected():
+        if "variable" in kwargs:
+            
+            kwargs["unit"] = list(VARIABLES[kwargs["variable"]].values())[0]
+            kwargs["display_unit"] = list(VARIABLES[kwargs["variable"]].values())[0]
 
-            self.logger_engine.update_tag(
-                id=id,  
-                **kwargs
-            )
-        
         result = self.cvt.update_tag(
             id=id,  
             user=user,
             **kwargs
         )
+        if self.is_db_connected():
+            if 'variable' in kwargs:
+                kwargs.pop("variable")
+            self.logger_engine.update_tag(
+                id=id,  
+                **kwargs
+            )
         if "name" in kwargs:
             self.das.buffer.pop(tag_name)
         
         self.__update_buffer(tag=tag)
-
+    
         if "scan_time" in kwargs:
             scan_time = kwargs["scan_time"]
             if isinstance(scan_time, int):
                 self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
             else:
                 self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
+        
         return result
 
     @logging_error_handler

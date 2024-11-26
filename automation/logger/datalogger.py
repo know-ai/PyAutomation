@@ -100,7 +100,6 @@ class DataLogger(BaseLogger):
         """
         if self.get_db():
             tag = Tags.get(identifier=id)
-
             return Tags.put(id=tag.id, **kwargs)
 
     @db_rollback

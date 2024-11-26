@@ -236,15 +236,15 @@ def init_callback(app:dash.Dash):
 
             machine_name = active_tab.split("-")[-1]
             machine = app.automation.get_machine(name=StringType(machine_name))
-            attr = getattr(machine, internal_tag_input)
-            internal_unit = attr.unit
+            # attr = getattr(machine, internal_tag_input)
+            # internal_unit = attr.unit
             field_tag = app.automation.cvt._cvt.get_tag_by_name(name=field_tag_input)
-            if internal_unit not in eval(f"{field_tag.variable}.Units.list()"):
+            # if internal_unit not in eval(f"{field_tag.variable}.Units.list()"):
             
-                dash.set_props("modal-error-body-subscription", {"children": f'{internal_tag_input} [{internal_unit}] is not a {field_tag.variable} variable like {field_tag_input}'})
-                dash.set_props("modal-error-subscription", {'is_open': True})
+            #     dash.set_props("modal-error-body-subscription", {"children": f'{internal_tag_input} [{internal_unit}] is not a {field_tag.variable} variable like {field_tag_input}'})
+            #     dash.set_props("modal-error-subscription", {'is_open': True})
 
-                return "", "", "", field_tag_options, internal_tag_options, tags_machine_options
+            #     return "", "", "", field_tag_options, internal_tag_options, tags_machine_options
 
             subscribed, message = machine.subscribe_to(tag=field_tag, default_tag_name=internal_tag_input)
 

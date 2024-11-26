@@ -179,10 +179,12 @@ def init_callback(app:dash.Dash):
             },
             'segment': {
                 'options': [{'label': f"{segment['manufacturer']['name']}->{segment['name']}", 'value': f"{segment['manufacturer']['name']}->{segment['name']}"} for segment in app.automation.get_segments() if app.automation.get_segments()]
+            },
+            'variable': {
+                'options': [{"label": key, "value": key} for key, _ in VARIABLES.items()]
             }
         }
         dropdown_conditional = generate_dropdown_conditional()
-        
         if pathname=="/tags":
             return app.tags_table_data(), opcua_client_options, dropdown, dropdown_conditional
         
@@ -314,9 +316,12 @@ def init_callback(app:dash.Dash):
                 'opcua_address': {
                     'options': opcua_client_options
                 },
-                'segment': segment
+                'segment': segment,
+                'variable': {
+                    'options': [{"label": key, "value": key} for key, _ in VARIABLES.items()]
+                }
             }
-
+        
             return app.tags_table_data(), generate_dropdown_conditional(), dropdown
         
     @app.callback(
@@ -326,7 +331,7 @@ def init_callback(app:dash.Dash):
         )
     def delete_update_tags(timestamp, previous, current):
         message = None
-        attr_not_clearable = ("name", "unit", "display_name", "display_unit", "data_type")
+        attr_not_clearable = ("name", "unit", "display_name", "display_unit", "data_type", "variable")
         if timestamp:
             
             if len(previous) > len(current): # DELETE TAG

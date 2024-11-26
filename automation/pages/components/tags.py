@@ -202,6 +202,7 @@ class TagsComponents:
                         columns=[
                             {'name': 'id', 'id': 'id', 'editable': False}, 
                             {'name': 'name', 'id': 'name'}, 
+                            {'name': 'variable', 'id': 'variable', 'presentation': 'dropdown', 'clearable': False},
                             {'name': 'unit', 'id': 'unit', 'presentation': 'dropdown'},
                             {'name': 'display_unit', 'id': 'display_unit', 'presentation': 'dropdown'},  
                             {'name': 'data_type', 'id': 'data_type', 'presentation': 'dropdown', 'clearable': False}, 
@@ -231,6 +232,9 @@ class TagsComponents:
                             },
                             'opcua_address': {
                                 'options': []
+                            },
+                            'variable': {
+                                'options': [{"label": key, "value": key} for key, _ in VARIABLES.items()]
                             }
                         },
                         page_action="native",
