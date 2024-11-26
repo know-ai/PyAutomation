@@ -843,22 +843,6 @@ class PyAutomation(Singleton):
         self.db_manager.set_db(self._db, is_history_logged=self.__log_histories)
         self.db_manager.set_dropped(drop_table)
 
-
-    # def __migrate_db(self):
-    #     r"""
-    #     Documentaion here
-    #     """
-    #     # Verificar y aplicar todas las migraciones pendientes 
-        
-    #     # router = Router(self._db)
-    #     print("Router methods:", dir(router))
-    #     print("Type of router.diff:", type(router.diff))
-
-        # if router.diff:
-        # # migration_name = f"automation_{int(datetime.now(timezone.utc).timestamp())}"
-        # router.create("initial")
-        # router.run()
-
     @logging_error_handler
     @validate_types(
             dbtype=str, 
@@ -1523,7 +1507,7 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
             
             self.load_db_tags_to_machine()
-    
+
         self.is_starting = False
 
     @logging_error_handler

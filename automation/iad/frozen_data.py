@@ -21,15 +21,11 @@ def iad_frozen_data(func, args, kwargs):
     value = kwargs["value"]
     tag = cvt.get_tag(id=tag_id)
     if tag.frozen_data_detection:
-        if tag.name not in data:
-            data[tag.name] = Buffer()
-            
-            # Create Alarm
-            from automation import PyAutomation
-            app = PyAutomation()
-            alarm_name = f"alarm.iad.frozen.{tag.name}"
-            app.create_alarm(name=alarm_name, tag=f"{tag.name}", description="The measurement has been repeated for a long time")
         
+        if tag.name not in data:
+            
+            data[tag.name] = Buffer()
+
         data[tag.name](value)
         # Apply IAD logic
         if len(data[tag.name]) >= data[tag.name].size:

@@ -33,6 +33,7 @@ from .variables import (
     Adimentional)
 from .logger.machines import MachinesLoggerEngine
 from .logger.datalogger import DataLoggerEngine
+from .logger.alarms import AlarmsLoggerEngine
 from flask_socketio import SocketIO
 
 
@@ -46,6 +47,8 @@ class Machine(Singleton):
         self.machines_engine = MachinesLoggerEngine()
         self.logger_engine = DataLoggerEngine()
         self.db_manager = DBManager()
+        self.alarm_manager = AlarmManager()
+        self.alarms_engine = AlarmsLoggerEngine()
         self.state_worker = None
 
     def append_machine(self, machine:StateMachine, interval:FloatType=FloatType(1), mode:str='async'):
@@ -253,7 +256,10 @@ class Machine(Singleton):
                             variable=variable,
                             description=description,
                             segment=SEGMENT,
-                            manufacturer=MANUFACTURER
+                            manufacturer=MANUFACTURER,
+                            out_of_range_detection=True,
+                            frozen_data_detection=True,
+                            outlier_detection=True
                         )
 
                         if tag:
@@ -263,13 +269,82 @@ class Machine(Singleton):
                             attr.tag = tag
                             self.logger_engine.set_tag(tag=tag)
                             self.db_manager.attach(tag_name=tag_name)
-                            break
+                            break 
+            
+            self.__define_iad_alarms()
+             
+    def create_alarm(
+            self,
+            name:str,
+            tag:str,
+            alarm_type:str="BOOL",
+            trigger_value:bool|float|int=True,
+            description:str="",
+            identifier:str=None,
+            state:str="Normal",
+            timestamp:str=None,
+            ack_timestamp:str=None,
+            user:User=None,
+            reload:bool=False
+        ):
+        r"""
+        Append alarm to the Alarm Manager
 
-    def create_process_variable_into_db_bound_field_data(self, machine:StateMachine):
+        **Paramters**
+
+        * **alarm**: (Alarm Object)
+
+        **Returns**
+
+        * **None**
+        """
+        alarm, message = self.alarm_manager.append_alarm(
+            name=name,
+            tag=tag,
+            type=alarm_type,
+            trigger_value=trigger_value,
+            description=description,
+            identifier=identifier,
+            state=state,
+            timestamp=timestamp,
+            ack_timestamp=ack_timestamp,
+            user=user,
+            reload=reload,
+        )
+
+        if alarm:
+
+            # Persist Tag on Database
+            if not reload:
+                if self.db_manager.get_db():
+                    
+                    alarm = self.alarm_manager.get_alarm_by_name(name=name)
+                    
+                    self.alarms_engine.create(
+                        id=alarm.identifier,
+                        name=name,
+                        tag=tag,
+                        trigger_type=alarm_type,
+                        trigger_value=trigger_value,
+                        description=description
+                    )
+            
+            return alarm, message
+
+        return None, message          
+
+    def __define_iad_alarms(self):
         r"""
         Documentation here
         """
-        pass
+        cvt = CVTEngine()
+        tags = cvt.get_tags()
+        for tag in tags:
+            
+            if tag['frozen_data_detection'] or tag['out_of_range_detection'] or tag['outlier_detection']:
+
+                    alarm_name = f"alarm.{tag['name']}.iad"
+                    self.create_alarm(name=alarm_name, tag=tag['name'])
 
     @logging_error_handler
     def stop(self):

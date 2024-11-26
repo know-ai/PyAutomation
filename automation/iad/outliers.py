@@ -19,14 +19,10 @@ def iad_outlier(func, args, kwargs):
     value = kwargs["value"]
     tag = cvt.get_tag(id=tag_id)
     if tag.outlier_detection:
+        
         if tag.name not in data:
-            data[tag.name] = Buffer()
             
-            # Create Alarm
-            from automation import PyAutomation
-            app = PyAutomation()
-            alarm_name = f"alarm.iad.outlier.{tag.name}"
-            app.create_alarm(name=alarm_name, tag=f"{tag.name}", description="An outlier has been found")
+            data[tag.name] = Buffer()
     
         data[tag.name](value)
         # Apply IAD logic

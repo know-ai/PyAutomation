@@ -58,7 +58,6 @@ class Alarm(StateMachine):
     out_of_service_to_normal = out_of_service.to(normal)
     out_of_service_to_unack_alarm = out_of_service.to(unack_alarm)
 
-    @logging_error_handler
     def __init__(
             self,
             name:str, 
@@ -109,6 +108,7 @@ class Alarm(StateMachine):
             self.identifier = identifier
         else:
             self.identifier = secrets.token_hex(4)
+
         self._shelved_time:datetime = None
         self._shelved_until:datetime = None
         self._shelved_options_time = {
