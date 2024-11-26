@@ -28,9 +28,7 @@ def iad_frozen_data(func, args, kwargs):
             from automation import PyAutomation
             app = PyAutomation()
             alarm_name = f"alarm.iad.frozen.{tag.name}"
-            if not app.alarm_manager.get_alarm_by_name(name=alarm_name):
-                if app.is_db_connected():
-                    app.create_alarm(name=alarm_name, tag=f"{tag.name}", description="The measurement has been repeated for a long time")
+            app.create_alarm(name=alarm_name, tag=f"{tag.name}", description="The measurement has been repeated for a long time")
         
         data[tag.name](value)
         # Apply IAD logic

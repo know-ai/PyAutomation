@@ -26,9 +26,7 @@ def iad_outlier(func, args, kwargs):
             from automation import PyAutomation
             app = PyAutomation()
             alarm_name = f"alarm.iad.outlier.{tag.name}"
-            if not app.alarm_manager.get_alarm_by_name(name=alarm_name):
-                if app.is_db_connected():
-                    app.create_alarm(name=alarm_name, tag=f"{tag.name}", description="An outlier has been found")
+            app.create_alarm(name=alarm_name, tag=f"{tag.name}", description="An outlier has been found")
     
         data[tag.name](value)
         # Apply IAD logic
