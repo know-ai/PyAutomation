@@ -1097,6 +1097,8 @@ class DAQ(StateMachineCore):
                 data_value = values[0][0]["DataValue"]
                 value = data_value.Value.Value
                 timestamp = data_value.SourceTimestamp
+                if not timestamp:
+                    timestamp = datetime.now(pytz.utc)
                 timestamp = timestamp.replace(tzinfo=pytz.UTC)
                 val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
                 tag.value.set_value(value=val, unit=tag.get_display_unit()) 
@@ -1503,6 +1505,7 @@ class OPCUAServer(StateMachineCore):
                     display_name = prop.get_display_name().Text                
                     attr = engine[display_name]
                     prop.set_value(attr)
+
 
 class AutomationStateMachine(StateMachineCore):
     r"""
