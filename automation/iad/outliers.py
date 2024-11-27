@@ -10,21 +10,22 @@ def __iad(data:Buffer, tag_name:str):
     from ..managers.alarms import AlarmManager
     alarm_manager = AlarmManager()
     alarm = alarm_manager.get_alarm_by_name(name=f"alarm.iad.{tag_name}")
-    if alarm.state.alarm_status.lower() == "not active":
+    if alarm:
+        if alarm.state.alarm_status.lower() == "not active":
 
-        mean = sum(data) / len(data)
-        # variance = sum((x - mean) ** 2 for x in data) / len(data)
-        # std_dev = math.sqrt(variance)
-        
-        # if abs(std_dev) < 0.01:
+            mean = sum(data) / len(data)
+            # variance = sum((x - mean) ** 2 for x in data) / len(data)
+            # std_dev = math.sqrt(variance)
             
-        #     alarm.description = f"Outlier anomaly"
-        #     alarm.abnormal_condition()
-        
-        # else:
+            # if abs(std_dev) < 0.01:
+                
+            #     alarm.description = f"Outlier anomaly"
+            #     alarm.abnormal_condition()
             
-        #     alarm.description = ""
-        #     alarm.normal_condition()
+            # else:
+                
+            #     alarm.description = ""
+            #     alarm.normal_condition()
 
 @decorator
 def iad_outlier(func, args, kwargs):

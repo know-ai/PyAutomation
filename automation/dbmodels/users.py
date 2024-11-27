@@ -21,7 +21,7 @@ class Roles(BaseModel):
         {"name": "supervisor", "level": 2, "identifier": secrets.token_hex(4)},
         {"name": "operator", "level": 10, "identifier": secrets.token_hex(4)},
         {"name": "auditor", "level": 100, "identifier": secrets.token_hex(4)},
-        {"name": "guess", "level": 256, "identifier": secrets.token_hex(4)}
+        {"name": "guest", "level": 256, "identifier": secrets.token_hex(4)}
     ]
 
     @classmethod
