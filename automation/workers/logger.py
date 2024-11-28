@@ -6,6 +6,7 @@ This module implements Logger Worker.
 import logging, time, datetime, os, shutil
 from .worker import BaseWorker
 from ..managers import DBManager
+from ..managers import OPCUAClientManager
 from ..logger.datalogger import DataLoggerEngine
 from ..tags.cvt import CVTEngine
 import sqlite3
@@ -25,6 +26,7 @@ class LoggerWorker(BaseWorker):
         self._manager = manager
         self._period = period
         self.logger = DataLoggerEngine()
+        self.opcua_client_manager = OPCUAClientManager()
         self.cvt = CVTEngine()
         self.sqlite_db = None
         self.sqlite_db_name = None
@@ -110,3 +112,8 @@ class LoggerWorker(BaseWorker):
                 logger = logging.getLogger("pyautomation")
                 logger.info("Alarm worker shutdown successfully!")
                 break
+
+            # Check if OPCUA Client are disconnected and reconnect them
+            for opcua_client in self.opcua_client_manager._clients.values():
+
+                opcua_client.reconnect()

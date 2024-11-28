@@ -1,7 +1,7 @@
 from opcua import Client as OPCClient
 from opcua import ua
 from opcua.ua.uatypes import NodeId, datatype_to_varianttype
-import re, uuid, logging
+import re, uuid, logging, time
 
 
 class Client(OPCClient):
@@ -57,6 +57,20 @@ class Client(OPCClient):
                 'id': self.get_id()
                 }
             return result, 404
+        
+    def reconnect(self):
+
+        logger = logging.getLogger("pyautomation")
+        
+        if not self.is_connected(): 
+            
+            logger.critical("Attempting to reconnect...") 
+            self.disconnect() 
+            result, status = self.connect() 
+            
+            if status == 200: 
+                
+                logger.critical("Reconnected successfully") 
 
     def __reset_object_attributes(self):
         r"""
