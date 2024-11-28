@@ -8,7 +8,7 @@ class Client(OPCClient):
     r"""
     Documentation here
     """
-    def __init__(self, url, client_name:str, timeout=10):
+    def __init__(self, url, client_name:str, timeout=60):
         r"""
         Documentation here
         """
