@@ -1261,7 +1261,8 @@ class OPCUAServer(StateMachineCore):
                         "priority",
                         "classification",
                         "machine_interval",
-                        "maneuver"
+                        "maneuver",
+                        "operation"
                         )
 
                     for key in keep_list:

@@ -1531,7 +1531,7 @@ class PyAutomation(Singleton):
         logging.getLogger("urllib3").setLevel(logging.WARNING)
         logging.getLogger("requests").setLevel(logging.WARNING)
         logging.getLogger('peewee').setLevel(logging.WARNING)
-        logging.getLogger('opcua').setLevel(logging.WARNING)
+        logging.getLogger('opcua').setLevel(logging.CRITICAL)
         logger = logging.getLogger("pyautomation")
         logger.setLevel(self._logging_level)
         handler = TimedRotatingFileHandler(self._log_file, when='midnight', backupCount=365)

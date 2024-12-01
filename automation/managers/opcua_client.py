@@ -112,20 +112,23 @@ class OPCUAClientManager:
         Documentation here
         """
         client = self.get(client_name=client_name)
-        root_node = client.get_root_node()
-        _tree = client.browse_tree(root_node)
-        result = {
-            "Objects": _tree[0]["children"]
-        }
-        return result, 200
+        if client.is_connected():
+            root_node = client.get_root_node()
+            _tree = client.browse_tree(root_node)
+            result = {
+                "Objects": _tree[0]["children"]
+            }
+            return result, 200
+        
+        return {}, 400
         
     def get_node_values(self, client_name:str, namespaces:list)->list:
 
         if client_name in self._clients:
 
             client = self._clients[client_name]
-
-            return client.get_nodes_values(namespaces=namespaces)
+            if client.is_conneted():
+                return client.get_nodes_values(namespaces=namespaces)
         
     def get_node_value_by_opcua_address(self, opcua_address:str, namespace:str)->list:
         r"""
@@ -134,8 +137,8 @@ class OPCUAClientManager:
         for client_name, client in self._clients.items():
 
             if opcua_address==client.serialize()["server_url"]:
-                
-                return self.get_node_attributes(client_name=client_name, namespaces=[namespace])
+                if client.is_connected():
+                    return self.get_node_attributes(client_name=client_name, namespaces=[namespace])
         
     def get_node_attributes(self, client_name:str, namespaces:list)->list:
 
@@ -146,8 +149,8 @@ class OPCUAClientManager:
             client = self._clients[client_name]
 
             for namespace in namespaces:
-
-                result.append(client.get_node_attributes(node_namespace=namespace))
+                if client.is_connected():
+                    result.append(client.get_node_attributes(node_namespace=namespace))
 
             return result
 

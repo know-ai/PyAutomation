@@ -68,7 +68,13 @@ class SubHandler(Singleton):
                 subscription = monitored_item["subscription"]
                 subscription.unsubscribe(item)
                 
-        self.monitored_items = dict()            
+        self.monitored_items = dict()  
+
+    def resubscribe_all(self, client): 
+        for client_name, monitored_items in self.monitored_items.items(): 
+            for node_id, monitored_item in monitored_items.items(): 
+                subscription = monitored_item["subscription"] 
+                monitored_item["monitored_item"] = subscription.subscribe_data_change(client.get_node(node_id))   
 
     def datachange_notification(self, node, val, data):
         r"""
@@ -154,6 +160,12 @@ class DAS(Singleton):
                 item = node["monitored_item"]
                 subscription = node["subscription"]
                 subscription.unsubscribe(item)
+
+    def resubscribe_all(self, client): 
+        for client_name, monitored_items in self.monitored_items.items(): 
+            for node_id, monitored_item in monitored_items.items(): 
+                subscription = monitored_item["subscription"] 
+                monitored_item["monitored_item"] = subscription.subscribe_data_change(client.get_node(node_id))
 
     def datachange_notification(self, node, val, data):
         r"""

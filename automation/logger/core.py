@@ -95,6 +95,23 @@ class BaseLogger(Singleton):
 
         self._db.drop_tables(tables, safe=True)
 
+    def check_db_connection(self): 
+        try: 
+            
+            db = self.get_db()
+            
+            if db:
+                 
+                if db.is_connection_usable(): 
+                    
+                    return True 
+            
+            return False
+        
+        except: 
+            logging.error("DB is unreacheable ...")
+            return False
+
 class BaseEngine(Singleton):
     r"""
     Alarms logger Engine class for Tag thread-safe database logging.

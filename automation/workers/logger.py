@@ -6,7 +6,7 @@ This module implements Logger Worker.
 import logging, time, datetime, os, shutil
 from .worker import BaseWorker
 from ..managers import DBManager
-from ..managers import OPCUAClientManager
+from ..opcua.models import Client
 from ..logger.datalogger import DataLoggerEngine
 from ..tags.cvt import CVTEngine
 import sqlite3
@@ -26,7 +26,6 @@ class LoggerWorker(BaseWorker):
         self._manager = manager
         self._period = period
         self.logger = DataLoggerEngine()
-        self.opcua_client_manager = OPCUAClientManager()
         self.cvt = CVTEngine()
         self.sqlite_db = None
         self.sqlite_db_name = None
@@ -85,35 +84,41 @@ class LoggerWorker(BaseWorker):
             time.sleep(self._period)
             tags = list()
 
-            while not _queue.empty():
+            if self.logger.logger.check_db_connection():
 
-                item = _queue.get(block=False)
-                tag_name = item["tag"]
-                tag = self.cvt.get_tag_by_name(name=tag_name)
-                if tag:
+                while not _queue.empty():
 
-                    if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:
+                    item = _queue.get(block=False)
+                    tag_name = item["tag"]
+                    tag = self.cvt.get_tag_by_name(name=tag_name)
+                    if tag:
 
-                        value = item['value']
-                        timestamp = item["timestamp"]
-                        tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
+                        if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:
 
-                    elif not MANUFACTURER and not SEGMENT:
+                            value = item['value']
+                            timestamp = item["timestamp"]
+                            tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
 
-                        value = item['value']
-                        timestamp = item["timestamp"]
-                        tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
-    
-            if tags:
-                
-                self.logger.write_tags(tags=tags)
+                        elif not MANUFACTURER and not SEGMENT:
 
-            if self.stop_event.is_set():
-                logger = logging.getLogger("pyautomation")
-                logger.info("Alarm worker shutdown successfully!")
-                break
+                            value = item['value']
+                            timestamp = item["timestamp"]
+                            tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
+        
+                if tags:
+                    
+                    self.logger.write_tags(tags=tags)
 
+                if self.stop_event.is_set():
+                    logger = logging.getLogger("pyautomation")
+                    logger.critical("Alarm worker shutdown successfully!")
+                    break
+            
             # Check if OPCUA Client are disconnected and reconnect them
-            for opcua_client in self.opcua_client_manager._clients.values():
+            from automation import PyAutomation
+            app = PyAutomation()
+            for _, opcua_client in app.opcua_client_manager._clients.items():
 
-                opcua_client.reconnect()
+                if isinstance(opcua_client, Client):
+                    
+                    opcua_client.reconnect()
