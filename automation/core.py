@@ -924,7 +924,7 @@ class PyAutomation(Singleton):
         return False
 
     @logging_error_handler
-    @validate_types(test=bool|type(None), reload=bool|type(None), output=None)
+    @validate_types(test=bool|type(None), reload=bool|type(None), output=None|bool)
     def connect_to_db(self, test:bool=False, reload:bool=False):
         r"""
         Documentation here
@@ -950,7 +950,7 @@ class PyAutomation(Singleton):
 
                 self.load_db_tags_to_machine()
 
-            # self.__migrate_db()
+        return True
 
     @logging_error_handler
     @validate_types(output=None)
@@ -1439,6 +1439,8 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             return self.logs_engine.get_lasts(lasts=lasts) or list()
+        
+        return list()
 
     # INIT APP
     @logging_error_handler

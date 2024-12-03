@@ -25,6 +25,16 @@ class BaseLogger(Singleton):
         """
         return self._db
     
+    def check_connectivity(self):
+
+        try: 
+            if self._db:
+                self._db.execute_sql('SELECT 1;') 
+                return True
+            return False
+        except: 
+            return False
+    
     def set_is_history_logged(self, value:bool=False):
         r"""Documentation here
         """
@@ -94,23 +104,6 @@ class BaseLogger(Singleton):
             return
 
         self._db.drop_tables(tables, safe=True)
-
-    def check_db_connection(self): 
-        try: 
-            
-            db = self.get_db()
-            
-            if db:
-                 
-                if db.is_connection_usable(): 
-                    
-                    return True 
-            
-            return False
-        
-        except: 
-            logging.error("DB is unreacheable ...")
-            return False
 
 class BaseEngine(Singleton):
     r"""

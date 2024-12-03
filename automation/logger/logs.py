@@ -32,21 +32,21 @@ class LogsLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
+        if not self.check_connectivity():
+
+            return list()
             
-            query, message = Logs.create(
-                message=message, 
-                user=user, 
-                description=description, 
-                classification=classification,
-                alarm_summary_id=alarm_summary_id,
-                event_id=event_id,
-                timestamp=timestamp
-            )
+        query, message = Logs.create(
+            message=message, 
+            user=user, 
+            description=description, 
+            classification=classification,
+            alarm_summary_id=alarm_summary_id,
+            event_id=event_id,
+            timestamp=timestamp
+        )
 
-            return query, message
-
-        return None, f"DB Not Initialized"
+        return query, message
 
     @db_rollback
     def get_lasts(self, lasts:int=1):
@@ -57,11 +57,12 @@ class LogsLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
+        if not self.check_connectivity():
+
+            return list()
         
-            return Logs.read_lasts(lasts=lasts)
+        return Logs.read_lasts(lasts=lasts)
         
-        return list(), f"DB Not Initialized"
     
     @db_rollback
     def filter_by(
@@ -83,21 +84,21 @@ class LogsLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
+        if not self.check_connectivity():
+
+            return list()
         
-            return Logs.filter_by(
-                usernames=usernames,
-                alarm_names=alarm_names,
-                event_ids=event_ids,
-                message=message,
-                description=description,
-                classification=classification,
-                greater_than_timestamp=greater_than_timestamp,
-                less_than_timestamp=less_than_timestamp,
-                timezone=timezone
-            )
-        
-        return list(), f"DB Not Initialized"
+        return Logs.filter_by(
+            usernames=usernames,
+            alarm_names=alarm_names,
+            event_ids=event_ids,
+            message=message,
+            description=description,
+            classification=classification,
+            greater_than_timestamp=greater_than_timestamp,
+            less_than_timestamp=less_than_timestamp,
+            timezone=timezone
+        )
 
     @db_rollback  
     def get_summary(self)->tuple[list, str]:
@@ -108,11 +109,12 @@ class LogsLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
+        if not self.check_connectivity():
             
-            return Logs.serialize()
-        
-        return list(), f"DB Not Initialized"
+            return list()
+            
+        return Logs.serialize()
+    
     
 class LogsLoggerEngine(BaseEngine):
     r"""

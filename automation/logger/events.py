@@ -30,17 +30,19 @@ class EventsLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
+        if not self.check_connectivity():
             
-            return Events.create(
-                message=message, 
-                user=user, 
-                description=description, 
-                classification=classification,
-                priority=priority,
-                criticity=criticity,
-                timestamp=timestamp
-            )
+            return None
+            
+        return Events.create(
+            message=message, 
+            user=user, 
+            description=description, 
+            classification=classification,
+            priority=priority,
+            criticity=criticity,
+            timestamp=timestamp
+        )
 
     def get_lasts(self, lasts:int=1):
         r"""
@@ -50,9 +52,11 @@ class EventsLogger(BaseLogger):
 
             return list()
         
-        if self.get_db():
+        if not self.check_connectivity():
+            
+            return list()
         
-            return Events.read_lasts(lasts=lasts)
+        return Events.read_lasts(lasts=lasts)
     
     def filter_by(
         self,
@@ -73,18 +77,20 @@ class EventsLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
+        if not self.check_connectivity():
+            
+            return list()
         
-            return Events.filter_by(
-                usernames=usernames,
-                priorities=priorities,
-                criticities=criticities,
-                message=message,
-                classification=classification,
-                description=description,
-                greater_than_timestamp=greater_than_timestamp,
-                less_than_timestamp=less_than_timestamp,
-                timezone=timezone
+        return Events.filter_by(
+            usernames=usernames,
+            priorities=priorities,
+            criticities=criticities,
+            message=message,
+            classification=classification,
+            description=description,
+            greater_than_timestamp=greater_than_timestamp,
+            less_than_timestamp=less_than_timestamp,
+            timezone=timezone
             )
 
     def get_summary(self)->tuple[list, str]:
@@ -95,11 +101,11 @@ class EventsLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
+        if not self.check_connectivity():
             
-            return Events.serialize()
-        
-        return list(), f"DB Not Initialized"
+            return list()
+            
+        return Events.serialize()
     
 class EventsLoggerEngine(BaseEngine):
     r"""

@@ -58,67 +58,84 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if self.get_db():
+        if not self.check_connectivity():
+
+            return None
             
-            Tags.create(
-                id=id,
-                name=name, 
-                unit=unit,
-                data_type=data_type,
-                description=description,
-                display_name=display_name,
-                display_unit=display_unit,
-                opcua_address=opcua_address,
-                node_namespace=node_namespace,
-                scan_time=scan_time,
-                dead_band=dead_band,
-                manufacturer=manufacturer,
-                segment=segment
-                )
+        Tags.create(
+            id=id,
+            name=name, 
+            unit=unit,
+            data_type=data_type,
+            description=description,
+            display_name=display_name,
+            display_unit=display_unit,
+            opcua_address=opcua_address,
+            node_namespace=node_namespace,
+            scan_time=scan_time,
+            dead_band=dead_band,
+            manufacturer=manufacturer,
+            segment=segment
+            )
             
     @db_rollback
     def delete_tag(self, id:str):
         r"""
         Documentation here
         """
-        if self.get_db():
-            tag, _ = Tags.get_or_create(identifier=id)
-            Tags.put(id=tag.id, active=False)
+        if not self.check_connectivity():
+
+            return None
+        
+        tag, _ = Tags.get_or_create(identifier=id)
+        Tags.put(id=tag.id, active=False)
 
     @db_rollback
     def get_tag_by_name(self, name:str):
         r"""
         Documentation here
         """
-        if self.get_db():
-            return Tags.read_by_name(name=name)
+        if not self.check_connectivity():
+
+            return None
+        
+        return Tags.read_by_name(name=name)
 
     @db_rollback
     def update_tag(self, id:str, **kwargs):
         r"""
         Documentation here
         """
-        if self.get_db():
-            tag = Tags.get(identifier=id)
-            return Tags.put(id=tag.id, **kwargs)
+        if not self.check_connectivity():
+
+            return None
+        
+        tag = Tags.get(identifier=id)
+        return Tags.put(id=tag.id, **kwargs)
 
     @db_rollback
     def set_tags(self, tags):
         r"""
         Documentation here
         """
-        if self.get_db():
-            for tag in tags:
+        if not self.check_connectivity():
 
-                self.set_tag(tag)
+            return None
+        
+        for tag in tags:
+
+            self.set_tag(tag)
 
     @db_rollback
     def get_tags(self):
         r"""
         Documentation here
         """
-        if self.get_db():
-            return Tags.read_all()
+        if not self.check_connectivity():
+
+            return list()
+            
+        return Tags.read_all()
     
     @db_rollback
     def write_tag(self, tag, value, timestamp):
@@ -129,10 +146,13 @@ class DataLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
-            trend = Tags.read_by_name(tag)
-            unit = Units.read_by_unit(unit=trend.display_unit.unit)
-            TagValue.create(tag=trend, value=value, timestamp=timestamp, unit=unit)
+        if not self.check_connectivity():
+
+            return None
+        
+        trend = Tags.read_by_name(tag)
+        unit = Units.read_by_unit(unit=trend.display_unit.unit)
+        TagValue.create(tag=trend, value=value, timestamp=timestamp, unit=unit)
 
     @db_rollback
     def write_tags(self, tags:list):
@@ -143,23 +163,25 @@ class DataLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
-            
-            _tags = tags.copy()
-            
-            for counter, tag in enumerate(tags):
-                
-                _tag = Tags.read_by_name(tag['tag'])
-                
-                if _tag:
+        if not self.check_connectivity():
 
-                    unit = Units.get_or_none(id=_tag.display_unit.id)
-                    _tags[counter].update({
-                        'tag': _tag,
-                        'unit': unit
-                    })
+            return None
             
-            TagValue.insert_many(_tags).execute()
+        _tags = tags.copy()
+        
+        for counter, tag in enumerate(tags):
+            
+            _tag = Tags.read_by_name(tag['tag'])
+            
+            if _tag:
+
+                unit = Units.get_or_none(id=_tag.display_unit.id)
+                _tags[counter].update({
+                    'tag': _tag,
+                    'unit': unit
+                })
+        
+        TagValue.insert_many(_tags).execute()
 
     @db_rollback
     def read_trends(self, start:str, stop:str, timezone:str, tags):
@@ -170,53 +192,55 @@ class DataLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
+        if not self.check_connectivity():
 
-            _timezone = pytz.timezone(timezone)
-            start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
-            stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()           
-            query = (TagValue
-                    .select(Tags.name, TagValue.value, TagValue.timestamp,
-                            Units.unit.alias('tag_value_unit'), Variables.name.alias('variable_name'))
-                    .join(Tags)
-                    .join(Units, on=(Tags.unit == Units.id))
-                    .join(Variables, on=(Units.variable_id == Variables.id))
-                    .where((TagValue.timestamp.between(start, stop)) & (Tags.name.in_(tags)))
-                    .order_by(TagValue.timestamp)
-                    .dicts()) 
-            
-            # Structure the data
-            time_span = (stop - start ) / 60 # span in minutes
-            result = defaultdict(lambda: {"values": []})
-            if time_span > 60 * 24 * 7:  # 1 week
-                # Aggregate data every 1 day
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600 * 24, timezone=timezone)
+            return dict()
 
-            elif time_span > 60 * 24 * 2:  # 2 days
-                # Aggregate data every 1 hora
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600, timezone=timezone)
+        _timezone = pytz.timezone(timezone)
+        start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
+        stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()           
+        query = (TagValue
+                .select(Tags.name, TagValue.value, TagValue.timestamp,
+                        Units.unit.alias('tag_value_unit'), Variables.name.alias('variable_name'))
+                .join(Tags)
+                .join(Units, on=(Tags.unit == Units.id))
+                .join(Variables, on=(Units.variable_id == Variables.id))
+                .where((TagValue.timestamp.between(start, stop)) & (Tags.name.in_(tags)))
+                .order_by(TagValue.timestamp)
+                .dicts()) 
+        
+        # Structure the data
+        time_span = (stop - start ) / 60 # span in minutes
+        result = defaultdict(lambda: {"values": []})
+        if time_span > 60 * 24 * 7:  # 1 week
+            # Aggregate data every 1 day
+            result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600 * 24, timezone=timezone)
 
-            elif time_span > 60 * 2:  # 2 horas
-                # Aggregate data every 1 minute
-                result = self._agregate_data_every_seconds(query=query, result=result, seconds=60, timezone=timezone)
+        elif time_span > 60 * 24 * 2:  # 2 days
+            # Aggregate data every 1 hora
+            result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600, timezone=timezone)
 
-            else:
-                # Use original data
-                for entry in query:
+        elif time_span > 60 * 2:  # 2 horas
+            # Aggregate data every 1 minute
+            result = self._agregate_data_every_seconds(query=query, result=result, seconds=60, timezone=timezone)
 
-                    from_timezone = pytz.timezone('UTC')
-                    timestamp = entry['timestamp']
-                    timestamp = from_timezone.localize(timestamp)
-                    result[entry['name']]["values"].append({
-                        "x": timestamp.astimezone(_timezone).strftime(self.tag_engine.DATETIME_FORMAT),
-                        "y": entry['value']
-                    })
+        else:
+            # Use original data
+            for entry in query:
 
-            for tag in tags:
+                from_timezone = pytz.timezone('UTC')
+                timestamp = entry['timestamp']
+                timestamp = from_timezone.localize(timestamp)
+                result[entry['name']]["values"].append({
+                    "x": timestamp.astimezone(_timezone).strftime(self.tag_engine.DATETIME_FORMAT),
+                    "y": entry['value']
+                })
 
-                result[tag]['unit'] = self.tag_engine.get_display_unit_by_tag(tag)
-            
-            return result
+        for tag in tags:
+
+            result[tag]['unit'] = self.tag_engine.get_display_unit_by_tag(tag)
+        
+        return result
         
     def _agregate_data_every_seconds(self, query, result, seconds:int, timezone:str="UTC"):
         r"""Documentation here
@@ -253,11 +277,11 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if self.get_db():
+        if not self.check_connectivity():
 
-            return Segment.read_all()
-        
-        return list()
+            return list()
+
+        return Segment.read_all()
 
 
 class DataLoggerEngine(BaseEngine):

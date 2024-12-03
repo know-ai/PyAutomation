@@ -20,7 +20,7 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if not self._db:
+        if not self.check_connectivity():
             
             return
         
@@ -57,11 +57,11 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if not self._db:
+        if not self.check_connectivity():
             
-            return
+            return 
 
-        query = Alarms.create(
+        Alarms.create(
             identifier=id,
             name=name,
             tag=tag,
@@ -75,7 +75,7 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if not self._db:
+        if not self.check_connectivity():
             
             return list()
         
@@ -90,7 +90,7 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if not self._db:
+        if not self.check_connectivity():
             
             return None
         
@@ -105,7 +105,7 @@ class AlarmsLogger(BaseLogger):
 
             return list()
         
-        if not self._db:
+        if not self.check_connectivity():
             
             return list()
         
@@ -128,7 +128,7 @@ class AlarmsLogger(BaseLogger):
 
             return None
         
-        if not self._db:
+        if not self.check_connectivity():
             
             return list()
         
@@ -152,7 +152,7 @@ class AlarmsLogger(BaseLogger):
         trigger_value:str=None,
         state:str=None
         ):
-        if not self._db:
+        if not self.check_connectivity():
             
             return None
         
@@ -185,7 +185,7 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if not self._db:
+        if not self.check_connectivity():
             
             return None
         
@@ -205,7 +205,7 @@ class AlarmsLogger(BaseLogger):
 
             return None
         
-        if self.get_db():
+        if self.check_connectivity():
             
             AlarmSummary.create(name=name, state=state, timestamp=timestamp, ack_timestamp=ack_timestamp)
 
@@ -214,7 +214,7 @@ class AlarmsLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if not self._db:
+        if not self.check_connectivity():
             
             return None
         
@@ -250,7 +250,7 @@ class AlarmsLogger(BaseLogger):
 
             return None
         
-        if not self._db:
+        if not self.check_connectivity():
             
             return list()
         

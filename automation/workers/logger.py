@@ -83,8 +83,7 @@ class LoggerWorker(BaseWorker):
             self.sqlite_db_backup()
             time.sleep(self._period)
             tags = list()
-
-            if self.logger.logger.check_db_connection():
+            if self.logger.logger.check_connectivity():
 
                 while not _queue.empty():
 
@@ -110,10 +109,16 @@ class LoggerWorker(BaseWorker):
                     self.logger.write_tags(tags=tags)
 
                 if self.stop_event.is_set():
-                    logger = logging.getLogger("pyautomation")
-                    logger.critical("Alarm worker shutdown successfully!")
+                    logging.critical("Alarm worker shutdown successfully!")
                     break
-            
+
+            else:
+
+                from automation import PyAutomation
+                app = PyAutomation()
+                if app.connect_to_db(reload=True):
+                    logging.critical("Reconnection successfully")
+
             # Check if OPCUA Client are disconnected and reconnect them
             from automation import PyAutomation
             app = PyAutomation()

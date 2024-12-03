@@ -32,22 +32,27 @@ class MachinesLogger(BaseLogger):
         r"""
         Documentation here
         """
-        if self.get_db():
-            if hasattr(threshold, "value"):
-                threshold = threshold.value
-            Machines.create(
-                identifier=identifier,
-                name=name,
-                interval=interval,
-                description=description,
-                classification=classification,
-                buffer_size=buffer_size,
-                buffer_roll_type=buffer_roll_type,
-                criticity=criticity,
-                priority=priority,
-                on_delay=on_delay,
-                threshold=threshold
-            )
+        if not self.check_connectivity():
+
+            return None
+        
+        if hasattr(threshold, "value"):
+            
+            threshold = threshold.value
+       
+        Machines.create(
+            identifier=identifier,
+            name=name,
+            interval=interval,
+            description=description,
+            classification=classification,
+            buffer_size=buffer_size,
+            buffer_roll_type=buffer_roll_type,
+            criticity=criticity,
+            priority=priority,
+            on_delay=on_delay,
+            threshold=threshold
+        )
 
     @db_rollback
     def put(
@@ -63,60 +68,76 @@ class MachinesLogger(BaseLogger):
         on_delay:IntegerType=None,
         threshold:FloatType=None
         ):
-        if self.get_db():
-            fields = dict()
-            machine = Machines.read_by_name(name=name.value)
-            if machine_interval:
-                
-                fields["interval"] = machine_interval.value
-            if description:
-                fields["description"] = description.value
-            if classification:
-                fields["classification"] = classification.value
-            if buffer_size:
-                fields["buffer_size"] = buffer_size.value
-            if buffer_roll_type:
-                fields["buffer_roll_type"] = buffer_roll_type.value
-            if criticity:
-                fields["criticity"] = criticity.value
-            if priority:
-                fields["priority"] = priority.value
-            if on_delay:
-                fields["on_delay"] = on_delay.value
-            if threshold:
-                if hasattr(threshold.value, "value"):
-                    threshold.value = threshold.value.value
-                fields["threshold"] = threshold.value
-                
-            query = Machines.put(
-                id=machine.id,
-                **fields
-            )
 
-            return query
+        if not self.check_connectivity():
+            
+            return None
+
+        fields = dict()
+        machine = Machines.read_by_name(name=name.value)
+        if machine_interval:
+            
+            fields["interval"] = machine_interval.value
+        if description:
+            fields["description"] = description.value
+        if classification:
+            fields["classification"] = classification.value
+        if buffer_size:
+            fields["buffer_size"] = buffer_size.value
+        if buffer_roll_type:
+            fields["buffer_roll_type"] = buffer_roll_type.value
+        if criticity:
+            fields["criticity"] = criticity.value
+        if priority:
+            fields["priority"] = priority.value
+        if on_delay:
+            fields["on_delay"] = on_delay.value
+        if threshold:
+            if hasattr(threshold.value, "value"):
+                threshold.value = threshold.value.value
+            fields["threshold"] = threshold.value
+            
+        query = Machines.put(
+            id=machine.id,
+            **fields
+        )
+
+        return query
     
     @db_rollback
     def read_all(self):
-        if self.get_db():
-            return Machines.read_all()
+        if not self.check_connectivity():
+
+            return list()
+        
+        return Machines.read_all()
     
     @db_rollback
     def read_config(self):
-        if self.get_db():
-            return Machines.read_config()
+        if not self.check_connectivity():
+            
+            return None
+
+        return Machines.read_config()
     
     @db_rollback
     def bind_tag(self, tag:Tag, machine, default_tag_name:str=None):
-        if self.get_db():
-            TagsMachines.create(tag_name=tag.name, machine_name=machine.name.value, default_tag_name=default_tag_name)
+        if not self.check_connectivity():
+
+            return None
+            
+        TagsMachines.create(tag_name=tag.name, machine_name=machine.name.value, default_tag_name=default_tag_name)
 
     @db_rollback
     def unbind_tag(self, tag:Tag, machine):
-        if self.get_db():
-            tag_from_db = Tags.get_or_none(name=tag.name)
-            machine_from_db= Machines.get_or_none(name=machine.name.value)
-            tags_machine = TagsMachines.get((TagsMachines.tag == tag_from_db) & (TagsMachines.machine == machine_from_db))
-            tags_machine.delete_instance()    
+        if not self.check_connectivity():
+
+            return None
+
+        tag_from_db = Tags.get_or_none(name=tag.name)
+        machine_from_db= Machines.get_or_none(name=machine.name.value)
+        tags_machine = TagsMachines.get((TagsMachines.tag == tag_from_db) & (TagsMachines.machine == machine_from_db))
+        tags_machine.delete_instance()    
 
 class MachinesLoggerEngine(BaseEngine):
     r"""
