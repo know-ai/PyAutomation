@@ -765,7 +765,6 @@ class PyAutomation(Singleton):
         self._log_file = file
         
     # DATABASES
-    @logging_error_handler
     @validate_types(
             dbtype=str, 
             drop_table=bool, 
@@ -840,6 +839,7 @@ class PyAutomation(Singleton):
             self._db = PostgresqlDatabase(db_name, **kwargs)
 
         proxy.initialize(self._db)
+        self._db.connect()
         self.db_manager.set_db(self._db, is_history_logged=self.__log_histories)
         self.db_manager.set_dropped(drop_table)
 
@@ -923,34 +923,63 @@ class PyAutomation(Singleton):
         
         return False
 
-    @logging_error_handler
     @validate_types(test=bool|type(None), reload=bool|type(None), output=None|bool)
     def connect_to_db(self, test:bool=False, reload:bool=False):
         r"""
         Documentation here
         """
-        db_config = self.get_db_config()
+        try:
+            db_config = self.get_db_config()
 
-        if test:
+            if test:
+                
+                db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
             
-            db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
-        
-        if db_config:
-        
-            dbtype = db_config.pop("dbtype")
-            self.__log_histories = True
-            self.set_db(dbtype=dbtype, **db_config)
-            self.db_manager.init_database()
-            self.load_opcua_clients_from_db()
-            self.load_db_to_cvt()
-            self.load_db_to_alarm_manager()
-            self.load_db_to_roles()
-            self.load_db_to_users()
-            if reload:
+            if db_config:
+            
+                dbtype = db_config.pop("dbtype")
+                self.__log_histories = True
+                self.set_db(dbtype=dbtype, **db_config)
+                self.db_manager.init_database()
+                self.load_opcua_clients_from_db()
+                self.load_db_to_cvt()
+                self.load_db_to_alarm_manager()
+                self.load_db_to_roles()
+                self.load_db_to_users()
+                if reload:
 
-                self.load_db_tags_to_machine()
+                    self.load_db_tags_to_machine()
+                
+            return True
+        
+        except Exception as err:
+            logging.critical(f"CONNECTING DATABASE ERROR: {err}")
+            return False
+        
+    @validate_types(test=bool|type(None), reload=bool|type(None), output=None|bool)
+    def reconnect_to_db(self, test:bool=False):
+        r"""
+        Documentation here
+        """
+        try:
+            db_config = self.get_db_config()
 
-        return True
+            if test:
+                
+                db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
+            
+            if db_config:
+            
+                dbtype = db_config.pop("dbtype")
+                self.__log_histories = True
+                self.set_db(dbtype=dbtype, **db_config) 
+                self.db_manager.init_database()               
+
+            return True
+        
+        except Exception as err:
+            self.db_manager._logger.logger._db = None
+            return False
 
     @logging_error_handler
     @validate_types(output=None)

@@ -267,7 +267,8 @@ class DBManager(Singleton):
                 logger.error("Database:{}".format(error))
         
         self.create_tables()
-        self.set_tags()
+
+        # self.set_tags()
 
     def stop_database(self):
         r"""

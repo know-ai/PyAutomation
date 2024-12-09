@@ -28,11 +28,17 @@ class BaseLogger(Singleton):
     def check_connectivity(self):
 
         try: 
+            
             if self._db:
-                self._db.execute_sql('SELECT 1;') 
+                
+                self._db.execute_sql('SELECT 1;')
+                
                 return True
+            
             return False
+        
         except: 
+            
             return False
     
     def set_is_history_logged(self, value:bool=False):
@@ -44,8 +50,13 @@ class BaseLogger(Singleton):
         r""""
         Documentation here
         """
-        self._db.close()
-        self._db = None
+        try:
+            if self._db:
+                self._db.close()
+                self._db = None
+        except:
+
+            pass
 
     def create_tables(self, tables):
         r"""

@@ -19,7 +19,7 @@ from ..dbmodels.logs import Logs
 
 class LoggerWorker(BaseWorker):
 
-    def __init__(self, manager:DBManager, period:int=10.0):
+    def __init__(self, manager:DBManager, period:int=5.0):
 
         super(LoggerWorker, self).__init__()
         
@@ -72,58 +72,85 @@ class LoggerWorker(BaseWorker):
                     self.sqlite_db = db
                     self.sqlite_db_name = db.database
 
+    def check_opcua_connection(self):
+        from automation import PyAutomation
+        app = PyAutomation()
+        for _, opcua_client in app.opcua_client_manager._clients.items():
+
+            if isinstance(opcua_client, Client):
+                
+                opcua_client.reconnect()
+
+    def get_tags_from_queue(self, _queue):
+        from .. import SEGMENT, MANUFACTURER
+        tags = list()
+        while not _queue.empty():
+
+            item = _queue.get(block=False)
+            tag_name = item["tag"]
+            tag = self.cvt.get_tag_by_name(name=tag_name)
+            if tag:
+
+                if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:
+
+                    value = item['value']
+                    timestamp = item["timestamp"]
+                    tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
+
+                elif not MANUFACTURER and not SEGMENT:
+
+                    value = item['value']
+                    timestamp = item["timestamp"]
+                    tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
+
+        return tags
+
+    def reconnect_to_db(self):
+        from automation import PyAutomation
+        app = PyAutomation()
+        self.db_reconnection = False
+        logging.critical("Trying reconnect to DB...")
+        db_connected = app.reconnect_to_db()
+                
+        if db_connected:
+            
+            logging.critical("Reconnection successfully")
+            self.db_reconnection = True
+
     def run(self):
         r"""
         Documentation here
-        """
-        from .. import SEGMENT, MANUFACTURER
+        """       
         _queue = self._manager.get_queue()
+        self.db_reconnection = True
 
         while True:
-            self.sqlite_db_backup()
-            time.sleep(self._period)
-            tags = list()
-            if self.logger.logger.check_connectivity():
 
-                while not _queue.empty():
+            if self.db_reconnection:
 
-                    item = _queue.get(block=False)
-                    tag_name = item["tag"]
-                    tag = self.cvt.get_tag_by_name(name=tag_name)
-                    if tag:
-
-                        if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:
-
-                            value = item['value']
-                            timestamp = item["timestamp"]
-                            tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
-
-                        elif not MANUFACTURER and not SEGMENT:
-
-                            value = item['value']
-                            timestamp = item["timestamp"]
-                            tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
-        
-                if tags:
+                db_connection = self.logger.logger.check_connectivity()
+            
+                if db_connection:
+                    self.sqlite_db_backup()
+                    tags = self.get_tags_from_queue(_queue=_queue)
+            
+                    if tags:
+                        
+                        self.logger.write_tags(tags=tags)
+                        logging.critical("Writing on DB OK")
                     
-                    self.logger.write_tags(tags=tags)
+                else:
 
-                if self.stop_event.is_set():
-                    logging.critical("Alarm worker shutdown successfully!")
-                    break
-
+                    self.reconnect_to_db()
+            
             else:
 
-                from automation import PyAutomation
-                app = PyAutomation()
-                if app.connect_to_db(reload=True):
-                    logging.critical("Reconnection successfully")
+                self.reconnect_to_db()
 
-            # Check if OPCUA Client are disconnected and reconnect them
-            from automation import PyAutomation
-            app = PyAutomation()
-            for _, opcua_client in app.opcua_client_manager._clients.items():
+            self.check_opcua_connection()
 
-                if isinstance(opcua_client, Client):
-                    
-                    opcua_client.reconnect()
+            if self.stop_event.is_set():
+                logging.critical("Alarm worker shutdown successfully!")
+                break
+
+            time.sleep(self._period)

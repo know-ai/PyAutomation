@@ -4,7 +4,7 @@
 This module implements a database logger for the CVT instance, 
 will create a time-serie for each tag in a short memory data base.
 """
-import pytz
+import pytz, logging
 from collections import defaultdict
 from datetime import datetime
 from ..tags.tag import Tag

@@ -202,5 +202,6 @@ def db_rollback(func, args, kwargs):
         logger.warning(f"Rollback in [line {e_line_number}] {self.__class__.__name__}.{func.__name__} - {e_message}")
         conn = self._db.connection()
         conn.rollback()
+        result = func(*args, **kwargs)
 
-    return result
+        return result
