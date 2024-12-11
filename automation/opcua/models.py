@@ -86,8 +86,8 @@ class Client(OPCClient):
         
     def reconnect(self):
 
-        # if not self.is_connected() or not self.is_token_valid(): 
-        if not self.is_connected(): 
+        if not self.is_connected() or not self.is_token_valid(): 
+        # if not self.is_connected(): 
             
             from automation import PyAutomation
             app = PyAutomation()
@@ -98,7 +98,7 @@ class Client(OPCClient):
                 
                 if status == 200:
                     # Revolver tokens de seguridad para asegurar la validez 
-                    # self.revolve_security_tokens()
+                    self.revolve_security_tokens()
                     app.sio.emit("on.opcua.connected", data={"message": f"Conneted to {self._server_url}"})
                     tags = app.get_tags()
                     for tag in tags:

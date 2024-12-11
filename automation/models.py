@@ -57,9 +57,7 @@ class PropertyType:
                             timestamp = machine.data_timestamp
                         else:
                             timestamp = datetime.now(timezone.utc)
-                        
-                        if self.tag.get_unit().lower()!="adim":
-                            val = self.tag.value.convert_value(value=value.value, from_unit=self.tag.get_unit(), to_unit=self.tag.get_display_unit())
+                        val = self.tag.value.convert_value(value=value.value, from_unit=self.tag.get_unit(), to_unit=self.tag.get_display_unit())
                         self.tag.value.set_value(value=val, unit=self.tag.get_display_unit()) 
                         self.cvt.set_value(id=self.tag.id, value=val, timestamp=timestamp)
                         if self.tag.get_name() in self.das.buffer:

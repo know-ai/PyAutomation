@@ -108,8 +108,12 @@ class LoggerWorker(BaseWorker):
     def reconnect_to_db(self):
         from automation import PyAutomation
         app = PyAutomation()
+        
+        if self.db_reconnection:
+            
+            logging.critical("Trying reconnect to DB...")
+        
         self.db_reconnection = False
-        logging.critical("Trying reconnect to DB...")
         db_connected = app.reconnect_to_db()
                 
         if db_connected:
@@ -137,7 +141,6 @@ class LoggerWorker(BaseWorker):
                     if tags:
                         
                         self.logger.write_tags(tags=tags)
-                        logging.critical("Writing on DB OK")
                     
                 else:
 

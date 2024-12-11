@@ -973,7 +973,13 @@ class PyAutomation(Singleton):
                 dbtype = db_config.pop("dbtype")
                 self.__log_histories = True
                 self.set_db(dbtype=dbtype, **db_config) 
-                self.db_manager.init_database()               
+                self.db_manager.init_database()   
+                self.load_opcua_clients_from_db()
+                self.load_db_to_cvt()
+                self.load_db_to_alarm_manager()
+                self.load_db_to_roles()
+                self.load_db_to_users()
+                self.load_db_tags_to_machine()            
 
             return True
         
@@ -1364,6 +1370,8 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             return self.events_engine.get_lasts(lasts=lasts)
+        
+        return list()
 
     @logging_error_handler
     def filter_events_by(
@@ -1393,6 +1401,8 @@ class PyAutomation(Singleton):
                 less_than_timestamp=less_than_timestamp,
                 timezone=timezone
             )
+        
+        return list()
         
     # LOGS METHODS
     @logging_error_handler
