@@ -94,7 +94,7 @@ class Client(OPCClient):
             app.sio.emit("on.opcua.disconnected", data={"message": f"Disconneted from {self._server_url}"})
             logging.critical(f"Attempting to reconnect to {self._server_url}")  
             try:
-                # self.disconnect()
+
                 result, status = self.connect()
                 
                 if status == 200:

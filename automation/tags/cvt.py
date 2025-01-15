@@ -404,11 +404,11 @@ class CVT:
         return data
     
     @logging_error_handler
-    @gaussian_noise_filter
-    @process_noise_filter
-    @iad_frozen_data
-    @iad_out_of_range
-    @iad_outlier
+    # @gaussian_noise_filter
+    # @process_noise_filter
+    # @iad_frozen_data
+    # @iad_out_of_range
+    # @iad_outlier
     def set_value(self, id:str, value, timestamp:datetime):
         """Sets a new value for a defined tag.
         
