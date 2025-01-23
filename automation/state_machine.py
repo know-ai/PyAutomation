@@ -27,6 +27,7 @@ from .variables import (
     Force,
     Power,
     VolumetricFlow,
+    Volume,
     MassFlow,
     Density,
     Percentage,
@@ -721,13 +722,13 @@ class StateMachineCore(StateMachine):
 
     @validate_types(
             tag=str, 
-            value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density|Percentage|Adimentional, 
+            value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|Volume|MassFlow|Density|Percentage|Adimentional, 
             timestamp=datetime, 
             output=None)
     def notify(
         self, 
         tag:str, 
-        value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density|Percentage|Adimentional, 
+        value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|Volume|MassFlow|Density|Percentage|Adimentional, 
         timestamp:datetime):
         r"""
         This method provide an interface to CVT to notify if tag value has change
@@ -1201,6 +1202,7 @@ class OPCUAServer(StateMachineCore):
         r"""
         documentation here
         """
+        from . import MANUFACTURER
         segment = "Engines"
         engines = self.machine.machine_manager.get_machines()
 
@@ -1232,13 +1234,13 @@ class OPCUAServer(StateMachineCore):
                 var_name = f"{segment}.{engine_name}"
 
                 if not hasattr(self, var_name):
-                    __var_name = engine_name
-                    if "." in engine_name:
-                        __var_name = engine_name.split(".")
-                        if len(__var_name) >= 3:
-                            __var_name = ".".join(__var_name[1:])
-                        else:
-                            __var_name = ".".join(__var_name)
+                    __var_name = engine_name.replace(f"{MANUFACTURER}.", "")
+                    # if "." in engine_name:
+                    #     __var_name = engine_name.split(".")
+                    #     if len(__var_name) >= 3:
+                    #         __var_name = ".".join(__var_name[1:])
+                    #     else:
+                    #         __var_name = ".".join(__var_name)
                     ID = blake2b(key=f"{__var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
 
                     setattr(self, var_name, self.my_folders[segment].add_variable(
@@ -1277,6 +1279,7 @@ class OPCUAServer(StateMachineCore):
         r"""
         Documentation here
         """
+        from . import MANUFACTURER
         alarms = self.alarm_manager.get_alarms()
         segment = "Alarms"
         for _, alarm in alarms.items():
@@ -1304,14 +1307,7 @@ class OPCUAServer(StateMachineCore):
                 var_name = f"{segment}.{alarm_name}"
 
                 if not hasattr(self, var_name):
-                    __var_name = alarm_name
-                    if "." in alarm_name:
-                        __var_name = alarm_name.split(".")
-                        if len(__var_name) >= 3:
-                            __var_name.pop(1)
-                            __var_name = ".".join(__var_name)
-                        else:
-                            __var_name = ".".join(__var_name)
+                    __var_name = alarm_name.replace(f"{MANUFACTURER}.", "")
                     ID = blake2b(key=f"{__var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
 
                     setattr(self, var_name, self.my_folders[segment].add_variable(
@@ -1319,31 +1315,25 @@ class OPCUAServer(StateMachineCore):
                         alarm_name, 
                         0)
                     )
-                    var = getattr(self, var_name)
+                    node = getattr(self, var_name)
 
-                    description = var.get_attribute(ua.AttributeIds.Description)
+                    description = node.get_attribute(ua.AttributeIds.Description)
                     description.Value.Value.Text = alarm_description
-                    browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
+                    browse_name = node.get_attribute(ua.AttributeIds.BrowseName)
                     browse_name.Value.Value.Name = ""
 
                     # Add State Properties
                     for state_key, state_value in alarm.state.serialize().items():
                         ID = blake2b(key=f"{__var_name}.{state_key}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                        prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), state_key, state_value)  
+                        prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), state_key, state_value)  
                         browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
-                        browse_name.Value.Value.Name = "" 
-
-                    # # Add SETPOINT PROPERTIES
-                    # for setpoint_key, setpoint_value in alarm.alarm_setpoint.serialize().items():
-                    #     ID = blake2b(key=f"{segment}.{alarm_name}.{setpoint_key}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                    #     prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), f"setpoint.{setpoint_key}", f"setpoint.{setpoint_value}")  
-                    #     browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
-                    #     browse_name.Value.Value.Name = "" 
+                        browse_name.Value.Value.Name = ""  
 
     def __set_cvt(self):
         r"""
         Documentation here
         """
+        from . import MANUFACTURER
         segment = "CVT"
         for tag in self.cvt.get_tags():
             
@@ -1362,13 +1352,13 @@ class OPCUAServer(StateMachineCore):
             tag_description = tag["description"] or ""
             
             var_name = f"{segment}_{tag_name}"
-            __var_name = tag_name
-            if "." in tag_name:
-                __var_name = tag_name.split(".")
-                if len(__var_name) >= 3:
-                    __var_name = ".".join(__var_name[1:])
-                else:
-                    __var_name = ".".join(__var_name)
+            __var_name = tag_name.replace(f"{MANUFACTURER}.", "")
+            # if "." in tag_name:
+            #     __var_name = tag_name.split(".")
+            #     if len(__var_name) >= 3:
+            #         __var_name = ".".join(__var_name[1:])
+            #     else:
+            #         __var_name = ".".join(__var_name)
             identifier = blake2b(key=__var_name.encode('utf-8')[:64], digest_size=4).hexdigest()
 
             if not hasattr(self, var_name):
