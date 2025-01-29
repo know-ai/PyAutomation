@@ -1,5 +1,4 @@
 from ..utils.decorators import decorator
-from ..buffer import Buffer
 import numpy as np
 
 class KalmanFilter:
@@ -40,7 +39,6 @@ class KalmanFilter:
         self.P = self.P - np.dot(np.dot(K, self.H), self.P)
         self.previous_innov = innov
 
-# data = dict()
 
 class GaussianFilter:
 
@@ -67,22 +65,14 @@ def gaussian_noise_filter(func, args, kwargs):
     r"""
     Documentation here
     """
-    
     cvt = args[0]
     tag_id = kwargs["id"]
     value = kwargs["value"]
     tag = cvt.get_tag(id=tag_id)
     if tag.gaussian_filter:
         
-        # if tag.name not in data:
-            
-        #     data[tag.name] = Buffer()
-        
-        # data[tag.name](value)
-        # Apply filter logic
-        # if len(data[tag.name]) >= data[tag.name].size:
         kwargs["value"] = __filter(value)
-        print(f"{tag.name}: {value} - filtered: {kwargs['value']}")
+
         return func(*args, **kwargs)
     
     return func(*args, **kwargs)
