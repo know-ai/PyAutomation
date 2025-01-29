@@ -188,6 +188,7 @@ class DataLogger(BaseLogger):
         r"""
         Documentation here
         """  
+        
         if not self.is_history_logged:
 
             return None
@@ -198,7 +199,8 @@ class DataLogger(BaseLogger):
 
         _timezone = pytz.timezone(timezone)
         start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
-        stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()           
+        stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()  
+              
         query = (TagValue
                 .select(Tags.name, TagValue.value, TagValue.timestamp,
                         Units.unit.alias('tag_value_unit'), Variables.name.alias('variable_name'))
@@ -208,10 +210,11 @@ class DataLogger(BaseLogger):
                 .where((TagValue.timestamp.between(start, stop)) & (Tags.name.in_(tags)))
                 .order_by(TagValue.timestamp)
                 .dicts()) 
-        
+         
         # Structure the data
         time_span = (stop - start ) / 60 # span in minutes
         result = defaultdict(lambda: {"values": []})
+        # breakpoint()
         if time_span > 60 * 24 * 7:  # 1 week
             # Aggregate data every 1 day
             result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600 * 24, timezone=timezone)
@@ -226,8 +229,9 @@ class DataLogger(BaseLogger):
 
         else:
             # Use original data
+            
             for entry in query:
-
+                
                 from_timezone = pytz.timezone('UTC')
                 timestamp = entry['timestamp']
                 timestamp = from_timezone.localize(timestamp)
@@ -235,7 +239,7 @@ class DataLogger(BaseLogger):
                     "x": timestamp.astimezone(_timezone).strftime(self.tag_engine.DATETIME_FORMAT),
                     "y": entry['value']
                 })
-
+        
         for tag in tags:
 
             result[tag]['unit'] = self.tag_engine.get_display_unit_by_tag(tag)

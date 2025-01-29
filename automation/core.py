@@ -1058,7 +1058,7 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             clients = self.db_manager.get_opcua_clients()
-
+            
             for client in clients:
 
                 self.add_opcua_client(**client)

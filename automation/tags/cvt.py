@@ -404,7 +404,7 @@ class CVT:
         return data
     
     @logging_error_handler
-    # @gaussian_noise_filter
+    @gaussian_noise_filter
     # @process_noise_filter
     # @iad_frozen_data
     # @iad_out_of_range
