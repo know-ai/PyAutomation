@@ -111,6 +111,17 @@ class DataLogger(BaseLogger):
             return None
         
         tag = Tags.get(identifier=id)
+
+        if "gaussian_filter" in kwargs:
+            
+            if kwargs['gaussian_filter'].lower in ('1', 'true'):
+
+                kwargs['gaussian_filter'] = True
+
+            else:
+
+                kwargs['gaussian_filter'] = False
+        
         return Tags.put(id=tag.id, **kwargs)
 
     @db_rollback

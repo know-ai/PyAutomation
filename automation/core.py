@@ -393,21 +393,26 @@ class PyAutomation(Singleton):
 
                 return None, f"{tag_name} is subscribed into {machines_with_tags_subscribed}"
 
-        self.unsubscribe_opcua(tag)
+        if "gaussian_filter" not in kwargs:
+            self.unsubscribe_opcua(tag)
         # Persist Tag on Database
         if "variable" in kwargs:
             
             kwargs["unit"] = list(VARIABLES[kwargs["variable"]].values())[0]
             kwargs["display_unit"] = list(VARIABLES[kwargs["variable"]].values())[0]
 
+        
         result = self.cvt.update_tag(
             id=id,  
             user=user,
             **kwargs
         )
         if self.is_db_connected():
+
             if 'variable' in kwargs:
+                
                 kwargs.pop("variable")
+            
             self.logger_engine.update_tag(
                 id=id,  
                 **kwargs
@@ -415,13 +420,17 @@ class PyAutomation(Singleton):
         if "name" in kwargs:
             self.das.buffer.pop(tag_name)
         
-        self.__update_buffer(tag=tag)
-    
-        if "scan_time" in kwargs:
-            scan_time = kwargs["scan_time"]
-            if isinstance(scan_time, int):
-                self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
+        if "gaussian_filter" not in kwargs:
+            self.__update_buffer(tag=tag)
+
+            if "scan_time" in kwargs:
+                scan_time = kwargs["scan_time"]
+                if isinstance(scan_time, int):
+                    self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
+                else:
+                    self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
             else:
+
                 self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
         
         return result
@@ -724,20 +733,24 @@ class PyAutomation(Singleton):
         r"""
         Documentation here
         """
-        if tag.get_scan_time():
+        tag_name = tag.get_name()
+        scan_time = tag.get_scan_time()
+        unit = tag.get_display_unit()
+    
+        if scan_time:
 
-            self.das.buffer[tag.get_name()] = {
-                "timestamp": Buffer(size=ceil(10 / ceil(tag.get_scan_time() / 1000))),
-                "values": Buffer(size=ceil(10 / ceil(tag.get_scan_time() / 1000))),
-                "unit": tag.get_display_unit()
+            self.das.buffer[tag_name] = {
+                "timestamp": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
+                "values": Buffer(size=ceil(10 / ceil(scan_time / 1000))),
+                "unit": unit
             }
 
         else:
 
-            self.das.buffer[tag.get_name()] = {
+            self.das.buffer[tag_name] = {
                 "timestamp": Buffer(),
                 "values": Buffer(),
-                "unit": tag.get_display_unit()
+                "unit": unit
             }
 
     # ERROR LOGS

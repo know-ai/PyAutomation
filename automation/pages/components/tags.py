@@ -1,7 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
 from ...variables import VARIABLES
-from automation import PyAutomation
 
 class TagsComponents:
 
@@ -193,7 +192,6 @@ class TagsComponents:
         r"""
         Documentation here
         """
-        app = PyAutomation()
         return dbc.Container(
             dbc.Row(
                 dbc.Col(
@@ -212,7 +210,8 @@ class TagsComponents:
                             {'name': 'opcua_address', 'id': 'opcua_address', 'presentation': 'dropdown'}, 
                             {'name': 'node_namespace', 'id': 'node_namespace', 'presentation': 'dropdown'},
                             {'name': 'scan_time', 'id': 'scan_time', 'type': 'numeric'}, 
-                            {'name': 'dead_band', 'id': 'dead_band', 'type': 'numeric'}
+                            {'name': 'dead_band', 'id': 'dead_band', 'type': 'numeric'},
+                            {'name': 'gaussian_filter', 'id': 'gaussian_filter', 'type': 'boolean'}
                         ],
                         id="tags_datatable",
                         filter_action="native",

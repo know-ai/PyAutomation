@@ -444,6 +444,7 @@ def init_callback(app:dash.Dash):
                             "segment": segment,
                             "manufacturer": manufacturer
                         })
+                    
                     tag, message = app.automation.update_tag(id=tag_id, **tag_to_update)
                     
                     if not tag:

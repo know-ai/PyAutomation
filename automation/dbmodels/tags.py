@@ -787,7 +787,7 @@ class Tags(BaseModel):
                             if query:
                                 
                                 fields["segment"] = query
-                            
+            
             query = cls.update(**fields).where(cls.id == id)
             query.execute()
             return query

@@ -32,7 +32,7 @@ class ConfigView(dash.Dash):
             tag.pop('values')
             tag.pop("timestamps")
             tags.append(tag)        
-
+        
         return tags
     
     def alarms_table_data(self):

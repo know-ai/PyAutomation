@@ -182,6 +182,15 @@ class CVT:
             tag.segment = kwargs["segment"]
         if "manufacturer" in kwargs:
             tag.manufacturer = kwargs["manufacturer"]
+        if "gaussian_filter" in kwargs:
+            
+            if kwargs['gaussian_filter'].lower in ('1', 'true'):
+
+                tag.gaussian_filter = True
+
+            else:
+
+                tag.gaussian_filter = False
         
         self._tags[id] = tag
 

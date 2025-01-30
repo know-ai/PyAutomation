@@ -3,7 +3,7 @@ import plotly.graph_objects as go
 
 fig = go.Figure()
 
-class TrendsComponents:
+class FilterComponents:
 
     @classmethod
     def tags(cls)->dash.dcc.Dropdown:
@@ -13,7 +13,7 @@ class TrendsComponents:
         return dash.dcc.Dropdown(
             options = [],
             multi=True,
-            id="trends_tags_dropdown",
+            id="filter_tags_dropdown",
             persistence=True
         )
 
@@ -33,7 +33,7 @@ class TrendsComponents:
             ],
             value=10,
             clearable=False,
-            id="trends_last_values_dropdown"
+            id="filter_last_values_dropdown"
         )
 
     @classmethod
@@ -44,10 +44,13 @@ class TrendsComponents:
         return dash.dash_table.DataTable(
             data=[],
             columns=[ 
-                {'name': 'tag', 'id': 'tag'}, 
-                {'name': 'value', 'id': 'value'}
+                {'name': 'id', 'id': 'id', 'editable': False},
+                {'name': 'display_name', 'id': 'display_name', 'editable': False}, 
+                {'name': 'gaussian_filter', 'id': 'gaussian_filter', 'type': 'boolean', 'editable': True},
+                {'name': 'threshold', 'id': 'threshold', 'type': 'numeric', 'editable': True}, 
+                {'name': 'R-value', 'id': 'R-value', 'type': 'numeric', 'editable': True},
             ],
-            id="trends_cvt_datatable",
+            id="filter_cvt_datatable",
             selected_columns=[],
             page_action="native",
             page_current= 0,
@@ -63,4 +66,4 @@ class TrendsComponents:
         """
         return dash.dcc.Graph(
             figure=fig,
-            id="trends_figure")
+            id="filter_trends_figure")

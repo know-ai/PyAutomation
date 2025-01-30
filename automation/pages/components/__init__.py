@@ -79,6 +79,7 @@ class Components:
                         dbc.DropdownMenuItem("Tags", header=True),
                         dbc.DropdownMenuItem("Definition", href="/tags", id="tags_definition_link"),
                         dbc.DropdownMenuItem("Trends", href="/trends"),
+                        dbc.DropdownMenuItem("Filter", href="/filter"),
                     ],
                     nav=True,
                     in_navbar=True,
