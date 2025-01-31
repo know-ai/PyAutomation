@@ -41,14 +41,14 @@ class Tag:
             timestamp:datetime=None,
             process_filter:bool=False,
             gaussian_filter:bool=False,
+            gaussian_filter_threshold:float=1.0,
+            gaussian_filter_r_value:float=0.0,
             outlier_detection:bool=False,
             out_of_range_detection:bool=False,
             frozen_data_detection:bool=False,
             manufacturer:str="",
             segment:str="",
-            id:str=None,
-            gaussian_filter_threshold:float=100,
-            gaussian_filter_r_value:float=0.5
+            id:str=None
     ):
         self.id = secrets.token_hex(4)
         if id:

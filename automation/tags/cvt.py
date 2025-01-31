@@ -53,6 +53,8 @@ class CVT:
         dead_band:float=None,
         process_filter:bool=False,
         gaussian_filter:bool=False,
+        gaussian_filter_threshold:float=1.0,
+        gaussian_filter_r_value:float=0.0,
         outlier_detection:bool=False,
         out_of_range_detection:bool=False,
         frozen_data_detection:bool=False,
@@ -112,6 +114,8 @@ class CVT:
             dead_band=dead_band,
             process_filter=process_filter,
             gaussian_filter=gaussian_filter,
+            gaussian_filter_threshold=gaussian_filter_threshold,
+            gaussian_filter_r_value=gaussian_filter_r_value,
             outlier_detection=outlier_detection,
             out_of_range_detection=out_of_range_detection,
             frozen_data_detection=frozen_data_detection,
@@ -610,6 +614,8 @@ class CVTEngine(Singleton):
         dead_band:float=0.0,
         process_filter:bool=False,
         gaussian_filter:bool=False,
+        gaussian_filter_threshold:float=1.0,
+        gaussian_filter_r_value:float=0.0,
         outlier_detection:bool=False,
         out_of_range_detection:bool=False,
         frozen_data_detection:bool=False,
@@ -644,6 +650,8 @@ class CVTEngine(Singleton):
         _query["parameters"]["dead_band"] = dead_band
         _query["parameters"]["process_filter"] = process_filter
         _query["parameters"]["gaussian_filter"] = gaussian_filter
+        _query["parameters"]["gaussian_filter_threshold"] = gaussian_filter_threshold
+        _query["parameters"]["gaussian_filter_r_value"] = gaussian_filter_r_value
         _query["parameters"]["outlier_detection"] = outlier_detection
         _query["parameters"]["out_of_range_detection"] = out_of_range_detection
         _query["parameters"]["frozen_data_detection"] = frozen_data_detection
