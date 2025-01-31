@@ -22,7 +22,7 @@ from .alarms import Alarm
 from .state_machine import Machine, DAQ, AutomationStateMachine, StateMachine
 from .opcua.subscription import DAS
 from .buffer import Buffer
-from .models import StringType, FloatType, IntegerType
+from .models import StringType, FloatType
 from .modules.users.users import users, User
 from .modules.users.roles import roles, Role
 from .dbmodels.core import BaseModel
@@ -198,6 +198,8 @@ class PyAutomation(Singleton):
             dead_band=int|float|type(None),
             process_filter=bool,
             gaussian_filter=bool,
+            gaussian_filter_threshold=float|int,
+            gaussian_filter_r_value=float|int,
             outlier_detection=bool,
             out_of_range_detection=bool,
             frozen_data_detection=bool,
@@ -222,6 +224,8 @@ class PyAutomation(Singleton):
             dead_band:float=None,
             process_filter:bool=False,
             gaussian_filter:bool=False,
+            gaussian_filter_threshold:float=1.0,
+            gaussian_filter_r_value:float=0.0,
             outlier_detection:bool=False,
             out_of_range_detection:bool=False,
             frozen_data_detection:bool=False,
@@ -269,6 +273,8 @@ class PyAutomation(Singleton):
             dead_band=dead_band,
             process_filter=process_filter,
             gaussian_filter=gaussian_filter,
+            gaussian_filter_threshold=gaussian_filter_threshold,
+            gaussian_filter_r_value=gaussian_filter_r_value,
             outlier_detection=outlier_detection,
             out_of_range_detection=out_of_range_detection,
             frozen_data_detection=frozen_data_detection,
@@ -427,13 +433,13 @@ class PyAutomation(Singleton):
                 
                 kwargs.pop("variable")
 
-            if "gaussian_filter_threshold" in kwargs:
+            # if "gaussian_filter_threshold" in kwargs:
 
-                kwargs.pop("gaussian_filter_threshold")
+            #     kwargs.pop("gaussian_filter_threshold")
 
-            if "gaussian_filter_r_value" in kwargs:
+            # if "gaussian_filter_r_value" in kwargs:
 
-                kwargs.pop("gaussian_filter_r_value")
+            #     kwargs.pop("gaussian_filter_r_value")
             
             if kwargs:
 

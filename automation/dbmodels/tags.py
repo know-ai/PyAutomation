@@ -555,6 +555,8 @@ class Tags(BaseModel):
     active = BooleanField(default=True)
     process_filter = BooleanField(default=False)
     gaussian_filter = BooleanField(default=False)
+    gaussian_filter_threshold = FloatField(default=1.0)
+    gaussian_filter_r_value = FloatField(default=0.0)
     out_of_range_detection = BooleanField(default=False)
     outlier_detection = BooleanField(default=False)
     frozen_data_detection = BooleanField(default=False)
@@ -578,6 +580,8 @@ class Tags(BaseModel):
         active:bool=True,
         process_filter:bool=False,
         gaussian_filter:bool=False,
+        gaussian_filter_threshold:float=1.0,
+        gaussian_filter_r_value:float=0.0,
         out_of_range_detection:bool=False,
         outlier_detection:bool=False,
         frozen_data_detection:bool=False
@@ -631,6 +635,8 @@ class Tags(BaseModel):
                                 active=active,
                                 process_filter=process_filter,
                                 gaussian_filter=gaussian_filter,
+                                gaussian_filter_threshold=gaussian_filter_threshold,
+                                gaussian_filter_r_value=gaussian_filter_r_value,
                                 out_of_range_detection=out_of_range_detection,
                                 outlier_detection=outlier_detection,
                                 frozen_data_detection=frozen_data_detection,
@@ -652,6 +658,8 @@ class Tags(BaseModel):
                                 active=active,
                                 process_filter=process_filter,
                                 gaussian_filter=gaussian_filter,
+                                gaussian_filter_threshold=gaussian_filter_threshold,
+                                gaussian_filter_r_value=gaussian_filter_r_value,
                                 out_of_range_detection=out_of_range_detection,
                                 outlier_detection=outlier_detection,
                                 frozen_data_detection=frozen_data_detection
@@ -862,6 +870,8 @@ class Tags(BaseModel):
             'active': self.active,
             'process_filter': self.process_filter,
             'gaussian_filter': self.gaussian_filter,
+            'gaussian_filter_threshold': self.gaussian_filter_threshold,
+            'gaussian_filter_r_value': self.gaussian_filter_r_value,
             'out_of_range_detection': self.out_of_range_detection,
             'frozen_data_detection': self.frozen_data_detection,
             'outlier_detection': self.outlier_detection,
