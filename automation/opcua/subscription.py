@@ -182,11 +182,9 @@ class DAS(Singleton):
         val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
         tag.value.set_value(value=val, unit=tag.get_display_unit())  
         if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
-            self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+            val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
         elif not MANUFACTURER and not SEGMENT:
-            self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-
-
+            val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
         timestamp = timestamp.astimezone(TIMEZONE)
         self.buffer[tag_name]["timestamp"](timestamp)
         self.buffer[tag_name]["values"](val)

@@ -114,7 +114,7 @@ class DataLogger(BaseLogger):
 
         if "gaussian_filter" in kwargs:
             
-            if kwargs['gaussian_filter'].lower in ('1', 'true'):
+            if kwargs['gaussian_filter'].lower() in ('1', 'true'):
 
                 kwargs['gaussian_filter'] = True
 

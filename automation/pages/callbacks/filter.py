@@ -96,7 +96,9 @@ def init_callback(app:dash.Dash):
                 data.append({
                     "id": tag.id,
                     "display_name": tag.display_name, 
-                    "gaussian_filter": tag.gaussian_filter
+                    "gaussian_filter": tag.gaussian_filter,
+                    "threshold": tag.gaussian_filter_threshold,
+                    "R-value": tag.gaussian_filter_r_value
                 })      
 
             return data
@@ -139,118 +141,167 @@ def init_callback(app:dash.Dash):
     
 
     @app.callback(
+        dash.Output('filter_cvt_datatable', 'data'), 
         dash.Input('filter_cvt_datatable', 'data_timestamp'),
         dash.State('filter_cvt_datatable', 'data_previous'),
         dash.State('filter_cvt_datatable', 'data'),
+        dash.State('filter_tags_dropdown', 'value'),
         )
-    def update_tags(timestamp, previous, current):
+    def update_tags(timestamp, previous, current, tags):
+        
         message = None
 
         if timestamp:
             
+            data = list()
             to_updates = find_differences_between_lists(previous, current)
             tag_to_update = to_updates[0]
-            tag_to_update.pop("id")
+            tag_id = tag_to_update.pop("id")
             
-                
             if message:
+                
                 dash.set_props("modal-error-filter-tags-body", {"children": message})
                 dash.set_props("modal-error-filter-tags", {'is_open': True})
-                return
-            message = f"Do you want to update tag {current[0]['display_name']} To {tag_to_update}?"
-            # OPEN MODAL TO CONFIRM CHANGES
-            dash.set_props("modal-update-filter-tags-body", {"children": message})
-            dash.set_props("modal-update-filter-tags", {'is_open': True})
+                for tag_name in tags:
 
-    
-    @app.callback(
-        [
-            dash.Output("modal-update-filter-tags", "is_open", allow_duplicate=True), 
-            dash.Output('filter_cvt_datatable', 'data'), 
-            dash.Output('filter_cvt_datatable', 'data_timestamp'),
-            dash.Output("update-filter-tags-yes", "n_clicks"),
-            dash.Output("update-filter-tags-no", "n_clicks")
-        ],
-        [dash.Input("update-filter-tags-yes", "n_clicks"), dash.Input("update-filter-tags-no", "n_clicks")],
-        [
-            dash.State('filter_cvt_datatable', 'data_timestamp'),
-            dash.State("modal-update-filter-tags", "is_open"),
-            dash.State('filter_cvt_datatable', 'data_previous'),
-            dash.State('filter_cvt_datatable', 'data'),
-            dash.State('filter_tags_dropdown', 'value'),
-        ]
-    )
-    def toggle_modal_update_filter_tag(yes_n, no_n, timestamp, is_open, previous, current, tags):
-        r"""
-        Documentation here
-        """
-        data = list()
-        if yes_n:
+                    tag = app.automation.cvt.get_tag_by_name(name=tag_name)
+
+                    data.append({
+                        "id": tag.id,
+                        "display_name": tag.display_name, 
+                        "gaussian_filter": tag.gaussian_filter,
+                        "threshold": tag.gaussian_filter_threshold,
+                        "R-value": tag.gaussian_filter_r_value
+                    }) 
+                
+                return data
             
-            if timestamp:
-                  
-                if previous and current: # UPDATE TAG DEFINITION
-                    
-                    to_updates = find_differences_between_lists(previous, current)
-                    tag_to_update = to_updates[0]
-                    tag_id = tag_to_update.pop("id")
+            # message = f"Do you want to update tag {current[0]['display_name']} To {tag_to_update}?"
+            # # OPEN MODAL TO CONFIRM CHANGES
+            # dash.set_props("modal-update-filter-tags-body", {"children": message})
+            # dash.set_props("modal-update-filter-tags", {'is_open': True})
 
-                    if "segment" in tag_to_update:
+            if "segment" in tag_to_update:
 
-                        manufacturer_segment = tag_to_update['segment'].split("->")
-                        manufacturer = manufacturer_segment[0]
-                        segment = manufacturer_segment[1]
-                        tag_to_update.update({
-                            "segment": segment,
-                            "manufacturer": manufacturer
-                        })
-                    
-                    tag, message = app.automation.update_tag(id=tag_id, **tag_to_update)
-                    
-                    if not tag:
+                manufacturer_segment = tag_to_update['segment'].split("->")
+                manufacturer = manufacturer_segment[0]
+                segment = manufacturer_segment[1]
+                tag_to_update.update({
+                    "segment": segment,
+                    "manufacturer": manufacturer
+                })
+            
+            tag, message = app.automation.update_tag(id=tag_id, **tag_to_update)
+            
+            if not tag:
 
-                        dash.set_props("modal-error-filter-tags-body", {"children": message})
-                        dash.set_props("modal-error-filter-tags", {'is_open': True})
-                    
-                    for tag_name in tags:
+                dash.set_props("modal-error-filter-tags-body", {"children": message})
+                dash.set_props("modal-error-filter-tags", {'is_open': True})
+            
+        for tag_name in tags:
 
-                        tag = app.automation.cvt.get_tag_by_name(name=tag_name)
+            tag = app.automation.cvt.get_tag_by_name(name=tag_name)
 
-                        data.append({
-                            "id": tag.id,
-                            "display_name": tag.display_name, 
-                            "gaussian_filter": tag.gaussian_filter
-                        }) 
-
-                return not is_open, data, None, 0, 0
+            data.append({
+                "id": tag.id,
+                "display_name": tag.display_name, 
+                "gaussian_filter": tag.gaussian_filter,
+                "threshold": tag.gaussian_filter_threshold,
+                "R-value": tag.gaussian_filter_r_value
+            }) 
         
-        elif no_n:
+        return data
 
-            for tag_name in tags:
-
-                tag = app.automation.cvt.get_tag_by_name(name=tag_name)
-
-                data.append({
-                    "id": tag.id,
-                    "display_name": tag.display_name, 
-                    "gaussian_filter": tag.gaussian_filter
-                }) 
+    # @app.callback(
+    #     [
+    #         dash.Output("modal-update-filter-tags", "is_open", allow_duplicate=True), 
+    #         dash.Output('filter_cvt_datatable', 'data'), 
+    #         dash.Output('filter_cvt_datatable', 'data_timestamp'),
+    #         dash.Output("update-filter-tags-yes", "n_clicks"),
+    #         dash.Output("update-filter-tags-no", "n_clicks")
+    #     ],
+    #     [dash.Input("update-filter-tags-yes", "n_clicks"), dash.Input("update-filter-tags-no", "n_clicks")],
+    #     [
+    #         dash.State('filter_cvt_datatable', 'data_timestamp'),
+    #         dash.State("modal-update-filter-tags", "is_open"),
+    #         dash.State('filter_cvt_datatable', 'data_previous'),
+    #         dash.State('filter_cvt_datatable', 'data'),
+    #         dash.State('filter_tags_dropdown', 'value'),
+    #     ]
+    # )
+    # def toggle_modal_update_filter_tag(yes_n, no_n, timestamp, is_open, previous, current, tags):
+    #     r"""
+    #     Documentation here
+    #     """
+    #     data = list()
+    #     if yes_n:
             
-            return not is_open, data, None, 0, 0
+    #         if timestamp:
+                  
+    #             if previous and current: # UPDATE TAG DEFINITION
+                    
+    #                 to_updates = find_differences_between_lists(previous, current)
+    #                 tag_to_update = to_updates[0]
+    #                 tag_id = tag_to_update.pop("id")
 
-        else:
+    #                 if "segment" in tag_to_update:
 
-            for tag_name in tags:
+    #                     manufacturer_segment = tag_to_update['segment'].split("->")
+    #                     manufacturer = manufacturer_segment[0]
+    #                     segment = manufacturer_segment[1]
+    #                     tag_to_update.update({
+    #                         "segment": segment,
+    #                         "manufacturer": manufacturer
+    #                     })
+                    
+    #                 tag, message = app.automation.update_tag(id=tag_id, **tag_to_update)
+                    
+    #                 if not tag:
 
-                tag = app.automation.cvt.get_tag_by_name(name=tag_name)
+    #                     dash.set_props("modal-error-filter-tags-body", {"children": message})
+    #                     dash.set_props("modal-error-filter-tags", {'is_open': True})
+                    
+    #                 for tag_name in tags:
 
-                data.append({
-                    "id": tag.id,
-                    "display_name": tag.display_name, 
-                    "gaussian_filter": tag.gaussian_filter
-                }) 
+    #                     tag = app.automation.cvt.get_tag_by_name(name=tag_name)
 
-            return is_open, app.tags_table_data(), None, 0, 0
+    #                     data.append({
+    #                         "id": tag.id,
+    #                         "display_name": tag.display_name, 
+    #                         "gaussian_filter": tag.gaussian_filter
+    #                     }) 
+
+    #             print(f"Data: {data}")
+
+    #             return not is_open, data, None, 0, 0
+        
+    #     elif no_n:
+
+    #         for tag_name in tags:
+
+    #             tag = app.automation.cvt.get_tag_by_name(name=tag_name)
+
+    #             data.append({
+    #                 "id": tag.id,
+    #                 "display_name": tag.display_name, 
+    #                 "gaussian_filter": tag.gaussian_filter
+    #             }) 
+            
+    #         return not is_open, data, None, 0, 0
+
+    #     else:
+
+    #         for tag_name in tags:
+
+    #             tag = app.automation.cvt.get_tag_by_name(name=tag_name)
+
+    #             data.append({
+    #                 "id": tag.id,
+    #                 "display_name": tag.display_name, 
+    #                 "gaussian_filter": tag.gaussian_filter
+    #             }) 
+
+    #         return is_open, data, None, 0, 0
         
 
     @app.callback(

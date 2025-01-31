@@ -1,12 +1,12 @@
-import threading, copy, logging, pytz
+import threading, copy, logging
 from datetime import datetime
 from ..singleton import Singleton
 from ..models import FloatType, StringType, IntegerType, BooleanType
 from ..modules.users.users import User
 from ..modules.users.users import User
 from ..utils.decorators import set_event, logging_error_handler
-from ..filter import gaussian_noise_filter, process_noise_filter
-from ..iad import iad_outlier, iad_frozen_data, iad_out_of_range
+from ..filter import filter
+# from ..iad import iad_outlier, iad_frozen_data, iad_out_of_range
 from .tag import Tag
 from flask_socketio import SocketIO
 
@@ -184,13 +184,21 @@ class CVT:
             tag.manufacturer = kwargs["manufacturer"]
         if "gaussian_filter" in kwargs:
             
-            if kwargs['gaussian_filter'].lower in ('1', 'true'):
+            if kwargs['gaussian_filter'].lower() in ('1', 'true'):
 
                 tag.gaussian_filter = True
 
             else:
 
                 tag.gaussian_filter = False
+
+        if "gaussian_filter_r_value" in kwargs:
+
+            tag.gaussian_filter_r_value = kwargs['gaussian_filter_r_value']
+
+        if "gaussian_filter_threshold" in kwargs:
+
+            tag.gaussian_filter_threshold = kwargs['gaussian_filter_threshold']
         
         self._tags[id] = tag
 
@@ -413,8 +421,7 @@ class CVT:
         return data
     
     @logging_error_handler
-    @gaussian_noise_filter
-    # @process_noise_filter
+    @filter
     # @iad_frozen_data
     # @iad_out_of_range
     # @iad_outlier
@@ -433,6 +440,8 @@ class CVT:
             timestamp = timestamp.astimezone(TIMEZONE)
             self._tags[id].timestamp = timestamp
             self.sio.emit("on.tag", data=self._tags[id].serialize())
+
+        return value
 
     def set_data_type(self, data_type):
         r"""Documentation here

@@ -393,13 +393,27 @@ class PyAutomation(Singleton):
 
                 return None, f"{tag_name} is subscribed into {machines_with_tags_subscribed}"
 
-        if "gaussian_filter" not in kwargs:
+        keys_to_check = ["gaussian_filter", "threshold", "R-value"]
+        
+        if not any(key in kwargs for key in keys_to_check):
+            
             self.unsubscribe_opcua(tag)
+
         # Persist Tag on Database
         if "variable" in kwargs:
             
             kwargs["unit"] = list(VARIABLES[kwargs["variable"]].values())[0]
             kwargs["display_unit"] = list(VARIABLES[kwargs["variable"]].values())[0]
+
+        if "R-value" in kwargs:
+
+            r_value = kwargs.pop("R-value")
+            kwargs['gaussian_filter_r_value'] = r_value
+
+        if "threshold" in kwargs:
+
+            threshold = kwargs.pop("threshold")
+            kwargs['gaussian_filter_threshold'] = threshold
 
         
         result = self.cvt.update_tag(
@@ -412,26 +426,43 @@ class PyAutomation(Singleton):
             if 'variable' in kwargs:
                 
                 kwargs.pop("variable")
+
+            if "gaussian_filter_threshold" in kwargs:
+
+                kwargs.pop("gaussian_filter_threshold")
+
+            if "gaussian_filter_r_value" in kwargs:
+
+                kwargs.pop("gaussian_filter_r_value")
             
-            self.logger_engine.update_tag(
-                id=id,  
-                **kwargs
-            )
+            if kwargs:
+
+                self.logger_engine.update_tag(
+                    id=id,  
+                    **kwargs
+                )
+
         if "name" in kwargs:
+
             self.das.buffer.pop(tag_name)
-        
-        if "gaussian_filter" not in kwargs:
-            self.__update_buffer(tag=tag)
 
-            if "scan_time" in kwargs:
-                scan_time = kwargs["scan_time"]
-                if isinstance(scan_time, int):
-                    self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
+        keys_to_check = ["gaussian_filter", "gaussian_filter_threshold", "gaussian_filter_r_value"]
+
+        if kwargs:
+
+            if not any(key in kwargs for key in keys_to_check):
+                
+                self.__update_buffer(tag=tag)
+
+                if "scan_time" in kwargs:
+                    scan_time = kwargs["scan_time"]
+                    if isinstance(scan_time, int):
+                        self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
+                    else:
+                        self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
                 else:
-                    self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
-            else:
 
-                self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
+                    self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
         
         return result
 

@@ -1,5 +1,4 @@
-import logging
-from peewee import CharField, BooleanField, FloatField, ForeignKeyField, IntegerField, fn, TimestampField, BooleanField
+from peewee import CharField, BooleanField, FloatField, ForeignKeyField, IntegerField, TimestampField, BooleanField
 from .core import BaseModel
 from datetime import datetime
 

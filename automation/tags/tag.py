@@ -19,6 +19,7 @@ from ..variables import (
     Adimentional,
     Volume
 )
+from .filter import GaussianFilter
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
@@ -45,7 +46,9 @@ class Tag:
             frozen_data_detection:bool=False,
             manufacturer:str="",
             segment:str="",
-            id:str=None
+            id:str=None,
+            gaussian_filter_threshold:float=100,
+            gaussian_filter_r_value:float=0.5
     ):
         self.id = secrets.token_hex(4)
         if id:
@@ -99,11 +102,14 @@ class Tag:
         self.timestamp = timestamp
         self.process_filter = process_filter
         self.gaussian_filter = gaussian_filter
+        self.gaussian_filter_threshold = gaussian_filter_threshold
+        self.gaussian_filter_r_value = gaussian_filter_r_value
         self.outlier_detection = outlier_detection
         self.out_of_range_detection = out_of_range_detection
         self.frozen_data_detection = frozen_data_detection
         self.manufacturer = manufacturer
         self.segment = segment
+        self.filter = GaussianFilter()
         self._observers = set()
 
     def set_name(self, name:str):
