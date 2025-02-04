@@ -4,7 +4,7 @@ peewee==3.17.8
 # peewee-migrate==1.13.0
 psycopg2-binary==2.9.9; sys_platform != 'win32'
 psycopg2==2.9.9; sys_platform == 'win32'
-numpy==2.2.2
+numpy==1.25.0
 dash==2.18.2
 dash-bootstrap-components==1.6.0
 dash-mantine-components==0.14.7
