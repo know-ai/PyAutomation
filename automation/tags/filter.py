@@ -31,7 +31,6 @@ class KalmanFilter:
         if self.previous_innov is not None:
             innov_var = np.var([self.previous_innov, innov])  # Varianza de las innovaciones
             self.R = 0.0 if innov_var > threshold else r_value  # Ajustar R
-            print(f"R: {self.R} - innov_var: {innov_var} - threshold: {threshold} - R value: {r_value}")
         K = np.dot(np.dot(self.P, self.H.T), np.linalg.inv(np.dot(np.dot(self.H, self.P), self.H.T) + self.R))
         self.x = self.x + np.dot(K, innov)
         self.P = self.P - np.dot(np.dot(K, self.H), self.P)

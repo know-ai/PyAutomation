@@ -13,6 +13,7 @@ def filter(func, args, kwargs):
     if tag.gaussian_filter:
         
         kwargs["value"] = tag.filter(value, threshold=tag.gaussian_filter_threshold, r_value=tag.gaussian_filter_r_value)
+
         return func(*args, **kwargs)
     
     return func(*args, **kwargs)
