@@ -171,6 +171,12 @@ class Machine(Singleton):
                             threshold_unit = machine.threshold.unit
                             class_name = machine.threshold.value.__class__.__name__
                             machine.threshold.value = eval(f"{class_name}({threshold_value}, unit='{threshold_unit}')")
+                            if "leak detection" in machine.classification.value.lower():
+
+                                if machine.name.value.lower() == "npw":
+
+                                    machine.wavelet.threshold_iqr = threshold_value
+                                    
                         self.append_machine(machine=machine, interval=FloatType(config[machine.name.value]["interval"]))
                     
                     else:

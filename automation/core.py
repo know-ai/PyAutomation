@@ -432,14 +432,6 @@ class PyAutomation(Singleton):
             if 'variable' in kwargs:
                 
                 kwargs.pop("variable")
-
-            # if "gaussian_filter_threshold" in kwargs:
-
-            #     kwargs.pop("gaussian_filter_threshold")
-
-            # if "gaussian_filter_r_value" in kwargs:
-
-            #     kwargs.pop("gaussian_filter_r_value")
             
             if kwargs:
 
