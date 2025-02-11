@@ -72,7 +72,16 @@ class Components:
 
         return dbc.NavbarSimple(
             children=[
-                dbc.NavItem(dbc.NavLink("Communications", href="/")),
+                dbc.DropdownMenu(
+                    children=[
+                        dbc.DropdownMenuItem("Communications", header=True),
+                        dbc.DropdownMenuItem("OPCUA Client", href="/"),
+                        dbc.DropdownMenuItem("OPCUA Server", href="/opcua-server"),
+                    ],
+                    nav=True,
+                    in_navbar=True,
+                    label="Communications",
+                ),
                 dbc.NavItem(dbc.NavLink("Database", href="/database")),
                 dbc.DropdownMenu(
                     children=[
