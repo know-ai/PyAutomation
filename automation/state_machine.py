@@ -1,6 +1,6 @@
 import logging, secrets, pytz
 from datetime import datetime
-from opcua import Server, ua
+from opcua import Server, ua, Node
 from hashlib import blake2b
 from statemachine import State, StateMachine
 from .workers.state_machine import StateMachineWorker
