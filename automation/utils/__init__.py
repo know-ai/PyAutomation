@@ -29,6 +29,24 @@ def find_differences_between_lists(prev_list, curr_list):
     
     return differences
 
+def find_differences_between_lists_opcua_server(prev_list, curr_list):
+    r"""
+    Documentation here
+    """
+    
+    differences = []
+
+    for prev_dict, curr_dict in zip(prev_list, curr_list):
+        diff = {'name': prev_dict['name'], 'namespace': prev_dict['namespace']}
+
+        for key in prev_dict:
+            if prev_dict[key] != curr_dict[key]:
+                diff[key] = curr_dict[key]
+        if len(diff) > 2:  # Only add if there are differences other than 'id'
+            differences.append(diff)
+    
+    return differences
+
 def find_keys_values_by_unit(d, unit):
     r"""
     Documentation here
