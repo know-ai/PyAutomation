@@ -126,10 +126,9 @@ def init_callback(app:dash.Dash):
                     # Code for update read_only attribute
                     opcua_server_machine = app.automation.get_machine(name=StringType("OPCUAServer"))
                     opcua_server_attrs = dir(opcua_server_machine)
-                    position = False
+                    attr = False
                     for i, item in enumerate(opcua_server_attrs):
                     
-                        # print(f"[{i}]: {item}")
                         if hasattr(opcua_server_machine, item):
                             node = getattr(opcua_server_machine, item)
                             if isinstance(node, Node):
@@ -140,11 +139,12 @@ def init_callback(app:dash.Dash):
                                     
                                     if node.nodeid.to_string()==namespace:
                                         
-                                        position = i
+                                        attr = opcua_server_attrs[i]
                                         break                                        
-            
-                    if position:
-                        node = getattr(opcua_server_machine, opcua_server_attrs[position])
+                    
+                    # print(f"Position: {position}")
+                    if attr:
+                        node = getattr(opcua_server_machine, attr)
                         access_type = access_type.lower()
                         # Limpiar todos los bits de acceso primero
                         node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
