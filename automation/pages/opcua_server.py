@@ -14,18 +14,6 @@ layout = dbc.Container(
                 {"label": "OPCUA Server", "active": True},
             ],
         ),
-        # Components.modal_error(
-        #     title="Error",
-        #     modal_id="modal-opcua-server",
-        #     button_close_id="close-opcua-server",
-        #     body_id="modal-body-opcua-server"
-        # ),
-        # Components.modal_error(
-        #     title="Success",
-        #     modal_id="modal-success-opcua-server",
-        #     button_close_id="close-success-opcua-server",
-        #     body_id="modal-success-body-opcua-server"
-        # ),
         Components.modal_confirm(
             title="Confirmation",
             modal_id="modal-update-opcua-server-centered",
