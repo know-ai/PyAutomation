@@ -1509,25 +1509,6 @@ class AutomationStateMachine(StateMachineCore):
     wait_to_test = StateMachineCore.waiting.to(testing)
     run_to_sleep = StateMachineCore.running.to(sleeping)
     wait_to_sleep = StateMachineCore.waiting.to(sleeping)
-
-    # def __init__(
-    #         self,
-    #         name:str,
-    #         description:str="",
-    #         classification:str="",
-    #         interval:float=1.0,
-    #         identifier:str=None,
-    #         buffer_size:int=10
-    #     ):
-
-    #     super(AutomationStateMachine, self).__init__(
-    #         name=name,
-    #         description=description,
-    #         classification=classification,
-    #         interval=interval,
-    #         identifier=identifier,
-    #         buffer_size=buffer_size
-    #         )
     
     def while_testing(self):
         r"""

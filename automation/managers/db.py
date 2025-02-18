@@ -34,6 +34,8 @@ from ..dbmodels import (
     Logs,
     Machines,
     TagsMachines,
+    AccessType,
+    OPCUAServer,
     BaseModel
 )
 
@@ -75,7 +77,9 @@ class DBManager(Singleton):
             Events,
             Logs,
             Machines,
-            TagsMachines
+            TagsMachines,
+            AccessType,
+            OPCUAServer
         ]
 
         self._extra_tables = []
@@ -267,8 +271,6 @@ class DBManager(Singleton):
                 logger.error("Database:{}".format(error))
         
         self.create_tables()
-
-        # self.set_tags()
 
     def stop_database(self):
         r"""
