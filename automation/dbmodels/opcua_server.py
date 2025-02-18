@@ -148,15 +148,16 @@ class OPCUAServer(BaseModel):
         The model's primary key will not change:
         """
         obj = cls.get_or_none(namespace=namespace)
+        
         if obj:
             
             if AccessType.name_exist(name=access_type):
                 access_type_obj = AccessType.read_by_name(name=access_type)
             else:
-                access_type_obj = AccessType.create(name=namespace)
+                access_type_obj = AccessType.create(name=access_type)
 
             if access_type_obj:
-            
+                
                 query = cls.update(access_type=access_type_obj).where(cls.id == obj.id)
                 query.execute()
                 return query

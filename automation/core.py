@@ -636,6 +636,13 @@ class PyAutomation(Singleton):
         Documentation here
         """
         return self.opcua_server_engine.put(namespace=namespace, access_type=access_type)
+    
+    @logging_error_handler
+    def get_opcua_server_record_by_namespace(self, namespace:str):
+        r"""
+        Documentation here
+        """
+        return self.opcua_server_engine.read_by_namespace(namespace=namespace)
 
     @logging_error_handler
     @validate_types(client_name=str, namespaces=list, output=list)

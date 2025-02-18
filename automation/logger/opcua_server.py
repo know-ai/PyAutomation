@@ -58,6 +58,14 @@ class OPCUAServerLogger(BaseLogger):
             return list()
         
         return OPCUAServer.read_all()
+    
+    @db_rollback
+    def read_by_namespace(self, namespace:str):
+        if not self.check_connectivity():
+
+            return list()
+        
+        return OPCUAServer.read_by_namespace(namespace=namespace)
      
 
 class OPCUAServerLoggerEngine(BaseEngine):
@@ -98,6 +106,18 @@ class OPCUAServerLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         _query["parameters"]["namespace"] = namespace
         _query["parameters"]["access_type"] = access_type
+
+        return self.query(_query)
+    
+    def read_by_namespace(
+        self,
+        namespace:str
+        ):
+
+        _query = dict()
+        _query["action"] = "read_by_namespace"
+        _query["parameters"] = dict()
+        _query["parameters"]["namespace"] = namespace
 
         return self.query(_query)
 
