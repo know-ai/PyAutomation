@@ -18,6 +18,7 @@ from .logger.events import EventsLoggerEngine
 from .logger.alarms import AlarmsLoggerEngine
 from .logger.logs import LogsLoggerEngine
 from .logger.machines import MachinesLoggerEngine
+from .logger.opcua_server import OPCUAServerLoggerEngine
 from .alarms import Alarm
 from .state_machine import Machine, DAQ, AutomationStateMachine, StateMachine
 from .opcua.subscription import DAS
@@ -79,6 +80,7 @@ class PyAutomation(Singleton):
         self.alarms_engine = AlarmsLoggerEngine()
         self.logs_engine = LogsLoggerEngine()
         self.machines_engine = MachinesLoggerEngine()
+        self.opcua_server_engine = OPCUAServerLoggerEngine()
         self.db_manager = DBManager()
         self.opcua_client_manager = OPCUAClientManager()
         self.alarm_manager = AlarmManager()
@@ -620,6 +622,20 @@ class PyAutomation(Singleton):
         Documentation here
         """
         return self.opcua_client_manager.get(client_name=client_name)
+    
+    @logging_error_handler
+    def create_opcua_server_record(self, name:str, namespace:str, access_type:str="Read"):
+        r"""
+        Documentation here
+        """
+        return self.opcua_server_engine.create(name=name, namespace=namespace, access_type=access_type)
+    
+    @logging_error_handler
+    def update_opcua_server_access_type(self, namespace:str, access_type:str):
+        r"""
+        Documentation here
+        """
+        return self.opcua_server_engine.put(namespace=namespace, access_type=access_type)
 
     @logging_error_handler
     @validate_types(client_name=str, namespaces=list, output=list)
@@ -1581,6 +1597,7 @@ class PyAutomation(Singleton):
             self.db_worker.start()
 
         if machines:
+
             for machine in machines:
             
                 machine.set_socketio(sio=self.sio)

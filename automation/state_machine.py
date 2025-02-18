@@ -1334,6 +1334,8 @@ class OPCUAServer(StateMachineCore):
         Documentation here
         """
         from . import MANUFACTURER
+        from .core import PyAutomation
+        app = PyAutomation()
         segment = "CVT"
         for tag in self.cvt.get_tags():
             
@@ -1372,6 +1374,8 @@ class OPCUAServer(StateMachineCore):
                     )
 
                 var = getattr(self, var_name)
+                namespace = var.nodeid.to_string()
+                app.create_opcua_server_record(name=var_name, namespace=namespace, access_type="Read")
                 description = var.get_attribute(ua.AttributeIds.Description)
                 description.Value.Value.Text = tag_description
                 browse_name = var.get_attribute(ua.AttributeIds.BrowseName)

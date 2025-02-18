@@ -145,6 +145,7 @@ def init_callback(app:dash.Dash):
                     # print(f"Position: {position}")
                     if attr:
                         node = getattr(opcua_server_machine, attr)
+                        app.automation.update_opcua_server_access_type(namespace=namespace, access_type=access_type)
                         access_type = access_type.lower()
                         # Limpiar todos los bits de acceso primero
                         node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)

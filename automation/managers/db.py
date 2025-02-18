@@ -12,6 +12,7 @@ from ..logger.events import EventsLoggerEngine
 from ..logger.users import UsersLoggerEngine
 from ..logger.logs import LogsLoggerEngine
 from ..logger.machines import MachinesLoggerEngine
+from ..logger.opcua_server import OPCUAServerLoggerEngine
 from ..tags import CVTEngine, TagObserver
 from ..modules.users.users import User
 from ..utils.decorators import logging_error_handler
@@ -59,6 +60,7 @@ class DBManager(Singleton):
         self.users_logger = UsersLoggerEngine()
         self.logs_logger = LogsLoggerEngine()
         self.machines_logger = MachinesLoggerEngine()
+        self.opcuaserver_logger = OPCUAServerLoggerEngine()
         self._tables = [
             Manufacturer,
             Segment,
@@ -110,7 +112,8 @@ class DBManager(Singleton):
         self.logs_logger.set_db(db)
         self.logs_logger.logger.set_is_history_logged(value=is_history_logged)
         self.machines_logger.set_db(db)
-
+        self.opcuaserver_logger.logger.set_db(db)
+        
     def get_db(self):
         r"""
         Returns a DB object

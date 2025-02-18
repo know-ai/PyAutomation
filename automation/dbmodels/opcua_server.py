@@ -71,7 +71,10 @@ class OPCUAServer(BaseModel):
             
             if not cls.namespace_exist(namespace=namespace):
                 
-                access_type_obj = AccessType.get_or_create(name=access_type)
+                if AccessType.name_exist(name=access_type):
+                    access_type_obj = AccessType.read_by_name(name=access_type)
+                else:
+                    access_type_obj = AccessType.create(name=namespace)
 
                 if access_type_obj:
 
@@ -147,7 +150,10 @@ class OPCUAServer(BaseModel):
         obj = cls.get_or_none(namespace=namespace)
         if obj:
             
-            access_type_obj = AccessType.get_or_none(name=access_type)
+            if AccessType.name_exist(name=access_type):
+                access_type_obj = AccessType.read_by_name(name=access_type)
+            else:
+                access_type_obj = AccessType.create(name=namespace)
 
             if access_type_obj:
             
