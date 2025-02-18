@@ -1248,11 +1248,11 @@ class OPCUAServer(StateMachineCore):
                         engine_name, 
                         0)
                     )
-                    var = getattr(self, var_name)
-
-                    description = var.get_attribute(ua.AttributeIds.Description)
+                    node = getattr(self, var_name)
+                    self.__load_saved_access_type(node=node, var_name=var_name)
+                    description = node.get_attribute(ua.AttributeIds.Description)
                     description.Value.Value.Text = engine_description
-                    browse_name = var.get_attribute(ua.AttributeIds.BrowseName)
+                    browse_name = node.get_attribute(ua.AttributeIds.BrowseName)
                     browse_name.Value.Value.Name = ""
 
                     # Add Properties
@@ -1271,7 +1271,7 @@ class OPCUAServer(StateMachineCore):
                     for key in keep_list:
                         if key in engine:
                             ID = blake2b(key=f"{__var_name}.{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                            prop = var.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, engine[key])  
+                            prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, engine[key])  
                             browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                             browse_name.Value.Value.Name = "" 
 
@@ -1316,7 +1316,7 @@ class OPCUAServer(StateMachineCore):
                         0)
                     )
                     node = getattr(self, var_name)
-
+                    self.__load_saved_access_type(node=node, var_name=var_name)
                     description = node.get_attribute(ua.AttributeIds.Description)
                     description.Value.Value.Text = alarm_description
                     browse_name = node.get_attribute(ua.AttributeIds.BrowseName)
@@ -1334,8 +1334,7 @@ class OPCUAServer(StateMachineCore):
         Documentation here
         """
         from . import MANUFACTURER
-        from .core import PyAutomation
-        app = PyAutomation()
+        
         segment = "CVT"
         for tag in self.cvt.get_tags():
             
@@ -1374,36 +1373,7 @@ class OPCUAServer(StateMachineCore):
                     )
 
                 node = getattr(self, var_name)
-                namespace = node.nodeid.to_string()
-                opcua_server_obj = app.get_opcua_server_record_by_namespace(namespace=namespace)
-                access_type = "Read"
-                if opcua_server_obj:
-                    record = opcua_server_obj.serialize()
-                    access_type = record['access_type']['name']
-                else:
-                    app.create_opcua_server_record(name=var_name, namespace=namespace, access_type=access_type)
-
-                access_type = access_type.lower()
-                # Limpiar todos los bits de acceso primero
-                node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-                node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-                node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-                node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-                
-                if access_type == "write":
-                    # Solo escritura: deshabilitamos la lectura y habilitamos la escritura
-                    node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-                    node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-                elif access_type == "read":
-                    # Solo lectura: habilitamos la lectura y deshabilitamos la escritura
-                    node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-                    node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-                elif access_type == "readwrite":
-                    # Lectura y escritura: habilitamos ambos
-                    node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-                    node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-                    node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-                    node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
+                self.__load_saved_access_type(node=node, var_name=var_name)
                 description = node.get_attribute(ua.AttributeIds.Description)
                 description.Value.Value.Text = tag_description
                 browse_name = node.get_attribute(ua.AttributeIds.BrowseName)
@@ -1522,6 +1492,40 @@ class OPCUAServer(StateMachineCore):
                     display_name = prop.get_display_name().Text                
                     attr = engine[display_name]
                     prop.set_value(attr)
+
+    def __load_saved_access_type(self, node, var_name):
+        from .core import PyAutomation
+        app = PyAutomation()
+        namespace = node.nodeid.to_string()
+        opcua_server_obj = app.get_opcua_server_record_by_namespace(namespace=namespace)
+        access_type = "Read"
+        if opcua_server_obj:
+            record = opcua_server_obj.serialize()
+            access_type = record['access_type']['name']
+        else:
+            app.create_opcua_server_record(name=var_name, namespace=namespace, access_type=access_type)
+
+        access_type = access_type.lower()
+        # Limpiar todos los bits de acceso primero
+        node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
+        node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
+        node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
+        node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
+        
+        if access_type == "write":
+            # Solo escritura: deshabilitamos la lectura y habilitamos la escritura
+            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
+            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
+        elif access_type == "read":
+            # Solo lectura: habilitamos la lectura y deshabilitamos la escritura
+            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
+            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
+        elif access_type == "readwrite":
+            # Lectura y escritura: habilitamos ambos
+            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
+            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
+            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
+            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
 
 
 class AutomationStateMachine(StateMachineCore):
