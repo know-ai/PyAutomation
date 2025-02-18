@@ -341,6 +341,12 @@ class PyAutomation(Singleton):
     def get_tag_by_name(self, name:str)->Tag:
 
         return self.cvt.get_tag_by_name(name=name)
+    
+    @logging_error_handler
+    @validate_types(namespace=str, output=Tag|None)
+    def get_tag_by_node_namespace(self, namespace:str)->Tag:
+
+        return self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
 
     @logging_error_handler
     def get_trends(self, start:str, stop:str, timezone:str, *tags):

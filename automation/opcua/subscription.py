@@ -81,6 +81,28 @@ class SubHandler(Singleton):
         Documentation here
         """
         pass
+
+class SubHandlerServer(object):
+
+    def __init__(self):
+        from ..core import PyAutomation
+        self.app = PyAutomation()
+
+    def datachange_notification(self, node, val, data):
+        from .. import SEGMENT, MANUFACTURER, TIMEZONE
+        timestamp = data.monitored_item.Value.SourceTimestamp
+        if not timestamp:
+            timestamp = datetime.now(pytz.utc)
+        timestamp = timestamp.replace(tzinfo=pytz.UTC)
+        tag_name = node.get_display_name().Text
+        tag = self.app.get_tag_by_name(name=tag_name)
+        val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
+        tag.value.set_value(value=val, unit=tag.get_display_unit())  
+        if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
+            val = self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+        elif not MANUFACTURER and not SEGMENT:
+            val = self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+        timestamp = timestamp.astimezone(TIMEZONE)
         
 
 class DAS(Singleton):
@@ -186,7 +208,9 @@ class DAS(Singleton):
         elif not MANUFACTURER and not SEGMENT:
             val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
         timestamp = timestamp.astimezone(TIMEZONE)
-        self.buffer[tag_name]["timestamp"](timestamp)
-        self.buffer[tag_name]["values"](val)
+        if tag_name in self.buffer:
+            self.buffer[tag_name]["timestamp"](timestamp)
+            self.buffer[tag_name]["values"](val)
+        
         
         

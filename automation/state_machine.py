@@ -1175,10 +1175,11 @@ class OPCUAServer(StateMachineCore):
         self.my_folders['Engines'] = self.objects.add_folder(self.idx, "Engines")
 
         # SET
+        self.server.start()
         self.__set_cvt()
         self.__set_alarms()
         self.__set_engines()
-        self.server.start()
+        
         logging.getLogger('opcua').setLevel(logging.ERROR)
 
         self.send('start_to_wait')
@@ -1495,6 +1496,9 @@ class OPCUAServer(StateMachineCore):
 
     def __load_saved_access_type(self, node, var_name):
         from .core import PyAutomation
+        from .opcua.subscription import SubHandlerServer
+
+        handler = SubHandlerServer()
         app = PyAutomation()
         namespace = node.nodeid.to_string()
         opcua_server_obj = app.get_opcua_server_record_by_namespace(namespace=namespace)
@@ -1516,6 +1520,10 @@ class OPCUAServer(StateMachineCore):
             # Solo escritura: deshabilitamos la lectura y habilitamos la escritura
             node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
+            # Crea un manejador de suscripción
+            sub = self.server.create_subscription(1000, handler)
+            sub.subscribe_data_change(node)
+
         elif access_type == "read":
             # Solo lectura: habilitamos la lectura y deshabilitamos la escritura
             node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
@@ -1526,6 +1534,9 @@ class OPCUAServer(StateMachineCore):
             node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
+            # Crea un manejador de suscripción
+            sub = self.server.create_subscription(1000, handler)
+            sub.subscribe_data_change(node)
 
 
 class AutomationStateMachine(StateMachineCore):

@@ -111,6 +111,9 @@ def init_callback(app:dash.Dash):
         r"""
         Documentation here
         """
+        from ...opcua.subscription import SubHandlerServer
+
+        handler = SubHandlerServer()
         opcua_server_machine = app.automation.get_machine(name=StringType("OPCUAServer"))
         attrs = create_opcua_server_table(opcua_server_machine=opcua_server_machine)
 
@@ -157,6 +160,9 @@ def init_callback(app:dash.Dash):
                             # Solo escritura: deshabilitamos la lectura y habilitamos la escritura
                             node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
                             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
+                            # Crea un manejador de suscripción
+                            sub = opcua_server_machine.server.create_subscription(1000, handler)
+                            sub.subscribe_data_change(node)
                         elif access_type == "read":
                             # Solo lectura: habilitamos la lectura y deshabilitamos la escritura
                             node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
@@ -167,7 +173,8 @@ def init_callback(app:dash.Dash):
                             node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
                             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
                             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-            
+                            sub = opcua_server_machine.server.create_subscription(1000, handler)
+                            sub.subscribe_data_change(node)
 
                     attrs = create_opcua_server_table(opcua_server_machine=opcua_server_machine)
 
