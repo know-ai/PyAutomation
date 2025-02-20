@@ -5,8 +5,9 @@ from ..singleton import Singleton
 from ..tags.cvt import CVTEngine
 from ..tags import Tag
 from ..buffer import Buffer
+from ..models import StringType
 from ..logger.datalogger import DataLoggerEngine
-        
+
 
 class SubHandler(Singleton):
     r"""
@@ -91,19 +92,21 @@ class SubHandlerServer(Singleton):
 
     def datachange_notification(self, node, val, data):
         from .. import SEGMENT, MANUFACTURER
+
         timestamp = data.monitored_item.Value.SourceTimestamp
         if not timestamp:
             timestamp = datetime.now(pytz.utc)
         timestamp = timestamp.replace(tzinfo=pytz.UTC)
         tag_name = node.get_display_name().Text
-        print(f"CLIENT [{timestamp}] [{tag_name}]: {val}")
         tag = self.app.get_tag_by_name(name=tag_name)
-        val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-        tag.value.set_value(value=val, unit=tag.get_display_unit())  
-        if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
-            val = self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-        elif not MANUFACTURER and not SEGMENT:
-            val = self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)   
+        if tag.get_value()!=val:
+
+            val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
+            tag.value.set_value(value=val, unit=tag.get_display_unit())  
+            if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
+                self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+            elif not MANUFACTURER and not SEGMENT:
+                self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)   
 
 class DAS(Singleton):
     r"""
@@ -203,7 +206,6 @@ class DAS(Singleton):
         tag_name = tag.get_name()
         val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
         tag.value.set_value(value=val, unit=tag.get_display_unit())  
-        print(f"DAS [{timestamp}] [{tag_name}]: {val}")
         if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
             val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
         elif not MANUFACTURER and not SEGMENT:
@@ -211,7 +213,6 @@ class DAS(Singleton):
         timestamp = timestamp.astimezone(TIMEZONE)
         if tag_name in self.buffer:
             self.buffer[tag_name]["timestamp"](timestamp)
-            self.buffer[tag_name]["values"](val)
-        
+            self.buffer[tag_name]["values"](val)      
         
         

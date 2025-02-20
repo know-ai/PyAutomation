@@ -11,7 +11,7 @@ class AccessType(BaseModel):
         """
         if name.lower()=="read" or name.lower()=="write" or name.lower()=="readwrite":
 
-            access_type_obj = cls.select().where(cls.name == name).exists()
+            access_type_obj = cls.read_by_name(name=name)
             
             if not access_type_obj:
                 query = cls(name=name)
@@ -74,8 +74,8 @@ class OPCUAServer(BaseModel):
                 if AccessType.name_exist(name=access_type):
                     access_type_obj = AccessType.read_by_name(name=access_type)
                 else:
-                    access_type_obj = AccessType.create(name=namespace)
-
+                    access_type_obj = AccessType.create(name=access_type)
+                
                 if access_type_obj:
 
                     query = cls(

@@ -145,10 +145,13 @@ def init_callback(app:dash.Dash):
                                         attr = opcua_server_attrs[i]
                                         break                                        
                     
-                    # print(f"Position: {position}")
                     if attr:
                         node = getattr(opcua_server_machine, attr)
-                        app.automation.update_opcua_server_access_type(namespace=namespace, access_type=access_type)
+                        opcua_server_obj = app.automation.get_opcua_server_record_by_namespace(namespace=namespace)
+                        if opcua_server_obj:
+                            app.automation.update_opcua_server_access_type(namespace=namespace, access_type=access_type)
+                        else:
+                            app.automation.create_opcua_server_record(name=node_to_update["name"], namespace=namespace, access_type=access_type)
                         access_type = access_type.lower()
                         # Limpiar todos los bits de acceso primero
                         node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
@@ -159,18 +162,18 @@ def init_callback(app:dash.Dash):
                         subscriptions = handler.subscriptions
                         # Unsubscribe
 
-                        if node.nodeid.to_string() in subscriptions:
+                        if namespace in subscriptions:
 
-                            _sub = subscriptions.pop(node.nodeid.to_string())
+                            _sub = subscriptions.pop(namespace)
                             _sub.delete()
                         
                         if access_type == "write":
                             # Solo escritura: deshabilitamos la lectura y habilitamos la escritura
                             node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
                             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-                            sub = opcua_server_machine.server.create_subscription(1000, handler)
+                            sub = opcua_server_machine.server.create_subscription(100, handler)
                             sub.subscribe_data_change(node)
-                            handler.subscriptions[node.nodeid.to_string()] = sub
+                            handler.subscriptions[namespace] = sub
                         elif access_type == "read":
                             # Solo lectura: habilitamos la lectura y deshabilitamos la escritura
                             node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
@@ -181,9 +184,9 @@ def init_callback(app:dash.Dash):
                             node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
                             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
                             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-                            sub = opcua_server_machine.server.create_subscription(1000, handler)
+                            sub = opcua_server_machine.server.create_subscription(100, handler)
                             sub.subscribe_data_change(node)
-                            handler.subscriptions[node.nodeid.to_string()] = sub
+                            handler.subscriptions[namespace] = sub
 
                     attrs = create_opcua_server_table(opcua_server_machine=opcua_server_machine)
 

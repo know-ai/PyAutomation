@@ -1521,7 +1521,7 @@ class OPCUAServer(StateMachineCore):
             node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
             # Crea un manejador de suscripción
-            sub = self.server.create_subscription(1000, handler)
+            sub = self.server.create_subscription(100, handler)
             sub.subscribe_data_change(node)
 
         elif access_type == "read":
@@ -1535,7 +1535,7 @@ class OPCUAServer(StateMachineCore):
             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
             node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
             # Crea un manejador de suscripción
-            sub = self.server.create_subscription(1000, handler)
+            sub = self.server.create_subscription(100, handler)
             sub.subscribe_data_change(node)
 
 
