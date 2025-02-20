@@ -296,7 +296,8 @@ class CVT:
         """
         if self._tags:
 
-            return [tag.name for _, tag in self._tags.items() if tag.opcua_address and tag.node_namespace]
+            # return [tag.name for _, tag in self._tags.items() if tag.opcua_address and tag.node_namespace]
+            return [tag.name for _, tag in self._tags.items()]
         
         return list()
     
