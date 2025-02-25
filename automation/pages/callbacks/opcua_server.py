@@ -23,7 +23,12 @@ def init_callback(app:dash.Dash):
                     node_class = node.get_node_class()
                     if node_class == ua.NodeClass.Variable:
                         
-                        browse_name = node.get_attribute(ua.AttributeIds.DisplayName)
+                        display_name = node.get_attribute(ua.AttributeIds.DisplayName).Value.Value.Text
+                        # Obtén el nodo padre
+                        parent_node = node.get_parent()
+
+                        # Obtén el nombre de la carpeta padre (nodo padre)
+                        parent_name = parent_node.get_browse_name().Name
                         access_level = node.get_access_level()
                         # Verificar los niveles de acceso
                         write_only = ua.AccessLevel.CurrentWrite in access_level and ua.AccessLevel.CurrentRead not in access_level
@@ -38,10 +43,34 @@ def init_callback(app:dash.Dash):
                             access_type = "ReadWrite"
 
                         attrs.append({
-                            "name": browse_name.Value.Value.Text,
+                            "name": f"{parent_name}.{display_name}",
                             "namespace": node.nodeid.to_string(),
                             "access_type": access_type
                         })
+
+                        properties = node.get_properties()
+                        for prop in properties:
+                            prop_name = prop.get_display_name().Text
+                            # prop_value = prop.get_value()
+
+                            access_level = prop.get_access_level()
+                            # Verificar los niveles de acceso
+                            write_only = ua.AccessLevel.CurrentWrite in access_level and ua.AccessLevel.CurrentRead not in access_level
+                            read_write = ua.AccessLevel.CurrentRead in access_level and ua.AccessLevel.CurrentWrite in access_level
+                            access_type = "Read"
+                            if write_only:
+
+                                access_type = "Write"
+                            
+                            elif read_write:
+
+                                access_type = "ReadWrite"
+
+                            attrs.append({
+                                "name": f"{parent_name}.{display_name}.{prop_name}",
+                                "namespace": prop.nodeid.to_string(),
+                                "access_type": access_type
+                            })
         return attrs
 
     @app.callback(
@@ -129,7 +158,8 @@ def init_callback(app:dash.Dash):
                     # Code for update read_only attribute
                     opcua_server_machine = app.automation.get_machine(name=StringType("OPCUAServer"))
                     opcua_server_attrs = dir(opcua_server_machine)
-                    attr = False
+                    node = False
+
                     for i, item in enumerate(opcua_server_attrs):
                     
                         if hasattr(opcua_server_machine, item):
@@ -139,14 +169,27 @@ def init_callback(app:dash.Dash):
                                 node_class = node.get_node_class()
 
                                 if node_class == ua.NodeClass.Variable:
-                                    
+
                                     if node.nodeid.to_string()==namespace:
                                         
-                                        attr = opcua_server_attrs[i]
-                                        break                                        
-                    
-                    if attr:
-                        node = getattr(opcua_server_machine, attr)
+                                        break 
+
+                                    else:
+                                        props = node.get_properties()
+                                        flag = False
+                                        for node in props:
+                                            
+                                            if node.nodeid.to_string()==namespace:
+                                                
+                                                flag = True
+                                                break
+
+                                        if flag:
+
+                                            break
+
+                    if node:
+
                         opcua_server_obj = app.automation.get_opcua_server_record_by_namespace(namespace=namespace)
                         if opcua_server_obj:
                             app.automation.update_opcua_server_access_type(namespace=namespace, access_type=access_type)
@@ -189,7 +232,6 @@ def init_callback(app:dash.Dash):
                             handler.subscriptions[namespace] = sub
 
                     attrs = create_opcua_server_table(opcua_server_machine=opcua_server_machine)
-
 
                 return not is_open, attrs, None, 0, 0
 

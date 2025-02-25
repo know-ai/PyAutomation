@@ -90,23 +90,47 @@ class SubHandlerServer(Singleton):
         self.app = PyAutomation()
         self.subscriptions = dict()
 
+    def is_property(self, node):
+        from ..state_machine import ua
+        # A property is a variable that is part of another node (often an Object or another Variable)
+        parent = node.get_parent()
+        references = node.get_references(refs=ua.ObjectIds.HasProperty)
+        return bool(references)
+
+    def is_variable(self, node):
+        from ..state_machine import ua
+        return node.get_node_class() == ua.NodeClass.Variable
+
     def datachange_notification(self, node, val, data):
-        from .. import SEGMENT, MANUFACTURER
+        from .. import SEGMENT, MANUFACTURER, PyAutomation
+
+        app = PyAutomation()
 
         timestamp = data.monitored_item.Value.SourceTimestamp
         if not timestamp:
             timestamp = datetime.now(pytz.utc)
         timestamp = timestamp.replace(tzinfo=pytz.UTC)
         tag_name = node.get_display_name().Text
+        
         tag = self.app.get_tag_by_name(name=tag_name)
-        if tag.get_value()!=val:
+        if tag:
+            if tag.get_value()!=val:
 
-            val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-            tag.value.set_value(value=val, unit=tag.get_display_unit())  
-            if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
-                self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-            elif not MANUFACTURER and not SEGMENT:
-                self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)   
+                val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
+                tag.value.set_value(value=val, unit=tag.get_display_unit())  
+                if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
+                    self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                elif not MANUFACTURER and not SEGMENT:
+                    self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp) 
+        else:
+            
+            parent = node.get_parent()
+            if parent:
+                machine_name = parent.get_display_name().Text
+                machine = app.get_machine(name=StringType(machine_name))
+                attr = getattr(machine, tag_name)
+                attr.value = val
+                
 
 class DAS(Singleton):
     r"""

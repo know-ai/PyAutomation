@@ -238,6 +238,47 @@ class Machine(Singleton):
                     self.db_manager.attach(tag_name=tag_name)
                     break
 
+                else:
+
+                    if value.unit is None:
+
+                        unit = "adim"
+                        variable = "Adimentional"
+                        tag_name = f"{machine.name.value}.{_tag_name}"
+                        # if isinstance(value, StringType):
+
+                        #     data_type = "string"
+
+                        # elif isinstance(value, IntegerType):
+
+                        #     data_type = "int"
+
+                        # elif isinstance(value, FloatType):
+
+                        #     data_type = "float"
+
+                        # else:
+
+                        #     data_type = "bool"
+
+                        # cvt.set_tag(
+                        #     name=tag_name,
+                        #     unit=unit,
+                        #     data_type=data_type,
+                        #     variable=variable,
+                        #     description=f"process type variable",
+                        #     segment=SEGMENT,
+                        #     manufacturer=MANUFACTURER
+                        # )
+                        # # Persist Tag on Database
+                        # tag = cvt.get_tag_by_name(name=tag_name)
+                        # attr = getattr(machine, _tag_name)
+                        # attr.tag = tag
+                        # self.logger_engine.set_tag(tag=tag)
+                        # self.db_manager.attach(tag_name=tag_name)
+
+                        break
+
         internal_variables = machine.get_read_only_process_type_variables()
         for _tag_name, value in internal_variables.items():
 
@@ -255,7 +296,6 @@ class Machine(Singleton):
 
                         attr = getattr(machine, _tag_name)
                         unit = attr.unit
-                        
                         tag, _ = cvt.set_tag(
                             name=tag_name,
                             unit=unit,
@@ -708,6 +748,10 @@ class StateMachineCore(StateMachine):
                 if not value.read_only:
 
                     result[name] = value
+
+            if isinstance(value, (IntegerType, StringType, FloatType)):
+                
+                result[name] = value
 
         return result
     
@@ -1243,7 +1287,6 @@ class OPCUAServer(StateMachineCore):
                     __var_name = engine_name.replace(f"{MANUFACTURER}.", "")
 
                     ID = blake2b(key=f"{__var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
-
                     setattr(self, var_name, self.my_folders[segment].add_variable(
                         ua.NodeId(identifier=ID, namespaceidx=self.idx), 
                         engine_name, 
@@ -1265,6 +1308,7 @@ class OPCUAServer(StateMachineCore):
                         "priority",
                         "classification",
                         "machine_interval",
+                        "fluid",
                         "maneuver",
                         "operation"
                         )
@@ -1272,7 +1316,8 @@ class OPCUAServer(StateMachineCore):
                     for key in keep_list:
                         if key in engine:
                             ID = blake2b(key=f"{__var_name}.{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                            prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, engine[key])  
+                            prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, engine[key])
+                            self.__load_saved_access_type(node=prop, var_name=f"{var_name}.{key}")  
                             browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                             browse_name.Value.Value.Name = "" 
 
@@ -1326,7 +1371,8 @@ class OPCUAServer(StateMachineCore):
                     # Add State Properties
                     for state_key, state_value in alarm.state.serialize().items():
                         ID = blake2b(key=f"{__var_name}.{state_key}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                        prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), state_key, state_value)  
+                        prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), state_key, state_value)
+                        self.__load_saved_access_type(node=prop, var_name=f"{var_name}.{state_key}")   
                         browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                         browse_name.Value.Value.Name = ""  
 
@@ -1352,12 +1398,12 @@ class OPCUAServer(StateMachineCore):
             data_type = tag["data_type"]
             tag_description = tag["description"] or ""
             
-            var_name = f"{segment}_{tag_name}"
+            var_name = f"{segment}.{tag_name}"
             __var_name = tag_name.replace(f"{MANUFACTURER}.", "")
             identifier = blake2b(key=__var_name.encode('utf-8')[:64], digest_size=4).hexdigest()
 
             if not hasattr(self, var_name):
-
+                
                 if data_type.lower()=='str':
                         setattr(self, var_name, self.my_folders[f"{segment}"].add_variable(
                             ua.NodeId(identifier=identifier, namespaceidx=self.idx), 
@@ -1370,7 +1416,7 @@ class OPCUAServer(StateMachineCore):
                     setattr(self, var_name, self.my_folders[f"{segment}"].add_variable(
                         ua.NodeId(identifier=identifier, namespaceidx=self.idx), 
                         tag_name, 
-                        0)
+                        0.0)
                     )
 
                 node = getattr(self, var_name)
@@ -1400,8 +1446,10 @@ class OPCUAServer(StateMachineCore):
                     tag.pop(key)
                 # Add State Properties
                 for key, value in tag.items():
-                    ID = blake2b(key=f"{__var_name}_{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                    
+                    ID = blake2b(key=f"{__var_name}.{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
                     prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)  
+                    self.__load_saved_access_type(node=prop, var_name=f"{var_name}.{key}") 
                     browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
                     browse_name.Value.Value.Name = "" 
 
