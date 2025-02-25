@@ -81,7 +81,7 @@ def init_callback(app:dash.Dash):
         available_tags = [{"label": "", "value": ""}]
         tags = app.automation.cvt._cvt.get_field_tags_names()
         for _tag_name, value in internal_variables.items():
-
+            
             if value.tag:
                 subscribed_tags_machine.append({
                     "label": f"{value.tag.name}->{_tag_name}", "value": value.tag.name

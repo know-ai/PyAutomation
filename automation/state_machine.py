@@ -281,7 +281,6 @@ class Machine(Singleton):
 
         internal_variables = machine.get_read_only_process_type_variables()
         for _tag_name, value in internal_variables.items():
-
             for variable, units in VARIABLES.items():
 
                 if value.unit in units.values() or value.unit in units.keys():
@@ -313,7 +312,7 @@ class Machine(Singleton):
                             # Persist Tag on Database
                             tag = cvt.get_tag_by_name(name=tag_name)
                             attr = getattr(machine, _tag_name)
-                            attr.tag = tag
+                            # attr.tag = tag
                             self.logger_engine.set_tag(tag=tag)
                             self.db_manager.attach(tag_name=tag_name)
                             break 
