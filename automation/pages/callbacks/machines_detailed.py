@@ -22,6 +22,14 @@ def init_callback(app:dash.Dash):
         machine_tab_content = dash.html.P("This shouldn't ever be displayed...")
         if pathname=="/machines-detailed":
             for machine, _, _ in app.automation.get_machines():
+                if machine.get_classification().value.lower()!="opc ua server":
+
+                    continue
+
+                elif machine.get_classification().value.lower()=="data acquisition system":
+
+                    continue
+
                 internal_variables = machine.get_internal_process_type_variables()
                 if internal_variables:
 

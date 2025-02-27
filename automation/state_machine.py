@@ -233,7 +233,7 @@ class Machine(Singleton):
                     # Persist Tag on Database
                     tag = cvt.get_tag_by_name(name=tag_name)
                     attr = getattr(machine, _tag_name)
-                    attr.tag = tag
+                    # attr.tag = tag
                     self.logger_engine.set_tag(tag=tag)
                     self.db_manager.attach(tag_name=tag_name)
                     break
@@ -1397,7 +1397,7 @@ class OPCUAServer(StateMachineCore):
             data_type = tag["data_type"]
             tag_description = tag["description"] or ""
             
-            var_name = f"{segment}.{tag_name}"
+            var_name = f"{segment}_{tag_name}"
             __var_name = tag_name.replace(f"{MANUFACTURER}.", "")
             identifier = blake2b(key=__var_name.encode('utf-8')[:64], digest_size=4).hexdigest()
 
@@ -1446,7 +1446,7 @@ class OPCUAServer(StateMachineCore):
                 # Add State Properties
                 for key, value in tag.items():
                     
-                    ID = blake2b(key=f"{__var_name}.{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
+                    ID = blake2b(key=f"{__var_name}_{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
                     prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)  
                     self.__load_saved_access_type(node=prop, var_name=f"{var_name}.{key}") 
                     browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
