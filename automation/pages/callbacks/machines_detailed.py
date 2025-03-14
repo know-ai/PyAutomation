@@ -22,22 +22,25 @@ def init_callback(app:dash.Dash):
         machine_tab_content = dash.html.P("This shouldn't ever be displayed...")
         if pathname=="/machines-detailed":
             for machine, _, _ in app.automation.get_machines():
-                if machine.get_classification().value.lower()!="opc ua server":
 
-                    continue
+                if hasattr(machine, "classification"):
 
-                elif machine.get_classification().value.lower()=="data acquisition system":
+                    if machine.classification.value.lower()=="opc ua server":
 
-                    continue
+                        continue
 
-                internal_variables = machine.get_internal_process_type_variables()
-                if internal_variables:
+                    elif machine.classification.value.lower()=="data acquisition system":
 
-                    tabs.append(dbc.Tab(label=f"{machine.name.value}", tab_id=f"tab-{machine.name.value}"))
-                    if not active_tab:
+                        continue
 
-                        active_tab = f"tab-{machine.name.value}"
-                        machine_tab_content = MachinesComponents.machine_tab_content(app=app.automation, machine_name=machine.name.value)
+                    internal_variables = machine.get_internal_process_type_variables()
+                    if internal_variables:
+
+                        tabs.append(dbc.Tab(label=f"{machine.name.value}", tab_id=f"tab-{machine.name.value}"))
+                        if not active_tab:
+
+                            active_tab = f"tab-{machine.name.value}"
+                            machine_tab_content = MachinesComponents.machine_tab_content(app=app.automation, machine_name=machine.name.value)
         
         return tabs, active_tab, machine_tab_content
     

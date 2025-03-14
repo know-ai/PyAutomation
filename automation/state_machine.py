@@ -233,51 +233,51 @@ class Machine(Singleton):
                     # Persist Tag on Database
                     tag = cvt.get_tag_by_name(name=tag_name)
                     attr = getattr(machine, _tag_name)
-                    # attr.tag = tag
+                    attr.tag = tag
                     self.logger_engine.set_tag(tag=tag)
                     self.db_manager.attach(tag_name=tag_name)
                     break
 
-                else:
+                # else:
 
-                    if value.unit is None:
+                #     if value.unit is None:
 
-                        unit = "adim"
-                        variable = "Adimentional"
-                        tag_name = f"{machine.name.value}.{_tag_name}"
-                        # if isinstance(value, StringType):
+                #         unit = "adim"
+                #         variable = "Adimentional"
+                #         tag_name = f"{machine.name.value}.{_tag_name}"
+                #         if isinstance(value, StringType):
 
-                        #     data_type = "string"
+                #             data_type = "string"
 
-                        # elif isinstance(value, IntegerType):
+                #         elif isinstance(value, IntegerType):
 
-                        #     data_type = "int"
+                #             data_type = "int"
 
-                        # elif isinstance(value, FloatType):
+                #         elif isinstance(value, FloatType):
 
-                        #     data_type = "float"
+                #             data_type = "float"
 
-                        # else:
+                #         else:
 
-                        #     data_type = "bool"
+                #             data_type = "bool"
 
-                        # cvt.set_tag(
-                        #     name=tag_name,
-                        #     unit=unit,
-                        #     data_type=data_type,
-                        #     variable=variable,
-                        #     description=f"process type variable",
-                        #     segment=SEGMENT,
-                        #     manufacturer=MANUFACTURER
-                        # )
-                        # # Persist Tag on Database
-                        # tag = cvt.get_tag_by_name(name=tag_name)
-                        # attr = getattr(machine, _tag_name)
-                        # attr.tag = tag
-                        # self.logger_engine.set_tag(tag=tag)
-                        # self.db_manager.attach(tag_name=tag_name)
+                #         cvt.set_tag(
+                #             name=tag_name,
+                #             unit=unit,
+                #             data_type=data_type,
+                #             variable=variable,
+                #             description=f"process type variable",
+                #             segment=SEGMENT,
+                #             manufacturer=MANUFACTURER
+                #         )
+                #         # Persist Tag on Database
+                #         tag = cvt.get_tag_by_name(name=tag_name)
+                #         attr = getattr(machine, _tag_name)
+                #         attr.tag = tag
+                #         self.logger_engine.set_tag(tag=tag)
+                #         self.db_manager.attach(tag_name=tag_name)
 
-                        break
+                #         break
 
         internal_variables = machine.get_read_only_process_type_variables()
         for _tag_name, value in internal_variables.items():
@@ -312,7 +312,7 @@ class Machine(Singleton):
                             # Persist Tag on Database
                             tag = cvt.get_tag_by_name(name=tag_name)
                             attr = getattr(machine, _tag_name)
-                            # attr.tag = tag
+                            attr.tag = tag
                             self.logger_engine.set_tag(tag=tag)
                             self.db_manager.attach(tag_name=tag_name)
                             break 
@@ -748,9 +748,9 @@ class StateMachineCore(StateMachine):
 
                     result[name] = value
 
-            if isinstance(value, (IntegerType, StringType, FloatType)):
+            # if isinstance(value, (IntegerType, StringType, FloatType)):
                 
-                result[name] = value
+            #     result[name] = value
 
         return result
     
