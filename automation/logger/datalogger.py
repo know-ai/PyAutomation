@@ -225,7 +225,6 @@ class DataLogger(BaseLogger):
         # Structure the data
         time_span = (stop - start ) / 60 # span in minutes
         result = defaultdict(lambda: {"values": []})
-        # breakpoint()
         if time_span > 60 * 24 * 7:  # 1 week
             # Aggregate data every 1 day
             result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600 * 24, timezone=timezone)

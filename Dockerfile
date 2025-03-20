@@ -1,4 +1,4 @@
-FROM python:3.12-alpine
+FROM python:3.10.12-alpine
 
 WORKDIR /app
 
@@ -8,7 +8,19 @@ LABEL description="PyAutomation System"
 
 RUN apk update && apk add curl util-linux
 
+# Instalar dependencias necesarias para compilar numpy (sin libexecinfo-dev)
+RUN apk add --no-cache \
+    build-base \
+    musl-dev \
+    gfortran \
+    openblas-dev \
+    linux-headers \
+    && ln -s /usr/include/locale.h /usr/include/xlocale.h
+
+    
 RUN pip3 install --upgrade pip
+RUN pip3 install setuptools wheel
+
 
 COPY . .
 COPY requirements.txt requirements.txt

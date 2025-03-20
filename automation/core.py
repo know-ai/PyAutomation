@@ -1077,6 +1077,7 @@ class PyAutomation(Singleton):
 
             tags = self.db_manager.get_tags()
 
+
             for tag in tags:
 
                 active = tag.pop("active")

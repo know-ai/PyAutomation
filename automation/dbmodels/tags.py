@@ -854,6 +854,16 @@ class Tags(BaseModel):
             manufacturer = segment["manufacturer"]["name"]
             segment = segment["name"]
 
+        gaussian_filter_r_value = 0
+        if hasattr(self, "gaussian_filter_r_value"):
+
+            gaussian_filter_r_value = self.gaussian_filter_r_value
+
+        gaussian_filter_threshold = 0
+        if hasattr(self, "gaussian_filter_threshold"):
+
+            gaussian_filter_threshold = self.gaussian_filter_threshold
+
         return {
             'id': self.identifier,
             'name': self.name,
@@ -870,8 +880,8 @@ class Tags(BaseModel):
             'active': self.active,
             'process_filter': self.process_filter,
             'gaussian_filter': self.gaussian_filter,
-            'gaussian_filter_threshold': self.gaussian_filter_threshold,
-            'gaussian_filter_r_value': self.gaussian_filter_r_value,
+            'gaussian_filter_threshold': gaussian_filter_threshold,
+            'gaussian_filter_r_value': gaussian_filter_r_value,
             'out_of_range_detection': self.out_of_range_detection,
             'frozen_data_detection': self.frozen_data_detection,
             'outlier_detection': self.outlier_detection,
