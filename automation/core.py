@@ -421,12 +421,31 @@ class PyAutomation(Singleton):
 
         if "R-value" in kwargs:
 
-            r_value = kwargs.pop("R-value")
-            kwargs['gaussian_filter_r_value'] = r_value
+            try:
+                r_value = float(kwargs.pop("R-value"))
+                if r_value < 0.0 or r_value > 100.0:
+
+                    r_value = tag.gaussian_filter_r_value * 100.0
+
+            except Exception as err:
+
+                r_value = tag.gaussian_filter_r_value
+
+            kwargs['gaussian_filter_r_value'] = r_value / 100.0
 
         if "threshold" in kwargs:
 
-            threshold = kwargs.pop("threshold")
+            try:
+
+                threshold = float(kwargs.pop("threshold"))
+                if threshold < 0.0:
+
+                    threshold = tag.gaussian_filter_threshold
+
+            except Exception as err:
+
+                threshold = tag.gaussian_filter_threshold
+
             kwargs['gaussian_filter_threshold'] = threshold
 
         

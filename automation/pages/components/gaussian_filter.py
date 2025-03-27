@@ -48,7 +48,7 @@ class FilterComponents:
                 {'name': 'display_name', 'id': 'display_name', 'editable': False}, 
                 {'name': 'gaussian_filter', 'id': 'gaussian_filter', 'type': 'boolean', 'editable': True},
                 {'name': 'threshold', 'id': 'threshold', 'type': 'numeric', 'editable': True}, 
-                {'name': 'R-value', 'id': 'R-value', 'type': 'numeric', 'editable': True},
+                {'name': 'R-value [%]', 'id': 'R-value', 'type': 'numeric', 'editable': True},
             ],
             id="filter_cvt_datatable",
             selected_columns=[],

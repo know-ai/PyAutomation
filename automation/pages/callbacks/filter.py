@@ -98,7 +98,7 @@ def init_callback(app:dash.Dash):
                     "display_name": tag.display_name, 
                     "gaussian_filter": tag.gaussian_filter,
                     "threshold": tag.gaussian_filter_threshold,
-                    "R-value": tag.gaussian_filter_r_value
+                    "R-value": tag.gaussian_filter_r_value * 100.0
                 })      
 
             return data
@@ -171,7 +171,7 @@ def init_callback(app:dash.Dash):
                         "display_name": tag.display_name, 
                         "gaussian_filter": tag.gaussian_filter,
                         "threshold": tag.gaussian_filter_threshold,
-                        "R-value": tag.gaussian_filter_r_value
+                        "R-value": tag.gaussian_filter_r_value * 100.0
                     }) 
                 
                 return data
@@ -202,7 +202,7 @@ def init_callback(app:dash.Dash):
                 "display_name": tag.display_name, 
                 "gaussian_filter": tag.gaussian_filter,
                 "threshold": tag.gaussian_filter_threshold,
-                "R-value": tag.gaussian_filter_r_value
+                "R-value": tag.gaussian_filter_r_value * 100.0
             }) 
         
         return data
