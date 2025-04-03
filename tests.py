@@ -4,6 +4,7 @@ from automation.tests.test_user import TestUsers
 from automation.tests.test_core import TestCore
 from automation.tests.test_unit import TestConversions
 from automation.tests.test_alarms import TestAlarms
+from automation.tests.test_npw import TestNPW
 from automation.utils import units
 from automation.variables import (
     volumetric_flow,
@@ -32,7 +33,7 @@ def suite():
     tests.append(TestLoader().loadTestsFromTestCase(TestUsers))
     tests.append(TestLoader().loadTestsFromTestCase(TestCore))
     tests.append(TestLoader().loadTestsFromTestCase(TestAlarms))
-
+    tests.append(TestLoader().loadTestsFromTestCase(TestNPW))
     # DOCTESTS
     doctests = list()
     doctests.append(units)
