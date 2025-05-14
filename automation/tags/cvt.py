@@ -300,6 +300,16 @@ class CVT:
         
         return list()
     
+    def get_cuasi_field_tags_names(self)->list:
+        r"""
+        Returns a list of the defined tags names.
+        """
+        if self._tags:
+
+            return [tag.name for _, tag in self._tags.items() if tag.opcua_address and]
+        
+        return list()
+    
     def get_tag_by_name(self, name:str)->Tag|None:
         r"""Documentation here
 
