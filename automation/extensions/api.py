@@ -14,15 +14,9 @@ authorizations = {
         'type' : 'apiKey',
         'in' : 'header',
         'name' : 'X-API-KEY'
-    },
-    'auto_restart': {
-        'type': 'apiKey',
-        'in': 'header',
-        'name': 'AUTO-RESTART-ENGINE',
-        'description': 'Boolean flag to control automatic engine restart (true/false)',
-        'default': 'false'
     }
 }
+
 
 blueprint = Blueprint('api', __name__, url_prefix='/api')
 

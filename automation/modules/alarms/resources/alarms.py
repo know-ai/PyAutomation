@@ -47,6 +47,21 @@ class AlarmsCollection(Resource):
         Get Alarms
         """
         return app.alarm_manager.serialize(), 200
+    
+@ns.route('/active_alarms')
+class ActiveAlarmsCollection(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    def get(self):
+        """
+        Are there active alarms?
+        """
+        if app.alarm_manager.get_lasts_active_alarms(lasts=1):
+            
+            return True, 200
+        
+        return False, 200
 
     
 @ns.route('/<id>')
