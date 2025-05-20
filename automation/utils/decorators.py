@@ -1,10 +1,10 @@
 import functools, logging, sys
-from ..modules.users.users import User
+from ..modules.users.users import User, Users
 from ..logger.events import EventsLoggerEngine
 
 
 events_engine = EventsLoggerEngine()
-
+users = Users()
 
 def decorator(declared_decorator):
     """
@@ -36,13 +36,13 @@ def decorator(declared_decorator):
 
     return final_decorator
 
-def set_event(message:str, classification:str, priority:int, criticity:int):
+def set_event(message:str, classification:str, priority:int, criticity:int, force:bool=False):
     @decorator
     def wrapper(func, args, kwargs):
         from automation import PyAutomation
         app = PyAutomation()
         result = func(*args, **kwargs)
-
+        
         if result:
         
             if "user" in kwargs:
@@ -67,6 +67,26 @@ def set_event(message:str, classification:str, priority:int, criticity:int):
                     if app.sio:
 
                         app.sio.emit("on.event", data=event.serialize())
+        else:
+            if force:
+                description = None
+
+                if isinstance(result, tuple):
+
+                    description = result[-1]
+                user = users.get_by_username(username="intelcon")
+                event, _ = events_engine.create(
+                    message=message,
+                    description=description,
+                    classification=classification,
+                    priority=priority,
+                    criticity=criticity,
+                    user=user
+                )
+                
+                if app.sio:
+
+                    app.sio.emit("on.event", data=event.serialize())
 
         return result
 

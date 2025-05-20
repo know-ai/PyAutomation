@@ -90,7 +90,7 @@ def init_callback(app:dash.Dash):
         subscribed_tags_machine = [{"label": "", "value": ""}]
         not_subscribed = [{"label": "", "value": ""}]
         available_tags = [{"label": "", "value": ""}]
-        tags = app.automation.cvt._cvt.get_field_tags_names()
+        tags = app.automation.cvt._cvt.get_cuasi_field_tags_names()
         for _tag_name, value in internal_variables.items():
             
             if value.tag:

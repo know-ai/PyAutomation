@@ -1,7 +1,9 @@
-import os, pytz
+import os, pytz, secrets
 from flask import Flask
 from .core import PyAutomation
 from .state_machine import OPCUAServer
+from .modules.users.users import Users
+from .modules.users.roles import Roles
 
 app = Flask(__name__, instance_relative_config=False)
 
@@ -18,9 +20,35 @@ if not os.path.isfile(KEY_FILE):
     KEY_FILE = None
 OPCUA_SERVER_PORT = os.environ.get('OPCUA_SERVER_PORT') or "53530"
 
+def create_system_user():
+    """
+    Crea el usuario system si no existe
+    """
+    users = Users()
+    roles = Roles()
+    
+    # Verificar si el usuario system existe
+    if not users.check_username(username="system"):
+        # Obtener el rol de administrador
+        admin_role = roles.get_by_name(name="sudo")
+        if admin_role:
+            # Generar password e identificador dinámicamente
+            system_password = secrets.token_urlsafe(32)
+            system_identifier = secrets.token_hex(16)
+            
+            # Crear el usuario system
+            user, message = users.signup(
+                username="system",
+                role_name="sudo",
+                email="system@intelcon.com",
+                password=system_password,
+                name="System",
+                lastname="Internal",
+                identifier=system_identifier
+            )
+
 class CreateApp():
     """Initialize the core application."""
-
 
     def __call__(self):
         """
@@ -30,6 +58,8 @@ class CreateApp():
         self.application = app
         
         with app.app_context():
+            # Crear usuario system si no existe
+            create_system_user()
 
             from . import extensions
             extensions.init_app(app)
