@@ -36,7 +36,7 @@ def decorator(declared_decorator):
 
     return final_decorator
 
-def set_event(message:str, classification:str, priority:int, criticity:int, force:bool=False):
+def set_event(message:str, classification:str, priority:int, criticity:int, description:str="", force:bool=False):
     @decorator
     def wrapper(func, args, kwargs):
         from automation import PyAutomation
@@ -50,15 +50,15 @@ def set_event(message:str, classification:str, priority:int, criticity:int, forc
                 user = kwargs.pop('user')
                 if isinstance(user, User):
 
-                    description = None
+                    _description = None
 
                     if isinstance(result, tuple):
 
-                        description = result[-1]
+                        _description = result[-1]
                     
                     event, _ = events_engine.create(
                         message=message,
-                        description=description,
+                        description=_description,
                         classification=classification,
                         priority=priority,
                         criticity=criticity,
@@ -69,12 +69,7 @@ def set_event(message:str, classification:str, priority:int, criticity:int, forc
                         app.sio.emit("on.event", data=event.serialize())
         else:
             if force:
-                description = None
-
-                if isinstance(result, tuple):
-
-                    description = result[-1]
-                user = users.get_by_username(username="intelcon")
+                user = users.get_by_username(username="system")
                 event, _ = events_engine.create(
                     message=message,
                     description=description,

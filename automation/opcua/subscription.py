@@ -7,6 +7,7 @@ from ..tags import Tag
 from ..buffer import Buffer
 from ..models import StringType
 from ..logger.datalogger import DataLoggerEngine
+import logging
 
 
 class SubHandler(Singleton):
@@ -25,7 +26,7 @@ class SubHandler(Singleton):
         r"""
         Documentation here
         """
-
+        
         if client_name not in self.monitored_items:
             
             monitored_item = subscription.subscribe_data_change(
@@ -146,6 +147,7 @@ class DAS(Singleton):
         self.cvt = CVTEngine()
         self.logger = DataLoggerEngine()
         self.buffer = dict()
+        self.last_notification_time = {}  # Para rastrear la última notificación de cada variable
 
     def restart_buffer(self, tag:Tag):
         r"""
@@ -177,7 +179,8 @@ class DAS(Singleton):
                 node_id.get_display_name().Text: {
                     "subscription": subscription,
                     "monitored_item": monitored_item,
-                    "server": client_name
+                    "server": client_name,
+                    "namespace": node_id.nodeid.to_string()
                 }
             }
 
@@ -193,7 +196,8 @@ class DAS(Singleton):
                     node_id.get_display_name().Text: {
                         "subscription": subscription,
                         "monitored_item": monitored_item,
-                        "server": client_name
+                        "server": client_name,
+                        "namespace": node_id.nodeid.to_string()
                     }
                 })
 
@@ -216,6 +220,27 @@ class DAS(Singleton):
                 subscription = monitored_item["subscription"] 
                 monitored_item["monitored_item"] = subscription.subscribe_data_change(client.get_node(node_id))
 
+    def check_subscription_status(self):
+        """
+        Verifica el estado de las suscripciones y detecta si alguna se ha perdido
+        """
+        namespaces = list()
+        current_time = datetime.now(pytz.UTC)
+        for client_name, items in self.monitored_items.items():
+            for node_name, item in items.items():
+                
+                if node_name not in self.last_notification_time:
+                    self.last_notification_time[node_name] = current_time
+                    continue
+                
+                # Si no hemos recibido notificaciones en los últimos 30 segundos
+                if (current_time - self.last_notification_time[node_name]).total_seconds() > 30:
+                    logging.warning(f"Posible pérdida de suscripción para {node_name} en {client_name}")
+
+                namespaces.append(item["namespace"])
+
+        return namespaces
+
     def datachange_notification(self, node, val, data):
         r"""
         Documentation here
@@ -226,6 +251,10 @@ class DAS(Singleton):
         if not timestamp:
             timestamp = datetime.now(pytz.utc)
         timestamp = timestamp.replace(tzinfo=pytz.UTC)
+        
+        # Actualizar el tiempo de la última notificación
+        self.last_notification_time[node.get_display_name().Text] = timestamp
+        
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
         tag_name = tag.get_name()
         val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())

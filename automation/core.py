@@ -1,4 +1,4 @@
-import sys, logging, json, os, jwt, requests, urllib3
+import sys, logging, json, os, jwt, requests, urllib3, secrets
 from logging.handlers import TimedRotatingFileHandler
 from math import ceil
 from datetime import datetime, timezone
@@ -10,6 +10,7 @@ from .dbmodels.machines import Machines
 # PYAUTOMATION MODULES IMPORTATION
 from .singleton import Singleton
 from .workers import LoggerWorker
+from .workers import DASWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .opcua.models import Client
 from .tags import CVTEngine, Tag
@@ -1581,12 +1582,35 @@ class PyAutomation(Singleton):
         **Returns:** `None`
         """
         self.safe_start(test=test, create_tables=create_tables, machines=machines)
+        self.create_system_user()
 
         if not test:
         
             if debug:
                 
                 self.dash_app.run(debug=debug, use_reloader=False)
+
+    @logging_error_handler
+    def create_system_user(self):
+        # Create system user
+        users = Users()
+        roles = Roles()
+        
+        # Verificar si el usuario system existe
+        if not users.read_by_username(username="system"):
+            # Obtener el rol de administrador
+            admin_role = roles.read_by_name(name="sudo")
+            if admin_role:
+                # Generar password e identificador dinámicamente
+                system_password = secrets.token_urlsafe(32)
+                self.signup(
+                    username="system",
+                    role_name="sudo",
+                    email="system@intelcon.com",
+                    password=system_password,
+                    name="System",
+                    lastname="Intelcon"
+                )
 
     @logging_error_handler
     def safe_start(self, test:bool=False, create_tables:bool=True, machines:tuple=None):
@@ -1622,6 +1646,7 @@ class PyAutomation(Singleton):
 
         * LoggerWorker
         * StateMachineWorker
+        * DASWorker
         """
         if self._create_tables:
 
@@ -1641,6 +1666,9 @@ class PyAutomation(Singleton):
             
             self.load_db_tags_to_machine()
 
+        # self.das_worker = DASWorker(self.das, self.alarm_manager)
+        # self.das_worker.start()
+
         self.is_starting = False
 
     @logging_error_handler
@@ -1651,6 +1679,8 @@ class PyAutomation(Singleton):
         """
         self.machine.stop()
         self.db_worker.stop()
+        if hasattr(self, 'subscription_monitor'):
+            self.subscription_monitor.stop()
 
     @logging_error_handler
     @validate_types(output=None)
