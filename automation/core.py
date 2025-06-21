@@ -10,7 +10,6 @@ from .dbmodels.machines import Machines
 # PYAUTOMATION MODULES IMPORTATION
 from .singleton import Singleton
 from .workers import LoggerWorker
-from .workers import DASWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .opcua.models import Client
 from .tags import CVTEngine, Tag

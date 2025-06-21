@@ -147,7 +147,7 @@ class DAS(Singleton):
         self.cvt = CVTEngine()
         self.logger = DataLoggerEngine()
         self.buffer = dict()
-        self.last_notification_time = {}  # Para rastrear la última notificación de cada variable
+        # self.last_notification_time = {}  # Para rastrear la última notificación de cada variable
 
     def restart_buffer(self, tag:Tag):
         r"""
@@ -220,26 +220,26 @@ class DAS(Singleton):
                 subscription = monitored_item["subscription"] 
                 monitored_item["monitored_item"] = subscription.subscribe_data_change(client.get_node(node_id))
 
-    def check_subscription_status(self):
-        """
-        Verifica el estado de las suscripciones y detecta si alguna se ha perdido
-        """
-        namespaces = list()
-        current_time = datetime.now(pytz.UTC)
-        for client_name, items in self.monitored_items.items():
-            for node_name, item in items.items():
+    # def check_subscription_status(self):
+    #     """
+    #     Verifica el estado de las suscripciones y detecta si alguna se ha perdido
+    #     """
+    #     namespaces = list()
+    #     current_time = datetime.now(pytz.UTC)
+    #     for client_name, items in self.monitored_items.items():
+    #         for node_name, item in items.items():
                 
-                if node_name not in self.last_notification_time:
-                    self.last_notification_time[node_name] = current_time
-                    continue
+    #             if node_name not in self.last_notification_time:
+    #                 self.last_notification_time[node_name] = current_time
+    #                 continue
                 
-                # Si no hemos recibido notificaciones en los últimos 30 segundos
-                if (current_time - self.last_notification_time[node_name]).total_seconds() > 30:
-                    logging.warning(f"Posible pérdida de suscripción para {node_name} en {client_name}")
+    #             # Si no hemos recibido notificaciones en los últimos 30 segundos
+    #             if (current_time - self.last_notification_time[node_name]).total_seconds() > 30:
+    #                 logging.warning(f"Posible pérdida de suscripción para {node_name} en {client_name}")
 
-                namespaces.append(item["namespace"])
+    #             namespaces.append(item["namespace"])
 
-        return namespaces
+    #     return namespaces
 
     def datachange_notification(self, node, val, data):
         r"""
@@ -253,7 +253,7 @@ class DAS(Singleton):
         timestamp = timestamp.replace(tzinfo=pytz.UTC)
         
         # Actualizar el tiempo de la última notificación
-        self.last_notification_time[node.get_display_name().Text] = timestamp
+        # self.last_notification_time[node.get_display_name().Text] = timestamp
         
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
         tag_name = tag.get_name()
