@@ -274,6 +274,60 @@ class Client(OPCClient):
 
         return result, 200
 
+    def write_value(self, node_namespace: str, value):
+        r"""
+        Escribe un valor en un nodo variable del servidor OPC UA
+        
+        Args:
+            node_namespace: Namespace del nodo en formato string (ej: "ns=2;i=1234")
+            value: Valor a escribir (el tipo debe ser compatible con el nodo)
+        
+        Returns:
+            tuple: (dict con resultado, status_code)
+        """
+        try:
+            if not self.is_connected():
+                return {
+                    'message': 'Cliente no conectado al servidor',
+                    'namespace': node_namespace,
+                    'success': False
+                }, 400
+            
+            _node = self.get_node(NodeId.from_string(node_namespace))
+            
+            # Verificar que es un nodo variable
+            if _node.get_node_class().name.lower() != 'variable':
+                return {
+                    'message': f'El nodo no es de tipo Variable, es {_node.get_node_class().name}',
+                    'namespace': node_namespace,
+                    'success': False
+                }, 400
+            
+            # Verificar permisos de escritura
+            access_level = _node.get_access_level()
+            user_access_level = _node.get_user_access_level()
+            
+            # Escribir el valor
+            _node.set_value(value)
+            
+            result = {
+                'message': 'Valor escrito exitosamente',
+                'namespace': node_namespace,
+                'value': value,
+                'success': True
+            }
+            return result, 200
+            
+        except Exception as err:
+            logger = logging.getLogger("pyautomation")
+            logger.error(f"Error escribiendo valor en {node_namespace}: {err}")
+            result = {
+                'message': f'Error al escribir valor: {str(err)}',
+                'namespace': node_namespace,
+                'success': False
+            }
+            return result, 500
+
     @staticmethod
     def find_servers(hostname, port):
         r"""

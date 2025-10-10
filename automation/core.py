@@ -649,6 +649,46 @@ class PyAutomation(Singleton):
         return self.opcua_client_manager.get(client_name=client_name)
     
     @logging_error_handler
+    @validate_types(opcua_address=str, output=Client|None)
+    def get_opcua_client_by_address(self, opcua_address:str)->Client|None:
+        r"""
+        Obtiene el cliente OPC UA correspondiente a una dirección
+        
+        Args:
+            opcua_address: Dirección del servidor OPC UA (ej: "opc.tcp://localhost:4840")
+        
+        Returns:
+            Client: Cliente OPC UA si existe y está conectado, None en caso contrario
+        """
+        return self.opcua_client_manager.get_client_by_address(opcua_address=opcua_address)
+    
+    @logging_error_handler
+    @validate_types(opcua_address=str, node_namespace=str, output=tuple)
+    def write_opcua_value(self, opcua_address:str, node_namespace:str, value)->tuple[dict, int]:
+        r"""
+        Escribe un valor a un nodo OPC UA
+        
+        Args:
+            opcua_address: Dirección del servidor OPC UA
+            node_namespace: Namespace del nodo (ej: "ns=2;i=1234")
+            value: Valor a escribir
+        
+        Returns:
+            tuple: (dict con resultado, status_code)
+        """
+        opcua_client = self.get_opcua_client_by_address(opcua_address=opcua_address)
+        
+        if not opcua_client:
+            return {
+                'message': f'Cliente OPC UA no encontrado o no conectado para {opcua_address}',
+                'opcua_address': opcua_address,
+                'node_namespace': node_namespace,
+                'success': False
+            }, 404
+        
+        return opcua_client.write_value(node_namespace=node_namespace, value=value)
+    
+    @logging_error_handler
     def create_opcua_server_record(self, name:str, namespace:str, access_type:str="Read"):
         r"""
         Documentation here

@@ -131,6 +131,22 @@ class OPCUAClientManager:
             if client.is_conneted():
                 return client.get_nodes_values(namespaces=namespaces)
         
+    def get_client_by_address(self, opcua_address:str)->Client|None:
+        r"""
+        Obtiene el cliente OPC UA correspondiente a una dirección
+        
+        Args:
+            opcua_address: Dirección del servidor OPC UA (ej: "opc.tcp://localhost:4840")
+        
+        Returns:
+            Client: Cliente OPC UA si existe y está conectado, None en caso contrario
+        """
+        for client_name, client in self._clients.items():
+            if opcua_address == client.serialize()["server_url"]:
+                if client.is_connected():
+                    return client
+        return None
+    
     def get_node_value_by_opcua_address(self, opcua_address:str, namespace:str)->list:
         r"""
         Documentation here
