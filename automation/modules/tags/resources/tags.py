@@ -73,8 +73,6 @@ class QueryTrendsResource(Resource):
 @ns.route('/write_value')
 class WriteValueResource(Resource):
 
-    @api.doc(security='apikey')
-    @Api.token_required(auth=True)
     @ns.expect(write_value_model)
     def post(self):
         """
