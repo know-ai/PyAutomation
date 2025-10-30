@@ -1,5 +1,5 @@
 import sys, logging, json, os, jwt, requests, urllib3, secrets
-from logging.handlers import TimedRotatingFileHandler
+from logging.handlers import RotatingFileHandler
 from math import ceil
 from datetime import datetime, timezone
 # DRIVERS IMPORTATION
@@ -1111,7 +1111,9 @@ class PyAutomation(Singleton):
                 self.load_db_to_users()
                 self.load_db_tags_to_machine()            
 
-            return True
+                return True
+            else:
+                return False
         
         except Exception as err:
             self.db_manager._logger.logger._db = None
@@ -1734,11 +1736,25 @@ class PyAutomation(Singleton):
         logging.getLogger("requests").setLevel(logging.WARNING)
         logging.getLogger('peewee').setLevel(logging.WARNING)
         logging.getLogger('opcua').setLevel(logging.CRITICAL)
-        logger = logging.getLogger("pyautomation")
-        logger.setLevel(self._logging_level)
-        handler = TimedRotatingFileHandler(self._log_file, when='midnight', backupCount=365)
-        handler.suffix = "%Y-%m-%d"
+        # Configure root logger with rotating file handler (size-based)
+        root_logger = logging.getLogger()
+        root_logger.setLevel(self._logging_level)
+        # Clear existing handlers to avoid duplicates
+        for _h in list(root_logger.handlers):
+            root_logger.removeHandler(_h)
+
+        handler = RotatingFileHandler(
+            filename=self._log_file,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=10,
+            encoding="utf-8",
+        )
         log_format = "%(asctime)s:%(levelname)s:%(message)s"
         formatter = logging.Formatter(log_format)
         handler.setFormatter(formatter)
-        logger.addHandler(handler)
+        root_logger.addHandler(handler)
+
+        # Ensure named logger propagates to root (no extra handler to avoid duplicates)
+        app_logger = logging.getLogger("pyautomation")
+        app_logger.setLevel(self._logging_level)
+        app_logger.propagate = True
