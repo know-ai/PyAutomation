@@ -72,14 +72,19 @@ class LoggerWorker(BaseWorker):
                     self.sqlite_db = db
                     self.sqlite_db_name = db.database
 
+
     def check_opcua_connection(self):
         from automation import PyAutomation
         app = PyAutomation()
-        for _, opcua_client in app.opcua_client_manager._clients.items():
+        if app.opcua_client_manager._clients:
+            for _, opcua_client in app.opcua_client_manager._clients.items():
 
-            if isinstance(opcua_client, Client):
-                
-                opcua_client.reconnect()
+                if isinstance(opcua_client, Client):
+                    
+                    opcua_client.reconnect()
+        else:
+            
+            app.load_opcua_clients_from_db()
 
     def get_tags_from_queue(self, _queue):
         from .. import SEGMENT, MANUFACTURER
