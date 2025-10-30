@@ -663,15 +663,15 @@ class PyAutomation(Singleton):
         return self.opcua_client_manager.get_client_by_address(opcua_address=opcua_address)
     
     @logging_error_handler
-    @validate_types(opcua_address=str, node_namespace=str, output=tuple)
-    def write_opcua_value(self, opcua_address:str, node_namespace:str, value)->tuple[dict, int]:
+    @validate_types(opcua_address=str, node_namespace=str, value=float|int|bool|str, output=tuple)
+    def write_opcua_value(self, opcua_address:str, node_namespace:str, value:float|int|bool|str)->tuple[dict, int]:
         r"""
         Escribe un valor a un nodo OPC UA
         
         Args:
             opcua_address: Dirección del servidor OPC UA
             node_namespace: Namespace del nodo (ej: "ns=2;i=1234")
-            value: Valor a escribir
+            value: Valor a escribir (float, int, bool, str)
         
         Returns:
             tuple: (dict con resultado, status_code)
