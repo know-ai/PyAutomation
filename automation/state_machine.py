@@ -790,12 +790,18 @@ class StateMachineCore(StateMachine):
         subscribed_to = self.get_subscribed_tags()
 
         if tag in subscribed_to:
+
             process_type = subscribed_to[tag]
-            # attr = getattr(self, tag.name)
-            value = value.convert(to_unit=process_type.tag.get_display_unit())
-            # attr.value = value
-            # IMPORTANTE A CAMBIAR SEGUN LA UNIDAD QUE NECESITEN LOS MODELOS
-            self.data[tag](value)
+            if process_type.tag.variable.lower()=="massflow":
+                value.change_unit(unit=self.mass_flow_unit_base)
+            elif process_type.tag.variable.lower()=="volumetricflow":
+                value.change_unit(unit=self.volumetric_flow_unit_base)
+            else:
+                value.change_unit(unit=process_type.unit)
+            process_type.value = value
+            self.data_timestamp = timestamp
+            if hasattr(self, "verify_inputs"):
+                self.verify_inputs()
 
     @logging_error_handler
     def attach(self, machine, tag:Tag):
