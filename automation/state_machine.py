@@ -797,7 +797,7 @@ class StateMachineCore(StateMachine):
             elif process_type.tag.variable.lower()=="volumetricflow":
                 value.change_unit(unit=self.volumetric_flow_unit_base)
             else:
-                value.change_unit(unit=process_type.unit)
+                value.change_unit(unit=process_type.tag.display_unit)
             process_type.value = value
             self.data_timestamp = timestamp
             if hasattr(self, "verify_inputs"):

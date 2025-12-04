@@ -288,9 +288,6 @@ class PyAutomation(Singleton):
 
         # CREATE OPCUA SUBSCRIPTION
         if tag:
-
-            # Persist Tag on Database
-            # if not reload:
                 
             if self.is_db_connected():
                 self.logger_engine.set_tag(tag=tag)
@@ -311,7 +308,7 @@ class PyAutomation(Singleton):
                     "values": Buffer(),
                     "unit": display_unit
                 }
-
+            
             self.subscribe_opcua(tag=self.cvt.get_tag_by_name(name=name), opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time, reload=reload)
 
             return tag, message
@@ -1706,9 +1703,6 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
             
             self.load_db_tags_to_machine()
-
-        # self.das_worker = DASWorker(self.das, self.alarm_manager)
-        # self.das_worker.start()
 
         self.is_starting = False
 
