@@ -25,8 +25,8 @@ write_value_model = api.model("write_value_model", {
 @ns.route('/')
 class TagsCollection(Resource):
 
-    # @api.doc(security='apikey')
-    # @Api.token_required(auth=True)
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     def get(self):
         """
         Get Tags
@@ -73,6 +73,8 @@ class QueryTrendsResource(Resource):
 @ns.route('/write_value')
 class WriteValueResource(Resource):
 
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
     @ns.expect(write_value_model)
     def post(self):
         """
