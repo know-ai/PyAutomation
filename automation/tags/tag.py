@@ -123,6 +123,14 @@ class Tag:
         r"""
         Documentation here
         """
+        if self.dead_band and isinstance(value, (int, float)):
+            try:
+                current_value = self.value.value
+                if abs(value - current_value) < self.dead_band:
+                    return
+            except Exception:
+                pass
+
         if not timestamp:
             timestamp = datetime.now()
         self.value.set_value(value=value, unit=self.display_unit)

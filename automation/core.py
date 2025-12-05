@@ -367,6 +367,13 @@ class PyAutomation(Singleton):
         return self.logger_engine.read_trends(start, stop, timezone, *tags)
     
     @logging_error_handler
+    def get_tags_tables(self, start:str, stop:str, timezone:str, tags:list, page:int=1, limit:int=20):
+        r"""
+        Documentation here
+        """
+        return self.logger_engine.read_table(start, stop, timezone, tags, page, limit)
+    
+    @logging_error_handler
     def get_segments(self):
         r"""
         Documentation here

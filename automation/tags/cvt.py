@@ -459,7 +459,18 @@ class CVT:
             Tag value ("int", "float", "bool")
         """
         from .. import TIMEZONE
-        self._tags[id].set_value(value=value, timestamp=timestamp)
+        tag = self._tags[id]
+        
+        # Deadband Logic Wrapper for CVT
+        if tag.dead_band and isinstance(value, (int, float)):
+            try:
+                current_value = tag.value.value
+                if abs(value - current_value) < tag.dead_band:
+                    return value
+            except Exception:
+                pass
+
+        tag.set_value(value=value, timestamp=timestamp)
         if self.sio:
             timestamp = timestamp.astimezone(TIMEZONE)
             self._tags[id].timestamp = timestamp

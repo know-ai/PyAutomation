@@ -4,7 +4,7 @@
 This module implements a database logger for the CVT instance, 
 will create a time-serie for each tag in a short memory data base.
 """
-import pytz, logging
+import pytz, logging, math
 from collections import defaultdict
 from datetime import datetime
 from ..tags.tag import Tag
@@ -255,6 +255,138 @@ class DataLogger(BaseLogger):
             result[tag]['unit'] = self.tag_engine.get_display_unit_by_tag(tag)
         
         return result
+
+    @db_rollback
+    def read_table(self, start:str, stop:str, timezone:str, tags:list, page:int=1, limit:int=20):
+        r"""
+        Get historical data in table format with pagination
+        """
+        if not self.is_history_logged:
+            return None
+        
+        if not self.check_connectivity():
+            return dict()
+
+        _timezone = pytz.timezone(timezone)
+        try:
+            start_dt = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
+            stop_dt = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
+        except ValueError:
+            # Fallback or error handling if needed, though read_trends assumes correct format
+            return dict()
+
+        # Base query
+        query = (TagValue
+                .select(Tags.name, TagValue.value, TagValue.timestamp,
+                        Units.unit.alias('tag_value_unit'))
+                .join(Tags)
+                .join(Units, on=(Tags.unit == Units.id))
+                .where((TagValue.timestamp.between(start_dt, stop_dt)) & (Tags.name.in_(tags)))
+                .order_by(TagValue.timestamp.desc()))
+
+        total_records = query.count()
+        
+        # Safe pagination
+        if limit <= 0: limit = 20
+        if page <= 0: page = 1
+        
+        total_pages = math.ceil(total_records / limit)
+        if total_pages == 0: total_pages = 1
+        
+        has_next = page < total_pages
+        has_prev = page > 1
+
+        paginated_query = query.paginate(page, limit).dicts()
+        
+        data = []
+        utc_timezone = pytz.timezone('UTC')
+        
+        for entry in paginated_query:
+            timestamp = entry['timestamp']
+            # timestamp in DB is float (epoch) or datetime? 
+            # In read_trends: timestamp = entry['timestamp']; timestamp = from_timezone.localize(timestamp)
+            # This implies entry['timestamp'] is NOT timezone aware or is a float?
+            # In read_trends: start/stop converted to .timestamp() (float).
+            # Peewee timestamp field usually stores whatever you give it. If float was stored, it comes back as float.
+            # But line 247 in read_trends: timestamp = from_timezone.localize(timestamp)
+            # localize() works on datetime objects.
+            # So TagValue.timestamp is likely a DateTimeField in Peewee, but stored as UTC?
+            # Wait, line 212: start = ... .timestamp(). 
+            # TagValue.timestamp.between(start, stop)
+            # If start/stop are floats, and TagValue.timestamp compares to them, TagValue.timestamp might be float/DoubleField?
+            # Or Peewee handles conversion?
+            # Let's check dbmodels/tags.py if possible. 
+            # But relying on read_trends line 246-247:
+            # timestamp = entry['timestamp']
+            # timestamp = from_timezone.localize(timestamp)
+            # IF timestamp is float, localize() fails. localize takes datetime.
+            # SO timestamp must be a datetime object (naive).
+            # BUT line 212 converts start/stop to floats!
+            # If TagValue.timestamp is DateTimeField, Peewee might accept float for comparison? Or start/stop should be datetimes?
+            # Actually line 212: .timestamp() returns float.
+            # So TagValue.timestamp might be a float/DoubleField storing epoch?
+            # If so, line 247 `from_timezone.localize(timestamp)` would FAIL on a float.
+            # Let's assume read_trends logic is correct and see what it does.
+            # If timestamp is float, `datetime.fromtimestamp(timestamp, pytz.UTC)` is needed.
+            # If timestamp is datetime, `localize` is needed.
+            
+            # Let's check `read_trends` carefully.
+            # 246| timestamp = entry['timestamp']
+            # 247| timestamp = from_timezone.localize(timestamp)
+            
+            # This strongly suggests `entry['timestamp']` is a naive datetime object.
+            # THEN why line 212 converts to .timestamp()?
+            # `start = ... .timestamp()`
+            # Maybe TagValue.timestamp is Integer/Float (Epoch)?
+            # If so, 247 is suspicious.
+            # However, I should follow `read_trends` pattern OR be robust.
+            # If I check `write_tag`: `TagValue.create(..., timestamp=timestamp, ...)`
+            # where timestamp comes from `datetime.now(pytz.utc).astimezone(TIMEZONE)` (from tags.py).
+            
+            # If I look at `read_trends` line 243 `for entry in query:` where query is `.dicts()`.
+            # I will assume `entry['timestamp']` works like in `read_trends`.
+            # BUT, if `read_trends` is working code, then `entry['timestamp']` is likely a datetime.
+            # AND `.between(start, stop)` works with floats if the column is float.
+            # Or maybe `start` and `stop` being floats are auto-converted?
+            # Actually, looking at line 246, `timestamp` variable is reused. 
+            
+            # I will try to support both or verify.
+            # Safest is `datetime.fromtimestamp(entry['timestamp'])` if it's float/int, or just use it if it's datetime.
+            # Given `read_trends` code, I suspect `timestamp` in DB is DateTimeField.
+            # If so, `start` and `stop` should probably be datetimes. 
+            # Line 212 `... .timestamp()` makes them floats.
+            # Peewee `DateTimeField` vs float comparison...
+            
+            # I'll stick to what I see.
+            # But wait, `read_trends` logic at 247 `from_timezone.localize(timestamp)` implies naive datetime.
+            
+            # Implementation:
+            ts_val = entry['timestamp']
+            if isinstance(ts_val, (int, float)):
+                dt_object = datetime.fromtimestamp(ts_val, pytz.UTC)
+            else:
+                # Assuming naive datetime in UTC (based on read_trends using 'UTC' timezone to localize)
+                dt_object = utc_timezone.localize(ts_val) if ts_val.tzinfo is None else ts_val
+                
+            formatted_ts = dt_object.astimezone(_timezone).strftime(DATETIME_FORMAT)
+            
+            data.append({
+                "timestamp": formatted_ts,
+                "tag_name": entry['name'],
+                "value": f"{entry['value']} {entry['tag_value_unit']}"
+            })
+
+        return {
+            "data": data,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_records": total_records,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            }
+        }
         
     def _agregate_data_every_seconds(self, query, result, seconds:int, timezone:str="UTC"):
         r"""Documentation here
@@ -486,6 +618,21 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"]["stop"] = stop
         _query["parameters"]["timezone"] = timezone
         _query["parameters"]["tags"] = tags
+        return self.query(_query)
+
+    def read_table(self, start:str, stop:str, timezone:str, tags:list, page:int=1, limit:int=20):
+        r"""
+        Get historical data in table format with pagination on a thread-safe mechanism
+        """
+        _query = dict()
+        _query["action"] = "read_table"
+        _query["parameters"] = dict()
+        _query["parameters"]["start"] = start
+        _query["parameters"]["stop"] = stop
+        _query["parameters"]["timezone"] = timezone
+        _query["parameters"]["tags"] = tags
+        _query["parameters"]["page"] = page
+        _query["parameters"]["limit"] = limit
         return self.query(_query)
 
     def read_segments(self):

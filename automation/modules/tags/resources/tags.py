@@ -16,6 +16,15 @@ query_trends_model = api.model("query_trends_model",{
     'timezone': fields.String(required=True, default=_TIMEZONE)
 })
 
+query_table_model = api.model("query_table_model",{
+    'tags':  fields.List(fields.String(), required=True),
+    'greater_than_timestamp': fields.DateTime(required=True, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description='Greater than DateTime'),
+    'less_than_timestamp': fields.DateTime(required=True, default=datetime.now(pytz.utc).astimezone(TIMEZONE), description='Less than DateTime'),
+    'timezone': fields.String(required=True, default=_TIMEZONE),
+    'page': fields.Integer(required=False, default=1, description='Page number'),
+    'limit': fields.Integer(required=False, default=20, description='Items per page')
+})
+
 write_value_model = api.model("write_value_model", {
     'tag_name': fields.String(required=True, description='Nombre del tag'),
     'value': fields.Raw(required=True, description='Valor a escribir (float, int, bool, str)')
@@ -83,6 +92,45 @@ class QueryTrendsResource(Resource):
         less_than_timestamp = api.payload['less_than_timestamp']
         stop = less_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
         result = app.get_trends(start, stop, timezone, *tags)
+        
+        return result, 200
+
+@ns.route('/query_table')
+class QueryTableResource(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    @ns.expect(query_table_model)
+    def post(self):
+        """
+        Query tag values in table format with pagination
+
+        Authorized Roles: {0}
+        """
+        timezone = _TIMEZONE
+        tags = api.payload['tags']
+        page = api.payload.get('page', 1)
+        limit = api.payload.get('limit', 20)
+
+        if "timezone" in api.payload:
+            timezone = api.payload["timezone"]
+
+        if timezone not in pytz.all_timezones:
+            return f"Invalid Timezone", 400
+        
+        for tag in tags:
+            if not app.get_tag_by_name(name=tag):
+                return f"{tag} not exist into db", 404
+        
+        separator = '.'
+        greater_than_timestamp = api.payload['greater_than_timestamp']
+        # Ensure timestamp format is consistent
+        start = greater_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+        
+        less_than_timestamp = api.payload['less_than_timestamp']
+        stop = less_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+        
+        result = app.get_tags_tables(start, stop, timezone, tags, page, limit)
         
         return result, 200
     
