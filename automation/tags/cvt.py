@@ -290,6 +290,16 @@ class CVT:
         
         return list()
     
+    def get_tags_by_names(self, names:list)->list:
+        r"""
+        Returns a list of the defined tags names.
+        """
+        if self._tags:
+
+            return [tag.serialize() for _, tag in self._tags.items() if tag.name in names]
+        
+        return list()
+    
     def get_field_tags_names(self)->list:
         r"""
         Returns a list of the defined tags names.
@@ -454,7 +464,6 @@ class CVT:
             timestamp = timestamp.astimezone(TIMEZONE)
             self._tags[id].timestamp = timestamp
             self.sio.emit("on.tag", data=self._tags[id].serialize())
-            logging.critical(f"Event on.tag emitted: {value} for tag: {self._tags[id].name}")
 
         return value
 
@@ -749,6 +758,23 @@ class CVTEngine(Singleton):
         """
         _query = dict()
         _query["action"] = "get_tags"
+        return self.__query(_query)
+
+    def get_tags_by_names(self, names:list[str]):
+        r"""Documentation here
+
+        # Parameters
+
+        - 
+
+        # Returns
+
+        - 
+        """
+        _query = dict()
+        _query["action"] = "get_tags_by_names"
+        _query["parameters"] = dict()
+        _query["parameters"]["names"] = names
         return self.__query(_query)
     
     def get_tag_by_name(self, name:str)->Tag|None:

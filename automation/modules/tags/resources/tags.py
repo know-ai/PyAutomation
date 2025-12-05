@@ -1,6 +1,6 @@
 import pytz
 from datetime import datetime, timedelta
-from flask_restx import Namespace, Resource, fields
+from flask_restx import Namespace, Resource, fields, reqparse
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
@@ -32,6 +32,22 @@ class TagsCollection(Resource):
         Get Tags
         """
         return app.get_tags(), 200
+
+@ns.route('/names')
+class TagsNamesCollection(Resource):
+
+    parser = reqparse.RequestParser()
+    parser.add_argument('names', type=str, action='append', location='args', help='Tags names to get')
+
+    @api.doc(security='apikey', parser=parser)
+    @Api.token_required(auth=True)
+    def get(self):
+        """
+        Get Tags Names
+        """
+        args = self.parser.parse_args()
+        names = args.get('names')
+        return app.get_tags_by_names(names=names or []), 200
     
 @ns.route('/query_trends')
 class QueryTrendsResource(Resource):

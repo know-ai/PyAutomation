@@ -334,6 +334,20 @@ class PyAutomation(Singleton):
         return self.cvt.get_tags()
 
     @logging_error_handler
+    @validate_types(names=list, output=list)
+    def get_tags_by_names(self, names:list)->list[Tag|None]:
+        r"""
+        # Parameters
+
+        - names: list of tag names
+
+        # Returns
+
+        - list of tags
+        """
+        return self.cvt.get_tags_by_names(names=names)
+
+    @logging_error_handler
     @validate_types(name=str, output=Tag|None)
     def get_tag_by_name(self, name:str)->Tag:
 
