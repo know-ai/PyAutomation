@@ -117,7 +117,8 @@ class SubHandlerServer(Singleton):
             if tag.get_value()!=val:
 
                 val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-                tag.value.set_value(value=val, unit=tag.get_display_unit())  
+                # tag.value.set_value(value=val, unit=tag.get_display_unit())  
+                # tag.set_value(value=val, timestamp=timestamp)
                 if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
                     self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 elif not MANUFACTURER and not SEGMENT:
@@ -243,7 +244,8 @@ class DAS(Singleton):
         if tag:
             tag_name = tag.get_name()
             val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-            tag.value.set_value(value=val, unit=tag.get_display_unit())  
+            # tag.value.set_value(value=val, unit=tag.get_display_unit())  
+            # tag.set_value(value=val, timestamp=timestamp)  
             if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
                 val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
             elif not MANUFACTURER and not SEGMENT:

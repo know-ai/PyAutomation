@@ -462,13 +462,15 @@ class CVT:
         tag = self._tags[id]
         
         # Deadband Logic Wrapper for CVT
+        
+
         if tag.dead_band and isinstance(value, (int, float)):
             try:
                 current_value = tag.value.value
                 if abs(value - current_value) < tag.dead_band:
                     return value
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(f"Error in deadband logic: {e}")
 
         tag.set_value(value=value, timestamp=timestamp)
         if self.sio:

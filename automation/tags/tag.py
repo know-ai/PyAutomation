@@ -1,4 +1,4 @@
-import secrets
+import secrets, logging
 from datetime import datetime
 from ..utils import Observer
 from ..utils.decorators import logging_error_handler
@@ -127,9 +127,10 @@ class Tag:
             try:
                 current_value = self.value.value
                 if abs(value - current_value) < self.dead_band:
+                    
                     return
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(f"Error in deadband logic: {e}")
 
         if not timestamp:
             timestamp = datetime.now()
