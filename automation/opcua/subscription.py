@@ -7,7 +7,6 @@ from ..tags import Tag
 from ..buffer import Buffer
 from ..models import StringType
 from ..logger.datalogger import DataLoggerEngine
-import logging
 
 
 class SubHandler(Singleton):
@@ -142,12 +141,11 @@ class DAS(Singleton):
     """
 
     def __init__(self):
-        
+  
         self.monitored_items = dict()
         self.cvt = CVTEngine()
         self.logger = DataLoggerEngine()
         self.buffer = dict()
-        # self.last_notification_time = {}  # Para rastrear la última notificación de cada variable
 
     def restart_buffer(self, tag:Tag):
         r"""
@@ -170,6 +168,8 @@ class DAS(Singleton):
         r"""
         Documentation here
         """
+        # from ..managers import OPCUAClientManager
+        # self.opcua_client_manager = OPCUAClientManager()
         if client_name not in self.monitored_items:
             
             monitored_item = subscription.subscribe_data_change(
@@ -200,6 +200,13 @@ class DAS(Singleton):
                         "namespace": node_id.nodeid.to_string()
                     }
                 })
+        
+        ## Trying to get the value of the tag into OPCUA Client
+        try:
+            val = node_id.get_value()
+            self.update_tag_value(node=node_id, val=val)
+        except Exception:
+            pass
 
     def unsubscribe(self, client_name:str, node_id):
         r"""
@@ -220,28 +227,37 @@ class DAS(Singleton):
                 subscription = monitored_item["subscription"] 
                 monitored_item["monitored_item"] = subscription.subscribe_data_change(client.get_node(node_id))
 
-    def datachange_notification(self, node, val, data):
+    def update_tag_value(self, node, val, timestamp=None):
         r"""
-        Documentation here
+        Update tag value in CVT and buffer
         """
         from .. import SEGMENT, MANUFACTURER, TIMEZONE
-        namespace = node.nodeid.to_string()
-        timestamp = data.monitored_item.Value.SourceTimestamp
+        
         if not timestamp:
             timestamp = datetime.now(pytz.utc)
         timestamp = timestamp.replace(tzinfo=pytz.UTC)
         
+        namespace = node.nodeid.to_string()
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
-        tag_name = tag.get_name()
-        val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-        tag.value.set_value(value=val, unit=tag.get_display_unit())  
-        if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
-            val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-        elif not MANUFACTURER and not SEGMENT:
-            val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-        timestamp = timestamp.astimezone(TIMEZONE)
-        if tag_name in self.buffer:
-            self.buffer[tag_name]["timestamp"](timestamp)
-            self.buffer[tag_name]["values"](val)      
+        
+        if tag:
+            tag_name = tag.get_name()
+            val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
+            tag.value.set_value(value=val, unit=tag.get_display_unit())  
+            if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
+                val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+            elif not MANUFACTURER and not SEGMENT:
+                val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+            timestamp = timestamp.astimezone(TIMEZONE)
+            if tag_name in self.buffer:
+                self.buffer[tag_name]["timestamp"](timestamp)
+                self.buffer[tag_name]["values"](val)
+
+    def datachange_notification(self, node, val, data):
+        r"""
+        Documentation here
+        """
+        timestamp = data.monitored_item.Value.SourceTimestamp
+        self.update_tag_value(node, val, timestamp)      
         
         

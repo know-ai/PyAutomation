@@ -454,6 +454,7 @@ class CVT:
             timestamp = timestamp.astimezone(TIMEZONE)
             self._tags[id].timestamp = timestamp
             self.sio.emit("on.tag", data=self._tags[id].serialize())
+            logging.critical(f"Event on.tag emitted: {value} for tag: {self._tags[id].name}")
 
         return value
 
