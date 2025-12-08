@@ -11,6 +11,7 @@ try:
 except FileNotFoundError:
     _requirements = []
 
+try:
     version_ns = {}
     with open("version.py") as f:
         exec(f.read(), version_ns)
