@@ -1370,6 +1370,10 @@ class PyAutomation(Singleton):
         Documentation here
         """
         if self.is_db_connected():
+            
+            # Ensure pagination parameters are present or defaulted
+            if 'page' not in fields: fields['page'] = 1
+            if 'limit' not in fields: fields['limit'] = 20
 
             return self.alarms_engine.filter_alarm_summary_by(**fields)
 

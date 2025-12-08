@@ -448,11 +448,14 @@ class AlarmSummary(BaseModel):
         tags:list[str]=None,
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
-        timezone:str='UTC'
+        timezone:str='UTC',
+        page:int=1,
+        limit:int=20
         ):
         r"""
         Documentation here
         """
+        import math
         _timezone = pytz.timezone(timezone)
         query = cls.select()
         
@@ -478,11 +481,33 @@ class AlarmSummary(BaseModel):
             query = query.where(cls.alarm_time < less_than_timestamp)
         
         query = query.order_by(cls.id.desc())
-        if not query.exists():
-            
-            return []
         
-        return [alarm.serialize() for alarm in query]
+        total_records = query.count()
+        
+        if limit <= 0: limit = 20
+        if page <= 0: page = 1
+        
+        total_pages = math.ceil(total_records / limit)
+        if total_pages == 0: total_pages = 1
+        
+        has_next = page < total_pages
+        has_prev = page > 1
+        
+        paginated_query = query.paginate(page, limit)
+        
+        data = [alarm.serialize() for alarm in paginated_query]
+        
+        return {
+            "data": data,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_records": total_records,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            }
+        }
 
     @classmethod
     def get_alarm_summary_comments(cls, id:int):
