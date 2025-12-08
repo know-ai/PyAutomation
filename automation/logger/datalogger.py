@@ -5,6 +5,7 @@ This module implements a database logger for the CVT instance,
 will create a time-serie for each tag in a short memory data base.
 """
 import pytz, logging, math
+from peewee import fn
 from collections import defaultdict
 from datetime import datetime
 from ..tags.tag import Tag
@@ -425,6 +426,49 @@ class DataLogger(BaseLogger):
         except ValueError:
             return dict()
 
+        if sample_time <= 0:
+            return dict()
+
+        # Check for data presence to adjust start time if necessary
+        # 1. Check if there is any data BEFORE or AT start_dt (history)
+        has_history = (TagValue
+            .select()
+            .join(Tags)
+            .where(
+                (Tags.name.in_(tags)) & 
+                (TagValue.timestamp <= start_dt)
+            )
+            .limit(1)
+            .count() > 0)
+        
+        if not has_history:
+            # 2. If no history, find the first actual data point within the requested range
+            min_ts = (TagValue
+                .select(fn.Min(TagValue.timestamp))
+                .join(Tags)
+                .where(
+                    (Tags.name.in_(tags)) & 
+                    (TagValue.timestamp >= start_dt) & 
+                    (TagValue.timestamp <= stop_dt) &
+                    (TagValue.value.is_null(False))
+                )
+                .scalar())
+            
+            if min_ts is None:
+                # No data in range and no history
+                return {"data": [], "pagination": {}}
+            
+            # Adjust start to the first actual data point
+            # Ensure min_ts is timezone aware if needed, though scalar() returns DB format
+            if isinstance(min_ts, datetime):
+                 if min_ts.tzinfo is None:
+                     min_ts = utc_timezone.localize(min_ts)
+                 start_dt = min_ts
+                 start_ts = start_dt.timestamp()
+            elif isinstance(min_ts, (int, float)):
+                 start_ts = float(min_ts)
+                 start_dt = datetime.fromtimestamp(start_ts, pytz.UTC)
+
         # Calculate total records based on time range and sample time
         total_duration = stop_ts - start_ts
         if total_duration < 0:
@@ -497,7 +541,8 @@ class DataLogger(BaseLogger):
             .where(
                 (Tags.name.in_(tags)) & 
                 (TagValue.timestamp > page_start_dt) & 
-                (TagValue.timestamp <= page_end_dt)
+                (TagValue.timestamp <= page_end_dt) &
+                (TagValue.value.is_null(False))
             )
             .order_by(TagValue.timestamp.asc())
             .dicts())
@@ -551,10 +596,15 @@ class DataLogger(BaseLogger):
             formatted_ts = dt_object.astimezone(_timezone).strftime(DATETIME_FORMAT)
             
             row = {"timestamp": formatted_ts}
+            has_data = False
             for tag in tags:
-                row[tag] = current_values.get(tag) # None if no value ever recorded
+                val = current_values.get(tag)
+                row[tag] = val # None if no value ever recorded
+                if val is not None:
+                    has_data = True
                 
-            data_points.append(row)
+            if has_data:
+                data_points.append(row)
 
         return {
             "data": data_points,
