@@ -1,23 +1,27 @@
-version: '3.3'
-
 services:
-
   automation:
-    container_name: "PyAutomation"
-    image: "knowai/automation:1.0.0"
+    container_name: "Automation"
+    image: "knowai/automation:${AUTOMATION_VERSION}"
     restart: always
     ports:
-      - ${PORT}:${PORT}
-      - ${OPCUA_SERVER_PORT}:${OPCUA_SERVER_PORT}
+      - ${AUTOMATION_PORT}:${AUTOMATION_PORT}
     volumes:
-      - ./temp/db:/app/db
-      - ./temp/logs:/app/logs
+      - automation_db:/app/db
+      - automation_logs:/app/logs
     environment:
-      PORT: ${PORT}
-      OPCUA_SERVER_PORT: ${OPCUA_SERVER_PORT}
-      TIMEZONE: ${TIMEZONE}
+      OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT}
+      LOG_MAX_BYTES: ${AUTOMATION_LOG_MAX_BYTES}
+      LOG_BACKUP_COUNT: ${AUTOMATION_LOG_BACKUP_COUNT}
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail -s -k http://0.0.0.0:${PORT}/api/healthcheck/ || curl --fail -s -k https://0.0.0.0:${PORT}/api/healthcheck/ || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail -s -k http://0.0.0.0:${AUTOMATION_PORT}/api/healthcheck/ || curl --fail -s -k https://0.0.0.0:${AUTOMATION_PORT}/api/healthcheck/ || exit 1",
+        ]
       interval: 15s
       timeout: 10s
       retries: 3
+
+volumes:
+  automation_db:
+  automation_logs:

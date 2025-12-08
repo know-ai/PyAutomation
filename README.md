@@ -2,8 +2,6 @@
 
 The development intention of this framework is to provide the ability to develop industrial applications where processes need to be executed concurrently and field data need to be managed for monitoring, control, and supervision applications.
 
-
-
 ![Core](docs/img/PyAutomationCore.svg)
 
 In the image above, you can generally see the architecture and interaction of the different modules that make up the framework.
@@ -16,7 +14,6 @@ There is also an alarm management system
 
 And finally, the disk persistence of the variables to provide functionalities for historical trends of the field variables.
 
-
 # Run Config Page
 
 ## Crearte Virtual Environment
@@ -25,6 +22,7 @@ And finally, the disk persistence of the variables to provide functionalities fo
 python3 -m venv venv
 . venv/bin/activate
 ```
+
 ## Install Dependencies
 
 ```python
@@ -38,7 +36,7 @@ pip install -r requirements.txt
 python run.py
 ```
 
-or 
+or
 
 ```python
 
@@ -77,7 +75,6 @@ pip install dist/PyAutomation-1.0.0-py3-none-any.whl
 
 After that, you can run mkdocs serve
 
-
 # Deploy
 
 Make the following `.env` file:
@@ -111,28 +108,33 @@ sudo docker run -d \
 If you want to deploy it using docker compose, make the following `docker-compose.yml` file:
 
 ```YaMl
-version: '3.3'
-
 services:
 
   automation:
-    container_name: "PyAutomation"
-    image: "knowai/automation:1.0.0"
+    container_name: "Automation"
+    image: "knowai/automation:${AUTOMATION_VERSION}"
     restart: always
     ports:
-      - ${PORT}:${PORT}
+      - ${AUTOMATION_PORT}:${AUTOMATION_PORT}
     volumes:
-      - ./temp/db:/app/db
-      - ./temp/logs:/app/logs
+      - automation/db:/app/db
+      - automation/logs:/app/logs
     environment:
-      PORT: ${PORT}
-      OPCUA_SERVER_PORT: ${OPCUA_SERVER_PORT}
+      - OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "curl --fail -s -k http://0.0.0.0:${PORT}/api/healthcheck/ || curl --fail -s -k https://0.0.0.0:${PORT}/api/healthcheck/ || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 3
 
+volumes:
+  automation/db:
+  automation/logs:
 ```
 
 Start the docker compose file
@@ -140,6 +142,5 @@ Start the docker compose file
 ```
 sudo docker-compose --env-file .env up -d
 ```
-
 
 Go to http://host:${PORT} to view the config page

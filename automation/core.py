@@ -1758,10 +1758,12 @@ class PyAutomation(Singleton):
         for _h in list(root_logger.handlers):
             root_logger.removeHandler(_h)
 
+        max_bytes = int(os.environ.get('LOG_MAX_BYTES', 10 * 1024 * 1024)) # 10MB
+        backup_count = int(os.environ.get('LOG_BACKUP_COUNT', 3)) # 3 backups
         handler = RotatingFileHandler(
             filename=self._log_file,
-            maxBytes=10 * 1024 * 1024,
-            backupCount=10,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
             encoding="utf-8",
         )
         log_format = "%(asctime)s:%(levelname)s:%(message)s"
