@@ -14,8 +14,8 @@ except FileNotFoundError:
 system_platform = platform.system()
 
 setuptools.setup(
-    name="PyAutomation",
-    version='2.0.0',
+    name="PyAutomationIO",
+    version='1.0.0',
     author="KnowAI",
     author_email="dev.know.ai@gmail.com",
     description="A python library to develop automation continuous tasks using sync or async concurrent threads",
