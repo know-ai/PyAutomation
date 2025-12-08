@@ -1,1 +1,4 @@
 include automation/pages/assets/*
+include requirements.txt
+include README.md
+include LICENSE

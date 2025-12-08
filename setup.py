@@ -6,7 +6,9 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 with open("requirements.txt", "r") as fh:
-    _requirements = fh.read()
+    _requirements = fh.read().splitlines()
+except FileNotFoundError:
+    _requirements = []
 
 system_platform = platform.system()
 
