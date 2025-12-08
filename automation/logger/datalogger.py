@@ -465,12 +465,15 @@ class DataLogger(BaseLogger):
         
         # 1. Get initial values (state at page_start_ts)
         current_values = {}
+        # Convert float timestamp to datetime for Peewee comparison
+        current_dt = datetime.fromtimestamp(current_ts, pytz.UTC)
+        
         for tag_name in tags:
-            # Get the latest value <= current_ts
+            # Get the latest value <= current_dt
             last_val_query = (TagValue
                 .select(TagValue.value)
                 .join(Tags)
-                .where((Tags.name == tag_name) & (TagValue.timestamp <= current_ts))
+                .where((Tags.name == tag_name) & (TagValue.timestamp <= current_dt))
                 .order_by(TagValue.timestamp.desc())
                 .limit(1)
                 .dicts())
@@ -483,13 +486,18 @@ class DataLogger(BaseLogger):
 
         # 2. Get changes within the page window
         # We query all changes for these tags in the time window of the page
+        
+        # Convert boundaries to datetime for Peewee
+        page_start_dt = datetime.fromtimestamp(page_start_ts, pytz.UTC)
+        page_end_dt = datetime.fromtimestamp(page_end_ts, pytz.UTC)
+
         changes_query = (TagValue
             .select(Tags.name, TagValue.value, TagValue.timestamp)
             .join(Tags)
             .where(
                 (Tags.name.in_(tags)) & 
-                (TagValue.timestamp > page_start_ts) & 
-                (TagValue.timestamp <= page_end_ts)
+                (TagValue.timestamp > page_start_dt) & 
+                (TagValue.timestamp <= page_end_dt)
             )
             .order_by(TagValue.timestamp.asc())
             .dicts())
@@ -497,7 +505,16 @@ class DataLogger(BaseLogger):
         # Organize changes by timestamp
         changes_by_ts = defaultdict(dict)
         for change in changes_query:
-            ts = change['timestamp']
+            # timestamp comes as datetime from Peewee
+            ts_val = change['timestamp']
+            if isinstance(ts_val, datetime):
+                # Ensure it's timezone aware or treat as UTC if naive
+                if ts_val.tzinfo is None:
+                    ts_val = utc_timezone.localize(ts_val)
+                ts = ts_val.timestamp()
+            else:
+                ts = float(ts_val)
+            
             changes_by_ts[ts][change['name']] = change['value']
             
         # 3. Generate tabular data
