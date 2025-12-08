@@ -1,29 +1,29 @@
 Version 1.0.0
 
 - [x] State Machines
-    - [x] Sync Machines
-    - [x] Async Machines
+  - [x] Sync Machines
+  - [x] Async Machines
 - [x] CVT (Current Value Tables, Tags Repository)
-- [ ] Alarms (Alarm repository)
+- [x] Alarms (Alarm repository)
 - [x] DataLogger (Data Persistency)
 - [ ] Workers
-    - [x] DataLogger
-    - [ ] Alarms
-    - [x] State Machines
-- [ ] Engines (Thread Safe Mechanisms)
-    - [x] CVT
-    - [x] DataLogger
-    - [ ] Alarms
-- [ ] Alarm Management System
-    - [x] DBModels (Persistency)
+  - [x] DataLogger
+  - [x] Alarms
+  - [x] State Machines
+- [x] Engines (Thread Safe Mechanisms)
+  - [x] CVT
+  - [x] DataLogger
+  - [x] Alarms
+- [x] Alarm Management System
+  - [x] DBModels (Persistency)
 - [ ] Industrial Protocols
-    - [ ] OPCUA (Client - Server)
-    - [ ] Modbus TCP (Client - Server)
-    - [ ] OPC DA (Client - Server)
-- [ ] State Machine for each Tags, to separate scan time.
-- [ ] Data Filtering
-- [ ] Instrument Anomaly Detection 
-    - [ ] Outliers
-    - [ ] Out of Range
-    - [ ] Sensor Drift
-    - [ ] Data Frozen
+  - [x] OPCUA (Client - Server)
+  - [ ] Modbus TCP (Client - Server)
+  - [ ] OPC DA (Client - Server)
+- [x] State Machine for each Tags, to separate scan time.
+- [x] Data Filtering
+- [ ] Instrument Anomaly Detection
+  - [x] Outliers
+  - [x] Out of Range
+  - [ ] Sensor Drift
+  - [x] Data Frozen

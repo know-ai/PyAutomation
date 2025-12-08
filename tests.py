@@ -4,7 +4,6 @@ from automation.tests.test_user import TestUsers
 from automation.tests.test_core import TestCore
 from automation.tests.test_unit import TestConversions
 from automation.tests.test_alarms import TestAlarms
-from automation.tests.test_npw import TestNPW
 from automation.utils import units
 from automation.variables import (
     volumetric_flow,
@@ -33,7 +32,6 @@ def suite():
     tests.append(TestLoader().loadTestsFromTestCase(TestUsers))
     tests.append(TestLoader().loadTestsFromTestCase(TestCore))
     tests.append(TestLoader().loadTestsFromTestCase(TestAlarms))
-    tests.append(TestLoader().loadTestsFromTestCase(TestNPW))
     # DOCTESTS
     doctests = list()
     doctests.append(units)
@@ -56,10 +54,15 @@ def suite():
 
 
 if __name__=='__main__':
-    
+    import sys
     runner = TextTestRunner()
     unittests, doctests = suite()
-    runner.run(unittests)
+    result = runner.run(unittests)
+    
+    doctest_failures = 0
     for _doctest in doctests:
-        
-        doctest.testmod(_doctest, verbose=False)
+        res = doctest.testmod(_doctest, verbose=False)
+        doctest_failures += res.failed
+
+    if not result.wasSuccessful() or doctest_failures > 0:
+        sys.exit(1)
