@@ -1546,7 +1546,9 @@ class PyAutomation(Singleton):
             description:str="",
             greater_than_timestamp:datetime=None,
             less_than_timestamp:datetime=None,
-            timezone:str="UTC")->list:
+            timezone:str="UTC",
+            page:int=1,
+            limit:int=20)->list:
         r"""
         Documentation here
         """
@@ -1561,7 +1563,9 @@ class PyAutomation(Singleton):
                 classification=classification,
                 greater_than_timestamp=greater_than_timestamp,
                 less_than_timestamp=less_than_timestamp,
-                timezone=timezone
+                timezone=timezone,
+                page=page,
+                limit=limit
             )
         
         return list()

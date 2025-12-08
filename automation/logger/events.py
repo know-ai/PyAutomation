@@ -68,7 +68,9 @@ class EventsLogger(BaseLogger):
         classification:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
-        timezone:str="UTC"
+        timezone:str="UTC",
+        page:int=1,
+        limit:int=20
         ):
         r"""
         Documentation here
@@ -90,7 +92,9 @@ class EventsLogger(BaseLogger):
             description=description,
             greater_than_timestamp=greater_than_timestamp,
             less_than_timestamp=less_than_timestamp,
-            timezone=timezone
+            timezone=timezone,
+            page=page,
+            limit=limit
             )
 
     def get_summary(self)->tuple[list, str]:
@@ -164,7 +168,9 @@ class EventsLoggerEngine(BaseEngine):
         description:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
-        timezone:str='UTC'
+        timezone:str='UTC',
+        page:int=1,
+        limit:int=20
         ):
 
         _query = dict()
@@ -179,6 +185,8 @@ class EventsLoggerEngine(BaseEngine):
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
         _query["parameters"]["timezone"] = timezone
+        _query["parameters"]["page"] = page
+        _query["parameters"]["limit"] = limit
         
         return self.query(_query)
 

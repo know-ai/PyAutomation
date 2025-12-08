@@ -77,10 +77,14 @@ class Events(BaseModel):
         description:str="",
         message:str="",
         classification:str="",
-        timezone:str='UTC'):
+        timezone:str='UTC',
+        page:int=1,
+        limit:int=20
+        ):
         r"""
         Documentation here
         """
+        import math
         _timezone = pytz.timezone(timezone)
         query = cls.select()
         
@@ -113,11 +117,32 @@ class Events(BaseModel):
             
         query = query.order_by(cls.id.desc())
 
-        if not query.exists():
-            
-            return []
+        total_records = query.count()
         
-        return [event.serialize() for event in query]
+        if limit <= 0: limit = 20
+        if page <= 0: page = 1
+        
+        total_pages = math.ceil(total_records / limit)
+        if total_pages == 0: total_pages = 1
+        
+        has_next = page < total_pages
+        has_prev = page > 1
+        
+        paginated_query = query.paginate(page, limit)
+        
+        data = [event.serialize() for event in paginated_query]
+        
+        return {
+            "data": data,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_records": total_records,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            }
+        }
     
     @classmethod
     def get_comments(cls, id:int):
