@@ -457,6 +457,8 @@ class StateMachineCore(StateMachine):
         self.transitions = transitions
         self.manufacturer = MANUFACTURER
         self.segment = SEGMENT
+        self.mass_flow_unit_base = "kg/sec"
+        self.volumetric_flow_unit_base = "m3/sec"
         super(StateMachineCore, self).__init__()
 
     # State Methods
