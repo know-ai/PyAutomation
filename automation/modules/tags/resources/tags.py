@@ -25,6 +25,16 @@ query_table_model = api.model("query_table_model",{
     'limit': fields.Integer(required=False, default=20, description='Items per page')
 })
 
+query_tabular_data_model = api.model("query_tabular_data_model",{
+    'tags':  fields.List(fields.String(), required=True),
+    'greater_than_timestamp': fields.DateTime(required=True, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description='Greater than DateTime'),
+    'less_than_timestamp': fields.DateTime(required=True, default=datetime.now(pytz.utc).astimezone(TIMEZONE), description='Less than DateTime'),
+    'sample_time': fields.Integer(required=True, description='Sample time in seconds'),
+    'timezone': fields.String(required=True, default=_TIMEZONE),
+    'page': fields.Integer(required=False, default=1, description='Page number'),
+    'limit': fields.Integer(required=False, default=20, description='Items per page')
+})
+
 write_value_model = api.model("write_value_model", {
     'tag_name': fields.String(required=True, description='Nombre del tag'),
     'value': fields.Raw(required=True, description='Valor a escribir (float, int, bool, str)')
@@ -134,6 +144,49 @@ class QueryTableResource(Resource):
         
         return result, 200
     
+@ns.route('/get_tabular_data')
+class GetTabularDataResource(Resource):
+
+    @api.doc(security='apikey')
+    @Api.token_required(auth=True)
+    @ns.expect(query_tabular_data_model)
+    def post(self):
+        """
+        Query tag values in tabular format with pagination and resampling.
+        
+        The result contains data points at regular intervals (sample_time) from greater_than_timestamp 
+        up to less_than_timestamp. If exact data is missing, the previous known value is used (forward fill).
+        
+        Authorized Roles: {0}
+        """
+        timezone = _TIMEZONE
+        tags = api.payload['tags']
+        page = api.payload.get('page', 1)
+        limit = api.payload.get('limit', 20)
+        sample_time = api.payload.get('sample_time', 60) # Default 1 min if not provided, but model requires it
+
+        if "timezone" in api.payload:
+            timezone = api.payload["timezone"]
+
+        if timezone not in pytz.all_timezones:
+            return f"Invalid Timezone", 400
+        
+        for tag in tags:
+            if not app.get_tag_by_name(name=tag):
+                return f"{tag} not exist into db", 404
+        
+        separator = '.'
+        greater_than_timestamp = api.payload['greater_than_timestamp']
+        # Ensure timestamp format is consistent
+        start = greater_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+        
+        less_than_timestamp = api.payload['less_than_timestamp']
+        stop = less_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+        
+        result = app.get_tabular_data(start, stop, timezone, tags, sample_time, page, limit)
+        
+        return result, 200
+
 @ns.route('/write_value')
 class WriteValueResource(Resource):
 

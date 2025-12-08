@@ -388,6 +388,169 @@ class DataLogger(BaseLogger):
             }
         }
         
+    @db_rollback
+    def read_tabular_data(self, start:str, stop:str, timezone:str, tags:list, sample_time:int, page:int=1, limit:int=20):
+        r"""
+        Get historical data in tabular format with pagination and forward-fill resampling.
+        
+        Args:
+            start (str): Start datetime string
+            stop (str): Stop datetime string 
+            timezone (str): Timezone string
+            tags (list): List of tag names
+            sample_time (int): Sample time in seconds
+            page (int): Page number
+            limit (int): Items per page
+            
+        Returns:
+            dict: {
+                "data": [...],
+                "pagination": {...}
+            }
+        """
+        if not self.is_history_logged:
+            return None
+        
+        if not self.check_connectivity():
+            return dict()
+
+        _timezone = pytz.timezone(timezone)
+        utc_timezone = pytz.UTC
+        
+        try:
+            start_dt = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(utc_timezone)
+            stop_dt = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(utc_timezone)
+            start_ts = start_dt.timestamp()
+            stop_ts = stop_dt.timestamp()
+        except ValueError:
+            return dict()
+
+        # Calculate total records based on time range and sample time
+        total_duration = stop_ts - start_ts
+        if total_duration < 0:
+            return {"data": [], "pagination": {}}
+            
+        total_records = math.floor(total_duration / sample_time) + 1
+        
+        # Pagination calculations
+        if limit <= 0: limit = 20
+        if page <= 0: page = 1
+        
+        total_pages = math.ceil(total_records / limit)
+        if total_pages == 0: total_pages = 1
+        
+        has_next = page < total_pages
+        has_prev = page > 1
+        
+        # Calculate start and end for current page
+        start_index = (page - 1) * limit
+        end_index = min(start_index + limit, total_records)
+        
+        page_start_ts = start_ts + (start_index * sample_time)
+        page_end_ts = start_ts + ((end_index - 1) * sample_time)
+        
+        # Query data needed for this page plus context for forward fill
+        # We need data up to page_end_ts. 
+        # For forward fill, we need the last known value before or at page_start_ts for each tag.
+        
+        data_points = []
+        current_ts = page_start_ts
+        
+        # Pre-fetch data for optimization could be complex due to forward fill requirement across large gaps.
+        # However, we can query per tag or query all data in range. 
+        # For efficiency with many tags/large range, we should query intelligently.
+        # But to guarantee "last known value", we might need to look back indefinitely if no recent data.
+        # A simple approach for now: Query "last value before or at page_start_ts" for each tag, 
+        # and all values between page_start_ts and page_end_ts.
+        
+        # 1. Get initial values (state at page_start_ts)
+        current_values = {}
+        for tag_name in tags:
+            # Get the latest value <= current_ts
+            last_val_query = (TagValue
+                .select(TagValue.value)
+                .join(Tags)
+                .where((Tags.name == tag_name) & (TagValue.timestamp <= current_ts))
+                .order_by(TagValue.timestamp.desc())
+                .limit(1)
+                .dicts())
+            
+            entry = list(last_val_query)
+            if entry:
+                current_values[tag_name] = entry[0]['value']
+            else:
+                current_values[tag_name] = None
+
+        # 2. Get changes within the page window
+        # We query all changes for these tags in the time window of the page
+        changes_query = (TagValue
+            .select(Tags.name, TagValue.value, TagValue.timestamp)
+            .join(Tags)
+            .where(
+                (Tags.name.in_(tags)) & 
+                (TagValue.timestamp > page_start_ts) & 
+                (TagValue.timestamp <= page_end_ts)
+            )
+            .order_by(TagValue.timestamp.asc())
+            .dicts())
+            
+        # Organize changes by timestamp
+        changes_by_ts = defaultdict(dict)
+        for change in changes_query:
+            ts = change['timestamp']
+            changes_by_ts[ts][change['name']] = change['value']
+            
+        # 3. Generate tabular data
+        # We iterate step by step. This might be slow if step is small and range is large, 
+        # but we are limited by pagination 'limit' (e.g. 20 rows), so it's fast!
+        
+        # We need to process from page_start_ts to page_end_ts in sample_time steps.
+        # BUT we have a list of changes. 
+        # The simple way: Iterate steps.
+        
+        # Optimization: We have 'limit' steps.
+        
+        changes_iter = sorted(changes_by_ts.keys())
+        change_idx = 0
+        
+        for i in range(end_index - start_index):
+            step_ts = page_start_ts + (i * sample_time)
+            
+            # Update current_values with any changes that happened between last step and now (inclusive)
+            # Actually, standard sample-hold means at time T we have value at T.
+            # If multiple values in (T-1, T], usually the last one prevails or the one at T?
+            # Requirement: "retorne exactamente el timestamp... valor anterior mas cercano registrado" (forward fill)
+            # So at step_ts, value is the latest value where timestamp <= step_ts.
+            
+            # Advance change_idx to consume all changes <= step_ts
+            while change_idx < len(changes_iter) and changes_iter[change_idx] <= step_ts:
+                ts = changes_iter[change_idx]
+                for tag, val in changes_by_ts[ts].items():
+                    current_values[tag] = val
+                change_idx += 1
+                
+            # Build row
+            dt_object = datetime.fromtimestamp(step_ts, pytz.UTC)
+            formatted_ts = dt_object.astimezone(_timezone).strftime(DATETIME_FORMAT)
+            
+            row = {"timestamp": formatted_ts}
+            for tag in tags:
+                row[tag] = current_values.get(tag) # None if no value ever recorded
+                
+            data_points.append(row)
+
+        return {
+            "data": data_points,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_records": total_records,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            }
+        }
+
     def _agregate_data_every_seconds(self, query, result, seconds:int, timezone:str="UTC"):
         r"""Documentation here
         """
@@ -620,17 +783,18 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"]["tags"] = tags
         return self.query(_query)
 
-    def read_table(self, start:str, stop:str, timezone:str, tags:list, page:int=1, limit:int=20):
+    def read_tabular_data(self, start:str, stop:str, timezone:str, tags:list, sample_time:int, page:int=1, limit:int=20):
         r"""
-        Get historical data in table format with pagination on a thread-safe mechanism
+        Get historical data in tabular format with pagination on a thread-safe mechanism
         """
         _query = dict()
-        _query["action"] = "read_table"
+        _query["action"] = "read_tabular_data"
         _query["parameters"] = dict()
         _query["parameters"]["start"] = start
         _query["parameters"]["stop"] = stop
         _query["parameters"]["timezone"] = timezone
         _query["parameters"]["tags"] = tags
+        _query["parameters"]["sample_time"] = sample_time
         _query["parameters"]["page"] = page
         _query["parameters"]["limit"] = limit
         return self.query(_query)

@@ -374,6 +374,13 @@ class PyAutomation(Singleton):
         return self.logger_engine.read_table(start, stop, timezone, tags, page, limit)
     
     @logging_error_handler
+    def get_tabular_data(self, start:str, stop:str, timezone:str, tags:list, sample_time:int, page:int=1, limit:int=20):
+        r"""
+        Documentation here
+        """
+        return self.logger_engine.read_tabular_data(start, stop, timezone, tags, sample_time, page, limit)
+    
+    @logging_error_handler
     def get_segments(self):
         r"""
         Documentation here
