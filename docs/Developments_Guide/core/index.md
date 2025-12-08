@@ -2,7 +2,6 @@
 
 ::: automation.core.PyAutomation
     :docstring:
-    :members: append_machine
     :members: get_machine
     :members: get_machines
     :members: serialize_machines
