@@ -11,11 +11,18 @@ try:
 except FileNotFoundError:
     _requirements = []
 
+    version_ns = {}
+    with open("version.py") as f:
+        exec(f.read(), version_ns)
+    version = version_ns['__version__']
+except FileNotFoundError:
+    version = '0.0.0'
+
 system_platform = platform.system()
 
 setuptools.setup(
     name="PyAutomationIO",
-    version='1.0.0',
+    version=version,
     author="KnowAI",
     author_email="dev.know.ai@gmail.com",
     description="A python library to develop automation continuous tasks using sync or async concurrent threads",
