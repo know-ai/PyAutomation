@@ -33,83 +33,28 @@ pip install -r requirements.txt
 ## Run Config page
 
 ```python
-python run.py
-```
-
-or
-
-```python
 
 ./docker-entrypoint.sh
 ```
-
-## Deploy documentation on Development mode With mkautodoc
-
-### Install Wheel
-
-```python
-pip install wheel
-```
-
-### Create PyAutomation's package
-
-Execute this code where is setup.py file
-
-```python
-python3 setup.py bdist_wheel
-```
-
-This create some folders
-
-- build
-- dist
-- PyAutomation.egg-info
-
-### Install PyAutomation Folder
-
-Located into "dist" folder
-
-```python
-pip install dist/PyAutomation-1.0.0-py3-none-any.whl
-```
-
-After that, you can run mkdocs serve
 
 # Deploy
 
 Make the following `.env` file:
 
 ```
-PORT=5000
+AUTOMATION_PORT=8050
+AUTOMATION_VERSION=1.1.3
+AUTOMATION_OPCUA_SERVER_PORT=53530
+AUTOMATION_LOG_MAX_BYTES=5000  # 10MB en bytes
+AUTOMATION_LOG_BACKUP_COUNT=3
 ```
 
 ## Docker
-
-Export environment variables
-
-```
-export $(grep -v '^#' .env | xargs)
-```
-
-Start the app
-
-```
-sudo docker run -d \
-  --name PyAutomation \
-  -p ${PORT}:${PORT}\
-  -v $(pwd)/temp/db:/app/db \
-  -v $(pwd)/temp/logs:/app/logs \
-  -e PORT=${PORT} \
-  knowai/automation:1.0.0
-```
-
-## Docker Compose
 
 If you want to deploy it using docker compose, make the following `docker-compose.yml` file:
 
 ```YaMl
 services:
-
   automation:
     container_name: "Automation"
     image: "knowai/automation:${AUTOMATION_VERSION}"
@@ -117,24 +62,22 @@ services:
     ports:
       - ${AUTOMATION_PORT}:${AUTOMATION_PORT}
     volumes:
-      - automation/db:/app/db
-      - automation/logs:/app/logs
+      - automation_db:/app/db
+      - automation_logs:/app/logs
     environment:
-      - OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT}
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT}
+      LOG_MAX_BYTES: ${AUTOMATION_LOG_MAX_BYTES}
+      LOG_BACKUP_COUNT: ${AUTOMATION_LOG_BACKUP_COUNT}
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail -s -k http://0.0.0.0:${PORT}/api/healthcheck/ || curl --fail -s -k https://0.0.0.0:${PORT}/api/healthcheck/ || exit 1"]
+      test: ["CMD", "python", "/app/healthcheck.py"]
       interval: 15s
       timeout: 10s
       retries: 3
 
 volumes:
-  automation/db:
-  automation/logs:
+  automation_db:
+  automation_logs:
+
 ```
 
 Start the docker compose file
@@ -143,4 +86,4 @@ Start the docker compose file
 sudo docker-compose --env-file .env up -d
 ```
 
-Go to http://host:${PORT} to view the config page
+Go to http://host:${AUTOMATION_PORT} to view the config page

@@ -1,43 +1,46 @@
-FROM python:3.10.12-alpine
+# Etapa de construcción (Build Stage)
+# Usamos python:3.11-slim-bookworm para coincidir con la versión de Python en distroless-debian12
+FROM python:3.11-slim-bookworm AS builder
 
 WORKDIR /app
 
-LABEL author="KnowAI"
+# Instalar dependencias de compilación mínimas
+# psycopg2-binary y numpy suelen tener wheels, pero build-essential asegura compilación si es necesario
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-LABEL description="PyAutomation System"
+COPY requirements.txt .
 
-RUN apk update && apk add curl util-linux
+# Instalamos las dependencias en un directorio específico (/install)
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# Instalar dependencias necesarias para compilar numpy (sin libexecinfo-dev)
-RUN apk add --no-cache \
-    build-base \
-    musl-dev \
-    gfortran \
-    openblas-dev \
-    linux-headers \
-    && ln -s /usr/include/locale.h /usr/include/xlocale.h
+# Etapa de producción (Runtime Stage)
+# Usamos Google Distroless para Python 3 (Debian 12)
+FROM gcr.io/distroless/python3-debian12
 
-    
-RUN pip3 install --upgrade pip
-RUN pip3 install setuptools wheel
+WORKDIR /app
 
+# Copiamos las dependencias instaladas desde la etapa de construcción
+COPY --from=builder /install /usr/local
 
+# Copiamos el código de la aplicación
 COPY . .
-COPY requirements.txt requirements.txt
 
-RUN pip3 install -r requirements.txt
-
-RUN chmod +x ./docker-entrypoint.sh
-
+# Establecemos variables de entorno
 ENV PORT=8050
 ENV OPCUA_SERVER_PORT=53530
+# Aseguramos que Python encuentre los paquetes (aunque /usr/local suele estar en path)
+ENV PYTHONPATH=/usr/local/lib/python3.11/site-packages
 
+# Exponemos los puertos
 EXPOSE ${PORT}
 EXPOSE ${OPCUA_SERVER_PORT}
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
-
+# Healthcheck usando script de Python (curl no existe en distroless)
 HEALTHCHECK --interval=5s --timeout=10s --start-period=55s \
-  CMD curl -f --retry 5 --max-time 15 --retry-delay 5 --retry-max-time 60 "http://127.0.0.1:${PORT}/api/healthcheck/" || \
-      curl -f --retry 5 --max-time 15 --retry-delay 5 --retry-max-time 60 "https://127.0.0.1:${PORT}/api/healthcheck/" || exit 1
- 
+  CMD ["python", "/app/healthcheck.py"]
+
+# Entrypoint usando script de Python (sh no existe en distroless estándar)
+ENTRYPOINT ["python", "/app/entrypoint.py"]

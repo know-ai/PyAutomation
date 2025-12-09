@@ -13,11 +13,7 @@ services:
       LOG_MAX_BYTES: ${AUTOMATION_LOG_MAX_BYTES}
       LOG_BACKUP_COUNT: ${AUTOMATION_LOG_BACKUP_COUNT}
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl --fail -s -k http://0.0.0.0:${AUTOMATION_PORT}/api/healthcheck/ || curl --fail -s -k https://0.0.0.0:${AUTOMATION_PORT}/api/healthcheck/ || exit 1",
-        ]
+      test: ["CMD", "python", "/app/healthcheck.py"]
       interval: 15s
       timeout: 10s
       retries: 3
