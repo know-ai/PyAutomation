@@ -1067,6 +1067,49 @@ class PyAutomation(Singleton):
             return None
 
     @logging_error_handler
+    def set_app_config(self, **kwargs):
+        r"""
+        Update app configuration into app_config.json
+        """
+        try:
+            config_path = os.path.join(".", "db", "app_config.json")
+            config = {}
+            
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+            
+            config.update(kwargs)
+            
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=4)
+                
+        except Exception as e:
+            logging.error(f"Failed to persist app config: {e}")
+
+    @logging_error_handler
+    def get_app_config(self) -> dict:
+        r"""
+        Get app configuration from app_config.json
+        """
+        try:
+            config_path = os.path.join(".", "db", "app_config.json")
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    return json.load(f)
+            else:
+                # Create default config if not exists
+                default_config = {
+                    "logger_period": 10.0
+                }
+                self.set_app_config(**default_config)
+                return default_config
+                
+        except Exception as e:
+            logging.error(f"Failed to read app config: {e}")
+            return {"logger_period": 10.0}
+
+    @logging_error_handler
     @validate_types(output=bool)
     def is_db_connected(self):
         r"""
@@ -1696,6 +1739,18 @@ class PyAutomation(Singleton):
         self.__start_workers(test=test, machines=machines)
 
     @logging_error_handler
+    @validate_types(period=float, output=None)
+    def update_logger_period(self, period:float):
+        r"""
+        Update logger worker period
+        """
+        if hasattr(self, 'db_worker'):
+            self.db_worker._period = period
+            logging.info(f"Logger period updated to {period} seconds")
+        
+        self.set_app_config(logger_period=period)
+
+    @logging_error_handler
     @validate_types(output=None)
     def safe_stop(self)->None:
         r"""
@@ -1723,8 +1778,11 @@ class PyAutomation(Singleton):
         * DASWorker
         """
         if self._create_tables:
+            
+            app_config = self.get_app_config()
+            logger_period = float(app_config.get("logger_period", 10.0))
 
-            self.db_worker = LoggerWorker(self.db_manager)
+            self.db_worker = LoggerWorker(self.db_manager, period=logger_period)
             self.connect_to_db(test=test)
             self.db_worker.start()
 

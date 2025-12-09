@@ -19,7 +19,7 @@ from ..dbmodels.logs import Logs
 
 class LoggerWorker(BaseWorker):
 
-    def __init__(self, manager:DBManager, period:int=5.0):
+    def __init__(self, manager:DBManager, period:float=10.0):
 
         super(LoggerWorker, self).__init__()
         
@@ -144,7 +144,7 @@ class LoggerWorker(BaseWorker):
                     tags = self.get_tags_from_queue(_queue=_queue)
             
                     if tags:
-                        
+                        logging.critical(f"Writing {len(tags)} tags to database")
                         self.logger.write_tags(tags=tags)
                     
                 else:
@@ -161,4 +161,5 @@ class LoggerWorker(BaseWorker):
                 logging.critical("Alarm worker shutdown successfully!")
                 break
 
+            logging.critical(f"Logger worker sleeping for {self._period} seconds")
             time.sleep(self._period)

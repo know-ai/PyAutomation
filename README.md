@@ -64,10 +64,22 @@ services:
     volumes:
       - automation_db:/app/db
       - automation_logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m" # Rota cuando llega a 10MB
+        max-file: "3" # Guarda máximo 3 archivos (30MB total)
     environment:
       OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT}
       LOG_MAX_BYTES: ${AUTOMATION_LOG_MAX_BYTES}
       LOG_BACKUP_COUNT: ${AUTOMATION_LOG_BACKUP_COUNT}
+    tmpfs:
+      - /tmp:size=500k
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     healthcheck:
       test: ["CMD", "python", "/app/healthcheck.py"]
       interval: 15s
@@ -77,7 +89,6 @@ services:
 volumes:
   automation_db:
   automation_logs:
-
 ```
 
 Start the docker compose file
