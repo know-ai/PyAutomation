@@ -1812,6 +1812,27 @@ class PyAutomation(Singleton):
             self.subscription_monitor.stop()
 
     @logging_error_handler
+    @validate_types(max_bytes=int, backup_count=int, output=None)
+    def update_log_config(self, max_bytes:int, backup_count:int):
+        r"""
+        Update logger configuration (maxBytes and backupCount) dynamically and persist it.
+        """
+        # 1. Update runtime logger
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers:
+            if isinstance(handler, RotatingFileHandler):
+                # Update handler properties
+                handler.maxBytes = max_bytes
+                handler.backupCount = backup_count
+                # Trigger rollover if needed (optional, or wait for next write)
+                # handler.doRollover() 
+                logging.info(f"Log configuration updated: maxBytes={max_bytes}, backupCount={backup_count}")
+                break
+        
+        # 2. Persist to config
+        self.set_app_config(log_max_bytes=max_bytes, log_backup_count=backup_count)
+
+    @logging_error_handler
     @validate_types(output=None)
     def __start_logger(self)->None:
         r"""
@@ -1831,8 +1852,14 @@ class PyAutomation(Singleton):
         for _h in list(root_logger.handlers):
             root_logger.removeHandler(_h)
 
-        max_bytes = int(os.environ.get('LOG_MAX_BYTES', 10 * 1024 * 1024)) # 10MB
-        backup_count = int(os.environ.get('LOG_BACKUP_COUNT', 3)) # 3 backups
+        app_config = self.get_app_config()
+        # Default fallback to env or hardcoded
+        env_max_bytes = int(os.environ.get('LOG_MAX_BYTES', 10 * 1024 * 1024))
+        env_backup_count = int(os.environ.get('LOG_BACKUP_COUNT', 3))
+
+        max_bytes = int(app_config.get('log_max_bytes', env_max_bytes))
+        backup_count = int(app_config.get('log_backup_count', env_backup_count))
+
         handler = RotatingFileHandler(
             filename=self._log_file,
             maxBytes=max_bytes,
