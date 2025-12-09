@@ -405,7 +405,9 @@ class DataLogger(BaseLogger):
             
         Returns:
             dict: {
-                "data": [...],
+                "tag_names": ["timestamp", "tag1", ...],
+                "display_names": ["timestamp", "Display Tag 1", ...],
+                "values": [[ts, val1, ...], ...],
                 "pagination": {...}
             }
         """
@@ -428,6 +430,23 @@ class DataLogger(BaseLogger):
 
         if sample_time <= 0:
             return dict()
+
+        # Get display names mapping early
+        try:
+            tags_info = Tags.select(Tags.name, Tags.display_name).where(Tags.name.in_(tags)).dicts()
+            display_map = {t['name']: t['display_name'] for t in tags_info}
+        except Exception:
+            display_map = {}
+
+        tag_names = ["timestamp"] + tags
+        display_names = ["timestamp"] + [display_map.get(tag, tag) for tag in tags]
+
+        empty_result = {
+            "tag_names": tag_names,
+            "display_names": display_names,
+            "values": [],
+            "pagination": {}
+        }
 
         # Check for data presence to adjust start time if necessary
         # 1. Check if there is any data BEFORE or AT start_dt (history)
@@ -456,7 +475,7 @@ class DataLogger(BaseLogger):
             
             if min_ts is None:
                 # No data in range and no history
-                return {"data": [], "pagination": {}}
+                return empty_result
             
             # Adjust start to the first actual data point
             # Ensure min_ts is timezone aware if needed, though scalar() returns DB format
@@ -472,7 +491,7 @@ class DataLogger(BaseLogger):
         # Calculate total records based on time range and sample time
         total_duration = stop_ts - start_ts
         if total_duration < 0:
-            return {"data": [], "pagination": {}}
+            return empty_result
             
         total_records = math.floor(total_duration / sample_time) + 1
         
@@ -499,13 +518,6 @@ class DataLogger(BaseLogger):
         
         data_points = []
         current_ts = page_start_ts
-        
-        # Pre-fetch data for optimization could be complex due to forward fill requirement across large gaps.
-        # However, we can query per tag or query all data in range. 
-        # For efficiency with many tags/large range, we should query intelligently.
-        # But to guarantee "last known value", we might need to look back indefinitely if no recent data.
-        # A simple approach for now: Query "last value before or at page_start_ts" for each tag, 
-        # and all values between page_start_ts and page_end_ts.
         
         # 1. Get initial values (state at page_start_ts)
         current_values = {}
@@ -566,12 +578,6 @@ class DataLogger(BaseLogger):
         # We iterate step by step. This might be slow if step is small and range is large, 
         # but we are limited by pagination 'limit' (e.g. 20 rows), so it's fast!
         
-        # We need to process from page_start_ts to page_end_ts in sample_time steps.
-        # BUT we have a list of changes. 
-        # The simple way: Iterate steps.
-        
-        # Optimization: We have 'limit' steps.
-        
         changes_iter = sorted(changes_by_ts.keys())
         change_idx = 0
         
@@ -595,19 +601,21 @@ class DataLogger(BaseLogger):
             dt_object = datetime.fromtimestamp(step_ts, pytz.UTC)
             formatted_ts = dt_object.astimezone(_timezone).strftime(DATETIME_FORMAT)
             
-            row = {"timestamp": formatted_ts}
+            row_values = [formatted_ts]
             has_data = False
             for tag in tags:
                 val = current_values.get(tag)
-                row[tag] = val # None if no value ever recorded
+                row_values.append(val)
                 if val is not None:
                     has_data = True
                 
             if has_data:
-                data_points.append(row)
+                data_points.append(row_values)
 
         return {
-            "data": data_points,
+            "tag_names": tag_names,
+            "display_names": display_names,
+            "values": data_points,
             "pagination": {
                 "page": page,
                 "limit": limit,
