@@ -1,4 +1,4 @@
-import functools, logging, sys
+import functools, logging, sys, datetime
 from ..modules.users.users import User, Users
 from ..logger.events import EventsLoggerEngine
 
@@ -159,6 +159,8 @@ def validate_types(**validations):
                             message = f"Expected output type ({counter}) {expected}, but got {type(result[counter])} in func {func}"
                             logger = logging.getLogger("pyautomation")
                             logger.error(message)
+                            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            print(f"[ERROR] {str_date} {message}")
                             raise TypeError(message)
                         
                 else:
@@ -167,6 +169,8 @@ def validate_types(**validations):
                         message = f"Expected output type {_output}, but got {type(result)} in func {func}"
                         logger = logging.getLogger("pyautomation")
                         logger.error(message)
+                        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        print(f"[ERROR] {str_date} {message}")
                         raise TypeError(message)
 
             return result
@@ -201,6 +205,8 @@ def logging_error_handler(func, args, kwargs):
         })
         logger = logging.getLogger("pyautomation")
         logger.error(msg=msg)
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[ERROR] {str_date} {msg}")
 
 @decorator
 def db_rollback(func, args, kwargs):

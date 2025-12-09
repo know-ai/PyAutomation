@@ -1100,14 +1100,15 @@ class PyAutomation(Singleton):
             else:
                 # Create default config if not exists
                 default_config = {
-                    "logger_period": 10.0
+                    "logger_period": 10.0,
+                    "log_level": 20
                 }
                 self.set_app_config(**default_config)
                 return default_config
                 
         except Exception as e:
             logging.error(f"Failed to read app config: {e}")
-            return {"logger_period": 10.0}
+            return {"logger_period": 10.0, "log_level": 20}
 
     @logging_error_handler
     @validate_types(output=bool)
@@ -1698,6 +1699,18 @@ class PyAutomation(Singleton):
 
         **Returns:** `None`
         """
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        logging.critical(f"{str_date} Starting app with configuration:")
+        logging.critical(f"{str_date} Logger period: {self.get_app_config().get('logger_period', 10.0)} seconds")
+        logging.critical(f"{str_date} Log max bytes: {self.get_app_config().get('log_max_bytes', 10 * 1024 * 1024)} bytes")
+        logging.critical(f"{str_date} Log backup count: {self.get_app_config().get('log_backup_count', 3)} backups")
+        logging.critical(f"{str_date} Log level: {self.get_app_config().get('log_level', 20)}")
+        print(f"[INFO] {str_date} Starting app with configuration:")
+        print(f"[INFO] {str_date} Logger period: {self.get_app_config().get('logger_period', 10.0)} seconds")
+        print(f"[INFO] {str_date} Log max bytes: {self.get_app_config().get('log_max_bytes', 10 * 1024 * 1024)} bytes")
+        print(f"[INFO] {str_date} Log backup count: {self.get_app_config().get('log_backup_count', 3)} backups")
+        print(f"[INFO] {str_date} Log level: {self.get_app_config().get('log_level', 20)}")
+
         self.safe_start(test=test, create_tables=create_tables, machines=machines)
         self.create_system_user()
 
@@ -1737,6 +1750,9 @@ class PyAutomation(Singleton):
         self._create_tables = create_tables
         self.__start_logger()
         self.__start_workers(test=test, machines=machines)
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        logging.critical(f"{str_date} App started successfully")
+        print(f"[INFO] {str_date} App started successfully")
 
     @logging_error_handler
     @validate_types(period=float, output=None)
@@ -1746,7 +1762,9 @@ class PyAutomation(Singleton):
         """
         if hasattr(self, 'db_worker'):
             self.db_worker._period = period
-            logging.info(f"Logger period updated to {period} seconds")
+            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logging.info(f"{str_date} Logger period updated to {period} seconds")
+            print(f"[INFO] {str_date} Logger period updated to {period} seconds")
         
         self.set_app_config(logger_period=period)
 
@@ -1812,6 +1830,27 @@ class PyAutomation(Singleton):
             self.subscription_monitor.stop()
 
     @logging_error_handler
+    @validate_types(level=int, output=None)
+    def update_log_level(self, level:int):
+        r"""
+        Update logger level dynamically and persist it.
+        """
+        self._logging_level = level
+        
+        # Update root logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(level)
+        
+        # Update app logger
+        app_logger = logging.getLogger("pyautomation")
+        app_logger.setLevel(level)
+        
+        logging.log(level, f"Log level updated to {level}")
+        
+        # Persist to config
+        self.set_app_config(log_level=level)
+
+    @logging_error_handler
     @validate_types(max_bytes=int, backup_count=int, output=None)
     def update_log_config(self, max_bytes:int, backup_count:int):
         r"""
@@ -1826,7 +1865,9 @@ class PyAutomation(Singleton):
                 handler.backupCount = backup_count
                 # Trigger rollover if needed (optional, or wait for next write)
                 # handler.doRollover() 
-                logging.info(f"Log configuration updated: maxBytes={max_bytes}, backupCount={backup_count}")
+                str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                logging.info(f"{str_date} Log configuration updated: maxBytes={max_bytes}, backupCount={backup_count}")
+                print(f"[INFO] {str_date} Log configuration updated: maxBytes={max_bytes}, backupCount={backup_count}")
                 break
         
         # 2. Persist to config
@@ -1847,6 +1888,13 @@ class PyAutomation(Singleton):
         logging.getLogger('opcua').setLevel(logging.CRITICAL)
         # Configure root logger with rotating file handler (size-based)
         root_logger = logging.getLogger()
+        
+        # Load level from config
+        app_config = self.get_app_config()
+        # Default logging.INFO (20) if not set in config, overriding __init__ warning default
+        persisted_level = int(app_config.get('log_level', logging.INFO))
+        self._logging_level = persisted_level
+        
         root_logger.setLevel(self._logging_level)
         # Clear existing handlers to avoid duplicates
         for _h in list(root_logger.handlers):

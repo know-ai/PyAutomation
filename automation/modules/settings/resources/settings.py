@@ -9,7 +9,8 @@ app = PyAutomation()
 settings_model = api.model("settings_model", {
     'logger_period': fields.Float(required=False, min=1.0, description='Logger worker period in seconds'),
     'log_max_bytes': fields.Integer(required=False, min=1024, description='Max bytes for log file rotation'),
-    'log_backup_count': fields.Integer(required=False, min=1, description='Number of backup log files to keep')
+    'log_backup_count': fields.Integer(required=False, min=1, description='Number of backup log files to keep'),
+    'log_level': fields.Integer(required=False, min=0, max=50, description='Logging level (0=NOTSET, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL)')
 })
 
 @ns.route('/update')
@@ -20,7 +21,7 @@ class SettingsUpdateResource(Resource):
     @ns.expect(settings_model)
     def put(self):
         """
-        Update application settings (Logger period, Log rotation config)
+        Update application settings (Logger period, Log rotation config, Log level)
         """
         data = api.payload
         
@@ -45,6 +46,15 @@ class SettingsUpdateResource(Resource):
         
         elif 'log_max_bytes' in data or 'log_backup_count' in data:
              return "Both log_max_bytes and log_backup_count must be provided together", 400
+
+        # 3. Update Log Level
+        if 'log_level' in data:
+            log_level = data['log_level']
+            # Basic validation for standard levels
+            if log_level not in [0, 10, 20, 30, 40, 50]:
+                return "Invalid log_level. Use standard Python logging levels (10, 20, 30, 40, 50)", 400
+            
+            app.update_log_level(log_level)
 
         return "Settings updated", 200
 
