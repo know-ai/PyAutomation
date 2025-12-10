@@ -58,6 +58,7 @@ nav:
   - Developer Guide:
       - Summary: "Developments_Guide/API/index.md"
       - Core: "Developments_Guide/API/core.md"
+      - Events: "Developments_Guide/API/events.md"
       - State Machines:
           - Summary: Developments_Guide/API/state_machine/index.md
           - Automation State Machine: Developments_Guide/API/state_machine/automation_state_machine.md

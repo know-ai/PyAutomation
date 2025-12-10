@@ -175,6 +175,18 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **StateMachine**: The state machine instance if found, otherwise None.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> # Retrieve the main machine
+        >>> machine = app.get_machine("Main")
+        >>> machine is not None
+        True
+
+        ```
         """
         return self.machine_manager.get_machine(name=name)
 
@@ -186,6 +198,17 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **list[tuple[Machine, int, str]]**: A list of tuples containing (Machine instance, interval, execution_mode).
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> machines = app.get_machines()
+        >>> isinstance(machines, list)
+        True
+
+        ```
         """
         return self.machine_manager.get_machines()
 
@@ -301,11 +324,17 @@ class PyAutomation(Singleton):
         ```python
         >>> from automation import PyAutomation
         >>> app = PyAutomation()
-        >>> tag_name = "tag1"
-        >>> unit = "Pa"
-        >>> variable = "Pressure"
-        >>> app.create_tag(name=tag_name, unit=unit, variable=variable)
-        (Tag(name='tag1'), 'Tag created successfully')
+        >>> # Create a Pressure Tag
+        >>> tag, msg = app.create_tag(name="PT-101", unit="bar", variable="Pressure")
+        >>> tag.name
+        'PT-101'
+        >>> tag.unit
+        'bar'
+        
+        >>> # Create a Temperature Tag with specific display unit
+        >>> tag2, msg = app.create_tag(name="TT-202", unit="C", variable="Temperature", display_unit="F")
+        >>> tag2.get_display_unit()
+        'F'
         ```
         """
         if not display_name:
@@ -377,6 +406,21 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **list**: A list of Tag dictionaries containing their current values and configuration.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> # Ensure a tag exists
+        >>> _ = app.create_tag("Tag_List_Test", "bar", "Pressure")
+        >>> tags = app.get_tags()
+        >>> isinstance(tags, list)
+        True
+        >>> any(t['name'] == 'Tag_List_Test' for t in tags)
+        True
+
+        ```
         """
 
         return self.cvt.get_tags()
@@ -410,6 +454,19 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **Tag**: The Tag object if found, otherwise None.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> _ = app.create_tag(name="FlowRate", unit="kg/hr", variable="MassFlow")
+        >>> tag = app.get_tag_by_name("FlowRate")
+        >>> tag.name
+        'FlowRate'
+        >>> tag.value
+        0.0
+        ```
         """
         return self.cvt.get_tag_by_name(name=name)
     
@@ -548,6 +605,19 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **tuple[Tag|None, str]**: A tuple containing the updated Tag object (or None on failure) and a status message.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> tag, _ = app.create_tag("Tag_Update", "C", "Temperature")
+        >>> # Update scan time
+        >>> updated_tag, msg = app.update_tag(tag.id, scan_time=1000)
+        >>> updated_tag.scan_time
+        1000
+
+        ```
         """
         tag = self.cvt.get_tag(id=id)       
         if "name" in kwargs:
@@ -657,6 +727,18 @@ class PyAutomation(Singleton):
 
         * **name** (str): The name of the tag.
         * **user** (User, optional): The user performing the action.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> _ = app.create_tag("Tag_Delete", "m", "Length")
+        >>> app.delete_tag_by_name("Tag_Delete")
+        >>> app.get_tag_by_name("Tag_Delete") is None
+        True
+
+        ```
         """
         tag = self.cvt.get_tag_by_name(name=name)
         alarm = self.alarm_manager.get_alarm_by_tag(tag=name)
@@ -699,6 +781,19 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **tuple[User|None, str]**: User object if successful, plus status message.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> _ = app.set_role("operator_login", 1)
+        >>> _ = app.signup("jane_login", "operator_login", "jane_l@example.com", "mypassword")
+        >>> user, msg = app.login("mypassword", username="jane_login")
+        >>> user.email
+        'jane_l@example.com'
+
+        ```
         """
         # Check Token on Database
         if self.is_db_connected():
@@ -741,6 +836,19 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **tuple[User|None, str]**: The created User object and a status message.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> # Ensure role exists
+        >>> _ = app.set_role("operator_signup", 1)
+        >>> user, msg = app.signup("john_signup", "operator_signup", "john_s@example.com", "securepass")
+        >>> user.username
+        'john_signup'
+
+        ```
         """
         user, message = users.signup(
             username=username,
@@ -774,6 +882,19 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **str**: The encoded JWT token.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> token = app.create_token("admin")
+        >>> isinstance(token, str)
+        True
+        >>> len(token) > 0
+        True
+
+        ```
         """
         from . import server
         payload = {
@@ -796,6 +917,17 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **Role|None**: The created Role object or None if it already exists.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> role, msg = app.set_role("supervisor", 0)
+        >>> role.name
+        'supervisor'
+
+        ```
         """
         role = Role(name=name, level=level)
         if roles.check_role_name(name=name):
@@ -886,6 +1018,18 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **Client**: The OPC UA client if connected, else None.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> # Returns None if no client connected to that address
+        >>> client = app.get_opcua_client_by_address("opc.tcp://localhost:9999")
+        >>> client is None
+        True
+
+        ```
         """
         return self.opcua_client_manager.get_client_by_address(opcua_address=opcua_address)
     
@@ -904,6 +1048,21 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **tuple**: A tuple containing a result dictionary and an HTTP status code.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> # Mock client and write method
+        >>> app.get_opcua_client_by_address = MagicMock()
+        >>> app.get_opcua_client_by_address.return_value.write_value.return_value = ({'success': True}, 200)
+        >>> res, status = app.write_opcua_value("opc.tcp://loc", "ns=1;i=1", 10)
+        >>> status
+        200
+
+        ```
         """
         opcua_client = self.get_opcua_client_by_address(opcua_address=opcua_address)
         
@@ -927,6 +1086,18 @@ class PyAutomation(Singleton):
         * **name** (str): Name of the node.
         * **namespace** (str): Namespace URI or index.
         * **access_type** (str): Access level (Read, Write, ReadWrite).
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> app.opcua_server_engine.create = MagicMock(return_value=True)
+        >>> app.create_opcua_server_record("Node1", "ns=1;i=1", "Read")
+        True
+
+        ```
         """
         return self.opcua_server_engine.create(name=name, namespace=namespace, access_type=access_type)
     
@@ -939,6 +1110,18 @@ class PyAutomation(Singleton):
 
         * **namespace** (str): The namespace of the node.
         * **access_type** (str): New access type (Read, Write, ReadWrite).
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> app.opcua_server_engine.put = MagicMock(return_value=True)
+        >>> app.update_opcua_server_access_type("ns=1;i=1", "Write")
+        True
+
+        ```
         """
         return self.opcua_server_engine.put(namespace=namespace, access_type=access_type)
     
@@ -954,6 +1137,19 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **dict**: Node record data.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> app.opcua_server_engine.read_by_namespace = MagicMock(return_value={'name': 'Node1'})
+        >>> record = app.get_opcua_server_record_by_namespace("ns=1;i=1")
+        >>> record['name']
+        'Node1'
+
+        ```
         """
         return self.opcua_server_engine.read_by_namespace(namespace=namespace)
 
@@ -971,6 +1167,18 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **list**: List of values read from the nodes.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> app.opcua_client_manager.get_node_values = MagicMock(return_value=[10, 20])
+        >>> app.get_node_values("PLC1", ["ns=1;i=1", "ns=1;i=2"])
+        [10, 20]
+
+        ```
         """
 
         return self.opcua_client_manager.get_node_values(client_name=client_name, namespaces=namespaces)
@@ -989,6 +1197,18 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **list[dict]**: List of attribute dictionaries.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> app.opcua_client_manager.get_node_attributes = MagicMock(return_value=[{'description': 'test'}])
+        >>> app.get_node_attributes("PLC1", ["ns=1;i=1"])
+        [{'description': 'test'}]
+
+        ```
         """
 
         return self.opcua_client_manager.get_node_attributes(client_name=client_name, namespaces=namespaces)
@@ -1005,6 +1225,18 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **dict**: Nested dictionary representing the node tree.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> app.opcua_client_manager.get_opcua_tree = MagicMock(return_value={'Root': {}})
+        >>> app.get_opcua_tree("PLC1")
+        {'Root': {}}
+
+        ```
         """
         return self.opcua_client_manager.get_opcua_tree(client_name=client_name)
 
@@ -1023,6 +1255,22 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **tuple**: (Success boolean, Message or client data).
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> # Mock discovery to return a fake server
+        >>> app.find_opcua_servers = MagicMock(return_value=[{'DiscoveryUrls': ['opc.tcp://localhost:4840']}])
+        >>> # Mock client manager add
+        >>> app.opcua_client_manager.add = MagicMock(return_value=(True, "Client added"))
+        >>> success, msg = app.add_opcua_client("PLC1", "localhost", 4840)
+        >>> success
+        True
+
+        ```
         """
         servers = self.find_opcua_servers(host=host, port=port)
 
@@ -1043,6 +1291,18 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **bool**: True if successful, False otherwise.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> app.opcua_client_manager.remove = MagicMock(return_value=True)
+        >>> app.remove_opcua_client("PLC1")
+        True
+
+        ```
         """
         return self.opcua_client_manager.remove(client_name=client_name)
 
@@ -1062,6 +1322,22 @@ class PyAutomation(Singleton):
         * **node_namespace** (str): The node ID to subscribe to.
         * **scan_time** (float): The scan time or sampling interval in milliseconds.
         * **reload** (bool, optional): If True, reloads the subscription if it already exists.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> tag, _ = app.create_tag("Tag_Sub", "bar", "Pressure")
+        >>> # Mock internal subscription method
+        >>> app.subscribe_tag = MagicMock()
+        >>> # Subscribe with 1000ms scan time (uses DAQ/subscribe_tag)
+        >>> app.subscribe_opcua(tag, "opc.tcp://localhost:4840", "ns=2;s=Press", 1000)
+        >>> app.subscribe_tag.called
+        True
+
+        ```
         """
         if opcua_address and node_namespace:
 
@@ -1098,6 +1374,20 @@ class PyAutomation(Singleton):
         * **tag_name** (str): The name of the tag.
         * **scan_time** (float|int): The polling interval in milliseconds.
         * **reload** (bool, optional): If True, forces a reload of the machine configuration.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> _ = app.create_tag("Tag_Poll", "C", "Temperature")
+        >>> # This will create/update a DAQ machine
+        >>> app.subscribe_tag("Tag_Poll", 1000)
+        >>> machines = app.get_machines()
+        >>> any(m[0].name.value == "DAQ-1000" for m in machines)
+        True
+
+        ```
         """
         scan_time = float(scan_time)
         daq_name = StringType(f"DAQ-{int(scan_time)}")
@@ -1128,6 +1418,17 @@ class PyAutomation(Singleton):
         **Parameters:**
 
         * **tag** (Tag): The tag object to unsubscribe.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> tag, _ = app.create_tag("Tag_Unsub", "m", "Length")
+        >>> app.subscribe_tag("Tag_Unsub", 1000)
+        >>> app.unsubscribe_opcua(tag)
+        >>> # Verification: check log or internal state if possible
+        ```
         """
 
         if tag.get_node_namespace():
@@ -1203,10 +1504,13 @@ class PyAutomation(Singleton):
 
         **Returns:** `None`
 
-        Usage:
+        **Usage:**
 
         ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
         >>> app.set_log(file="app.log")
+
         ```
         """
 
@@ -1249,7 +1553,12 @@ class PyAutomation(Singleton):
         **Usage:**
 
         ```python
-        >>> app.set_db(dbfile="app.db")
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> app.set_db(dbtype="sqlite", dbfile="test_set_db.db")
+        >>> app.connect_to_db()
+        True
+
         ```
         """
 
@@ -1324,6 +1633,18 @@ class PyAutomation(Singleton):
         * **host** (str, optional): Database host.
         * **port** (int|str, optional): Database port.
         * **name** (str, optional): Database name (for non-SQLite).
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> import os
+        >>> app = PyAutomation()
+        >>> app.set_db_config(dbtype="sqlite", dbfile="test_config.db")
+        >>> os.path.exists("./db/db_config.json")
+        True
+
+        ```
         """
         if dbtype.lower()=="sqlite":
 
@@ -1356,6 +1677,18 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **dict|None**: The database configuration dictionary or None if reading fails.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> app.set_db_config(dbtype="sqlite", dbfile="test_read.db")
+        >>> config = app.get_db_config()
+        >>> config['dbfile']
+        'test_read.db'
+
+        ```
         """
         try:
 
@@ -1382,6 +1715,18 @@ class PyAutomation(Singleton):
         **Parameters:**
 
         * **kwargs**: Configuration keys and values to update (e.g., logger_period).
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> app.set_app_config(logger_period=5.0)
+        >>> config = app.get_app_config()
+        >>> config['logger_period']
+        5.0
+
+        ```
         """
         try:
             config_path = os.path.join(".", "db", "app_config.json")
@@ -1409,6 +1754,17 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **dict**: Application configuration dictionary.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> config = app.get_app_config()
+        >>> isinstance(config, dict)
+        True
+
+        ```
         """
         try:
             config_path = os.path.join(".", "db", "app_config.json")
@@ -1437,6 +1793,17 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **bool**: True if connected, False otherwise.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> # Initially not connected
+        >>> app.is_db_connected()
+        False
+
+        ```
         """
         if self.db_manager.get_db():
 
@@ -1459,6 +1826,19 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **bool**: True if connection was successful.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> # Connect to test DB
+        >>> app.connect_to_db(test=True)
+        True
+        >>> app.is_db_connected()
+        True
+
+        ```
         """
         try:
             db_config = self.get_db_config()
@@ -1500,6 +1880,18 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **bool**: True if reconnection was successful.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> app.connect_to_db(test=True)
+        True
+        >>> app.reconnect_to_db(test=True)
+        True
+
+        ```
         """
         try:
             db_config = self.get_db_config()
@@ -1534,6 +1926,19 @@ class PyAutomation(Singleton):
     def disconnect_to_db(self):
         r"""
         Closes the database connection and stops history logging.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> app.connect_to_db(test=True)
+        True
+        >>> app.disconnect_to_db()
+        >>> app.is_db_connected()
+        False
+
+        ```
         """
         self.__log_histories = False
         self.db_manager._logger.logger.stop_db()
@@ -1543,6 +1948,23 @@ class PyAutomation(Singleton):
     def load_db_to_cvt(self):
         r"""
         Loads active tags from the database into the Current Value Table (CVT).
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> app.connect_to_db(test=True)
+        True
+        >>> # Create a tag to persist it
+        >>> tag, _ = app.create_tag("Tag_Load_Test", "m", "Length")
+        >>> # Clear memory to simulate restart
+        >>> app.cvt._cvt.tags = {} 
+        >>> app.load_db_to_cvt()
+        >>> app.get_tag_by_name("Tag_Load_Test") is not None
+        True
+
+        ```
         """
         if self.is_db_connected():
 
@@ -1562,6 +1984,23 @@ class PyAutomation(Singleton):
     def load_db_to_alarm_manager(self):
         r"""
         Loads configured alarms from the database into the Alarm Manager.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> app.connect_to_db(test=True)
+        True
+        >>> _ = app.create_tag("Tag_Alarm_Load", "m", "Length")
+        >>> _, _ = app.create_alarm("Alarm_Load_Test", "Tag_Alarm_Load")
+        >>> # Manually clear alarms in memory to test load
+        >>> app.alarm_manager.alarms = {}
+        >>> app.load_db_to_alarm_manager()
+        >>> app.get_alarm_by_name("Alarm_Load_Test") is not None
+        True
+
+        ```
         """
         if self.is_db_connected():
 
@@ -1576,6 +2015,23 @@ class PyAutomation(Singleton):
     def load_db_to_roles(self):
         r"""
         Loads user roles from the database into the system's role manager.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from automation.dbmodels.users import Roles
+        >>> app = PyAutomation()
+        >>> app.connect_to_db(test=True)
+        True
+        >>> _ = app.set_role("new_role", 5)
+        >>> # Clear roles memory
+        >>> Roles.get_all_roles().pop("new_role", None)
+        >>> app.load_db_to_roles()
+        >>> "new_role" in Roles.get_all_roles()
+        True
+
+        ```
         """
         if self.is_db_connected():
 
@@ -1586,6 +2042,24 @@ class PyAutomation(Singleton):
     def load_db_to_users(self):
         r"""
         Loads users from the database into the system's user manager.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from automation.modules.users.users import users
+        >>> app = PyAutomation()
+        >>> app.connect_to_db(test=True)
+        True
+        >>> _ = app.set_role("user_role", 1)
+        >>> _ = app.signup("new_user", "user_role", "u@test.com", "pass")
+        >>> # Clear users memory
+        >>> users._Users__by_username.pop("new_user", None)
+        >>> app.load_db_to_users()
+        >>> users.get_by_username("new_user") is not None
+        True
+
+        ```
         """
         if self.is_db_connected():
 
@@ -1649,6 +2123,21 @@ class PyAutomation(Singleton):
         **Parameters:**
 
         * **table** (BaseModel): The Peewee model class to register.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from peewee import CharField
+        >>> from automation.dbmodels.core import BaseModel
+        >>> class MyTable(BaseModel):
+        ...     name = CharField()
+        >>> app = PyAutomation()
+        >>> app.add_db_table(MyTable)
+        >>> app.get_db_table("MyTable") is not None
+        True
+
+        ```
         """
         self.db_manager.register_table(table)
 
@@ -1664,6 +2153,18 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **Model**: The Peewee model class.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> # Assuming 'Users' table is registered by default
+        >>> table = app.get_db_table("Users")
+        >>> table is not None
+        True
+
+        ```
         """
         return self.db_manager.get_db_table(tablename=tablename)
 
@@ -1673,6 +2174,17 @@ class PyAutomation(Singleton):
     def get_alarm_manager(self)->AlarmManager:
         r"""
         Returns the Alarm Manager instance.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> manager = app.get_alarm_manager()
+        >>> manager is not None
+        True
+
+        ```
         """
         return self.alarm_manager
 
@@ -1720,6 +2232,26 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **tuple[Alarm, str]**: Created Alarm object and status message.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> _ = app.create_tag(name="TankLevel", unit="m", variable="Length")
+        >>> # Create a High Level Alarm
+        >>> alarm, msg = app.create_alarm(
+        ...     name="ALM_HI_LEVEL",
+        ...     tag="TankLevel",
+        ...     alarm_type="HI",
+        ...     trigger_value=8.5,
+        ...     description="High level detected in tank"
+        ... )
+        >>> alarm.name
+        'ALM_HI_LEVEL'
+        >>> alarm.trigger_value
+        8.5
+        ```
         """
         alarm, message = self.alarm_manager.append_alarm(
             name=name,
@@ -1770,6 +2302,19 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **list**: List of alarm records.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> app.connect_to_db(test=True)
+        True
+        >>> alarms = app.get_lasts_alarms(5)
+        >>> isinstance(alarms, list)
+        True
+
+        ```
         """
         if self.is_db_connected():
             
@@ -1789,6 +2334,22 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **list**: Filtered list of alarms.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> app.connect_to_db(test=True)
+        True
+        >>> # Filter by alarm names (returns dict with data and pagination)
+        >>> alarms = app.filter_alarms_by(names=["NonExistentAlarm"])
+        >>> isinstance(alarms, dict)
+        True
+        >>> isinstance(alarms['data'], list)
+        True
+
+        ```
         """
         if self.is_db_connected():
             
@@ -1819,6 +2380,22 @@ class PyAutomation(Singleton):
         * **description** (str, optional): New description.
         * **alarm_type** (str, optional): New type.
         * **trigger_value** (int|float, optional): New trigger value.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> _ = app.create_tag("Tag_Alarm_Upd", "bar", "Pressure")
+        >>> alarm, _ = app.create_alarm("Alarm_Upd", "Tag_Alarm_Upd", trigger_value=10.0)
+        >>> app.update_alarm(alarm.identifier, trigger_value=20.0, description="Updated limit")
+        >>> updated_alarm = app.get_alarm(alarm.identifier)
+        >>> updated_alarm.trigger_value
+        20.0
+        >>> updated_alarm.description
+        'Updated limit'
+
+        ```
         """
         self.alarm_manager.put(
             id=id,
@@ -1852,6 +2429,19 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **Alarm**: The Alarm object.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> _ = app.create_tag("Tag_Get_Alm", "m", "Length")
+        >>> alarm, _ = app.create_alarm("Get_Alm_1", "Tag_Get_Alm")
+        >>> fetched_alarm = app.get_alarm(alarm.identifier)
+        >>> fetched_alarm.name
+        'Get_Alm_1'
+
+        ```
         """
         return self.alarm_manager.get_alarm(id=id)
 
@@ -1864,6 +2454,19 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **dict**: Dictionary of Alarm objects.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> _ = app.create_tag("Tag_Alarm_List", "m", "Length")
+        >>> _, _ = app.create_alarm("Alarm_List_1", "Tag_Alarm_List")
+        >>> alarms = app.get_alarms()
+        >>> "Alarm_List_1" in [a.name for a in alarms.values()]
+        True
+
+        ```
         """
         return self.alarm_manager.get_alarms()
     
@@ -1962,6 +2565,17 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **list**: List of event dictionaries.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> events = app.get_lasts_events(5)
+        >>> isinstance(events, list)
+        True
+
+        ```
         """
         if self.is_db_connected():
 
@@ -2043,6 +2657,23 @@ class PyAutomation(Singleton):
         **Returns:**
 
         * **tuple**: Created log object and status message.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from automation.modules.users.users import User
+        >>> from automation.modules.users.roles import Role
+        >>> app = PyAutomation()
+        >>> # Mock user for logging
+        >>> role = Role(name="logger_role", level=1)
+        >>> user = User(username="logger_test", email="log@test.com", role=role, password="password")
+        >>> # Example of log creation (requires active DB connection)
+        >>> # if app.is_db_connected():
+        >>> #     log, msg = app.create_log("System started", user)
+        >>> #     print(log.message)
+        >>> # 'System started'
+        ```
         """
         if self.is_db_connected():
             
@@ -2140,6 +2771,16 @@ class PyAutomation(Singleton):
         * **machines** (tuple, optional): Initial state machines to run.
 
         **Returns:** `None`
+
+        **Usage:**
+
+        ```python
+        # Standard execution
+        # from automation import PyAutomation
+        # app = PyAutomation()
+        # if __name__ == "__main__":
+        #     app.run(debug=True, create_tables=True)
+        ```
         """
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         logging.critical(f"{str_date} Starting app with configuration:")

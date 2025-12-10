@@ -57,12 +57,20 @@ if __name__=='__main__':
     import sys
     runner = TextTestRunner()
     unittests, doctests = suite()
-    result = runner.run(unittests)
-    
-    doctest_failures = 0
-    for _doctest in doctests:
-        res = doctest.testmod(_doctest, verbose=False)
-        doctest_failures += res.failed
+    from automation.core import PyAutomation
 
-    if not result.wasSuccessful() or doctest_failures > 0:
-        sys.exit(1)
+    try:
+        result = runner.run(unittests)
+        
+        doctest_failures = 0
+        for _doctest in doctests:
+            res = doctest.testmod(_doctest, verbose=False)
+            doctest_failures += res.failed
+
+        if not result.wasSuccessful() or doctest_failures > 0:
+            sys.exit(1)
+    
+    finally:
+        # Force stop of any background threads started during doctests
+        app = PyAutomation()
+        app.safe_stop()

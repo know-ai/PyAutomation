@@ -159,7 +159,7 @@ def validate_types(**validations):
                             message = f"Expected output type ({counter}) {expected}, but got {type(result[counter])} in func {func}"
                             logger = logging.getLogger("pyautomation")
                             logger.error(message)
-                            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            str_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             print(f"[ERROR] {str_date} {message}")
                             raise TypeError(message)
                         
@@ -169,7 +169,7 @@ def validate_types(**validations):
                         message = f"Expected output type {_output}, but got {type(result)} in func {func}"
                         logger = logging.getLogger("pyautomation")
                         logger.error(message)
-                        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        str_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         print(f"[ERROR] {str_date} {message}")
                         raise TypeError(message)
 
@@ -205,7 +205,7 @@ def logging_error_handler(func, args, kwargs):
         })
         logger = logging.getLogger("pyautomation")
         logger.error(msg=msg)
-        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        str_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[ERROR] {str_date} {msg}")
 
 @decorator
