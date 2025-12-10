@@ -23,7 +23,7 @@ setuptools.setup(
     version=version,
     author="KnowAI",
     author_email="dev.know.ai@gmail.com",
-    description="A python library to develop automation continuous tasks using sync or async concurrent threads",
+    description="A python framework to develop automation industrial processes applications and Artificial Intelligence applications for the industrial field",
     long_description=long_description,
     long_description_content_type="text/markdown",
     license="GNU AFFERO GENERAL PUBLIC LICENSE",
