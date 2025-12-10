@@ -296,7 +296,6 @@ class Users(BaseModel):
 
         return generate_password_hash(value)
     
-
     def decode_password(self, password:str)->str:
         r"""
         Verifies a password against the stored hash.

@@ -24,4 +24,4 @@ pytest
 
 ## Contributing
 
-Please refer to [CONTRIBUTING.md](../../CONTRIBUTING.md) in the root of the repository for guidelines on code style, pull requests, and commit messages.
+Please refer to [CONTRIBUTING.md](../CONTRIBUTING.md) in the documentation root for guidelines on code style, pull requests, and commit messages.

@@ -4,5 +4,7 @@ Models for general application logging.
 
 ::: automation.dbmodels.logs.Logs
     :docstring:
-    :members:
-
+    :members: create
+    :members: read_lasts
+    :members: filter_by
+    :members: serialize

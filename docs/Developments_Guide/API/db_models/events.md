@@ -4,5 +4,8 @@ Models for logging system events.
 
 ::: automation.dbmodels.events.Events
     :docstring:
-    :members:
-
+    :members: create
+    :members: read_lasts
+    :members: filter_by
+    :members: get_comments
+    :members: serialize

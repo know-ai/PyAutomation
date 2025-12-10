@@ -41,6 +41,7 @@ nav:
   - Architecture: "architecture.md"
   - Roadmap: "roadmap.md"
   - Setup: "setup.md"
+  - Contributions: "CONTRIBUTING.md"
   - User Guide:
       - Summary: "Users_Guide/index.md"
       - Alarms:
@@ -56,35 +57,65 @@ nav:
           - Delete Tag: "Users_Guide/Tags/Delete.md"
           - Trends: "Users_Guide/Tags/Trends.md"
   - Developer Guide:
-      - Summary: "Developments_Guide/API/index.md"
-      - Core: "Developments_Guide/API/core.md"
-      - Events: "Developments_Guide/API/events.md"
-      - State Machines:
-          - Summary: Developments_Guide/API/state_machine/index.md
-          - Automation State Machine: Developments_Guide/API/state_machine/automation_state_machine.md
-          - Machine: Developments_Guide/API/state_machine/machine.md
-      - CVT:
-          - Summary: "Developments_Guide/API/cvt/index.md"
-          - Variables: "Developments_Guide/API/cvt/variables.md"
-          - CVTEngine: "Developments_Guide/API/cvt/cvt_engine.md"
-          - CVT: "Developments_Guide/API/cvt/cvt.md"
-      - Data Logger:
-          - Summary: Developments_Guide/API/datalogger/index.md
-          - Data Logger Engine: Developments_Guide/API/datalogger/datalogger_engine.md
-          - Data Logger: Developments_Guide/API/datalogger/datalogger.md
-      - Workers:
-          - Summary: Developments_Guide/API/workers/index.md
-          - State Machine: Developments_Guide/API/workers/state_machine.md
-          - Async State Machine: Developments_Guide/API/workers/async_state_machine.md
-          - Scheduler Threads: Developments_Guide/API/workers/sched_thread.md
-          - Main Scheduler: Developments_Guide/API/workers/main_scheduler.md
-      - Managers:
-          - Summary: Developments_Guide/API/managers/index.md
-          - State Machine: Developments_Guide/API/managers/state_machine.md
-          - DB: Developments_Guide/API/managers/db.md
-      - DB Models:
-          - Summary: Developments_Guide/API/db_models/index.md
-          - Tags: Developments_Guide/API/db_models/tags.md
+      - Summary: "Developments_Guide/index.md"
+      - Testing: "Developments_Guide/testing.md"
+      - Logs: "Developments_Guide/logs.md"
+      - Core Concepts:
+          - Summary: "Developments_Guide/core/index.md"
+          - Alarms: "Developments_Guide/core/alarms.md"
+          - CVT: "Developments_Guide/core/cvt.md"
+          - Data Logger: "Developments_Guide/core/datalogger.md"
+          - State Machines: "Developments_Guide/core/state_machines.md"
+      - IIoT:
+          - Summary: "Developments_Guide/iiot/index.md"
+          - Modbus: "Developments_Guide/iiot/modbus.md"
+          - OPC UA: "Developments_Guide/iiot/opcua.md"
+      - API Reference:
+          - Summary: "Developments_Guide/API/index.md"
+          - Core: "Developments_Guide/API/core.md"
+          - Events: "Developments_Guide/API/events.md"
+          - Alarms:
+              - Summary: "Developments_Guide/API/alarms/index.md"
+              - Alarm: "Developments_Guide/API/alarms/alarm.md"
+              - States: "Developments_Guide/API/alarms/states.md"
+              - Triggers: "Developments_Guide/API/alarms/triggers.md"
+          - State Machines:
+              - Summary: Developments_Guide/API/state_machine/index.md
+              - Automation State Machine: Developments_Guide/API/state_machine/automation_state_machine.md
+              - Machine: Developments_Guide/API/state_machine/machine.md
+          - CVT:
+              - Summary: "Developments_Guide/API/cvt/index.md"
+              - Variables: "Developments_Guide/API/cvt/variables.md"
+              - CVTEngine: "Developments_Guide/API/cvt/cvt_engine.md"
+              - CVT: "Developments_Guide/API/cvt/cvt.md"
+          - Managers:
+              - Summary: Developments_Guide/API/managers/index.md
+              - Alarm Manager: "Developments_Guide/API/managers/alarm_manager.md"
+              - DB Manager: Developments_Guide/API/managers/db.md
+              - OPC UA Client: "Developments_Guide/API/managers/opcua_client.md"
+              - State Machine: Developments_Guide/API/managers/state_machine.md
+          - Workers:
+              - Summary: Developments_Guide/API/workers/index.md
+              - State Machine: Developments_Guide/API/workers/state_machine.md
+              - Async State Machine: Developments_Guide/API/workers/async_state_machine.md
+              - Scheduler Threads: Developments_Guide/API/workers/sched_thread.md
+              - Main Scheduler: Developments_Guide/API/workers/main_scheduler.md
+              - Base Worker: Developments_Guide/API/workers/worker.md
+              - Logger Worker: Developments_Guide/API/workers/logger.md
+          - Data Logger:
+              - Summary: Developments_Guide/API/datalogger/index.md
+              - Data Logger Engine: Developments_Guide/API/datalogger/datalogger_engine.md
+              - Data Logger: Developments_Guide/API/datalogger/datalogger.md
+          - DB Models:
+              - Summary: Developments_Guide/API/db_models/index.md
+              - Core: "Developments_Guide/API/db_models/core.md"
+              - Alarms: "Developments_Guide/API/db_models/alarms.md"
+              - Events: "Developments_Guide/API/db_models/events.md"
+              - Logs: "Developments_Guide/API/db_models/logs.md"
+              - Machines: "Developments_Guide/API/db_models/machines.md"
+              - OPC UA: "Developments_Guide/API/db_models/opcua.md"
+              - Tags: Developments_Guide/API/db_models/tags.md
+              - Users: "Developments_Guide/API/db_models/users.md"
 
 markdown_extensions:
   - admonition

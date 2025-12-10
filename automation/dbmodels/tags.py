@@ -308,19 +308,6 @@ class Units(BaseModel):
             return query
         
         return None
-    
-    @classmethod
-    def read_by_unit(cls, unit:str)->bool:
-        r"""
-        Retrieves a Unit by its symbol (duplicate method name in source, fixed logic).
-        """
-        query = cls.get_or_none(unit=unit)
-        
-        if query is not None:
-
-            return query
-        
-        return None
 
     @classmethod
     def name_exist(cls, name:str)->bool:
