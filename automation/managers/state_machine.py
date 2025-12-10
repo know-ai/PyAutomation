@@ -6,7 +6,8 @@ state machine instances within the application.
 """
 from statemachine import StateMachine
 from ..models import StringType
-from ..tags import TagObserver, CVTEngine, Tag
+from ..tags import Tag
+from ..utils.decorators import logging_error_handler
 import queue
 
 class StateMachineManager:
@@ -21,12 +22,14 @@ class StateMachineManager:
         self._machines = list()
         self._tag_queue = queue.Queue()
 
+    @logging_error_handler
     def get_queue(self)->queue.Queue:
         r"""
         Retrieves the internal queue used for tag updates related to state machines.
         """
         return self._tag_queue
 
+    @logging_error_handler
     def append_machine(self, machine:StateMachine):
         r"""
         Registers a new state machine.
@@ -38,6 +41,7 @@ class StateMachineManager:
         
         self._machines.append(machine)
 
+    @logging_error_handler
     def get_machines(self)->list:
         r"""
         Retrieves the list of all registered state machines.
@@ -50,6 +54,7 @@ class StateMachineManager:
         
         return result
     
+    @logging_error_handler
     def serialize_machines(self):
         r"""
         Serializes all registered machines to a list of dictionaries.
@@ -61,6 +66,7 @@ class StateMachineManager:
 
         return [machine.serialize() for machine, _, _ in self.get_machines()]
 
+    @logging_error_handler
     def get_machine(self, name:StringType)->StateMachine:
         r"""
         Retrieves a state machine by its name.
@@ -79,6 +85,7 @@ class StateMachineManager:
 
                 return machine
             
+    @logging_error_handler
     def drop(self, name:str):
         r"""
         Removes a state machine from the manager.
@@ -105,6 +112,7 @@ class StateMachineManager:
 
             return machine_to_revome_from_worker
 
+    @logging_error_handler
     def unsubscribe_tag(self, tag:Tag):
         r"""
         Unsubscribes a tag from all state machines. 
@@ -137,6 +145,7 @@ class StateMachineManager:
 
             return machine_to_revome_from_worker
 
+    @logging_error_handler
     def summary(self)->dict:
         r"""
         Generates a summary of registered state machines.
@@ -153,6 +162,7 @@ class StateMachineManager:
 
         return result
 
+    @logging_error_handler
     def exist_machines(self)->bool:
         r"""
         Checks if there are any registered state machines.

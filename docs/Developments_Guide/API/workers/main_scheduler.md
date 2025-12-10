@@ -4,5 +4,10 @@ The `MachineScheduler` implements a priority queue-based scheduling mechanism to
 
 ::: automation.workers.state_machine.MachineScheduler
     :docstring:
-    :members:
+    :members: run
+    :members: set_last
+    :members: sleep_elapsed
+    :members: call_soon
+    :members: call_later
+    :members: stop
 

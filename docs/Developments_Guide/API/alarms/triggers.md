@@ -3,8 +3,8 @@
 This module defines the conditions that can trigger an alarm.
 
 ::: automation.alarms.trigger.TriggerType
-:docstring:
+    :docstring:
 
 ::: automation.alarms.trigger.Trigger
-:docstring:
-:members: serialize
+    :docstring:
+    :members: serialize

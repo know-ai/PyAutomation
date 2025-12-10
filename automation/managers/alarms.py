@@ -234,27 +234,27 @@ class AlarmManager(Singleton):
 
                 return self._alarms[str(id)]
 
-    @logging_error_handler
-    def get_alarms_by_tag(self, tag:str)->dict:
-        r"""
-        Retrieves all alarms associated with a specific tag (by name).
+    # @logging_error_handler
+    # def get_alarms_by_tag(self, tag:str)->dict:
+    #     r"""
+    #     Retrieves all alarms associated with a specific tag (by name).
 
-        **Parameters:**
+    #     **Parameters:**
 
-        * **tag** (str): Tag name.
+    #     * **tag** (str): Tag name.
 
-        **Returns:**
+    #     **Returns:**
 
-        * **dict**: A dictionary of {id: Alarm} objects.
-        """
-        alarms = dict()
-        for id, alarm in self._alarms.items():
+    #     * **dict**: A dictionary of {id: Alarm} objects.
+    #     """
+    #     alarms = dict()
+    #     for id, alarm in self._alarms.items():
 
-            if tag == alarm.tag:
+    #         if tag == alarm.tag:
 
-                alarms[id] = alarm
+    #             alarms[id] = alarm
 
-        return alarms
+    #     return alarms
 
     @logging_error_handler
     def get_alarm_by_tag(self, tag:str)->list[Alarm]:

@@ -90,12 +90,14 @@ class DBManager(Singleton):
 
         self._extra_tables = []
         
+    @logging_error_handler
     def get_queue(self)->queue.Queue:
         r"""
         Retrieves the internal queue used for tag updates.
         """
         return self._tag_queue
 
+    @logging_error_handler
     def set_db(self, db, is_history_logged:bool=False):
         r"""
         Configures the database connection for all logging engines.
@@ -117,12 +119,14 @@ class DBManager(Singleton):
         self.machines_logger.set_db(db)
         self.opcuaserver_logger.logger.set_db(db)
         
+    @logging_error_handler
     def get_db(self):
         r"""
         Retrieves the current database connection object.
         """
         return self._logger.get_db()
 
+    @logging_error_handler
     def set_dropped(self, drop_tables:bool):
         r"""
         Sets the flag to drop tables on initialization.
@@ -133,12 +137,14 @@ class DBManager(Singleton):
         """
         self._drop_tables = drop_tables
 
+    @logging_error_handler
     def get_dropped(self)->bool:
         r"""
         Gets the drop tables flag status.
         """
         return self._drop_tables
 
+    @logging_error_handler
     def register_table(self, cls:BaseModel):
         r"""
         Registers a new database model (table) to be managed by the system.
@@ -149,6 +155,7 @@ class DBManager(Singleton):
         """
         self._tables.append(cls)
 
+    @logging_error_handler
     def get_db_table(self, tablename:str):
         r"""
         Retrieves a registered table model by its table name.
@@ -169,6 +176,7 @@ class DBManager(Singleton):
             
         return None
 
+    @logging_error_handler
     def create_tables(self):
         r"""
         Creates all registered tables in the database.
@@ -177,6 +185,7 @@ class DBManager(Singleton):
         self._logger.create_tables(self._tables)
         self.alarms_logger.create_tables(self._tables)
 
+    @logging_error_handler
     def drop_tables(self):
         r"""
         Drops all registered tables from the database.
@@ -185,18 +194,21 @@ class DBManager(Singleton):
         
         self._logger.drop_tables(tables)
 
+    @logging_error_handler
     def clear_default_tables(self):
         r"""
         Clears the list of default tables. Useful for custom applications that don't need the standard schema.
         """
         self._tables = []
 
+    @logging_error_handler
     def get_tags(self)->dict:
         r"""
         Retrieves all tags configured in the database logger.
         """
         return self._logger.get_tags()
     
+    @logging_error_handler
     def get_alarms(self)->dict:
         r"""
         Retrieves all alarms from the alarm logger.
@@ -240,6 +252,7 @@ class DBManager(Singleton):
             node_namespace=node_namespace
         )
 
+    @logging_error_handler
     def set_tags(self):
         r"""
         Applies all staged tags from the LogTable to the database logger.
@@ -261,6 +274,7 @@ class DBManager(Singleton):
                     tcp_source_address=tcp_source_address, 
                     node_namespace=node_namespace)
 
+    @logging_error_handler
     def init_database(self):
         r"""
         Initializes the database schema. Drops tables if configured, then creates them.
@@ -275,12 +289,14 @@ class DBManager(Singleton):
         
         self.create_tables()
 
+    @logging_error_handler
     def stop_database(self):
         r"""
         Closes the database connection.
         """
         self._logger.stop_db()
 
+    @logging_error_handler
     def get_opcua_clients(self):
         r"""
         Retrieves all OPC UA client configurations from the database.
@@ -288,24 +304,28 @@ class DBManager(Singleton):
         return OPCUA.read_all()
 
     # USERS METHODS
+    @logging_error_handler
     def set_role(self, name:str, level:int, identifier:str):
         r"""
         Creates a new user role in the database.
         """
         return self.users_logger.set_role(name=name, level=level, identifier=identifier)
 
+    @logging_error_handler
     def set_user(self, user:User):
         r"""
         Creates a new user in the database.
         """
         return self.users_logger.set_user(user=user)
     
+    @logging_error_handler
     def login(self, password:str, username:str="", email:str=""):
         r"""
         Authenticates a user against the database.
         """
         return self.users_logger.login(password=password, username=username, email=email)
 
+    @logging_error_handler
     def summary(self)->dict:
         r"""
         Generates a summary of the database manager configuration.
@@ -322,6 +342,7 @@ class DBManager(Singleton):
 
         return result
     
+    @logging_error_handler
     def attach(self, tag_name:str):
         r"""
         Attaches an observer to a tag for database logging purposes.

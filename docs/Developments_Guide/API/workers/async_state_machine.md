@@ -4,5 +4,9 @@ The `AsyncStateMachineWorker` manages state machines that are configured to run 
 
 ::: automation.workers.state_machine.AsyncStateMachineWorker
     :docstring:
-    :members:
+    :members: run
+    :members: join
+    :members: add_machine
+    :members: drop
+    :members: stop
 

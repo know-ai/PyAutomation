@@ -4,5 +4,8 @@ The `SchedThread` is a wrapper thread that runs a `MachineScheduler` for a singl
 
 ::: automation.workers.state_machine.SchedThread
     :docstring:
-    :members:
+    :members: run
+    :members: target
+    :members: loop_closure
+    :members: stop
 

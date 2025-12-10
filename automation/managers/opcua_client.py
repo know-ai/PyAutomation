@@ -2,6 +2,7 @@ from ..opcua.models import Client
 from ..dbmodels import OPCUA
 from ..logger.datalogger import DataLoggerEngine
 from ..tags import CVTEngine
+from ..utils.decorators import logging_error_handler
 from ..opcua.subscription import DAS
 
 class OPCUAClientManager:
@@ -21,6 +22,7 @@ class OPCUAClientManager:
         self.cvt = CVTEngine()
         self.das = DAS()
 
+    @logging_error_handler
     def discovery(self, host:str='127.0.0.1', port:int=4840)->list[dict]:
         r"""
         Discovers available OPC UA servers on a given host and port.
@@ -36,6 +38,7 @@ class OPCUAClientManager:
         """
         return Client.find_servers(host, port)
 
+    @logging_error_handler
     def add(self, client_name:str, host:str, port:int):
         r"""
         Adds and connects a new OPC UA Client.
@@ -84,6 +87,7 @@ class OPCUAClientManager:
         
         return False, message
 
+    @logging_error_handler
     def remove(self, client_name:str):
         r"""
         Disconnects and removes an OPC UA Client.
@@ -114,6 +118,7 @@ class OPCUAClientManager:
         
         return False
 
+    @logging_error_handler
     def connect(self, client_name:str)->dict:
         r"""
         Connects a specific client.
@@ -126,6 +131,7 @@ class OPCUAClientManager:
 
             self._clients[client_name].connect()
 
+    @logging_error_handler
     def disconnect(self, client_name:str)->dict:
         r"""
         Disconnects a specific client.
@@ -138,6 +144,7 @@ class OPCUAClientManager:
 
             self._clients[client_name].disconnect()
 
+    @logging_error_handler
     def get(self, client_name:str)->Client:
         r"""
         Retrieves a client instance by name.
@@ -154,6 +161,7 @@ class OPCUAClientManager:
 
             return self._clients[client_name]
         
+    @logging_error_handler
     def get_opcua_tree(self, client_name):
         r"""
         Browses the OPC UA address space tree starting from the root folder.
@@ -177,6 +185,7 @@ class OPCUAClientManager:
         
         return {}, 400
         
+    @logging_error_handler
     def get_node_values(self, client_name:str, namespaces:list)->list:
         r"""
         Reads values from multiple nodes.
@@ -197,6 +206,7 @@ class OPCUAClientManager:
             if client.is_conneted():
                 return client.get_nodes_values(namespaces=namespaces)
         
+    @logging_error_handler
     def get_client_by_address(self, opcua_address:str)->Client|None:
         r"""
         Retrieves a client by its server address URL.
@@ -215,6 +225,7 @@ class OPCUAClientManager:
                     return client
         return None
     
+    @logging_error_handler
     def get_node_value_by_opcua_address(self, opcua_address:str, namespace:str)->list:
         r"""
         Reads a node value using the server address to find the client.
@@ -229,7 +240,8 @@ class OPCUAClientManager:
             if opcua_address==client.serialize()["server_url"]:
                 if client.is_connected():
                     return self.get_node_attributes(client_name=client_name, namespaces=[namespace])
-        
+    
+    @logging_error_handler 
     def get_node_attributes(self, client_name:str, namespaces:list)->list:
         r"""
         Reads attributes (Description, DataType, etc.) for a list of nodes.
@@ -256,6 +268,7 @@ class OPCUAClientManager:
 
             return result
 
+    @logging_error_handler
     def serialize(self, client_name:str=None)->dict:
         r"""
         Serializes client configurations.

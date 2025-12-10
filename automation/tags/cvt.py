@@ -31,6 +31,7 @@ class CVT:
         self.data_types = ["float", "int", "bool", "str"]
         self.sio:SocketIO|None = None
 
+    @logging_error_handler
     def set_socketio(self, sio:SocketIO):
         r"""
         Sets the SocketIO instance for real-time updates.
@@ -246,6 +247,7 @@ class CVT:
         tag = self._tags.pop(id)
         return tag, f"Tag: {tag.name}"
 
+    @logging_error_handler
     def get_tag(self, id:str)->Tag|None:
         r"""
         Retrieves a tag by its ID.
@@ -266,6 +268,7 @@ class CVT:
 
         return None
     
+    @logging_error_handler
     def get_unit_by_tag(self, tag:str)->Tag|None:
         r"""
         Gets the base unit of a tag by name.
@@ -286,6 +289,7 @@ class CVT:
 
         return None
     
+    @logging_error_handler
     def get_display_unit_by_tag(self, tag:str)->Tag|None:
         r"""
         Gets the display unit of a tag by name.
@@ -306,6 +310,7 @@ class CVT:
 
         return None
 
+    @logging_error_handler
     def get_tags(self)->list:
         r"""
         Returns a list of all tags (serialized).
@@ -320,6 +325,7 @@ class CVT:
         
         return list()
     
+    @logging_error_handler
     def get_tags_by_names(self, names:list)->list:
         r"""
         Returns a list of serialized tags filtering by name.
@@ -338,6 +344,7 @@ class CVT:
         
         return list()
     
+    @logging_error_handler
     def get_field_tags_names(self)->list:
         r"""
         Returns names of tags that are connected to field devices (have OPC UA address and namespace).
@@ -352,6 +359,7 @@ class CVT:
         
         return list()
     
+    @logging_error_handler
     def get_cuasi_field_tags_names(self)->list:
         r"""
         Returns names of tags that have an OPC UA address (potentially field tags).
@@ -366,6 +374,7 @@ class CVT:
         
         return list()
     
+    @logging_error_handler
     def get_tag_by_name(self, name:str)->Tag|None:
         r"""
         Retrieves a tag object by its name.
@@ -386,6 +395,7 @@ class CVT:
 
         return None
     
+    @logging_error_handler
     def get_tag_by_display_name(self, display_name:str)->Tag|None:
         r"""
         Retrieves a tag object by its display name.
@@ -406,6 +416,7 @@ class CVT:
 
         return None
 
+    @logging_error_handler
     def get_tag_by_node_namespace(self, node_namespace:str)->Tag|None:
         r"""
         Retrieves a tag object by its OPC UA node namespace.
@@ -426,6 +437,7 @@ class CVT:
 
         return None
     
+    @logging_error_handler
     def get_value(self, id:str)->str|float|int|bool:
         r"""
         Gets the current value of a tag by ID.
@@ -442,6 +454,7 @@ class CVT:
         _new_object = copy.copy(tag.get_value())
         return _new_object
     
+    @logging_error_handler
     def get_timestamp(self, id:str)->datetime:
         r"""
         Gets the timestamp of a tag by ID.
@@ -458,6 +471,7 @@ class CVT:
 
         return tag.get_timestamp()
     
+    @logging_error_handler
     def get_value_by_name(self, name:str)->str|float|int|bool:
         r"""
         Gets the value, unit, and timestamp of a tag by name.
@@ -479,6 +493,7 @@ class CVT:
                 "timestamp": tag.get_timestamp()
             }
 
+    @logging_error_handler
     def get_values_by_name(self, names:list[str])->str|float|int|bool:
         r"""
         Gets values for multiple tags by name.
@@ -547,6 +562,7 @@ class CVT:
 
         return value
 
+    @logging_error_handler
     def set_data_type(self, data_type):
         r"""
         Registers a new data type in the allowed types list.
@@ -558,6 +574,7 @@ class CVT:
         self.data_types.append(data_type)
         self.data_types = list(set(self.data_types))
     
+    @logging_error_handler
     def is_tag_defined(self, name:str)->bool:
         r"""
         Checks if a tag is defined in the CVT.
@@ -573,6 +590,7 @@ class CVT:
 
         return name in self._tags
     
+    @logging_error_handler
     def attach_observer(self, name, observer):
         r"""
         Attaches a new observer to a tag object defined by name.
@@ -591,6 +609,7 @@ class CVT:
             logger = logging.getLogger("pyautomation")
             logger.warning(f"{name} tag Not exists in CVT.attach_observer method")
 
+    @logging_error_handler
     def detach_observer(self, name, observer):
         r"""
         Detaches an observer from a tag object defined by name.
@@ -603,6 +622,7 @@ class CVT:
         tag = self.get_tag_by_name(name)
         self._tags[tag.id].detach(observer)
 
+    @logging_error_handler
     def has_duplicates(self, tag:Tag=None, name:str=None, display_name:str=None, node_namespace:str=None, opcua_address:str=None):
         r"""
         Checks for duplicate tag definitions.
@@ -648,6 +668,7 @@ class CVT:
             
         return False, f"Valid Tag Name: {name} - Display Name: {display_name}"
 
+    @logging_error_handler
     def serialize(self, id:str)->dict:
         r"""
         Serializes a tag by ID.
@@ -662,6 +683,7 @@ class CVT:
         """
         return self._tags[id].serialize()
     
+    @logging_error_handler
     def serialize_by_tag_name(self, name:str)->dict|None:
         r"""
         Serializes a tag by Name.
@@ -709,6 +731,7 @@ class CVTEngine(Singleton):
         self._response_lock.acquire()
         self.DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
+    @logging_error_handler
     def set_tag(
         self, 
         name:str, 
@@ -766,6 +789,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["user"] = user
         return self.__query(_query)
     
+    @logging_error_handler
     def update_tag(
             self, 
             id:str,  
@@ -787,6 +811,7 @@ class CVTEngine(Singleton):
             _query["parameters"][key] = value
         return self.__query(_query)
     
+    @logging_error_handler
     def delete_tag(self, id:str, user:User|None=None):
         r"""
         Thread-safe method to delete a tag.
@@ -800,6 +825,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["user"] = user
         return self.__query(_query)
     
+    @logging_error_handler
     def get_tag(
         self,
         id:str=None
@@ -813,6 +839,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["id"] = id
         return self.__query(_query)
 
+    @logging_error_handler
     def get_tags(self):
         r"""
         Thread-safe method to get all tags.
@@ -821,6 +848,7 @@ class CVTEngine(Singleton):
         _query["action"] = "get_tags"
         return self.__query(_query)
 
+    @logging_error_handler
     def get_tags_by_names(self, names:list[str]):
         r"""
         Thread-safe method to get tags by names.
@@ -831,6 +859,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["names"] = names
         return self.__query(_query)
     
+    @logging_error_handler
     def get_tag_by_name(self, name:str)->Tag|None:
         r"""
         Thread-safe method to get a tag by name.
@@ -841,6 +870,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["name"] = name
         return self.__query(_query)
     
+    @logging_error_handler
     def get_tag_by_display_name(self, display_name:str)->Tag|None:
         r"""
         Thread-safe method to get a tag by display name.
@@ -851,6 +881,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["display_name"] = display_name
         return self.__query(_query)
 
+    @logging_error_handler
     def get_tag_by_node_namespace(self, node_namespace:str)->Tag|None:
         r"""
         Thread-safe method to get a tag by node namespace.
@@ -861,6 +892,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["node_namespace"] = node_namespace
         return self.__query(_query)
     
+    @logging_error_handler
     def get_value(self, id:str)->str|float|int|bool:
         r"""
         Thread-safe method to get a tag value by ID.
@@ -871,6 +903,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["id"] = id
         return self.__query(_query)
     
+    @logging_error_handler
     def get_value_by_name(self, tag_name:str)->dict:
         r"""
         Thread-safe method to get a tag value by name.
@@ -881,6 +914,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["name"] = tag_name
         return self.__query(_query)
     
+    @logging_error_handler
     def get_values_by_name(self, tag_names:list[str])->str|float|int|bool:
         r"""
         Thread-safe method to get multiple tag values.
@@ -891,6 +925,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["names"] = tag_names
         return self.__query(_query)
     
+    @logging_error_handler
     def get_scan_time(self, id:str)->str|float|int|bool:
         r"""
         Thread-safe method to get scan time.
@@ -901,6 +936,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["id"] = id
         return self.__query(_query)
     
+    @logging_error_handler
     def get_dead_band(self, id:str)->str|float|int|bool:
         r"""
         Thread-safe method to get deadband.
@@ -911,6 +947,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["id"] = id
         return self.__query(_query)
     
+    @logging_error_handler
     def get_display_unit_by_tag(self, tag:str)->str:
         r"""
         Thread-safe method to get display unit.
@@ -936,6 +973,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["timestamp"] = timestamp
         return self.__query(_query)
     
+    @logging_error_handler
     def set_data_type(self, data_type):
         r"""
         Thread-safe method to set data type.
@@ -946,6 +984,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["data_type"] = data_type
         return self.__query(_query)
     
+    @logging_error_handler
     def is_tag_defined(self, name:str)->bool:
         r"""
         Thread-safe method to check if tag is defined.
@@ -956,6 +995,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["name"] = name
         return self.__query(_query)
 
+    @logging_error_handler
     def attach(self, name:str, observer):
         """
         Attaches an observer to a Tag in a thread-safe way.
@@ -967,6 +1007,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["observer"] = observer
         return self.__query(_query)
 
+    @logging_error_handler
     def detach(self, name:str, observer):
         """
         Detaches an observer from a Tag in a thread-safe way.
@@ -985,6 +1026,7 @@ class CVTEngine(Singleton):
         if result["result"]:
             return result["response"]
 
+    @logging_error_handler
     def serialize(self, id:str)->dict:
         r"""
         Thread-safe serialization by ID.
@@ -995,6 +1037,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["id"] = id
         return self.__query(_query)
     
+    @logging_error_handler
     def serialize_by_tag_name(self, name:str)->dict|None:
         r"""
         Thread-safe serialization by name.
@@ -1005,6 +1048,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["name"] = name
         return self.__query(_query)
 
+    @logging_error_handler
     def __query(self, query:dict)->dict:
 
         self.request(query)
@@ -1012,6 +1056,7 @@ class CVTEngine(Singleton):
         if result["result"]:
             return result["response"]
 
+    @logging_error_handler
     def request(self, query:dict):
         r"""
         Executes a request to the CVT in a thread-safe mechanism using locks.
@@ -1046,6 +1091,7 @@ class CVTEngine(Singleton):
 
         self._response_lock.release()
 
+    @logging_error_handler
     def __log_error(self, e:Exception, msg:str):
         r"""
         Logs error and sets error response.
@@ -1056,6 +1102,7 @@ class CVTEngine(Singleton):
             "response": None
         }
 
+    @logging_error_handler
     def __true_response(self, resp):
         r"""
         Sets success response.
@@ -1065,6 +1112,7 @@ class CVTEngine(Singleton):
             "response": resp
         }
 
+    @logging_error_handler
     def response(self)->dict:
         r"""
         Retrieves the response from the last request, handling thread synchronization.
@@ -1077,6 +1125,7 @@ class CVTEngine(Singleton):
 
         return result
 
+    @logging_error_handler
     def __getstate__(self):
 
         self._response_lock.release()
@@ -1085,6 +1134,7 @@ class CVTEngine(Singleton):
         del state['_response_lock']
         return state
 
+    @logging_error_handler
     def __setstate__(self, state):
         
         self.__dict__.update(state)

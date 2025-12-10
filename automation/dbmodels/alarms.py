@@ -5,6 +5,7 @@ from datetime import datetime
 from .tags import Tags
 from ..alarms.states import States
 from ..tags.cvt import CVTEngine
+from ..utils.decorators import logging_error_handler
 
 tag_engine = CVTEngine()
 
@@ -16,6 +17,7 @@ class AlarmTypes(BaseModel):
     name = CharField(unique=True)                       # high-high , high , bool , low , low-low
 
     @classmethod
+    @logging_error_handler
     def create(cls, name:str)-> dict:
         r"""
         Creates a new Alarm Type if it doesn't exist.
@@ -58,6 +60,7 @@ class AlarmTypes(BaseModel):
         return result
 
     @classmethod
+    @logging_error_handler
     def read_by_name(cls, name:str):
         r"""
         Retrieves an Alarm Type by name.
@@ -73,6 +76,7 @@ class AlarmTypes(BaseModel):
         return cls.get_or_none(name=name.upper())
 
     @classmethod
+    @logging_error_handler
     def name_exist(cls, name:str)->bool:
         r"""
         Checks if an Alarm Type name exists.
@@ -93,6 +97,7 @@ class AlarmTypes(BaseModel):
         
         return False
 
+    @logging_error_handler
     def serialize(self)-> dict:
         r"""
         Serializes the record to a dictionary.
@@ -114,6 +119,7 @@ class AlarmStates(BaseModel):
     status = CharField(max_length=20)
 
     @classmethod
+    @logging_error_handler
     def create(cls, name:str, mnemonic:str, condition:str, status:str)-> dict:
         r"""
         Creates a new Alarm State.
@@ -138,6 +144,7 @@ class AlarmStates(BaseModel):
             return query
 
     @classmethod
+    @logging_error_handler
     def read_by_name(cls, name:str):
         r"""
         Retrieves an Alarm State by name.
@@ -145,6 +152,7 @@ class AlarmStates(BaseModel):
         return cls.get_or_none(name=name)
 
     @classmethod
+    @logging_error_handler
     def name_exist(cls, name:str)->bool:
         r"""
         Checks if an Alarm State name exists.
@@ -157,6 +165,7 @@ class AlarmStates(BaseModel):
         
         return False
 
+    @logging_error_handler
     def serialize(self)-> dict:
         r"""
         Serializes the record.
@@ -186,6 +195,7 @@ class Alarms(BaseModel):
     timestamp = TimestampField(utc=True, null=True)
 
     @classmethod
+    @logging_error_handler
     def create(
         cls,
         identifier:str,
@@ -235,6 +245,7 @@ class Alarms(BaseModel):
             return alarm
     
     @classmethod
+    @logging_error_handler
     def name_exists(cls, name:str)->bool|None:
         r"""
         Checks if an alarm name exists.
@@ -245,6 +256,7 @@ class Alarms(BaseModel):
             return True
         
     @classmethod
+    @logging_error_handler
     def read(cls, id:str):
         r"""
         Reads an alarm by ID.
@@ -252,6 +264,7 @@ class Alarms(BaseModel):
         return cls.get_or_none(id=id)
     
     @classmethod
+    @logging_error_handler
     def read_by_identifier(cls, identifier:str):
         r"""
         Reads an alarm by unique identifier.
@@ -259,12 +272,14 @@ class Alarms(BaseModel):
         return cls.get_or_none(identifier=identifier)
         
     @classmethod
+    @logging_error_handler
     def read_by_name(cls, name:str):
         r"""
         Reads an alarm by name.
         """
         return cls.get_or_none(name=name)
 
+    @logging_error_handler
     def serialize(self):
         r"""
         Serializes the alarm record.
@@ -297,6 +312,7 @@ class AlarmSummary(BaseModel):
     ack_time = TimestampField(utc=True, null=True)
 
     @classmethod
+    @logging_error_handler
     def create(cls, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
         r"""
         Creates a new entry in the alarm summary.
@@ -322,6 +338,7 @@ class AlarmSummary(BaseModel):
                 return query
 
     @classmethod
+    @logging_error_handler
     def read_by_name(cls, name:str):
         r"""
         Retrieves the latest summary entry for a specific alarm name.
@@ -330,6 +347,7 @@ class AlarmSummary(BaseModel):
         return cls.select().where(cls.alarm==alarm).order_by(cls.id.desc()).get_or_none()
 
     @classmethod
+    @logging_error_handler
     def read_by_alarm_id(cls, alarm_id:int):
         r"""
         Retrieves the latest summary entry by alarm ID.
@@ -338,6 +356,7 @@ class AlarmSummary(BaseModel):
         return cls.select().where(cls.alarm==alarm).order_by(cls.id.desc()).get_or_none()
 
     @classmethod
+    @logging_error_handler
     def read_all(cls):
         r"""
         Retrieves all alarm summary records.
@@ -354,6 +373,7 @@ class AlarmSummary(BaseModel):
             return data
 
     @classmethod
+    @logging_error_handler
     def read_lasts(cls, lasts:int=1):
         r"""
         Retrieves the last N records.
@@ -363,6 +383,7 @@ class AlarmSummary(BaseModel):
         return [alarm.serialize() for alarm in alarms]
     
     @classmethod
+    @logging_error_handler
     def filter_by(
         cls,
         states:list[str]=None,
@@ -445,6 +466,7 @@ class AlarmSummary(BaseModel):
         }
 
     @classmethod
+    @logging_error_handler
     def get_alarm_summary_comments(cls, id:int):
         r"""
         Retrieves comments associated with a specific alarm summary entry.
@@ -453,6 +475,7 @@ class AlarmSummary(BaseModel):
 
         return [comment.serialize() for comment in query.logs]
 
+    @logging_error_handler
     def serialize(self):
         r"""
         Serializes the summary record.

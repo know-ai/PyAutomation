@@ -8,5 +8,21 @@ The `AlarmManager` is a singleton service responsible for:
 
 ::: automation.managers.alarms.AlarmManager
     :docstring:
-    :members:
+    :members: get_queue
+    :members: append_alarm
+    :members: put
+    :members: delete_alarm
+    :members: get_alarm
+    :members: get_alarm_by_name
+    :members: get_alarm_by_tag
+    :members: get_alarms
+    :members: get_lasts_active_alarms
+    :members: serialize
+    :members: get_tag_alarms
+    :members: tags
+    :members: filter_by
+    :members: get_lasts
+    :members: summary
+    :members: attach
+    :members: execute
 
