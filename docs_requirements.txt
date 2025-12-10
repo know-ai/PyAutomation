@@ -1,4 +1,4 @@
 mkdocs==1.6.1
-mkdocs-material==9.7.0
+mkdocs-material==9.5.44
 mkautodoc==0.2.0
 # PyAutomationIO==1.0.0 (Installed via .readthedocs.yml path: .)
