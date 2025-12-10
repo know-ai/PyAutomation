@@ -117,7 +117,16 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def define_dash_app(self,  certfile:str=None, keyfile:str=None, **kwargs)->None:
         r"""
-        Documentation here
+        Initializes and configures the Dash application integrated within PyAutomation.
+
+        **Parameters:**
+        
+        * **certfile** (str, optional): Path to the SSL certificate file.
+        * **keyfile** (str, optional): Path to the SSL key file.
+        * **kwargs**: Additional keyword arguments passed to the Dash application constructor.
+
+        This method sets up the Dash frontend, configures callbacks, and initializes the Socket.IO server 
+        for real-time communication.
         """
         self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
         self.dash_app.set_automation_app(self)
@@ -157,14 +166,26 @@ class PyAutomation(Singleton):
     @validate_types(name=StringType, output=StateMachine|None)
     def get_machine(self, name:StringType)->StateMachine:
         r"""
-        Documentation here
+        Retrieves a registered State Machine instance by its name.
+
+        **Parameters:**
+
+        * **name** (StringType): The name of the state machine to retrieve.
+
+        **Returns:**
+
+        * **StateMachine**: The state machine instance if found, otherwise None.
         """
         return self.machine_manager.get_machine(name=name)
 
     @logging_error_handler
     def get_machines(self)->list[tuple[Machine, int, str]]:
         r"""
-        Documentation here
+        Retrieves a list of all registered state machines along with their configuration.
+
+        **Returns:**
+
+        * **list[tuple[Machine, int, str]]**: A list of tuples containing (Machine instance, interval, execution_mode).
         """
         return self.machine_manager.get_machines()
 
@@ -172,7 +193,11 @@ class PyAutomation(Singleton):
     @validate_types(output=list)
     def serialize_machines(self)->list[dict]:
         r"""
-        Documentation here
+        Serializes all registered state machines into a dictionary format.
+
+        **Returns:**
+
+        * **list[dict]**: A list of dictionaries representing the state and configuration of each machine.
         """
         return self.machine_manager.serialize_machines()
     
@@ -180,7 +205,18 @@ class PyAutomation(Singleton):
     @validate_types(machine=AutomationStateMachine, tag=Tag, output=dict)
     def subscribe_tag_into_automation_machine(self, machine:AutomationStateMachine, tag:Tag)->dict:
         r"""
-        Documentation here
+        Subscribes a specific tag to an automation state machine.
+        
+        This allows the state machine to observe changes in the tag's value and trigger transitions or logic.
+
+        **Parameters:**
+
+        * **machine** (AutomationStateMachine): The target state machine.
+        * **tag** (Tag): The tag to subscribe.
+
+        **Returns:**
+
+        * **dict**: Result of the subscription operation.
         """
         machine.subscribe_to(tag)
 
@@ -238,12 +274,29 @@ class PyAutomation(Singleton):
             reload:bool=False,
         )->tuple[Tag,str]:
         r"""
-        Create tag to automation app.
+        Creates a new tag in the automation application.
 
-        Addding tag from this way, you get the following features.
+        Adding a tag this way provides the following features:
+        - Adds the tag to the Current Value Table (CVT).
+        - Configures data acquisition from OPC UA (if address provided).
+        - Sets up filters (Deadband, Kalman/Gaussian).
+        - Initializes historical logging.
 
-        - Add tag to CVT.
-        - 
+        **Parameters:**
+
+        * **name** (str): Unique tag name.
+        * **unit** (str): Engineering unit.
+        * **variable** (str): Variable type (e.g., 'Pressure', 'Temperature').
+        * **display_unit** (str, optional): Unit for display purposes.
+        * **scan_time** (int, optional): Polling interval in ms.
+        * **opcua_address** (str, optional): OPC UA server URL.
+        * **node_namespace** (str, optional): OPC UA Node ID.
+
+        **Returns:**
+
+        * **tuple[Tag, str]**: The created Tag object and a status message.
+
+        **Usage:**
 
         ```python
         >>> from automation import PyAutomation
@@ -252,10 +305,8 @@ class PyAutomation(Singleton):
         >>> unit = "Pa"
         >>> variable = "Pressure"
         >>> app.create_tag(name=tag_name, unit=unit, variable=variable)
-        tag, message
-
+        (Tag(name='tag1'), 'Tag created successfully')
         ```
-
         """
         if not display_name:
 
@@ -320,15 +371,12 @@ class PyAutomation(Singleton):
     @logging_error_handler
     @validate_types(output=list)
     def get_tags(self)->list:
-        r"""Documentation here
+        r"""
+        Retrieves all tags registered in the Current Value Table (CVT).
 
-        # Parameters
+        **Returns:**
 
-        -
-
-        # Returns
-
-        -
+        * **list**: A list of Tag dictionaries containing their current values and configuration.
         """
 
         return self.cvt.get_tags()
@@ -337,53 +385,117 @@ class PyAutomation(Singleton):
     @validate_types(names=list, output=list)
     def get_tags_by_names(self, names:list)->list[Tag|None]:
         r"""
-        # Parameters
+        Retrieves multiple tags by their names.
 
-        - names: list of tag names
+        **Parameters:**
 
-        # Returns
+        * **names** (list): A list of tag names to retrieve.
 
-        - list of tags
+        **Returns:**
+
+        * **list**: A list of Tag objects or None for each requested name.
         """
         return self.cvt.get_tags_by_names(names=names)
 
     @logging_error_handler
     @validate_types(name=str, output=Tag|None)
     def get_tag_by_name(self, name:str)->Tag:
+        r"""
+        Retrieves a single tag by its name.
 
+        **Parameters:**
+
+        * **name** (str): The name of the tag.
+
+        **Returns:**
+
+        * **Tag**: The Tag object if found, otherwise None.
+        """
         return self.cvt.get_tag_by_name(name=name)
     
     @logging_error_handler
     @validate_types(namespace=str, output=Tag|None)
     def get_tag_by_node_namespace(self, namespace:str)->Tag:
+        r"""
+        Retrieves a single tag by its OPC UA node namespace.
 
+        **Parameters:**
+
+        * **namespace** (str): The OPC UA node namespace (e.g., 'ns=2;s=Device1').
+
+        **Returns:**
+
+        * **Tag**: The Tag object if found, otherwise None.
+        """
         return self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
 
     @logging_error_handler
     def get_trends(self, start:str, stop:str, timezone:str, *tags):
         r"""
-        Documentation here
+        Retrieves historical trend data for specified tags within a time range.
+
+        **Parameters:**
+
+        * **start** (str): Start datetime string.
+        * **stop** (str): Stop datetime string.
+        * **timezone** (str): Timezone for the query.
+        * **tags** (tuple): One or more tag names to query.
+
+        **Returns:**
+
+        * **dict**: Historical data for the requested tags.
         """
         return self.logger_engine.read_trends(start, stop, timezone, *tags)
     
     @logging_error_handler
     def get_tags_tables(self, start:str, stop:str, timezone:str, tags:list, page:int=1, limit:int=20):
         r"""
-        Documentation here
+        Retrieves historical data in a paginated table format.
+
+        **Parameters:**
+
+        * **start** (str): Start datetime.
+        * **stop** (str): Stop datetime.
+        * **timezone** (str): Timezone.
+        * **tags** (list): List of tag names.
+        * **page** (int): Page number for pagination.
+        * **limit** (int): Number of records per page.
+
+        **Returns:**
+
+        * **dict**: Paginated historical data.
         """
         return self.logger_engine.read_table(start, stop, timezone, tags, page, limit)
     
     @logging_error_handler
     def get_tabular_data(self, start:str, stop:str, timezone:str, tags:list, sample_time:int, page:int=1, limit:int=20):
         r"""
-        Documentation here
+        Retrieves historical data resampled to a specific time interval (tabular format).
+
+        **Parameters:**
+
+        * **start** (str): Start datetime.
+        * **stop** (str): Stop datetime.
+        * **timezone** (str): Timezone.
+        * **tags** (list): List of tag names.
+        * **sample_time** (int): Resampling interval in seconds.
+        * **page** (int): Page number.
+        * **limit** (int): Records per page.
+
+        **Returns:**
+
+        * **dict**: Resampled tabular data.
         """
         return self.logger_engine.read_tabular_data(start, stop, timezone, tags, sample_time, page, limit)
     
     @logging_error_handler
     def get_segments(self):
         r"""
-        Documentation here
+        Retrieves all unique segments (logical groupings of tags/machines) defined in the system.
+
+        **Returns:**
+
+        * **list**: List of segment names.
         """
         return self.logger_engine.read_segments()
 
@@ -391,7 +503,16 @@ class PyAutomation(Singleton):
     @validate_types(id=str, output=None|str)
     def delete_tag(self, id:str, user:User|None=None)->None|str:
         r"""
-        Documentation here
+        Deletes a tag from the system by its ID.
+
+        **Parameters:**
+
+        * **id** (str): The unique identifier of the tag.
+        * **user** (User, optional): The user performing the action (for audit logs).
+
+        **Returns:**
+
+        * **None|str**: None if successful, or an error message string if failed (e.g., tag has active alarms).
         """
         tag = self.cvt.get_tag(id=id)
         tag_name = tag.get_name()
@@ -416,7 +537,17 @@ class PyAutomation(Singleton):
             **kwargs
         )->tuple[Tag|None, str]:
         r"""
-        Documentation here
+        Updates the configuration of an existing tag.
+
+        **Parameters:**
+
+        * **id** (str): Tag ID.
+        * **user** (User, optional): User performing the update.
+        * **kwargs**: Tag attributes to update (e.g., name, unit, scan_time, alarm limits).
+
+        **Returns:**
+
+        * **tuple[Tag|None, str]**: A tuple containing the updated Tag object (or None on failure) and a status message.
         """
         tag = self.cvt.get_tag(id=id)       
         if "name" in kwargs:
@@ -520,7 +651,12 @@ class PyAutomation(Singleton):
     @validate_types(name=str, output=None|str)
     def delete_tag_by_name(self, name:str, user:User|None=None):
         r"""
-        Documentation here
+        Deletes a tag from the system by its name.
+
+        **Parameters:**
+
+        * **name** (str): The name of the tag.
+        * **user** (User, optional): The user performing the action.
         """
         tag = self.cvt.get_tag_by_name(name=name)
         alarm = self.alarm_manager.get_alarm_by_tag(tag=name)
@@ -551,6 +687,19 @@ class PyAutomation(Singleton):
             username:str="",
             email:str=""
         )->tuple[User|None, str]:
+        r"""
+        Authenticates a user by username or email.
+
+        **Parameters:**
+
+        * **password** (str): User password.
+        * **username** (str, optional): Username.
+        * **email** (str, optional): Email address.
+
+        **Returns:**
+
+        * **tuple[User|None, str]**: User object if successful, plus status message.
+        """
         # Check Token on Database
         if self.is_db_connected():
 
@@ -578,7 +727,20 @@ class PyAutomation(Singleton):
             lastname:str=None
         )->tuple[User|None, str]:
         r"""
-        Documentation here
+        Registers a new user in the system.
+
+        **Parameters:**
+
+        * **username** (str): Unique username.
+        * **role_name** (str): Name of the role to assign (e.g., 'admin', 'operator').
+        * **email** (str): User's email address.
+        * **password** (str): User's password.
+        * **name** (str, optional): First name.
+        * **lastname** (str, optional): Last name.
+
+        **Returns:**
+
+        * **tuple[User|None, str]**: The created User object and a status message.
         """
         user, message = users.signup(
             username=username,
@@ -603,7 +765,15 @@ class PyAutomation(Singleton):
     @validate_types(role_name=str, output=str)
     def create_token(self, role_name:str)->str:
         r"""
-        Documentation here
+        Creates a JWT token for a specific role (used for Third Party integration).
+
+        **Parameters:**
+
+        * **role_name** (str): The role to embed in the token.
+
+        **Returns:**
+
+        * **str**: The encoded JWT token.
         """
         from . import server
         payload = {
@@ -616,7 +786,16 @@ class PyAutomation(Singleton):
     @validate_types(name=str, level=int, output=(Role|None, str))
     def set_role(self, name:str, level:int)->Role|None:
         r"""
-        Documentation here
+        Defines a new user role in the system.
+
+        **Parameters:**
+
+        * **name** (str): Name of the role.
+        * **level** (int): Permission level (lower might mean higher privilege depending on implementation, usually 0 is highest).
+
+        **Returns:**
+
+        * **Role|None**: The created Role object or None if it already exists.
         """
         role = Role(name=name, level=level)
         if roles.check_role_name(name=name):
@@ -640,7 +819,16 @@ class PyAutomation(Singleton):
     @validate_types(host=str|type(None), port=int|type(None), output=dict)
     def find_opcua_servers(self, host:str='127.0.0.1', port:int=4840)->dict:
         r"""
-        Documentation here
+        Attempts to discover OPC UA servers at the specified host and port.
+
+        **Parameters:**
+
+        * **host** (str): IP address or hostname.
+        * **port** (int): OPC UA TCP port (default 4840).
+
+        **Returns:**
+
+        * **dict**: Discovery results including endpoint URLs.
         """
         result = {
             "message": f"Connection refused to opc.tcp://{host}:{port}"
@@ -661,7 +849,11 @@ class PyAutomation(Singleton):
     @validate_types(output=dict)
     def get_opcua_clients(self):
         r"""
-        Documentation here
+        Retrieves all configured OPC UA clients.
+
+        **Returns:**
+
+        * **dict**: A dictionary of configured clients.
         """
         return self.opcua_client_manager.serialize()
 
@@ -669,7 +861,15 @@ class PyAutomation(Singleton):
     @validate_types(client_name=str, output=Client)
     def get_opcua_client(self, client_name:str):
         r"""
-        Documentation here
+        Retrieves a specific OPC UA client instance by name.
+
+        **Parameters:**
+
+        * **client_name** (str): The name of the client to retrieve.
+
+        **Returns:**
+
+        * **Client**: The OPC UA Client object.
         """
         return self.opcua_client_manager.get(client_name=client_name)
     
@@ -677,13 +877,15 @@ class PyAutomation(Singleton):
     @validate_types(opcua_address=str, output=Client|None)
     def get_opcua_client_by_address(self, opcua_address:str)->Client|None:
         r"""
-        Obtiene el cliente OPC UA correspondiente a una dirección
+        Retrieves an OPC UA client corresponding to a specific server address.
         
-        Args:
-            opcua_address: Dirección del servidor OPC UA (ej: "opc.tcp://localhost:4840")
+        **Parameters:**
+
+        * **opcua_address** (str): OPC UA Server address (e.g., "opc.tcp://localhost:4840").
         
-        Returns:
-            Client: Cliente OPC UA si existe y está conectado, None en caso contrario
+        **Returns:**
+
+        * **Client**: The OPC UA client if connected, else None.
         """
         return self.opcua_client_manager.get_client_by_address(opcua_address=opcua_address)
     
@@ -691,15 +893,17 @@ class PyAutomation(Singleton):
     @validate_types(opcua_address=str, node_namespace=str, value=float|int|bool|str, output=tuple)
     def write_opcua_value(self, opcua_address:str, node_namespace:str, value:float|int|bool|str)->tuple[dict, int]:
         r"""
-        Escribe un valor a un nodo OPC UA
+        Writes a value to a specific OPC UA node.
         
-        Args:
-            opcua_address: Dirección del servidor OPC UA
-            node_namespace: Namespace del nodo (ej: "ns=2;i=1234")
-            value: Valor a escribir (float, int, bool, str)
+        **Parameters:**
+
+        * **opcua_address** (str): Address of the OPC UA server.
+        * **node_namespace** (str): Namespace of the node (e.g., "ns=2;i=1234").
+        * **value** (float|int|bool|str): The value to write.
         
-        Returns:
-            tuple: (dict con resultado, status_code)
+        **Returns:**
+
+        * **tuple**: A tuple containing a result dictionary and an HTTP status code.
         """
         opcua_client = self.get_opcua_client_by_address(opcua_address=opcua_address)
         
@@ -716,21 +920,40 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def create_opcua_server_record(self, name:str, namespace:str, access_type:str="Read"):
         r"""
-        Documentation here
+        Creates a record for an OPC UA server node in the database.
+
+        **Parameters:**
+
+        * **name** (str): Name of the node.
+        * **namespace** (str): Namespace URI or index.
+        * **access_type** (str): Access level (Read, Write, ReadWrite).
         """
         return self.opcua_server_engine.create(name=name, namespace=namespace, access_type=access_type)
     
     @logging_error_handler
     def update_opcua_server_access_type(self, namespace:str, access_type:str):
         r"""
-        Documentation here
+        Updates the access type for a specific OPC UA server node.
+
+        **Parameters:**
+
+        * **namespace** (str): The namespace of the node.
+        * **access_type** (str): New access type (Read, Write, ReadWrite).
         """
         return self.opcua_server_engine.put(namespace=namespace, access_type=access_type)
     
     @logging_error_handler
     def get_opcua_server_record_by_namespace(self, namespace:str):
         r"""
-        Documentation here
+        Retrieves an OPC UA server node record by its namespace.
+
+        **Parameters:**
+
+        * **namespace** (str): The namespace to search for.
+
+        **Returns:**
+
+        * **dict**: Node record data.
         """
         return self.opcua_server_engine.read_by_namespace(namespace=namespace)
 
@@ -738,7 +961,16 @@ class PyAutomation(Singleton):
     @validate_types(client_name=str, namespaces=list, output=list)
     def get_node_values(self, client_name:str, namespaces:list)->list:
         r"""
-        Documentation here
+        Reads values from multiple nodes using a specific OPC UA client.
+
+        **Parameters:**
+
+        * **client_name** (str): The name of the client to use.
+        * **namespaces** (list): List of node namespaces/IDs to read.
+
+        **Returns:**
+
+        * **list**: List of values read from the nodes.
         """
 
         return self.opcua_client_manager.get_node_values(client_name=client_name, namespaces=namespaces)
@@ -747,7 +979,16 @@ class PyAutomation(Singleton):
     @validate_types(client_name=str, namespaces=list, output=list|None)
     def get_node_attributes(self, client_name:str, namespaces:list)->list[dict]:
         r"""
-        Documentation here
+        Reads attributes (e.g., Description, DataType) from multiple nodes.
+
+        **Parameters:**
+
+        * **client_name** (str): The name of the client to use.
+        * **namespaces** (list): List of node namespaces/IDs.
+
+        **Returns:**
+
+        * **list[dict]**: List of attribute dictionaries.
         """
 
         return self.opcua_client_manager.get_node_attributes(client_name=client_name, namespaces=namespaces)
@@ -755,7 +996,15 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def get_opcua_tree(self, client_name:str):
         r"""
-        Documentation here
+        Retrieves the hierarchical node tree structure from a connected OPC UA server.
+
+        **Parameters:**
+
+        * **client_name** (str): The name of the client to use.
+
+        **Returns:**
+
+        * **dict**: Nested dictionary representing the node tree.
         """
         return self.opcua_client_manager.get_opcua_tree(client_name=client_name)
 
@@ -763,7 +1012,17 @@ class PyAutomation(Singleton):
     @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=(bool, str|dict))
     def add_opcua_client(self, client_name:str, host:str="127.0.0.1", port:int=4840):
         r"""
-        Documentation here
+        Registers and connects a new OPC UA client.
+
+        **Parameters:**
+
+        * **client_name** (str): A unique name for this client connection.
+        * **host** (str): Server IP or hostname.
+        * **port** (int): Server port.
+
+        **Returns:**
+
+        * **tuple**: (Success boolean, Message or client data).
         """
         servers = self.find_opcua_servers(host=host, port=port)
 
@@ -775,7 +1034,15 @@ class PyAutomation(Singleton):
     @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=bool)
     def remove_opcua_client(self, client_name:str):
         r"""
-        Documentation here
+        Disconnects and removes an OPC UA client configuration.
+
+        **Parameters:**
+
+        * **client_name** (str): The name of the client to remove.
+
+        **Returns:**
+
+        * **bool**: True if successful, False otherwise.
         """
         return self.opcua_client_manager.remove(client_name=client_name)
 
@@ -783,7 +1050,18 @@ class PyAutomation(Singleton):
     @validate_types(tag=Tag, opcua_address=str|type(None), node_namespace=str|type(None), scan_time=float|int|type(None), reload=bool, output=None)
     def subscribe_opcua(self, tag:Tag, opcua_address:str, node_namespace:str, scan_time:float, reload:bool=False):
         r"""
-        Documentation here
+        Subscribes a tag to an OPC UA server, either via DAS (Subscription) or DAQ (Polling).
+        
+        If `scan_time` is small (<= 100ms), it uses DAS for event-based subscription.
+        Otherwise, it creates or updates a DAQ machine for polling at the specified interval.
+
+        **Parameters:**
+
+        * **tag** (Tag): The tag object to subscribe.
+        * **opcua_address** (str): The address of the OPC UA server (e.g., 'opc.tcp://localhost:4840').
+        * **node_namespace** (str): The node ID to subscribe to.
+        * **scan_time** (float): The scan time or sampling interval in milliseconds.
+        * **reload** (bool, optional): If True, reloads the subscription if it already exists.
         """
         if opcua_address and node_namespace:
 
@@ -811,7 +1089,15 @@ class PyAutomation(Singleton):
     @validate_types(tag_name=str, scan_time=float|int, reload=bool, output=None)
     def subscribe_tag(self, tag_name:str, scan_time:float|int, reload:bool=False):
         r"""
-        Documentatio here
+        Subscribes a tag to a Data Acquisition (DAQ) machine for polling.
+
+        It manages the creation of DAQ machines based on the scan time interval.
+
+        **Parameters:**
+
+        * **tag_name** (str): The name of the tag.
+        * **scan_time** (float|int): The polling interval in milliseconds.
+        * **reload** (bool, optional): If True, forces a reload of the machine configuration.
         """
         scan_time = float(scan_time)
         daq_name = StringType(f"DAQ-{int(scan_time)}")
@@ -837,7 +1123,11 @@ class PyAutomation(Singleton):
     @validate_types(tag=Tag, output=None)
     def unsubscribe_opcua(self, tag:Tag):
         r"""
-        Documentation here
+        Unsubscribes a tag from its OPC UA source (DAS or DAQ).
+
+        **Parameters:**
+
+        * **tag** (Tag): The tag object to unsubscribe.
         """
 
         if tag.get_node_namespace():
@@ -873,7 +1163,11 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def __update_buffer(self, tag:Tag):
         r"""
-        Documentation here
+        Updates the internal buffer size for a tag based on its scan time.
+
+        **Parameters:**
+
+        * **tag** (Tag): The tag object.
         """
         tag_name = tag.get_name()
         scan_time = tag.get_scan_time()
@@ -938,21 +1232,21 @@ class PyAutomation(Singleton):
         clear_default_tables:bool=False,
         **kwargs):
         r"""
-        Sets the database, it supports SQLite and Postgres,
-        in case of SQLite, the filename must be provided.
-
-        if app mode is "Development" you must use SQLite Databse
+        Sets the database connection settings.
+        
+        Supports SQLite, MySQL, and PostgreSQL.
 
         **Parameters:**
 
-        * **dbfile** (str): a path to database file.
-        * *drop_table** (bool): If you want to drop table.
-        * **cascade** (bool): if there are some table dependency, drop it as well
-        * **kwargs**: Same attributes to a postgres connection.
+        * **dbtype** (str): 'sqlite', 'mysql', or 'postgresql'.
+        * **dbfile** (str): Path to database file (for SQLite).
+        * **drop_table** (bool): If True, drops existing tables (Use with caution!).
+        * **clear_default_tables** (bool): If True, truncates default tables.
+        * **kwargs**: Additional connection parameters (user, password, host, port, name).
 
         **Returns:** `None`
 
-        Usage:
+        **Usage:**
 
         ```python
         >>> app.set_db(dbfile="app.db")
@@ -1019,7 +1313,17 @@ class PyAutomation(Singleton):
             name:str|None="app_db"
         ):
         r"""
-        Documentation here
+        Writes the database configuration to a `db_config.json` file.
+
+        **Parameters:**
+
+        * **dbtype** (str): Database type ('sqlite', 'postgresql', 'mysql').
+        * **dbfile** (str): Filename for SQLite database (default 'app.db').
+        * **user** (str, optional): Database user.
+        * **password** (str, optional): Database password.
+        * **host** (str, optional): Database host.
+        * **port** (int|str, optional): Database port.
+        * **name** (str, optional): Database name (for non-SQLite).
         """
         if dbtype.lower()=="sqlite":
 
@@ -1047,7 +1351,11 @@ class PyAutomation(Singleton):
     @validate_types(output=dict|None)
     def get_db_config(self):
         r"""
-        Documentation here
+        Reads the database configuration from `db_config.json`.
+
+        **Returns:**
+
+        * **dict|None**: The database configuration dictionary or None if reading fails.
         """
         try:
 
@@ -1069,7 +1377,11 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def set_app_config(self, **kwargs):
         r"""
-        Update app configuration into app_config.json
+        Updates application configuration in `app_config.json`.
+
+        **Parameters:**
+
+        * **kwargs**: Configuration keys and values to update (e.g., logger_period).
         """
         try:
             config_path = os.path.join(".", "db", "app_config.json")
@@ -1090,7 +1402,13 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def get_app_config(self) -> dict:
         r"""
-        Get app configuration from app_config.json
+        Retrieves the application configuration from `app_config.json`.
+
+        If the file doesn't exist, it creates one with default values.
+
+        **Returns:**
+
+        * **dict**: Application configuration dictionary.
         """
         try:
             config_path = os.path.join(".", "db", "app_config.json")
@@ -1114,7 +1432,11 @@ class PyAutomation(Singleton):
     @validate_types(output=bool)
     def is_db_connected(self):
         r"""
-        Documentation here
+        Checks if the database connection is active.
+
+        **Returns:**
+
+        * **bool**: True if connected, False otherwise.
         """
         if self.db_manager.get_db():
 
@@ -1125,7 +1447,18 @@ class PyAutomation(Singleton):
     @validate_types(test=bool|type(None), reload=bool|type(None), output=None|bool)
     def connect_to_db(self, test:bool=False, reload:bool=False):
         r"""
-        Documentation here
+        Establishes a connection to the database based on the stored configuration.
+
+        It also loads initial data like tags, roles, users, and OPC UA clients into memory.
+
+        **Parameters:**
+
+        * **test** (bool): If True, connects to a test SQLite database.
+        * **reload** (bool): If True, reloads tags into the machine.
+
+        **Returns:**
+
+        * **bool**: True if connection was successful.
         """
         try:
             db_config = self.get_db_config()
@@ -1158,7 +1491,15 @@ class PyAutomation(Singleton):
     @validate_types(test=bool|type(None), reload=bool|type(None), output=None|bool)
     def reconnect_to_db(self, test:bool=False):
         r"""
-        Documentation here
+        Re-establishes the database connection and reloads all data.
+
+        **Parameters:**
+
+        * **test** (bool): If True, connects to test database.
+
+        **Returns:**
+
+        * **bool**: True if reconnection was successful.
         """
         try:
             db_config = self.get_db_config()
@@ -1192,7 +1533,7 @@ class PyAutomation(Singleton):
     @validate_types(output=None)
     def disconnect_to_db(self):
         r"""
-        Documentation here
+        Closes the database connection and stops history logging.
         """
         self.__log_histories = False
         self.db_manager._logger.logger.stop_db()
@@ -1201,7 +1542,7 @@ class PyAutomation(Singleton):
     @validate_types(output=None)
     def load_db_to_cvt(self):
         r"""
-        Documentation here
+        Loads active tags from the database into the Current Value Table (CVT).
         """
         if self.is_db_connected():
 
@@ -1220,7 +1561,7 @@ class PyAutomation(Singleton):
     @validate_types(output=None)
     def load_db_to_alarm_manager(self):
         r"""
-        Documentation here
+        Loads configured alarms from the database into the Alarm Manager.
         """
         if self.is_db_connected():
 
@@ -1234,7 +1575,7 @@ class PyAutomation(Singleton):
     @validate_types(output=None)
     def load_db_to_roles(self):
         r"""
-        Documentation here
+        Loads user roles from the database into the system's role manager.
         """
         if self.is_db_connected():
 
@@ -1244,7 +1585,7 @@ class PyAutomation(Singleton):
     @validate_types(output=None)
     def load_db_to_users(self):
         r"""
-        Documentation here
+        Loads users from the database into the system's user manager.
         """
         if self.is_db_connected():
 
@@ -1254,7 +1595,7 @@ class PyAutomation(Singleton):
     @validate_types(output=None)
     def load_opcua_clients_from_db(self):
         r"""
-        Documentation here
+        Loads OPC UA client configurations from the database and initializes them.
         """
         
         if self.is_db_connected():
@@ -1267,6 +1608,9 @@ class PyAutomation(Singleton):
 
     @logging_error_handler
     def load_db_tags_to_machine(self):
+        r"""
+        Loads tag subscriptions for state machines from the database.
+        """
         
         machines = self.machine_manager.get_machines()
 
@@ -1300,14 +1644,26 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def add_db_table(self, table:BaseModel):
         r"""
-        Documentation here
+        Registers a new table model in the database manager.
+
+        **Parameters:**
+
+        * **table** (BaseModel): The Peewee model class to register.
         """
         self.db_manager.register_table(table)
 
     @logging_error_handler
     def get_db_table(self, tablename:str):
         r"""
-        Documentation here
+        Retrieves a registered database table model by its name.
+
+        **Parameters:**
+
+        * **tablename** (str): The name of the table.
+
+        **Returns:**
+
+        * **Model**: The Peewee model class.
         """
         return self.db_manager.get_db_table(tablename=tablename)
 
@@ -1316,7 +1672,7 @@ class PyAutomation(Singleton):
     @validate_types(output=AlarmManager)
     def get_alarm_manager(self)->AlarmManager:
         r"""
-        Documentation here
+        Returns the Alarm Manager instance.
         """
         return self.alarm_manager
 
@@ -1350,15 +1706,20 @@ class PyAutomation(Singleton):
             reload:bool=False
         )->tuple[Alarm, str]:
         r"""
-        Append alarm to the Alarm Manager
+        Creates and registers a new alarm in the system.
 
-        **Paramters**
+        **Parameters:**
 
-        * **alarm**: (Alarm Object)
+        * **name** (str): Alarm name.
+        * **tag** (str): Name of the tag to monitor.
+        * **alarm_type** (str): Trigger type (e.g., 'BOOL', 'HI', 'LO').
+        * **trigger_value** (bool|float|int): Value that triggers the alarm.
+        * **description** (str, optional): Alarm description.
+        * **user** (User, optional): User creating the alarm.
 
-        **Returns**
+        **Returns:**
 
-        * **None**
+        * **tuple[Alarm, str]**: Created Alarm object and status message.
         """
         alarm, message = self.alarm_manager.append_alarm(
             name=name,
@@ -1400,7 +1761,15 @@ class PyAutomation(Singleton):
     @validate_types(lasts=int, output=list)
     def get_lasts_alarms(self, lasts:int=10)->list:
         r"""
-        Documentation here
+        Retrieves the last N alarms recorded in history.
+
+        **Parameters:**
+
+        * **lasts** (int): Number of records to retrieve.
+
+        **Returns:**
+
+        * **list**: List of alarm records.
         """
         if self.is_db_connected():
             
@@ -1411,7 +1780,15 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def filter_alarms_by(self, **fields):
         r"""
-        Documentation here
+        Filters alarm history based on provided fields.
+
+        **Parameters:**
+
+        * **fields**: Keyword arguments for filtering (e.g., name, tag, state).
+
+        **Returns:**
+
+        * **list**: Filtered list of alarms.
         """
         if self.is_db_connected():
             
@@ -1432,20 +1809,16 @@ class PyAutomation(Singleton):
             alarm_type:str=None,
             trigger_value:int|float=None)->None:
         r"""
-        Updates alarm attributes
+        Updates the properties of an existing alarm.
 
-        **Parameters**
+        **Parameters:**
 
-        * **id** (int).
-        * **name** (str)[Optional]:
-        * **tag** (str)[Optional]:
-        * **description** (str)[Optional]:
-        * **alarm_type** (str)[Optional]:
-        * **trigger** (float)[Optional]:
-
-        **Returns**
-
-        * **alarm** (dict) Alarm Object jsonable
+        * **id** (str): Alarm ID.
+        * **name** (str, optional): New name.
+        * **tag** (str, optional): New associated tag.
+        * **description** (str, optional): New description.
+        * **alarm_type** (str, optional): New type.
+        * **trigger_value** (int|float, optional): New trigger value.
         """
         self.alarm_manager.put(
             id=id,
@@ -1470,15 +1843,15 @@ class PyAutomation(Singleton):
     @validate_types(id=str, output=Alarm)
     def get_alarm(self, id:str)->Alarm:
         r"""
-        Gets alarm from the Alarm Manager by id
+        Retrieves an alarm object by its ID.
 
-        **Paramters**
+        **Parameters:**
 
-        * **id**: (int) Alarm ID
+        * **id** (str): Alarm ID.
 
-        **Returns**
+        **Returns:**
 
-        * **alarm** (Alarm Object)
+        * **Alarm**: The Alarm object.
         """
         return self.alarm_manager.get_alarm(id=id)
 
@@ -1486,11 +1859,11 @@ class PyAutomation(Singleton):
     @validate_types(output=dict)
     def get_alarms(self)->dict:
         r"""
-        Gets all alarms
+        Retrieves all currently active alarms in memory.
 
-        **Returns**
+        **Returns:**
 
-        * **alarms**: (dict) Alarm objects
+        * **dict**: Dictionary of Alarm objects.
         """
         return self.alarm_manager.get_alarms()
     
@@ -1498,11 +1871,11 @@ class PyAutomation(Singleton):
     @validate_types(output=list)
     def serialize_alarms(self)->list:
         r"""
-        Gets all alarms
+        Serializes all alarms into a list of dictionaries.
 
-        **Returns**
+        **Returns:**
 
-        * **alarms**: (dict) Alarm objects
+        * **list**: Serialized alarm data.
         """
         result = list()
         for _, alarm in self.alarm_manager.get_alarms().items():
@@ -1515,7 +1888,15 @@ class PyAutomation(Singleton):
     @validate_types(lasts=int|None, output=list)
     def get_lasts_active_alarms(self, lasts:int=None)->list:
         r"""
-        Documentation here
+        Retrieves the most recent active (unacknowledged or active state) alarms.
+
+        **Parameters:**
+
+        * **lasts** (int, optional): Limit number of results.
+
+        **Returns:**
+
+        * **list**: List of active alarms.
         """
         return self.alarm_manager.get_lasts_active_alarms(lasts=lasts) or list()
 
@@ -1523,15 +1904,15 @@ class PyAutomation(Singleton):
     @validate_types(name=str, output=Alarm)
     def get_alarm_by_name(self, name:str)->Alarm:
         r"""
-        Gets alarm from the Alarm Manager by name
+        Retrieves an alarm by its name.
 
-        **Paramters**
+        **Parameters:**
 
-        * **name**: (str) Alarm name
+        * **name** (str): Alarm name.
 
-        **Returns**
+        **Returns:**
 
-        * **alarm** (Alarm Object)
+        * **Alarm**: The Alarm object.
         """
         return self.alarm_manager.get_alarm_by_name(name=name)
 
@@ -1539,15 +1920,15 @@ class PyAutomation(Singleton):
     @validate_types(tag=str, output=list)
     def get_alarms_by_tag(self, tag:str)->list:
         r"""
-        Gets all alarms associated to some tag
+        Retrieves all alarms associated with a specific tag.
 
-        **Parameters**
+        **Parameters:**
 
-        * **tag**: (str) tag name binded to alarm
+        * **tag** (str): Tag name.
 
-        **Returns**
+        **Returns:**
 
-        * **alarm** (dict) of alarm objects
+        * **list**: List of Alarm objects.
         """
         return self.alarm_manager.get_alarms_by_tag(tag=tag)
 
@@ -1555,11 +1936,12 @@ class PyAutomation(Singleton):
     @validate_types(id=str, user=User|type(None), output=None)
     def delete_alarm(self, id:str, user:User=None):
         r"""
-        Removes alarm
+        Deletes an alarm from the system.
 
-        **Paramters**
+        **Parameters:**
 
-        * **id** (int): Alarm ID
+        * **id** (str): Alarm ID.
+        * **user** (User, optional): User performing the deletion.
         """
         self.alarm_manager.delete_alarm(id=id, user=user)
         if self.is_db_connected():
@@ -1571,7 +1953,15 @@ class PyAutomation(Singleton):
     @validate_types(lasts=int, output=list)
     def get_lasts_events(self, lasts:int=10)->list:
         r"""
-        Documentation here
+        Retrieves the last N system events.
+
+        **Parameters:**
+
+        * **lasts** (int): Number of events to retrieve.
+
+        **Returns:**
+
+        * **list**: List of event dictionaries.
         """
         if self.is_db_connected():
 
@@ -1594,7 +1984,21 @@ class PyAutomation(Singleton):
             page:int=1,
             limit:int=20)->list:
         r"""
-        Documentation here
+        Filters system events based on multiple criteria.
+
+        **Parameters:**
+
+        * **usernames** (list[str]): Filter by user.
+        * **priorities** (list[int]): Filter by priority level.
+        * **criticities** (list[int]): Filter by criticity level.
+        * **message** (str): Text search in message.
+        * **classification** (str): Filter by event classification.
+        * **timezone** (str): Timezone for timestamp filtering.
+        * **page**, **limit**: Pagination parameters.
+
+        **Returns:**
+
+        * **list**: Filtered list of events.
         """
         if self.is_db_connected():
             
@@ -1627,7 +2031,18 @@ class PyAutomation(Singleton):
         timestamp:datetime=None
         )->tuple:
         r"""
-        Documentation here
+        Creates a new log entry.
+
+        **Parameters:**
+
+        * **message** (str): Log message.
+        * **user** (User): User associated with the log.
+        * **description** (str, optional): Detailed description.
+        * **classification** (str, optional): Log category.
+
+        **Returns:**
+
+        * **tuple**: Created log object and status message.
         """
         if self.is_db_connected():
             
@@ -1663,7 +2078,17 @@ class PyAutomation(Singleton):
             timezone:str="UTC"
         )->list:
         r"""
-        Documentation here
+        Filters system logs based on criteria.
+
+        **Parameters:**
+
+        * **usernames** (list[str]): Filter by user.
+        * **classification** (str): Filter by category.
+        * **timezone** (str): Timezone.
+
+        **Returns:**
+
+        * **list**: Filtered list of logs.
         """
         if self.is_db_connected():
 
@@ -1683,7 +2108,15 @@ class PyAutomation(Singleton):
     @validate_types(lasts=int, output=list)
     def get_lasts_logs(self, lasts:int=10)->list:
         r"""
-        Documentation here
+        Retrieves the last N logs.
+
+        **Parameters:**
+
+        * **lasts** (int): Number of logs to retrieve.
+
+        **Returns:**
+
+        * **list**: List of log entries.
         """
         if self.is_db_connected():
 
@@ -1695,7 +2128,16 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def run(self, debug:bool=False, test:bool=False, create_tables:bool=False, machines:tuple=None)->None:
         r"""
-        Runs main app thread and all defined threads by decorators and State Machines besides this method starts app logger
+        Starts the PyAutomation application.
+
+        Initializes the logger, database connections, and worker threads.
+
+        **Parameters:**
+
+        * **debug** (bool): Enable debug mode for Dash server.
+        * **test** (bool): Run in test mode (using test DB).
+        * **create_tables** (bool): Create database tables on startup.
+        * **machines** (tuple, optional): Initial state machines to run.
 
         **Returns:** `None`
         """
@@ -1722,6 +2164,9 @@ class PyAutomation(Singleton):
 
     @logging_error_handler
     def create_system_user(self):
+        r"""
+        Ensures a 'system' user exists with 'sudo' role. Used for automated internal actions.
+        """
         # Create system user
         users = Users()
         roles = Roles()
@@ -1745,7 +2190,9 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def safe_start(self, test:bool=False, create_tables:bool=True, machines:tuple=None):
         r"""
-        Run the app without a main thread, only run the app with the threads and state machines define
+        Initializes app components without blocking the main thread.
+        
+        Used by `run()` and for testing.
         """
         self._create_tables = create_tables
         self.__start_logger()
@@ -1758,7 +2205,11 @@ class PyAutomation(Singleton):
     @validate_types(period=float, output=None)
     def update_logger_period(self, period:float):
         r"""
-        Update logger worker period
+        Updates the interval for the data logger worker.
+
+        **Parameters:**
+
+        * **period** (float): New interval in seconds.
         """
         if hasattr(self, 'db_worker'):
             self.db_worker._period = period
@@ -1772,14 +2223,19 @@ class PyAutomation(Singleton):
     @validate_types(output=None)
     def safe_stop(self)->None:
         r"""
-        Stops the app in safe way with the threads
+        Stops the application and all worker threads gracefully.
         """
         self.__stop_workers()
 
     @logging_error_handler
     def state_machine_diagrams(self, folder_path:str):
         r"""
-        Documentation here"""
+        Generates and saves state diagrams for all active state machines.
+
+        **Parameters:**
+
+        * **folder_path** (str): Destination directory for PNG images.
+        """
         for machine, _, _ in self._manager.get_machines():
             # SAVE STATE DIAGRAM
             img_path = f"{folder_path}{machine.name.value}.png"
@@ -1789,11 +2245,7 @@ class PyAutomation(Singleton):
     @logging_error_handler
     def __start_workers(self, test:bool=False, machines:tuple=None)->None:
         r"""
-        Starts all workers.
-
-        * LoggerWorker
-        * StateMachineWorker
-        * DASWorker
+        Starts all background worker threads (Logger, StateMachines, DAS).
         """
         if self._create_tables:
             
@@ -1822,7 +2274,7 @@ class PyAutomation(Singleton):
     @validate_types(output=None)
     def __stop_workers(self)->None:
         r"""
-        Safe stop workers execution
+        Signals all worker threads to stop.
         """
         self.machine.stop()
         self.db_worker.stop()
@@ -1833,7 +2285,11 @@ class PyAutomation(Singleton):
     @validate_types(level=int, output=None)
     def update_log_level(self, level:int):
         r"""
-        Update logger level dynamically and persist it.
+        Updates logger level dynamically and persists it.
+
+        **Parameters:**
+
+        * **level** (int): New logging level.
         """
         self._logging_level = level
         
@@ -1854,7 +2310,12 @@ class PyAutomation(Singleton):
     @validate_types(max_bytes=int, backup_count=int, output=None)
     def update_log_config(self, max_bytes:int, backup_count:int):
         r"""
-        Update logger configuration (maxBytes and backupCount) dynamically and persist it.
+        Updates logger rotation configuration dynamically and persists it.
+
+        **Parameters:**
+
+        * **max_bytes** (int): Max size per log file.
+        * **backup_count** (int): Number of backups to keep.
         """
         # 1. Update runtime logger
         root_logger = logging.getLogger()
@@ -1877,7 +2338,7 @@ class PyAutomation(Singleton):
     @validate_types(output=None)
     def __start_logger(self)->None:
         r"""
-        Starts logger in log file
+        Initializes and configures the logging system.
         """
 
         requests.urllib3.disable_warnings()

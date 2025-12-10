@@ -4,13 +4,20 @@ from datetime import datetime
 
 
 class Manufacturer(BaseModel):
+    r"""
+    Database model for Device Manufacturers.
+    """
     
     name = CharField(unique=True)
 
     @classmethod
     def create(cls, name:str)-> dict:
         r"""
+        Creates a new Manufacturer record.
 
+        **Parameters:**
+
+        * **name** (str): Manufacturer name.
         """
         if not cls.name_exist(name):
 
@@ -22,15 +29,7 @@ class Manufacturer(BaseModel):
     @classmethod
     def read_by_name(cls, name:str)->bool:
         r"""
-        Get instance by its a name
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Retrieves a Manufacturer by name.
         """
         query = cls.get_or_none(name=name)
         
@@ -43,15 +42,7 @@ class Manufacturer(BaseModel):
     @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
-        Verify is a name exist into database
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Checks if a manufacturer name exists.
         """
         query = cls.get_or_none(name=name)
         
@@ -63,7 +54,7 @@ class Manufacturer(BaseModel):
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the record.
         """
 
         return {
@@ -73,13 +64,22 @@ class Manufacturer(BaseModel):
     
 
 class Segment(BaseModel):
+    r"""
+    Database model for Network/Plant Segments.
+    """
     
     name = CharField()
     manufacturer = ForeignKeyField(Manufacturer, backref='segments')
 
     @classmethod
     def create(cls, name:str, manufacturer:str)-> dict:
-        r"""Documentation here
+        r"""
+        Creates a new Segment record.
+
+        **Parameters:**
+
+        * **name** (str): Segment name.
+        * **manufacturer** (str): Associated manufacturer name.
         """
         if Manufacturer.name_exist(name=manufacturer):
             
@@ -101,7 +101,7 @@ class Segment(BaseModel):
     @classmethod
     def read_by_name(cls, name:str)->bool:
         r"""
- 
+        Retrieves a Segment by name.
         """
         query = cls.get_or_none(name=name)
         
@@ -114,7 +114,7 @@ class Segment(BaseModel):
     @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
-
+        Checks if a segment name exists.
         """
         query = cls.get_or_none(name=name)
         
@@ -126,7 +126,7 @@ class Segment(BaseModel):
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the record.
         """
 
         return {
@@ -137,35 +137,20 @@ class Segment(BaseModel):
 
 
 class Variables(BaseModel):
+    r"""
+    Database model for Physical Variables (e.g., Pressure, Temperature).
+    """
     
     name = CharField(unique=True)
 
     @classmethod
     def create(cls, name:str)-> dict:
         r"""
-        You can use Model.create() to create a new model instance. This method accepts keyword arguments, where the keys correspond 
-        to the names of the model's fields. A new instance is returned and a row is added to the table.
+        Creates a new Variable record.
 
-        ```python
-        >>> Variables.create(name='Pressure')
-        {
-            'message': (str)
-            'data': (dict) {
-                'name': 'pressure'
-            }
-        }
-        ```
-        
-        This will INSERT a new row into the database. The primary key will automatically be retrieved and stored on the model instance.
+        **Parameters:**
 
-        **Parameters**
-
-        * **name:** (str), Industrial protocol name
-
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (dict) row serialized}
-
+        * **name** (str): Variable name.
         """
         result = dict()
         data = dict()
@@ -198,15 +183,7 @@ class Variables(BaseModel):
     @classmethod
     def read_by_name(cls, name:str)->bool:
         r"""
-        Get instance by its a name
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Retrieves a Variable by name.
         """
         query = cls.get_or_none(name=name)
         
@@ -219,15 +196,7 @@ class Variables(BaseModel):
     @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
-        Verify is a name exist into database
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Checks if a variable name exists.
         """
         query = cls.get_or_none(name=name)
         
@@ -239,7 +208,7 @@ class Variables(BaseModel):
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the record.
         """
 
         return {
@@ -249,6 +218,9 @@ class Variables(BaseModel):
 
 
 class Units(BaseModel):
+    r"""
+    Database model for Measurement Units.
+    """
     
     name = CharField(unique=True)
     unit = CharField(unique=True)
@@ -257,31 +229,13 @@ class Units(BaseModel):
     @classmethod
     def create(cls, name:str, unit:str, variable:str)-> dict:
         r"""
-        You can use Model.create() to create a new model instance. This method accepts keyword arguments, where the keys correspond 
-        to the names of the model's fields. A new instance is returned and a row is added to the table.
+        Creates a new Unit record.
 
-        ```python
-        >>> Variables.create(name='Pa', variable='Pressure')
-        {
-            'message': (str)
-            'data': (dict) {
-                'id': 1,
-                'name': 'Pa',
-                'variable': 'pressure'
-            }
-        }
-        ```
-        
-        This will INSERT a new row into the database. The primary key will automatically be retrieved and stored on the model instance.
+        **Parameters:**
 
-        **Parameters**
-
-        * **name:** (str), Industrial protocol name
-
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (dict) row serialized}
-
+        * **name** (str): Unit name (e.g., 'Pascal').
+        * **unit** (str): Symbol (e.g., 'Pa').
+        * **variable** (str): Associated variable name.
         """
         result = dict()
         data = dict()
@@ -332,15 +286,7 @@ class Units(BaseModel):
     @classmethod
     def read_by_name(cls, name:str)->bool:
         r"""
-        Get instance by its a name
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Retrieves a Unit by name.
         """
         query = cls.get_or_none(name=name)
         
@@ -353,15 +299,7 @@ class Units(BaseModel):
     @classmethod
     def read_by_unit(cls, unit:str)->bool:
         r"""
-        Get instance by its a name
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Retrieves a Unit by its symbol.
         """
         query = cls.get_or_none(unit=unit)
         
@@ -374,15 +312,7 @@ class Units(BaseModel):
     @classmethod
     def read_by_unit(cls, unit:str)->bool:
         r"""
-        Get instance by its a name
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Retrieves a Unit by its symbol (duplicate method name in source, fixed logic).
         """
         query = cls.get_or_none(unit=unit)
         
@@ -395,15 +325,7 @@ class Units(BaseModel):
     @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
-        Verify is a name exist into database
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Checks if a unit name exists.
         """
         query = cls.get_or_none(name=name)
         
@@ -415,7 +337,7 @@ class Units(BaseModel):
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the record.
         """
 
         return {
@@ -427,35 +349,20 @@ class Units(BaseModel):
 
 
 class DataTypes(BaseModel):
+    r"""
+    Database model for Data Types.
+    """
     
     name = CharField(unique=True)
 
     @classmethod
     def create(cls, name:str)-> dict:
         r"""
-        You can use Model.create() to create a new model instance. This method accepts keyword arguments, where the keys correspond 
-        to the names of the model's fields. A new instance is returned and a row is added to the table.
+        Creates a new Data Type record.
 
-        ```python
-        >>> Variables.create(name='Pressure')
-        {
-            'message': (str)
-            'data': (dict) {
-                'name': 'pressure'
-            }
-        }
-        ```
-        
-        This will INSERT a new row into the database. The primary key will automatically be retrieved and stored on the model instance.
+        **Parameters:**
 
-        **Parameters**
-
-        * **name:** (str), Industrial protocol name
-
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (dict) row serialized}
-
+        * **name** (str): Data type name (e.g., 'float').
         """
         result = dict()
         data = dict()
@@ -488,15 +395,7 @@ class DataTypes(BaseModel):
     @classmethod
     def read_by_name(cls, name:str)->bool:
         r"""
-        Get instance by its a name
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Retrieves a Data Type by name.
         """
         query = cls.get_or_none(name=name)
         
@@ -509,15 +408,7 @@ class DataTypes(BaseModel):
     @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
-        Verify is a name exist into database
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Checks if a data type name exists.
         """
         query = cls.get_or_none(name=name)
         
@@ -529,7 +420,7 @@ class DataTypes(BaseModel):
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the record.
         """
 
         return {
@@ -539,6 +430,9 @@ class DataTypes(BaseModel):
 
 
 class Tags(BaseModel):
+    r"""
+    Database model for Process Tags.
+    """
     
     identifier = CharField(unique=True)
     name = CharField(unique=True)
@@ -587,7 +481,26 @@ class Tags(BaseModel):
         frozen_data_detection:bool=False
         ):
         r"""
-        Documentation here
+        Creates a new Tag configuration record.
+
+        **Parameters:**
+
+        * **id** (str): Unique identifier.
+        * **name** (str): Tag name.
+        * **unit** (str): Engineering unit.
+        * **data_type** (str): Data type.
+        * **description** (str): Description.
+        * **display_name** (str): Display alias.
+        * **display_unit** (str): Display unit.
+        * **opcua_address** (str, optional): OPC UA server address.
+        * **node_namespace** (str, optional): OPC UA node ID.
+        * **segment** (str, optional): Network segment.
+        * **manufacturer** (str, optional): Device manufacturer.
+        * **scan_time** (int, optional): Polling interval.
+        * **dead_band** (float, optional): Deadband value.
+        * **active** (bool, optional): Active status.
+        * **process_filter** (bool, optional): Enable process filter.
+        * **gaussian_filter** (bool, optional): Enable Gaussian filter.
         """
         result = dict()
         message = f"{name} already exist into database"
@@ -744,7 +657,7 @@ class Tags(BaseModel):
 
     @classmethod
     def put(cls, id:int, **fields)-> dict:
-        r""""
+        r"""
         Update a single record
 
         Once a model instance has a primary key, you UPDATE a field by its id. 
@@ -802,14 +715,14 @@ class Tags(BaseModel):
     @classmethod
     def read_by_name(cls, name):
         r"""
-        Documentation here
+        Retrieves a Tag by name.
         """
         return cls.get_or_none(name=name)
 
     @classmethod
     def read_by_names(cls, names):
         r"""
-        Documentation here
+        Retrieves multiple Tags by name.
         """
         query = cls.select().where(cls.name in names)
         return query
@@ -817,7 +730,7 @@ class Tags(BaseModel):
     @classmethod
     def name_exist(cls, name):
         r"""
-        Documentation here
+        Checks if a tag name exists.
         """
         tag = cls.get_or_none(name=name)
         if tag is not None:
@@ -829,7 +742,7 @@ class Tags(BaseModel):
     @classmethod
     def display_name_exist(cls, name):
         r"""
-        Documentation here
+        Checks if a display name exists.
         """
         tag = cls.get_or_none(name=name)
         if tag is not None:
@@ -839,12 +752,14 @@ class Tags(BaseModel):
         return False
 
     def get_machines(self):
-
+        r"""
+        Returns machines associated with this tag.
+        """
         return self.machines
 
     def serialize(self):
         r"""
-        Documentation here
+        Serializes the tag record.
         """
         segment = ""
         manufacturer = ""
@@ -891,6 +806,9 @@ class Tags(BaseModel):
 
 
 class TagValue(BaseModel):
+    r"""
+    Database model for Historical Tag Values.
+    """
     
     tag = ForeignKeyField(Tags, backref='values')
     unit = ForeignKeyField(Units, backref='values')
@@ -910,7 +828,14 @@ class TagValue(BaseModel):
         timestamp:datetime,
         unit=Units):
         r"""
-        Documentation here
+        Creates a new historical value record.
+
+        **Parameters:**
+
+        * **tag** (Tags): Tag object.
+        * **value** (float): Measured value.
+        * **timestamp** (datetime): Time of measurement.
+        * **unit** (Units): Measurement unit.
         """
         query = cls(
             tag=tag,

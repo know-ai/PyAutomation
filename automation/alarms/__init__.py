@@ -13,6 +13,14 @@ from flask_socketio import SocketIO
 
 
 class Alarm(StateMachine):
+    r"""
+    Represents an Alarm entity with state machine logic.
+
+    Implements the standard alarm lifecycle defined in ISA 18.2, including states like
+    Normal, Unacknowledged, Acknowledged, Shelved, and Suppressed.
+
+    It monitors a `Tag` value against a `Trigger` condition and transitions states accordingly.
+    """
 
     # MAIN STATES
     normal = State("normal", initial=True)
@@ -75,6 +83,19 @@ class Alarm(StateMachine):
             user:User=None,
             reload:bool=False
         ):
+        r"""
+        Initializes the Alarm.
+
+        **Parameters:**
+
+        * **name** (str): Alarm name.
+        * **tag** (Tag): The tag being monitored.
+        * **alarm_type** (StringType): Trigger type (HI, LO, etc.).
+        * **alarm_setpoint** (IntegerType|FloatType): The limit value.
+        * **description** (str): Alarm description.
+        * **state** (str, optional): Initial state.
+        * **identifier** (str, optional): Unique ID.
+        """
         from ..logger.alarms import AlarmsLoggerEngine
         self.alarm_engine = AlarmsLoggerEngine()
         self.tag_engine = CVTEngine()
@@ -190,7 +211,11 @@ class Alarm(StateMachine):
 
     def set_socketio(self, sio:SocketIO):
         r"""
-        Documentation here
+        Sets the SocketIO instance for real-time updates.
+
+        **Parameters:**
+
+        * **sio** (SocketIO): The SocketIO server instance.
         """
         self.sio:SocketIO = sio
 
@@ -206,12 +231,15 @@ class Alarm(StateMachine):
         value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density|Percentage|Adimentional, 
         timestamp:datetime):
         r"""
-        This method provide an interface to CVT to notify if tag value has change
+        Callback triggered when the monitored Tag value changes (Observer pattern).
         
-        # Parameters
+        It evaluates the new value against alarm logic and triggers state transitions.
 
-        - *tag:* [Tag] tag Object
-        - *value:* [int|float|bool] tag value
+        **Parameters:**
+
+        * **tag** (str): Tag name.
+        * **value** (Quantity): The new tag value.
+        * **timestamp** (datetime): Time of the value change.
         """ 
         self.__timestamp = timestamp
         if self.state not in (AlarmState.DSUPR, AlarmState.SHLVD, AlarmState.OOSRV):     
@@ -222,7 +250,6 @@ class Alarm(StateMachine):
                     self.abnormal_condition()
                 
                 else: 
-
                     self.normal_condition()
 
             elif self.alarm_setpoint.type in (TriggerType.L, TriggerType.LL):
@@ -254,7 +281,7 @@ class Alarm(StateMachine):
     @logging_error_handler
     def abnormal_condition(self):
         r"""
-        Documentation here
+        Triggers transition to an alarm state (abnormal).
         """
         current_state = self.current_state.name.lower()
         transition_name = f'{current_state}_to_unack_alarm'
@@ -263,7 +290,7 @@ class Alarm(StateMachine):
     @logging_error_handler
     def normal_condition(self):
         r"""
-        Documentation here
+        Triggers transition to normal or return-to-normal states.
         """
         current_state = self.current_state.name.lower()
 
@@ -281,7 +308,11 @@ class Alarm(StateMachine):
     @set_event(message=f"Acknowledged", classification="Alarm", priority=2, criticity=3)
     def acknowledge(self, user:User=None):
         r"""
-        Documentation here
+        Acknowledges the alarm.
+
+        **Parameters:**
+
+        * **user** (User, optional): User performing the acknowledgment.
         """
         current_state = self.current_state.name.lower()
 
@@ -306,14 +337,11 @@ class Alarm(StateMachine):
     @set_event(message=f"Shelved", classification="Alarm", priority=2, criticity=3)
     def shelve(self, user:User=None, **options):
         r"""
-        Documentation here
-                **Parameters**
+        Temporarily suppresses the alarm (Shelving).
 
-        * **days:** (int)
-        * **seconds:** (int)
-        * **minutes:** (int)
-        * **hours:** (int)
-        * **weeks:** (int)
+        **Parameters:**
+
+        * **options**: Time duration arguments (days, hours, minutes, seconds).
         """
         options_time = {key: options[key] if key in options else self._shelved_options_time[key] for key in self._shelved_options_time}
         
@@ -331,7 +359,7 @@ class Alarm(StateMachine):
     @set_event(message=f"Unshelved", classification="Alarm", priority=2, criticity=3)
     def unshelve(self, user:User=None):
         r"""
-        Documentation here
+        Manually un-shelves the alarm, returning it to service.
         """
         self.__return_to_service()
         return self, f"{self.tag.get_name()}"
@@ -340,7 +368,7 @@ class Alarm(StateMachine):
     @set_event(message=f"Designed suppression", classification="Alarm", priority=2, criticity=3)
     def designed_suppression(self, user:User=None):
         r"""
-        Documentation here
+        Suppresses the alarm by design (e.g., maintenance mode).
         """
         current_state = self.current_state.name.lower()
         transition_name = f'{current_state}_to_suppressed_by_design'
@@ -351,7 +379,7 @@ class Alarm(StateMachine):
     @set_event(message=f"Designed unsuppression", classification="Alarm", priority=2, criticity=3)
     def designed_unsuppression(self, user:User=None):
         r"""
-        Documentation here
+        Removes designed suppression.
         """
         self.__return_to_service()
         return self, f"{self.tag.get_name()}"
@@ -360,7 +388,7 @@ class Alarm(StateMachine):
     @set_event(message=f"Removed from service", classification="Alarm", priority=2, criticity=3)
     def remove_from_service(self, user:User=None):
         r"""
-        Documentation here
+        Takes the alarm out of service entirely.
         """
         current_state = self.current_state.name.lower()
         transition_name = f'{current_state}_to_out_of_service'
@@ -371,7 +399,7 @@ class Alarm(StateMachine):
     @set_event(message=f"Returned to service", classification="Alarm", priority=2, criticity=3)
     def return_to_service(self, user:User=None):
         r"""
-        Documentation here
+        Returns the alarm to service from 'Out of Service'.
         """
         self.__return_to_service()
 
@@ -404,16 +432,19 @@ class Alarm(StateMachine):
             alarm_type:TriggerType=None,
             trigger_value:float=None):
         r"""
-        Update alarm configuration
+        Updates the alarm configuration.
 
-        **Parameters**
+        **Parameters:**
         
-        * **name** (str): Alarm name
-        * **tag** (str): Tag binded to alarm
-        * **description** (str): Alarm description
-        * **type** (str): Alarm type ['HIGH-HIGH', 'HIGH', 'LOW', 'LOW-LOW', 'BOOL']
-        * **trigger_value** (float): Alarm trigger value
+        * **name** (str): Alarm name.
+        * **tag** (str): Tag bound to alarm.
+        * **description** (str): Alarm description.
+        * **alarm_type** (TriggerType): Alarm type ['HIGH-HIGH', 'HIGH', 'LOW', 'LOW-LOW', 'BOOL'].
+        * **trigger_value** (float): Alarm trigger value.
 
+        **Returns:**
+
+        * **tuple**: (Alarm instance, status message)
         """
         message = ""
         if alarm_type:
@@ -448,11 +479,11 @@ class Alarm(StateMachine):
 
     def _get_active_transitions(self):
         r"""
-        Gets allowed transitions based on the current state
+        Gets allowed transitions based on the current state.
 
-        **Returns**
+        **Returns:**
 
-        * **(list)**
+        * **list**: List of available transitions.
         """
         result = list()
 
@@ -494,7 +525,13 @@ class Alarm(StateMachine):
 
     @logging_error_handler
     def get_operator_actions(self)->list:
-        
+        r"""
+        Returns a list of available actions for the operator based on current state.
+
+        **Returns:**
+
+        * **dict**: Map of Action Name -> Action Method.
+        """
         current_state = self.current_state.name.lower()
             
         if current_state in ("unack_alarm", "rtn_unack"):
@@ -530,11 +567,11 @@ class Alarm(StateMachine):
 
     def serialize(self):
         r"""
-        Allows you to serialize alarm to a dict jsonable
+        Serializes the alarm object to a JSON-compatible dictionary.
 
-        **Return**
+        **Returns:**
 
-        * **alarm_info**: (dict) A jsonable dictionary
+        * **dict**: Alarm data including state, setpoint, and metadata.
         """
         timestamp = self.timestamp
         if timestamp:
@@ -559,5 +596,3 @@ class Alarm(StateMachine):
             "description": self.description,
             "actions": self.get_operator_actions()
         }
-
-

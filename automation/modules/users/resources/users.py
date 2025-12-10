@@ -9,17 +9,22 @@ from ....modules.users.users import Users as CVTUsers
 from ....dbmodels.users import Users
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S"
-ns = Namespace('Users', description='Users')
+ns = Namespace('Users', description='User Management and Authentication')
 app = PyAutomation()
 users = CVTUsers()
 
 @ns.route('/')
-class UsersResource(Resource):
+class UsersCollection(Resource):
 
-    @api.doc(security='apikey')
+    @api.doc(security='apikey', description="Retrieves a list of all registered users.")
+    @api.response(200, "Success")
     @Api.token_required(auth=True)
     def get(self):
-        """Get all usernames"""
+        """
+        Get all users.
+
+        Retrieves a list of all users currently registered in the system.
+        """
 
         return users.serialize(), 200
 
@@ -27,9 +32,16 @@ class UsersResource(Resource):
 class SignUpResource(Resource):
     
     @Api.validate_reqparser(reqparser=signup_parser)
+    @api.doc(security='apikey', description="Registers a new user.")
+    @api.response(200, "User created successfully")
+    @api.response(400, "User creation failed")
     @ns.expect(signup_parser)
     def post(self):
-        """User signup"""
+        """
+        User signup.
+
+        Registers a new user with the provided credentials and role.
+        """
         args = signup_parser.parse_args()
         user, message = app.signup(**args)
         
@@ -44,9 +56,16 @@ class SignUpResource(Resource):
 class LoginResource(Resource):
 
     @Api.validate_reqparser(reqparser=login_parser)
+    @api.doc(security='apikey', description="Authenticates a user and returns an API token.")
+    @api.response(200, "Login successful")
+    @api.response(403, "Invalid credentials")
     @ns.expect(login_parser)
     def post(self):
-        """User login"""
+        """
+        User login.
+
+        Authenticates a user using username/email and password. Returns an API key/token.
+        """
         args = login_parser.parse_args()
         user, message = app.login(**args)
 
@@ -66,23 +85,35 @@ class LoginResource(Resource):
 @ns.route('/credentials_are_valid')
 class VerifyCredentialsResource(Resource):
     
-    @api.doc(security='apikey')
+    @api.doc(security='apikey', description="Verifies if the provided credentials are valid without logging in.")
+    @api.response(200, "Success (True/False)")
     @Api.token_required(auth=True)
     @Api.validate_reqparser(reqparser=login_parser)
     @ns.expect(login_parser)
     def post(self):
-        """Verify user credentials"""
+        """
+        Verify credentials.
+
+        Checks if the provided username/password combination is valid.
+        """
         args = login_parser.parse_args()
         credentials_valid, _ = users.verify_credentials(**args)
         return credentials_valid, 200
     
 @ns.route('/<username>')
+@api.param('username', 'The username')
 class UserResource(Resource):
     
-    @api.doc(security='apikey')
+    @api.doc(security='apikey', description="Retrieves information about a specific user.")
+    @api.response(200, "Success")
+    @api.response(400, "User not found")
     @Api.token_required(auth=True)
     def get(self, username):
-        """Get user information"""
+        """
+        Get user info.
+
+        Retrieves detailed information about a specific user by username.
+        """
         
         user = users.get_by_username(username=username)
 
@@ -96,10 +127,15 @@ class UserResource(Resource):
 @ns.route('/logout')
 class LogoutResource(Resource):
 
-    @api.doc(security='apikey')
+    @api.doc(security='apikey', description="Logs out the current user and invalidates the token.")
+    @api.response(200, "Logout successful")
     @Api.token_required(auth=True)
     def post(self):
-        """User logout"""
+        """
+        User logout.
+
+        Invalidates the current session token.
+        """
         if 'X-API-KEY' in request.headers:
                             
             token = request.headers['X-API-KEY']

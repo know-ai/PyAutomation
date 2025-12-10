@@ -2,12 +2,24 @@ from peewee import CharField, ForeignKeyField
 from ..dbmodels.core import BaseModel
 
 class AccessType(BaseModel):
+    r"""
+    Database model for OPC UA Node Access Types (Read, Write, ReadWrite).
+    """
     
     name = CharField(unique=True)
 
     @classmethod
     def create(cls, name:str="Read")-> dict:
-        r"""Documentation here
+        r"""
+        Creates a new Access Type.
+
+        **Parameters:**
+
+        * **name** (str): Access type name.
+
+        **Returns:**
+
+        * **AccessType**: The created or existing record.
         """
         if name.lower()=="read" or name.lower()=="write" or name.lower()=="readwrite":
 
@@ -23,7 +35,7 @@ class AccessType(BaseModel):
     @classmethod
     def read_by_name(cls, name:str)->bool:
         r"""
- 
+        Retrieves an Access Type by name.
         """
         query = cls.get_or_none(name=name)
         
@@ -36,7 +48,7 @@ class AccessType(BaseModel):
     @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
-
+        Checks if an Access Type name exists.
         """
         query = cls.get_or_none(name=name)
         
@@ -48,7 +60,7 @@ class AccessType(BaseModel):
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the record.
         """
 
         return {
@@ -58,6 +70,9 @@ class AccessType(BaseModel):
 
 
 class OPCUAServer(BaseModel):
+    r"""
+    Database model for OPC UA Server Node configurations.
+    """
     
     name = CharField(unique=True)
     namespace = CharField(unique=True)
@@ -65,7 +80,18 @@ class OPCUAServer(BaseModel):
 
     @classmethod
     def create(cls, name:str, namespace:str, access_type:str)-> dict:
-        r"""Documentation here
+        r"""
+        Creates a new OPC UA Server Node record.
+
+        **Parameters:**
+
+        * **name** (str): Node name.
+        * **namespace** (str): Node namespace/ID.
+        * **access_type** (str): Access level.
+
+        **Returns:**
+
+        * **OPCUAServer**: The created record.
         """
         if not cls.name_exist(name=name):
             
@@ -90,7 +116,7 @@ class OPCUAServer(BaseModel):
     @classmethod
     def read_by_name(cls, name:str)->bool:
         r"""
- 
+        Retrieves a node by name.
         """
         query = cls.get_or_none(name=name)
         
@@ -103,7 +129,7 @@ class OPCUAServer(BaseModel):
     @classmethod
     def read_by_namespace(cls, namespace:str)->bool:
         r"""
- 
+        Retrieves a node by namespace.
         """
         query = cls.get_or_none(namespace=namespace)
         
@@ -116,7 +142,7 @@ class OPCUAServer(BaseModel):
     @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
-
+        Checks if a node name exists.
         """
         query = cls.get_or_none(name=name)
         
@@ -129,7 +155,7 @@ class OPCUAServer(BaseModel):
     @classmethod
     def namespace_exist(cls, namespace:str)->bool:
         r"""
-
+        Checks if a node namespace exists.
         """
         query = cls.get_or_none(namespace=namespace)
         
@@ -141,11 +167,13 @@ class OPCUAServer(BaseModel):
     
     @classmethod
     def update_access_type(cls, namespace:str, access_type:str)-> dict:
-        r""""
-        Update a single record
+        r"""
+        Updates the access type of an existing node.
 
-        Once a model instance has a primary key, you UPDATE a field by its id. 
-        The model's primary key will not change:
+        **Parameters:**
+
+        * **namespace** (str): The node namespace.
+        * **access_type** (str): The new access type.
         """
         obj = cls.get_or_none(namespace=namespace)
         
@@ -164,7 +192,7 @@ class OPCUAServer(BaseModel):
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the node record.
         """
 
         return {

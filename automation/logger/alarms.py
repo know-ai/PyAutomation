@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""pyhades/logger/alarms.py
+"""automation/logger/alarms.py
+
+This module implements the Alarms Logger, responsible for persisting alarm definitions,
+alarm status history, and summaries to the database.
 """
 from datetime import datetime
 from ..dbmodels import Alarms, AlarmSummary, AlarmTypes, AlarmStates
@@ -10,6 +13,11 @@ from ..utils.decorators import db_rollback
 
 
 class AlarmsLogger(BaseLogger):
+    r"""
+    Logger class specialized for Alarm Management.
+
+    It handles CRUD operations for Alarm definitions and logging of Alarm events (activations, acknowledgments, etc.).
+    """
 
     def __init__(self):
 
@@ -18,7 +26,11 @@ class AlarmsLogger(BaseLogger):
     @db_rollback
     def create_tables(self, tables):
         r"""
-        Documentation here
+        Creates alarm-related tables and initializes default alarm types and states.
+
+        **Parameters:**
+
+        * **tables** (list): List of database models.
         """
         if not self.check_connectivity():
             
@@ -30,7 +42,7 @@ class AlarmsLogger(BaseLogger):
     @db_rollback
     def __init_default_alarms_schema(self):
         r"""
-        Documentation here
+        Initializes default Alarm Types (High, Low, etc.) and Alarm States (Active, Ack, etc.) in the DB.
         """
         ## Alarm Types
         for alarm_type in TriggerType:
@@ -55,7 +67,16 @@ class AlarmsLogger(BaseLogger):
             trigger_value:float,
             description:str):
         r"""
-        Documentation here
+        Creates a new Alarm definition in the database.
+
+        **Parameters:**
+
+        * **id** (str): Alarm unique identifier.
+        * **name** (str): Alarm name.
+        * **tag** (str): Associated tag name.
+        * **trigger_type** (str): Type of trigger (e.g., "HIGH", "LOW").
+        * **trigger_value** (float): The threshold value.
+        * **description** (str): Description of the alarm.
         """
         if not self.check_connectivity():
             
@@ -73,7 +94,11 @@ class AlarmsLogger(BaseLogger):
     @db_rollback
     def get_alarms(self):
         r"""
-        Documentation here
+        Retrieves all configured alarms.
+
+        **Returns:**
+
+        * **list**: List of Alarm model instances.
         """
         if not self.check_connectivity():
             
@@ -88,7 +113,15 @@ class AlarmsLogger(BaseLogger):
     @db_rollback
     def get_alarm_by_name(self, name:str)->Alarms|None:
         r"""
-        Documentation here
+        Retrieves a specific alarm by name.
+
+        **Parameters:**
+
+        * **name** (str): Alarm name.
+
+        **Returns:**
+
+        * **Alarms**: The alarm model instance or None.
         """
         if not self.check_connectivity():
             
@@ -99,7 +132,15 @@ class AlarmsLogger(BaseLogger):
     @db_rollback        
     def get_lasts(self, lasts:int=10):
         r"""
-        Documentation here
+        Retrieves the last N entries from the Alarm Summary (history).
+
+        **Parameters:**
+
+        * **lasts** (int): Number of entries to retrieve.
+
+        **Returns:**
+
+        * **list**: List of AlarmSummary entries.
         """
         if not self.is_history_logged:
 
@@ -124,7 +165,22 @@ class AlarmsLogger(BaseLogger):
             limit:int=20
         ):
         r"""
-        Documentation here
+        Filters alarm history based on various criteria.
+
+        **Parameters:**
+
+        * **states** (list[str]): Filter by alarm states.
+        * **names** (list[str]): Filter by alarm names.
+        * **tags** (list[str]): Filter by tag names.
+        * **greater_than_timestamp** (datetime): Start time.
+        * **less_than_timestamp** (datetime): End time.
+        * **timezone** (str): Timezone.
+        * **page** (int): Pagination page.
+        * **limit** (int): Entries per page.
+
+        **Returns:**
+
+        * **list**: Filtered list of alarm summaries.
         """
         if not self.is_history_logged:
 
@@ -156,6 +212,19 @@ class AlarmsLogger(BaseLogger):
         trigger_value:str=None,
         state:str=None
         ):
+        r"""
+        Updates an existing alarm definition.
+
+        **Parameters:**
+
+        * **id** (str): Alarm ID.
+        * **name** (str, optional): New name.
+        * **tag** (str, optional): New tag.
+        * **description** (str, optional): New description.
+        * **alarm_type** (str, optional): New alarm type.
+        * **trigger_value** (str, optional): New trigger value.
+        * **state** (str, optional): New state.
+        """
         if not self.check_connectivity():
             
             return None
@@ -187,7 +256,11 @@ class AlarmsLogger(BaseLogger):
     @db_rollback
     def delete(self, id:str):
         r"""
-        Documentation here
+        Logically deletes an alarm (sets it to "Out Of Service").
+
+        **Parameters:**
+
+        * **id** (str): Alarm ID.
         """
         if not self.check_connectivity():
             
@@ -203,7 +276,14 @@ class AlarmsLogger(BaseLogger):
     @db_rollback
     def create_record_on_alarm_summary(self, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
         r"""
-        Documentation here
+        Creates a new entry in the Alarm Summary (history log).
+
+        **Parameters:**
+
+        * **name** (str): Alarm name.
+        * **state** (str): Alarm state.
+        * **timestamp** (datetime): Timestamp of the event.
+        * **ack_timestamp** (datetime, optional): Acknowledgment timestamp.
         """
         if not self.is_history_logged:
 
@@ -216,7 +296,13 @@ class AlarmsLogger(BaseLogger):
     @db_rollback
     def put_record_on_alarm_summary(self, name:str, state:str=None, ack_timestamp:datetime=None):
         r"""
-        Documentation here
+        Updates the latest record in the Alarm Summary for a given alarm.
+
+        **Parameters:**
+
+        * **name** (str): Alarm name.
+        * **state** (str, optional): New state.
+        * **ack_timestamp** (datetime, optional): Acknowledgment timestamp.
         """
         if not self.check_connectivity():
             
@@ -248,7 +334,11 @@ class AlarmsLogger(BaseLogger):
     @db_rollback
     def get_alarm_summary(self):
         r"""
-        Documentation here
+        Retrieves the entire alarm summary.
+
+        **Returns:**
+
+        * **list**: List of all AlarmSummary records.
         """
         if not self.is_history_logged:
 
@@ -263,8 +353,7 @@ class AlarmsLogger(BaseLogger):
     
 class AlarmsLoggerEngine(BaseEngine):
     r"""
-    Alarms logger Engine class for Tag thread-safe database logging.
-
+    Thread-safe Engine for the AlarmsLogger.
     """
 
     def __init__(self):
@@ -281,7 +370,9 @@ class AlarmsLoggerEngine(BaseEngine):
         trigger_value:float,
         description:str
         ):
-
+        r"""
+        Thread-safe alarm creation.
+        """
         _query = dict()
         _query["action"] = "create"
         _query["parameters"] = dict()
@@ -298,7 +389,9 @@ class AlarmsLoggerEngine(BaseEngine):
         self,
         lasts:int=1
         ):
-
+        r"""
+        Thread-safe retrieval of last alarm events.
+        """
         _query = dict()
         _query["action"] = "get_lasts"
         _query["parameters"] = dict()
@@ -307,7 +400,9 @@ class AlarmsLoggerEngine(BaseEngine):
         return self.query(_query)
     
     def get_alarms(self):
-
+        r"""
+        Thread-safe retrieval of all alarms.
+        """
         _query = dict()
         _query["action"] = "get_alarms"
         _query["parameters"] = dict()
@@ -315,7 +410,9 @@ class AlarmsLoggerEngine(BaseEngine):
         return self.query(_query)
     
     def get_alarm_by_name(self, name:str):
-
+        r"""
+        Thread-safe retrieval of an alarm by name.
+        """
         _query = dict()
         _query["action"] = "get_alarm_by_name"
         _query["parameters"] = dict()
@@ -334,7 +431,9 @@ class AlarmsLoggerEngine(BaseEngine):
         page:int=1,
         limit:int=20
         ):
-
+        r"""
+        Thread-safe filtering of alarm summary.
+        """
         _query = dict()
         _query["action"] = "filter_alarm_summary_by"
         _query["parameters"] = dict()
@@ -350,7 +449,9 @@ class AlarmsLoggerEngine(BaseEngine):
         return self.query(_query)
     
     def create_record_on_alarm_summary(self, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
-
+        r"""
+        Thread-safe creation of alarm history record.
+        """
         _query = dict()
         _query["action"] = "create_record_on_alarm_summary"
         _query["parameters"] = dict()
@@ -367,6 +468,9 @@ class AlarmsLoggerEngine(BaseEngine):
         state:str=None,
         ack_timestamp:datetime=None
         ):
+        r"""
+        Thread-safe update of alarm history record.
+        """
         _query = dict()
         _query["action"] = "put_record_on_alarm_summary"
         _query["parameters"] = dict()
@@ -386,6 +490,9 @@ class AlarmsLoggerEngine(BaseEngine):
         trigger_value:str=None,
         state:str=None
         ):
+        r"""
+        Thread-safe alarm update.
+        """
         _query = dict()
         _query["action"] = "put"
         _query["parameters"] = dict()
@@ -401,7 +508,7 @@ class AlarmsLoggerEngine(BaseEngine):
 
     def delete(self, id:str):
         r"""
-        Documentation here
+        Thread-safe alarm deletion.
         """
         _query = dict()
         _query["action"] = "delete"
@@ -411,7 +518,7 @@ class AlarmsLoggerEngine(BaseEngine):
 
     def get_alarm_summary(self):
         r"""
-        Documentation here
+        Thread-safe retrieval of entire alarm summary.
         """
         _query = dict()
         _query["action"] = "get_alarm_summary"
@@ -421,14 +528,6 @@ class AlarmsLoggerEngine(BaseEngine):
 
     def create_tables(self, tables):
         r"""
-        Create default PyHades database tables
-
-        ['TagTrend', 'TagValue']
-
-        **Parameters**
-
-        * **tables** (list) list of database model
-
-        **Returns** `None`
+        Thread-safe table creation.
         """
         self.logger.create_tables(tables)

@@ -1,24 +1,40 @@
-# Communications
-<div style="text-align:justify;">
-This module allows for the creation and management of an OPCUA (Open Platform Communications Unified Architecture) server. OPCUA is an industrial communication standard that facilitates interoperability between different devices and systems in automation environments.
-</div>
+# Communications Module (OPC UA)
 
-So we can create a new OPCUA sever doing click on the Create button
-![alt text](images/image.png)
+The **Communications Module** focuses on the configuration and management of the integrated **OPC UA Server**. OPC UA (Open Platform Communications Unified Architecture) is the industry standard for secure and reliable data exchange in industrial automation.
 
-We configurate  the server with the following parameters:
-![alt text](images/image3.png)
+Enabling the OPC UA server allows external SCADA systems, HMI panels, and other OPC UA clients to read and write data to PyAutomation tags.
 
-![alt text](images/image1.png)
+## Creating an OPC UA Server
 
-![alt text](images/image2.png)
+Follow these steps to initialize a new OPC UA server instance.
 
-We fill out the fields
+### 1. Initiate Creation
+Click the **Create** button in the Communications Dashboard to open the configuration dialog.
 
-![alt text](images/image4.png)
+![Create Button](images/image.png)
 
-Once  we have filled out the fields, we click on the Ok button to create the OPCUA server and we can see the OPCUA server on the dashboard.
-![alt text](images/image5.png)
+### 2. Server Configuration
+You will need to provide the following network and identity parameters:
 
+*   **Endpoint URL**: The address where the server will listen for connections (e.g., `opc.tcp://0.0.0.0:4840`).
+*   **Server Name**: A friendly name for the server instance.
+*   **Namespace URI**: The unique namespace identifier for your tags.
 
+![Configuration Dialog](images/image3.png)
 
+### 3. Parameter Details
+
+*   **Network Settings**: Ensure the chosen port (default `4840`) is open and not blocked by firewalls.
+    ![Network Settings](images/image1.png)
+
+*   **Security Settings**: Configure user tokens and security policies if authentication is required.
+    ![Security Settings](images/image2.png)
+
+### 4. Finalization
+Fill out all required fields ensuring valid formatting for IPs and Ports.
+
+![Filled Configuration](images/image4.png)
+
+Click **OK** to launch the server. The new OPC UA server will appear in the dashboard, indicating its status (Running/Stopped) and endpoint information.
+
+![Communications Dashboard](images/image5.png)

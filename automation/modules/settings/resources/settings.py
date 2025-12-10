@@ -3,25 +3,29 @@ from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
 
-ns = Namespace('Settings', description='Settings')
+ns = Namespace('Settings', description='Application Configuration Settings')
 app = PyAutomation()
 
 settings_model = api.model("settings_model", {
-    'logger_period': fields.Float(required=False, min=1.0, description='Logger worker period in seconds'),
-    'log_max_bytes': fields.Integer(required=False, min=1024, description='Max bytes for log file rotation'),
-    'log_backup_count': fields.Integer(required=False, min=1, description='Number of backup log files to keep'),
+    'logger_period': fields.Float(required=False, min=1.0, description='Logger worker period in seconds (>= 1.0)'),
+    'log_max_bytes': fields.Integer(required=False, min=1024, description='Max bytes for log file rotation (>= 1024)'),
+    'log_backup_count': fields.Integer(required=False, min=1, description='Number of backup log files to keep (>= 1)'),
     'log_level': fields.Integer(required=False, min=0, max=50, description='Logging level (0=NOTSET, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL)')
 })
 
 @ns.route('/update')
 class SettingsUpdateResource(Resource):
     
-    @api.doc(security='apikey')
+    @api.doc(security='apikey', description="Updates various application settings.")
+    @api.response(200, "Settings updated successfully")
+    @api.response(400, "Invalid parameter values")
     @Api.token_required(auth=True)
     @ns.expect(settings_model)
     def put(self):
         """
-        Update application settings (Logger period, Log rotation config, Log level)
+        Update settings.
+
+        Updates application configuration including logger period, log rotation settings, and logging level.
         """
         data = api.payload
         
@@ -61,12 +65,16 @@ class SettingsUpdateResource(Resource):
 @ns.route('/logger_period')
 class LoggerPeriodResource(Resource):
     
-    @api.doc(security='apikey')
+    @api.doc(security='apikey', description="Updates only the logger worker period.")
+    @api.response(200, "Logger period updated successfully")
+    @api.response(400, "Invalid logger period")
     @Api.token_required(auth=True)
     @ns.expect(settings_model)
     def put(self):
         """
-        Update logger worker period
+        Update logger period.
+
+        Updates the execution period of the logger worker.
         """
         logger_period = api.payload.get('logger_period')
         
@@ -76,4 +84,3 @@ class LoggerPeriodResource(Resource):
         app.update_logger_period(logger_period)
         
         return "Logger period updated", 200
-

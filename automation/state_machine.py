@@ -40,7 +40,11 @@ from flask_socketio import SocketIO
 
 
 class Machine(Singleton):
-    r"""Documentation here
+    r"""
+    Singleton class that manages the lifecycle and execution of all state machines in the system.
+
+    It handles the registration, starting, stopping, and configuration of state machines,
+    including Data Acquisition (DAQ) machines and OPC UA Servers.
     """
     def __init__(self):
 
@@ -54,12 +58,13 @@ class Machine(Singleton):
 
     def append_machine(self, machine:StateMachine, interval:FloatType=FloatType(1), mode:str='async'):
         r"""
-        Append a state machine to the state machine manager.
+        Registers a new state machine to be managed by the system.
 
         **Parameters:**
 
-        * **machine** (`PyHadesStateMachine`): a state machine object.
-        * **interval** (int): Interval execution time in seconds.
+        * **machine** (StateMachine): The state machine instance.
+        * **interval** (FloatType): Execution interval in seconds.
+        * **mode** (str): Execution mode ('async' or 'sync'). Default is 'async'.
         """
         if isinstance(machine, DAQ):
             
@@ -92,22 +97,30 @@ class Machine(Singleton):
 
     def drop(self, machine:StateMachine):
         r"""
-        Documentation here
+        Removes a state machine from execution.
+
+        **Parameters:**
+
+        * **machine** (StateMachine): The machine instance to remove.
         """
         self.state_worker._async_scheduler.drop(machine=machine)
 
     def get_machine(self, name:str):
         r"""
-        Returns a PyHades State Machine defined by its name.
+        Retrieves a registered state machine by its name.
 
         **Parameters:**
 
-        * **name** (str): a pyhades state machine name.
+        * **name** (str): The name of the state machine.
 
-        Usage
+        **Returns:**
+
+        * **StateMachine**: The machine instance if found, otherwise None.
+
+        **Usage:**
 
         ```python
-        >>> state_machine = app.get_machine('state_machine_name')
+        >>> machine = app.get_machine('MyMachine')
         ```
         """
 
@@ -115,14 +128,16 @@ class Machine(Singleton):
 
     def get_machines(self)->list:
         r"""
-        Returns all defined PyHades state machines.
+        Retrieves all registered state machines.
 
-        **Returns** (list)
+        **Returns:**
 
-        Usage
+        * **list**: A list of tuples containing (Machine, Interval, Mode).
+
+        **Usage:**
 
         ```python
-        >>> state_machines = app.get_machines()
+        >>> machines = app.get_machines()
         ```
         """
 
@@ -130,19 +145,23 @@ class Machine(Singleton):
 
     def get_state_machine_manager(self)->StateMachineManager:
         r"""
-        Gets state machine Manager
+        Returns the internal StateMachineManager instance.
 
-        **Returns:** StateMachineManager instance
+        **Returns:**
 
-        ```python
-        >>> state_manager = app.get_state_machine_manager()
-        ```
+        * **StateMachineManager**: The manager instance.
         """
         return self.machine_manager
 
     def start(self, machines:tuple=None):
         r"""
-        Starts statemachine worker
+        Initializes and starts the main StateMachineWorker.
+
+        It loads configuration from the database (if available) or uses the provided machines list.
+
+        **Parameters:**
+
+        * **machines** (tuple, optional): A tuple of StateMachine instances to start immediately.
         """
         # StateMachine Worker
         config = None
@@ -200,16 +219,26 @@ class Machine(Singleton):
             self.state_worker.start()
 
     def load_db_machines_config(self):
-
+        r"""
+        Reads machine configurations from the database.
+        """
         return self.machines_engine.read_config()
 
     def join(self, machine):
-
+        r"""
+        Adds a machine to the running scheduler safely.
+        """
         self.state_worker._async_scheduler.join(machine)
 
     def create_tag_internal_process_type(self, machine:StateMachine):
         r"""
-        Documentation here
+        Automatically creates CVT tags for internal process variables defined in the state machine.
+
+        This allows internal variables of a state machine to be exposed as tags in the system.
+
+        **Parameters:**
+
+        * **machine** (StateMachine): The machine instance.
         """
         from . import SEGMENT, MANUFACTURER
         cvt = CVTEngine()
@@ -237,47 +266,6 @@ class Machine(Singleton):
                     self.logger_engine.set_tag(tag=tag)
                     self.db_manager.attach(tag_name=tag_name)
                     break
-
-                # else:
-
-                #     if value.unit is None:
-
-                #         unit = "adim"
-                #         variable = "Adimentional"
-                #         tag_name = f"{machine.name.value}.{_tag_name}"
-                #         if isinstance(value, StringType):
-
-                #             data_type = "string"
-
-                #         elif isinstance(value, IntegerType):
-
-                #             data_type = "int"
-
-                #         elif isinstance(value, FloatType):
-
-                #             data_type = "float"
-
-                #         else:
-
-                #             data_type = "bool"
-
-                #         cvt.set_tag(
-                #             name=tag_name,
-                #             unit=unit,
-                #             data_type=data_type,
-                #             variable=variable,
-                #             description=f"process type variable",
-                #             segment=SEGMENT,
-                #             manufacturer=MANUFACTURER
-                #         )
-                #         # Persist Tag on Database
-                #         tag = cvt.get_tag_by_name(name=tag_name)
-                #         attr = getattr(machine, _tag_name)
-                #         attr.tag = tag
-                #         self.logger_engine.set_tag(tag=tag)
-                #         self.db_manager.attach(tag_name=tag_name)
-
-                #         break
 
         internal_variables = machine.get_read_only_process_type_variables()
         for _tag_name, value in internal_variables.items():
@@ -334,15 +322,20 @@ class Machine(Singleton):
             reload:bool=False
         ):
         r"""
-        Append alarm to the Alarm Manager
+        Creates and registers an alarm in the Alarm Manager.
 
-        **Paramters**
+        **Parameters:**
 
-        * **alarm**: (Alarm Object)
+        * **name** (str): Alarm name.
+        * **tag** (str): Associated tag name.
+        * **alarm_type** (str): Type of alarm (e.g., 'BOOL', 'HIGH', 'LOW').
+        * **trigger_value** (bool|float|int): Value that triggers the alarm.
+        * **description** (str): Alarm description.
+        * **reload** (bool): If True, forces reload/update.
 
-        **Returns**
+        **Returns:**
 
-        * **None**
+        * **tuple**: (Alarm object, Message string).
         """
         alarm, message = self.alarm_manager.append_alarm(
             name=name,
@@ -381,7 +374,8 @@ class Machine(Singleton):
 
     def __define_iad_alarms(self):
         r"""
-        Documentation here
+        Automatically defines alarms for Intelligent Anomaly Detection (IAD) features
+        (frozen data, out of range, outliers) based on tag configuration.
         """
         cvt = CVTEngine()
         tags = cvt.get_tags()
@@ -395,7 +389,7 @@ class Machine(Singleton):
     @logging_error_handler
     def stop(self):
         r"""
-        Safe stop workers execution
+        Safe stop of all state machine workers.
         """
         if self.state_worker:
 
@@ -404,7 +398,14 @@ class Machine(Singleton):
 
 class StateMachineCore(StateMachine):
     r"""
-    Documentation here
+    Base class for all state machines in PyAutomation.
+    
+    It defines the standard lifecycle states:
+    * **Start**: Initialization state.
+    * **Wait**: Waiting for data or conditions.
+    * **Run**: Main execution logic.
+    * **Reset**: Resetting variables or states.
+    * **Restart**: Restarting the machine cycle.
     """
 
     starting = State('start', initial=True)
@@ -464,9 +465,11 @@ class StateMachineCore(StateMachine):
     # State Methods
     def while_starting(self):
         r"""
-        This method is executed every machine loop when it is on Start state
-
-        Configure your state machine here
+        Executed every machine loop while in **Start** state.
+        
+        Default behavior:
+        1. Initialize buffer size.
+        2. Transition to **Wait** state.
         """
         # DEFINE DATA BUFFER
         self.set_buffer_size(size=self.buffer_size.value)
@@ -475,9 +478,11 @@ class StateMachineCore(StateMachine):
 
     def while_waiting(self):
         r"""
-        This method is executed every machine loop when it is on Wait state
-
-        It was designed to check your buffer data in self.data, if your buffer is full, so they pass to run state
+        Executed every machine loop while in **Wait** state.
+        
+        Default behavior:
+        1. Checks if internal buffers for subscribed tags are full.
+        2. If full, transitions to **Run** state.
         """
         ready_to_run = True
 
@@ -495,21 +500,27 @@ class StateMachineCore(StateMachine):
 
     def while_running(self):
         r"""
-        This method is executed every machine loop when it is on Run state
-
-        Depending on you state machine goal, write your script here
+        Executed every machine loop while in **Run** state.
+        
+        **Note:** This method should be overridden by child classes to implement custom logic.
         """
         self.criticity.value = 1
 
     def while_resetting(self):
         r"""
-        This method is executed every machine loop when it is on Reset state
+        Executed every machine loop while in **Reset** state.
+        
+        Default behavior: Transition to **Start** state.
         """
         self.send("reset_to_start")
 
     def while_restarting(self):
         r"""
-        This method is executed every machine loop when it is on Restart state
+        Executed every machine loop while in **Restart** state.
+        
+        Default behavior:
+        1. Clear buffers.
+        2. Transition to **Wait** state.
         """
         self.restart_buffer()
         self.send("restart_to_wait")
@@ -520,7 +531,15 @@ class StateMachineCore(StateMachine):
         self.sio:SocketIO = sio
 
     def put_attr(self, attr_name:str, value:StringType|FloatType|IntegerType|BooleanType|ProcessType, user:User=None):
-        
+        r"""
+        Updates an attribute of the state machine and persists it to the database.
+
+        **Parameters:**
+
+        * **attr_name** (str): Attribute name.
+        * **value**: New value.
+        * **user** (User): User performing the action.
+        """
         attr = getattr(self, attr_name)
         attr.set_value(value=value, user=user, name=attr_name)
         kwargs = {
@@ -532,7 +551,13 @@ class StateMachineCore(StateMachine):
 
     def add_process_variable(self, name:str, tag:Tag, read_only:bool=False):
         r"""
-        Documentation here
+        Registers a process variable (ProcessType) dynamically.
+
+        **Parameters:**
+
+        * **name** (str): Variable name.
+        * **tag** (Tag): Associated tag.
+        * **read_only** (bool): If True, the variable cannot be modified by the machine logic (input only).
         """
         
         props = self.__dict__
@@ -543,7 +568,11 @@ class StateMachineCore(StateMachine):
 
     def get_process_variables(self):
         r"""
-        Documentation here
+        Retrieves all ProcessType variables defined in the machine.
+
+        **Returns:**
+
+        * **dict**: Serialized process variables.
         """
 
         result = dict()
@@ -559,7 +588,15 @@ class StateMachineCore(StateMachine):
 
     def get_process_variable(self, name:str):
         r"""
-        Documentation here
+        Retrieves a specific ProcessType variable by name.
+
+        **Parameters:**
+
+        * **name** (str): Variable name.
+
+        **Returns:**
+
+        * **dict**: Serialized process variable.
         """
         props = self.__dict__
         if name in props.items():
@@ -572,32 +609,29 @@ class StateMachineCore(StateMachine):
     @validate_types(size=int, output=None)
     def set_buffer_size(self, size:int, user:User=None)->None:
         r"""
-        Set data buffer size
+        Sets the size of the data buffer for input variables.
 
-        # Parameters
+        **Parameters:**
 
-        - *size:* [int] buffer size
+        * **size** (int): New buffer size.
         """
         self.buffer_size.value = size
         self.restart_buffer()
 
     def restart_buffer(self):
         r"""
-        Restart Buffer
+        Clears and reinitializes data buffers for all subscribed tags.
         """
         self.data = {tag_name: Buffer(size=self.buffer_size.value, roll=self.buffer_roll_type.value) for tag_name, _ in self.get_subscribed_tags().items()}
 
     @validate_types(output=dict)
     def get_subscribed_tags(self)->dict:
-        r"""Documentation here
+        r"""
+        Returns tags that this machine is subscribed to (inputs).
 
-        # Parameters
+        **Returns:**
 
-        - 
-
-        # Returns
-
-        - 
+        * **dict**: Dictionary of subscribed ProcessType variables.
         """
         result = dict()
         props = self.__dict__
@@ -614,15 +648,12 @@ class StateMachineCore(StateMachine):
     
     @validate_types(output=dict)
     def get_not_subscribed_tags(self)->dict:
-        r"""Documentation here
+        r"""
+        Returns ProcessType variables that are waiting for a tag subscription.
 
-        # Parameters
+        **Returns:**
 
-        - 
-
-        # Returns
-
-        - 
+        * **dict**: Dictionary of unsubscribed variables.
         """
         result = dict()
         props = self.__dict__
@@ -639,10 +670,19 @@ class StateMachineCore(StateMachine):
     
     def subscribe_to(self, tag:Tag, default_tag_name:str=None):
         r"""
+        Subscribes the machine to a tag.
 
-        # Parameters
+        If `default_tag_name` is provided, it attempts to map the tag to that specific internal variable.
+        Otherwise, it automatically maps to a matching variable or creates a new one.
 
-        - *tags:* [list] 
+        **Parameters:**
+
+        * **tag** (Tag): The tag to subscribe.
+        * **default_tag_name** (str, optional): Internal variable name target.
+
+        **Returns:**
+
+        * **tuple**: (Success bool, Message str) or True/False.
         """
         if default_tag_name and tag:    # Designed to default tags into State Machine
 
@@ -692,15 +732,13 @@ class StateMachineCore(StateMachine):
 
     @validate_types(tag=Tag, output=None|bool)
     def unsubscribe_to(self, tag:Tag=None, default_tag_name:str=None):
-        r"""Documentation here
+        r"""
+        Unsubscribes the machine from a tag.
 
-        # Parameters
+        **Parameters:**
 
-        - 
-
-        # Returns
-
-        - 
+        * **tag** (Tag, optional): The tag object to unsubscribe.
+        * **default_tag_name** (str, optional): The internal variable name.
         """
         if tag:
 
@@ -726,7 +764,9 @@ class StateMachineCore(StateMachine):
 
     @validate_types(name=str, output=bool)
     def process_type_exists(self, name:str)->bool:
-
+        r"""
+        Checks if a ProcessType variable exists in the machine.
+        """
         props = self.__dict__
         if name in props:
 
@@ -738,7 +778,9 @@ class StateMachineCore(StateMachine):
     
     @validate_types(output=dict)
     def get_internal_process_type_variables(self)->dict:
-
+        r"""
+        Returns ProcessType variables that are NOT read-only (internal state variables).
+        """
         result = dict()
         props = self.__dict__
         
@@ -757,7 +799,9 @@ class StateMachineCore(StateMachine):
         return result
     
     def get_read_only_process_type_variables(self)->dict:
-
+        r"""
+        Returns ProcessType variables that ARE read-only (inputs).
+        """
         result = dict()
         props = self.__dict__
         
@@ -782,12 +826,15 @@ class StateMachineCore(StateMachine):
         value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|Volume|MassFlow|Density|Percentage|Adimentional, 
         timestamp:datetime):
         r"""
-        This method provide an interface to CVT to notify if tag value has change
+        Callback method called by the CVT when a subscribed tag changes its value.
         
-        # Parameters
+        It updates the internal variable value and timestamps.
 
-        - *tag:* [Tag] tag Object
-        - *value:* [int|float|bool] tag value
+        **Parameters:**
+
+        * **tag** (str): Tag name.
+        * **value**: New value object (Process Variable).
+        * **timestamp**: Timestamp of the change.
         """
         subscribed_to = self.get_subscribed_tags()
 
@@ -807,6 +854,9 @@ class StateMachineCore(StateMachine):
 
     @logging_error_handler
     def attach(self, machine, tag:Tag):
+        r"""
+        Attaches the machine as an observer to a tag in the CVT.
+        """
         cvt = CVTEngine()
         def attach_observer(machine, tag:Tag):
 
@@ -826,7 +876,16 @@ class StateMachineCore(StateMachine):
     @validate_types(to=str, user=User|type(None), output=tuple)
     def transition(self, to:str, user:User=None):
         r"""
-        Documentation here
+        Executes a manual transition to a target state.
+
+        **Parameters:**
+
+        * **to** (str): Target state name.
+        * **user** (User, optional): User requesting the transition.
+
+        **Returns:**
+
+        * **tuple**: (Self, Message) if successful, (None, Error) otherwise.
         """
         try:
             _from = self.current_state.name.lower()
@@ -848,17 +907,10 @@ class StateMachineCore(StateMachine):
     def get_interval(self)->int|float:
         r"""
         Gets overall state machine interval
-
+        
         **Returns**
-
-        * **(float)**
-
-        Usage
-
-        ```python
-        >>> machine = app.get_machine(name)
-        >>> interval = machine.get_interval()
-        ```
+        
+        * **(float)** execution interval in seconds.
         """
         return self.machine_interval.value
 
@@ -869,19 +921,15 @@ class StateMachineCore(StateMachine):
 
         **Parameters**
 
-        * **interval:** (float) overal machine interval in seconds
-
-        Usage
-
-        ```python
-        >>> machine = app.get_machine(name)
-        >>> machine.set_interval(0.5)
-        ```
+        * **interval:** (float) execution interval in seconds.
         """        
         self.machine_interval = interval
 
     def get_allowed_actions(self):
-        r"""Documentation here
+        r"""
+        Returns a list of allowed target states for transitions from the current state.
+        
+        Used for UI controls.
         """
         result = set()
 
@@ -909,11 +957,7 @@ class StateMachineCore(StateMachine):
 
     def _get_active_transitions(self):
         r"""
-        Gets allowed transitions based on the current state
-
-        **Returns**
-
-        * **(list)**
+        Gets allowed transitions based on the current state.
         """
         result = list()
 
@@ -930,7 +974,7 @@ class StateMachineCore(StateMachine):
 
     def _activate_triggers(self):
         r"""
-        Allows to execute the on_ method in transitions when it's necesary
+        Checks transition triggers and executes them if conditions are met.
         """
         transitions = self._get_active_transitions()
 
@@ -950,7 +994,9 @@ class StateMachineCore(StateMachine):
 
     def loop(self):
         r"""
-        This method is executed by state machine worker every state machine interval to execute the correct method according its state
+        Main execution loop called by the worker thread.
+        
+        It dynamically calls the `while_<state>` method corresponding to the current state.
         """
         method_name = f"while_{self.current_state.value}"
 
@@ -962,29 +1008,18 @@ class StateMachineCore(StateMachine):
     @validate_types(output=list)
     def get_states(self)->list[str]:
         r"""
-        Gets a list of state machine's names
+        Gets a list of all defined state names.
 
         **Returns**
 
-        * **(list)**
-
-        Usage
-
-        ```python
-        >>> machine = app.get_machine(name)
-        >>> states = machine.get_states()
-        ```
+        * **list**: List of state names strings.
         """
         return [state.value for state in self.states]
 
     @validate_types(output=dict)
     def get_serialized_models(self)->dict:
         r"""
-        Gets class attributes defined by [model types]()
-
-        **Returns**
-
-        * **(dict)**
+        Serializes the machine's model attributes (properties defined with PyAutomation types).
         """
         result = dict()
         props = self.__dict__
@@ -1006,11 +1041,11 @@ class StateMachineCore(StateMachine):
     @validate_types(output=dict)
     def serialize(self)->dict:
         r"""
-        It provides the values of attributes defined with PyAutomation Models
+        Serializes the entire state machine state and configuration.
 
-        # Returns
+        **Returns**
 
-        - dict: Serialized state machine
+        * **dict**: Serialized machine data.
         """
         result = {
             "state": self.current_state.value,
@@ -1025,56 +1060,56 @@ class StateMachineCore(StateMachine):
     # TRANSITIONS
     def on_start_to_wait(self):
         r"""
-        It's executed one time before enter to Wait state from Sleep state 
+        Transition action: Start -> Wait.
         """
         self.last_state = "start"
         self.criticity.value = 1
 
     def on_wait_to_run(self):
         r"""
-        It's executed one time before enter to Run state from Wait state 
+        Transition action: Wait -> Run.
         """
         self.last_state = "wait"
         self.criticity.value = 1
 
     def on_wait_to_restart(self):
         r"""
-        It's executed one time before enter to Restart state from Wait state 
+        Transition action: Wait -> Restart.
         """
         self.last_state = "wait"
         self.criticity.value = 5
 
     def on_wait_to_reset(self):
         r"""
-        It's executed one time before enter to Reset state from Wait state 
+        Transition action: Wait -> Reset.
         """
         self.last_state = "wait"
         self.criticity.value = 5
 
     def on_run_to_restart(self):
         r"""
-        It's executed one time before enter to Restart state from Run state 
+        Transition action: Run -> Restart.
         """
         self.last_state = "run"
         self.criticity.value = 5
 
     def on_run_to_reset(self):
         r"""
-        It's executed one time before enter to Reset state from Run state 
+        Transition action: Run -> Reset.
         """
         self.last_state = "run"
         self.criticity.value = 5
 
     def on_reset_to_start(self):
         r"""
-        It's executed one time before enter to Start state from Reset state 
+        Transition action: Reset -> Start.
         """
         self.last_state = "reset"
         self.criticity.value = 2
 
     def on_restart_to_wait(self):
         r"""
-        It's executed one time before enter to Wait state from Restart state 
+        Transition action: Restart -> Wait.
         """
         self.last_state = "restart"
         self.criticity.value = 2
@@ -1113,7 +1148,9 @@ class StateMachineCore(StateMachine):
 
 class DAQ(StateMachineCore):
     r"""
-    Documentation here
+    Data Acquisition (DAQ) State Machine.
+    
+    Specialized state machine for polling OPC UA tags at a specific interval.
     """    
 
     def __init__(
@@ -1139,13 +1176,16 @@ class DAQ(StateMachineCore):
     # State Methods
     def while_waiting(self):
         r"""
-        This method is executed every machine loop when it is on Wait state
-
-        It was designed to check your buffer data in self.data, if your buffer is full, so they pass to run state
+        Executed in Wait state. DAQ immediately transitions to Run.
         """
         self.send('wait_to_run')
 
     def while_running(self):
+        r"""
+        Executed in Run state.
+        
+        Reads values from OPC UA using the client manager and updates the CVT and DAS buffers.
+        """
         from . import TIMEZONE, MANUFACTURER, SEGMENT
         for tag_name, process_type in self.get_subscribed_tags().items():
             tag = process_type.tag
@@ -1173,14 +1213,16 @@ class DAQ(StateMachineCore):
     # Auxiliaries Methods
     def set_opcua_client_manager(self, manager:OPCUAClientManager):
         r"""
-        Documentation here
+        Sets the OPC UA Client Manager reference.
         """
         self.opcua_client_manager = manager
 
 
 class OPCUAServer(StateMachineCore):
     r"""
-    Documentation here
+    OPC UA Server State Machine.
+    
+    Manages the lifecycle of an embedded OPC UA Server, exposing CVT tags, alarms, and machine states.
     """    
 
     def __init__(
@@ -1209,7 +1251,10 @@ class OPCUAServer(StateMachineCore):
     @logging_error_handler
     def while_starting(self):
         r"""
-        Documentation here
+        Executed in Start state.
+        
+        Initializes the OPC UA Server, configures endpoints, creates namespaces, and populates the address space
+        with CVT tags, Alarms, and Engines folders.
         """
         self.server = Server()
         self.server.set_endpoint(f'opc.tcp://0.0.0.0:{self.port}/OPCUAServer/')
@@ -1236,13 +1281,15 @@ class OPCUAServer(StateMachineCore):
 
     def while_waiting(self):
         r"""
-        Documentation here
+        Executed in Wait state. Transitions to Run.
         """
         self.send('wait_to_run')
 
     def while_running(self):
         r"""
-        Documentation here
+        Executed in Run state.
+        
+        Continuously updates the values of tags, alarms, and engines in the OPC UA address space.
         """
         self.__update_tags()
         self.__update_alarms()
@@ -1250,13 +1297,13 @@ class OPCUAServer(StateMachineCore):
 
     def while_resetting(self):
         r"""
-        Documentation here
+        Executed in Reset state. Transitions back to Starting to restart the server.
         """
         self.send('reset_to_starting')
 
     def __set_engines(self):
         r"""
-        documentation here
+        Initializes OPC UA nodes for all registered state machines (Engines).
         """
         from . import MANUFACTURER
         segment = "Engines"
@@ -1329,7 +1376,7 @@ class OPCUAServer(StateMachineCore):
 
     def __set_alarms(self):
         r"""
-        Documentation here
+        Initializes OPC UA nodes for all defined alarms.
         """
         from . import MANUFACTURER
         alarms = self.alarm_manager.get_alarms()
@@ -1384,7 +1431,7 @@ class OPCUAServer(StateMachineCore):
 
     def __set_cvt(self):
         r"""
-        Documentation here
+        Initializes OPC UA nodes for all CVT tags.
         """
         from . import MANUFACTURER
         
@@ -1461,7 +1508,7 @@ class OPCUAServer(StateMachineCore):
 
     def __update_tags(self):
         r"""
-        Documentation here
+        Updates the values of CVT tags in the OPC UA address space.
         """
         for tag in self.cvt.get_tags():
             
@@ -1487,7 +1534,7 @@ class OPCUAServer(StateMachineCore):
 
     def __update_alarms(self):
         r"""
-        Documentation here
+        Updates the state of alarms in the OPC UA address space.
         """
         alarms = self.alarm_manager.get_alarms()
         segment = "Alarms"
@@ -1521,7 +1568,7 @@ class OPCUAServer(StateMachineCore):
 
     def __update_engines(self):
         r"""
-        Documentation here
+        Updates the state of engines in the OPC UA address space.
         """
         segment = "Engines"
         engines = self.machine.machine_manager.get_machines()
@@ -1595,7 +1642,11 @@ class OPCUAServer(StateMachineCore):
 
 class AutomationStateMachine(StateMachineCore):
     r"""
-    Documentation here
+    Extended State Machine with additional states for testing and sleeping.
+    
+    States:
+    * **Test**: Testing or simulation mode.
+    * **Sleep**: Idle or low-power mode.
     """
     # States
     testing = State('test')
@@ -1613,20 +1664,20 @@ class AutomationStateMachine(StateMachineCore):
     
     def while_testing(self):
         r"""
-        This method is executed every machine loop when it is on Test state
+        Executed in Test state.
         """
         self.criticity.value = 3
 
     def while_sleeping(self):
         r"""
-        This method is executed every machine loop when it is on Sleep state
+        Executed in Sleep state.
         """
         self.criticity.value = 5
 
     # Transitions
     def on_test_to_restart(self):
         r"""
-        It's executed one time before enter to Restart state from Test state 
+        Transition: Test -> Restart.
         """
         self.last_state = "test"
         self.criticity.value = 4
@@ -1635,7 +1686,7 @@ class AutomationStateMachine(StateMachineCore):
 
     def on_test_to_reset(self):
         r"""
-        It's executed one time before enter to Reset state from Test state 
+        Transition: Test -> Reset.
         """
         self.last_state = "test"
         self.criticity.value = 4
@@ -1644,7 +1695,7 @@ class AutomationStateMachine(StateMachineCore):
 
     def on_sleep_to_restart(self):
         r"""
-        It's executed one time before enter to Restart state from Sleep state 
+        Transition: Sleep -> Restart.
         """
         self.last_state = "sleep"
         self.criticity.value = 4
@@ -1653,7 +1704,7 @@ class AutomationStateMachine(StateMachineCore):
 
     def on_sleep_to_reset(self):
         r"""
-        It's executed one time before enter to Reset state from Sleep state 
+        Transition: Sleep -> Reset.
         """
         self.last_state = "sleep"
         self.criticity.value = 4

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
-"""pyhades/managers/alarms.py
-This module implements Alarm Manager.
+"""automation/managers/alarms.py
+
+This module implements the Alarm Manager, which is responsible for managing alarm definitions,
+handling alarm events, and interacting with the Current Value Table (CVT) and Database.
 """
 from datetime import datetime
 import queue
@@ -16,7 +18,10 @@ from flask_socketio import SocketIO
 
 class AlarmManager(Singleton):
     r"""
-    This class implements all definitions for the Alarm Management System
+    Singleton class that manages all alarms in the system.
+
+    It handles the creation, update, deletion, and retrieval of alarms.
+    It also validates trigger conditions and manages communication with the frontend via SocketIO.
     """
 
     def __init__(self):
@@ -27,7 +32,11 @@ class AlarmManager(Singleton):
 
     def get_queue(self)->queue.Queue:
         r"""
-        Documentation here
+        Retrieves the internal tag queue used for observer notifications.
+
+        **Returns:**
+
+        * **queue.Queue**: The queue instance.
         """
         return self._tag_queue
 
@@ -48,15 +57,26 @@ class AlarmManager(Singleton):
             sio:SocketIO|None=None
         )->tuple[Alarm, str]:
         r"""
-        Append alarm to the Alarm Manager
+        Creates and registers a new alarm in the manager.
 
-        **Paramters**
+        **Parameters:**
 
-        * **alarm**: (Alarm Object)
+        * **name** (str): Alarm name.
+        * **tag** (str): Associated Tag name.
+        * **type** (str): Alarm type (BOOL, HH, H, L, LL).
+        * **trigger_value** (bool|float): Value that triggers the alarm.
+        * **description** (str, optional): Alarm description.
+        * **identifier** (str, optional): Unique ID.
+        * **state** (str, optional): Initial state.
+        * **timestamp** (str, optional): Last trigger timestamp.
+        * **ack_timestamp** (str, optional): Last acknowledgment timestamp.
+        * **user** (User, optional): User creating the alarm.
+        * **reload** (bool, optional): If reloading from DB.
+        * **sio** (SocketIO, optional): SocketIO instance for real-time updates.
 
-        **Returns**
+        **Returns:**
 
-        * **None**
+        * **tuple[Alarm, str]**: The created Alarm object and a status message.
         """
         # Check alarm name duplicated
         alarm = self.get_alarm_by_name(name)
@@ -108,20 +128,21 @@ class AlarmManager(Singleton):
             user:User=None
             )->tuple[Alarm, str]:
         r"""
-        Updates alarm attributes
+        Updates an existing alarm configuration.
 
-        **Parameters**
+        **Parameters:**
 
-        * **id** (int).
-        * **name** (str)[Optional]:
-        * **tag** (str)[Optional]:
-        * **description** (str)[Optional]:
-        * **type** (str)[Optional]:
-        * **trigger** (float)[Optional]:
+        * **id** (str): Alarm identifier.
+        * **name** (str, optional): New name.
+        * **tag** (str, optional): New tag name.
+        * **description** (str, optional): New description.
+        * **alarm_type** (str, optional): New alarm type.
+        * **trigger_value** (float, optional): New trigger value.
+        * **user** (User, optional): User performing the update.
 
-        **Returns**
+        **Returns:**
 
-        * **alarm** (dict) Alarm Object jsonable
+        * **tuple[Alarm, str]**: The updated Alarm object and a status message.
         """
         alarm = self.get_alarm(id=id)
         if name:
@@ -162,11 +183,12 @@ class AlarmManager(Singleton):
     @set_event(message=f"Deleted", classification="Alarm", priority=3, criticity=5)
     def delete_alarm(self, id:str, user:User=None):
         r"""
-        Removes alarm
+        Removes an alarm from the manager and takes it out of service.
 
-        **Paramters**
+        **Parameters:**
 
-        * **id** (int): Alarm ID
+        * **id** (str): Alarm ID.
+        * **user** (User, optional): User performing the deletion.
         """
         if id in self._alarms:
 
@@ -178,15 +200,15 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def get_alarm(self, id:str)->Alarm:
         r"""
-        Gets alarm from the Alarm Manager by id
+        Retrieves an alarm by its ID.
 
-        **Paramters**
+        **Parameters:**
 
-        * **id**: (int) Alarm ID
+        * **id** (str): Alarm ID.
 
-        **Returns**
+        **Returns:**
 
-        * **alarm** (Alarm Object)
+        * **Alarm**: The alarm object if found.
         """
 
         if id in self._alarms:
@@ -196,15 +218,15 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def get_alarm_by_name(self, name:str)->Alarm:
         r"""
-        Gets alarm from the Alarm Manager by name
+        Retrieves an alarm by its name.
 
-        **Paramters**
+        **Parameters:**
 
-        * **name**: (str) Alarm name
+        * **name** (str): Alarm name.
 
-        **Returns**
+        **Returns:**
 
-        * **alarm** (Alarm Object)
+        * **Alarm**: The alarm object if found.
         """
         for id, alarm in self._alarms.items():
 
@@ -215,15 +237,15 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def get_alarms_by_tag(self, tag:str)->dict:
         r"""
-        Gets all alarms associated to some tag
+        Retrieves all alarms associated with a specific tag (by name).
 
-        **Parameters**
+        **Parameters:**
 
-        * **tag**: (str) tag name binded to alarm
+        * **tag** (str): Tag name.
 
-        **Returns**
+        **Returns:**
 
-        * **alarm** (dict) of alarm objects
+        * **dict**: A dictionary of {id: Alarm} objects.
         """
         alarms = dict()
         for id, alarm in self._alarms.items():
@@ -237,15 +259,15 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def get_alarm_by_tag(self, tag:str)->list[Alarm]:
         r"""
-        Gets alarm associated to some tag
+        Retrieves a list of alarms associated with a specific tag.
 
-        **Parameters**
+        **Parameters:**
 
-        * **tag**: (str) tag name binded to alarm
+        * **tag** (str): Tag name.
 
-        **Returns**
+        **Returns:**
 
-        * **alarm** (list) of alarm objects
+        * **list[Alarm]**: List of Alarm objects.
         """
         alarms = list()
         for _, alarm in self._alarms.items():
@@ -259,18 +281,26 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def get_alarms(self)->dict:
         r"""
-        Gets all alarms
+        Retrieves all registered alarms.
 
-        **Returns**
+        **Returns:**
 
-        * **alarms**: (dict) Alarm objects
+        * **dict**: Dictionary of all Alarm objects.
         """
         return self._alarms
 
     @logging_error_handler
     def get_lasts_active_alarms(self, lasts:int=None)->list:
         r"""
-        Documentation here
+        Retrieves the most recent active alarms.
+
+        **Parameters:**
+
+        * **lasts** (int, optional): Number of alarms to retrieve.
+
+        **Returns:**
+
+        * **list**: List of serialized active alarms sorted by timestamp.
         """
         original_list = [alarm.serialize() for _, alarm in self.get_alarms().items()]
         filtered_list = [elem for elem in original_list if elem['state']['alarm_status'].lower()=="active"]
@@ -286,7 +316,11 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def serialize(self)->list:
         r"""
-        Documentation here
+        Serializes all alarms managed by this instance.
+
+        **Returns:**
+
+        * **list**: List of serialized alarm dictionaries.
         """
 
         return [alarm.serialize() for _, alarm in self._alarms.items()]
@@ -294,11 +328,11 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def get_tag_alarms(self)->list:
         r"""
-        Gets all tag alarms defined
+        Retrieves a list of Tags that have alarms associated with them.
 
-        **Returns**
+        **Returns:**
 
-        * **tags_alarms**: (list) alarm tags
+        * **list**: List of Tag objects.
         """
         result = [_alarm.tag_alarm for id, _alarm in self.get_alarms().items()]
 
@@ -307,11 +341,11 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def tags(self)->list:
         r"""
-        Gets all tags variables binded into alarms
+        Retrieves a unique list of Tag names bound to alarms.
 
-        **Returns**
+        **Returns:**
 
-        * **tags**: (list)
+        * **list**: List of Tag names.
         """
         result = set([_alarm.tag for id, _alarm in self.get_alarms().items()])
 
@@ -320,7 +354,18 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def __check_trigger_values(self, name:str, tag:str, type:str, trigger_value:float)->None|str:
         r"""
-        Documentation here
+        Validates trigger values to prevent logical conflicts (e.g., Low limit > High limit).
+
+        **Parameters:**
+
+        * **name** (str): Name of the new/updated alarm.
+        * **tag** (str): Tag name.
+        * **type** (str): Alarm type.
+        * **trigger_value** (float): Trigger threshold.
+
+        **Returns:**
+
+        * **None|str**: None if valid, or an error message string if invalid.
         """
         alarms = self.get_alarm_by_tag(tag=tag)
 
@@ -377,7 +422,15 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def filter_by(self, **fields):
         r"""
-        Documentation here
+        Filters historical alarms via the database model.
+
+        **Parameters:**
+
+        * **fields**: Filtering criteria (name, state, timestamp, etc.).
+
+        **Returns:**
+
+        * **tuple**: (Result data, HTTP status code 200).
         """
 
         return AlarmSummary.filter_by(**fields), 200
@@ -385,7 +438,15 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def get_lasts(self, lasts:int=10):
         r"""
-        Documentation here
+        Retrieves the last N alarm summary records.
+
+        **Parameters:**
+
+        * **lasts** (int): Number of records.
+
+        **Returns:**
+
+        * **tuple**: (List of records, HTTP status code 200).
         """
 
         return AlarmSummary.read_lasts(lasts=lasts), 200
@@ -393,11 +454,11 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def summary(self)->dict:
         r"""
-        Summarizes all Alarm Manager
+        Generates a summary of the current alarm manager state.
 
-        **Returns**
+        **Returns:**
 
-        * **summary**: (dict)
+        * **dict**: Summary including total alarms, alarm names, and associated tags.
         """
         result = dict()
         alarms = [_alarm.name for id, _alarm in self.get_alarms().items()]
@@ -410,7 +471,13 @@ class AlarmManager(Singleton):
 
     @logging_error_handler
     def attach(self, alarm_name:str):
+        r"""
+        Attaches a tag observer to a specific alarm's tag.
 
+        **Parameters:**
+
+        * **alarm_name** (str): Name of the alarm.
+        """
         def attach_observer(entity):
 
             _tag = entity.tag
@@ -424,12 +491,13 @@ class AlarmManager(Singleton):
     @logging_error_handler
     def execute(self, tag_name:str):
         r"""
-        Execute update state value of alarm if the value store in cvt for tag
-        reach alarm threshold values
+        Evaluates alarm conditions for a given tag based on its current value.
+        
+        Also handles auto-unshelving of alarms if their shelved duration has expired.
 
-        **Paramters**
+        **Parameters:**
 
-        * **tag**: (str) Tag in CVT
+        * **tag_name** (str): Name of the tag to evaluate.
         """
         value = self.tag_engine.get_value_by_name(tag_name=tag_name)['value']
 

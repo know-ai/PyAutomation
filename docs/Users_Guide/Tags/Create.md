@@ -1,100 +1,101 @@
-# Create TAG
-- In the creation function, you will have the options:
-    - Assign a name 
-    - Select the variable type (whether it's Pressure, Mass Flow, or Density), 
-    - Specify the corresponding units
-    - Define the data type of the units 
-    - Provide a description (Optional)
-    - Set the Display Name (Optional)
-    - Configure the OPC (Optional)
-    - Node
-    - Scan Time 
-    - Dead Band
+# Creating a Tag
 
+The creation of a new tag involves defining its identity, physical properties, and communication settings. Follow the steps below to configure a new tag in the PyAutomation dashboard.
 
-## Assign a name
-For the creation of Tags, we can assign a name which must be unique. If the name already exists, the tag cannot be created.
+## Step-by-Step Configuration
 
-![alt text](images/image-1.png)
+### 1. Assign a Name
 
-We enter the Tag name.
+The **Name** is the unique identifier for the tag within the system.
 
-![alt text](images/image-2.png)
+- **Requirement**: Must be unique across the entire project.
+- **Action**: Enter a descriptive name (e.g., `FIT-101`, `Tank_Level`).
 
-## Variable Type
-We can assign the variable type that identifies the Tag. If we select the variable type, a list of available variables is displayed.
+![Tag Name Entry](images/image-1.png)
+![Tag Name Filled](images/image-2.png)
 
-![alt text](images/image-3.png)
+### 2. Variable Type
 
-We select the Variable Type.
+Select the physical phenomenon that this tag represents. This selection filters the available Engineering Units.
 
-![alt text](images/image-4.png)
+- **Examples**: Pressure, Mass Flow, Temperature, Density.
 
-## Units
-When we select the variable type, the units available for selection will be related to the previously chosen variable type.
+![Variable Type Selection](images/image-3.png)
+![Variable Type Selected](images/image-4.png)
 
-![alt text](images/image-5.png)
+### 3. Engineering Units
 
-We select the units.
+Choose the unit of measurement for the tag. The list is populated based on the selected **Variable Type**.
 
-![alt text](images/image-6.png)
+- **Example**: If "Temperature" is selected, options might include `°C`, `°F`, `K`.
 
-## DataType
-We can specify the data type of the Tag through a list that displays all the available data types we can select.
+![Unit Selection](images/image-5.png)
+![Unit Selected](images/image-6.png)
 
-![alt text](images/image-7.png)
+### 4. Data Type
 
-We select the DataType.
+Specify the computer data format for the tag's value.
 
-![alt text](images/image-8.png)
+- **Options**: `Float`, `Integer`, `Boolean`, `String`.
 
-## Description (Optional)
-We can write a description about the Tag, but this is a optional field
+![Data Type Selection](images/image-7.png)
+![Data Type Selected](images/image-8.png)
 
-![alt text](images/image-9.png)
+### 5. Description (Optional)
 
-## Display name
-We can set a display name to easily recognize the Tag.
+Provide a human-readable description to add context to the tag.
 
-![alt text](images/image-10.png)
+- **Usage**: "Feedwater Inlet Temperature".
 
-## OPC
-We can set OPCUA Server.
+![Description Entry](images/image-9.png)
 
-![alt text](images/image-11.png)
+### 6. Display Name (Optional)
 
-## Node
-We can set node
+Set a friendly name for visualization purposes on dashboards, which can differ from the unique system ID.
 
-![alt text](images/image-25.png)
+![Display Name Entry](images/image-10.png)
 
-## Scan Time
-We can set Scan Time
+### 7. OPC UA Configuration (Optional)
 
-![alt text](images/image-26.png)
+If this tag interacts with an OPC UA server, configure the connection details.
 
-## Dead - Band
-We can set Dead - Band
+- **OPC UA Address**: The endpoint URL of the OPC UA server.
+  ![OPC Configuration](images/image-11.png)
 
-![alt text](images/image-27.png)
+- **Node ID**: The specific node identifier within the OPC UA address space (e.g., `ns=2;s=Device1.Temperature`).
+  ![Node ID Configuration](images/image-25.png)
 
-Note: The units in the "Dead-band" field will match the units selected earlier in the "Units" field.
+### 8. Scan Time
 
-So when we have all the fields ready we can click on the button "Create".
+Define the frequency at which the system reads or updates the tag value (in milliseconds).
 
-![alt text](images/image-12.png)
+- **Usage**: Lower values provide higher resolution but increase system load.
 
-Once we click the create button, we can see our newly created tag in the dashboard.
+![Scan Time Configuration](images/image-26.png)
 
-![alt text](images/image-13.png)
+### 9. Deadband
 
-## Export
-Additionally, we can export the dashboard by clicking the "Export" button, which will download an Excel file.
+Set a threshold for value changes. Updates are only processed if the value changes by more than this amount.
 
-![alt text](images/image-14.png)
+- **Benefit**: Reduces database noise and network traffic.
+- **Note**: The unit matches the **Engineering Unit** selected in Step 3.
 
-![alt text](images/image-15.png)
+![Deadband Configuration](images/image-27.png)
 
-![alt text](images/image-16.png)
+### 10. Finalize Creation
 
+Review all configured fields. Click the **Create** button to save the new tag.
 
+![Create Button](images/image-12.png)
+
+Upon successful creation, the tag will appear in the main Tags Dashboard.
+
+![Tags Dashboard](images/image-13.png)
+
+## Exporting Tag List
+
+You can export the current list of tags to an Excel file for external documentation or backup purposes by clicking the **Export** button.
+
+![Export Button](images/image-14.png)
+![Export Process](images/image-15.png)
+![Export Result](images/image-16.png)

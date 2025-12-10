@@ -1,4 +1,8 @@
-Version 1.0.0
+# Version 1.1.5
+
+> **Note:** The official project roadmap has moved to the documentation. Please see [Roadmap](docs/roadmap.md) for the most up-to-date status.
+
+## Completed Features
 
 - [x] State Machines
   - [x] Sync Machines
@@ -6,7 +10,7 @@ Version 1.0.0
 - [x] CVT (Current Value Tables, Tags Repository)
 - [x] Alarms (Alarm repository)
 - [x] DataLogger (Data Persistency)
-- [ ] Workers
+- [x] Workers
   - [x] DataLogger
   - [x] Alarms
   - [x] State Machines
@@ -16,14 +20,21 @@ Version 1.0.0
   - [x] Alarms
 - [x] Alarm Management System
   - [x] DBModels (Persistency)
-- [ ] Industrial Protocols
+- [x] Industrial Protocols
   - [x] OPCUA (Client - Server)
-  - [ ] Modbus TCP (Client - Server)
-  - [ ] OPC DA (Client - Server)
 - [x] State Machine for each Tags, to separate scan time.
 - [x] Data Filtering
-- [ ] Instrument Anomaly Detection
+- [x] Instrument Anomaly Detection
   - [x] Outliers
   - [x] Out of Range
-  - [ ] Sensor Drift
   - [x] Data Frozen
+
+## In Progress / Planned (See docs/roadmap.md)
+
+- [ ] Industrial Protocols
+  - [ ] Modbus TCP (Client - Server)
+  - [ ] OPC DA (Client - Server)
+- [ ] Instrument Anomaly Detection
+  - [ ] Sensor Drift
+- [ ] Configuration Page with React
+- [ ] Migrate Flask to FastAPI

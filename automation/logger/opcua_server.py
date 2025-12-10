@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""pyhades/logger/machines.py
+"""automation/logger/opcua_server.py
+
+This module implements the OPC UA Server Logger, responsible for persisting
+OPC UA Server node configurations and access rights.
 """
 from ..dbmodels import OPCUAServer
 from .core import BaseEngine, BaseLogger
@@ -7,6 +10,9 @@ from ..utils.decorators import db_rollback
 
 
 class OPCUAServerLogger(BaseLogger):
+    r"""
+    Logger class specialized for OPC UA Server persistence.
+    """
 
     def __init__(self):
 
@@ -20,7 +26,13 @@ class OPCUAServerLogger(BaseLogger):
             access_type:str="Read"
             ):
         r"""
-        Documentation here
+        Creates a new OPC UA Node configuration in the database.
+
+        **Parameters:**
+
+        * **name** (str): Node name.
+        * **namespace** (str): Node ID/Namespace.
+        * **access_type** (str): Access rights ("Read", "Write", "ReadWrite").
         """
         if not self.check_connectivity():
 
@@ -38,7 +50,18 @@ class OPCUAServerLogger(BaseLogger):
         namespace:str,
         access_type:str
         ):
+        r"""
+        Updates the access type for a specific OPC UA Node.
 
+        **Parameters:**
+
+        * **namespace** (str): Node ID/Namespace.
+        * **access_type** (str): New access type.
+
+        **Returns:**
+
+        * **OPCUAServer**: The updated model instance.
+        """
         if not self.check_connectivity():
             
             return None    
@@ -53,6 +76,9 @@ class OPCUAServerLogger(BaseLogger):
     
     @db_rollback
     def read_all(self):
+        r"""
+        Retrieves all OPC UA Server nodes.
+        """
         if not self.check_connectivity():
 
             return list()
@@ -61,6 +87,9 @@ class OPCUAServerLogger(BaseLogger):
     
     @db_rollback
     def read_by_namespace(self, namespace:str):
+        r"""
+        Retrieves an OPC UA Server node by its namespace.
+        """
         if not self.check_connectivity():
 
             return list()
@@ -70,8 +99,7 @@ class OPCUAServerLogger(BaseLogger):
 
 class OPCUAServerLoggerEngine(BaseEngine):
     r"""
-    OPCUA Server logger Engine class for Tag thread-safe database logging.
-
+    Thread-safe Engine for the OPCUAServerLogger.
     """
 
     def __init__(self):
@@ -85,7 +113,9 @@ class OPCUAServerLoggerEngine(BaseEngine):
         namespace:str,
         access_type:str="Read"
         ):
-
+        r"""
+        Thread-safe node creation.
+        """
         _query = dict()
         _query["action"] = "create"
         _query["parameters"] = dict()
@@ -100,7 +130,9 @@ class OPCUAServerLoggerEngine(BaseEngine):
         namespace:str,
         access_type:str
         ):
-
+        r"""
+        Thread-safe node update.
+        """
         _query = dict()
         _query["action"] = "put"
         _query["parameters"] = dict()
@@ -113,7 +145,9 @@ class OPCUAServerLoggerEngine(BaseEngine):
         self,
         namespace:str
         ):
-
+        r"""
+        Thread-safe read by namespace.
+        """
         _query = dict()
         _query["action"] = "read_by_namespace"
         _query["parameters"] = dict()
@@ -122,9 +156,10 @@ class OPCUAServerLoggerEngine(BaseEngine):
         return self.query(_query)
 
     def read_all(self):
-
+        r"""
+        Thread-safe read all.
+        """
         _query = dict()
         _query["action"] = "read_all"
         _query["parameters"] = dict()
         return self.query(_query)
-

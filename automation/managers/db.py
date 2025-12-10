@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""pyhades/managers/logger.py
+"""automation/managers/logger.py
 
-This module implements Logger Manager.
+This module implements the Database Manager (DBManager), which orchestrates database interactions,
+table registration, and logging engines for various system components.
 """
 import logging, queue
 from ..singleton import Singleton
@@ -43,7 +44,10 @@ from ..dbmodels import (
 
 class DBManager(Singleton):
     r"""
-    Database Manager class for database logging settings.
+    Central manager for database operations and historical data logging.
+
+    It manages the connection to the database (SQLite, PostgreSQL, MySQL), registers database models,
+    and initializes specific logging engines for Alarms, Events, Users, etc.
     """
 
     def __init__(self, period:float=1.0, delay:float=1.0, drop_tables:bool=False):
@@ -70,7 +74,7 @@ class DBManager(Singleton):
             Tags, 
             TagValue, 
             AlarmTypes,
-            AlarmStates,
+            AlarmStates, 
             Alarms,
             AlarmSummary,
             OPCUA,
@@ -88,19 +92,18 @@ class DBManager(Singleton):
         
     def get_queue(self)->queue.Queue:
         r"""
-        Documentation here
+        Retrieves the internal queue used for tag updates.
         """
         return self._tag_queue
 
     def set_db(self, db, is_history_logged:bool=False):
         r"""
-        Initialize a new DB Object SQLite - Postgres - MySQL
+        Configures the database connection for all logging engines.
 
-        **Parameters**
+        **Parameters:**
 
-        * **db** (db object): Sqlite - Postgres or MySql db object
-
-        **Returns** `None`
+        * **db** (Database): The Peewee database instance (SqliteDatabase, PostgresqlDatabase, MySQLDatabase).
+        * **is_history_logged** (bool, optional): Enables or disables historical data logging.
         """
         self._logger.set_db(db)
         self._logger.logger.set_is_history_logged(value=is_history_logged)
@@ -116,48 +119,47 @@ class DBManager(Singleton):
         
     def get_db(self):
         r"""
-        Returns a DB object
+        Retrieves the current database connection object.
         """
         return self._logger.get_db()
 
     def set_dropped(self, drop_tables:bool):
         r"""
-        Allows to you set a flag variable to drop database tables when run app.
+        Sets the flag to drop tables on initialization.
 
-        **Parameters**
+        **Parameters:**
 
-        * **drop_tables** (bool) If True, drop all tables define in the app an initialized it in blank.
-
-        **Returns**
-
-        * **None**
+        * **drop_tables** (bool): If True, tables will be dropped and recreated on startup.
         """
         self._drop_tables = drop_tables
 
     def get_dropped(self)->bool:
         r"""
-        Gets flag variables to drop tables when initialize the app
-
-        **Return**
-
-        * **drop_tables** (bool) Flag variables to drop table
+        Gets the drop tables flag status.
         """
         return self._drop_tables
 
     def register_table(self, cls:BaseModel):
         r"""
-        Allows to you register a new database model
+        Registers a new database model (table) to be managed by the system.
 
-        **Parameters**
+        **Parameters:**
 
-        * **cls* (BaseModel): A class that inherit from BaseModel
-
+        * **cls** (BaseModel): A class inheriting from `BaseModel`.
         """
         self._tables.append(cls)
 
     def get_db_table(self, tablename:str):
         r"""
-        Documentation here
+        Retrieves a registered table model by its table name.
+
+        **Parameters:**
+
+        * **tablename** (str): The name of the table in the database.
+
+        **Returns:**
+
+        * **Model**: The Peewee model class if found, else None.
         """
         for table in self._tables:
 
@@ -169,7 +171,7 @@ class DBManager(Singleton):
 
     def create_tables(self):
         r"""
-        Creates default tables and tables registered with method *register_table*
+        Creates all registered tables in the database.
         """
         self._tables.extend(self._extra_tables)
         self._logger.create_tables(self._tables)
@@ -177,7 +179,7 @@ class DBManager(Singleton):
 
     def drop_tables(self):
         r"""
-        Drop all tables defined
+        Drops all registered tables from the database.
         """
         tables = self._tables
         
@@ -185,19 +187,19 @@ class DBManager(Singleton):
 
     def clear_default_tables(self):
         r"""
-        If you want initialize any PyHades app without default tables, you can use this method
+        Clears the list of default tables. Useful for custom applications that don't need the standard schema.
         """
         self._tables = []
 
     def get_tags(self)->dict:
         r"""
-        Gets all tag defined in tag's repository
+        Retrieves all tags configured in the database logger.
         """
         return self._logger.get_tags()
     
     def get_alarms(self)->dict:
         r"""
-        Gets all tag defined in tag's repository
+        Retrieves all alarms from the alarm logger.
         """
 
         return self.alarms_logger.get_alarms()
@@ -215,18 +217,16 @@ class DBManager(Singleton):
         tcp_source_address:str=None, 
         node_namespace:str=None):
         r"""
-        Sets tag to Database
+        Registers a tag in the database logger configuration.
 
-        **Parameters**
+        **Parameters:**
 
-        * **tag** (str):
-        * **unit** (str):
-        * **data_type** (str):
-        * **description** (str):
-        * **min_value** (float)[Optional]:
-        * **max_value** (float)[Optional]:
-        * **tcp_source_address** (str)[Optional]:
-        * **node_namespace** (str)[Optional]:
+        * **tag** (str): Tag name.
+        * **unit** (str): Tag unit.
+        * **data_type** (str): Data type (float, int, bool).
+        * **description** (str): Description.
+        * **tcp_source_address** (str, optional): OPC UA server address.
+        * **node_namespace** (str, optional): OPC UA Node ID.
         """
         self._logger.set_tag(
             tag=tag,  
@@ -242,7 +242,7 @@ class DBManager(Singleton):
 
     def set_tags(self):
         r"""
-        Allows to you define all tags added with *add_tag* method
+        Applies all staged tags from the LogTable to the database logger.
         """
         for period in self._logging_tags.get_groups():
             
@@ -263,7 +263,7 @@ class DBManager(Singleton):
 
     def init_database(self):
         r"""
-        Initializes all databases.
+        Initializes the database schema. Drops tables if configured, then creates them.
         """
         if self.get_dropped():
             try:
@@ -277,52 +277,54 @@ class DBManager(Singleton):
 
     def stop_database(self):
         r"""
-        Documentation here
+        Closes the database connection.
         """
         self._logger.stop_db()
 
     def get_opcua_clients(self):
         r"""
-        Documentation here
+        Retrieves all OPC UA client configurations from the database.
         """
         return OPCUA.read_all()
 
     # USERS METHODS
     def set_role(self, name:str, level:int, identifier:str):
         r"""
-        Documentation here
+        Creates a new user role in the database.
         """
         return self.users_logger.set_role(name=name, level=level, identifier=identifier)
 
     def set_user(self, user:User):
         r"""
-        Documentation here
+        Creates a new user in the database.
         """
         return self.users_logger.set_user(user=user)
     
     def login(self, password:str, username:str="", email:str=""):
         r"""
-        Documentation here
+        Authenticates a user against the database.
         """
         return self.users_logger.login(password=password, username=username, email=email)
 
     def summary(self)->dict:
         r"""
-        Get database manager summary
+        Generates a summary of the database manager configuration.
 
-        **Returns**
+        **Returns:**
 
-        * **summary** (dict): Database summary
+        * **dict**: Summary including period, configured tags, and delay.
         """
         result = dict()
 
-        result["period"] = self.get_period()
+        result["period"] = self._period
         result["tags"] = self.get_tags()
-        result["delay"] = self.get_delay()
+        result["delay"] = self._delay
 
         return result
     
     def attach(self, tag_name:str):
-
+        r"""
+        Attaches an observer to a tag for database logging purposes.
+        """
         observer = TagObserver(self._tag_queue)
         self.engine.attach(name=tag_name, observer=observer)

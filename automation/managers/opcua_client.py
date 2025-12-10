@@ -6,12 +6,15 @@ from ..opcua.subscription import DAS
 
 class OPCUAClientManager:
     r"""
-    Documentation here
+    Manages multiple OPC UA Client connections and their subscriptions.
+
+    It handles client lifecycle (add, remove, connect, disconnect), server discovery,
+    and reading/writing values to OPC UA nodes.
     """
 
     def __init__(self):
         r"""
-        Documentation here
+        Initializes the OPC UA Client Manager.
         """
         self._clients = dict()
         self.logger = DataLoggerEngine()
@@ -20,13 +23,32 @@ class OPCUAClientManager:
 
     def discovery(self, host:str='127.0.0.1', port:int=4840)->list[dict]:
         r"""
-        Documentation here
+        Discovers available OPC UA servers on a given host and port.
+
+        **Parameters:**
+
+        * **host** (str): IP address or hostname.
+        * **port** (int): Port number.
+
+        **Returns:**
+
+        * **list[dict]**: Discovery results.
         """
         return Client.find_servers(host, port)
 
     def add(self, client_name:str, host:str, port:int):
         r"""
-        Documentation here
+        Adds and connects a new OPC UA Client.
+
+        **Parameters:**
+
+        * **client_name** (str): Unique name for the client.
+        * **host** (str): Server host.
+        * **port** (int): Server port.
+
+        **Returns:**
+
+        * **tuple**: (Success boolean, Message string).
         """
         endpoint_url = f"opc.tcp://{host}:{port}"
         if client_name in self._clients:
@@ -64,7 +86,15 @@ class OPCUAClientManager:
 
     def remove(self, client_name:str):
         r"""
-        Documentation here
+        Disconnects and removes an OPC UA Client.
+
+        **Parameters:**
+
+        * **client_name** (str): The name of the client to remove.
+
+        **Returns:**
+
+        * **bool**: True if successful, False otherwise.
         """
         if client_name in self._clients:
             try:
@@ -86,7 +116,11 @@ class OPCUAClientManager:
 
     def connect(self, client_name:str)->dict:
         r"""
-        Documentation here
+        Connects a specific client.
+
+        **Parameters:**
+
+        * **client_name** (str): Client name.
         """
         if client_name in self._clients:
 
@@ -94,7 +128,11 @@ class OPCUAClientManager:
 
     def disconnect(self, client_name:str)->dict:
         r"""
-        Documentation here
+        Disconnects a specific client.
+
+        **Parameters:**
+
+        * **client_name** (str): Client name.
         """
         if client_name in self._clients:
 
@@ -102,7 +140,15 @@ class OPCUAClientManager:
 
     def get(self, client_name:str)->Client:
         r"""
-        Documentation here
+        Retrieves a client instance by name.
+
+        **Parameters:**
+
+        * **client_name** (str): Client name.
+
+        **Returns:**
+
+        * **Client**: The client object.
         """
         if client_name in self._clients:
 
@@ -110,7 +156,15 @@ class OPCUAClientManager:
         
     def get_opcua_tree(self, client_name):
         r"""
-        Documentation here
+        Browses the OPC UA address space tree starting from the root folder.
+
+        **Parameters:**
+
+        * **client_name** (str): Client name.
+
+        **Returns:**
+
+        * **tuple**: (Tree dict, HTTP status code).
         """
         client = self.get(client_name=client_name)
         if client.is_connected():
@@ -124,6 +178,18 @@ class OPCUAClientManager:
         return {}, 400
         
     def get_node_values(self, client_name:str, namespaces:list)->list:
+        r"""
+        Reads values from multiple nodes.
+
+        **Parameters:**
+
+        * **client_name** (str): Client name.
+        * **namespaces** (list): List of node namespaces/IDs.
+
+        **Returns:**
+
+        * **list**: Values.
+        """
 
         if client_name in self._clients:
 
@@ -133,13 +199,15 @@ class OPCUAClientManager:
         
     def get_client_by_address(self, opcua_address:str)->Client|None:
         r"""
-        Obtiene el cliente OPC UA correspondiente a una dirección
+        Retrieves a client by its server address URL.
         
-        Args:
-            opcua_address: Dirección del servidor OPC UA (ej: "opc.tcp://localhost:4840")
+        **Parameters:**
+
+        * **opcua_address** (str): OPC UA Server URL (e.g., "opc.tcp://localhost:4840").
         
-        Returns:
-            Client: Cliente OPC UA si existe y está conectado, None en caso contrario
+        **Returns:**
+
+        * **Client**: The connected client object or None.
         """
         for client_name, client in self._clients.items():
             if opcua_address == client.serialize()["server_url"]:
@@ -149,7 +217,12 @@ class OPCUAClientManager:
     
     def get_node_value_by_opcua_address(self, opcua_address:str, namespace:str)->list:
         r"""
-        Documentation here
+        Reads a node value using the server address to find the client.
+
+        **Parameters:**
+
+        * **opcua_address** (str): Server URL.
+        * **namespace** (str): Node ID.
         """
         for client_name, client in self._clients.items():
 
@@ -158,6 +231,18 @@ class OPCUAClientManager:
                     return self.get_node_attributes(client_name=client_name, namespaces=[namespace])
         
     def get_node_attributes(self, client_name:str, namespaces:list)->list:
+        r"""
+        Reads attributes (Description, DataType, etc.) for a list of nodes.
+
+        **Parameters:**
+
+        * **client_name** (str): Client name.
+        * **namespaces** (list): List of Node IDs.
+
+        **Returns:**
+
+        * **list**: List of attribute dictionaries.
+        """
 
         result = list()
 
@@ -173,7 +258,15 @@ class OPCUAClientManager:
 
     def serialize(self, client_name:str=None)->dict:
         r"""
-        Documentation here
+        Serializes client configurations.
+
+        **Parameters:**
+
+        * **client_name** (str, optional): Specific client to serialize.
+
+        **Returns:**
+
+        * **dict**: Dictionary of serialized client data.
         """
         if client_name:
 

@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""pyhades/logger/machines.py
+"""automation/logger/machines.py
+
+This module implements the Machines Logger, responsible for persisting State Machine
+configurations and their bindings to Tags.
 """
 from ..dbmodels import Machines, TagsMachines, Tags
 from .core import BaseEngine, BaseLogger
@@ -9,6 +12,9 @@ from ..tags.tag import Tag
 
 
 class MachinesLogger(BaseLogger):
+    r"""
+    Logger class specialized for State Machine persistence.
+    """
 
     def __init__(self):
 
@@ -30,7 +36,21 @@ class MachinesLogger(BaseLogger):
             threshold:float=None
             ):
         r"""
-        Documentation here
+        Creates a new State Machine definition in the database.
+
+        **Parameters:**
+
+        * **identifier** (str): Unique ID.
+        * **name** (str): Machine name.
+        * **interval** (int): Execution interval.
+        * **description** (str): Description.
+        * **classification** (str): Type of machine.
+        * **buffer_size** (int): Size of internal buffer.
+        * **buffer_roll_type** (str): Roll type (e.g., "fifo").
+        * **criticity** (int): Criticality level.
+        * **priority** (int): Priority level.
+        * **on_delay** (int, optional): Delay before starting.
+        * **threshold** (float, optional): Operational threshold.
         """
         if not self.check_connectivity():
 
@@ -68,6 +88,22 @@ class MachinesLogger(BaseLogger):
         on_delay:IntegerType=None,
         threshold:FloatType=None
         ):
+        r"""
+        Updates an existing State Machine definition.
+
+        **Parameters:**
+
+        * **name** (StringType): Machine name.
+        * **machine_interval** (IntegerType, optional): New interval.
+        * **description** (StringType, optional): New description.
+        * **classification** (StringType, optional): New classification.
+        * **buffer_size** (IntegerType, optional): New buffer size.
+        * **buffer_roll_type** (StringType, optional): New roll type.
+        * **criticity** (IntegerType, optional): New criticality.
+        * **priority** (IntegerType, optional): New priority.
+        * **on_delay** (IntegerType, optional): New on delay.
+        * **threshold** (FloatType, optional): New threshold.
+        """
 
         if not self.check_connectivity():
             
@@ -106,6 +142,9 @@ class MachinesLogger(BaseLogger):
     
     @db_rollback
     def read_all(self):
+        r"""
+        Retrieves all machine definitions.
+        """
         if not self.check_connectivity():
 
             return list()
@@ -114,6 +153,9 @@ class MachinesLogger(BaseLogger):
     
     @db_rollback
     def read_config(self):
+        r"""
+        Retrieves machine configuration for the scheduler.
+        """
         if not self.check_connectivity():
             
             return None
@@ -122,6 +164,15 @@ class MachinesLogger(BaseLogger):
     
     @db_rollback
     def bind_tag(self, tag:Tag, machine, default_tag_name:str=None):
+        r"""
+        Binds a Tag to a State Machine in the database.
+
+        **Parameters:**
+
+        * **tag** (Tag): The Tag object.
+        * **machine** (StateMachine): The Machine object.
+        * **default_tag_name** (str, optional): Default tag alias within the machine.
+        """
         if not self.check_connectivity():
 
             return None
@@ -130,6 +181,9 @@ class MachinesLogger(BaseLogger):
 
     @db_rollback
     def unbind_tag(self, tag:Tag, machine):
+        r"""
+        Unbinds a Tag from a State Machine.
+        """
         if not self.check_connectivity():
 
             return None
@@ -141,8 +195,7 @@ class MachinesLogger(BaseLogger):
 
 class MachinesLoggerEngine(BaseEngine):
     r"""
-    Alarms logger Engine class for Tag thread-safe database logging.
-
+    Thread-safe Engine for the MachinesLogger.
     """
 
     def __init__(self):
@@ -164,7 +217,9 @@ class MachinesLoggerEngine(BaseEngine):
         on_delay:int=None,
         threshold:float=None
         ):
-
+        r"""
+        Thread-safe machine creation.
+        """
         _query = dict()
         _query["action"] = "create"
         _query["parameters"] = dict()
@@ -195,7 +250,9 @@ class MachinesLoggerEngine(BaseEngine):
         on_delay:IntegerType=None,
         threshold:FloatType=None
         ):
-
+        r"""
+        Thread-safe machine update.
+        """
         _query = dict()
         _query["action"] = "put"
         _query["parameters"] = dict()
@@ -213,21 +270,27 @@ class MachinesLoggerEngine(BaseEngine):
         return self.query(_query)
 
     def read_all(self):
-
+        r"""
+        Thread-safe read all machines.
+        """
         _query = dict()
         _query["action"] = "read_all"
         _query["parameters"] = dict()
         return self.query(_query)
     
     def read_config(self):
-
+        r"""
+        Thread-safe read config.
+        """
         _query = dict()
         _query["action"] = "read_config"
         _query["parameters"] = dict()
         return self.query(_query)
     
     def bind_tag(self, tag:Tag, machine, default_tag_name:str=None):
-
+        r"""
+        Thread-safe bind tag.
+        """
         _query = dict()
         _query["action"] = "bind_tag"
         _query["parameters"] = dict()
@@ -237,12 +300,12 @@ class MachinesLoggerEngine(BaseEngine):
         return self.query(_query)
     
     def unbind_tag(self, tag:Tag, machine):
-
+        r"""
+        Thread-safe unbind tag.
+        """
         _query = dict()
         _query["action"] = "unbind_tag"
         _query["parameters"] = dict()
         _query["parameters"]["tag"] = tag
         _query["parameters"]["machine"] = machine
         return self.query(_query)
-    
-

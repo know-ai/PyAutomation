@@ -8,6 +8,11 @@ from ..dbmodels import (
 from ..variables import VARIABLES, DATATYPES
 
 class BaseLogger(Singleton):
+    r"""
+    Base class for all Logger implementations.
+
+    It handles the underlying database connection, table creation, and schema initialization.
+    """
 
     def __init__(self):
 
@@ -15,17 +20,33 @@ class BaseLogger(Singleton):
         self.is_history_logged = True
 
     def set_db(self, db):
-        r"""Documentation here
+        r"""
+        Sets the database instance to be used by the logger.
+
+        **Parameters:**
+
+        * **db**: The Peewee database instance.
         """
         self._db = db
 
     def get_db(self):
         r"""
-        Documentation here
+        Retrieves the current database instance.
+
+        **Returns:**
+
+        * **Database**: The Peewee database object.
         """
         return self._db
     
     def check_connectivity(self):
+        r"""
+        Checks if the database connection is active.
+
+        **Returns:**
+
+        * **bool**: True if connected, False otherwise.
+        """
 
         try: 
             
@@ -42,13 +63,18 @@ class BaseLogger(Singleton):
             return False
     
     def set_is_history_logged(self, value:bool=False):
-        r"""Documentation here
+        r"""
+        Enables or disables historical data logging.
+
+        **Parameters:**
+
+        * **value** (bool): True to enable logging, False to disable.
         """
         self.is_history_logged = value
     
     def stop_db(self):
         r""""
-        Documentation here
+        Closes the database connection.
         """
         try:
             if self._db:
@@ -60,7 +86,12 @@ class BaseLogger(Singleton):
 
     def create_tables(self, tables):
         r"""
-        Documentation here
+        Creates tables in the database if they do not exist.
+        Also initializes default schema data (Variables, Units, DataTypes, Roles).
+
+        **Parameters:**
+
+        * **tables** (list): List of Peewee models to create tables for.
         """
         if not self._db:
             
@@ -73,7 +104,7 @@ class BaseLogger(Singleton):
 
     def __init_default_roles_schema(self):
         r"""
-        Documentatio here
+        Initializes default user roles in the database.
         """
         from ..dbmodels import Roles
         for role in Roles.__defaults__:
@@ -84,7 +115,7 @@ class BaseLogger(Singleton):
 
     def __init_default_variables_schema(self):
         r"""
-        Documentation here
+        Initializes default physical variables and units in the database.
         """
         for variable, units in VARIABLES.items():
     
@@ -100,7 +131,7 @@ class BaseLogger(Singleton):
 
     def __init_default_datatypes_schema(self):
         r"""
-        Documentation here
+        Initializes default data types in the database.
         """
         for datatype in DATATYPES:
 
@@ -108,7 +139,11 @@ class BaseLogger(Singleton):
 
     def drop_tables(self, tables):
         r"""
-        Documentation here
+        Drops the specified tables from the database.
+
+        **Parameters:**
+
+        * **tables** (list): List of Peewee models to drop.
         """
         if not self._db:
             
@@ -118,7 +153,10 @@ class BaseLogger(Singleton):
 
 class BaseEngine(Singleton):
     r"""
-    Alarms logger Engine class for Tag thread-safe database logging.
+    Base class for Thread-Safe Logger Engines.
+
+    It implements a request-response mechanism using locks to ensure thread safety
+    when accessing the underlying Logger instance (which interacts with the database).
     """
     logger = BaseLogger()
 
@@ -132,43 +170,38 @@ class BaseEngine(Singleton):
 
     def set_db(self, db):
         r"""
-        Sets the database, it supports SQLite and Postgres,
-        in case of SQLite, the filename must be provided.
-
-        if app mode is "Development" you must use SQLite Databse
+        Sets the database for the underlying logger.
 
         **Parameters:**
 
-        * **dbfile** (str): a path to database file.
-        * *drop_table** (bool): If you want to drop table.
-        * **cascade** (bool): if there are some table dependency, drop it as well
-        * **kwargs**: Same attributes to a postgres connection.
-
-        **Returns:** `None`
-
-        Usage:
-
-        ```python
-        >>> app.set_db(dbfile="app.db")
-        ```
+        * **db**: The Peewee database instance.
         """
         self.logger.set_db(db)
 
     def stop_db(self):
         r"""
-        Documentation here
+        Closes the database connection safely.
         """
         self.logger.stop_db()
 
     def get_db(self):
         r"""
-        Returns a DB object
+        Retrieves the database instance.
         """
         return self.logger.get_db()
 
     def query(self, query:dict)->dict:
         r"""
-        Documentation here
+        Executes a query against the logger in a thread-safe manner.
+
+        **Parameters:**
+
+        * **query** (dict): A dictionary containing the action and parameters.
+          e.g., `{"action": "method_name", "parameters": {...}}`
+
+        **Returns:**
+
+        * **dict**: The result of the operation.
         """
         self.request(query)
         result = self.response()
@@ -176,15 +209,13 @@ class BaseEngine(Singleton):
             return result["response"]
 
     def request(self, query:dict):
-        r"""Documentation here
+        r"""
+        Internal method to process a request.
+        Acquires the request lock, executes the method on the logger, and stores the response.
 
-        # Parameters
+        **Parameters:**
 
-        - 
-
-        # Returns
-
-        - 
+        * **query** (dict): The query dictionary.
         """
         self._request_lock.acquire()
         action = query["action"]
@@ -214,7 +245,7 @@ class BaseEngine(Singleton):
 
     def __log_error(self, e:Exception, msg:str):
         r"""
-        Documentation here
+        Logs an error to the application logger and sets a failure response.
         """
         logger = logging.getLogger("pyautomation")
         logger.error(f"{e} Message: {msg}")
@@ -224,15 +255,12 @@ class BaseEngine(Singleton):
         }
 
     def response(self):
-        r"""Documentation here
+        r"""
+        Waits for and retrieves the response from the last request.
 
-        # Parameters
+        **Returns:**
 
-        - 
-
-        # Returns
-
-        - 
+        * **dict**: The response dictionary `{"result": bool, "response": Any}`.
         """
         self._response_lock.acquire()
         result = self._response
@@ -241,7 +269,7 @@ class BaseEngine(Singleton):
     
     def __true_response(self, resp):
         r"""
-        Documentation here
+        Sets a successful response.
         """
         self._response = {
             "result": True,

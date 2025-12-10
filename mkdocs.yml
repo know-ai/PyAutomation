@@ -1,71 +1,126 @@
 site_name: PyAutomation Documentation
-
-theme:
-  name: material
-
+site_url: https://pyautomation.readthedocs.io/
 repo_name: PyAutomation
 repo_url: https://github.com/know-ai/PyAutomation
 edit_uri: ""
-site_dir: _build/html
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.copy
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  icon:
+    repo: fontawesome/brands/github
 
 nav:
-    - Summary: 'index.md'
-    - Architecture: 'architecture.md'
-    - Setup: 'setup.md'
-    - User' Guide:
-      - Summary: 'Users_Guide/index.md'
-      - Alarms: 
-        - Summary: 'Users_Guide/Alarms/index.md' 
+  - Summary: "index.md"
+  - Architecture: "architecture.md"
+  - Roadmap: "roadmap.md"
+  - Setup: "setup.md"
+  - User Guide:
+      - Summary: "Users_Guide/index.md"
+      - Alarms:
+          - Summary: "Users_Guide/Alarms/index.md"
       - Database:
-        - Summary: 'Users_Guide/Database/index.md' 
-      - Communications: 
-        - Summary: 'Users_Guide/Communications/index.md' 
-      - Tags: 
-        - Summary: 'Users_Guide/Tags/index.md'   
-        - Create Tag: 'Users_Guide/Tags/Create.md' 
-        - Update Tag: 'Users_Guide/Tags/Update.md' 
-        - Delete Tag: 'Users_Guide/Tags/Delete.md'
-        - Trends: 'Users_Guide/Tags/Trends.md'
-    - API:
-        - Summary: 'Developments_Guide/API/index.md'
-        - Core: 'Developments_Guide/API/core.md'
-        - State Machines:
+          - Summary: "Users_Guide/Database/index.md"
+      - Communications:
+          - Summary: "Users_Guide/Communications/index.md"
+      - Tags:
+          - Summary: "Users_Guide/Tags/index.md"
+          - Create Tag: "Users_Guide/Tags/Create.md"
+          - Update Tag: "Users_Guide/Tags/Update.md"
+          - Delete Tag: "Users_Guide/Tags/Delete.md"
+          - Trends: "Users_Guide/Tags/Trends.md"
+  - Developer Guide:
+      - Summary: "Developments_Guide/API/index.md"
+      - Core: "Developments_Guide/API/core.md"
+      - State Machines:
           - Summary: Developments_Guide/API/state_machine/index.md
           - Automation State Machine: Developments_Guide/API/state_machine/automation_state_machine.md
           - Machine: Developments_Guide/API/state_machine/machine.md
-        - CVT:
-          - Summary: 'Developments_Guide/API/cvt/index.md'
-          - CVTEngine: 'Developments_Guide/API/cvt/cvt_engine.md'
-          - CVT: 'Developments_Guide/API/cvt/cvt.md'
-        - Data Logger:
+      - CVT:
+          - Summary: "Developments_Guide/API/cvt/index.md"
+          - Variables: "Developments_Guide/API/cvt/variables.md"
+          - CVTEngine: "Developments_Guide/API/cvt/cvt_engine.md"
+          - CVT: "Developments_Guide/API/cvt/cvt.md"
+      - Data Logger:
           - Summary: Developments_Guide/API/datalogger/index.md
           - Data Logger Engine: Developments_Guide/API/datalogger/datalogger_engine.md
           - Data Logger: Developments_Guide/API/datalogger/datalogger.md
-        - Workers:
+      - Workers:
           - Summary: Developments_Guide/API/workers/index.md
           - State Machine: Developments_Guide/API/workers/state_machine.md
           - Async State Machine: Developments_Guide/API/workers/async_state_machine.md
           - Scheduler Threads: Developments_Guide/API/workers/sched_thread.md
           - Main Scheduler: Developments_Guide/API/workers/main_scheduler.md
-        - Managers:
+      - Managers:
           - Summary: Developments_Guide/API/managers/index.md
           - State Machine: Developments_Guide/API/managers/state_machine.md
           - DB: Developments_Guide/API/managers/db.md
-        - DB Models:
+      - DB Models:
           - Summary: Developments_Guide/API/db_models/index.md
           - Tags: Developments_Guide/API/db_models/tags.md
-    - Integration's Guide:
-      - Summary: 'Integrations_Guide/index.md'
 
 markdown_extensions:
   - admonition
-  - codehilite
-  - mkautodoc
+  - abbr
+  - attr_list
+  - def_list
+  - footnotes
+  - meta
+  - md_in_html
+  - toc:
+      permalink: true
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - mkautodoc
+
+plugins:
+  - search
 
 extra_css:
-    - css/custom.css
+  - css/custom.css
 
 extra_javascript:
   - javascripts/config.js

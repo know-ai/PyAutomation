@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""pyhades/logger/users.py
+"""automation/logger/users.py
+
+This module implements the Users Logger, responsible for persisting user accounts,
+role definitions, and logging user authentication events.
 """
 from ..modules.users.users import User
 from ..dbmodels import Users, Roles
@@ -8,6 +11,9 @@ from ..utils.decorators import db_rollback
 
 
 class UsersLogger(BaseLogger):
+    r"""
+    Logger class specialized for User Management persistence.
+    """
 
     def __init__(self):
 
@@ -16,7 +22,13 @@ class UsersLogger(BaseLogger):
     @db_rollback
     def set_role(self, name:str, level:int, identifier:str):
         r"""
-        Documentation here
+        Creates a new user role in the database.
+
+        **Parameters:**
+
+        * **name** (str): Role name (e.g., "admin").
+        * **level** (int): Permission level (e.g., 100).
+        * **identifier** (str): Unique role ID.
         """
         return Roles.create(
             name=name,
@@ -30,7 +42,11 @@ class UsersLogger(BaseLogger):
             user:User
         ):
         r"""
-        Documentation here
+        Creates a new user in the database.
+
+        **Parameters:**
+
+        * **user** (User): User object containing name, password, email, roles.
         """
         return Users.create(
             user=user
@@ -44,7 +60,17 @@ class UsersLogger(BaseLogger):
             email:str=""
         ):
         r"""
-        Documentation here
+        Authenticates a user against the database.
+
+        **Parameters:**
+
+        * **password** (str): Plain text password.
+        * **username** (str, optional): Username.
+        * **email** (str, optional): Email.
+
+        **Returns:**
+
+        * **tuple**: (User object, Message string).
         """
         return Users.login(
             password=password,
@@ -54,8 +80,7 @@ class UsersLogger(BaseLogger):
     
 class UsersLoggerEngine(BaseEngine):
     r"""
-    Users logger Engine class for Tag thread-safe database logging.
-
+    Thread-safe Engine for the UsersLogger.
     """
 
     def __init__(self):
@@ -64,7 +89,9 @@ class UsersLoggerEngine(BaseEngine):
         self.logger = UsersLogger()
 
     def set_role(self, name:str, level:int, identifier:str):
-
+        r"""
+        Thread-safe role creation.
+        """
         _query = dict()
         _query["action"] = "set_role"
         _query["parameters"] = dict()
@@ -75,7 +102,9 @@ class UsersLoggerEngine(BaseEngine):
         return self.query(_query)
     
     def set_user(self, user:User):
-
+        r"""
+        Thread-safe user creation.
+        """
         _query = dict()
         _query["action"] = "set_user"
         _query["parameters"] = dict()
@@ -84,7 +113,9 @@ class UsersLoggerEngine(BaseEngine):
         return self.query(_query)
     
     def login(self,password:str, username:str="", email:str=""):
-
+        r"""
+        Thread-safe login.
+        """
         _query = dict()
         _query["action"] = "login"
         _query["parameters"] = dict()
@@ -93,4 +124,3 @@ class UsersLoggerEngine(BaseEngine):
         _query["parameters"]["email"] = email
         
         return self.query(_query)
-    

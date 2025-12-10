@@ -11,6 +11,9 @@ users = CVTUsers()
 roles = CVTRoles()
 
 class Roles(BaseModel):
+    r"""
+    Database model for User Roles.
+    """
     
     identifier = CharField(unique=True, max_length=16)
     name = CharField(unique=True, max_length=32)
@@ -26,6 +29,19 @@ class Roles(BaseModel):
 
     @classmethod
     def create(cls, name:str, level:int, identifier:str)->tuple:
+        r"""
+        Creates a new Role record.
+
+        **Parameters:**
+
+        * **name** (str): Role name.
+        * **level** (int): Permission level (0 is highest).
+        * **identifier** (str): Unique ID.
+
+        **Returns:**
+
+        * **tuple**: (Query object, status message)
+        """
         
         name = name.upper()
 
@@ -44,33 +60,48 @@ class Roles(BaseModel):
 
     @classmethod
     def read_by_name(cls, name:str):
+        r"""
+        Retrieves a role by name.
+        """
       
         return cls.get_or_none(name=name.upper())
     
     @classmethod
     def read_by_identifier(cls, identifier:str):
+        r"""
+        Retrieves a role by identifier.
+        """
       
         return cls.get_or_none(identifier=identifier)
 
     @classmethod
     def name_exist(cls, name:str)->bool:
+        r"""
+        Checks if a role name exists.
+        """
         
         return True if cls.get_or_none(name=name.upper()) else False
     
     @classmethod
     def identifier_exist(cls, identifier:str)->bool:
+        r"""
+        Checks if a role identifier exists.
+        """
 
         return True if cls.get_or_none(identifier=identifier) else False
     
     @classmethod
     def read_names(cls)->list:
+        r"""
+        Returns a list of all role names.
+        """
 
         return [role.name for role in cls.select()]
     
     @classmethod
     def fill_cvt_roles(cls):
         r"""
-        Documentation here
+        Loads roles from the database into the in-memory Role Manager (CVT).
         """
         for role in cls.select():
 
@@ -84,7 +115,7 @@ class Roles(BaseModel):
 
     def serialize(self)->dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the role record.
         """
 
         return {
@@ -96,6 +127,9 @@ class Roles(BaseModel):
 
 
 class Users(BaseModel):
+    r"""
+    Database model for Users.
+    """
     
     identifier = CharField(unique=True, max_length=16)
     username = CharField(unique=True, max_length=64)
@@ -108,6 +142,17 @@ class Users(BaseModel):
 
     @classmethod
     def create(cls, user:User)-> dict:
+        r"""
+        Creates a new User record.
+
+        **Parameters:**
+
+        * **user** (User): An instance of the User class from the users module.
+
+        **Returns:**
+
+        * **tuple**: (Query object, status message)
+        """
 
         if cls.username_exist(user.username):
 
@@ -138,7 +183,17 @@ class Users(BaseModel):
     @classmethod
     def login(cls, password:str, username:str="", email:str=""):
         r"""
-        Documentation here
+        Authenticates a user and updates their session token.
+
+        **Parameters:**
+
+        * **password** (str): User password.
+        * **username** (str, optional): Username.
+        * **email** (str, optional): Email.
+
+        **Returns:**
+
+        * **tuple**: (User record, status message)
         """
         if username:
 
@@ -168,7 +223,11 @@ class Users(BaseModel):
     @classmethod
     def logout(cls, token:str):
         r"""
-        Documentation here
+        Logs out a user by invalidating their token.
+
+        **Parameters:**
+
+        * **token** (str): Session token.
         """
         user = cls.get_or_none(token=token)
 
@@ -183,52 +242,79 @@ class Users(BaseModel):
 
     @classmethod
     def read_by_username(cls, username:str):
+        r"""
+        Retrieves a user by username.
+        """
    
         return cls.get_or_none(username=username)
 
     @classmethod
     def read_by_name(cls, name:str):
+        r"""
+        Retrieves a user by name (first name).
+        """
    
         return cls.get_or_none(name=name)
 
     @classmethod
     def name_exist(cls, name:str)->bool:
+        r"""
+        Checks if a user name exists.
+        """
 
         return True if cls.get_or_none(name=name) else False
     
     @classmethod
     def username_exist(cls, username:str)->bool:
+        r"""
+        Checks if a username exists.
+        """
 
         return True if cls.get_or_none(username=username) else False
     
     @classmethod
     def email_exist(cls, email:str)->bool:
+        r"""
+        Checks if an email exists.
+        """
 
         return True if cls.get_or_none(email=email) else False
     
     @classmethod
     def identifier_exist(cls, identifier:str)->bool:
+        r"""
+        Checks if an identifier exists.
+        """
 
         return True if cls.get_or_none(identifier=identifier) else False
     
     @classmethod
     def encode(cls, value:str)->str:
+        r"""
+        Hashes a value (e.g., password).
+        """
 
         return generate_password_hash(value)
     
 
     def decode_password(self, password:str)->str:
+        r"""
+        Verifies a password against the stored hash.
+        """
 
         return check_password_hash(self.password, password)
     
     def decode_token(self, token:str)->str:
+        r"""
+        Verifies a token against the stored hash.
+        """
 
         return check_password_hash(self.token, token)
     
     @classmethod
     def fill_cvt_users(cls):
         r"""
-        Documentation here
+        Loads users from the database into the in-memory User Manager (CVT).
         """
         for user in cls.select():
 
@@ -245,7 +331,7 @@ class Users(BaseModel):
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the user record.
         """
 
         return {

@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""pyhades/logger/events.py
+"""automation/logger/events.py
+
+This module implements the Events Logger, responsible for persisting system events
+such as user actions, system notifications, and critical alerts to the database.
 """
 from datetime import datetime
 from ..dbmodels.events import Events
@@ -8,6 +11,11 @@ from .core import BaseEngine, BaseLogger
 
 
 class EventsLogger(BaseLogger):
+    r"""
+    Logger class specialized for Event Management.
+
+    It handles the creation and retrieval of system events, including filtering capabilities.
+    """
 
     def __init__(self):
 
@@ -24,7 +32,17 @@ class EventsLogger(BaseLogger):
         timestamp:datetime=None
         ):
         r"""
-        Documentation here
+        Creates a new event record in the database.
+
+        **Parameters:**
+
+        * **message** (str): The event message.
+        * **user** (User): The user associated with the event.
+        * **description** (str, optional): Detailed description.
+        * **classification** (str, optional): Event category.
+        * **priority** (int, optional): Priority level.
+        * **criticity** (int, optional): Criticality level.
+        * **timestamp** (datetime, optional): Time of the event.
         """
         if not self.is_history_logged:
 
@@ -46,7 +64,15 @@ class EventsLogger(BaseLogger):
 
     def get_lasts(self, lasts:int=1):
         r"""
-        Documentation here
+        Retrieves the most recent events.
+
+        **Parameters:**
+
+        * **lasts** (int): Number of events to retrieve.
+
+        **Returns:**
+
+        * **list**: List of Events.
         """
         if not self.is_history_logged:
 
@@ -73,7 +99,25 @@ class EventsLogger(BaseLogger):
         limit:int=20
         ):
         r"""
-        Documentation here
+        Filters events based on multiple criteria.
+
+        **Parameters:**
+
+        * **usernames** (list[str]): Filter by usernames.
+        * **priorities** (list[int]): Filter by priority.
+        * **criticities** (list[int]): Filter by criticality.
+        * **message** (str): Partial match on message.
+        * **description** (str): Partial match on description.
+        * **classification** (str): Partial match on classification.
+        * **greater_than_timestamp** (datetime): Start time.
+        * **less_than_timestamp** (datetime): End time.
+        * **timezone** (str): Timezone.
+        * **page** (int): Page number.
+        * **limit** (int): Records per page.
+
+        **Returns:**
+
+        * **dict**: Filtered results with pagination metadata.
         """
         if not self.is_history_logged:
 
@@ -99,7 +143,11 @@ class EventsLogger(BaseLogger):
 
     def get_summary(self)->tuple[list, str]:
         r"""
-        Documentation here
+        Retrieves a summary of all events.
+
+        **Returns:**
+
+        * **list**: List of serialized event dictionaries.
         """
         if not self.is_history_logged:
 
@@ -113,8 +161,7 @@ class EventsLogger(BaseLogger):
     
 class EventsLoggerEngine(BaseEngine):
     r"""
-    Data logger Engine class for Tag thread-safe database logging.
-
+    Thread-safe Engine for the EventsLogger.
     """
 
     def __init__(self):
@@ -132,7 +179,9 @@ class EventsLoggerEngine(BaseEngine):
         criticity:int=None,
         timestamp:datetime=None
         ):
-
+        r"""
+        Thread-safe event creation.
+        """
         _query = dict()
         _query["action"] = "create"
         _query["parameters"] = dict()
@@ -150,7 +199,9 @@ class EventsLoggerEngine(BaseEngine):
         self,
         lasts:int=1
         ):
-
+        r"""
+        Thread-safe retrieval of last events.
+        """
         _query = dict()
         _query["action"] = "get_lasts"
         _query["parameters"] = dict()
@@ -172,7 +223,9 @@ class EventsLoggerEngine(BaseEngine):
         page:int=1,
         limit:int=20
         ):
-
+        r"""
+        Thread-safe event filtering.
+        """
         _query = dict()
         _query["action"] = "filter_by"
         _query["parameters"] = dict()
@@ -192,11 +245,10 @@ class EventsLoggerEngine(BaseEngine):
 
     def get_summary(self):
         r"""
-        Documentation here
+        Thread-safe retrieval of event summary.
         """
         _query = dict()
         _query["action"] = "get_summary"
         _query["parameters"] = dict()
         
         return self.query(_query)
-    

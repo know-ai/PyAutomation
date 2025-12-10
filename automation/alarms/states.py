@@ -13,7 +13,9 @@ ACTIONS = {
 
 
 class States(Enum):
-
+    r"""
+    Enumeration of standard alarm states (ISA 18.2).
+    """
     NORM = "Normal"
     UNACK = "Unacknowledged"
     ACKED = "Acknowledged"
@@ -24,7 +26,9 @@ class States(Enum):
 
 
 class Status(Enum):
-
+    r"""
+    Enumeration of alarm status attributes.
+    """
     ACTV = "Active"
     NACTV = "Not Active"
     ANNCTD = "Annunciated"
@@ -37,6 +41,9 @@ class Status(Enum):
 
 
 class AlarmAttrs:
+    r"""
+    Defines the attributes and behavior of a specific alarm state.
+    """
 
     def __init__(
         self, 
@@ -57,55 +64,63 @@ class AlarmAttrs:
     @property
     def mnemonic(self):
         r"""
-        Documentation here
+        Gets the state mnemonic (e.g., 'UNACK').
         """
         return self.__mnemonic
 
     @property
     def state(self):
         r"""
-        Documentation here
+        Gets the full state name (e.g., 'Unacknowledged').
         """
         return self.__state
     
     @property
     def process_condition(self):
         r"""
-        Documentation here
+        Gets the process condition (Normal/Abnormal).
         """
         return self.__process_condition
 
     @property
     def alarm_status(self):
         r"""
-        Documentation here
+        Gets the alarm activity status (Active/Not Active).
         """
         return self.__alarm_status
 
     @property
     def annunciate_status(self):
         r"""
-        Documentation here
+        Gets the annunciation status (Annunciated/Not Annunciated).
         """
         return self.__annunciate_status
 
     @property
     def acknowledge_status(self):
         r"""
-        Documentation here
+        Gets the acknowledgment status.
         """
         return self.__acknowledge_status
 
     def is_acknowledged(self):
         r"""
-        Documentation here
+        Checks if the alarm is in an acknowledged state.
+
+        **Returns:**
+
+        * **bool**: True if acknowledged, False otherwise.
         """
 
         return self.acknowledge_status == States.ACKED.value
 
     def serialize(self):
         r"""
-        Documentation here
+        Serializes the state attributes to a dictionary.
+
+        **Returns:**
+
+        * **dict**: State attributes.
         """
         return {
             'mnemonic': self.mnemonic,
@@ -118,6 +133,9 @@ class AlarmAttrs:
 
 
 class AlarmState:
+    r"""
+    Static definitions of all standard alarm states with their attributes.
+    """
 
     NORM = AlarmAttrs(
         mnemonic=States.NORM.name,
@@ -181,7 +199,15 @@ class AlarmState:
     @classmethod
     def get_state_by_name(cls, state:str):
         r"""
-        Documentation here
+        Retrieves an AlarmAttrs object by its state name.
+
+        **Parameters:**
+
+        * **state** (str): The name of the state (e.g., 'Normal').
+
+        **Returns:**
+
+        * **AlarmAttrs**: The state attributes object.
         """
         _state = States(state)
         for alarm_state in cls._states:
@@ -189,4 +215,3 @@ class AlarmState:
             if _state==alarm_state:
 
                 return alarm_state
-

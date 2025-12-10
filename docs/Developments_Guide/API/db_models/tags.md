@@ -1,11 +1,31 @@
-# API Documentation
+# Tags Models
 
-Escribir un preambulo de contenido de la API
+Models for defining tags, units, data types, and storing historical tag values.
 
-::: automation.dbmodels.Tags
-    :docstring:
-    :members: create
-    :members: name_exist
-    :members: read
-    :members: read_by_name
-    :members: serialize
+::: automation.dbmodels.tags.Tags
+:docstring:
+:members:
+
+::: automation.dbmodels.tags.TagValue
+:docstring:
+:members:
+
+::: automation.dbmodels.tags.Units
+:docstring:
+:members:
+
+::: automation.dbmodels.tags.Variables
+:docstring:
+:members:
+
+::: automation.dbmodels.tags.DataTypes
+:docstring:
+:members:
+
+::: automation.dbmodels.tags.Manufacturer
+:docstring:
+:members:
+
+::: automation.dbmodels.tags.Segment
+:docstring:
+:members:

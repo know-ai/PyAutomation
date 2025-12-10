@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""pyhades/logger/datalogger.py
+"""automation/logger/datalogger.py
 
-This module implements a database logger for the CVT instance, 
-will create a time-serie for each tag in a short memory data base.
+This module implements the Data Logger, responsible for persisting tag values (time-series data)
+and managing tag configurations in the database.
 """
 import pytz, logging, math
 from peewee import fn
@@ -23,15 +23,8 @@ class DataLogger(BaseLogger):
     """
     Data Logger class.
 
-    This class serves as an API for managing tag settings and accessing logged tags.
-
-    **Usage Example**:
-
-    .. code-block:: python
-
-        >>> from pyhades import DataLogger
-        >>> _logger = DataLogger()
-
+    This class serves as an API for managing tag settings and accessing logged historical data.
+    It interacts directly with the database models.
     """
 
     def __init__(self):
@@ -57,7 +50,23 @@ class DataLogger(BaseLogger):
         segment:str=""
         ):
         r"""
-        Documentation here
+        Creates a new tag definition in the database.
+
+        **Parameters:**
+
+        * **id** (str): Unique identifier for the tag.
+        * **name** (str): Tag name.
+        * **unit** (str): Measurement unit.
+        * **data_type** (str): Data type (float, int, bool, etc.).
+        * **description** (str, optional): Tag description.
+        * **display_name** (str, optional): Friendly name for display.
+        * **display_unit** (str, optional): Unit for display purposes.
+        * **opcua_address** (str, optional): Source OPC UA server address.
+        * **node_namespace** (str, optional): Source OPC UA node ID.
+        * **scan_time** (int, optional): Scan interval in ms.
+        * **dead_band** (float, optional): Deadband for logging.
+        * **manufacturer** (str, optional): Associated manufacturer.
+        * **segment** (str, optional): Associated segment.
         """
         if not self.check_connectivity():
 
@@ -82,7 +91,11 @@ class DataLogger(BaseLogger):
     @db_rollback
     def delete_tag(self, id:str):
         r"""
-        Documentation here
+        Deactivates a tag in the database (logical delete).
+
+        **Parameters:**
+
+        * **id** (str): Tag ID.
         """
         if not self.check_connectivity():
 
@@ -94,7 +107,15 @@ class DataLogger(BaseLogger):
     @db_rollback
     def get_tag_by_name(self, name:str):
         r"""
-        Documentation here
+        Retrieves a tag configuration by its name.
+
+        **Parameters:**
+
+        * **name** (str): Tag name.
+
+        **Returns:**
+
+        * **Tags**: The tag model instance.
         """
         if not self.check_connectivity():
 
@@ -105,7 +126,12 @@ class DataLogger(BaseLogger):
     @db_rollback
     def update_tag(self, id:str, **kwargs):
         r"""
-        Documentation here
+        Updates tag configuration properties.
+
+        **Parameters:**
+
+        * **id** (str): Tag ID.
+        * **kwargs**: Fields to update (e.g., gaussian_filter=True).
         """
         if not self.check_connectivity():
 
@@ -128,7 +154,11 @@ class DataLogger(BaseLogger):
     @db_rollback
     def set_tags(self, tags):
         r"""
-        Documentation here
+        Batch creates multiple tags.
+
+        **Parameters:**
+
+        * **tags** (list): List of tag dictionaries.
         """
         if not self.check_connectivity():
 
@@ -141,7 +171,11 @@ class DataLogger(BaseLogger):
     @db_rollback
     def get_tags(self):
         r"""
-        Documentation here
+        Retrieves all tags configured in the database.
+
+        **Returns:**
+
+        * **list**: List of all Tags.
         """
         if not self.check_connectivity():
 
@@ -152,7 +186,13 @@ class DataLogger(BaseLogger):
     @db_rollback
     def write_tag(self, tag, value, timestamp):
         r"""
-        Documentation here
+        Writes a single value for a tag to the historical log.
+
+        **Parameters:**
+
+        * **tag** (str): Tag name.
+        * **value** (float): Value to log.
+        * **timestamp** (datetime): Timestamp of the value.
         """
         if not self.is_history_logged:
 
@@ -169,7 +209,11 @@ class DataLogger(BaseLogger):
     @db_rollback
     def write_tags(self, tags:list):
         r"""
-        Documentation here
+        Batch writes multiple tag values to the historical log.
+
+        **Parameters:**
+
+        * **tags** (list): List of dictionaries containing {'tag': name, 'value': val, 'timestamp': ts}.
         """
         if not self.is_history_logged:
 
@@ -198,7 +242,24 @@ class DataLogger(BaseLogger):
     @db_rollback
     def read_trends(self, start:str, stop:str, timezone:str, tags):
         r"""
-        Documentation here
+        Reads historical data for charting/trending.
+        
+        Supports automatic downsampling based on the requested time span:
+        - > 1 week: Daily averages
+        - > 2 days: Hourly averages
+        - > 2 hours: Minute averages
+        - Otherwise: Raw data
+
+        **Parameters:**
+
+        * **start** (str): Start datetime string.
+        * **stop** (str): End datetime string.
+        * **timezone** (str): Timezone for the query.
+        * **tags** (list): List of tag names to query.
+
+        **Returns:**
+
+        * **dict**: Dictionary of time-series data per tag.
         """  
         
         if not self.is_history_logged:
@@ -260,7 +321,20 @@ class DataLogger(BaseLogger):
     @db_rollback
     def read_table(self, start:str, stop:str, timezone:str, tags:list, page:int=1, limit:int=20):
         r"""
-        Get historical data in table format with pagination
+        Retrieves historical data in a paginated table format.
+
+        **Parameters:**
+
+        * **start** (str): Start datetime string.
+        * **stop** (str): Stop datetime string.
+        * **timezone** (str): Timezone.
+        * **tags** (list): List of tag names.
+        * **page** (int): Page number.
+        * **limit** (int): Records per page.
+
+        **Returns:**
+
+        * **dict**: {data: list, pagination: dict}
         """
         if not self.is_history_logged:
             return None
@@ -273,7 +347,6 @@ class DataLogger(BaseLogger):
             start_dt = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
             stop_dt = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
         except ValueError:
-            # Fallback or error handling if needed, though read_trends assumes correct format
             return dict()
 
         # Base query
@@ -303,65 +376,6 @@ class DataLogger(BaseLogger):
         utc_timezone = pytz.timezone('UTC')
         
         for entry in paginated_query:
-            timestamp = entry['timestamp']
-            # timestamp in DB is float (epoch) or datetime? 
-            # In read_trends: timestamp = entry['timestamp']; timestamp = from_timezone.localize(timestamp)
-            # This implies entry['timestamp'] is NOT timezone aware or is a float?
-            # In read_trends: start/stop converted to .timestamp() (float).
-            # Peewee timestamp field usually stores whatever you give it. If float was stored, it comes back as float.
-            # But line 247 in read_trends: timestamp = from_timezone.localize(timestamp)
-            # localize() works on datetime objects.
-            # So TagValue.timestamp is likely a DateTimeField in Peewee, but stored as UTC?
-            # Wait, line 212: start = ... .timestamp(). 
-            # TagValue.timestamp.between(start, stop)
-            # If start/stop are floats, and TagValue.timestamp compares to them, TagValue.timestamp might be float/DoubleField?
-            # Or Peewee handles conversion?
-            # Let's check dbmodels/tags.py if possible. 
-            # But relying on read_trends line 246-247:
-            # timestamp = entry['timestamp']
-            # timestamp = from_timezone.localize(timestamp)
-            # IF timestamp is float, localize() fails. localize takes datetime.
-            # SO timestamp must be a datetime object (naive).
-            # BUT line 212 converts start/stop to floats!
-            # If TagValue.timestamp is DateTimeField, Peewee might accept float for comparison? Or start/stop should be datetimes?
-            # Actually line 212: .timestamp() returns float.
-            # So TagValue.timestamp might be a float/DoubleField storing epoch?
-            # If so, line 247 `from_timezone.localize(timestamp)` would FAIL on a float.
-            # Let's assume read_trends logic is correct and see what it does.
-            # If timestamp is float, `datetime.fromtimestamp(timestamp, pytz.UTC)` is needed.
-            # If timestamp is datetime, `localize` is needed.
-            
-            # Let's check `read_trends` carefully.
-            # 246| timestamp = entry['timestamp']
-            # 247| timestamp = from_timezone.localize(timestamp)
-            
-            # This strongly suggests `entry['timestamp']` is a naive datetime object.
-            # THEN why line 212 converts to .timestamp()?
-            # `start = ... .timestamp()`
-            # Maybe TagValue.timestamp is Integer/Float (Epoch)?
-            # If so, 247 is suspicious.
-            # However, I should follow `read_trends` pattern OR be robust.
-            # If I check `write_tag`: `TagValue.create(..., timestamp=timestamp, ...)`
-            # where timestamp comes from `datetime.now(pytz.utc).astimezone(TIMEZONE)` (from tags.py).
-            
-            # If I look at `read_trends` line 243 `for entry in query:` where query is `.dicts()`.
-            # I will assume `entry['timestamp']` works like in `read_trends`.
-            # BUT, if `read_trends` is working code, then `entry['timestamp']` is likely a datetime.
-            # AND `.between(start, stop)` works with floats if the column is float.
-            # Or maybe `start` and `stop` being floats are auto-converted?
-            # Actually, looking at line 246, `timestamp` variable is reused. 
-            
-            # I will try to support both or verify.
-            # Safest is `datetime.fromtimestamp(entry['timestamp'])` if it's float/int, or just use it if it's datetime.
-            # Given `read_trends` code, I suspect `timestamp` in DB is DateTimeField.
-            # If so, `start` and `stop` should probably be datetimes. 
-            # Line 212 `... .timestamp()` makes them floats.
-            # Peewee `DateTimeField` vs float comparison...
-            
-            # I'll stick to what I see.
-            # But wait, `read_trends` logic at 247 `from_timezone.localize(timestamp)` implies naive datetime.
-            
-            # Implementation:
             ts_val = entry['timestamp']
             if isinstance(ts_val, (int, float)):
                 dt_object = datetime.fromtimestamp(ts_val, pytz.UTC)
@@ -392,24 +406,23 @@ class DataLogger(BaseLogger):
     @db_rollback
     def read_tabular_data(self, start:str, stop:str, timezone:str, tags:list, sample_time:int, page:int=1, limit:int=20):
         r"""
-        Get historical data in tabular format with pagination and forward-fill resampling.
+        Retrieves historical data in a tabular format with forward-fill resampling.
         
-        Args:
-            start (str): Start datetime string
-            stop (str): Stop datetime string 
-            timezone (str): Timezone string
-            tags (list): List of tag names
-            sample_time (int): Sample time in seconds
-            page (int): Page number
-            limit (int): Items per page
+        Useful for exporting data where all tags need to share the same timestamps.
+
+        **Parameters:**
+
+        * **start** (str): Start datetime string.
+        * **stop** (str): Stop datetime string.
+        * **timezone** (str): Timezone.
+        * **tags** (list): List of tag names.
+        * **sample_time** (int): Resampling interval in seconds.
+        * **page** (int): Page number.
+        * **limit** (int): Rows per page.
             
-        Returns:
-            dict: {
-                "tag_names": ["timestamp", "tag1", ...],
-                "display_names": ["timestamp", "Display Tag 1", ...],
-                "values": [[ts, val1, ...], ...],
-                "pagination": {...}
-            }
+        **Returns:**
+
+        * **dict**: {tag_names, display_names, values, pagination}
         """
         if not self.is_history_logged:
             return None
@@ -478,7 +491,6 @@ class DataLogger(BaseLogger):
                 return empty_result
             
             # Adjust start to the first actual data point
-            # Ensure min_ts is timezone aware if needed, though scalar() returns DB format
             if isinstance(min_ts, datetime):
                  if min_ts.tzinfo is None:
                      min_ts = utc_timezone.localize(min_ts)
@@ -513,15 +525,12 @@ class DataLogger(BaseLogger):
         page_end_ts = start_ts + ((end_index - 1) * sample_time)
         
         # Query data needed for this page plus context for forward fill
-        # We need data up to page_end_ts. 
-        # For forward fill, we need the last known value before or at page_start_ts for each tag.
         
         data_points = []
         current_ts = page_start_ts
         
         # 1. Get initial values (state at page_start_ts)
         current_values = {}
-        # Convert float timestamp to datetime for Peewee comparison
         current_dt = datetime.fromtimestamp(current_ts, pytz.UTC)
         
         for tag_name in tags:
@@ -541,9 +550,6 @@ class DataLogger(BaseLogger):
                 current_values[tag_name] = None
 
         # 2. Get changes within the page window
-        # We query all changes for these tags in the time window of the page
-        
-        # Convert boundaries to datetime for Peewee
         page_start_dt = datetime.fromtimestamp(page_start_ts, pytz.UTC)
         page_end_dt = datetime.fromtimestamp(page_end_ts, pytz.UTC)
 
@@ -562,10 +568,8 @@ class DataLogger(BaseLogger):
         # Organize changes by timestamp
         changes_by_ts = defaultdict(dict)
         for change in changes_query:
-            # timestamp comes as datetime from Peewee
             ts_val = change['timestamp']
             if isinstance(ts_val, datetime):
-                # Ensure it's timezone aware or treat as UTC if naive
                 if ts_val.tzinfo is None:
                     ts_val = utc_timezone.localize(ts_val)
                 ts = ts_val.timestamp()
@@ -575,9 +579,6 @@ class DataLogger(BaseLogger):
             changes_by_ts[ts][change['name']] = change['value']
             
         # 3. Generate tabular data
-        # We iterate step by step. This might be slow if step is small and range is large, 
-        # but we are limited by pagination 'limit' (e.g. 20 rows), so it's fast!
-        
         changes_iter = sorted(changes_by_ts.keys())
         change_idx = 0
         
@@ -585,12 +586,6 @@ class DataLogger(BaseLogger):
             step_ts = page_start_ts + (i * sample_time)
             
             # Update current_values with any changes that happened between last step and now (inclusive)
-            # Actually, standard sample-hold means at time T we have value at T.
-            # If multiple values in (T-1, T], usually the last one prevails or the one at T?
-            # Requirement: "retorne exactamente el timestamp... valor anterior mas cercano registrado" (forward fill)
-            # So at step_ts, value is the latest value where timestamp <= step_ts.
-            
-            # Advance change_idx to consume all changes <= step_ts
             while change_idx < len(changes_iter) and changes_iter[change_idx] <= step_ts:
                 ts = changes_iter[change_idx]
                 for tag, val in changes_by_ts[ts].items():
@@ -627,9 +622,17 @@ class DataLogger(BaseLogger):
         }
 
     def _agregate_data_every_seconds(self, query, result, seconds:int, timezone:str="UTC"):
-        r"""Documentation here
+        r"""
+        Downsamples data by averaging values within specific time buckets.
+        
+        **Parameters:**
+
+        * **query**: The query object containing raw data.
+        * **result**: The result dictionary to append to.
+        * **seconds**: Bucket size in seconds.
+        * **timezone**: Target timezone for result formatting.
         """
-        # Aggregate data every 5 seconds
+        # Aggregate data
         target_timezone = pytz.timezone(timezone)
         buffer = defaultdict(lambda: {"sum": 0, "count": 0, "last_timestamp": None})
 
@@ -650,7 +653,6 @@ class DataLogger(BaseLogger):
             last_timestamp = from_timezone.localize(last_timestamp)
             result[tag_name]["values"].append({
                 "x": last_timestamp.astimezone(target_timezone).strftime(self.tag_engine.DATETIME_FORMAT),
-                # "y": eval(f"{variable}.convert_value({avg_value}, from_unit={'unit'}, to_unit={'_tag.get_display_unit()'})")
                 "y": avg_value
             })
         
@@ -659,7 +661,11 @@ class DataLogger(BaseLogger):
     @db_rollback
     def read_segments(self):
         r"""
-        Documentation here
+        Retrieves all configured segments.
+
+        **Returns:**
+
+        * **list**: List of Segment objects.
         """
         if not self.check_connectivity():
 
@@ -670,8 +676,10 @@ class DataLogger(BaseLogger):
 
 class DataLoggerEngine(BaseEngine):
     r"""
-    Data logger Engine class for Tag thread-safe database logging.
+    Thread-safe Engine for the DataLogger.
 
+    This class provides a thread-safe wrapper around the `DataLogger` class,
+    ensuring that database operations from multiple threads do not conflict.
     """
     def __init__(self):
 
@@ -680,25 +688,21 @@ class DataLoggerEngine(BaseEngine):
 
     def create_tables(self, tables):
         r"""
-        Create default PyHades database tables
+        Creates default database tables.
 
-        ['TagTrend', 'TagValue']
+        **Parameters:**
 
-        **Parameters**
-
-        * **tables** (list) list of database model
-
-        **Returns** `None`
+        * **tables** (list): List of database models.
         """
         self.logger.create_tables(tables)
 
     def drop_tables(self, tables:list):
         r"""
-        Drop tables if exist in database
+        Drops specified tables from the database.
 
-        **Parameters**
+        **Parameters:**
 
-        * **tables** (list): List of database model you want yo drop
+        * **tables** (list): List of database models.
         """
         self.logger.drop_tables(tables)
 
@@ -707,14 +711,11 @@ class DataLoggerEngine(BaseEngine):
         tag:Tag
         ):
         r"""
-        Define tag names you want log in database, these tags must be defined in CVTEngine
+        Registers a tag for logging in the database, using a thread-safe call.
 
-        **Parameters**
+        **Parameters:**
 
-        * **tag** (str): Tag name defined in CVTEngine
-        * **period** (float): Sampling time to log tag on database
-
-        **Returns** `None`
+        * **tag** (Tag): The tag object to register.
         """
         _query = dict()
         _query["action"] = "set_tag"
@@ -737,7 +738,7 @@ class DataLoggerEngine(BaseEngine):
 
     def get_tags(self):
         r"""
-
+        Retrieves all tags from the database (thread-safe).
         """
         _query = dict()
         _query["action"] = "get_tags"
@@ -747,7 +748,7 @@ class DataLoggerEngine(BaseEngine):
     
     def get_tag_by_name(self, name:str):
         r"""
-
+        Retrieves a tag by name (thread-safe).
         """
         _query = dict()
         _query["action"] = "get_tag_by_name"
@@ -762,15 +763,13 @@ class DataLoggerEngine(BaseEngine):
             user:User|None=None,
             **kwargs
             ):
-        r"""Documentation here
+        r"""
+        Updates tag configuration (thread-safe).
 
-        # Parameters
+        **Parameters:**
 
-        - 
-
-        # Returns
-
-        - 
+        * **id** (str): Tag ID.
+        * **kwargs**: Properties to update.
         """
 
         _query = dict()
@@ -784,15 +783,12 @@ class DataLoggerEngine(BaseEngine):
         return self.query(_query)
     
     def delete_tag(self, id:str):
-        r"""Documentation here
+        r"""
+        Deletes a tag (thread-safe).
 
-        # Parameters
+        **Parameters:**
 
-        - 
-
-        # Returns
-
-        - 
+        * **id** (str): Tag ID.
         """
         _query = dict()
         _query["action"] = "delete_tag"
@@ -803,12 +799,13 @@ class DataLoggerEngine(BaseEngine):
 
     def write_tag(self, tag:str, value:float, timestamp:datetime):
         r"""
-        Writes value to tag into database on a thread-safe mechanism
+        Writes a single tag value (thread-safe).
 
-        **Parameters**
+        **Parameters:**
 
-        * **tag** (str): Tag name in database
-        * **value** (float): Value to write in tag
+        * **tag** (str): Tag name.
+        * **value** (float): Value.
+        * **timestamp** (datetime): Timestamp.
         """
         _query = dict()
         _query["action"] = "write_tag"
@@ -822,12 +819,11 @@ class DataLoggerEngine(BaseEngine):
 
     def write_tags(self, tags:list):
         r"""
-        Writes value to tag into database on a thread-safe mechanism
+        Batch writes tag values (thread-safe).
 
-        **Parameters**
+        **Parameters:**
 
-        * **tag** (str): Tag name in database
-        * **value** (float): Value to write in tag
+        * **tags** (list): List of tag value dictionaries.
         """
         _query = dict()
         _query["action"] = "write_tags"
@@ -839,15 +835,14 @@ class DataLoggerEngine(BaseEngine):
     
     def read_trends(self, start:str, stop:str, timezone:str, *tags):
         r"""
-        Read tag value from database on a thread-safe mechanism
+        Reads trend data (thread-safe).
 
-        **Parameters**
+        **Parameters:**
 
-        * **tag** (str): Tag name in database
-
-        **Returns**
-
-        * **value** (float): Tag value requested
+        * **start** (str): Start time.
+        * **stop** (str): End time.
+        * **timezone** (str): Timezone.
+        * **tags**: Variable length argument of tag names.
         """
         _query = dict()
         _query["action"] = "read_trends"
@@ -860,7 +855,7 @@ class DataLoggerEngine(BaseEngine):
 
     def read_tabular_data(self, start:str, stop:str, timezone:str, tags:list, sample_time:int, page:int=1, limit:int=20):
         r"""
-        Get historical data in tabular format with pagination on a thread-safe mechanism
+        Reads tabular data (thread-safe).
         """
         _query = dict()
         _query["action"] = "read_tabular_data"
@@ -876,10 +871,9 @@ class DataLoggerEngine(BaseEngine):
 
     def read_segments(self):
         r"""
-        Documentation here
+        Reads segments (thread-safe).
         """
         _query = dict()
         _query["action"] = "read_segments"
         _query["parameters"] = dict()
         return self.query(_query)
-    

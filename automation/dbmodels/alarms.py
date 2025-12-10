@@ -9,35 +9,24 @@ from ..tags.cvt import CVTEngine
 tag_engine = CVTEngine()
 
 class AlarmTypes(BaseModel):
+    r"""
+    Database model for Alarm Types (e.g., HIGH, LOW, BOOL).
+    """
 
     name = CharField(unique=True)                       # high-high , high , bool , low , low-low
 
     @classmethod
     def create(cls, name:str)-> dict:
         r"""
-        You can use Model.create() to create a new model instance. This method accepts keyword arguments, where the keys correspond 
-        to the names of the model's fields. A new instance is returned and a row is added to the table.
+        Creates a new Alarm Type if it doesn't exist.
 
-        ```python
-        >>> AlarmsType.create(name='High-High')
-        {
-            'message': (str)
-            'data': (dict) {
-                'name': 'HIGH-HIGH'
-            }
-        }
-        ```
-        
-        This will INSERT a new row into the database. The primary key will automatically be retrieved and stored on the model instance.
+        **Parameters:**
 
-        **Parameters**
+        * **name** (str): The name of the alarm type (e.g., 'HIGH').
 
-        * **name:** (str), Industrial protocol name
+        **Returns:**
 
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (dict) row serialized}
-
+        * **dict**: Result dictionary containing status message and data.
         """
         result = dict()
         data = dict()
@@ -71,30 +60,30 @@ class AlarmTypes(BaseModel):
     @classmethod
     def read_by_name(cls, name:str):
         r"""
-        Get instance by its a name
+        Retrieves an Alarm Type by name.
 
-        **Parameters**
+        **Parameters:**
 
-        * **name:** (str) Alarm type name
+        * **name** (str): Alarm type name.
 
-        **Returns**
+        **Returns:**
 
-        * **bool:** If True, name exist into database 
+        * **AlarmTypes**: The model instance or None.
         """        
         return cls.get_or_none(name=name.upper())
 
     @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
-        Verify is a name exist into database
+        Checks if an Alarm Type name exists.
 
-        **Parameters**
+        **Parameters:**
 
-        * **name:** (str) Alarm type name
+        * **name** (str): Alarm type name.
 
-        **Returns**
+        **Returns:**
 
-        * **bool:** If True, name exist into database 
+        * **bool**: True if exists.
         """
         query = cls.get_or_none(name=name.upper())
         
@@ -106,7 +95,7 @@ class AlarmTypes(BaseModel):
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the record to a dictionary.
         """
 
         return {
@@ -117,7 +106,7 @@ class AlarmTypes(BaseModel):
 
 class AlarmStates(BaseModel):
     r"""
-    Based on ISA 18.2
+    Database model for Alarm States (ISA 18.2).
     """
     name = CharField(unique=True)
     mnemonic = CharField(max_length=20)
@@ -127,32 +116,18 @@ class AlarmStates(BaseModel):
     @classmethod
     def create(cls, name:str, mnemonic:str, condition:str, status:str)-> dict:
         r"""
-        You can use Model.create() to create a new model instance. This method accepts keyword arguments, where the keys correspond 
-        to the names of the model's fields. A new instance is returned and a row is added to the table.
+        Creates a new Alarm State.
 
-        ```python
-        >>> AlarmsType.create(name='Unacknowledged', mnemonic='UNACKED', description='Alarm unacknowledged')
-        {
-            'message': (str)
-            'data': (dict) {
-                'id': 1,
-                'name': 'unacknowledged',
-                'mnemonic': 'UNACKED',
-                'description': 'Alarm unacknowledged'
-            }
-        }
-        ```
-        
-        This will INSERT a new row into the database. The primary key will automatically be retrieved and stored on the model instance.
+        **Parameters:**
 
-        **Parameters**
+        * **name** (str): State name (e.g., 'Unacknowledged').
+        * **mnemonic** (str): Short code (e.g., 'UNACK').
+        * **condition** (str): Process condition.
+        * **status** (str): Status description.
 
-        * **name:** (str), Industrial protocol name
+        **Returns:**
 
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (dict) row serialized}
-
+        * **AlarmStates**: The created instance or existing one.
         """
 
         if not cls.name_exist(name):
@@ -163,32 +138,16 @@ class AlarmStates(BaseModel):
             return query
 
     @classmethod
-    def read_by_name(cls, name:str)->bool:
+    def read_by_name(cls, name:str):
         r"""
-        Get instance by its a name
-
-        **Parameters**
-
-        * **name:** (str) Alarm type name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Retrieves an Alarm State by name.
         """
         return cls.get_or_none(name=name)
 
     @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
-        Verify is a name exist into database
-
-        **Parameters**
-
-        * **name:** (str) Alarm type name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Checks if an Alarm State name exists.
         """
         query = cls.get_or_none(name=name)
         
@@ -200,7 +159,7 @@ class AlarmStates(BaseModel):
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the record.
         """
 
         return {
@@ -213,6 +172,9 @@ class AlarmStates(BaseModel):
 
 
 class Alarms(BaseModel):
+    r"""
+    Database model for configured Alarms.
+    """
     
     identifier = CharField(unique=True)
     name = CharField(unique=True, max_length=128)
@@ -235,15 +197,23 @@ class Alarms(BaseModel):
         state:str=States.NORM.value,
         timestamp:datetime=None
         ):
-        r"""Documentation here
+        r"""
+        Creates a new Alarm configuration record.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **identifier** (str): Unique ID.
+        * **name** (str): Alarm name.
+        * **tag** (str): Associated Tag name.
+        * **trigger_type** (str): Type of trigger.
+        * **trigger_value** (float): Threshold value.
+        * **description** (str, optional): Description.
+        * **state** (str, optional): Initial state.
+        * **timestamp** (datetime, optional): Creation timestamp.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **Alarms**: The created alarm record.
         """
         trigger_type = AlarmTypes.read_by_name(name=trigger_type)
         tag = Tags.read_by_name(name=tag)
@@ -266,15 +236,8 @@ class Alarms(BaseModel):
     
     @classmethod
     def name_exists(cls, name:str)->bool|None:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Checks if an alarm name exists.
         """
         tag = cls.get_or_none(name=name)
         if tag:
@@ -283,56 +246,28 @@ class Alarms(BaseModel):
         
     @classmethod
     def read(cls, id:str):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Reads an alarm by ID.
         """
         return cls.get_or_none(id=id)
     
     @classmethod
     def read_by_identifier(cls, identifier:str):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Reads an alarm by unique identifier.
         """
         return cls.get_or_none(identifier=identifier)
         
     @classmethod
     def read_by_name(cls, name:str):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Reads an alarm by name.
         """
         return cls.get_or_none(name=name)
 
     def serialize(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Serializes the alarm record.
         """
         timestamp = self.timestamp
         if timestamp:
@@ -352,6 +287,9 @@ class Alarms(BaseModel):
     
 
 class AlarmSummary(BaseModel):
+    r"""
+    Database model for Alarm History (Summary).
+    """
     
     alarm = ForeignKeyField(Alarms, backref='summary')
     state = ForeignKeyField(AlarmStates, backref='summary')
@@ -360,6 +298,16 @@ class AlarmSummary(BaseModel):
 
     @classmethod
     def create(cls, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
+        r"""
+        Creates a new entry in the alarm summary.
+
+        **Parameters:**
+
+        * **name** (str): Alarm name.
+        * **state** (str): Alarm state.
+        * **timestamp** (datetime): Time of occurrence.
+        * **ack_timestamp** (datetime, optional): Acknowledgment time.
+        """
         _alarm = Alarms.read_by_name(name=name)
         _state = AlarmStates.read_by_name(name=state)
         
@@ -374,33 +322,17 @@ class AlarmSummary(BaseModel):
                 return query
 
     @classmethod
-    def read_by_name(cls, name:str)->bool:
+    def read_by_name(cls, name:str):
         r"""
-        Get instance by its a name
-
-        **Parameters**
-
-        * **name:** (str) Alarm type name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Retrieves the latest summary entry for a specific alarm name.
         """
         alarm = Alarms.read_by_name(name=name)
         return cls.select().where(cls.alarm==alarm).order_by(cls.id.desc()).get_or_none()
 
     @classmethod
-    def read_by_alarm_id(cls, alarm_id:int)->bool:
+    def read_by_alarm_id(cls, alarm_id:int):
         r"""
-        Get instance by its a name
-
-        **Parameters**
-
-        * **name:** (str) Alarm type name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Retrieves the latest summary entry by alarm ID.
         """
         alarm = Alarms.read(id=alarm_id)
         return cls.select().where(cls.alarm==alarm).order_by(cls.id.desc()).get_or_none()
@@ -408,17 +340,7 @@ class AlarmSummary(BaseModel):
     @classmethod
     def read_all(cls):
         r"""
-        Select all records
-
-        You can use this method to retrieve all instances matching in the database. 
-
-        This method is a shortcut that calls Model.select() with the given query.
-
-        **Parameters**
-
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (list) row serialized}
+        Retrieves all alarm summary records.
         """
         data = list()
         
@@ -434,7 +356,7 @@ class AlarmSummary(BaseModel):
     @classmethod
     def read_lasts(cls, lasts:int=1):
         r"""
-        Documentation here
+        Retrieves the last N records.
         """
         alarms = cls.select().order_by(cls.id.desc()).limit(lasts)
 
@@ -453,7 +375,20 @@ class AlarmSummary(BaseModel):
         limit:int=20
         ):
         r"""
-        Documentation here
+        Filters alarm summary records with pagination.
+
+        **Parameters:**
+
+        * **states** (list[str]): Filter by states.
+        * **names** (list[str]): Filter by alarm names.
+        * **tags** (list[str]): Filter by tag names.
+        * **greater_than_timestamp** (datetime): Start time.
+        * **less_than_timestamp** (datetime): End time.
+        * **page**, **limit**: Pagination control.
+
+        **Returns:**
+
+        * **dict**: {data: list, pagination: dict}
         """
         import math
         _timezone = pytz.timezone(timezone)
@@ -512,7 +447,7 @@ class AlarmSummary(BaseModel):
     @classmethod
     def get_alarm_summary_comments(cls, id:int):
         r"""
-        Documentation here
+        Retrieves comments associated with a specific alarm summary entry.
         """
         query = cls.read(id=id)
 
@@ -520,7 +455,7 @@ class AlarmSummary(BaseModel):
 
     def serialize(self):
         r"""
-        Documentation here
+        Serializes the summary record.
         """
         from .. import TIMEZONE
 

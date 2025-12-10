@@ -9,6 +9,11 @@ DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 
 class Events(BaseModel):
+    r"""
+    Database model for System Events.
+
+    Events track user actions and system changes.
+    """
     
     timestamp = TimestampField(utc=True)
     message = CharField(max_length=256)
@@ -29,6 +34,23 @@ class Events(BaseModel):
         criticity:int=None,
         timestamp:datetime=None
         )->tuple:
+        r"""
+        Creates a new event record.
+
+        **Parameters:**
+
+        * **message** (str): Event message.
+        * **user** (User): User associated with the event.
+        * **description** (str, optional): Detailed description.
+        * **classification** (str, optional): Event category.
+        * **priority** (int, optional): Priority level.
+        * **criticity** (int, optional): Criticity level.
+        * **timestamp** (datetime, optional): Time of event.
+
+        **Returns:**
+
+        * **tuple**: (Query object, status message)
+        """
 
         if not isinstance(user, User):
 
@@ -60,7 +82,15 @@ class Events(BaseModel):
     @classmethod
     def read_lasts(cls, lasts:int=1):
         r"""
-        Documentation here
+        Retrieves the last N events.
+
+        **Parameters:**
+
+        * **lasts** (int): Number of events to retrieve.
+
+        **Returns:**
+
+        * **list**: List of serialized event dictionaries.
         """
         events = cls.select().order_by(cls.id.desc()).limit(lasts)
 
@@ -82,7 +112,20 @@ class Events(BaseModel):
         limit:int=20
         ):
         r"""
-        Documentation here
+        Filters events based on criteria with pagination.
+
+        **Parameters:**
+
+        * **usernames** (list[str]): Filter by user.
+        * **priorities** (list[int]): Filter by priority.
+        * **criticities** (list[int]): Filter by criticity.
+        * **message**, **description**, **classification**: Text search.
+        * **greater_than_timestamp**, **less_than_timestamp**: Time range.
+        * **page**, **limit**: Pagination.
+
+        **Returns:**
+
+        * **dict**: {data: list, pagination: dict}
         """
         import math
         _timezone = pytz.timezone(timezone)
@@ -147,13 +190,16 @@ class Events(BaseModel):
     @classmethod
     def get_comments(cls, id:int):
         r"""
-        Documentation here
+        Retrieves comments (logs) associated with an event.
         """
         query = cls.read(id=id)
 
         return [comment.serialize() for comment in query.logs]
 
     def serialize(self)-> dict:
+        r"""
+        Serializes the event record.
+        """
         from .. import TIMEZONE, MANUFACTURER, SEGMENT
         timestamp = self.timestamp
         if timestamp:
@@ -174,5 +220,3 @@ class Events(BaseModel):
             "manufacturer": MANUFACTURER,
             "has_comments": True if self.logs else False
         }
-    
-

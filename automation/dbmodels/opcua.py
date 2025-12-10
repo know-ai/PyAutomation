@@ -2,6 +2,9 @@ from peewee import CharField, IntegerField
 from ..dbmodels.core import BaseModel
 
 class OPCUA(BaseModel):
+    r"""
+    Database model for OPC UA Client configurations.
+    """
     
     client_name = CharField(unique=True)
     host = CharField()
@@ -10,29 +13,17 @@ class OPCUA(BaseModel):
     @classmethod
     def create(cls, client_name:str, host:str, port:int):
         r"""
-        You can use Model.create() to create a new model instance. This method accepts keyword arguments, where the keys correspond 
-        to the names of the model's fields. A new instance is returned and a row is added to the table.
+        Creates a new OPC UA client configuration.
 
-        ```python
-        >>> AlarmsType.create(name='High-High')
-        {
-            'message': (str)
-            'data': (dict) {
-                'name': 'HIGH-HIGH'
-            }
-        }
-        ```
-        
-        This will INSERT a new row into the database. The primary key will automatically be retrieved and stored on the model instance.
+        **Parameters:**
 
-        **Parameters**
+        * **client_name** (str): Unique name for the client.
+        * **host** (str): Server hostname or IP.
+        * **port** (int): Server port.
 
-        * **name:** (str), Industrial protocol name
+        **Returns:**
 
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (dict) row serialized}
-
+        * **OPCUA**: The created record.
         """
 
         if not cls.client_name_exist(client_name):
@@ -45,22 +36,14 @@ class OPCUA(BaseModel):
     @classmethod
     def get_by_client_name(cls, client_name:str):
         r"""
-        Documentation here
+        Retrieves a client configuration by name.
         """
         return cls.get_or_none(client_name=client_name)
     
     @classmethod
     def client_name_exist(cls, client_name:str):
         r"""
-        Verify is a name exist into database
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Checks if a client name exists.
         """
         query = cls.get_or_none(client_name=client_name)
         
@@ -72,7 +55,7 @@ class OPCUA(BaseModel):
     
     def serialize(self):
         r"""
-        Documentation here
+        Serializes the client configuration.
         """
         return {
             "client_name": self.client_name,

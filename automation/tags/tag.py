@@ -24,6 +24,12 @@ from .filter import GaussianFilter
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 class Tag:
+    r"""
+    Represents a process variable (Tag) in the automation system.
+
+    A Tag holds the current value, timestamp, quality, and metadata of a variable.
+    It supports unit conversion, deadband filtering, and notifying observers upon value changes.
+    """
 
     def __init__(
             self,
@@ -50,6 +56,34 @@ class Tag:
             segment:str="",
             id:str=None
     ):
+        r"""
+        Initializes a new Tag instance.
+
+        **Parameters:**
+
+        * **name** (str): Unique name of the tag.
+        * **unit** (str): Base unit of measurement.
+        * **variable** (str): Physical variable type (e.g., 'Temperature', 'Pressure').
+        * **data_type** (str): Data type of the value ('float', 'int', 'bool', 'str').
+        * **display_name** (str, optional): Human-readable name for UI.
+        * **display_unit** (str, optional): Unit to display in UI.
+        * **description** (str, optional): Description of the tag.
+        * **opcua_address** (str, optional): OPC UA Server URL.
+        * **node_namespace** (str, optional): OPC UA Node ID.
+        * **scan_time** (int, optional): Polling interval in milliseconds.
+        * **dead_band** (float, optional): Minimum change required to update value.
+        * **timestamp** (datetime, optional): Initial timestamp.
+        * **process_filter** (bool, optional): Enable process value filtering.
+        * **gaussian_filter** (bool, optional): Enable Gaussian (Kalman) filtering.
+        * **gaussian_filter_threshold** (float, optional): Threshold for filter adaptation.
+        * **gaussian_filter_r_value** (float, optional): R value for Kalman filter.
+        * **outlier_detection** (bool, optional): Enable outlier detection.
+        * **out_of_range_detection** (bool, optional): Enable out-of-range detection.
+        * **frozen_data_detection** (bool, optional): Enable frozen data detection.
+        * **manufacturer** (str, optional): Manufacturer metadata.
+        * **segment** (str, optional): Segment metadata.
+        * **id** (str, optional): Unique ID. If not provided, one is generated.
+        """
         self.id = secrets.token_hex(4)
         if id:
             self.id = id
@@ -114,14 +148,28 @@ class Tag:
 
     def set_name(self, name:str):
         r"""
-        Documentation here
+        Sets the name of the tag.
+
+        **Parameters:**
+
+        * **name** (str): New tag name.
         """
         self.name = name
 
     @logging_error_handler
     def set_value(self, value:float|str|int|bool, timestamp:datetime=None):
         r"""
-        Documentation here
+        Updates the value of the tag.
+
+        This method handles:
+        * Deadband filtering (only updates if change > dead_band).
+        * Updating internal value and timestamp buffers.
+        * Notifying attached observers.
+
+        **Parameters:**
+
+        * **value** (float|str|int|bool): New value.
+        * **timestamp** (datetime, optional): Time of the value change. Defaults to now.
         """
         if self.dead_band and isinstance(value, (int, float)):
             try:
@@ -142,20 +190,32 @@ class Tag:
 
     def set_display_name(self, name:str):
         r"""
-        Documentation here
+        Sets the display name of the tag.
+
+        **Parameters:**
+
+        * **name** (str): New display name.
         """
 
         self.display_name = name
 
     def set_data_type(self, data_type:str):
         r"""
-        Documentation here
+        Sets the data type of the tag.
+
+        **Parameters:**
+
+        * **data_type** (str): 'float', 'int', 'bool', or 'str'.
         """
         self.data_type = data_type
 
     def set_variable(self, variable:str):
         r"""
-        Documentation here
+        Sets the physical variable type and initializes the corresponding value object.
+
+        **Parameters:**
+
+        * **variable** (str): Variable type (e.g., 'Temperature').
         """
 
         self.variable = variable
@@ -190,157 +250,256 @@ class Tag:
 
     def set_opcua_address(self, opcua_address:str):
         r"""
-        Documentation here
+        Sets the OPC UA server address associated with this tag.
+
+        **Parameters:**
+
+        * **opcua_address** (str): Server URL.
         """
         self.opcua_address = opcua_address
 
     def set_unit(self, unit:str):
         r"""
-        Documentation here
+        Sets the base unit of the tag.
+
+        **Parameters:**
+
+        * **unit** (str): Unit symbol.
         """
         self.unit = unit
 
     def set_display_unit(self, unit:str): 
         r"""
-        Documentation here
+        Sets the display unit of the tag (for UI).
+
+        **Parameters:**
+
+        * **unit** (str): Unit symbol.
         """
         self.display_unit = unit
 
     def set_node_namespace(self, node_namespace:str):
         r"""
-        Documentation here
+        Sets the OPC UA node namespace/ID.
+
+        **Parameters:**
+
+        * **node_namespace** (str): Node ID string.
         """
         self.node_namespace = node_namespace
 
     def get_value(self):
         r"""
-        Documentation here
+        Gets the current value of the tag, converted to the display unit.
+
+        **Returns:**
+
+        * Value rounded to 3 decimal places.
         """            
         return round(self.value.convert(to_unit=self.display_unit), 3)
     
     def set_description(self, description:str):
         r"""
-        Documentation here
+        Sets the description of the tag.
+
+        **Parameters:**
+
+        * **description** (str): Description text.
         """
         self.description = description
     
     def set_scan_time(self, scan_time:int):
         r"""
-        Documentation here
+        Sets the scan time (polling interval).
+
+        **Parameters:**
+
+        * **scan_time** (int): Time in milliseconds.
         """
         self.scan_time = scan_time
 
     def set_dead_band(self, dead_band:float):
         r"""
-        Documentation here
+        Sets the deadband value.
+
+        **Parameters:**
+
+        * **dead_band** (float): Minimum change threshold.
         """
         self.dead_band = dead_band
 
     def get_timestamp(self):
         r"""
-        Documentation here
+        Gets the timestamp of the last value update.
+
+        **Returns:**
+
+        * **datetime**: Timestamp.
         """
         return self.timestamp
 
     def get_scan_time(self):
         r"""
-        Documentation here
+        Gets the configured scan time.
+
+        **Returns:**
+
+        * **int**: Scan time in milliseconds.
         """
         return self.scan_time
     
     def get_dead_band(self):
         r"""
-        Documentation here
+        Gets the configured deadband.
+
+        **Returns:**
+
+        * **float**: Deadband value.
         """
         return self.dead_band
 
     def get_data_type(self):
         r"""
-        Documentation here
+        Gets the data type of the tag.
+
+        **Returns:**
+
+        * **str**: Data type string.
         """
         return self.data_type
 
     def get_unit(self):
         r"""
-        Documentation here
+        Gets the base unit of the tag.
+
+        **Returns:**
+
+        * **str**: Unit symbol.
         """
         return self.unit
     
     def get_display_unit(self):
         r"""
-        Documentation here
+        Gets the display unit of the tag.
+
+        **Returns:**
+
+        * **str**: Display unit symbol.
         """
         return self.display_unit
 
     def get_description(self):
         r"""
-        Documentation here
+        Gets the description of the tag.
+
+        **Returns:**
+
+        * **str**: Description text.
         """
         return self.description
     
     def get_display_name(self)->str:
         r"""
-        Documentation here
+        Gets the display name of the tag.
+
+        **Returns:**
+
+        * **str**: Display name.
         """
 
         return self.display_name
     
     def get_variable(self)->str:
         r"""
-        Documentation here
+        Gets the physical variable type.
+
+        **Returns:**
+
+        * **str**: Variable type (e.g., 'Temperature').
         """
 
         return self.variable
     
     def get_id(self)->str:
         r"""
-        Documentation here
+        Gets the unique ID of the tag.
+
+        **Returns:**
+
+        * **str**: Unique ID.
         """
 
         return self.id
     
     def get_name(self)->str:
         r"""
-        Documentation here
+        Gets the unique name of the tag.
+
+        **Returns:**
+
+        * **str**: Tag name.
         """
 
         return self.name
 
     def get_opcua_address(self):
         r"""
-        Documentation here
+        Gets the OPC UA server address.
+
+        **Returns:**
+
+        * **str**: OPC UA address.
         """
         return self.opcua_address
 
     def get_node_namespace(self):
         r"""
-        Documentation here
+        Gets the OPC UA node namespace.
+
+        **Returns:**
+
+        * **str**: Node Namespace.
         """
         return self.node_namespace
     
     def attach(self, observer:Observer):
         r"""
-        Documentation here
+        Attaches an observer to this tag.
+
+        **Parameters:**
+
+        * **observer** (Observer): The observer instance to attach.
         """
         observer._subject = self
         self._observers.add(observer)
 
     def detach(self, observer:Observer):
         r"""
-        Documentation here
+        Detaches an observer from this tag.
+
+        **Parameters:**
+
+        * **observer** (Observer): The observer instance to detach.
         """
         observer._subject = None
         self._observers.discard(observer)
 
     def notify(self):
         r"""
-        Documentation here
+        Notifies all attached observers of a change.
         """
         for observer in self._observers:
             
             observer.update()
 
     def serialize(self):
+        r"""
+        Serializes the tag object to a dictionary.
+
+        **Returns:**
+
+        * **dict**: Dictionary representation of the tag.
+        """
 
         timestamp = self.get_timestamp()
         if timestamp:
@@ -376,9 +535,9 @@ class Tag:
 
 class TagObserver(Observer):
     """
-    Implement the Observer updating interface to keep its state
-    consistent with the subject's.
-    Store state that should stay consistent with the subject's.
+    Observer implementation that pushes tag updates to a queue.
+    
+    Useful for asynchronous processing of tag changes.
     """
     def __init__(self, tag_queue):
 
@@ -388,8 +547,7 @@ class TagObserver(Observer):
     def update(self):
 
         """
-        This methods inserts the changing Tag into a 
-        Producer-Consumer Queue Design Pattern
+        Puts the updated tag data (name, value, timestamp) into the queue.
         """
         result = dict()
         result["tag"] = self._subject.name
@@ -400,9 +558,7 @@ class TagObserver(Observer):
 
 class MachineObserver(Observer):
     """
-    Implement the Observer updating interface to keep its state
-    consistent with the subject's.
-    Store state that should stay consistent with the subject's.
+    Observer implementation that notifies a State Machine directly.
     """
     def __init__(self, machine):
 
@@ -412,7 +568,6 @@ class MachineObserver(Observer):
     def update(self):
 
         """
-        This methods inserts the changing Tag into a 
-        Producer-Consumer Queue Design Pattern
+        Calls the `notify` method of the attached state machine with the new tag value.
         """
         self.machine.notify(tag=self._subject.name, value=self._subject.value, timestamp=self._subject.timestamp)

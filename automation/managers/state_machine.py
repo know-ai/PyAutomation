@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""broker/managers/state_machine.py
+"""automation/managers/state_machine.py
 
-This module implements Function Manager.
+This module implements the State Machine Manager, which acts as a registry and controller for all
+state machine instances within the application.
 """
 from statemachine import StateMachine
 from ..models import StringType
@@ -10,9 +11,9 @@ import queue
 
 class StateMachineManager:
     r"""
-    Handles and manager the state machines defined in the application in a store defined by a list of tuples
+    Manages the lifecycle and execution configuration of State Machines.
 
-    Its structure is [(machine_1, interval_1, mode_1), (machine_2, interval_2, mode_2), ... (machine_n, interval_n, mode_n)]
+    It maintains a registry of all active machines, their execution intervals, and threading modes (sync/async).
     """
 
     def __init__(self):
@@ -21,55 +22,29 @@ class StateMachineManager:
         self._tag_queue = queue.Queue()
 
     def get_queue(self)->queue.Queue:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Retrieves the internal queue used for tag updates related to state machines.
         """
         return self._tag_queue
 
     def append_machine(self, machine:StateMachine):
         r"""
-        Appends machines to the store
+        Registers a new state machine.
 
-        **Parameters**
+        **Parameters:**
 
-        * **machine:** (PyHadesStateMachine) instance
-        * **interval:** (float) Execution interval in seconds
-        * **mode:** (str) Thread mode of the state machine, allowed mode ('sync', 'async')
-
-        **Returns** `None`
-
-        Usage
-
-        ```python
-        >>> manager = app.get_state_machine_manager()
-        >>> manager.append_machine(machine, interval, mode)
-        ```
+        * **machine** (StateMachine): The state machine instance.
         """
         
         self._machines.append(machine)
 
     def get_machines(self)->list:
         r"""
-        Gets state machines
+        Retrieves the list of all registered state machines.
 
-        **Returns**
+        **Returns:**
 
-        * **machines** (list of tuples)
-
-        Usage
-
-        ```python
-        >>> manager = app.get_state_machine_manager()
-        >>> machines = manager.get_machines()
-        [(machine_1, interval_1, mode_1), (machine_2, interval_2, mode_2), ... (machine_n, interval_n, mode_n)]
-        ```
+        * **list**: List of tuples [(machine, interval, mode), ...].
         """
         result = self._machines
         
@@ -77,29 +52,26 @@ class StateMachineManager:
     
     def serialize_machines(self):
         r"""
-        Documentation here
+        Serializes all registered machines to a list of dictionaries.
+
+        **Returns:**
+
+        * **list[dict]**: Serialized machine data.
         """
 
         return [machine.serialize() for machine, _, _ in self.get_machines()]
 
     def get_machine(self, name:StringType)->StateMachine:
         r"""
-        Gets state machine by its name
+        Retrieves a state machine by its name.
 
-        **Parameters**
+        **Parameters:**
 
-        * **name:** (str) State machine name
+        * **name** (StringType): The name of the machine.
 
-        **Returns**
+        **Returns:**
 
-        * **machine:** (PyHadesStateMachine) instance
-
-        Usage
-
-        ```python
-        >>> manager = app.get_state_machine_manager()
-        >>> machine = manager.get_machine(state_machine_name)
-        ```
+        * **StateMachine**: The machine instance if found.
         """
         for machine, _, _ in self._machines:
 
@@ -109,7 +81,15 @@ class StateMachineManager:
             
     def drop(self, name:str):
         r"""
-        Documentation here
+        Removes a state machine from the manager.
+
+        **Parameters:**
+
+        * **name** (str): The name of the machine to remove.
+
+        **Returns:**
+
+        * **tuple**: The removed (machine, interval, mode) tuple.
         """
         index = 0
         for machine, _, _ in self._machines:
@@ -127,7 +107,17 @@ class StateMachineManager:
 
     def unsubscribe_tag(self, tag:Tag):
         r"""
-        Documentation here
+        Unsubscribes a tag from all state machines. 
+        
+        If a DAQ machine has no more subscribed tags, it is removed.
+
+        **Parameters:**
+
+        * **tag** (Tag): The tag to unsubscribe.
+
+        **Returns:**
+
+        * **tuple**: The removed machine tuple if a DAQ machine was dropped.
         """
         machine_to_revome_from_worker = (None, None, None)
         for machine, _, _ in self._machines:
@@ -149,11 +139,11 @@ class StateMachineManager:
 
     def summary(self)->dict:
         r"""
-        Get a summary of the state machine defined
+        Generates a summary of registered state machines.
 
-        **Returns**
+        **Returns:**
 
-        * **summary:** (dict) with keys ('length' (int) - 'state_machines' (list of state machine names))
+        * **dict**: {length: int, state_machines: list[str]}
         """
         result = dict()
         machines = [machine.name for machine, _, _ in self.get_machines()]
@@ -165,19 +155,10 @@ class StateMachineManager:
 
     def exist_machines(self)->bool:
         r"""
-        Checks if exist state machines defined
+        Checks if there are any registered state machines.
 
-        **Returns**
+        **Returns:**
 
-        * **Bool**
-
-        Usage
-
-        ```python
-        >>> manager = app.get_state_machine_manager()
-        >>> manager.exist_machines()
-        ```
+        * **bool**: True if at least one machine exists.
         """
         return len(self._machines) > 0
-    
-    

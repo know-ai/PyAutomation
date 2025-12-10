@@ -1,26 +1,27 @@
-# Update TAG
-To update a Tag, go to the Dashboard and locate the Tag you want to update, whether it’s the:
+# Updating a Tag
 
-- For example, if we have the Tag F1, we will edit its Tag name. We do double click on the field Tag name and change it
+PyAutomation allows for the seamless modification of tag properties directly from the Tags Dashboard. This "inline editing" capability ensures that changes can be made quickly without navigating away from the overview.
 
-![alt text](images_update/image-18.png)
+## Editing Procedure
 
-- Note: If you attempt to use a Tag name that already exists on the dashboard, the system will prevent the update because the name is already in use.
+1.  **Locate the Tag**: Navigate to the Tags Dashboard and find the row corresponding to the tag you wish to modify.
 
-- Once we have changed the Tag name, press Enter and confirmation window will appear. Click "Yes" to proceed.
+2.  **Select the Field**: Double-click on the specific cell you want to edit (e.g., **Tag Name**, **Description**, **Scan Time**).
 
-![alt text](images_update/image-19.png)
+    ![Select Field](images_update/image-18.png)
 
-- Ready!
+3.  **Modify the Value**: Type the new value into the input field.
+    *   **Note**: If modifying the **Tag Name**, ensure the new name is unique. The system will reject duplicate names.
 
-![alt text](images_update/image-20.png)
+4.  **Confirm Changes**: Press `Enter` to submit the change. A confirmation dialog will appear to prevent accidental modifications. Click **Yes** to save.
 
+    ![Confirmation Dialog](images_update/image-19.png)
 
-- The same procedure is followed for the other fields.
+5.  **Verification**: The dashboard will refresh to reflect the updated value.
 
-![alt text](images_update/image-21.png)
+    ![Updated Field](images_update/image-20.png)
 
-![alt text](images_update/image-22.png)
+This procedure applies to all editable columns in the Tags Dashboard.
 
-
-
+![Editing Other Fields](images_update/image-21.png)
+![Final Result](images_update/image-22.png)

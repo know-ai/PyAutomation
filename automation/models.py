@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """automation/models.py
 
-This module implements a Tags and other classes for
-modelling the subjects involved in the core of the engine.
+This module implements data models used within state machines and core logic to represent
+properties and process variables with strong typing and event handling.
 """
 from .modules.users.users import User
 from .tags.tag import Tag
@@ -18,7 +18,10 @@ STRING = "str"
 class PropertyType:
 
     """
-    Implement an abstract property type
+    Abstract base class for property types.
+
+    Wraps a value with type information and unit. Used for state machine attributes
+    that need to be serialized or monitored.
     """
 
     def __init__(self, _type, default=None, unit=None):
@@ -33,7 +36,7 @@ class PropertyType:
     @property
     def value(self):
         r"""
-        Documentation here
+        Gets the stored value.
         """
         return self.__value
 
@@ -44,6 +47,16 @@ class PropertyType:
     
     @set_event(message=f"Attribute updated", classification="State Machine", priority=2, criticity=3)
     def set_value(self, value, user:User=None, name:str=None, machine=None):
+        r"""
+        Sets the value and triggers updates (CVT, Events, SocketIO).
+
+        **Parameters:**
+
+        * **value**: The new value object.
+        * **user** (User, optional): User initiating the change.
+        * **name** (str, optional): Attribute name.
+        * **machine** (StateMachine, optional): The parent state machine instance.
+        """
         
         if isinstance(self, ProcessType):
 
@@ -85,7 +98,7 @@ class PropertyType:
 class StringType(PropertyType):
 
     """
-    Implement a Float Type
+    Represents a String property.
     """
 
     def __init__(self, default=None, unit=None):
@@ -96,7 +109,7 @@ class StringType(PropertyType):
 class FloatType(PropertyType):
 
     """
-    Implement a Float Type
+    Represents a Float property.
     """
 
     def __init__(self, default=None, unit=None):
@@ -107,7 +120,7 @@ class FloatType(PropertyType):
 class IntegerType(PropertyType):
 
     """
-    Implement an Integer Typle
+    Represents an Integer property.
     """
 
     def __init__(self, default=None, unit=None):
@@ -118,7 +131,7 @@ class IntegerType(PropertyType):
 class BooleanType(PropertyType):
 
     """
-    Implement a Boolean Type
+    Represents a Boolean property.
     """
 
     def __init__(self, default=None, unit=None):
@@ -129,12 +142,12 @@ class BooleanType(PropertyType):
 class ProcessType(FloatType):
 
     """
-    Implement a Process Type
+    Represents a process variable linked to a Tag.
 
-    Attributes
+    **Attributes:**
 
-    - read_only: [bool] only read from CVT, used to field data.
-    - tag: [Tag] Tag binded on CVT
+    * **read_only** (bool): If True, value comes from CVT (input). If False, writes to CVT (output).
+    * **tag** (Tag): The associated Tag object.
     """
 
     def __init__(self, tag:Tag|None=None, default=None, read_only:bool=True, unit:str=None):
@@ -147,7 +160,11 @@ class ProcessType(FloatType):
     @logging_error_handler
     def serialize(self):
         r"""
-        Documentation here
+        Serializes the process variable.
+
+        **Returns:**
+
+        * **dict**: {value, unit, tag, read_only}
         """
         tag = None
         if self.tag:
@@ -171,4 +188,3 @@ class ProcessType(FloatType):
             "tag": tag,
             "read_only": self.read_only
         }
-

@@ -1,11 +1,32 @@
 class Buffer(list):
     r"""
-    Documentation here
+    A circular buffer implementation that extends the built-in `list`.
+
+    It stores a fixed number of items (`size`). When the buffer is full, new items overwrite
+    existing ones based on the `roll` strategy ('forward' or 'backward').
+
+    **Usage:**
+
+    ```python
+    buf = Buffer(size=3)
+    buf(1)
+    buf(2)
+    buf(3)
+    buf(4) # Overwrites 1
+    print(buf) # [4, 3, 2] (if roll='forward' insertion at 0)
+    ```
     """
 
     def __init__(self, size:int=10, roll:str='forward'):
         r"""
-        Documentation here
+        Initializes the Buffer.
+
+        **Parameters:**
+
+        * **size** (int): Maximum number of elements.
+        * **roll** (str): Direction of insertion/overwrite.
+            * `'forward'`: Inserts at index 0 (LIFO-like display).
+            * `'backward'`: Appends to end (FIFO-like).
         """
         self._roll_type_allowed = ['forward', 'backward']
         self._size = size
@@ -14,14 +35,18 @@ class Buffer(list):
     @property
     def size(self):
         r"""
-        Documentation here
+        Gets the maximum size of the buffer.
         """
         return self._size
 
     @size.setter
     def size(self, value:int):
         r"""
-        Documentation here
+        Sets the buffer size. Resets the buffer if changed.
+
+        **Parameters:**
+
+        * **value** (int): New size (must be > 1).
         """
         if not isinstance(value, int):
 
@@ -36,7 +61,11 @@ class Buffer(list):
 
     def last(self):
         r"""
-        Returns last registered value of the buffer
+        Returns the oldest value in the buffer.
+
+        **Returns:**
+
+        * The last item based on roll direction.
         """
         if self:
             if self.roll == 'forward':
@@ -47,7 +76,11 @@ class Buffer(list):
     
     def current(self):
         r"""
-        Returns lastest registered value of the buffer
+        Returns the most recently added value.
+
+        **Returns:**
+
+        * The newest item.
         """  
         if self:
             if self.roll == 'forward':
@@ -58,7 +91,11 @@ class Buffer(list):
         
     def previous_current(self):
         r"""
-        Returns lastest registered value of the buffer
+        Returns the second most recent value.
+
+        **Returns:**
+
+        * The item before current.
         """
         if self:
             if self.roll == 'forward':
@@ -70,14 +107,18 @@ class Buffer(list):
     @property
     def roll(self):
         r"""
-        Documentation here
+        Gets the roll type ('forward' or 'backward').
         """
         return self.roll_type
 
     @roll.setter
     def roll(self, value:str):
         r"""
-        Documentation here
+        Sets the roll type.
+
+        **Parameters:**
+
+        * **value** (str): 'forward' or 'backward'.
         """
         if not isinstance(value, str):
 
@@ -91,7 +132,17 @@ class Buffer(list):
 
     def __call__(self, value):
         r"""
-        Documentation here
+        Adds a new value to the buffer.
+
+        If the buffer is full, it removes the oldest item to make space.
+
+        **Parameters:**
+
+        * **value**: The item to add.
+
+        **Returns:**
+
+        * **Buffer**: Self (for chaining).
         """
         if self.roll.lower()=='forward':
             

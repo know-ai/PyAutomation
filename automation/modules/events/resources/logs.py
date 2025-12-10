@@ -6,38 +6,42 @@ from ....extensions.api import api
 from ....extensions import _api as Api
 from .... import _TIMEZONE, TIMEZONE
 
-ns = Namespace('Operation Logs', description='Operation Logs')
+ns = Namespace('Operation Logs', description='Application Operation Logs')
 app = PyAutomation()
 
 
 logs_filter_model = api.model("logs_filter_model",{
-    'usernames': fields.List(fields.String(), required=False),
-    'alarm_names': fields.List(fields.String(), required=False),
-    'event_ids': fields.List(fields.Integer(), required=False),
-    'classification': fields.String(required=False),
-    'message': fields.String(required=False),
-    'description': fields.String(required=False),
-    'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description=f'Greater than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
-    'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE), description=f'Less than timestamp - DateTime Format: {app.cvt.DATETIME_FORMAT}',),
-    'timezone': fields.String(required=False, default=_TIMEZONE)
+    'usernames': fields.List(fields.String(), required=False, description='List of usernames to filter by'),
+    'alarm_names': fields.List(fields.String(), required=False, description='List of associated alarm names'),
+    'event_ids': fields.List(fields.Integer(), required=False, description='List of associated event IDs'),
+    'classification': fields.String(required=False, description='Log classification'),
+    'message': fields.String(required=False, description='Partial message content'),
+    'description': fields.String(required=False, description='Partial description content'),
+    'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description=f'Start time for filtering - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
+    'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE), description=f'End time for filtering - DateTime Format: {app.cvt.DATETIME_FORMAT}',),
+    'timezone': fields.String(required=False, default=_TIMEZONE, description='Timezone for the query')
 })
 
 logs_model = api.model("logs_model",{
-    'message': fields.String(required=True, description="Log message"),
-    'alarm_summary_id': fields.Integer(required=False, description="Alarm summary id comment"),
-    'event_id': fields.Integer(required=False, description="Event id comment"),
-    'description': fields.String(required=False, description="Log description")
+    'message': fields.String(required=True, description="Main log message"),
+    'alarm_summary_id': fields.Integer(required=False, description="ID of the associated alarm summary (optional)"),
+    'event_id': fields.Integer(required=False, description="ID of the associated event (optional)"),
+    'description': fields.String(required=False, description="Detailed description of the log entry")
 })
 
 @ns.route('/add')
 class AddLogsByResource(Resource):
 
-    @api.doc(security='apikey')
+    @api.doc(security='apikey', description="Creates a new operation log entry.")
+    @api.response(200, "Success")
+    @api.response(400, "Creation failed")
     @Api.token_required(auth=True)
     @ns.expect(logs_model)
     def post(self):
         r"""
-        Create Log
+        Create Log.
+
+        Adds a new entry to the operation logs. Can be linked to an alarm or event.
         """
         user = Api.get_current_user()
         api.payload.update({
@@ -67,12 +71,16 @@ class AddLogsByResource(Resource):
 @ns.route('/filter_by')
 class LogsFilterByResource(Resource):
 
-    @api.doc(security='apikey')
+    @api.doc(security='apikey', description="Filters operation logs based on criteria.")
+    @api.response(200, "Success")
+    @api.response(400, "Invalid parameters")
     @Api.token_required(auth=True)
     @ns.expect(logs_filter_model)
     def post(self):
         r"""
-        Logs Filter By
+        Filter Logs.
+
+        Retrieves operation logs matching the specified filter criteria.
         """
         timezone = _TIMEZONE
         if "timezone" in api.payload:
@@ -97,13 +105,17 @@ class LogsFilterByResource(Resource):
     
 
 @ns.route('/lasts/<lasts>')
+@api.param('lasts', 'Number of records to retrieve')
 class LastsEventsResource(Resource):
 
-    @api.doc(security='apikey')
+    @api.doc(security='apikey', description="Retrieves the last N operation logs.")
+    @api.response(200, "Success")
     @Api.token_required(auth=True)
     def get(self, lasts:int=10):
         r"""
-        Get lasts events
+        Get latest logs.
+
+        Retrieves the most recent operation logs.
         """
         
         return app.get_lasts_logs(lasts=int(lasts)), 200

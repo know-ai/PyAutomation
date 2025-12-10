@@ -1,12 +1,7 @@
-# API Documentation
+# Machine Manager API
 
-Escribir un preambulo de contenido de la API
+The `Machine` class acts as the supervisor for all state machines.
 
 ::: automation.state_machine.Machine
-    :docstring:
-    :members: append_machine
-    :members: get_machine
-    :members: get_machines
-    :members: get_state_machine_manager
-    :members: start
-    :members: stop
+:docstring:
+:members:

@@ -11,6 +11,12 @@ DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 
 class Logs(BaseModel):
+    r"""
+    Database model for Application Logs.
+
+    Logs store system messages, errors, and informational records, optionally linked to
+    events or alarms.
+    """
     
     timestamp = TimestampField(utc=True)
     message = CharField(max_length=256)
@@ -31,6 +37,23 @@ class Logs(BaseModel):
         event_id:int=None,
         timestamp:datetime=None
         )->tuple:
+        r"""
+        Creates a new log entry.
+
+        **Parameters:**
+
+        * **message** (str): Log content.
+        * **user** (User): User creating the log.
+        * **description** (str, optional): Additional details.
+        * **classification** (str, optional): Log type/category.
+        * **alarm_summary_id** (int, optional): Link to an alarm summary entry.
+        * **event_id** (int, optional): Link to an event.
+        * **timestamp** (datetime, optional): Log time.
+
+        **Returns:**
+
+        * **tuple**: (Query object, status message)
+        """
         if not isinstance(user, User):
 
             return None, f"User {user} - {type(user)} must be an User Object"
@@ -61,7 +84,15 @@ class Logs(BaseModel):
     @classmethod
     def read_lasts(cls, lasts:int=1):
         r"""
-        Documentation here
+        Retrieves the last N logs.
+
+        **Parameters:**
+
+        * **lasts** (int): Number of logs to retrieve.
+
+        **Returns:**
+
+        * **list**: List of serialized log dictionaries.
         """
         logs = cls.select().order_by(cls.id.desc()).limit(lasts)
 
@@ -81,7 +112,19 @@ class Logs(BaseModel):
         timezone:str='UTC'
         ):
         r"""
-        Documentation here
+        Filters logs based on various criteria.
+
+        **Parameters:**
+
+        * **usernames** (list[str]): Filter by user.
+        * **alarm_names** (list[str]): Filter by linked alarm name.
+        * **event_ids** (list[int]): Filter by linked event ID.
+        * **message**, **description**, **classification**: Text search.
+        * **greater_than_timestamp**, **less_than_timestamp**: Time range.
+
+        **Returns:**
+
+        * **list**: List of matching logs.
         """
         _timezone = pytz.timezone(timezone)
         query = cls.select()
@@ -125,6 +168,9 @@ class Logs(BaseModel):
         return [log.serialize() for log in query]
 
     def serialize(self)-> dict:
+        r"""
+        Serializes the log record.
+        """
         from .. import MANUFACTURER, SEGMENT, TIMEZONE
         timestamp = self.timestamp
         if timestamp:

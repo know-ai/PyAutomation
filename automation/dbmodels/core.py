@@ -8,25 +8,25 @@ POSTGRESQL = 'postgresql'
 
 
 class BaseModel(Model):
+    r"""
+    Base model class for all database models.
+
+    It provides common utility methods for CRUD operations and serialization.
+    Inherits from `peewee.Model` and uses a dynamic database proxy.
+    """
 
     @classmethod
     def read(cls, id:int|str):
         r"""
-        Select a single record
+        Select a single record by its ID.
 
-        You can use this method to retrieve a single instance matching the given query. 
+        **Parameters:**
 
-        This method is a shortcut that calls Model.select() with the given query, but limits the result set to a single row. 
-        Additionally, if no model matches the given query, a DoesNotExist exception will be raised.
+        * **id** (int|str): The primary key of the record.
 
-        **Parameters**
+        **Returns:**
 
-        * **id:** (int), Record ID
-
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (list) row serialized}
-
+        * **Model**: The model instance if found, otherwise None.
         """
         query = cls.select().where(cls.id == id).get_or_none()
 
@@ -37,17 +37,11 @@ class BaseModel(Model):
     @classmethod
     def read_all(cls):
         r"""
-        Select all records
+        Retrieves all records from the table.
 
-        You can use this method to retrieve all instances matching in the database. 
+        **Returns:**
 
-        This method is a shortcut that calls Model.select() with the given query.
-
-        **Parameters**
-
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (list) row serialized}
+        * **list**: A list of serialized dictionaries representing all records.
         """
         data = [query.serialize() for query in cls.select()]
 
@@ -55,11 +49,17 @@ class BaseModel(Model):
 
     @classmethod
     def put(cls, id:str, **fields):
-        r""""
-        Update a single record
+        r"""
+        Updates a record by its ID.
 
-        Once a model instance has a primary key, you UPDATE a field by its id. 
-        The model's primary key will not change:
+        **Parameters:**
+
+        * **id** (str): The primary key of the record to update.
+        * **fields**: Keyword arguments representing the fields to update.
+
+        **Returns:**
+
+        * **query**: The execution result.
         """     
         if cls.id_exists(id):
             
@@ -70,15 +70,15 @@ class BaseModel(Model):
     @classmethod
     def id_exists(cls, id:str|int)->bool|None:
         r"""
-        Verify if a record exist by its id
+        Checks if a record exists by its ID.
 
-        **Parameters**
+        **Parameters:**
 
-        * **id:** (int) Record ID
+        * **id** (int|str): Record ID.
 
-        **Returns**
+        **Returns:**
 
-        * **bool:** If True, so id record exist into database
+        * **bool**: True if the record exists, False otherwise.
         """
         return True if cls.get_or_none(id=id) else False
 

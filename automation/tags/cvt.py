@@ -33,7 +33,11 @@ class CVT:
 
     def set_socketio(self, sio:SocketIO):
         r"""
-        Documentation here
+        Sets the SocketIO instance for real-time updates.
+
+        **Parameters:**
+
+        * **sio** (SocketIO): The SocketIO server instance.
         """
         self.sio:SocketIO = sio
 
@@ -63,13 +67,27 @@ class CVT:
         id:str=None,
         user:User=None
         )->tuple[Tag, str]:
-        """Initialize a new Tag object in the _tags dictionary.
-        
-        # Parameters
-        name (str):
-            Tag name.
-        data_type (str): 
-            Tag value type ("int", "float", "bool", "str")
+        """
+        Creates and registers a new Tag in the CVT.
+
+        **Parameters:**
+
+        * **name** (str): Unique tag name.
+        * **unit** (str): Base unit.
+        * **data_type** (str): Data type ('float', 'int', 'bool', 'str').
+        * **description** (str): Tag description.
+        * **variable** (str): Physical variable type.
+        * **display_name** (str, optional): UI display name.
+        * **display_unit** (str, optional): UI display unit.
+        * **opcua_address** (str, optional): OPC UA server address.
+        * **node_namespace** (str, optional): OPC UA node ID.
+        * **scan_time** (int, optional): Polling interval.
+        * **dead_band** (float, optional): Deadband value.
+        * **user** (User, optional): User creating the tag.
+
+        **Returns:**
+
+        * **tuple**: (Tag object, Success message or Error message).
         """
         if isinstance(data_type, str):
         
@@ -134,15 +152,18 @@ class CVT:
         user:User=None, 
         **kwargs
         )->tuple[Tag|None, str]:
-        r"""Documentation here
+        r"""
+        Updates an existing Tag's properties.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **id** (str): Tag ID.
+        * **user** (User, optional): User performing the update.
+        * **kwargs**: Tag properties to update (e.g., name, unit, scan_time).
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **tuple**: (Updated Tag object, Status message).
         """
         check = dict()
         if "name" in kwargs:
@@ -210,29 +231,32 @@ class CVT:
 
     @set_event(message=f"Updated", classification="Tag", priority=1, criticity=5)
     def delete_tag(self, id:str, user:User):
-        r"""Documentation here
+        r"""
+        Removes a tag from the CVT.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **id** (str): Tag ID.
+        * **user** (User): User performing the deletion.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **tuple**: (Deleted Tag object, Status message).
         """
         tag = self._tags.pop(id)
         return tag, f"Tag: {tag.name}"
 
     def get_tag(self, id:str)->Tag|None:
-        r"""Documentation here
+        r"""
+        Retrieves a tag by its ID.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **id** (str): Tag ID.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **Tag**: The Tag object if found, else None.
         """
         for _id, tag in self._tags.items():
 
@@ -243,15 +267,16 @@ class CVT:
         return None
     
     def get_unit_by_tag(self, tag:str)->Tag|None:
-        r"""Documentation here
+        r"""
+        Gets the base unit of a tag by name.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **tag** (str): Tag name.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **str**: Unit symbol or None.
         """
         for _id, _tag in self._tags.items():
 
@@ -262,15 +287,16 @@ class CVT:
         return None
     
     def get_display_unit_by_tag(self, tag:str)->Tag|None:
-        r"""Documentation here
+        r"""
+        Gets the display unit of a tag by name.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **tag** (str): Tag name.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **str**: Display unit symbol or None.
         """
         for _id, _tag in self._tags.items():
             
@@ -282,7 +308,11 @@ class CVT:
 
     def get_tags(self)->list:
         r"""
-        Returns a list of the defined tags names.
+        Returns a list of all tags (serialized).
+
+        **Returns:**
+
+        * **list**: List of tag dictionaries.
         """
         if self._tags:
 
@@ -292,7 +322,15 @@ class CVT:
     
     def get_tags_by_names(self, names:list)->list:
         r"""
-        Returns a list of the defined tags names.
+        Returns a list of serialized tags filtering by name.
+
+        **Parameters:**
+
+        * **names** (list): List of tag names.
+
+        **Returns:**
+
+        * **list**: List of tag dictionaries.
         """
         if self._tags:
 
@@ -302,7 +340,11 @@ class CVT:
     
     def get_field_tags_names(self)->list:
         r"""
-        Returns a list of the defined tags names.
+        Returns names of tags that are connected to field devices (have OPC UA address and namespace).
+
+        **Returns:**
+
+        * **list**: List of tag names.
         """
         if self._tags:
 
@@ -312,7 +354,11 @@ class CVT:
     
     def get_cuasi_field_tags_names(self)->list:
         r"""
-        Returns a list of the defined tags names.
+        Returns names of tags that have an OPC UA address (potentially field tags).
+
+        **Returns:**
+
+        * **list**: List of tag names.
         """
         if self._tags:
 
@@ -321,15 +367,16 @@ class CVT:
         return list()
     
     def get_tag_by_name(self, name:str)->Tag|None:
-        r"""Documentation here
+        r"""
+        Retrieves a tag object by its name.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **name** (str): Tag name.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **Tag**: Tag object or None.
         """
         for _, tag in self._tags.items():
             
@@ -340,15 +387,16 @@ class CVT:
         return None
     
     def get_tag_by_display_name(self, display_name:str)->Tag|None:
-        r"""Documentation here
+        r"""
+        Retrieves a tag object by its display name.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **display_name** (str): Tag display name.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **Tag**: Tag object or None.
         """
         for _, tag in self._tags.items():
 
@@ -359,15 +407,16 @@ class CVT:
         return None
 
     def get_tag_by_node_namespace(self, node_namespace:str)->Tag|None:
-        r"""Documentation here
+        r"""
+        Retrieves a tag object by its OPC UA node namespace.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **node_namespace** (str): Node Namespace ID.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **Tag**: Tag object or None.
         """
         for _, tag in self._tags.items():
 
@@ -378,15 +427,16 @@ class CVT:
         return None
     
     def get_value(self, id:str)->str|float|int|bool:
-        r"""Documentation here
+        r"""
+        Gets the current value of a tag by ID.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **id** (str): Tag ID.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **value**: The current value.
         """
         tag = self._tags[id]        
         _new_object = copy.copy(tag.get_value())
@@ -394,22 +444,31 @@ class CVT:
     
     def get_timestamp(self, id:str)->datetime:
         r"""
-        Documentation here
+        Gets the timestamp of a tag by ID.
+
+        **Parameters:**
+
+        * **id** (str): Tag ID.
+
+        **Returns:**
+
+        * **datetime**: Last update timestamp.
         """
         tag = self._tags[id] 
 
         return tag.get_timestamp()
     
     def get_value_by_name(self, name:str)->str|float|int|bool:
-        r"""Documentation here
+        r"""
+        Gets the value, unit, and timestamp of a tag by name.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **name** (str): Tag name.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **dict**: Dictionary with 'value', 'unit', and 'timestamp'.
         """
 
         tag = self.get_tag_by_name(name=name)  
@@ -421,15 +480,16 @@ class CVT:
             }
 
     def get_values_by_name(self, names:list[str])->str|float|int|bool:
-        r"""Documentation here
+        r"""
+        Gets values for multiple tags by name.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **names** (list): List of tag names.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **dict**: Dictionary mapping tag names to their values and metadata.
         """
         data = dict()
 
@@ -450,13 +510,20 @@ class CVT:
     # @iad_out_of_range
     # @iad_outlier
     def set_value(self, id:str, value, timestamp:datetime):
-        """Sets a new value for a defined tag.
-        
-        # Parameters
-        name (str):
-            Tag name.
-        value (float, int, bool): 
-            Tag value ("int", "float", "bool")
+        """
+        Sets a new value for a tag.
+
+        This method applies filters (like deadband) and emits a socket event if configured.
+
+        **Parameters:**
+
+        * **id** (str): Tag ID.
+        * **value**: New value.
+        * **timestamp** (datetime): Timestamp of the value.
+
+        **Returns:**
+
+        * **value**: The value that was set (or filtered).
         """
         from .. import TIMEZONE
         tag = self._tags[id]
@@ -481,41 +548,39 @@ class CVT:
         return value
 
     def set_data_type(self, data_type):
-        r"""Documentation here
+        r"""
+        Registers a new data type in the allowed types list.
 
-        # Parameters
+        **Parameters:**
 
-        - 
-
-        # Returns
-
-        - 
+        * **data_type**: Data type definition.
         """
         self.data_types.append(data_type)
         self.data_types = list(set(self.data_types))
     
     def is_tag_defined(self, name:str)->bool:
-        r"""Documentation here
+        r"""
+        Checks if a tag is defined in the CVT.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **name** (str): Tag name.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **bool**: True if defined, False otherwise.
         """
 
         return name in self._tags
     
     def attach_observer(self, name, observer):
-        r"""Attaches a new observer to a tag object defined by name.
+        r"""
+        Attaches a new observer to a tag object defined by name.
         
-        # Parameters
-        name (str):
-            Tag name.
-        observer (TagObserver): 
-            Tag observer object, will update once a tag object is changed.
+        **Parameters:**
+
+        * **name** (str): Tag name.
+        * **observer** (TagObserver): Observer object.
         """
         tag = self.get_tag_by_name(name)
         if tag:
@@ -530,25 +595,29 @@ class CVT:
         r"""
         Detaches an observer from a tag object defined by name.
         
-        # Parameters
-        name (str):
-            Tag name.
-        observer (TagObserver): 
-            Tag observer object.
+        **Parameters:**
+
+        * **name** (str): Tag name.
+        * **observer** (TagObserver): Observer object.
         """
         tag = self.get_tag_by_name(name)
         self._tags[tag.id].detach(observer)
 
     def has_duplicates(self, tag:Tag=None, name:str=None, display_name:str=None, node_namespace:str=None, opcua_address:str=None):
-        r"""Documentation here
+        r"""
+        Checks for duplicate tag definitions.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **tag** (Tag, optional): Existing tag object to compare against.
+        * **name** (str, optional): Name to check.
+        * **display_name** (str, optional): Display name to check.
+        * **node_namespace** (str, optional): Node namespace to check.
+        * **opcua_address** (str, optional): OPC UA address to check.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **tuple**: (Has Duplicates bool, Message str).
         """
 
         for _, _tag in self._tags.items():
@@ -580,24 +649,30 @@ class CVT:
         return False, f"Valid Tag Name: {name} - Display Name: {display_name}"
 
     def serialize(self, id:str)->dict:
-        r"""Returns a tag type defined by name.
-        
-        # Parameters
-        name (str):
-            Tag name.
+        r"""
+        Serializes a tag by ID.
+
+        **Parameters:**
+
+        * **id** (str): Tag ID.
+
+        **Returns:**
+
+        * **dict**: Serialized tag.
         """
         return self._tags[id].serialize()
     
     def serialize_by_tag_name(self, name:str)->dict|None:
-        r"""Documentation here
+        r"""
+        Serializes a tag by Name.
 
-        # Parameters
+        **Parameters:**
 
-        - 
+        * **name** (str): Tag name.
 
-        # Returns
+        **Returns:**
 
-        - 
+        * **dict**: Serialized tag.
         """
         tag = self.get_tag_by_name(name)
 
@@ -611,6 +686,8 @@ class CVTEngine(Singleton):
     Current Value Table (CVT) Engine class for a tag-based, thread-safe repository.
 
     This class is designed to hold in-memory tag-based values and manage observers for the required tags. It is implemented as a singleton, ensuring that each sub-thread within the PyAutomation application can access and modify tags in a thread-safe manner.
+
+    It acts as a thread-safe wrapper around the `CVT` class, using a query-based mechanism (`request`/`response`) to handle operations.
 
     **Usage Example**:
 
@@ -657,15 +734,10 @@ class CVTEngine(Singleton):
         id:str="",
         user:User|None=None
         )->tuple[Tag, str]:
-        r"""Documentation here
+        r"""
+        Thread-safe method to create a new tag.
 
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        See `CVT.set_tag` for parameters.
         """
         _query = dict()
         _query["action"] = "set_tag"
@@ -700,15 +772,10 @@ class CVTEngine(Singleton):
             user:User=None, 
             **kwargs
         ):
-        r"""Documentation here
+        r"""
+        Thread-safe method to update a tag.
 
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        See `CVT.update_tag` for parameters.
         """
         _query = dict()
         _query["action"] = "update_tag"
@@ -721,15 +788,10 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def delete_tag(self, id:str, user:User|None=None):
-        r"""Documentation here
+        r"""
+        Thread-safe method to delete a tag.
 
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        See `CVT.delete_tag` for parameters.
         """
         _query = dict()
         _query["action"] = "delete_tag"
@@ -742,15 +804,8 @@ class CVTEngine(Singleton):
         self,
         id:str=None
         )->Tag:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get a tag object.
         """
         _query = dict()
         _query["action"] = "get_tag"
@@ -759,30 +814,16 @@ class CVTEngine(Singleton):
         return self.__query(_query)
 
     def get_tags(self):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get all tags.
         """
         _query = dict()
         _query["action"] = "get_tags"
         return self.__query(_query)
 
     def get_tags_by_names(self, names:list[str]):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get tags by names.
         """
         _query = dict()
         _query["action"] = "get_tags_by_names"
@@ -791,15 +832,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_tag_by_name(self, name:str)->Tag|None:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get a tag by name.
         """
         _query = dict()
         _query["action"] = "get_tag_by_name"
@@ -808,15 +842,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_tag_by_display_name(self, display_name:str)->Tag|None:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get a tag by display name.
         """
         _query = dict()
         _query["action"] = "get_tag_by_display_name"
@@ -825,15 +852,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
 
     def get_tag_by_node_namespace(self, node_namespace:str)->Tag|None:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get a tag by node namespace.
         """
         _query = dict()
         _query["action"] = "get_tag_by_node_namespace"
@@ -842,15 +862,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_value(self, id:str)->str|float|int|bool:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get a tag value by ID.
         """
         _query = dict()
         _query["action"] = "get_value"
@@ -859,15 +872,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_value_by_name(self, tag_name:str)->dict:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get a tag value by name.
         """
         _query = dict()
         _query["action"] = "get_value_by_name"
@@ -876,15 +882,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_values_by_name(self, tag_names:list[str])->str|float|int|bool:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get multiple tag values.
         """
         _query = dict()
         _query["action"] = "get_values_by_name"
@@ -893,15 +892,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_scan_time(self, id:str)->str|float|int|bool:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get scan time.
         """
         _query = dict()
         _query["action"] = "get_scan_time"
@@ -910,15 +902,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_dead_band(self, id:str)->str|float|int|bool:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get deadband.
         """
         _query = dict()
         _query["action"] = "get_dead_band"
@@ -927,15 +912,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def get_display_unit_by_tag(self, tag:str)->str:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to get display unit.
         """
         _query = dict()
         _query["action"] = "get_display_unit_by_tag"
@@ -945,15 +923,8 @@ class CVTEngine(Singleton):
     
     @logging_error_handler
     def set_value(self, id:str, value, timestamp:datetime):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to set a tag value.
         """
         if not timestamp:
             timestamp = datetime.now()
@@ -966,15 +937,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def set_data_type(self, data_type):
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to set data type.
         """
         _query = dict()
         _query["action"] = "set_data_type"
@@ -983,15 +947,8 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     def is_tag_defined(self, name:str)->bool:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe method to check if tag is defined.
         """
         _query = dict()
         _query["action"] = "is_tag_defined"
@@ -1001,12 +958,7 @@ class CVTEngine(Singleton):
 
     def attach(self, name:str, observer):
         """
-        Attaches an observer object to a Tag, observer gets notified when the Tag value changes.
-        
-        **Parameters:**
-
-        * **name** (str): Tag name.
-        * **observer** (str): TagObserver instance.
+        Attaches an observer to a Tag in a thread-safe way.
         """
         _query = dict()
         _query["action"] = "attach_observer"
@@ -1017,12 +969,7 @@ class CVTEngine(Singleton):
 
     def detach(self, name:str, observer):
         """
-        Detaches an observer object from a Tag, observer no longer gets notified when the Tag value changes.
-        
-        **Parameters:**
-
-        * **name** (str): Tag name.
-        * **observer** (str): TagObserver instance.
+        Detaches an observer from a Tag in a thread-safe way.
         """
         
         _query = dict()
@@ -1039,32 +986,18 @@ class CVTEngine(Singleton):
             return result["response"]
 
     def serialize(self, id:str)->dict:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe serialization by ID.
         """
         _query = dict()
         _query["action"] = "serialize"
         _query["parameters"] = dict()
         _query["parameters"]["id"] = id
         return self.__query(_query)
-
+    
     def serialize_by_tag_name(self, name:str)->dict|None:
-        r"""Documentation here
-
-        # Parameters
-
-        - 
-
-        # Returns
-
-        - 
+        r"""
+        Thread-safe serialization by name.
         """
         _query = dict()
         _query["action"] = "serialize_by_tag_name"
@@ -1081,47 +1014,11 @@ class CVTEngine(Singleton):
 
     def request(self, query:dict):
         r"""
-        It does the request to the tags repository according query's structure, in a thread-safe mechanism
+        Executes a request to the CVT in a thread-safe mechanism using locks.
 
-        **Parameters**
+        **Parameters:**
 
-        * **query** (dict): Query to tags repository
-
-        ## Query Structure
-
-        ```python
-        query = {
-            "action": (str)
-            "parameters": (dict)
-        }
-        ```
-        ## Valid actions in query
-
-        * set_tag
-        * get_tags
-        * get_value
-        * get_data_type
-        * get_unit
-        * get_description
-        * get_display_name
-        * get_min_value
-        * get_max_value
-        * get_attributes
-        * set_value
-        * attach
-        * detach
-
-        ## Parameters strcuture in query
-
-        ```python
-        parameters = {
-            "name": (str) tag name to do request
-            "unit": (str)[Optional] Unit to get value
-            "value": (float)[Optional] If you use *set_value* function, you must pass this parameter
-            "observer": (TagObserver)[Optional] If you use *attach* and *detach* function, you must pass this parameter
-        }
-        ```
-
+        * **query** (dict): Dictionary defining the action and parameters.
         """
         self._request_lock.acquire()
         action = query["action"]
@@ -1151,7 +1048,7 @@ class CVTEngine(Singleton):
 
     def __log_error(self, e:Exception, msg:str):
         r"""
-        Documentation here
+        Logs error and sets error response.
         """
         logging.error(f"{e} Message: {msg}")
         self._response = {
@@ -1161,7 +1058,7 @@ class CVTEngine(Singleton):
 
     def __true_response(self, resp):
         r"""
-        Documentation here
+        Sets success response.
         """
         self._response = {
             "result": True,
@@ -1170,7 +1067,7 @@ class CVTEngine(Singleton):
 
     def response(self)->dict:
         r"""
-        Handles the python GIL to emit the request's response in a thread-safe mechanism.
+        Retrieves the response from the last request, handling thread synchronization.
         """
         self._response_lock.acquire()
 
@@ -1194,5 +1091,3 @@ class CVTEngine(Singleton):
         self._request_lock = threading.Lock()
         self._response_lock = threading.Lock()
         self._response_lock.acquire()
-
-    

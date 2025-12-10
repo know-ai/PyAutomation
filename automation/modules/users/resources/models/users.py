@@ -3,7 +3,7 @@ from flask_restx import reqparse
 login_parser = reqparse.RequestParser(bundle_errors=True)
 login_parser.add_argument("username", type=str, required=False, help='Username')
 login_parser.add_argument("email", type=str, required=False, help='User email')
-login_parser.add_argument("password", type=str, required=True, help='User passqord')
+login_parser.add_argument("password", type=str, required=True, help='User password')
 
 signup_parser = reqparse.RequestParser(bundle_errors=True)
 signup_parser.add_argument("username", type=str, required=True, help='Username')

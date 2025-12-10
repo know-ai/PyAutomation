@@ -2,6 +2,11 @@ from ..utils.decorators import decorator
 import numpy as np
 
 class KalmanFilter:
+    r"""
+    Implements a standard Kalman Filter for single-variable estimation.
+
+    The Kalman Filter estimates the state of a system from a series of incomplete and noisy measurements.
+    """
     def __init__(
             self, 
             x, 
@@ -12,6 +17,19 @@ class KalmanFilter:
             Q:np.array=np.array([[1e-5]]), 
             R:np.array=np.array([[0.5]])
             ):
+        r"""
+        Initializes the Kalman Filter.
+
+        **Parameters:**
+
+        * **x**: Initial state estimate.
+        * **A**: State transition model.
+        * **B**: Control input model.
+        * **H**: Observation model.
+        * **P**: Estimate covariance.
+        * **Q**: Process noise covariance.
+        * **R**: Measurement noise covariance.
+        """
         self.A = A
         self.B = B
         self.H = H
@@ -22,10 +40,28 @@ class KalmanFilter:
         self.previous_innov = None                      # Para guardar la innovación anterior
 
     def predict(self, u=0):
+        r"""
+        Predicts the next state of the system.
+
+        **Parameters:**
+
+        * **u**: Control input vector (optional).
+        """
         self.x = np.dot(self.A, self.x) + np.dot(self.B, u)
         self.P = np.dot(np.dot(self.A, self.P), self.A.T) + self.Q
 
     def update(self, z, threshold:float=100, r_value:float=0.5):
+        r"""
+        Updates the state estimate with a new measurement.
+
+        Includes adaptive logic to adjust measurement noise (R) based on innovation variance.
+
+        **Parameters:**
+
+        * **z**: Measurement value.
+        * **threshold** (float): Threshold for innovation variance to adjust R.
+        * **r_value** (float): Default R value.
+        """
         
         innov = z - np.dot(self.H, self.x)  # Innovación
         if self.previous_innov is not None:
@@ -38,12 +74,30 @@ class KalmanFilter:
 
 
 class GaussianFilter:
+    r"""
+    A wrapper for the Kalman Filter designed for simple scalar value filtering.
+    
+    It maintains the filter state between calls.
+    """
 
     def __init__(self):
 
         self.kf = None
 
     def __call__(self, value:float, threshold:float=100, r_value:float=0.5):
+        r"""
+        Applies the filter to a new value.
+
+        **Parameters:**
+
+        * **value** (float): The noisy input value.
+        * **threshold** (float): Threshold for adaptive filtering.
+        * **r_value** (float): Measurement noise parameter.
+
+        **Returns:**
+
+        * **float**: The filtered value.
+        """
         
         if self.kf is None:
 

@@ -4,6 +4,9 @@ from .tags import Tags
 
 
 class Machines(BaseModel):
+    r"""
+    Database model for State Machines configuration.
+    """
     
     identifier = CharField(unique=True)
     name = CharField(unique=True)
@@ -32,6 +35,25 @@ class Machines(BaseModel):
         threshold:float=None,
         on_delay:int=None
         )-> dict:
+        r"""
+        Creates a new Machine record.
+
+        **Parameters:**
+
+        * **identifier** (str): Unique identifier.
+        * **name** (str): Machine name.
+        * **interval** (int): Execution interval.
+        * **description** (str): Description.
+        * **classification** (str): Machine type.
+        * **buffer_size** (int): Data buffer size.
+        * **buffer_roll_type** (str): Buffer roll strategy.
+        * **criticity** (int): Criticity level.
+        * **priority** (int): Priority level.
+
+        **Returns:**
+
+        * **dict**: Result status and data.
+        """
 
         result = dict()
         data = dict()
@@ -75,6 +97,9 @@ class Machines(BaseModel):
 
     @classmethod
     def read_by_name(cls, name:str)->bool:
+        r"""
+        Retrieves a machine by name.
+        """
         query = cls.get_or_none(name=name)
         
         if query is not None:
@@ -86,32 +111,18 @@ class Machines(BaseModel):
     @classmethod
     def read_config(cls):
         r"""
-        Select all records
+        Retrieves configuration for all machines.
 
-        You can use this method to retrieve all instances matching in the database. 
+        **Returns:**
 
-        This method is a shortcut that calls Model.select() with the given query.
-
-        **Parameters**
-
-        **Returns**
-
-        * **result:** (dict) --> {'message': (str), 'data': (list) row serialized}
+        * **dict**: Map of Machine Name -> Configuration.
         """
         return {f"{query.name}": query.serialize() for query in cls.select()}
 
     @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
-        Verify is a name exist into database
-
-        **Parameters**
-
-        * **name:** (str) Variable name
-
-        **Returns**
-
-        * **bool:** If True, name exist into database 
+        Checks if a machine name exists.
         """
         query = cls.get_or_none(name=name)
         
@@ -122,12 +133,14 @@ class Machines(BaseModel):
         return False
     
     def get_tags(self):
-
+        r"""
+        Returns related tags.
+        """
         return self.tags
 
     def serialize(self)-> dict:
         r"""
-        Serialize database record to a jsonable object
+        Serializes the machine record.
         """
 
         return {
@@ -147,6 +160,9 @@ class Machines(BaseModel):
 
 
 class TagsMachines(BaseModel):
+    r"""
+    Many-to-Many relationship between Tags and Machines.
+    """
     
     tag = ForeignKeyField(Tags, backref="machines")
     machine = ForeignKeyField(Machines, backref="tags")
@@ -159,6 +175,15 @@ class TagsMachines(BaseModel):
         machine_name:str,
         default_tag_name:str=None
         )-> dict:
+        r"""
+        Links a Tag to a Machine.
+
+        **Parameters:**
+
+        * **tag_name** (str): Name of the tag.
+        * **machine_name** (str): Name of the machine.
+        * **default_tag_name** (str, optional): Alias for the tag within the machine context.
+        """
 
         tag = Tags.get_or_none(name=tag_name)
         machine = Machines.get_or_none(name=machine_name)
@@ -173,7 +198,9 @@ class TagsMachines(BaseModel):
             query.save()
 
     def serialize(self):
-
+        r"""
+        Serializes the relationship.
+        """
         return {
             "machine": self.machine.serialize(),
             "tag": self.tag.serialize(),

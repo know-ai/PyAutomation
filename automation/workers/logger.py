@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""rackio/workers/logger.py
+"""automation/workers/logger.py
 
-This module implements Logger Worker.
+This module implements the Logger Worker, responsible for persisting data to the database.
 """
 import logging, time, datetime, os, shutil
 from .worker import BaseWorker
@@ -18,8 +18,25 @@ from ..dbmodels.logs import Logs
 
 
 class LoggerWorker(BaseWorker):
+    r"""
+    A background worker thread that handles database operations.
+
+    It performs the following tasks:
+    1. Periodically writes buffered tag data to the database.
+    2. Manages SQLite database backups and maintenance (vacuuming).
+    3. Handles database reconnection logic.
+    4. Checks and maintains OPC UA client connections.
+    """
 
     def __init__(self, manager:DBManager, period:float=10.0):
+        r"""
+        Initializes the LoggerWorker.
+
+        **Parameters:**
+
+        * **manager** (DBManager): The database manager instance.
+        * **period** (float): The execution interval in seconds.
+        """
 
         super(LoggerWorker, self).__init__()
         
@@ -31,6 +48,13 @@ class LoggerWorker(BaseWorker):
         self.sqlite_db_name = None
 
     def sqlite_db_backup(self):
+        r"""
+        Performs a backup of the SQLite database if it exceeds 1GB.
+
+        It copies the database file to the `db/backups` directory, clears the
+        historical tables (TagValue, AlarmSummary, Events, Logs), and performs a VACUUM
+        command to reclaim disk space.
+        """
         if self.sqlite_db:
             file_size_mb = os.path.getsize(self.sqlite_db_name) / 1024 / 1024 
             if file_size_mb > 1 * 1024: # 1 Gb: 
@@ -64,7 +88,7 @@ class LoggerWorker(BaseWorker):
                 from ..dbmodels import proxy
                 self._db = self._manager.get_db()
                 proxy.initialize(self._db)
-
+                
         else:
             db = self.logger.logger.get_db()
             if db:
@@ -74,6 +98,9 @@ class LoggerWorker(BaseWorker):
 
 
     def check_opcua_connection(self):
+        r"""
+        Checks the status of OPC UA clients and attempts reconnection if necessary.
+        """
         from automation import PyAutomation
         app = PyAutomation()
         if app.opcua_client_manager._clients:
@@ -87,6 +114,17 @@ class LoggerWorker(BaseWorker):
             app.load_opcua_clients_from_db()
 
     def get_tags_from_queue(self, _queue):
+        r"""
+        Retrieves tag data from the queue and filters it based on configuration.
+
+        **Parameters:**
+
+        * **_queue** (Queue): The queue containing tag updates.
+
+        **Returns:**
+
+        * **list**: A list of tag data dictionaries ready for insertion.
+        """
         from .. import SEGMENT, MANUFACTURER
         tags = list()
         while not _queue.empty():
@@ -111,6 +149,9 @@ class LoggerWorker(BaseWorker):
         return tags
 
     def reconnect_to_db(self):
+        r"""
+        Attempts to reconnect to the database if the connection is lost.
+        """
         from automation import PyAutomation
         app = PyAutomation()
         
@@ -128,7 +169,15 @@ class LoggerWorker(BaseWorker):
 
     def run(self):
         r"""
-        Documentation here
+        Main worker loop.
+
+        Continuously:
+        1. Checks database connectivity.
+        2. Backs up SQLite DB if needed.
+        3. Writes queued tags to the database.
+        4. Reconnects to DB if connection lost.
+        5. Checks OPC UA connections.
+        6. Sleeps for the configured period.
         """       
         _queue = self._manager.get_queue()
         self.db_reconnection = True
