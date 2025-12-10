@@ -58,7 +58,8 @@ class TagsNamesCollection(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('names', type=str, action='append', location='args', help='Tags names to get')
 
-    @api.doc(security='apikey', parser=parser)
+    @api.doc(security='apikey')
+    @ns.expect(parser)
     @Api.token_required(auth=True)
     def get(self):
         """
