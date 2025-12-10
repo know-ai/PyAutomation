@@ -4,7 +4,10 @@ peewee==3.17.8
 # peewee-migrate==1.13.0
 psycopg2-binary==2.9.9; sys_platform != 'win32'
 psycopg2==2.9.9; sys_platform == 'win32'
-numpy==1.25.0
+numpy==1.25.0; python_version <= "3.11"
+numpy==1.26.0; python_version == "3.12"
+numpy==2.0.0; python_version == "3.13"
+numpy==2.1.0; python_version >= "3.14"
 PyWavelets==1.7.0
 dash==2.18.2
 dash-bootstrap-components==1.6.0
