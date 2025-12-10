@@ -50,3 +50,61 @@ A high-performance, in-memory data store.
 4.  **Process**: **State Machines** execute logic based on new values.
 5.  **Store**: The **Data Logger** saves significant changes or periodic samples to the **Database**.
 6.  **Visualize**: The **Socket.IO** server pushes the new CVT values to connected web clients for real-time display.
+
+### Data Flow Diagram
+
+``` mermaid
+flowchart LR
+    A[OPC UA Client] -->|Updates| B[CVT]
+    B -->|Notifies| C[Alarm Manager]
+    B -->|Notifies| D[State Machines]
+    B -->|Notifies| E[Data Logger]
+    D -->|Process Logic| B
+    E -->|Stores| F[Database]
+    B -->|Pushes| G[Socket.IO]
+    G -->|Real-time| H[Web Clients]
+    C -->|Alarm Events| F
+    C -->|Alarm Events| G
+```
+
+### System Architecture Diagram
+
+``` mermaid
+graph TB
+    subgraph "Field Layer"
+        PLC[PLCs/Sensors]
+    end
+    
+    subgraph "PyAutomation Core"
+        OPCClient[OPC UA Client]
+        CVT[Current Value Table]
+        SM[State Machines]
+        AM[Alarm Manager]
+        DL[Data Logger]
+        OPCServer[OPC UA Server]
+    end
+    
+    subgraph "Persistence"
+        DB[(Database)]
+    end
+    
+    subgraph "Interface Layer"
+        API[REST API]
+        WS[Socket.IO]
+        UI[Dash Frontend]
+    end
+    
+    PLC -->|OPC UA| OPCClient
+    OPCClient --> CVT
+    CVT --> SM
+    CVT --> AM
+    CVT --> DL
+    CVT --> OPCServer
+    DL --> DB
+    AM --> DB
+    CVT --> WS
+    WS --> UI
+    API --> CVT
+    API --> DB
+    OPCServer -->|Expose Data| External[External Systems]
+```

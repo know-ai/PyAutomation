@@ -4,6 +4,10 @@ Welcome to the PyAutomation User Guide. This comprehensive manual is designed to
 
 PyAutomation is a modular tool designed to streamline the management of industrial systems through its core components: **Tags**, **Communications**, **Database**, and **Alarms**.
 
+## Objective
+
+The goal of this manual is to empower operators and engineers to maximize the potential of PyAutomation. By following these guides, you will be able to set up a reliable, efficient, and secure automation environment. Each section includes detailed instructions and visual aids to facilitate the learning process.
+
 ## Modules Overview
 
 ### [Tags Module](Tags/index.md)
@@ -22,6 +26,4 @@ The **Database Module** manages the persistence of historical data. It enables c
 
 The **Alarms Module** provides robust fault detection and notification capabilities. It allows you to define alarm conditions based on tag values, configure thresholds, and manage alarm states (acknowledgment, shelving, suppression). This section details the process of setting up and managing alarms to maintain operational safety.
 
-## Objective
 
-The goal of this manual is to empower operators and engineers to maximize the potential of PyAutomation. By following these guides, you will be able to set up a reliable, efficient, and secure automation environment. Each section includes detailed instructions and visual aids to facilitate the learning process.

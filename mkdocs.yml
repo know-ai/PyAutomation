@@ -39,13 +39,9 @@ theme:
 nav:
   - Summary: "index.md"
   - Architecture: "architecture.md"
-  - Roadmap: "roadmap.md"
   - Setup: "setup.md"
-  - Contributions: "CONTRIBUTING.md"
   - User Guide:
       - Summary: "Users_Guide/index.md"
-      - Alarms:
-          - Summary: "Users_Guide/Alarms/index.md"
       - Database:
           - Summary: "Users_Guide/Database/index.md"
       - Communications:
@@ -56,10 +52,11 @@ nav:
           - Update Tag: "Users_Guide/Tags/Update.md"
           - Delete Tag: "Users_Guide/Tags/Delete.md"
           - Trends: "Users_Guide/Tags/Trends.md"
+      - Alarms:
+          - Summary: "Users_Guide/Alarms/index.md"
   - Developer Guide:
       - Summary: "Developments_Guide/index.md"
-      - Testing: "Developments_Guide/testing.md"
-      - Logs: "Developments_Guide/logs.md"
+      - Creating Diagrams: "Developments_Guide/diagrams.md"
       - Core Concepts:
           - Summary: "Developments_Guide/core/index.md"
           - Alarms: "Developments_Guide/core/alarms.md"
@@ -116,6 +113,10 @@ nav:
               - OPC UA: "Developments_Guide/API/db_models/opcua.md"
               - Tags: Developments_Guide/API/db_models/tags.md
               - Users: "Developments_Guide/API/db_models/users.md"
+      - Testing: "Developments_Guide/testing.md"
+      - Logs: "Developments_Guide/logs.md"
+  - Roadmap: "roadmap.md"
+  - Contributions: "CONTRIBUTING.md"
 
 markdown_extensions:
   - admonition
@@ -146,6 +147,11 @@ markdown_extensions:
       alternate_style: true
   - pymdownx.tasklist:
       custom_checkbox: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - mkautodoc
 
 plugins:
@@ -158,3 +164,4 @@ extra_javascript:
   - javascripts/config.js
   - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js
