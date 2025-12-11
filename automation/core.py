@@ -805,21 +805,21 @@ class PyAutomation(Singleton):
     @logging_error_handler
     @validate_types(
             username=str,
-            role_name=str,
             email=str,
             password=str,
             name=str|type(None),
             lastname=str|type(None),
+            role_name=str,
             output=(User|None, str)
     )
     def signup(
             self,
             username:str,
-            role_name:str,
             email:str,
             password:str,
             name:str=None,
-            lastname:str=None
+            lastname:str=None,
+            role_name:str='guest',
         )->tuple[User|None, str]:
         r"""
         Registers a new user in the system.

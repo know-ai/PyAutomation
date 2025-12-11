@@ -188,12 +188,12 @@ class Users(Singleton):
 
     def signup(self, 
             username:str, 
-            role_name:str, 
             email:str, 
             password:str, 
             name:str=None,
             lastname:str=None,
             identifier:str=None,
+            role_name:str='guest',
             encode_password:bool=True
             )->tuple:
         r"""
