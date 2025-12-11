@@ -61,6 +61,7 @@ nav:
   - Developer Guide:
       - Summary: "Developments_Guide/index.md"
       - Industrial Standards: "Developments_Guide/standards.md"
+      - Architecture Components: "Developments_Guide/architecture_components.md"
       - Creating Diagrams: "Developments_Guide/diagrams.md"
       - Core Concepts:
           - Summary: "Developments_Guide/core/index.md"
