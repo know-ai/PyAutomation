@@ -332,13 +332,18 @@ class AlarmsLogger(BaseLogger):
                 return query
 
     @db_rollback
-    def get_alarm_summary(self):
+    def get_alarm_summary(self, page:int=1, limit:int=20):
         r"""
-        Retrieves the entire alarm summary.
+        Retrieves the alarm summary with pagination.
+
+        **Parameters:**
+
+        * **page** (int): Page number (default: 1).
+        * **limit** (int): Records per page (default: 20).
 
         **Returns:**
 
-        * **list**: List of all AlarmSummary records.
+        * **dict**: Dictionary with 'data' (list of AlarmSummary records) and 'pagination' metadata.
         """
         if not self.is_history_logged:
 
@@ -346,9 +351,19 @@ class AlarmsLogger(BaseLogger):
         
         if not self.check_connectivity():
             
-            return list()
+            return {
+                "data": list(),
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total_records": 0,
+                    "total_pages": 1,
+                    "has_next": False,
+                    "has_prev": False
+                }
+            }
         
-        return AlarmSummary.read_all()
+        return AlarmSummary.read_all(page=page, limit=limit)
     
     
 class AlarmsLoggerEngine(BaseEngine):
@@ -516,13 +531,15 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["id"] = id
         return self.query(_query)
 
-    def get_alarm_summary(self):
+    def get_alarm_summary(self, page:int=1, limit:int=20):
         r"""
-        Thread-safe retrieval of entire alarm summary.
+        Thread-safe retrieval of alarm summary with pagination.
         """
         _query = dict()
         _query["action"] = "get_alarm_summary"
         _query["parameters"] = dict()
+        _query["parameters"]["page"] = page
+        _query["parameters"]["limit"] = limit
         
         return self.query(_query)
 

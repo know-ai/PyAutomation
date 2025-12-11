@@ -357,20 +357,65 @@ class AlarmSummary(BaseModel):
 
     @classmethod
     @logging_error_handler
-    def read_all(cls):
+    def read_all(cls, page:int=1, limit:int=20):
         r"""
-        Retrieves all alarm summary records.
+        Retrieves alarm summary records with pagination.
+
+        **Parameters:**
+
+        * **page** (int): Page number (default: 1).
+        * **limit** (int): Records per page (default: 20).
+
+        **Returns:**
+
+        * **dict**: {data: list, pagination: dict}
         """
+        import math
         data = list()
         
         try:
-            data = [query.serialize() for query in cls.select().order_by(cls.id.desc())]
-
-            return data
+            query = cls.select().order_by(cls.id.desc())
+            
+            total_records = query.count()
+            
+            # Safe pagination
+            if limit <= 0: limit = 20
+            if page <= 0: page = 1
+            
+            total_pages = math.ceil(total_records / limit)
+            if total_pages == 0: total_pages = 1
+            
+            has_next = page < total_pages
+            has_prev = page > 1
+            
+            paginated_query = query.paginate(page, limit)
+            data = [alarm.serialize() for alarm in paginated_query]
+            
+            return {
+                "data": data,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total_records": total_records,
+                    "total_pages": total_pages,
+                    "has_next": has_next,
+                    "has_prev": has_prev
+                }
+            }
 
         except Exception as _err:
 
-            return data
+            return {
+                "data": data,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total_records": 0,
+                    "total_pages": 1,
+                    "has_next": False,
+                    "has_prev": False
+                }
+            }
 
     @classmethod
     @logging_error_handler

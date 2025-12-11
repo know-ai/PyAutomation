@@ -19,8 +19,9 @@ from automation.variables import (
     temperature,
     volume
 )
-from automation import core
-
+from automation import core, PyAutomation, server
+app = PyAutomation()
+setattr(app, "server", server)
 
 def suite():
     """
@@ -57,7 +58,6 @@ if __name__=='__main__':
     import sys
     runner = TextTestRunner()
     unittests, doctests = suite()
-    from automation.core import PyAutomation
 
     try:
         result = runner.run(unittests)
@@ -72,5 +72,4 @@ if __name__=='__main__':
     
     finally:
         # Force stop of any background threads started during doctests
-        app = PyAutomation()
         app.safe_stop()
