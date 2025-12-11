@@ -810,6 +810,8 @@ class PyAutomation(Singleton):
             name=str|type(None),
             lastname=str|type(None),
             role_name=str,
+            identifier=str|type(None),
+            encode_password=bool,
             output=(User|None, str)
     )
     def signup(
@@ -820,6 +822,8 @@ class PyAutomation(Singleton):
             name:str=None,
             lastname:str=None,
             role_name:str='guest',
+            identifier:str=None,
+            encode_password:bool=True,
         )->tuple[User|None, str]:
         r"""
         Registers a new user in the system.
@@ -827,11 +831,13 @@ class PyAutomation(Singleton):
         **Parameters:**
 
         * **username** (str): Unique username.
-        * **role_name** (str): Name of the role to assign (e.g., 'admin', 'operator').
         * **email** (str): User's email address.
-        * **password** (str): User's password.
+        * **password** (str): User's password (plain text or hash if encode_password=False).
         * **name** (str, optional): First name.
         * **lastname** (str, optional): Last name.
+        * **role_name** (str, optional): Name of the role to assign (e.g., 'admin', 'operator'). Default: 'guest'.
+        * **identifier** (str, optional): Unique identifier for the user. If not provided, a random one is generated.
+        * **encode_password** (bool, optional): If True, password will be hashed. If False, password is assumed to be already hashed. Default: True.
 
         **Returns:**
 
@@ -856,7 +862,9 @@ class PyAutomation(Singleton):
             email=email,
             password=password,
             name=name,
-            lastname=lastname
+            lastname=lastname,
+            identifier=identifier,
+            encode_password=encode_password
         )
         if user:
 
@@ -3146,3 +3154,510 @@ class PyAutomation(Singleton):
         app_logger = logging.getLogger("pyautomation")
         app_logger.setLevel(self._logging_level)
         app_logger.propagate = True
+
+    @logging_error_handler
+    @validate_types(output=dict)
+    def export_configuration(self)->dict:
+        r"""
+        Exports all configuration data from database models (excluding historical data).
+
+        Exports configuration tables: Manufacturer, Segment, Variables, Units, DataTypes,
+        Tags, AlarmTypes, AlarmStates, Alarms, Roles, Users, OPCUA, AccessType,
+        OPCUAServer, Machines, TagsMachines.
+
+        Excludes historical tables: TagValue, Events, Logs, AlarmSummary.
+
+        **Returns:**
+
+        * **dict**: Dictionary containing all configuration data organized by model name.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> app.connect_to_db(test=True)
+        >>> config = app.export_configuration()
+        >>> import json
+        >>> with open('config.json', 'w') as f:
+        ...     json.dump(config, f, indent=2)
+        ```
+        """
+        if not self.is_db_connected():
+            return {"error": "Database not connected"}
+
+        from .dbmodels import (
+            Manufacturer, Segment, Variables, Units, DataTypes,
+            Tags, AlarmTypes, AlarmStates, Alarms,
+            Roles, Users, OPCUA, AccessType, OPCUAServer,
+            Machines, TagsMachines
+        )
+
+        config = {
+            "version": "1.0",
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "data": {
+                "Manufacturer": [m.serialize() for m in Manufacturer.select()],
+                "Segment": [s.serialize() for s in Segment.select()],
+                "Variables": [v.serialize() for v in Variables.select()],
+                "Units": [u.serialize() for u in Units.select()],
+                "DataTypes": [dt.serialize() for dt in DataTypes.select()],
+                "Tags": [t.serialize() for t in Tags.select()],
+                "AlarmTypes": [at.serialize() for at in AlarmTypes.select()],
+                "AlarmStates": [as_obj.serialize() for as_obj in AlarmStates.select()],
+                "Alarms": [a.serialize() for a in Alarms.select()],
+                "Roles": [r.serialize() for r in Roles.select()],
+                "Users": [
+                    {
+                        **u.serialize(),
+                        "password": u.password  # Include password hash for import
+                    } for u in Users.select()
+                ],
+                "OPCUA": [o.serialize() for o in OPCUA.select()],
+                "AccessType": [at.serialize() for at in AccessType.select()],
+                "OPCUAServer": [os_obj.serialize() for os_obj in OPCUAServer.select()],
+                "Machines": [m.serialize() for m in Machines.select()],
+                "TagsMachines": [tm.serialize() for tm in TagsMachines.select()]
+            }
+        }
+
+        return config
+
+    @logging_error_handler
+    @validate_types(config_data=dict, output=dict)
+    def import_configuration(self, config_data:dict)->dict:
+        r"""
+        Imports configuration data into database models.
+
+        Imports configuration in the correct order to handle foreign key relationships.
+        Order: Variables -> Units -> DataTypes -> Manufacturer -> Segment -> Tags ->
+               AlarmTypes -> AlarmStates -> Alarms -> Roles -> Users -> OPCUA ->
+               AccessType -> OPCUAServer -> Machines -> TagsMachines
+
+        **Parameters:**
+
+        * **config_data** (dict): Dictionary containing configuration data (from export_configuration).
+
+        **Returns:**
+
+        * **dict**: Dictionary with import results and statistics.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> import json
+        >>> app = PyAutomation()
+        >>> app.connect_to_db(test=True)
+        >>> with open('config.json', 'r') as f:
+        ...     config = json.load(f)
+        >>> result = app.import_configuration(config)
+        >>> print(result['message'])
+        ```
+        """
+        if not self.is_db_connected():
+            return {"error": "Database not connected", "message": "Database not connected"}
+
+        from .dbmodels import (
+            Manufacturer, Segment, Variables, Units, DataTypes,
+            Tags, AlarmTypes, AlarmStates, Alarms,
+            Roles, Users, OPCUA, AccessType, OPCUAServer,
+            Machines, TagsMachines
+        )
+
+        results = {
+            "imported": {},
+            "errors": {},
+            "skipped": {}
+        }
+
+        try:
+            data = config_data.get("data", config_data)
+
+            # 1. Variables (no dependencies)
+            if "Variables" in data:
+                for item in data["Variables"]:
+                    try:
+                        if not Variables.name_exist(item["name"]):
+                            Variables.create(name=item["name"])
+                            results["imported"].setdefault("Variables", 0)
+                            results["imported"]["Variables"] += 1
+                        else:
+                            results["skipped"].setdefault("Variables", 0)
+                            results["skipped"]["Variables"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("Variables", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 2. Units (depends on Variables)
+            if "Units" in data:
+                for item in data["Units"]:
+                    try:
+                        if not Units.name_exist(item["name"]):
+                            variable_name = item.get("variable", item.get("variable_id", {}).get("name"))
+                            if variable_name:
+                                Units.create(name=item["name"], unit=item["unit"], variable=variable_name)
+                                results["imported"].setdefault("Units", 0)
+                                results["imported"]["Units"] += 1
+                            else:
+                                results["errors"].setdefault("Units", []).append(f"{item.get('name', 'unknown')}: Missing variable")
+                        else:
+                            results["skipped"].setdefault("Units", 0)
+                            results["skipped"]["Units"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("Units", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 3. DataTypes (no dependencies)
+            if "DataTypes" in data:
+                for item in data["DataTypes"]:
+                    try:
+                        if not DataTypes.name_exist(item["name"]):
+                            DataTypes.create(name=item["name"])
+                            results["imported"].setdefault("DataTypes", 0)
+                            results["imported"]["DataTypes"] += 1
+                        else:
+                            results["skipped"].setdefault("DataTypes", 0)
+                            results["skipped"]["DataTypes"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("DataTypes", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 4. Manufacturer (no dependencies)
+            if "Manufacturer" in data:
+                for item in data["Manufacturer"]:
+                    try:
+                        if not Manufacturer.name_exist(item["name"]):
+                            Manufacturer.create(name=item["name"])
+                            results["imported"].setdefault("Manufacturer", 0)
+                            results["imported"]["Manufacturer"] += 1
+                        else:
+                            results["skipped"].setdefault("Manufacturer", 0)
+                            results["skipped"]["Manufacturer"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("Manufacturer", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 5. Segment (depends on Manufacturer)
+            if "Segment" in data:
+                for item in data["Segment"]:
+                    try:
+                        manufacturer_name = item.get("manufacturer", {}).get("name") if isinstance(item.get("manufacturer"), dict) else item.get("manufacturer")
+                        if manufacturer_name:
+                            if not Segment.name_exist(item["name"]):
+                                Segment.create(name=item["name"], manufacturer=manufacturer_name)
+                                results["imported"].setdefault("Segment", 0)
+                                results["imported"]["Segment"] += 1
+                            else:
+                                results["skipped"].setdefault("Segment", 0)
+                                results["skipped"]["Segment"] += 1
+                        else:
+                            results["errors"].setdefault("Segment", []).append(f"{item.get('name', 'unknown')}: Missing manufacturer")
+                    except Exception as e:
+                        results["errors"].setdefault("Segment", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 6. Tags (depends on Units, DataTypes, Segment)
+            if "Tags" in data:
+                for item in data["Tags"]:
+                    try:
+                        if not Tags.name_exist(item["name"]):
+                            # Extract related data - Tags.serialize() returns strings, not objects
+                            unit_name = item.get("unit")
+                            if isinstance(unit_name, dict):
+                                unit_name = unit_name.get("unit")
+                            
+                            display_unit_name = item.get("display_unit")
+                            if isinstance(display_unit_name, dict):
+                                display_unit_name = display_unit_name.get("unit")
+                            
+                            data_type_name = item.get("data_type")
+                            if isinstance(data_type_name, dict):
+                                data_type_name = data_type_name.get("name")
+                            
+                            segment_name = item.get("segment")
+                            manufacturer_name = item.get("manufacturer")
+                            
+                            # Handle segment as string or dict
+                            if isinstance(segment_name, dict):
+                                manufacturer_name = segment_name.get("manufacturer", {}).get("name") if isinstance(segment_name.get("manufacturer"), dict) else segment_name.get("manufacturer")
+                                segment_name = segment_name.get("name")
+                            
+                            Tags.create(
+                                id=item.get("id", item.get("identifier")),
+                                name=item["name"],
+                                unit=unit_name or display_unit_name,
+                                data_type=data_type_name,
+                                description=item.get("description"),
+                                display_name=item.get("display_name", item["name"]),
+                                display_unit=display_unit_name or unit_name,
+                                opcua_address=item.get("opcua_address"),
+                                node_namespace=item.get("node_namespace"),
+                                segment=segment_name or "",
+                                manufacturer=manufacturer_name or "",
+                                scan_time=item.get("scan_time"),
+                                dead_band=item.get("dead_band"),
+                                active=item.get("active", True),
+                                process_filter=item.get("process_filter", False),
+                                gaussian_filter=item.get("gaussian_filter", False),
+                                gaussian_filter_threshold=item.get("gaussian_filter_threshold", 1.0),
+                                gaussian_filter_r_value=item.get("gaussian_filter_r_value", 0.0),
+                                out_of_range_detection=item.get("out_of_range_detection", False),
+                                outlier_detection=item.get("outlier_detection", False),
+                                frozen_data_detection=item.get("frozen_data_detection", False)
+                            )
+                            results["imported"].setdefault("Tags", 0)
+                            results["imported"]["Tags"] += 1
+                        else:
+                            results["skipped"].setdefault("Tags", 0)
+                            results["skipped"]["Tags"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("Tags", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 7. AlarmTypes (no dependencies)
+            if "AlarmTypes" in data:
+                for item in data["AlarmTypes"]:
+                    try:
+                        if not AlarmTypes.name_exist(item["name"]):
+                            AlarmTypes.create(name=item["name"])
+                            results["imported"].setdefault("AlarmTypes", 0)
+                            results["imported"]["AlarmTypes"] += 1
+                        else:
+                            results["skipped"].setdefault("AlarmTypes", 0)
+                            results["skipped"]["AlarmTypes"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("AlarmTypes", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 8. AlarmStates (no dependencies)
+            if "AlarmStates" in data:
+                for item in data["AlarmStates"]:
+                    try:
+                        if not AlarmStates.name_exist(item["name"]):
+                            AlarmStates.create(
+                                name=item["name"],
+                                mnemonic=item.get("mnemonic", ""),
+                                condition=item.get("condition", ""),
+                                status=item.get("status", "")
+                            )
+                            results["imported"].setdefault("AlarmStates", 0)
+                            results["imported"]["AlarmStates"] += 1
+                        else:
+                            results["skipped"].setdefault("AlarmStates", 0)
+                            results["skipped"]["AlarmStates"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("AlarmStates", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 9. Alarms (depends on Tags, AlarmTypes, AlarmStates)
+            if "Alarms" in data:
+                for item in data["Alarms"]:
+                    try:
+                        if not Alarms.name_exists(item["name"]):
+                            # Alarms.serialize() returns strings, not objects
+                            tag_name = item.get("tag")
+                            if isinstance(tag_name, dict):
+                                tag_name = tag_name.get("name")
+                            
+                            trigger_type_name = item.get("trigger_type") or item.get("alarm_type")
+                            if isinstance(trigger_type_name, dict):
+                                trigger_type_name = trigger_type_name.get("name")
+                            
+                            state_name = item.get("state")
+                            if isinstance(state_name, dict):
+                                state_name = state_name.get("name")
+                            
+                            if tag_name and trigger_type_name:
+                                Alarms.create(
+                                    identifier=item.get("identifier", item.get("id")),
+                                    name=item["name"],
+                                    tag=tag_name,
+                                    trigger_type=trigger_type_name,
+                                    trigger_value=item.get("trigger_value", 0.0),
+                                    description=item.get("description"),
+                                    state=state_name or "Normal"
+                                )
+                                results["imported"].setdefault("Alarms", 0)
+                                results["imported"]["Alarms"] += 1
+                            else:
+                                results["errors"].setdefault("Alarms", []).append(f"{item.get('name', 'unknown')}: Missing tag or trigger_type")
+                        else:
+                            results["skipped"].setdefault("Alarms", 0)
+                            results["skipped"]["Alarms"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("Alarms", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 10. Roles (no dependencies)
+            if "Roles" in data:
+                for item in data["Roles"]:
+                    try:
+                        if not Roles.name_exist(item["name"]):
+                            Roles.create(
+                                name=item["name"],
+                                level=item["level"],
+                                identifier=item.get("identifier", secrets.token_hex(4))
+                            )
+                            results["imported"].setdefault("Roles", 0)
+                            results["imported"]["Roles"] += 1
+                        else:
+                            results["skipped"].setdefault("Roles", 0)
+                            results["skipped"]["Roles"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("Roles", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 11. Users (depends on Roles)
+            if "Users" in data:
+                for item in data["Users"]:
+                    try:
+                        if not Users.username_exist(item["username"]):
+                            role_name = item.get("role", {}).get("name") if isinstance(item.get("role"), dict) else item.get("role")
+                            if role_name:
+                                # Check if password is already hashed (from export) or plain text
+                                password = item.get("password")
+                                encode_password = True
+                                
+                                # If password looks like a hash (starts with pbkdf2:sha256: or scrypt:), use it directly
+                                if password and (password.startswith("pbkdf2:sha256:") or password.startswith("scrypt:")):
+                                    encode_password = False
+                                elif not password:
+                                    # If no password provided, use default (will be hashed)
+                                    password = "default_password"
+                                    encode_password = True
+                                
+                                # Create user using signup method with encode_password flag
+                                user, message = self.signup(
+                                    username=item["username"],
+                                    role_name=role_name,
+                                    email=item["email"],
+                                    password=password,
+                                    name=item.get("name"),
+                                    lastname=item.get("lastname"),
+                                    identifier=item.get("identifier"),
+                                    encode_password=encode_password
+                                )
+                                if user:
+                                    results["imported"].setdefault("Users", 0)
+                                    results["imported"]["Users"] += 1
+                                else:
+                                    results["errors"].setdefault("Users", []).append(f"{item.get('username', 'unknown')}: {message}")
+                            else:
+                                results["errors"].setdefault("Users", []).append(f"{item.get('username', 'unknown')}: Missing role")
+                        else:
+                            results["skipped"].setdefault("Users", 0)
+                            results["skipped"]["Users"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("Users", []).append(f"{item.get('username', 'unknown')}: {str(e)}")
+
+            # 12. OPCUA (no dependencies)
+            if "OPCUA" in data:
+                for item in data["OPCUA"]:
+                    try:
+                        if not OPCUA.client_name_exist(item["client_name"]):
+                            OPCUA.create(
+                                client_name=item["client_name"],
+                                host=item["host"],
+                                port=item["port"]
+                            )
+                            results["imported"].setdefault("OPCUA", 0)
+                            results["imported"]["OPCUA"] += 1
+                        else:
+                            results["skipped"].setdefault("OPCUA", 0)
+                            results["skipped"]["OPCUA"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("OPCUA", []).append(f"{item.get('client_name', 'unknown')}: {str(e)}")
+
+            # 13. AccessType (no dependencies)
+            if "AccessType" in data:
+                for item in data["AccessType"]:
+                    try:
+                        if not AccessType.name_exist(item["name"]):
+                            AccessType.create(name=item["name"])
+                            results["imported"].setdefault("AccessType", 0)
+                            results["imported"]["AccessType"] += 1
+                        else:
+                            results["skipped"].setdefault("AccessType", 0)
+                            results["skipped"]["AccessType"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("AccessType", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 14. OPCUAServer (depends on AccessType)
+            if "OPCUAServer" in data:
+                for item in data["OPCUAServer"]:
+                    try:
+                        if not OPCUAServer.name_exist(item["name"]):
+                            access_type_name = item.get("access_type", {}).get("name") if isinstance(item.get("access_type"), dict) else item.get("access_type")
+                            if access_type_name:
+                                OPCUAServer.create(
+                                    name=item["name"],
+                                    namespace=item.get("namespace", ""),
+                                    access_type=access_type_name
+                                )
+                                results["imported"].setdefault("OPCUAServer", 0)
+                                results["imported"]["OPCUAServer"] += 1
+                            else:
+                                results["errors"].setdefault("OPCUAServer", []).append(f"{item.get('name', 'unknown')}: Missing access_type")
+                        else:
+                            results["skipped"].setdefault("OPCUAServer", 0)
+                            results["skipped"]["OPCUAServer"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("OPCUAServer", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 15. Machines (no dependencies)
+            if "Machines" in data:
+                for item in data["Machines"]:
+                    try:
+                        if not Machines.name_exist(item["name"]):
+                            Machines.create(
+                                identifier=item.get("identifier", secrets.token_hex(4)),
+                                name=item["name"],
+                                interval=item.get("interval", 1.0),
+                                description=item.get("description", ""),
+                                classification=item.get("classification", ""),
+                                buffer_size=item.get("buffer_size", 100),
+                                buffer_roll_type=item.get("buffer_roll_type", "FIFO"),
+                                criticity=item.get("criticity", 0),
+                                priority=item.get("priority", 0),
+                                threshold=item.get("threshold"),
+                                on_delay=item.get("on_delay")
+                            )
+                            results["imported"].setdefault("Machines", 0)
+                            results["imported"]["Machines"] += 1
+                        else:
+                            results["skipped"].setdefault("Machines", 0)
+                            results["skipped"]["Machines"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("Machines", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
+
+            # 16. TagsMachines (depends on Tags and Machines)
+            if "TagsMachines" in data:
+                for item in data["TagsMachines"]:
+                    try:
+                        tag_name = item.get("tag", {}).get("name") if isinstance(item.get("tag"), dict) else item.get("tag")
+                        machine_name = item.get("machine", {}).get("name") if isinstance(item.get("machine"), dict) else item.get("machine")
+                        
+                        if tag_name and machine_name:
+                            TagsMachines.create(
+                                tag_name=tag_name,
+                                machine_name=machine_name,
+                                default_tag_name=item.get("default_tag_name")
+                            )
+                            results["imported"].setdefault("TagsMachines", 0)
+                            results["imported"]["TagsMachines"] += 1
+                        else:
+                            results["errors"].setdefault("TagsMachines", []).append(f"Missing tag or machine: {item}")
+                    except Exception as e:
+                        results["errors"].setdefault("TagsMachines", []).append(f"{str(e)}")
+
+            total_imported = sum(results["imported"].values())
+            total_skipped = sum(results["skipped"].values())
+            total_errors = sum(len(errs) for errs in results["errors"].values())
+
+            return {
+                "message": f"Configuration imported: {total_imported} records imported, {total_skipped} skipped, {total_errors} errors",
+                "results": results,
+                "summary": {
+                    "imported": total_imported,
+                    "skipped": total_skipped,
+                    "errors": total_errors
+                }
+            }
+
+        except Exception as e:
+            return {
+                "error": str(e),
+                "message": f"Import failed: {str(e)}",
+                "results": results
+            }

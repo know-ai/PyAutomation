@@ -1,7 +1,9 @@
-from flask_restx import Namespace, Resource, fields
+from flask_restx import Namespace, Resource, fields, reqparse
+from flask import request, make_response
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
+import json
 
 ns = Namespace('Settings', description='Application Configuration Settings')
 app = PyAutomation()
@@ -84,3 +86,96 @@ class LoggerPeriodResource(Resource):
         app.update_logger_period(logger_period)
         
         return "Logger period updated", 200
+
+@ns.route('/export_config')
+class ExportConfigResource(Resource):
+    
+    @api.doc(security='apikey', description="Exports all configuration data to a JSON file. Excludes historical data (TagValue, Events, Logs, AlarmSummary).")
+    @api.response(200, "Configuration exported successfully")
+    @api.response(400, "Export failed")
+    @api.response(401, "Unauthorized")
+    # @Api.token_required(auth=True)
+    def get(self):
+        """
+        Export configuration.
+
+        Exports all configuration tables (Manufacturer, Segment, Variables, Units, DataTypes,
+        Tags, AlarmTypes, AlarmStates, Alarms, Roles, Users, OPCUA, AccessType, OPCUAServer,
+        Machines, TagsMachines) to a JSON file. Historical data is excluded.
+        """
+        try:
+            config_data = app.export_configuration()
+            
+            if "error" in config_data:
+                return {'message': config_data["error"]}, 400
+            
+            # Create JSON string in memory
+            json_str = json.dumps(config_data, indent=2, default=str)
+            json_bytes = json_str.encode('utf-8')
+            
+            # Create response with explicit headers to force download
+            # Using application/octet-stream helps force download in Swagger UI
+            response = make_response(json_bytes)
+            response.headers['Content-Type'] = 'application/octet-stream'
+            response.headers['Content-Disposition'] = 'attachment; filename="configuration_export.json"'
+            response.headers['Content-Length'] = str(len(json_bytes))
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            
+            return response
+        except Exception as e:
+            return {'message': f'Export failed: {str(e)}'}, 400
+
+import_config_parser = reqparse.RequestParser(bundle_errors=True)
+import_config_parser.add_argument('file', type=reqparse.FileStorage, location='files', required=True, help='JSON configuration file to import')
+
+@ns.route('/import_config')
+class ImportConfigResource(Resource):
+    
+    @Api.validate_reqparser(reqparser=import_config_parser)
+    @api.doc(security='apikey', description="Imports configuration data from a JSON file. Restores all configuration tables while preserving historical data.")
+    @api.response(200, "Configuration imported successfully")
+    @api.response(400, "Import failed")
+    @api.response(401, "Unauthorized")
+    @ns.expect(import_config_parser)
+    # @Api.token_required(auth=True)
+    def post(self):
+        """
+        Import configuration.
+
+        Imports configuration data from a JSON file. The file should be in the format
+        exported by the export_config endpoint. Historical data (TagValue, Events, Logs,
+        AlarmSummary) is not affected by the import.
+        """
+        try:
+            if 'file' not in request.files:
+                return {'message': 'No file provided'}, 400
+            
+            file = request.files['file']
+            
+            if file.filename == '':
+                return {'message': 'No file selected'}, 400
+            
+            if not file.filename.endswith('.json'):
+                return {'message': 'File must be a JSON file'}, 400
+            
+            # Read and parse JSON
+            file_content = file.read()
+            try:
+                config_data = json.loads(file_content.decode('utf-8'))
+            except json.JSONDecodeError as e:
+                return {'message': f'Invalid JSON file: {str(e)}'}, 400
+            
+            # Import configuration
+            result = app.import_configuration(config_data)
+            
+            if "error" in result:
+                return {'message': result["error"], 'details': result.get("results", {})}, 400
+            
+            return {
+                'message': result.get("message", "Configuration imported successfully"),
+                'summary': result.get("summary", {}),
+                'results': result.get("results", {})
+            }, 200
+            
+        except Exception as e:
+            return {'message': f'Import failed: {str(e)}'}, 400

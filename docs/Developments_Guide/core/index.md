@@ -50,6 +50,8 @@
     :members: create_log
     :members: filter_logs_by
     :members: get_lasts_logs
+    :members: export_configuration
+    :members: import_configuration
     :members: run
     :members: safe_start
     :members: safe_stop

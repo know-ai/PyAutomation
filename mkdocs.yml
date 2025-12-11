@@ -56,6 +56,8 @@ nav:
           - Summary: "Users_Guide/Alarms/index.md"
       - Users:
           - Summary: "Users_Guide/Users/index.md"
+      - Settings:
+          - Summary: "Users_Guide/Settings/index.md"
   - Developer Guide:
       - Summary: "Developments_Guide/index.md"
       - Creating Diagrams: "Developments_Guide/diagrams.md"
@@ -74,6 +76,7 @@ nav:
           - Core: "Developments_Guide/API/core.md"
           - Events: "Developments_Guide/API/events.md"
           - Users: "Developments_Guide/API/users.md"
+          - Settings: "Developments_Guide/API/settings.md"
           - Authorization: "Developments_Guide/API/authorization.md"
           - Alarms:
               - Summary: "Developments_Guide/API/alarms/index.md"

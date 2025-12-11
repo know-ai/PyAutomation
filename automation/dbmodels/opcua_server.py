@@ -198,5 +198,6 @@ class OPCUAServer(BaseModel):
         return {
             "id": self.id,
             "name": self.name,
+            "namespace": self.namespace,
             "access_type": self.access_type.serialize()
         }

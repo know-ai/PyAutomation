@@ -30,4 +30,8 @@ The **Alarms Module** provides robust fault detection and notification capabilit
 
 The **Users Module** manages user accounts, authentication, and password operations. It provides role-based access control (RBAC) with different permission levels, allowing you to manage user credentials, change passwords, and reset forgotten passwords following proper authorization rules. This section covers user authentication, password management, and security best practices.
 
+### [Settings Module](Settings/index.md)
+
+The **Settings Module** provides configuration management capabilities, allowing you to export and import system configuration. This includes all configuration tables (tags, alarms, users, OPC UA settings, etc.) while preserving historical data. This section covers how to create backups, migrate configurations between systems, and restore settings from previous exports.
+
 

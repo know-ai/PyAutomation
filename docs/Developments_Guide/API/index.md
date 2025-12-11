@@ -14,6 +14,7 @@ This section details the classes and methods available in the PyAutomation frame
 *   **[Data Logger](datalogger/index.md)**: Historical data persistence.
 *   **[State Machines](state_machine/index.md)**: Finite State Machine logic.
 *   **[Users](users.md)**: User management, authentication, and password operations.
+*   **[Settings](settings.md)**: Application settings and configuration export/import.
 *   **[Workers](workers/index.md)**: Background processing threads.
 
 ## Managers & Models
