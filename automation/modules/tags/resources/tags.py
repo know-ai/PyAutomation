@@ -29,7 +29,7 @@ query_tabular_data_model = api.model("query_tabular_data_model",{
     'tags':  fields.List(fields.String(), required=True, description='List of tag names to query'),
     'greater_than_timestamp': fields.DateTime(required=True, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description='Start DateTime'),
     'less_than_timestamp': fields.DateTime(required=True, default=datetime.now(pytz.utc).astimezone(TIMEZONE), description='End DateTime'),
-    'sample_time': fields.Integer(required=True, description='Resampling interval in seconds'),
+    'sample_time': fields.Integer(required=False, default=30, description='Resampling interval in seconds (must be > 0)'),
     'timezone': fields.String(required=True, default=_TIMEZONE, description='Timezone for the query'),
     'page': fields.Integer(required=False, default=1, description='Page number'),
     'limit': fields.Integer(required=False, default=20, description='Items per page')
@@ -185,7 +185,11 @@ class GetTabularDataResource(Resource):
         tags = api.payload['tags']
         page = api.payload.get('page', 1)
         limit = api.payload.get('limit', 20)
-        sample_time = api.payload.get('sample_time', 60) # Default 1 min if not provided, but model requires it
+        sample_time = api.payload.get('sample_time', 30)
+
+        # Validar que sample_time sea un entero positivo > 0
+        if not isinstance(sample_time, int) or sample_time <= 0:
+            return {'message': 'sample_time must be a positive integer greater than 0'}, 400
 
         if "timezone" in api.payload:
             timezone = api.payload["timezone"]
