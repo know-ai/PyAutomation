@@ -4,6 +4,7 @@ Welcome to the PyAutomation Developer's Guide. This section is designed for soft
 
 ## Content Overview
 
+- **[Industrial Standards](standards.md)**: Comprehensive overview of industrial standards implementation, compliance status, and roadmap.
 - **[API Reference](API/index.md)**: Detailed documentation of the core classes, methods, and modules.
 - **[Core Architecture](../architecture.md)**: Deep dive into the internal design and data flow.
 - **[State Machines](API/state_machine/index.md)**: How to implement custom logic using the State Machine engine.

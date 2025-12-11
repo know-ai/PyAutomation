@@ -60,6 +60,7 @@ nav:
           - Summary: "Users_Guide/Settings/index.md"
   - Developer Guide:
       - Summary: "Developments_Guide/index.md"
+      - Industrial Standards: "Developments_Guide/standards.md"
       - Creating Diagrams: "Developments_Guide/diagrams.md"
       - Core Concepts:
           - Summary: "Developments_Guide/core/index.md"
