@@ -517,39 +517,20 @@ class DataLogger(BaseLogger):
         has_next = page < total_pages
         has_prev = page > 1
         
-        # Calculate start and end for current page
+        # Calculate start and end for current page (in DESC order, page 1 = most recent)
         start_index = (page - 1) * limit
         end_index = min(start_index + limit, total_records)
         
-        page_start_ts = start_ts + (start_index * sample_time)
-        page_end_ts = start_ts + ((end_index - 1) * sample_time)
+        # For DESC order: calculate timestamps from stop backwards
+        # Page 1 starts at stop_ts and goes backwards
+        page_end_ts = stop_ts - (start_index * sample_time)  # Most recent timestamp for this page
+        page_start_ts = stop_ts - ((end_index - 1) * sample_time)  # Oldest timestamp for this page
         
         # Query data needed for this page plus context for forward fill
         
         data_points = []
-        current_ts = page_start_ts
         
-        # 1. Get initial values (state at page_start_ts)
-        current_values = {}
-        current_dt = datetime.fromtimestamp(current_ts, pytz.UTC)
-        
-        for tag_name in tags:
-            # Get the latest value <= current_dt
-            last_val_query = (TagValue
-                .select(TagValue.value)
-                .join(Tags)
-                .where((Tags.name == tag_name) & (TagValue.timestamp <= current_dt))
-                .order_by(TagValue.timestamp.desc())
-                .limit(1)
-                .dicts())
-            
-            entry = list(last_val_query)
-            if entry:
-                current_values[tag_name] = entry[0]['value']
-            else:
-                current_values[tag_name] = None
-
-        # 2. Get changes within the page window
+        # 2. Get all changes within the page window (for forward fill calculation)
         page_start_dt = datetime.fromtimestamp(page_start_ts, pytz.UTC)
         page_end_dt = datetime.fromtimestamp(page_end_ts, pytz.UTC)
 
@@ -558,7 +539,7 @@ class DataLogger(BaseLogger):
             .join(Tags)
             .where(
                 (Tags.name.in_(tags)) & 
-                (TagValue.timestamp > page_start_dt) & 
+                (TagValue.timestamp >= page_start_dt) & 
                 (TagValue.timestamp <= page_end_dt) &
                 (TagValue.value.is_null(False))
             )
@@ -578,34 +559,50 @@ class DataLogger(BaseLogger):
             
             changes_by_ts[ts][change['name']] = change['value']
             
-        # 3. Generate tabular data
-        changes_iter = sorted(changes_by_ts.keys())
-        change_idx = 0
+        # 3. Generate tabular data in DESC order (most recent first)
+        # Generate all timestamps for this page in DESC order
+        num_rows = end_index - start_index
+        timestamps_desc = []
+        for i in range(num_rows):
+            step_ts = page_end_ts - (i * sample_time)
+            timestamps_desc.append(step_ts)
         
-        for i in range(end_index - start_index):
-            step_ts = page_start_ts + (i * sample_time)
+        # For each timestamp in DESC order, get the value using forward fill
+        # Forward fill: use the most recent value <= timestamp
+        for step_ts in timestamps_desc:
+            step_dt = datetime.fromtimestamp(step_ts, pytz.UTC)
             
-            # Update current_values with any changes that happened between last step and now (inclusive)
-            while change_idx < len(changes_iter) and changes_iter[change_idx] <= step_ts:
-                ts = changes_iter[change_idx]
-                for tag, val in changes_by_ts[ts].items():
-                    current_values[tag] = val
-                change_idx += 1
-                
-            # Build row
-            dt_object = datetime.fromtimestamp(step_ts, pytz.UTC)
-            formatted_ts = dt_object.astimezone(_timezone).strftime(DATETIME_FORMAT)
-            
-            row_values = [formatted_ts]
+            # Get values for each tag at this timestamp (forward fill)
+            row_values = []
             has_data = False
-            for tag in tags:
-                val = current_values.get(tag)
-                row_values.append(val)
-                if val is not None:
-                    has_data = True
+            
+            # Timestamp column
+            formatted_ts = step_dt.astimezone(_timezone).strftime(DATETIME_FORMAT)
+            row_values.append(formatted_ts)
+            
+            # Get value for each tag (most recent value <= step_ts)
+            for tag_name in tags:
+                last_val_query = (TagValue
+                    .select(TagValue.value)
+                    .join(Tags)
+                    .where((Tags.name == tag_name) & (TagValue.timestamp <= step_dt))
+                    .order_by(TagValue.timestamp.desc())
+                    .limit(1)
+                    .dicts())
                 
+                entry = list(last_val_query)
+                if entry:
+                    val = entry[0]['value']
+                    row_values.append(val)
+                    if val is not None:
+                        has_data = True
+                else:
+                    row_values.append(None)
+            
             if has_data:
                 data_points.append(row_values)
+        
+        # Data points are already in DESC order (most recent first)
 
         return {
             "tag_names": tag_names,
