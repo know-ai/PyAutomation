@@ -76,7 +76,63 @@ AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
 
 ### Database Configuration
 
-By default, PyAutomation uses SQLite for development (`db/app.db`). For production, you can configure PostgreSQL or MySQL via the `db_config.json` or through the application's API configuration methods.
+PyAutomation requires a database to be set up and running before you can connect to it through the web configuration interface.
+
+**Important Steps:**
+
+1. **Create the Database Server/Instance** (Database Administration Task):
+   - **SQLite**: No setup required - the database file will be created automatically
+   - **PostgreSQL**: Create the database server and database instance manually or using Docker
+   - **MySQL**: Create the database server and database instance manually or using Docker
+
+2. **PyAutomation Connection and Table Creation**:
+   - Once the database server is running, PyAutomation will connect to it
+   - PyAutomation automatically creates all necessary tables when you establish the connection
+   - This includes tables for Tags, Alarms, Users, Events, Logs, and all system configuration tables
+   - Default data (roles, variables, units, data types) is also initialized automatically
+
+**Example: Setting up PostgreSQL with Docker**
+
+```bash
+# Create PostgreSQL container
+docker run -d \
+  --name postgres-automation \
+  -e POSTGRES_DB=automation_db \
+  -e POSTGRES_USER=automation_user \
+  -e POSTGRES_PASSWORD=your_password \
+  -p 5432:5432 \
+  -v postgres_data:/var/lib/postgresql/data \
+  postgres:15
+
+# Wait for PostgreSQL to be ready, then connect PyAutomation
+```
+
+**Example: Setting up MySQL with Docker**
+
+```bash
+# Create MySQL container
+docker run -d \
+  --name mysql-automation \
+  -e MYSQL_DATABASE=automation_db \
+  -e MYSQL_USER=automation_user \
+  -e MYSQL_PASSWORD=your_password \
+  -e MYSQL_ROOT_PASSWORD=root_password \
+  -p 3306:3306 \
+  -v mysql_data:/var/lib/mysql \
+  mysql:8.0
+
+# Wait for MySQL to be ready, then connect PyAutomation
+```
+
+!!! warning "Database Must Be Created Before Connection"
+    **You must create and configure the database server/instance before attempting to connect through the web configuration interface.**
+
+    - The database server must be running and accessible
+    - The database instance must exist (for PostgreSQL/MySQL)
+    - Connection credentials (host, port, user, password, database name) must be available
+    - PyAutomation will automatically create all required tables when you establish the connection
+
+    If you try to connect before the database is ready, you will encounter connection errors in the web interface.
 
 ## Running the Application
 
@@ -95,6 +151,16 @@ Or simply:
 ```
 
 The application will start and be accessible at `http://localhost:8050`.
+
+!!! note "Database Connection Process"
+    When you connect PyAutomation to a database through the web interface:
+    
+    1. **PyAutomation establishes the connection** to your pre-configured database server
+    2. **Tables are created automatically** - PyAutomation will create all necessary tables if they don't exist
+    3. **Default data is initialized** - Roles, variables, units, and data types are set up automatically
+    4. **System is ready to use** - You can now configure tags, alarms, and other components
+    
+    **No manual table creation is required** - PyAutomation handles all schema initialization automatically upon connection.
 
 ### Production (Docker)
 
@@ -213,6 +279,44 @@ Docker Compose automatically reads the `.env` file from the same directory when 
     ```bash
     docker-compose restart
     ```
+
+!!! note "Database Setup for Docker Deployment"
+    **For Docker deployments, ensure your database server is running before starting PyAutomation:**
+    
+    - **SQLite**: No additional setup needed - database file is created automatically in the volume
+    - **PostgreSQL/MySQL**: You must have a database server running (either in a separate container or external)
+    
+    **Example docker-compose.yml with PostgreSQL:**
+    
+    ```yaml
+    services:
+      postgres:
+        image: postgres:15
+        container_name: "PostgreSQL"
+        environment:
+          POSTGRES_DB: automation_db
+          POSTGRES_USER: automation_user
+          POSTGRES_PASSWORD: your_password
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+        ports:
+          - "5432:5432"
+    
+      automation:
+        # ... your automation service configuration ...
+        depends_on:
+          - postgres
+        environment:
+          # Database connection will be configured through web interface
+          # or via API after containers are running
+    ```
+    
+    **Connection Process:**
+    1. Start the database container: `docker-compose up -d postgres`
+    2. Wait for database to be ready
+    3. Start PyAutomation: `docker-compose up -d automation`
+    4. Connect to PyAutomation web interface and configure database connection
+    5. PyAutomation will automatically create all tables upon successful connection
 
 ## Verify Installation
 
