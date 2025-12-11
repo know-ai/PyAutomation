@@ -901,7 +901,7 @@ class PyAutomation(Singleton):
             "created_on": datetime.now(timezone.utc).strftime(self.cvt.DATETIME_FORMAT),
             "role": role_name
         }
-        return jwt.encode(payload, server.config['TPT_TOKEN'], algorithm="HS256")
+        return jwt.encode(payload, server.config['APP_SECRET_KEY'], algorithm="HS256")
 
     @logging_error_handler
     @validate_types(name=str, level=int, output=(Role|None, str))

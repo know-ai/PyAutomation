@@ -18,6 +18,7 @@ if not os.path.isfile(KEY_FILE):
     KEY_FILE = None
 OPCUA_SERVER_PORT = os.environ.get('OPCUA_SERVER_PORT') or "53530"
 LOGGER_PERIOD = os.environ.get('LOGGER_PERIOD') or 10.0
+APP_SECRET_KEY = os.environ.get('APP_SECRET_KEY') or "073821603fcc483f9afee3f1500782a4"
 
 
 class CreateApp():
@@ -42,6 +43,6 @@ class CreateApp():
         
 __application = CreateApp()
 server = __application()    
-server.config['TPT_TOKEN'] = '073821603fcc483f9afee3f1500782a4'
+server.config['APP_SECRET_KEY'] = APP_SECRET_KEY
 server.config['BUNDLE_ERRORS'] = True
 opcua_server = OPCUAServer()

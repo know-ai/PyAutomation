@@ -66,17 +66,11 @@ Create a `.env` file in the root directory (or set these variables in your envir
 Example `.env`:
 
 ```ini
-# Web Server Configuration
-PORT=8050
-WORKERS=1
-THREADS=10
-
-# OPC UA Server Configuration
-OPCUA_SERVER_PORT=53530
-
-# Logging Configuration
-LOG_MAX_BYTES=10485760  # 10 MB
-LOG_BACKUP_COUNT=5
+# Web Server Configuration  
+AUTOMATION_PORT=8050                  # default 8050         
+AUTOMATION_VERSION=1.1.10             # default latest
+AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
+AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER" # default "073821603fcc483f9afee3f1500782a4"
 ```
 
 ### Database Configuration
@@ -127,6 +121,7 @@ services:
         max-file: "3" # Keeps maximum 3 files (30MB total)
     environment:
       OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT:-53530}
+      APP_SECRET_KEY: ${AUTOMATION_APP_SECRET_KEY:-073821603fcc483f9afee3f1500782a4}
     tmpfs:
       - /tmp:size=500k
     deploy:

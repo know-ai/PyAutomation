@@ -61,7 +61,7 @@ class Api(Singleton):
         from .. import server
         try:
 
-            jwt.decode(tpt, server.config["TPT_TOKEN"], algorithms=["HS256"])
+            jwt.decode(tpt, server.config["APP_SECRET_KEY"], algorithms=["HS256"])
 
             return True
 
