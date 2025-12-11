@@ -207,10 +207,10 @@ class Users(BaseModel):
 
             if user.decode_password(password):
                 
-                if not user.token:
+                # if not user.token:
                     
-                    user.token = cls.encode(secrets.token_hex(4))
-                    user.save()
+                user.token = cls.encode(secrets.token_hex(4))
+                user.save()
                 
                 users.login(password=password, token=user.token, username=username, email=email)
 
