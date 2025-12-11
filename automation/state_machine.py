@@ -1231,12 +1231,12 @@ class OPCUAServer(StateMachineCore):
             description:str="",
             classification:str="OPC UA Server"
         ):
-        from . import OPCUA_SERVER_PORT
+        from . import AUTOMATION_OPCUA_SERVER_PORT
         self.cvt = CVTEngine()
         self.alarm_manager = AlarmManager()
         self.machine = Machine()
         self.my_folders = dict()
-        self.port = OPCUA_SERVER_PORT
+        self.port = AUTOMATION_OPCUA_SERVER_PORT
 
         if isinstance(name, StringType):
 

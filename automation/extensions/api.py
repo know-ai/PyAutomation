@@ -61,7 +61,7 @@ class Api(Singleton):
         from .. import server
         try:
 
-            jwt.decode(tpt, server.config["APP_SECRET_KEY"], algorithms=["HS256"])
+            jwt.decode(tpt, server.config["AUTOMATION_APP_SECRET_KEY"], algorithms=["HS256"])
 
             return True
 
@@ -128,6 +128,132 @@ class Api(Singleton):
             return decorated
 
         return _token_required
+    
+    @classmethod
+    def auth_roles(cls, role_names:list[str]):
+        r"""
+        Decorator that restricts access to endpoints based on a list of role names.
+        
+        **Parameters:**
+        
+        * **role_names** (list[str]): List of role names allowed to access the endpoint.
+        
+        **Usage:**
+        
+        ```python
+        @Api.token_required(auth=True)
+        @Api.auth_roles(['admin', 'supervisor'])
+        def post(self):
+            # Only users with role 'admin' or 'supervisor' can access
+            pass
+        ```
+        """
+        def _auth_roles(f):
+            @wraps(f)
+            def decorated(*args, **kwargs):
+                try:
+                    token = None
+                    
+                    if 'X-API-KEY' in request.headers:
+                        token = request.headers['X-API-KEY']
+                    elif 'Authorization' in request.headers:
+                        token = request.headers['Authorization'].split('Token ')[-1]
+                    
+                    if not token:
+                        return {'message': 'Token is required'}, 401
+                    
+                    # Get user from token
+                    current_user = users.get_active_user(token=token)
+                    
+                    if not current_user:
+                        # Try database user
+                        db_user = Users.get_or_none(token=token)
+                        if db_user:
+                            # Get role from database
+                            role_name = db_user.role.name.upper()
+                            if role_name in [r.upper() for r in role_names]:
+                                return f(*args, **kwargs)
+                        return {'message': 'Invalid token or insufficient permissions'}, 401
+                    
+                    # Check if user's role is in the allowed list
+                    user_role_name = current_user.role.name.upper()
+                    allowed_roles = [r.upper() for r in role_names]
+                    
+                    if user_role_name in allowed_roles:
+                        return f(*args, **kwargs)
+                    
+                    return {'message': f'Access denied. Required roles: {role_names}'}, 403
+                    
+                except Exception as err:
+                    logger = logging.getLogger("pyautomation")
+                    logger.error(str(err))
+                    return {'message': 'Internal server error'}, 500
+            
+            return decorated
+        return _auth_roles
+    
+    @classmethod
+    def auth_role_level(cls, max_level:int):
+        r"""
+        Decorator that restricts access to endpoints based on role level.
+        Users with role_level <= max_level are allowed access.
+        
+        **Parameters:**
+        
+        * **max_level** (int): Maximum role level allowed (inclusive). Lower numbers = higher privilege.
+        
+        **Usage:**
+        
+        ```python
+        @Api.token_required(auth=True)
+        @Api.auth_role_level(1)  # Only admin (level 1) and sudo (level 0) can access
+        def post(self):
+            # Only users with role_level <= 1 can access
+            pass
+        ```
+        """
+        def _auth_role_level(f):
+            @wraps(f)
+            def decorated(*args, **kwargs):
+                try:
+                    token = None
+                    
+                    if 'X-API-KEY' in request.headers:
+                        token = request.headers['X-API-KEY']
+                    elif 'Authorization' in request.headers:
+                        token = request.headers['Authorization'].split('Token ')[-1]
+                    
+                    if not token:
+                        return {'message': 'Token is required'}, 401
+                    
+                    # Get user from token
+                    current_user = users.get_active_user(token=token)
+                    
+                    if not current_user:
+                        # Try database user
+                        db_user = Users.get_or_none(token=token)
+                        if db_user:
+                            # Get role level from database
+                            role_level = db_user.role.level
+                            if role_level <= max_level:
+                                return f(*args, **kwargs)
+                        return {'message': 'Invalid token or insufficient permissions'}, 401
+                    
+                    # Check if user's role level is <= max_level
+                    user_role_level = current_user.role.level
+                    
+                    if user_role_level <= max_level:
+                        return f(*args, **kwargs)
+                    
+                    return {'message': f'Access denied. Required role level: <= {max_level}'}, 403
+                    
+                except Exception as err:
+                    logger = logging.getLogger("pyautomation")
+                    logger.error(str(err))
+                    return {'message': 'Internal server error'}, 500
+            
+            return decorated
+        return _auth_role_level
     
     @classmethod
     def get_current_user(cls):

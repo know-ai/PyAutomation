@@ -5,20 +5,21 @@ from .state_machine import OPCUAServer
 
 app = Flask(__name__, instance_relative_config=False)
 
-MANUFACTURER = os.environ.get('MANUFACTURER')
-SEGMENT = os.environ.get('SEGMENT')
-_TIMEZONE = os.environ.get('TIMEZONE') or "America/Caracas"
+MANUFACTURER = os.environ.get('AUTOMATION_MANUFACTURER')
+SEGMENT = os.environ.get('AUTOMATION_SEGMENT')
+_TIMEZONE = os.environ.get('AUTOMATION_TIMEZONE') or "America/Caracas"
 TIMEZONE = pytz.timezone(_TIMEZONE)
-CERT_FILE = os.path.join(".", "ssl", os.environ.get('CERT_FILE') or "")
-KEY_FILE = os.path.join(".", "ssl", os.environ.get('KEY_FILE') or "")
+CERT_FILE = os.path.join(".", "ssl", os.environ.get('AUTOMATION_CERT_FILE') or "")
+KEY_FILE = os.path.join(".", "ssl", os.environ.get('AUTOMATION_KEY_FILE') or "")
 if not os.path.isfile(CERT_FILE):
     CERT_FILE = None
 
 if not os.path.isfile(KEY_FILE):
     KEY_FILE = None
-OPCUA_SERVER_PORT = os.environ.get('OPCUA_SERVER_PORT') or "53530"
-LOGGER_PERIOD = os.environ.get('LOGGER_PERIOD') or 10.0
-APP_SECRET_KEY = os.environ.get('APP_SECRET_KEY') or "073821603fcc483f9afee3f1500782a4"
+AUTOMATION_OPCUA_SERVER_PORT = os.environ.get('AUTOMATION_OPCUA_SERVER_PORT') or "53530"
+AUTOMATION_LOGGER_PERIOD = os.environ.get('AUTOMATION_LOGGER_PERIOD') or 10.0
+AUTOMATION_APP_SECRET_KEY = os.environ.get('AUTOMATION_APP_SECRET_KEY') or "073821603fcc483f9afee3f1500782a4"
+AUTOMATION_SUPERUSER_PASSWORD = os.environ.get('AUTOMATION_SUPERUSER_PASSWORD') or "super_ultra_secret_password"
 
 
 class CreateApp():
@@ -43,6 +44,7 @@ class CreateApp():
         
 __application = CreateApp()
 server = __application()    
-server.config['APP_SECRET_KEY'] = APP_SECRET_KEY
+server.config['AUTOMATION_APP_SECRET_KEY'] = AUTOMATION_APP_SECRET_KEY
+server.config['AUTOMATION_SUPERUSER_PASSWORD'] = AUTOMATION_SUPERUSER_PASSWORD
 server.config['BUNDLE_ERRORS'] = True
 opcua_server = OPCUAServer()

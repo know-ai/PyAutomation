@@ -13,8 +13,11 @@
     :members: update_tag
     :members: delete_tag_by_name
     :members: signup
+    :members: login
     :members: create_token
     :members: set_role
+    :members: change_password
+    :members: reset_password
     :members: find_opcua_servers
     :members: get_opcua_clients
     :members: get_opcua_client

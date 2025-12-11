@@ -324,6 +324,13 @@ class DBManager(Singleton):
         Authenticates a user against the database.
         """
         return self.users_logger.login(password=password, username=username, email=email)
+    
+    @logging_error_handler
+    def update_password(self, username:str, new_password:str):
+        r"""
+        Updates a user's password in the database.
+        """
+        return self.users_logger.update_password(username=username, new_password=new_password)
 
     @logging_error_handler
     def summary(self)->dict:

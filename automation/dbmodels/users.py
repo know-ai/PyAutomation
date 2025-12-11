@@ -311,6 +311,30 @@ class Users(BaseModel):
         return check_password_hash(self.token, token)
     
     @classmethod
+    def update_password(cls, username:str, new_password:str)->tuple:
+        r"""
+        Updates a user's password.
+
+        **Parameters:**
+
+        * **username** (str): Username of the user whose password will be updated.
+        * **new_password** (str): New plain text password to set.
+
+        **Returns:**
+
+        * **tuple**: (User record, status message)
+        """
+        user = cls.get_or_none(username=username)
+        
+        if not user:
+            return None, f"User {username} not found"
+        
+        user.password = cls.encode(new_password)
+        user.save()
+        
+        return user, f"Password updated successfully for {username}"
+    
+    @classmethod
     def fill_cvt_users(cls):
         r"""
         Loads users from the database into the in-memory User Manager (CVT).

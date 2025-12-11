@@ -9,9 +9,11 @@ This section details the classes and methods available in the PyAutomation frame
 ## Modules
 
 *   **[Alarms](alarms/index.md)**: ISA 18.2 Alarm Management.
+*   **[Authorization](authorization.md)**: Role-based access control decorators.
 *   **[CVT (Tags)](cvt/index.md)**: Current Value Table and Tag management.
 *   **[Data Logger](datalogger/index.md)**: Historical data persistence.
 *   **[State Machines](state_machine/index.md)**: Finite State Machine logic.
+*   **[Users](users.md)**: User management, authentication, and password operations.
 *   **[Workers](workers/index.md)**: Background processing threads.
 
 ## Managers & Models

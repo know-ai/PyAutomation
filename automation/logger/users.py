@@ -78,6 +78,21 @@ class UsersLogger(BaseLogger):
             email=email
         )
     
+    @db_rollback
+    def update_password(self, username:str, new_password:str):
+        r"""
+        Updates a user's password in the database.
+
+        **Parameters:**
+
+        * **username** (str): Username of the user.
+        * **new_password** (str): New plain text password.
+        """
+        return Users.update_password(
+            username=username,
+            new_password=new_password
+        )
+    
 class UsersLoggerEngine(BaseEngine):
     r"""
     Thread-safe Engine for the UsersLogger.
@@ -122,5 +137,17 @@ class UsersLoggerEngine(BaseEngine):
         _query["parameters"]["password"] = password
         _query["parameters"]["username"] = username
         _query["parameters"]["email"] = email
+        
+        return self.query(_query)
+    
+    def update_password(self, username:str, new_password:str):
+        r"""
+        Thread-safe password update.
+        """
+        _query = dict()
+        _query["action"] = "update_password"
+        _query["parameters"] = dict()
+        _query["parameters"]["username"] = username
+        _query["parameters"]["new_password"] = new_password
         
         return self.query(_query)

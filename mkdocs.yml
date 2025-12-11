@@ -54,6 +54,8 @@ nav:
           - Trends: "Users_Guide/Tags/Trends.md"
       - Alarms:
           - Summary: "Users_Guide/Alarms/index.md"
+      - Users:
+          - Summary: "Users_Guide/Users/index.md"
   - Developer Guide:
       - Summary: "Developments_Guide/index.md"
       - Creating Diagrams: "Developments_Guide/diagrams.md"
@@ -71,6 +73,8 @@ nav:
           - Summary: "Developments_Guide/API/index.md"
           - Core: "Developments_Guide/API/core.md"
           - Events: "Developments_Guide/API/events.md"
+          - Users: "Developments_Guide/API/users.md"
+          - Authorization: "Developments_Guide/API/authorization.md"
           - Alarms:
               - Summary: "Developments_Guide/API/alarms/index.md"
               - Alarm: "Developments_Guide/API/alarms/alarm.md"

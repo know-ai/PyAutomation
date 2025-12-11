@@ -7,6 +7,7 @@ Models for managing user authentication, authorization, and roles.
     :members: create
     :members: login
     :members: logout
+    :members: update_password
     :members: read_by_username
     :members: read_by_name
     :members: name_exist

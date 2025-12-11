@@ -26,4 +26,8 @@ The **Database Module** manages the persistence of historical data. It enables c
 
 The **Alarms Module** provides robust fault detection and notification capabilities. It allows you to define alarm conditions based on tag values, configure thresholds, and manage alarm states (acknowledgment, shelving, suppression). This section details the process of setting up and managing alarms to maintain operational safety.
 
+### [Users Module](Users/index.md)
+
+The **Users Module** manages user accounts, authentication, and password operations. It provides role-based access control (RBAC) with different permission levels, allowing you to manage user credentials, change passwords, and reset forgotten passwords following proper authorization rules. This section covers user authentication, password management, and security best practices.
+
 

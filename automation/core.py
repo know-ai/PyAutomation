@@ -946,6 +946,124 @@ class PyAutomation(Singleton):
 
         return None, message
 
+    @logging_error_handler
+    @validate_types(
+            target_username=str,
+            new_password=str,
+            current_password=str|type(None),
+            output=tuple
+    )
+    def change_password(
+            self,
+            target_username:str,
+            new_password:str,
+            current_password:str=None
+        )->tuple[str|None, str]:
+        r"""
+        Changes a user's password. Internal method without authorization restrictions.
+
+        **Parameters:**
+
+        * **target_username** (str): Username whose password will be changed.
+        * **new_password** (str): New password to set.
+        * **current_password** (str, optional): Current password (for validation when changing own password).
+
+        **Returns:**
+
+        * **tuple[str|None, str]**: Success message or None, and status message.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> # Change password (internal use, no restrictions)
+        >>> msg, status = app.change_password("john", "newpass123", current_password="oldpass")
+        ```
+        """
+        # Get target user
+        target_user = users.get_by_username(username=target_username)
+        if not target_user:
+            return None, f"User {target_username} not found"
+
+        # If current_password is provided, validate it
+        if current_password:
+            # Validate current password
+            if self.is_db_connected():
+                db_user = Users.get_or_none(username=target_username)
+                if not db_user or not db_user.decode_password(current_password):
+                    return None, "Current password is incorrect"
+            else:
+                # Validate against CVT user
+                credentials_valid, _ = users.verify_credentials(password=current_password, username=target_username)
+                if not credentials_valid:
+                    return None, "Current password is incorrect"
+
+        # Update password
+        if self.is_db_connected():
+            _, message = self.db_manager.update_password(username=target_username, new_password=new_password)
+            # Also update CVT user password
+            if target_user:
+                target_user.password = users.encode(new_password)
+        else:
+            # Update CVT user password
+            if target_user:
+                target_user.password = users.encode(new_password)
+            message = f"Password updated successfully for {target_username}"
+
+        return message, "Password changed successfully"
+
+    @logging_error_handler
+    @validate_types(
+            target_username=str,
+            new_password=str,
+            output=tuple
+    )
+    def reset_password(
+            self,
+            target_username:str,
+            new_password:str
+        )->tuple[str|None, str]:
+        r"""
+        Resets a user's password (for forgotten password scenario). Internal method without authorization restrictions.
+
+        **Parameters:**
+
+        * **target_username** (str): Username whose password will be reset.
+        * **new_password** (str): New password to set.
+
+        **Returns:**
+
+        * **tuple[str|None, str]**: Success message or None, and status message.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> # Reset password (internal use, no restrictions, no current password validation)
+        >>> msg, status = app.reset_password("john", "newpass123")
+        ```
+        """
+        # Get target user
+        target_user = users.get_by_username(username=target_username)
+        if not target_user:
+            return None, f"User {target_username} not found"
+
+        # Update password (no current password validation)
+        if self.is_db_connected():
+            _, message = self.db_manager.update_password(username=target_username, new_password=new_password)
+            # Also update CVT user password
+            if target_user:
+                target_user.password = users.encode(new_password)
+        else:
+            # Update CVT user password
+            if target_user:
+                target_user.password = users.encode(new_password)
+            message = f"Password reset successfully for {target_username}"
+
+        return message, "Password reset successfully"
+
     # OPCUA METHODS
     @logging_error_handler
     @validate_types(host=str|type(None), port=int|type(None), output=dict)
@@ -2811,6 +2929,7 @@ class PyAutomation(Singleton):
         # Create system user
         users = Users()
         roles = Roles()
+        system_password = self.server.config["AUTOMATION_SUPERUSER_PASSWORD"]
         
         # Verificar si el usuario system existe
         if not users.read_by_username(username="system"):
@@ -2818,7 +2937,6 @@ class PyAutomation(Singleton):
             admin_role = roles.read_by_name(name="sudo")
             if admin_role:
                 # Generar password e identificador dinámicamente
-                system_password = secrets.token_urlsafe(32)
                 self.signup(
                     username="system",
                     role_name="sudo",
@@ -2827,6 +2945,9 @@ class PyAutomation(Singleton):
                     name="System",
                     lastname="Intelcon"
                 )
+        else:
+
+            self.reset_password(target_username="system", new_password=system_password)
 
     @logging_error_handler
     def safe_start(self, test:bool=False, create_tables:bool=True, machines:tuple=None):
@@ -3004,8 +3125,8 @@ class PyAutomation(Singleton):
 
         app_config = self.get_app_config()
         # Default fallback to env or hardcoded
-        env_max_bytes = int(os.environ.get('LOG_MAX_BYTES', 10 * 1024 * 1024))
-        env_backup_count = int(os.environ.get('LOG_BACKUP_COUNT', 3))
+        env_max_bytes = int(os.environ.get('AUTOMATION_LOG_MAX_BYTES', 10 * 1024 * 1024))
+        env_backup_count = int(os.environ.get('AUTOMATION_LOG_BACKUP_COUNT', 3))
 
         max_bytes = int(app_config.get('log_max_bytes', env_max_bytes))
         backup_count = int(app_config.get('log_backup_count', env_backup_count))

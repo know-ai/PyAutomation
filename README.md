@@ -80,18 +80,29 @@ PyAutomation is container-ready. You can deploy it easily using Docker Compose.
     services:
       automation:
         container_name: "Automation"
-        image: "knowai/automation:${AUTOMATION_VERSION}"
+        image: "knowai/automation:${AUTOMATION_VERSION:-latest}"
         restart: always
         ports:
-          - "${AUTOMATION_PORT}:${AUTOMATION_PORT}"
-          - "${AUTOMATION_OPCUA_SERVER_PORT}:${AUTOMATION_OPCUA_SERVER_PORT}"
+          - ${AUTOMATION_PORT:-8050}:${AUTOMATION_PORT:-8050}
         volumes:
           - automation_db:/app/db
           - automation_logs:/app/logs
+        logging:
+          driver: "json-file"
+          options:
+            max-size: "10m" # Rota cuando llega a 10MB
+            max-file: "3" # Guarda máximo 3 archivos (30MB total)
         environment:
-          OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT}
-          LOG_MAX_BYTES: ${AUTOMATION_LOG_MAX_BYTES}
-          LOG_BACKUP_COUNT: ${AUTOMATION_LOG_BACKUP_COUNT}
+          AUTOMATION_OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT:-53530}
+          AUTOMATION_APP_SECRET_KEY: ${AUTOMATION_APP_SECRET_KEY:-073821603fcc483f9afee3f1500782a4}
+          AUTOMATION_SUPERUSER_PASSWORD: ${AUTOMATION_SUPERUSER_PASSWORD:-super_ultra_secret_password}
+        tmpfs:
+          - /tmp:size=500k
+        deploy:
+          resources:
+            limits:
+              cpus: "0.5"
+              memory: 256M
         healthcheck:
           test: ["CMD", "python", "/app/healthcheck.py"]
           interval: 15s
@@ -101,6 +112,7 @@ PyAutomation is container-ready. You can deploy it easily using Docker Compose.
     volumes:
       automation_db:
       automation_logs:
+
     ```
 
 3.  **Start the service:**

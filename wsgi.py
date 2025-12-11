@@ -7,4 +7,5 @@ gevent.monkey.patch_all()
 
 app = PyAutomation()
 app.define_dash_app(server=server)
+setattr(app, "server", server)
 app.run(create_tables=True, machines=(opcua_server,))

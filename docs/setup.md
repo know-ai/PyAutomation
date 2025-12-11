@@ -71,6 +71,7 @@ AUTOMATION_PORT=8050                  # default 8050
 AUTOMATION_VERSION=1.1.10             # default latest
 AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
 AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER" # default "073821603fcc483f9afee3f1500782a4"
+AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
 ```
 
 ### Database Configuration
@@ -117,11 +118,12 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "10m" # Rotates when it reaches 10MB
-        max-file: "3" # Keeps maximum 3 files (30MB total)
+        max-size: "10m" # Rota cuando llega a 10MB
+        max-file: "3" # Guarda máximo 3 archivos (30MB total)
     environment:
-      OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT:-53530}
-      APP_SECRET_KEY: ${AUTOMATION_APP_SECRET_KEY:-073821603fcc483f9afee3f1500782a4}
+      AUTOMATION_OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT:-53530}
+      AUTOMATION_APP_SECRET_KEY: ${AUTOMATION_APP_SECRET_KEY:-073821603fcc483f9afee3f1500782a4}
+      AUTOMATION_SUPERUSER_PASSWORD: ${AUTOMATION_SUPERUSER_PASSWORD:-super_ultra_secret_password}
     tmpfs:
       - /tmp:size=500k
     deploy:
@@ -161,10 +163,12 @@ For production deployments, you can create a `.env` file in the same directory a
 **Example `.env` file for production:**
 
 ```ini
-# Docker Compose Variables
-AUTOMATION_VERSION=latest
-AUTOMATION_PORT=8050
-AUTOMATION_OPCUA_SERVER_PORT=53530
+# Web Server Configuration  
+AUTOMATION_PORT=8050                  # default 8050         
+AUTOMATION_VERSION=1.1.10             # default latest
+AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
+AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER" # default "073821603fcc483f9afee3f1500782a4"
+AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
 ```
 
 **How it works:**
