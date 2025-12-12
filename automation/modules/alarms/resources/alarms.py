@@ -25,6 +25,23 @@ append_alarm_resource_model = api.model("append_alarm_resource_model",{
     'trigger_value': fields.Float(required=True, description="Value that triggers the alarm")
 })
 
+create_alarm_model = api.model("create_alarm_model", {
+    'name': fields.String(required=True, description='Unique alarm name'),
+    'tag': fields.String(required=True, description='Tag name to monitor'),
+    'alarm_type': fields.String(required=False, description='Alarm type (BOOL, HIGH, LOW, HIGH-HIGH, LOW-LOW)', default='BOOL'),
+    'trigger_value': fields.Raw(required=False, description='Value that triggers the alarm (bool, float, or int)', default=True),
+    'description': fields.String(required=False, description='Alarm description', default='')
+})
+
+update_alarm_model = api.model("update_alarm_model", {
+    'id': fields.String(required=True, description='Alarm ID'),
+    'name': fields.String(required=False, description='Alarm name'),
+    'tag': fields.String(required=False, description='Tag name to monitor'),
+    'description': fields.String(required=False, description='Alarm description'),
+    'alarm_type': fields.String(required=False, description='Alarm type (BOOL, HIGH, LOW, HIGH-HIGH, LOW-LOW)'),
+    'trigger_value': fields.Raw(required=False, description='Value that triggers the alarm (int or float)')
+})
+
 # Parsers
 shelve_alarm_parser = reqparse.RequestParser()
 shelve_alarm_parser.add_argument("seconds", type=int, required=False, help='Shelve time in seconds', default=0)
@@ -44,16 +61,49 @@ append_alarm_parser.add_argument('trigger_value', type=float, required=True, hel
 @ns.route('/')
 class AlarmsCollection(Resource):
 
-    @api.doc(security='apikey', description="Retrieves a list of all configured alarms.")
+    parser = reqparse.RequestParser()
+    parser.add_argument('page', type=int, location='args', help='Page number', default=1)
+    parser.add_argument('limit', type=int, location='args', help='Items per page', default=20)
+
+    @api.doc(security='apikey', description="Retrieves a list of all configured alarms with pagination support.")
     @api.response(200, "Success")
+    @ns.expect(parser)
     @Api.token_required(auth=True)
     def get(self):
         """
         Get all alarms.
 
-        Retrieves a list of all alarms currently defined in the system.
+        Retrieves a paginated list of all alarms currently defined in the system.
+        Supports pagination via query parameters: page (default: 1) and limit (default: 20).
         """
-        return app.alarm_manager.serialize(), 200
+        args = self.parser.parse_args()
+        page = args.get('page', 1)
+        limit = args.get('limit', 20)
+        
+        # Validate pagination parameters
+        if page < 1:
+            return {'message': 'Page number must be greater than 0'}, 400
+        if limit < 1:
+            return {'message': 'Limit must be greater than 0'}, 400
+        
+        # Get all alarms
+        all_alarms = app.alarm_manager.serialize()
+        total = len(all_alarms)
+        
+        # Calculate pagination
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paginated_alarms = all_alarms[start_idx:end_idx]
+        
+        return {
+            'data': paginated_alarms,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'pages': (total + limit - 1) // limit if total > 0 else 0
+            }
+        }, 200
     
 @ns.route('/active_alarms')
 class ActiveAlarmsCollection(Resource):
@@ -330,3 +380,178 @@ class ReturnToServiceAlarmByNameResource(Resource):
             return {'message': f"You cannot returned to service an alarm if not in out of service state"}, 400
 
         return {'message': f"Alarm Name {alarm_name} does not exist"}, 400
+
+
+@ns.route('/add')
+class AddAlarmResource(Resource):
+
+    @api.doc(security='apikey', description="Creates a new alarm in the system.")
+    @api.response(200, "Alarm created successfully")
+    @api.response(400, "Alarm creation failed")
+    @Api.token_required(auth=True)
+    @ns.expect(create_alarm_model)
+    def post(self):
+        """
+        Create alarm.
+
+        Creates a new alarm in the automation application with the specified configuration.
+        """
+        payload = api.payload
+        
+        # Required fields
+        name = payload.get('name')
+        tag = payload.get('tag')
+        
+        if not name or not tag:
+            return {
+                'message': 'Missing required fields: name and tag are required'
+            }, 400
+        
+        # Validate that tag exists
+        tag_obj = app.get_tag_by_name(name=tag)
+        if not tag_obj:
+            return {
+                'message': f'Tag "{tag}" does not exist'
+            }, 400
+        
+        try:
+            alarm, message = app.create_alarm(
+                name=name,
+                tag=tag,
+                alarm_type=payload.get('alarm_type', 'BOOL'),
+                trigger_value=payload.get('trigger_value', True),
+                description=payload.get('description', '')
+            )
+            
+            if alarm:
+                return {
+                    'message': f"Alarm '{name}' created successfully",
+                    'alarm': {
+                        'id': alarm.identifier,
+                        'name': alarm.name,
+                        'tag': alarm.tag.name if hasattr(alarm.tag, 'name') else str(alarm.tag),
+                        'alarm_type': alarm.alarm_setpoint.type.value if hasattr(alarm.alarm_setpoint.type, 'value') else str(alarm.alarm_setpoint.type),
+                        'trigger_value': alarm.alarm_setpoint.value
+                    }
+                }, 200
+            else:
+                return {
+                    'message': f"Failed to create alarm: {message}"
+                }, 400
+        except Exception as e:
+            return {
+                'message': f"Error creating alarm: {str(e)}"
+            }, 400
+
+
+@ns.route('/update')
+class UpdateAlarmResource(Resource):
+
+    @api.doc(security='apikey', description="Updates an existing alarm configuration.")
+    @api.response(200, "Alarm updated successfully")
+    @api.response(400, "Alarm update failed")
+    @api.response(404, "Alarm not found")
+    @Api.token_required(auth=True)
+    @ns.expect(update_alarm_model)
+    def post(self):
+        """
+        Update alarm.
+
+        Updates the configuration of an existing alarm. Only provided fields will be updated.
+        """
+        payload = api.payload
+        
+        # Required field
+        alarm_id = payload.get('id')
+        if not alarm_id:
+            return {
+                'message': 'Alarm ID is required'
+            }, 400
+        
+        # Check if alarm exists
+        alarm = app.get_alarm(id=alarm_id)
+        if not alarm:
+            return {
+                'message': f'Alarm with ID {alarm_id} not found'
+            }, 404
+        
+        # Build kwargs with only provided fields (excluding 'id')
+        update_kwargs = {k: v for k, v in payload.items() if k != 'id' and v is not None}
+        
+        # Map 'alarm_type' to 'type' if needed, or use 'alarm_type' directly
+        if 'alarm_type' in update_kwargs:
+            update_kwargs['alarm_type'] = update_kwargs['alarm_type']
+        
+        if not update_kwargs:
+            return {
+                'message': 'No fields to update provided'
+            }, 400
+        
+        # Validate tag if provided
+        if 'tag' in update_kwargs:
+            tag_obj = app.get_tag_by_name(name=update_kwargs['tag'])
+            if not tag_obj:
+                return {
+                    'message': f'Tag "{update_kwargs["tag"]}" does not exist'
+                }, 400
+        
+        try:
+            app.update_alarm(
+                id=alarm_id,
+                name=update_kwargs.get('name'),
+                tag=update_kwargs.get('tag'),
+                description=update_kwargs.get('description'),
+                alarm_type=update_kwargs.get('alarm_type'),
+                trigger_value=update_kwargs.get('trigger_value')
+            )
+            
+            # Get updated alarm
+            updated_alarm = app.get_alarm(id=alarm_id)
+            if updated_alarm:
+                return {
+                    'message': f"Alarm '{updated_alarm.name}' updated successfully",
+                    'alarm': {
+                        'id': updated_alarm.identifier,
+                        'name': updated_alarm.name
+                    }
+                }, 200
+            else:
+                return {
+                    'message': 'Alarm was updated but could not be retrieved'
+                }, 200
+        except Exception as e:
+            return {
+                'message': f"Error updating alarm: {str(e)}"
+            }, 400
+
+
+@ns.route('/delete/<alarm_id>')
+@api.param('alarm_id', 'The alarm ID to delete')
+class DeleteAlarmResource(Resource):
+
+    @api.doc(security='apikey', description="Deletes an alarm from the system by ID.")
+    @api.response(200, "Alarm deleted successfully")
+    @api.response(404, "Alarm not found")
+    @Api.token_required(auth=True)
+    def delete(self, alarm_id):
+        """
+        Delete alarm.
+
+        Deletes an alarm from the system by its ID.
+        """
+        # Check if alarm exists
+        alarm = app.get_alarm(id=alarm_id)
+        if not alarm:
+            return {
+                'message': f'Alarm with ID {alarm_id} not found'
+            }, 404
+        
+        try:
+            app.delete_alarm(id=alarm_id)
+            return {
+                'message': f'Alarm "{alarm.name}" deleted successfully'
+            }, 200
+        except Exception as e:
+            return {
+                'message': f"Error deleting alarm: {str(e)}"
+            }, 400
