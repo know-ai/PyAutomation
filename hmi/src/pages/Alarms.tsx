@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, memo } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getAlarms, createAlarm, updateAlarm, deleteAlarm, type Alarm, type AlarmsResponse } from "../services/alarms";
 import { getTags, type Tag } from "../services/tags";
 import { useTranslation } from "../hooks/useTranslation";
+import { useAppSelector } from "../hooks/useAppSelector";
 
 export function Alarms() {
   const { t } = useTranslation();
@@ -37,6 +38,132 @@ export function Alarms() {
   });
 
   const alarmTypes = ["BOOL", "HIGH", "LOW", "HIGH-HIGH", "LOW-LOW"];
+
+  // Get real-time data from Redux store
+  const realTimeAlarms = useAppSelector((state) => state.alarms.alarms);
+  const tagValues = useAppSelector((state) => state.tags.tagValues);
+
+  // Memoized row component to prevent unnecessary re-renders
+  const AlarmTableRow = memo(({ 
+    alarm, 
+    realTimeAlarms,
+    tagValues,
+    onEdit,
+    onDelete,
+    getStateBadgeClass,
+    getStateLabel
+  }: {
+    alarm: Alarm;
+    realTimeAlarms: Record<string, Alarm>;
+    tagValues: Record<string, Tag>;
+    onEdit: (alarm: Alarm) => void;
+    onDelete: (alarm: Alarm) => void;
+    getStateBadgeClass: (state: any) => string;
+    getStateLabel: (state: any) => string;
+  }) => {
+    // Get real-time alarm data from store if available, otherwise use alarm prop
+    const alarmKey = alarm.identifier || alarm.id || alarm.name;
+    const realTimeAlarm = alarmKey ? realTimeAlarms[String(alarmKey)] : null;
+    const currentAlarm = realTimeAlarm || alarm;
+
+    // Get real-time tag value if available
+    const tagName = currentAlarm.tag;
+    const realTimeTag = tagName ? tagValues[tagName] : null;
+    const tagValue = realTimeTag?.value !== undefined && realTimeTag?.value !== null
+      ? realTimeTag.value 
+      : null;
+    
+    const displayTagValue = tagValue !== undefined && tagValue !== null
+      ? typeof tagValue === "boolean"
+        ? tagValue ? "true" : "false"
+        : String(tagValue)
+      : "-";
+
+    const alarmType = currentAlarm.alarm_type || (currentAlarm.alarm_setpoint?.type) || "-";
+    const triggerValue = currentAlarm.trigger_value !== undefined 
+      ? String(currentAlarm.trigger_value)
+      : (currentAlarm.alarm_setpoint?.value !== undefined ? String(currentAlarm.alarm_setpoint.value) : "-");
+
+    return (
+      <tr>
+        <td>
+          <strong
+            title={currentAlarm.tag || undefined}
+            style={{ cursor: currentAlarm.tag ? "help" : "default" }}
+          >
+            {currentAlarm.name || "-"}
+          </strong>
+        </td>
+        <td>
+          <span className="badge bg-primary">
+            {alarmType}
+          </span>
+        </td>
+        <td>{displayTagValue}</td>
+        <td>{triggerValue}</td>
+        <td>{currentAlarm.description || "-"}</td>
+        <td>
+          <span className={`badge ${getStateBadgeClass(currentAlarm.state)}`}>
+            {getStateLabel(currentAlarm.state)}
+          </span>
+        </td>
+        <td>
+          <div className="d-flex gap-2">
+            <Button
+              variant="secondary"
+              className="btn-sm"
+              onClick={() => onEdit(currentAlarm)}
+              title="Editar alarma"
+            >
+              <i className="bi bi-pencil"></i>
+            </Button>
+            <Button
+              variant="danger"
+              className="btn-sm"
+              onClick={() => onDelete(currentAlarm)}
+              title="Eliminar alarma"
+            >
+              <i className="bi bi-trash"></i>
+            </Button>
+          </div>
+        </td>
+      </tr>
+    );
+  }, (prevProps, nextProps) => {
+    // Custom comparison function for memo
+    const prevAlarmKey = prevProps.alarm.identifier || prevProps.alarm.id || prevProps.alarm.name;
+    const nextAlarmKey = nextProps.alarm.identifier || nextProps.alarm.id || nextProps.alarm.name;
+    
+    // Get real-time alarm data
+    const prevRealTimeAlarm = prevAlarmKey ? prevProps.realTimeAlarms[String(prevAlarmKey)] : null;
+    const nextRealTimeAlarm = nextAlarmKey ? nextProps.realTimeAlarms[String(nextAlarmKey)] : null;
+    const prevAlarm = prevRealTimeAlarm || prevProps.alarm;
+    const nextAlarm = nextRealTimeAlarm || nextProps.alarm;
+
+    // Get real-time tag values
+    const prevTagName = prevAlarm.tag;
+    const nextTagName = nextAlarm.tag;
+    const prevTagValue = prevTagName ? prevProps.tagValues[prevTagName]?.value : undefined;
+    const nextTagValue = nextTagName ? nextProps.tagValues[nextTagName]?.value : undefined;
+
+    // Re-render if:
+    // - Alarm ID/name changed
+    // - Alarm state changed
+    // - Tag value changed
+    // - Other alarm properties changed
+    return (
+      prevAlarmKey === nextAlarmKey &&
+      prevAlarm.name === nextAlarm.name &&
+      prevAlarm.tag === nextAlarm.tag &&
+      prevAlarm.alarm_type === nextAlarm.alarm_type &&
+      prevAlarm.trigger_value === nextAlarm.trigger_value &&
+      prevAlarm.description === nextAlarm.description &&
+      JSON.stringify(prevAlarm.state) === JSON.stringify(nextAlarm.state) &&
+      prevTagValue === nextTagValue
+    );
+  });
+
+  AlarmTableRow.displayName = "AlarmTableRow";
 
   const loadAlarms = async (page: number = pagination.page, limit: number = pagination.limit) => {
     setLoading(true);
@@ -77,6 +204,23 @@ export function Alarms() {
     loadAlarms(1, 20);
     loadTags();
   }, []);
+
+  // Update local alarms state when real-time alarms change
+  useEffect(() => {
+    if (Object.keys(realTimeAlarms).length > 0) {
+      setAlarms((prevAlarms) => {
+        // Update only alarms that are in the current page
+        return prevAlarms.map((alarm) => {
+          const key = alarm.identifier || alarm.id || alarm.name;
+          if (key && realTimeAlarms[String(key)]) {
+            // Merge real-time data with existing alarm data
+            return { ...alarm, ...realTimeAlarms[String(key)] };
+          }
+          return alarm;
+        });
+      });
+    }
+  }, [realTimeAlarms]);
 
   // Cargar tags cuando se abre el modal
   useEffect(() => {
@@ -511,8 +655,8 @@ export function Alarms() {
                 <thead>
                   <tr>
                     <th>{t("tables.name")}</th>
-                    <th>{t("tables.tag")}</th>
                     <th>{t("tables.type")}</th>
+                    <th>Value</th>
                     <th>{t("tables.triggerValue")}</th>
                     <th>{t("tables.description")}</th>
                     <th>{t("tables.state")}</th>
@@ -528,48 +672,16 @@ export function Alarms() {
                     </tr>
                   ) : (
                     alarms.map((alarm) => (
-                      <tr key={alarm.identifier || alarm.id}>
-                        <td>
-                          <strong>{alarm.name || "-"}</strong>
-                        </td>
-                        <td>{alarm.tag || "-"}</td>
-                        <td>
-                          <span className="badge bg-primary">
-                            {alarm.alarm_type || (alarm.alarm_setpoint?.type) || "-"}
-                          </span>
-                        </td>
-                        <td>
-                          {alarm.trigger_value !== undefined 
-                            ? String(alarm.trigger_value)
-                            : (alarm.alarm_setpoint?.value !== undefined ? String(alarm.alarm_setpoint.value) : "-")}
-                        </td>
-                        <td>{alarm.description || "-"}</td>
-                        <td>
-                          <span className={`badge ${getStateBadgeClass(alarm.state)}`}>
-                            {getStateLabel(alarm.state)}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="d-flex gap-2">
-                            <Button
-                              variant="secondary"
-                              className="btn-sm"
-                              onClick={() => handleEditAlarm(alarm)}
-                              title="Editar alarma"
-                            >
-                              <i className="bi bi-pencil"></i>
-                            </Button>
-                            <Button
-                              variant="danger"
-                              className="btn-sm"
-                              onClick={() => handleDeleteAlarm(alarm)}
-                              title="Eliminar alarma"
-                            >
-                              <i className="bi bi-trash"></i>
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
+                      <AlarmTableRow
+                        key={alarm.identifier || alarm.id || alarm.name}
+                        alarm={alarm}
+                        realTimeAlarms={realTimeAlarms}
+                        tagValues={tagValues}
+                        onEdit={handleEditAlarm}
+                        onDelete={handleDeleteAlarm}
+                        getStateBadgeClass={getStateBadgeClass}
+                        getStateLabel={getStateLabel}
+                      />
                     ))
                   )}
                 </tbody>

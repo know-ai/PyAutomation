@@ -1,12 +1,123 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, memo } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getTags, createTag, updateTag, deleteTag, getVariables, getUnitsByVariable, type Tag, type TagsResponse } from "../services/tags";
 import { listClients, getClientTree, type OpcUaClient, type OpcUaTreeNode } from "../services/opcua";
 import { useTranslation } from "../hooks/useTranslation";
+import { useAppSelector } from "../hooks/useAppSelector";
+
+// Memoized row component to prevent unnecessary re-renders
+const TagTableRow = memo(({ 
+  tag, 
+  tagValues, 
+  opcuaClientNamesByAddress, 
+  opcuaNodeDisplayNames,
+  onEdit,
+  onDelete 
+}: {
+  tag: Tag;
+  tagValues: Record<string, Tag>;
+  opcuaClientNamesByAddress: Record<string, string>;
+  opcuaNodeDisplayNames: Record<string, string>;
+  onEdit: (tag: Tag) => void;
+  onDelete: (tag: Tag) => void;
+}) => {
+  // Get real-time value from store if available, otherwise use tag.value
+  const realTimeTag = tag.name ? tagValues[tag.name] : null;
+  const value = realTimeTag?.value !== undefined && realTimeTag?.value !== null
+    ? realTimeTag.value 
+    : (tag.value !== undefined && tag.value !== null ? tag.value : null);
+  
+  const displayValue = value !== undefined && value !== null
+    ? typeof value === "boolean"
+      ? value ? "true" : "false"
+      : String(value)
+    : "-";
+
+  return (
+    <tr>
+      <td>
+        <strong
+          title={tag.display_name || undefined}
+          style={{ cursor: tag.display_name ? "help" : "default" }}
+        >
+          {tag.name || "-"}
+        </strong>
+      </td>
+      <td>{tag.variable || "-"}</td>
+      <td>{displayValue}</td>
+      <td
+        title={tag.unit || undefined}
+        style={{ cursor: tag.unit ? "help" : "default" }}
+      >
+        {tag.display_unit || "-"}
+      </td>
+      <td>
+        {tag.opcua_address
+          ? opcuaClientNamesByAddress[tag.opcua_address] || tag.opcua_address
+          : "-"}
+      </td>
+      <td>
+        {tag.node_namespace
+          ? opcuaNodeDisplayNames[tag.node_namespace] || tag.node_namespace
+          : "-"}
+      </td>
+      <td>{tag.scan_time || "-"}</td>
+      <td>{tag.dead_band !== undefined ? tag.dead_band : "-"}</td>
+      <td>
+        <div className="d-flex gap-2">
+          <Button
+            variant="secondary"
+            className="btn-sm"
+            onClick={() => onEdit(tag)}
+            title="Editar tag"
+          >
+            <i className="bi bi-pencil"></i>
+          </Button>
+          <Button
+            variant="danger"
+            className="btn-sm"
+            onClick={() => onDelete(tag)}
+            title="Eliminar tag"
+          >
+            <i className="bi bi-trash"></i>
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison function for memo
+  // Only re-render if the tag data or real-time value changed
+  const prevRealTimeTag = prevProps.tag.name ? prevProps.tagValues[prevProps.tag.name] : null;
+  const nextRealTimeTag = nextProps.tag.name ? nextProps.tagValues[nextProps.tag.name] : null;
+  
+  const prevValue = prevRealTimeTag?.value ?? prevProps.tag.value;
+  const nextValue = nextRealTimeTag?.value ?? nextProps.tag.value;
+  
+  // Re-render if:
+  // - Tag ID or name changed
+  // - Real-time value changed
+  // - Tag properties changed
+  return (
+    prevProps.tag.id === nextProps.tag.id &&
+    prevProps.tag.name === nextProps.tag.name &&
+    prevValue === nextValue &&
+    prevProps.tag.variable === nextProps.tag.variable &&
+    prevProps.tag.unit === nextProps.tag.unit &&
+    prevProps.tag.display_unit === nextProps.tag.display_unit &&
+    prevProps.tag.opcua_address === nextProps.tag.opcua_address &&
+    prevProps.tag.node_namespace === nextProps.tag.node_namespace &&
+    prevProps.tag.scan_time === nextProps.tag.scan_time &&
+    prevProps.tag.dead_band === nextProps.tag.dead_band
+  );
+});
+
+TagTableRow.displayName = "TagTableRow";
 
 export function Tags() {
   const { t } = useTranslation();
+  const tagValues = useAppSelector((state) => state.tags.tagValues);
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -889,64 +1000,15 @@ export function Tags() {
                     </tr>
                   ) : (
                     tags.map((tag) => (
-                      <tr key={tag.id || tag.name}>
-                        <td>
-                          <strong
-                            title={tag.display_name || undefined}
-                            style={{ cursor: tag.display_name ? "help" : "default" }}
-                          >
-                            {tag.name || "-"}
-                          </strong>
-                        </td>
-                        <td>{tag.variable || "-"}</td>
-                        <td>
-                          {tag.value !== undefined && tag.value !== null
-                            ? typeof tag.value === "boolean"
-                              ? tag.value
-                                ? "true"
-                                : "false"
-                              : String(tag.value)
-                            : "-"}
-                        </td>
-                        <td
-                          title={tag.unit || undefined}
-                          style={{ cursor: tag.unit ? "help" : "default" }}
-                        >
-                          {tag.display_unit || "-"}
-                        </td>
-                        <td>
-                          {tag.opcua_address
-                            ? opcuaClientNamesByAddress[tag.opcua_address] || tag.opcua_address
-                            : "-"}
-                        </td>
-                        <td>
-                          {tag.node_namespace
-                            ? opcuaNodeDisplayNames[tag.node_namespace] || tag.node_namespace
-                            : "-"}
-                        </td>
-                        <td>{tag.scan_time || "-"}</td>
-                        <td>{tag.dead_band !== undefined ? tag.dead_band : "-"}</td>
-                        <td>
-                          <div className="d-flex gap-2">
-                            <Button
-                              variant="secondary"
-                              className="btn-sm"
-                              onClick={() => handleEditTag(tag)}
-                              title="Editar tag"
-                            >
-                              <i className="bi bi-pencil"></i>
-                            </Button>
-                            <Button
-                              variant="danger"
-                              className="btn-sm"
-                              onClick={() => handleDeleteTag(tag)}
-                              title="Eliminar tag"
-                            >
-                              <i className="bi bi-trash"></i>
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
+                      <TagTableRow
+                        key={tag.id || tag.name}
+                        tag={tag}
+                        tagValues={tagValues}
+                        opcuaClientNamesByAddress={opcuaClientNamesByAddress}
+                        opcuaNodeDisplayNames={opcuaNodeDisplayNames}
+                        onEdit={handleEditTag}
+                        onDelete={handleDeleteTag}
+                      />
                     ))
                   )}
                 </tbody>

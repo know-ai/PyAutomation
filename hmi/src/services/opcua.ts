@@ -93,16 +93,12 @@ export const getClientTree = async (clientName: string): Promise<OpcUaTreeNode[]
   try {
     const { data } = await api.get(`/opcua/clients/tree/${encodeURIComponent(clientName)}`);
     
-    // Debug: log para ver qué estructura recibimos
-    console.log("Raw tree data:", data);
-    
     // El backend retorna una tupla [objeto, 200] que axios recibe como array
     // Necesitamos extraer el primer elemento si es una tupla
     let treeData = data;
     if (Array.isArray(data) && data.length === 2 && typeof data[1] === "number") {
       // Es una tupla [objeto, código_http]
       treeData = data[0];
-      console.log("Extracted from tuple:", treeData);
     }
     
     // Validar que treeData sea un objeto válido
@@ -114,9 +110,7 @@ export const getClientTree = async (clientName: string): Promise<OpcUaTreeNode[]
     // El endpoint retorna { Objects: [...] } según el backend
     // PRIORIDAD: Verificar Objects primero antes de otras estructuras
     if (treeData.Objects && Array.isArray(treeData.Objects) && treeData.Objects.length > 0) {
-      console.log("Found Objects array with", treeData.Objects.length, "items");
       const normalized = treeData.Objects.map(normalizeTreeNode);
-      console.log("Normalized Objects:", normalized);
       return normalized;
     }
     

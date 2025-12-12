@@ -226,7 +226,6 @@ export function DataLogger() {
         const browserTzInList = timezones.find(tz => tz === browserTimezone);
         if (browserTzInList) {
           setSelectedTimezone(browserTimezone);
-          console.log("Timezone detectado del navegador y disponible:", browserTimezone);
         } else {
           // Si no está en la lista, buscar una zona horaria similar
           // Por ejemplo, si el navegador está en "America/Caracas", buscar otras de "America/"
@@ -235,11 +234,9 @@ export function DataLogger() {
           if (similarTz) {
             setSelectedTimezone(similarTz);
             localStorage.setItem("datalogger_timezone", similarTz);
-            console.log("Timezone similar encontrado:", similarTz, "(navegador:", browserTimezone, ")");
           } else {
             setSelectedTimezone(timezones[0]);
             localStorage.setItem("datalogger_timezone", timezones[0]);
-            console.log("Usando timezone por defecto:", timezones[0], "(navegador:", browserTimezone, ")");
           }
         }
       } else if (selectedTimezone) {

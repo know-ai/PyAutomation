@@ -4,10 +4,14 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
 import { useTheme } from "../hooks/useTheme";
+import { useSocket } from "../hooks/useSocket";
 
 export function MainLayout({ children }: PropsWithChildren) {
   // Aplicar el tema
   useTheme();
+  
+  // Conectar Socket.IO para actualizaciones en tiempo real
+  useSocket();
 
   useEffect(() => {
     document.body.classList.add("layout-fixed", "sidebar-expand-lg", "sidebar-open", "bg-body-tertiary");

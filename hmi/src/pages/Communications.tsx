@@ -333,16 +333,13 @@ export function Communications() {
     setError(null);
     try {
       const t = await getClientTree(clientName);
-      console.log("Tree loaded:", t);
       // Asegurarnos de que sea un array
       const treeArray = Array.isArray(t) ? t : t ? [t] : [];
-      console.log("Tree array to set:", treeArray);
       setTree(treeArray);
     } catch (e: any) {
       const errorMsg = e?.response?.data?.message || e?.message || t("communications.explorer");
       setError(errorMsg);
       setTree([]);
-      console.error("Error loading tree:", e);
     } finally {
       setLoadingTree(false);
     }

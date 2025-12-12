@@ -2,6 +2,8 @@ import { configureStore } from "@reduxjs/toolkit";
 import authReducer, { AUTH_STORAGE_KEY } from "./slices/authSlice";
 import themeReducer, { loadThemeFromStorage } from "./slices/themeSlice";
 import localeReducer, { loadLocaleFromStorage } from "./slices/localeSlice";
+import tagsReducer from "./slices/tagsSlice";
+import alarmsReducer from "./slices/alarmsSlice";
 
 const loadAuthState = () => {
   try {
@@ -37,6 +39,8 @@ export const store = configureStore({
     auth: authReducer,
     theme: themeReducer,
     locale: localeReducer,
+    tags: tagsReducer,
+    alarms: alarmsReducer,
   },
   preloadedState: {
     ...loadAuthState(),
