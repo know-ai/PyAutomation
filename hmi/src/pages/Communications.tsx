@@ -21,16 +21,40 @@ type SelectedNode = {
   status?: string;
 };
 
+// Función helper para encontrar un nodo en el árbol por namespace
+const findNodeByNamespace = (
+  node: OpcUaTreeNode,
+  namespace: string
+): OpcUaTreeNode | null => {
+  const nodeNamespace = (node.namespace && node.namespace.trim()) || (node.key && node.key.trim()) || "";
+  if (nodeNamespace === namespace) {
+    return node;
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      const found = findNodeByNamespace(child, namespace);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
 function TreeNode({
   node,
   client,
   onSelect,
   level = 0,
+  selectedNodes = [],
+  onToggleSelect,
+  allTreeNodes = [],
 }: {
   node: OpcUaTreeNode;
   client: string;
   onSelect: (client: string, node: OpcUaTreeNode) => void;
   level?: number;
+  selectedNodes?: string[];
+  onToggleSelect?: (namespace: string) => void;
+  allTreeNodes?: OpcUaTreeNode[];
 }) {
   const [isExpanded, setIsExpanded] = useState(level < 2); // Expandir los primeros 2 niveles por defecto
   
@@ -38,6 +62,7 @@ function TreeNode({
   const nodeName = (node.name && node.name.trim()) || (node.title && node.title.trim()) || "Unnamed";
   const nodeNamespace = (node.namespace && node.namespace.trim()) || (node.key && node.key.trim()) || "";
   const nodeClass = node.NodeClass || "";
+  const isSelected = selectedNodes.includes(nodeNamespace);
   
   // Debug si el nombre es "Unnamed"
   if (nodeName === "Unnamed" && level === 0) {
@@ -63,7 +88,7 @@ function TreeNode({
       <div
         className={`d-flex align-items-center gap-1 py-1 px-2 ${
           isVariable ? "cursor-pointer" : ""
-        }`}
+        } ${isSelected ? "bg-light" : ""}`}
         style={{
           paddingLeft: `${level * 16}px`,
           cursor: isVariable ? "grab" : "default",
@@ -71,6 +96,32 @@ function TreeNode({
         draggable={!!isDraggable}
         onDragStart={(e) => {
           if (isDraggable && nodeNamespace) {
+            // Si hay nodos seleccionados y este nodo está seleccionado, arrastrar todos los seleccionados
+            // Si no hay selección múltiple o este nodo no está seleccionado, arrastrar solo este
+            const shouldDragAll = selectedNodes.length > 0 && isSelected;
+            
+            const nodesToDrag = shouldDragAll
+              ? selectedNodes.map((ns) => {
+                  // Buscar el nodo completo en el árbol por namespace
+                  let foundNode: OpcUaTreeNode | null = null;
+                  for (const rootNode of allTreeNodes) {
+                    foundNode = findNodeByNamespace(rootNode, ns);
+                    if (foundNode) break;
+                  }
+                  
+                  const displayName = foundNode
+                    ? (foundNode.name || foundNode.title || "Unnamed").trim()
+                    : "Unnamed";
+                  
+                  return { client, namespace: ns, displayName };
+                })
+              : [{ client, namespace: nodeNamespace, displayName: nodeName }];
+            
+            e.dataTransfer.setData(
+              "application/opcua-nodes",
+              JSON.stringify(nodesToDrag)
+            );
+            // También mantener compatibilidad con el formato anterior
             e.dataTransfer.setData(
               "application/opcua-node",
               JSON.stringify({
@@ -81,11 +132,19 @@ function TreeNode({
             );
           }
         }}
-        onClick={() => {
+        onClick={(e) => {
+          // Si es variable y se hace Ctrl+Click o Cmd+Click, toggle selección
+          if (isVariable && (e.ctrlKey || e.metaKey) && onToggleSelect) {
+            e.stopPropagation();
+            onToggleSelect(nodeNamespace);
+            return;
+          }
+          
+          // Click normal: expandir/colapsar o seleccionar
           if (hasChildren) {
             setIsExpanded(!isExpanded);
           }
-          if (isVariable) {
+          if (isVariable && !hasChildren) {
             onSelect(client, node);
           }
         }}
@@ -106,6 +165,21 @@ function TreeNode({
           />
         )}
         {!hasChildren && <span style={{ width: "16px", display: "inline-block" }} />}
+        {isVariable && (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              if (onToggleSelect) {
+                onToggleSelect(nodeNamespace);
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            style={{ marginRight: "4px", cursor: "pointer" }}
+            title="Ctrl+Click para selección múltiple"
+          />
+        )}
         <i className={`bi ${getIcon()}`} style={{ fontSize: "0.875rem" }} />
         <span
           className="flex-grow-1"
@@ -139,6 +213,9 @@ function TreeNode({
               client={client}
               onSelect={onSelect}
               level={level + 1}
+              selectedNodes={selectedNodes}
+              onToggleSelect={onToggleSelect}
+              allTreeNodes={allTreeNodes}
             />
           ))}
         </ul>
@@ -191,6 +268,7 @@ export function Communications() {
     // Cargar nodos seleccionados previamente desde localStorage
     return loadSelectedNodes();
   });
+  const [selectedTreeNodes, setSelectedTreeNodes] = useState<string[]>([]); // Para selección múltiple en el árbol
   const [polling, setPolling] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -392,55 +470,97 @@ export function Communications() {
   }, [polling, selectedClient, namespacesToPoll]);
 
   const onDropNode = async (e: React.DragEvent<HTMLDivElement>) => {
-    const raw = e.dataTransfer.getData("application/opcua-node");
-    if (!raw) return;
+    // Intentar obtener múltiples nodos primero (selección múltiple)
+    let rawNodes = e.dataTransfer.getData("application/opcua-nodes");
+    let nodesToAdd: Array<{ client: string; namespace: string; displayName: string }> = [];
+    
+    if (rawNodes) {
+      try {
+        nodesToAdd = JSON.parse(rawNodes);
+      } catch (_e) {
+        // Si falla, intentar con el formato antiguo
+      }
+    }
+    
+    // Si no hay múltiples nodos, intentar con el formato antiguo (un solo nodo)
+    if (nodesToAdd.length === 0) {
+      const raw = e.dataTransfer.getData("application/opcua-node");
+      if (raw) {
+        try {
+          const node = JSON.parse(raw);
+          if (node.namespace && node.client) {
+            nodesToAdd = [node];
+          }
+        } catch (_e) {
+          console.error("Error al procesar nodo arrastrado:", _e);
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+    
+    if (nodesToAdd.length === 0) return;
+    
     try {
-      const { client, namespace, displayName } = JSON.parse(raw);
-      if (!namespace || !client) return;
-      
-      // Verificar que no esté ya en la lista
+      // Filtrar nodos que ya están en la lista
       setSelectedNodes((prev) => {
-        if (prev.some((p) => p.namespace === namespace)) return prev;
+        const newNodes = nodesToAdd.filter(
+          (n) => !prev.some((p) => p.namespace === n.namespace && p.client === n.client)
+        );
         
-        // Agregar el nodo inicialmente sin datos
-        const newNode: SelectedNode = { client, namespace, displayName };
-        const newList = [...prev, newNode];
+        if (newNodes.length === 0) return prev;
+        
+        // Agregar los nuevos nodos inicialmente sin datos
+        const newSelectedNodes: SelectedNode[] = newNodes.map((n) => ({
+          client: n.client,
+          namespace: n.namespace,
+          displayName: n.displayName,
+        }));
+        
+        const newList = [...prev, ...newSelectedNodes];
         
         // Guardar inmediatamente en localStorage
         saveSelectedNodes(newList);
         
-        // Obtener atributos del nodo para tener información completa inicial
-        getNodeAttributes(client, [namespace])
+        // Obtener atributos de todos los nuevos nodos
+        const namespaces = newNodes.map((n) => n.namespace);
+        const clientName = newNodes[0].client; // Todos deben ser del mismo cliente
+        
+        getNodeAttributes(clientName, namespaces)
           .then((attrs) => {
-            if (attrs && attrs.length > 0) {
-              const attr = attrs[0];
-              // Extraer información de DataValue si existe
-              const dataValue = attr.DataValue;
-              setSelectedNodes((current) => {
-                const updated = current.map((n) =>
-                  n.namespace === namespace
-                    ? {
-                        ...n,
-                        displayName: attr.DisplayName || attr.displayName || n.displayName,
-                        lastValue: attr.Value ?? attr.value ?? undefined,
-                        lastTimestamp:
-                          dataValue?.SourceTimestamp ||
-                          attr.SourceTimestamp ||
-                          attr.source_timestamp ||
-                          undefined,
-                        status:
-                          dataValue?.StatusCode ||
-                          attr.StatusCode ||
-                          attr.status_code ||
-                          undefined,
-                      }
-                    : n
+            setSelectedNodes((current) => {
+              const updated = current.map((n) => {
+                // Solo actualizar los nuevos nodos
+                if (!newNodes.some((nn) => nn.namespace === n.namespace)) return n;
+                
+                const attr = attrs.find(
+                  (a: any) => (a.Namespace || a.namespace) === n.namespace
                 );
-                // Guardar después de actualizar con atributos
-                saveSelectedNodes(updated);
-                return updated;
+                if (!attr) return n;
+                
+                // Extraer información de DataValue si existe
+                const dataValue = attr.DataValue;
+                return {
+                  ...n,
+                  displayName: attr.DisplayName || attr.displayName || n.displayName,
+                  lastValue: attr.Value ?? attr.value ?? undefined,
+                  lastTimestamp:
+                    dataValue?.SourceTimestamp ||
+                    attr.SourceTimestamp ||
+                    attr.source_timestamp ||
+                    undefined,
+                  status:
+                    dataValue?.StatusCode ||
+                    attr.StatusCode ||
+                    attr.status_code ||
+                    undefined,
+                };
               });
-            }
+              // Guardar después de actualizar con atributos
+              saveSelectedNodes(updated);
+              return updated;
+            });
           })
           .catch((err) => {
             console.debug("Error obteniendo atributos iniciales:", err);
@@ -448,9 +568,22 @@ export function Communications() {
         
         return newList;
       });
+      
+      // Limpiar selección en el árbol después de arrastrar
+      setSelectedTreeNodes([]);
     } catch (_e) {
-      console.error("Error al procesar nodo arrastrado:", _e);
+      console.error("Error al procesar nodos arrastrados:", _e);
     }
+  };
+  
+  const handleToggleTreeNodeSelect = (namespace: string) => {
+    setSelectedTreeNodes((prev) => {
+      if (prev.includes(namespace)) {
+        return prev.filter((n) => n !== namespace);
+      } else {
+        return [...prev, namespace];
+      }
+    });
   };
 
   const handleAddClient = async () => {
@@ -596,6 +729,20 @@ export function Communications() {
                 padding: "0.5rem",
               }}
             >
+              <div className="mb-2 d-flex justify-content-between align-items-center">
+                <small className="text-muted">
+                  Ctrl+Click en variables para selección múltiple
+                </small>
+                {selectedTreeNodes.length > 0 && (
+                  <Button
+                    variant="secondary"
+                    className="btn-sm"
+                    onClick={() => setSelectedTreeNodes([])}
+                  >
+                    Limpiar selección ({selectedTreeNodes.length})
+                  </Button>
+                )}
+              </div>
               <ul className="nav flex-column mb-0" style={{ listStyle: "none", paddingLeft: 0 }}>
                 {tree.map((node, idx) => {
                   // Debug: verificar que el nodo tenga datos
@@ -609,6 +756,9 @@ export function Communications() {
                       client={selectedClient}
                       onSelect={() => {}}
                       level={0}
+                      selectedNodes={selectedTreeNodes}
+                      onToggleSelect={handleToggleTreeNodeSelect}
+                      allTreeNodes={tree}
                     />
                   );
                 })}
