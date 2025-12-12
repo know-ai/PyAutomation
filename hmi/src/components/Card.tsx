@@ -12,7 +12,11 @@ export function Card({ title, footer, className, children }: CardProps) {
     <div className={clsx("card shadow-sm", className)}>
       {title && (
         <div className="card-header">
-          <h3 className="card-title m-0">{title}</h3>
+          {typeof title === "string" ? (
+            <h3 className="card-title m-0">{title}</h3>
+          ) : (
+            title
+          )}
         </div>
       )}
       <div className="card-body">{children}</div>
