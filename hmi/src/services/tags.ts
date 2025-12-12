@@ -154,3 +154,32 @@ export const getTabularData = async (
   return data;
 };
 
+export type TrendsFilter = {
+  tags: string[];
+  greater_than_timestamp: string;
+  less_than_timestamp: string;
+  timezone?: string;
+};
+
+export type TrendsDataPoint = {
+  x: string; // timestamp
+  y: number; // value
+};
+
+export type TrendsResponse = {
+  [tagName: string]: {
+    values: TrendsDataPoint[];
+    unit: string;
+  };
+};
+
+/**
+ * Obtiene datos de tendencias históricas para gráficos
+ */
+export const getTrends = async (
+  filters: TrendsFilter
+): Promise<TrendsResponse> => {
+  const { data } = await api.post("/tags/query_trends", filters);
+  return data;
+};
+
