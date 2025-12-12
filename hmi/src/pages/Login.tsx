@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { Card } from "../components/Card";
@@ -7,6 +7,7 @@ import { Button } from "../components/Button";
 import { login } from "../services/auth";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { loginFailure, loginStart, loginSuccess } from "../store/slices/authSlice";
+import { showToast } from "../utils/toast";
 
 export function Login() {
   const navigate = useNavigate();
@@ -16,6 +17,30 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(false);
+
+  // Verificar si hay un toast pendiente al cargar la página
+  useEffect(() => {
+    const showPendingToast = () => {
+      try {
+        const pendingToast = sessionStorage.getItem("pendingToast");
+        if (pendingToast) {
+          const { message, type, duration } = JSON.parse(pendingToast);
+          sessionStorage.removeItem("pendingToast");
+          // Mostrar el toast después de asegurar que el DOM esté completamente listo
+          showToast(message, type, duration);
+        }
+      } catch (_e) {
+        // ignore errors
+      }
+    };
+
+    // Usar requestAnimationFrame para asegurar que el DOM esté listo
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(showPendingToast, 100);
+      });
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
