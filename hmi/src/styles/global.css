@@ -458,3 +458,33 @@ a {
   color: #fff !important;
 }
 
+/* Layout fijo: Header y Footer siempre visibles, solo Content con scroll */
+.app-wrapper {
+  height: 100vh;
+  overflow: hidden;
+  grid-template-rows: min-content 1fr min-content !important;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 1034;
+}
+
+.app-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1034;
+}
+
+.app-main {
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  height: 100%;
+}
+
+.app-content {
+  min-height: 100%;
+}
+

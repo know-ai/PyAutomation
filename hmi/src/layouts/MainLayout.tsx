@@ -2,8 +2,8 @@ import { useEffect } from "react";
 import type { PropsWithChildren } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { Footer } from "./Footer";
 import { useTheme } from "../hooks/useTheme";
-import { useTranslation } from "../hooks/useTranslation";
 
 export function MainLayout({ children }: PropsWithChildren) {
   // Aplicar el tema
@@ -37,10 +37,7 @@ export function MainLayout({ children }: PropsWithChildren) {
       </main>
 
       {/* Footer */}
-      <footer className="app-footer text-sm">
-        <div className="float-end d-none d-sm-inline">AdminLTE 4</div>
-        <strong>PyAutomation</strong> HMI React.
-      </footer>
+      <Footer />
     </div>
   );
 }

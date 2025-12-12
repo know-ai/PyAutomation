@@ -11,6 +11,7 @@ import {
 } from "../services/tags";
 import Plot from "react-plotly.js";
 import type { Data, Layout } from "plotly.js";
+import { useTheme } from "../hooks/useTheme";
 
 type PresetDate =
   | "Last Hour"
@@ -82,6 +83,7 @@ const formatDateTimeForBackend = (dateString: string): string => {
 };
 
 export function Trends() {
+  const { mode } = useTheme();
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("trends_presetDate");
     return (saved as PresetDate) || "Last Hour";
@@ -364,6 +366,36 @@ export function Trends() {
       });
     });
 
+    // Paleta de colores para las diferentes unidades
+    const colorPalette = [
+      "#1f77b4", // azul
+      "#ff7f0e", // naranja
+      "#2ca02c", // verde
+      "#d62728", // rojo
+      "#9467bd", // morado
+      "#8c564b", // marrón
+      "#e377c2", // rosa
+      "#7f7f7f", // gris
+      "#bcbd22", // oliva
+      "#17becf", // cian
+    ];
+
+    // Función auxiliar para ajustar brillo de color
+    const adjustColorBrightness = (color: string, amount: number): string => {
+      // Convertir hex a RGB
+      const hex = color.replace("#", "");
+      const r = parseInt(hex.substr(0, 2), 16);
+      const g = parseInt(hex.substr(2, 2), 16);
+      const b = parseInt(hex.substr(4, 2), 16);
+      
+      // Ajustar brillo
+      const newR = Math.max(0, Math.min(255, r + amount * 50));
+      const newG = Math.max(0, Math.min(255, g + amount * 50));
+      const newB = Math.max(0, Math.min(255, b + amount * 50));
+      
+      return `rgb(${Math.round(newR)}, ${Math.round(newG)}, ${Math.round(newB)})`;
+    };
+
     // Crear trazas y asignar ejes Y
     const data: Data[] = [];
     const unitArray = Array.from(tagsByUnit.keys());
@@ -371,9 +403,10 @@ export function Trends() {
     unitArray.forEach((unit, unitIndex) => {
       const tags = tagsByUnit.get(unit)!;
       const yAxisKey = unitIndex === 0 ? "y" : `y${unitIndex + 1}`;
+      const unitColor = colorPalette[unitIndex % colorPalette.length];
 
       // Crear traza para cada tag de esta unidad
-      tags.forEach((tag) => {
+      tags.forEach((tag, tagIndex) => {
         // Convertir timestamps a Date objects para Plotly
         // El formato del backend es: "%m/%d/%Y, %H:%M:%S.%f" (ej: "12/12/2025, 14:30:45.123456")
         const xValues = tag.values.map((v) => {
@@ -408,6 +441,12 @@ export function Trends() {
         });
         const yValues = tag.values.map((v) => v.y);
 
+        // Variar ligeramente el color para tags diferentes de la misma unidad
+        const colorVariation = tagIndex * 0.15; // Variación de opacidad/brillo
+        const tagColor = tagIndex === 0 
+          ? unitColor 
+          : adjustColorBrightness(unitColor, colorVariation);
+
         data.push({
           x: xValues,
           y: yValues,
@@ -415,16 +454,41 @@ export function Trends() {
           mode: "lines",
           name: `${tag.tagName} (${unit})`,
           yaxis: yAxisKey,
-          line: { width: 2 },
+          line: { 
+            width: 2,
+            color: tagColor,
+          },
         });
       });
     });
 
+    // Configurar colores según el tema
+    const isDark = mode === "dark";
+    const paperBgColor = isDark ? "#212529" : "#ffffff";
+    const plotBgColor = isDark ? "#2b3035" : "#f8f9fa";
+    const textColor = isDark ? "#ffffff" : "#212529";
+    const gridColor = isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)";
+    const lineColor = isDark ? "rgba(255, 255, 255, 0.3)" : "rgba(0, 0, 0, 0.3)";
+
     // Crear layout con múltiples ejes Y
     const layout: Partial<Layout> = {
+      paper_bgcolor: paperBgColor,
+      plot_bgcolor: plotBgColor,
+      font: {
+        color: textColor,
+      },
       xaxis: {
         title: "Tiempo",
         type: "date",
+        gridcolor: gridColor,
+        linecolor: lineColor,
+        zerolinecolor: lineColor,
+        titlefont: {
+          color: textColor,
+        },
+        tickfont: {
+          color: textColor,
+        },
       },
       hovermode: "x unified",
       legend: {
@@ -433,33 +497,76 @@ export function Trends() {
         y: 1,
         xanchor: "left",
         yanchor: "top",
+        font: {
+          color: textColor,
+        },
+        bgcolor: isDark ? "rgba(33, 37, 41, 0.8)" : "rgba(255, 255, 255, 0.8)",
+        bordercolor: lineColor,
       },
       margin: { l: 60, r: 50, t: 20, b: 60 },
       autosize: true,
     };
 
-    // Agregar ejes Y dinámicamente
+    // Agregar ejes Y dinámicamente con colores y posiciones mejoradas
+    // Lógica: 1 eje = izquierda, 2 ejes = izquierda y derecha, más de 2 = izquierda y resto a la derecha con separación
+    const totalAxes = unitArray.length;
+    const axisSpacing = 0.25; // Separación entre ejes a la derecha
+    
     unitArray.forEach((unit, index) => {
+      const unitColor = colorPalette[index % colorPalette.length];
+      
       if (index === 0) {
-        // Primer eje Y (principal)
+        // Primer eje Y siempre a la izquierda
         layout.yaxis = {
           title: unit,
           side: "left",
+          gridcolor: gridColor,
+          linecolor: unitColor,
+          zerolinecolor: lineColor,
+          titlefont: {
+            color: unitColor,
+          },
+          tickfont: {
+            color: unitColor,
+          },
         };
       } else {
-        // Ejes Y adicionales
+        // Ejes Y adicionales siempre a la derecha con separación
         const axisKey = `yaxis${index + 1}` as keyof Layout;
+        // Calcular posición: 1.0 para el segundo eje, luego incrementar por axisSpacing
+        const position = 1.0 + ((index - 1) * axisSpacing);
+        
         layout[axisKey] = {
           title: unit,
-          side: index % 2 === 0 ? "left" : "right",
+          side: "right",
           overlaying: "y",
-          position: index % 2 === 0 ? 0 : 1,
+          position: position,
+          gridcolor: gridColor,
+          linecolor: unitColor,
+          zerolinecolor: lineColor,
+          titlefont: {
+            color: unitColor,
+          },
+          tickfont: {
+            color: unitColor,
+          },
         };
       }
     });
+    
+    // Ajustar márgenes según la cantidad de ejes para evitar que se corten
+    const leftMargin = 60;
+    const rightMargin = 50 + (totalAxes > 1 ? (totalAxes - 1) * 60 : 0);
+    
+    layout.margin = { 
+      l: leftMargin, 
+      r: rightMargin, 
+      t: 20, 
+      b: 60 
+    };
 
     return { data, layout };
-  }, [trendsData]);
+  }, [trendsData, mode]);
 
   return (
     <div className="row">
