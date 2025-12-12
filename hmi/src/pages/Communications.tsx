@@ -277,6 +277,15 @@ export function Communications() {
     [selectedNodes]
   );
 
+  // Verificar si el formulario está completo para habilitar el botón Crear
+  const isFormComplete = useMemo(() => {
+    return (
+      form.name.trim() !== "" &&
+      form.host.trim() !== "" &&
+      form.port > 0
+    );
+  }, [form.name, form.host, form.port]);
+
   const loadClients = async () => {
     setLoadingClients(true);
     try {
@@ -644,7 +653,11 @@ export function Communications() {
           title="Clientes OPC UA"
           footer={
             <div className="d-flex gap-2">
-              <Button variant="primary" onClick={handleAddClient}>
+              <Button 
+                variant="primary" 
+                onClick={handleAddClient}
+                disabled={!isFormComplete}
+              >
                 Crear
               </Button>
               <Button
