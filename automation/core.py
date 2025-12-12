@@ -2486,7 +2486,7 @@ class PyAutomation(Singleton):
             return self.alarms_engine.filter_alarm_summary_by(**fields)
 
     @logging_error_handler
-    @validate_types(id=str, name=str|None, description=str|None, alarm_type=str|None, trigger_value=int|float|None, output=None)
+    @validate_types(id=str, name=str|None, tag=str|None, description=str|None, alarm_type=str|None, trigger_value=int|float|None, output=None)
     def update_alarm(
             self, 
             id:str, 

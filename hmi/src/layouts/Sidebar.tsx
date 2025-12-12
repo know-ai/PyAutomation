@@ -4,6 +4,8 @@ import { NavLink, useLocation } from "react-router-dom";
 const navItems = [
   { to: "/communications", icon: "bi bi-hdd-network", label: "Communications" },
   { to: "/machines", icon: "bi bi-cpu", label: "Machines" },
+  { to: "/user-management", icon: "bi bi-people", label: "User Management" },
+  { to: "/settings", icon: "bi bi-gear", label: "Settings" },
 ];
 
 const tagsSubItems = [

@@ -12,6 +12,8 @@ import { Trends } from "../pages/Trends";
 import { Alarms } from "../pages/Alarms";
 import { AlarmsSummary } from "../pages/AlarmsSummary";
 import { Machines } from "../pages/Machines";
+import { UserManagement } from "../pages/UserManagement";
+import { Settings } from "../pages/Settings";
 import { MainLayout } from "../layouts/MainLayout";
 
 function ProtectedLayout() {
@@ -43,6 +45,8 @@ export function AppRoutes() {
         <Route path="/alarms/definitions" element={<Alarms />} />
         <Route path="/alarms/summary" element={<AlarmsSummary />} />
         <Route path="/machines" element={<Machines />} />
+        <Route path="/user-management" element={<UserManagement />} />
+        <Route path="/settings" element={<Settings />} />
       </Route>
 
       <Route path="/" element={<Navigate to="/login" replace />} />
