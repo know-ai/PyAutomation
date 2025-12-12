@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { Card } from "../components/Card";
 import { Input } from "../components/Input";
@@ -88,7 +88,7 @@ export function Signup() {
             <Button type="submit" loading={loading}>
               Registrarse
             </Button>
-            <a href="/login">Volver a login</a>
+            <Link to="/login">Volver a login</Link>
           </div>
         </form>
       </Card>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { Card } from "../components/Card";
 import { Input } from "../components/Input";
@@ -111,12 +111,12 @@ export function Login() {
           </form>
 
           <div className="d-grid gap-2 mb-2">
-            <a className="text-center d-block" href="/forgot-password">
+            <Link className="text-center d-block" to="/forgot-password">
               ¿Olvidó su contraseña?
-            </a>
-            <a className="text-center d-block" href="/signup">
+            </Link>
+            <Link className="text-center d-block" to="/signup">
               Crear una nueva cuenta
-            </a>
+            </Link>
           </div>
         </div>
       </div>
