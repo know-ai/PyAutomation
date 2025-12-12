@@ -2,8 +2,12 @@ import { useEffect } from "react";
 import type { PropsWithChildren } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { useTheme } from "../hooks/useTheme";
 
 export function MainLayout({ children }: PropsWithChildren) {
+  // Aplicar el tema
+  useTheme();
+
   useEffect(() => {
     document.body.classList.add("layout-fixed", "sidebar-expand-lg", "sidebar-open", "bg-body-tertiary");
     return () => {

@@ -6,8 +6,10 @@ import {
   disconnectDatabase,
   type DatabaseConfig,
 } from "../services/database";
+import { useTheme } from "../hooks/useTheme";
 
 export function Header() {
+  const { mode, toggle } = useTheme();
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [dbType, setDbType] = useState<"postgres" | "mysql" | "sqlite">("postgres");
   const [dbName, setDbName] = useState("");
@@ -277,6 +279,24 @@ export function Header() {
         </form>
 
         <ul className="navbar-nav ms-auto">
+          <li className="nav-item">
+            <a
+              className="nav-link"
+              href="#"
+              role="button"
+              onClick={(e) => {
+                e.preventDefault();
+                toggle();
+              }}
+              title={mode === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+            >
+              {mode === "dark" ? (
+                <i className="bi bi-sun-fill" />
+              ) : (
+                <i className="bi bi-moon-fill" />
+              )}
+            </a>
+          </li>
           <li className="nav-item">
             <a className="nav-link" href="#" role="button" onClick={toggleFullscreen}>
               {isFullscreen ? (

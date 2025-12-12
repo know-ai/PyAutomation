@@ -1,6 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer, { AUTH_STORAGE_KEY } from "./slices/authSlice";
-import themeReducer from "./slices/themeSlice";
+import themeReducer, { loadThemeFromStorage } from "./slices/themeSlice";
 
 const loadAuthState = () => {
   try {
@@ -13,12 +13,24 @@ const loadAuthState = () => {
   }
 };
 
+const loadThemeState = () => {
+  try {
+    const theme = loadThemeFromStorage();
+    return { theme: { mode: theme } };
+  } catch (_e) {
+    return undefined;
+  }
+};
+
 export const store = configureStore({
   reducer: {
     auth: authReducer,
     theme: themeReducer,
   },
-  preloadedState: loadAuthState(),
+  preloadedState: {
+    ...loadAuthState(),
+    ...loadThemeState(),
+  },
 });
 
 export type RootState = ReturnType<typeof store.getState>;

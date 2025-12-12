@@ -14,6 +14,7 @@ body {
   margin: 0;
   min-height: 100vh;
   background-color: #f4f6f9;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 a {
@@ -27,5 +28,200 @@ a {
 
 .content-wrapper {
   background: #f4f6f9;
+  transition: background-color 0.3s ease;
+}
+
+/* Tema Oscuro */
+[data-bs-theme="dark"],
+.dark,
+.dark-mode {
+  --bs-body-bg: #1a1d29;
+  --bs-body-color: #e9ecef;
+  --bs-secondary-bg: #2d323f;
+  --bs-tertiary-bg: #252936;
+  --bs-border-color: #3d4455;
+  --bs-emphasis-color: #fff;
+}
+
+[data-bs-theme="dark"] body,
+.dark body,
+.dark-mode body {
+  background-color: #1a1d29;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .bg-body-tertiary,
+.dark .bg-body-tertiary,
+.dark-mode .bg-body-tertiary {
+  background-color: #252936 !important;
+}
+
+[data-bs-theme="dark"] .bg-body-secondary,
+.dark .bg-body-secondary,
+.dark-mode .bg-body-secondary {
+  background-color: #2d323f !important;
+}
+
+[data-bs-theme="dark"] .app-wrapper,
+.dark .app-wrapper,
+.dark-mode .app-wrapper {
+  background-color: #1a1d29;
+}
+
+[data-bs-theme="dark"] .app-header,
+.dark .app-header,
+.dark-mode .app-header {
+  background-color: #252936;
+  border-bottom-color: #3d4455;
+}
+
+[data-bs-theme="dark"] .app-sidebar,
+.dark .app-sidebar,
+.dark-mode .app-sidebar {
+  background-color: #252936;
+  border-right-color: #3d4455;
+}
+
+[data-bs-theme="dark"] .app-sidebar .nav-link,
+.dark .app-sidebar .nav-link,
+.dark-mode .app-sidebar .nav-link {
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .app-sidebar .nav-link:hover,
+.dark .app-sidebar .nav-link:hover,
+.dark-mode .app-sidebar .nav-link:hover {
+  background-color: #2d323f;
+  color: #fff;
+}
+
+[data-bs-theme="dark"] .app-sidebar .nav-link.active,
+.dark .app-sidebar .nav-link.active,
+.dark-mode .app-sidebar .nav-link.active {
+  background-color: #3d4455;
+  color: #fff;
+}
+
+[data-bs-theme="dark"] .card,
+.dark .card,
+.dark-mode .card {
+  background-color: #252936;
+  border-color: #3d4455;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .card-header,
+.dark .card-header,
+.dark-mode .card-header {
+  background-color: #2d323f;
+  border-bottom-color: #3d4455;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .form-control,
+.dark .form-control,
+.dark-mode .form-control {
+  background-color: #2d323f;
+  border-color: #3d4455;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .form-control:focus,
+.dark .form-control:focus,
+.dark-mode .form-control:focus {
+  background-color: #2d323f;
+  border-color: #0d6efd;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .form-select,
+.dark .form-select,
+.dark-mode .form-select {
+  background-color: #2d323f;
+  border-color: #3d4455;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .form-select:focus,
+.dark .form-select:focus,
+.dark-mode .form-select:focus {
+  background-color: #2d323f;
+  border-color: #0d6efd;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .table,
+.dark .table,
+.dark-mode .table {
+  color: #e9ecef;
+  border-color: #3d4455;
+}
+
+[data-bs-theme="dark"] .table thead th,
+.dark .table thead th,
+.dark-mode .table thead th {
+  background-color: #2d323f;
+  border-color: #3d4455;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .table tbody tr,
+.dark .table tbody tr,
+.dark-mode .table tbody tr {
+  border-color: #3d4455;
+}
+
+[data-bs-theme="dark"] .table tbody tr:hover,
+.dark .table tbody tr:hover,
+.dark-mode .table tbody tr:hover {
+  background-color: #2d323f;
+}
+
+[data-bs-theme="dark"] .navbar,
+.dark .navbar,
+.dark-mode .navbar {
+  background-color: #252936;
+  border-color: #3d4455;
+}
+
+[data-bs-theme="dark"] .navbar .nav-link,
+.dark .navbar .nav-link,
+.dark-mode .navbar .nav-link {
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .navbar .nav-link:hover,
+.dark .navbar .nav-link:hover,
+.dark-mode .navbar .nav-link:hover {
+  color: #fff;
+}
+
+[data-bs-theme="dark"] .app-footer,
+.dark .app-footer,
+.dark-mode .app-footer {
+  background-color: #252936;
+  border-top-color: #3d4455;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .login-page,
+.dark .login-page,
+.dark-mode .login-page {
+  background-color: #1a1d29;
+}
+
+[data-bs-theme="dark"] .text-muted,
+.dark .text-muted,
+.dark-mode .text-muted {
+  color: #adb5bd !important;
+}
+
+[data-bs-theme="dark"] code,
+.dark code,
+.dark-mode code {
+  background-color: #2d323f;
+  color: #e9ecef;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
 }
 

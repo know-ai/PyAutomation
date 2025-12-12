@@ -5,6 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PyAutomation HMI</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
+    <script>
+      // Aplicar tema antes de que React se monte para evitar flash
+      (function() {
+        try {
+          const saved = localStorage.getItem('pyautomation.theme');
+          const theme = saved === 'dark' ? 'dark' : 
+                       (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.setAttribute('data-bs-theme', 'dark');
+            document.body.classList.add('dark', 'dark-mode');
+          } else {
+            document.documentElement.classList.add('light');
+            document.documentElement.setAttribute('data-bs-theme', 'light');
+            document.body.classList.add('light');
+          }
+        } catch (e) {
+          // ignore
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

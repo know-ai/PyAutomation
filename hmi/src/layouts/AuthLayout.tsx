@@ -1,7 +1,11 @@
 import { useEffect } from "react";
 import type { PropsWithChildren } from "react";
+import { useTheme } from "../hooks/useTheme";
 
 export function AuthLayout({ children }: PropsWithChildren) {
+  // Aplicar el tema
+  useTheme();
+
   useEffect(() => {
     document.body.classList.add("login-page", "bg-body-secondary");
     return () => {
