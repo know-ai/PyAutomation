@@ -870,11 +870,9 @@ export function Tags() {
                 <thead>
                   <tr>
                     <th>{t("tables.name")}</th>
-                    <th>{t("tables.displayName")}</th>
                     <th>{t("tables.variable")}</th>
-                    <th>{t("tables.unit")}</th>
+                    <th>Value</th>
                     <th>{t("tables.displayUnit")}</th>
-                    <th>{t("tables.dataType")}</th>
                     <th>{t("tables.opcuaAddress")}</th>
                     <th>{t("tables.nodeNamespace")}</th>
                     <th>{t("tables.scanTime")}</th>
@@ -885,7 +883,7 @@ export function Tags() {
                 <tbody>
                   {tags.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="text-center text-muted py-4">
+                      <td colSpan={9} className="text-center text-muted py-4">
                         No hay tags disponibles
                       </td>
                     </tr>
@@ -893,14 +891,28 @@ export function Tags() {
                     tags.map((tag) => (
                       <tr key={tag.id || tag.name}>
                         <td>
-                          <strong>{tag.name || "-"}</strong>
+                          <strong
+                            title={tag.display_name || undefined}
+                            style={{ cursor: tag.display_name ? "help" : "default" }}
+                          >
+                            {tag.name || "-"}
+                          </strong>
                         </td>
-                        <td>{tag.display_name || "-"}</td>
                         <td>{tag.variable || "-"}</td>
-                        <td>{tag.unit || "-"}</td>
-                        <td>{tag.display_unit || "-"}</td>
                         <td>
-                          <span className="badge bg-info">{tag.data_type || "float"}</span>
+                          {tag.value !== undefined && tag.value !== null
+                            ? typeof tag.value === "boolean"
+                              ? tag.value
+                                ? "true"
+                                : "false"
+                              : String(tag.value)
+                            : "-"}
+                        </td>
+                        <td
+                          title={tag.unit || undefined}
+                          style={{ cursor: tag.unit ? "help" : "default" }}
+                        >
+                          {tag.display_unit || "-"}
                         </td>
                         <td>
                           {tag.opcua_address
