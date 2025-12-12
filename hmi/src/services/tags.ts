@@ -104,3 +104,19 @@ export const getTimezones = async (): Promise<string[]> => {
   return data;
 };
 
+/**
+ * Obtiene todas las variables disponibles (Pressure, Temperature, etc.)
+ */
+export const getVariables = async (): Promise<string[]> => {
+  const { data } = await api.get("/tags/variables");
+  return data?.data || [];
+};
+
+/**
+ * Obtiene las unidades disponibles para una variable específica
+ */
+export const getUnitsByVariable = async (variableName: string): Promise<string[]> => {
+  const { data } = await api.get(`/tags/units/${encodeURIComponent(variableName)}`);
+  return data?.data || [];
+};
+

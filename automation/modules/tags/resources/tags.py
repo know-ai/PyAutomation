@@ -5,6 +5,7 @@ from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
 from .... import _TIMEZONE, TIMEZONE
+from ....variables import VARIABLES
 
 ns = Namespace('Tags', description='Tag Management and Real-time Data')
 app = PyAutomation()
@@ -544,3 +545,59 @@ class TimezonesCollection(Resource):
         Retrieves a list of all supported timezones.
         """
         return pytz.all_timezones, 200
+
+
+@ns.route('/variables')
+class VariablesCollection(Resource):
+
+    @api.doc(security='apikey', description="Retrieves a list of all available variables (e.g., Pressure, Temperature).")
+    @api.response(200, "Success")
+    @Api.token_required(auth=True)
+    def get(self):
+        """
+        Get Variables.
+
+        Retrieves a list of all available physical variables in the system.
+        Examples: Pressure, Temperature, Length, Mass, etc.
+        """
+        # VARIABLES is a dict where keys are variable names
+        variables = list(VARIABLES.keys())
+        return {
+            'data': variables,
+            'total': len(variables)
+        }, 200
+
+
+@ns.route('/units/<variable_name>')
+@api.param('variable_name', 'The variable name (e.g., Pressure, Temperature)')
+class UnitsByVariableResource(Resource):
+
+    @api.doc(security='apikey', description="Retrieves available units for a specific variable.")
+    @api.response(200, "Success")
+    @api.response(404, "Variable not found")
+    @Api.token_required(auth=True)
+    def get(self, variable_name):
+        """
+        Get Units by Variable.
+
+        Retrieves all available units for a specific variable.
+        The variable_name must match one of the available variables (case-sensitive).
+        
+        Example: GET /tags/units/Pressure returns units like ['bar', 'mbar', 'Pa', 'kPa', etc.]
+        """
+        # Check if variable exists
+        if variable_name not in VARIABLES:
+            return {
+                'message': f'Variable "{variable_name}" not found. Available variables: {list(VARIABLES.keys())}'
+            }, 404
+        
+        # Get units for this variable
+        # VARIABLES[variable_name] is a dict where values are unit symbols
+        units_dict = VARIABLES[variable_name]
+        units = list(units_dict.values())
+        
+        return {
+            'variable': variable_name,
+            'data': units,
+            'total': len(units)
+        }, 200

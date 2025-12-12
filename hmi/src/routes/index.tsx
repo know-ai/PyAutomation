@@ -7,7 +7,10 @@ import { Dashboard } from "../pages/Dashboard";
 import { Communications } from "../pages/Communications";
 import { Database } from "../pages/Database";
 import { Tags } from "../pages/Tags";
+import { DataLogger } from "../pages/DataLogger";
+import { Trends } from "../pages/Trends";
 import { Alarms } from "../pages/Alarms";
+import { AlarmsSummary } from "../pages/AlarmsSummary";
 import { Machines } from "../pages/Machines";
 import { MainLayout } from "../layouts/MainLayout";
 
@@ -32,8 +35,13 @@ export function AppRoutes() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/communications" element={<Communications />} />
         <Route path="/database" element={<Database />} />
-        <Route path="/tags" element={<Tags />} />
-        <Route path="/alarms" element={<Alarms />} />
+        <Route path="/tags" element={<Navigate to="/tags/definitions" replace />} />
+        <Route path="/tags/definitions" element={<Tags />} />
+        <Route path="/tags/datalogger" element={<DataLogger />} />
+        <Route path="/tags/trends" element={<Trends />} />
+        <Route path="/alarms" element={<Navigate to="/alarms/definitions" replace />} />
+        <Route path="/alarms/definitions" element={<Alarms />} />
+        <Route path="/alarms/summary" element={<AlarmsSummary />} />
         <Route path="/machines" element={<Machines />} />
       </Route>
 

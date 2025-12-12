@@ -28,7 +28,7 @@ export function Login() {
       const user = resp?.user || { username };
       if (!token) throw new Error("Token no recibido");
       dispatch(loginSuccess({ token, user }));
-      navigate("/dashboard");
+      navigate("/communications");
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || "Error al iniciar sesión";
       setError(message);

@@ -1,14 +1,32 @@
 import { useEffect, useState } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
-import { getTags, createTag, type Tag, type TagsResponse } from "../services/tags";
+import { getTags, createTag, updateTag, deleteTag, getVariables, getUnitsByVariable, type Tag, type TagsResponse } from "../services/tags";
+import { listClients, getClientTree, type OpcUaClient, type OpcUaTreeNode } from "../services/opcua";
 
 export function Tags() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [editingTag, setEditingTag] = useState<Tag | null>(null);
+  const [tagToDelete, setTagToDelete] = useState<Tag | null>(null);
   const [creating, setCreating] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [variables, setVariables] = useState<string[]>([]);
+  const [availableUnits, setAvailableUnits] = useState<string[]>([]);
+  const [loadingVariables, setLoadingVariables] = useState(false);
+  const [loadingUnits, setLoadingUnits] = useState(false);
+  const [opcuaClients, setOpcuaClients] = useState<OpcUaClient[]>([]);
+  const [opcuaClientAddresses, setOpcuaClientAddresses] = useState<Record<string, string>>({});
+  const [opcuaClientNamesByAddress, setOpcuaClientNamesByAddress] = useState<Record<string, string>>({});
+  const [opcuaNodes, setOpcuaNodes] = useState<Array<{ namespace: string; displayName: string }>>([]);
+  const [opcuaNodeDisplayNames, setOpcuaNodeDisplayNames] = useState<Record<string, string>>({});
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [loadingNodes, setLoadingNodes] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -45,13 +63,64 @@ export function Tags() {
     setError(null);
     try {
       const response: TagsResponse = await getTags(page, limit);
-      setTags(response.data || []);
+      const loadedTags = response.data || [];
+      setTags(loadedTags);
       setPagination(response.pagination || {
         page: page,
         limit: limit,
         total: 0,
         pages: 0,
       });
+      
+      // Cargar display names de los nodos OPC UA que están en los tags
+      // Recopilar namespaces únicos y sus direcciones asociadas
+      const namespaceToAddress: Record<string, string> = {};
+      loadedTags.forEach((tag) => {
+        if (tag.node_namespace && tag.opcua_address) {
+          namespaceToAddress[tag.node_namespace] = tag.opcua_address;
+        }
+      });
+      
+      // Cargar árboles de clientes únicos para obtener display names
+      const uniqueClientNames = new Set<string>();
+      Object.values(namespaceToAddress).forEach((address) => {
+        const clientName = opcuaClientNamesByAddress[address];
+        if (clientName) {
+          uniqueClientNames.add(clientName);
+        }
+      });
+      
+      // Cargar nodos de todos los clientes únicos
+      const displayNamesMap: Record<string, string> = {};
+      for (const clientName of uniqueClientNames) {
+        try {
+          const tree = await getClientTree(clientName);
+          const extractNodes = (nodes: OpcUaTreeNode[]): Array<{ namespace: string; displayName: string }> => {
+            const result: Array<{ namespace: string; displayName: string }> = [];
+            for (const node of nodes) {
+              if (node.namespace && node.name && node.NodeClass === "Variable") {
+                result.push({
+                  namespace: node.namespace,
+                  displayName: node.name,
+                });
+              }
+              if (node.children && node.children.length > 0) {
+                result.push(...extractNodes(node.children));
+              }
+            }
+            return result;
+          };
+          const nodes = extractNodes(tree);
+          nodes.forEach((node) => {
+            if (node.namespace && node.displayName) {
+              displayNamesMap[node.namespace] = node.displayName;
+            }
+          });
+        } catch (e) {
+          console.error(`Error loading nodes for client ${clientName}:`, e);
+        }
+      }
+      setOpcuaNodeDisplayNames((prev) => ({ ...prev, ...displayNamesMap }));
     } catch (e: any) {
       const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar tags";
       setError(errorMsg);
@@ -63,7 +132,175 @@ export function Tags() {
 
   useEffect(() => {
     loadTags(1, 20);
+    // Cargar clientes OPC UA al montar para tener los nombres disponibles en la tabla
+    loadOpcuaClients();
   }, []);
+
+  // Cargar variables y clientes OPC UA disponibles cuando se abre el modal
+  useEffect(() => {
+    if (showCreateModal || showEditModal) {
+      if (variables.length === 0) {
+        loadVariables();
+      }
+      if (opcuaClients.length === 0) {
+        loadOpcuaClients();
+      }
+    }
+  }, [showCreateModal, showEditModal]);
+
+  // Cargar unidades cuando cambia la variable seleccionada
+  useEffect(() => {
+    if (formData.variable && (showCreateModal || showEditModal)) {
+      loadUnits(formData.variable);
+    } else {
+      if (!(showCreateModal || showEditModal)) {
+        setAvailableUnits([]);
+        // Limpiar unidades si no hay variable seleccionada
+        if (!formData.variable) {
+          setFormData((prev) => ({ ...prev, unit: "", display_unit: "" }));
+        }
+      }
+    }
+  }, [formData.variable, showCreateModal, showEditModal]);
+
+  // Cargar nodos OPC UA cuando cambia el cliente seleccionado
+  useEffect(() => {
+    if (formData.opcua_address && (showCreateModal || showEditModal)) {
+      // Buscar el nombre del cliente por su dirección
+      const clientName = Object.keys(opcuaClientAddresses).find(
+        (name) => opcuaClientAddresses[name] === formData.opcua_address
+      );
+      if (clientName) {
+        loadOpcuaNodes(clientName);
+      } else {
+        setOpcuaNodes([]);
+        if (!showEditModal) {
+          setFormData((prev) => ({ ...prev, node_namespace: "" }));
+        }
+      }
+    } else {
+      if (!(showCreateModal || showEditModal)) {
+        setOpcuaNodes([]);
+        if (!formData.opcua_address) {
+          setFormData((prev) => ({ ...prev, node_namespace: "" }));
+        }
+      }
+    }
+  }, [formData.opcua_address, showCreateModal, showEditModal]);
+
+  const loadVariables = async () => {
+    setLoadingVariables(true);
+    try {
+      const vars = await getVariables();
+      setVariables(vars);
+    } catch (e: any) {
+      console.error("Error loading variables:", e);
+      setVariables([]);
+    } finally {
+      setLoadingVariables(false);
+    }
+  };
+
+  const loadUnits = async (variableName: string) => {
+    if (!variableName) {
+      setAvailableUnits([]);
+      return;
+    }
+    setLoadingUnits(true);
+    try {
+      const units = await getUnitsByVariable(variableName);
+      setAvailableUnits(units);
+      // Si la unidad actual no está en las disponibles, limpiarla
+      if (formData.unit && !units.includes(formData.unit)) {
+        setFormData((prev) => ({ ...prev, unit: "" }));
+      }
+      if (formData.display_unit && !units.includes(formData.display_unit)) {
+        setFormData((prev) => ({ ...prev, display_unit: "" }));
+      }
+    } catch (e: any) {
+      console.error("Error loading units:", e);
+      setAvailableUnits([]);
+    } finally {
+      setLoadingUnits(false);
+    }
+  };
+
+  const loadOpcuaClients = async () => {
+    setLoadingClients(true);
+    try {
+      const clients = await listClients();
+      setOpcuaClients(clients);
+      // Crear un mapa de nombre de cliente -> dirección
+      const addresses: Record<string, string> = {};
+      // Crear un mapa inverso de dirección -> nombre de cliente
+      const namesByAddress: Record<string, string> = {};
+      clients.forEach((client) => {
+        const clientName = typeof client === "string" ? client : client.name || "";
+        const address = typeof client === "object" && client.server_url ? client.server_url : "";
+        if (clientName && address) {
+          addresses[clientName] = address;
+          namesByAddress[address] = clientName;
+        }
+      });
+      setOpcuaClientAddresses(addresses);
+      setOpcuaClientNamesByAddress(namesByAddress);
+    } catch (e: any) {
+      console.error("Error loading OPC UA clients:", e);
+      setOpcuaClients([]);
+      setOpcuaClientAddresses({});
+      setOpcuaClientNamesByAddress({});
+    } finally {
+      setLoadingClients(false);
+    }
+  };
+
+  const loadOpcuaNodes = async (clientName: string) => {
+    if (!clientName) {
+      setOpcuaNodes([]);
+      return;
+    }
+    setLoadingNodes(true);
+    try {
+      const tree = await getClientTree(clientName);
+      // Extraer solo los nodos de tipo Variable del árbol recursivamente
+      const extractNodes = (nodes: OpcUaTreeNode[]): Array<{ namespace: string; displayName: string }> => {
+        const result: Array<{ namespace: string; displayName: string }> = [];
+        for (const node of nodes) {
+          // Solo incluir nodos de tipo Variable
+          if (node.namespace && node.name && node.NodeClass === "Variable") {
+            result.push({
+              namespace: node.namespace,
+              displayName: node.name,
+            });
+          }
+          // Continuar buscando en los hijos recursivamente
+          if (node.children && node.children.length > 0) {
+            result.push(...extractNodes(node.children));
+          }
+        }
+        return result;
+      };
+      const nodes = extractNodes(tree);
+      setOpcuaNodes(nodes);
+      // Crear un mapa de namespace -> displayName para búsqueda rápida
+      const displayNamesMap: Record<string, string> = {};
+      nodes.forEach((node) => {
+        if (node.namespace && node.displayName) {
+          displayNamesMap[node.namespace] = node.displayName;
+        }
+      });
+      setOpcuaNodeDisplayNames((prev) => ({ ...prev, ...displayNamesMap }));
+      // Si el namespace actual no está en los disponibles, limpiarlo
+      if (formData.node_namespace && !nodes.some((n) => n.namespace === formData.node_namespace)) {
+        setFormData((prev) => ({ ...prev, node_namespace: "" }));
+      }
+    } catch (e: any) {
+      console.error("Error loading OPC UA nodes:", e);
+      setOpcuaNodes([]);
+    } finally {
+      setLoadingNodes(false);
+    }
+  };
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.pages) {
@@ -74,6 +311,367 @@ export function Tags() {
   const handleLimitChange = (newLimit: number) => {
     if (newLimit > 0) {
       loadTags(1, newLimit);
+    }
+  };
+
+  const handleEditTag = (tag: Tag) => {
+    if (!tag.id) {
+      setError("El tag no tiene ID, no se puede editar");
+      return;
+    }
+    
+    // Cargar datos del tag en el formulario
+    setFormData({
+      name: tag.name || "",
+      unit: tag.unit || "",
+      variable: tag.variable || "",
+      display_unit: tag.display_unit || "",
+      data_type: tag.data_type || "float",
+      description: tag.description || "",
+      display_name: tag.display_name || "",
+      opcua_address: tag.opcua_address || "",
+      node_namespace: tag.node_namespace || "",
+      scan_time: tag.scan_time ? String(tag.scan_time) : "",
+      dead_band: tag.dead_band !== undefined ? String(tag.dead_band) : "",
+      process_filter: tag.process_filter || false,
+      gaussian_filter: tag.gaussian_filter || false,
+      gaussian_filter_threshold: tag.gaussian_filter_threshold !== undefined ? String(tag.gaussian_filter_threshold) : "1.0",
+      gaussian_filter_r_value: tag.gaussian_filter_r_value !== undefined ? String(tag.gaussian_filter_r_value) : "0.0",
+      outlier_detection: tag.outlier_detection || false,
+      out_of_range_detection: tag.out_of_range_detection || false,
+      frozen_data_detection: tag.frozen_data_detection || false,
+      segment: tag.segment || "",
+      manufacturer: tag.manufacturer || "",
+    });
+    
+    setEditingTag(tag);
+    setShowEditModal(true);
+    setError(null);
+    
+    // Cargar unidades si hay variable
+    if (tag.variable) {
+      loadUnits(tag.variable);
+    }
+    
+    // Cargar nodos si hay cliente OPC UA
+    if (tag.opcua_address) {
+      const clientName = opcuaClientNamesByAddress[tag.opcua_address];
+      if (clientName) {
+        loadOpcuaNodes(clientName);
+      }
+    }
+  };
+
+  const handleDeleteTag = (tag: Tag) => {
+    if (!tag.name) {
+      setError("El tag no tiene nombre, no se puede eliminar");
+      return;
+    }
+    
+    setTagToDelete(tag);
+    setShowDeleteModal(true);
+    setError(null);
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      setError(null);
+      // Obtener todos los tags (sin paginación) usando el servicio
+      // Necesitamos obtener todos los tags, así que usamos un límite grande
+      const response = await getTags(1, 10000);
+      const allTags = response.data || [];
+      
+      if (!allTags || allTags.length === 0) {
+        setError("No hay tags para exportar");
+        return;
+      }
+
+      // Preparar los datos para CSV
+      const headers = [
+        "Nombre",
+        "Display Name",
+        "Variable",
+        "Unit",
+        "Display Unit",
+        "Data Type",
+        "OPC UA Address",
+        "Node Namespace",
+        "Scan Time (ms)",
+        "Dead Band",
+        "Process Filter",
+        "Gaussian Filter",
+        "Gaussian Filter Threshold",
+        "Gaussian Filter R Value",
+        "Outlier Detection",
+        "Out of Range Detection",
+        "Frozen Data Detection",
+        "Segment",
+        "Manufacturer",
+        "Description"
+      ];
+
+      // Convertir tags a filas CSV
+      const rows = allTags.map((tag: Tag) => {
+        return [
+          tag.name || "",
+          tag.display_name || "",
+          tag.variable || "",
+          tag.unit || "",
+          tag.display_unit || "",
+          tag.data_type || "",
+          tag.opcua_address ? (opcuaClientNamesByAddress[tag.opcua_address] || tag.opcua_address) : "",
+          tag.node_namespace ? (opcuaNodeDisplayNames[tag.node_namespace] || tag.node_namespace) : "",
+          tag.scan_time || "",
+          tag.dead_band !== undefined ? tag.dead_band : "",
+          tag.process_filter ? "Sí" : "No",
+          tag.gaussian_filter ? "Sí" : "No",
+          tag.gaussian_filter_threshold !== undefined ? tag.gaussian_filter_threshold : "",
+          tag.gaussian_filter_r_value !== undefined ? tag.gaussian_filter_r_value : "",
+          tag.outlier_detection ? "Sí" : "No",
+          tag.out_of_range_detection ? "Sí" : "No",
+          tag.frozen_data_detection ? "Sí" : "No",
+          tag.segment || "",
+          tag.manufacturer || "",
+          tag.description || ""
+        ];
+      });
+
+      // Crear contenido CSV
+      const csvContent = [
+        headers.join(","),
+        ...rows.map(row => 
+          row.map(cell => {
+            // Escapar comillas y envolver en comillas si contiene comas o comillas
+            const cellStr = String(cell);
+            if (cellStr.includes(",") || cellStr.includes('"') || cellStr.includes("\n")) {
+              return `"${cellStr.replace(/"/g, '""')}"`;
+            }
+            return cellStr;
+          }).join(",")
+        )
+      ].join("\n");
+
+      // Crear blob y descargar
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute("href", url);
+      link.setAttribute("download", `tags_${new Date().toISOString().split("T")[0]}.csv`);
+      link.style.visibility = "hidden";
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || "Error al exportar tags a CSV";
+      setError(errorMsg);
+    }
+  };
+
+  const confirmDeleteTag = async () => {
+    if (!tagToDelete || !tagToDelete.name) {
+      setError("No hay tag seleccionado para eliminar");
+      return;
+    }
+
+    setDeleting(true);
+    setError(null);
+
+    try {
+      await deleteTag(tagToDelete.name);
+      
+      // Cerrar modal y limpiar
+      setShowDeleteModal(false);
+      setTagToDelete(null);
+      
+      // Recargar tags
+      loadTags(pagination.page, pagination.limit);
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || "Error al eliminar el tag";
+      setError(errorMsg);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleUpdateTag = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTag || !editingTag.id) {
+      setError("No hay tag seleccionado para actualizar");
+      return;
+    }
+    
+    setUpdating(true);
+    setError(null);
+    
+    try {
+      // Preparar payload solo con campos que han cambiado
+      const payload: any = {
+        id: editingTag.id,
+      };
+
+      // Comparar valores originales con los nuevos y solo agregar los que cambiaron
+      const original = editingTag;
+      
+      // Comparar name
+      if (formData.name !== (original.name || "")) {
+        payload.name = formData.name;
+      }
+      
+      // Comparar unit
+      if (formData.unit !== (original.unit || "")) {
+        payload.unit = formData.unit;
+      }
+      
+      // Comparar variable
+      if (formData.variable !== (original.variable || "")) {
+        payload.variable = formData.variable;
+      }
+      
+      // Comparar display_unit
+      if (formData.display_unit !== (original.display_unit || "")) {
+        payload.display_unit = formData.display_unit;
+      }
+      
+      // Comparar data_type
+      if (formData.data_type !== (original.data_type || "float")) {
+        payload.data_type = formData.data_type;
+      }
+      
+      // Comparar description
+      if (formData.description !== (original.description || "")) {
+        payload.description = formData.description;
+      }
+      
+      // Comparar display_name
+      if (formData.display_name !== (original.display_name || "")) {
+        payload.display_name = formData.display_name;
+      }
+      
+      // Comparar opcua_address
+      if (formData.opcua_address !== (original.opcua_address || "")) {
+        payload.opcua_address = formData.opcua_address;
+      }
+      
+      // Comparar node_namespace
+      if (formData.node_namespace !== (original.node_namespace || "")) {
+        payload.node_namespace = formData.node_namespace;
+      }
+      
+      // Comparar scan_time
+      const originalScanTime = original.scan_time ? String(original.scan_time) : "";
+      if (formData.scan_time !== originalScanTime) {
+        if (formData.scan_time) {
+          payload.scan_time = parseInt(formData.scan_time);
+        } else {
+          payload.scan_time = null;
+        }
+      }
+      
+      // Comparar dead_band
+      const originalDeadBand = original.dead_band !== undefined ? String(original.dead_band) : "";
+      if (formData.dead_band !== originalDeadBand) {
+        if (formData.dead_band) {
+          payload.dead_band = parseFloat(formData.dead_band);
+        } else {
+          payload.dead_band = null;
+        }
+      }
+      
+      // Comparar segment
+      if (formData.segment !== (original.segment || "")) {
+        payload.segment = formData.segment;
+      }
+      
+      // Comparar manufacturer
+      if (formData.manufacturer !== (original.manufacturer || "")) {
+        payload.manufacturer = formData.manufacturer;
+      }
+
+      // Comparar booleanos
+      if (formData.process_filter !== (original.process_filter || false)) {
+        payload.process_filter = formData.process_filter;
+      }
+      
+      if (formData.gaussian_filter !== (original.gaussian_filter || false)) {
+        payload.gaussian_filter = formData.gaussian_filter;
+      }
+      
+      if (formData.outlier_detection !== (original.outlier_detection || false)) {
+        payload.outlier_detection = formData.outlier_detection;
+      }
+      
+      if (formData.out_of_range_detection !== (original.out_of_range_detection || false)) {
+        payload.out_of_range_detection = formData.out_of_range_detection;
+      }
+      
+      if (formData.frozen_data_detection !== (original.frozen_data_detection || false)) {
+        payload.frozen_data_detection = formData.frozen_data_detection;
+      }
+
+      // Comparar valores de filtro gaussiano
+      const originalGaussianThreshold = original.gaussian_filter_threshold !== undefined ? String(original.gaussian_filter_threshold) : "1.0";
+      if (formData.gaussian_filter_threshold !== originalGaussianThreshold) {
+        if (formData.gaussian_filter_threshold) {
+          payload.gaussian_filter_threshold = parseFloat(formData.gaussian_filter_threshold);
+        }
+      }
+      
+      const originalGaussianRValue = original.gaussian_filter_r_value !== undefined ? String(original.gaussian_filter_r_value) : "0.0";
+      if (formData.gaussian_filter_r_value !== originalGaussianRValue) {
+        if (formData.gaussian_filter_r_value) {
+          payload.gaussian_filter_r_value = parseFloat(formData.gaussian_filter_r_value);
+        }
+      }
+
+      // Si no hay campos para actualizar, mostrar error
+      const fieldsToUpdate = Object.keys(payload).filter(key => key !== 'id');
+      if (fieldsToUpdate.length === 0) {
+        setError("No se han realizado cambios para actualizar");
+        setUpdating(false);
+        return;
+      }
+
+      await updateTag(payload);
+      
+      // Cerrar modal y resetear formulario
+      setShowEditModal(false);
+      setEditingTag(null);
+      setFormData({
+        name: "",
+        unit: "",
+        variable: "",
+        display_unit: "",
+        data_type: "float",
+        description: "",
+        display_name: "",
+        opcua_address: "",
+        node_namespace: "",
+        scan_time: "",
+        dead_band: "",
+        process_filter: false,
+        gaussian_filter: false,
+        gaussian_filter_threshold: "1.0",
+        gaussian_filter_r_value: "0.0",
+        outlier_detection: false,
+        out_of_range_detection: false,
+        frozen_data_detection: false,
+        segment: "",
+        manufacturer: "",
+      });
+      setAvailableUnits([]);
+      setOpcuaNodes([]);
+      
+      // Recargar tags
+      loadTags(pagination.page, pagination.limit);
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || "Error al actualizar el tag";
+      setError(errorMsg);
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -150,6 +748,8 @@ export function Tags() {
         segment: "",
         manufacturer: "",
       });
+      setAvailableUnits([]);
+      setOpcuaNodes([]);
       
       // Recargar tags
       loadTags(pagination.page, pagination.limit);
@@ -168,14 +768,25 @@ export function Tags() {
           title={
             <div className="d-flex justify-content-between align-items-center w-100">
               <span>Tags</span>
-              <Button
-                variant="success"
-                className="btn-sm"
-                onClick={() => setShowCreateModal(true)}
-              >
-                <i className="bi bi-plus-circle me-1"></i>
-                Crear Tag
-              </Button>
+              <div className="d-flex gap-2">
+                <Button
+                  variant="info"
+                  className="btn-sm"
+                  onClick={handleExportCSV}
+                  disabled={loading || tags.length === 0}
+                >
+                  <i className="bi bi-download me-1"></i>
+                  Exportar CSV
+                </Button>
+                <Button
+                  variant="success"
+                  className="btn-sm"
+                  onClick={() => setShowCreateModal(true)}
+                >
+                  <i className="bi bi-plus-circle me-1"></i>
+                  Crear Tag
+                </Button>
+              </div>
             </div>
           }
           footer={
@@ -256,7 +867,6 @@ export function Tags() {
               <table className="table table-striped table-hover table-sm">
                 <thead>
                   <tr>
-                    <th>ID</th>
                     <th>Nombre</th>
                     <th>Display Name</th>
                     <th>Variable</th>
@@ -267,20 +877,19 @@ export function Tags() {
                     <th>Node Namespace</th>
                     <th>Scan Time (ms)</th>
                     <th>Dead Band</th>
-                    <th>Description</th>
+                    <th>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tags.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="text-center text-muted py-4">
+                      <td colSpan={11} className="text-center text-muted py-4">
                         No hay tags disponibles
                       </td>
                     </tr>
                   ) : (
                     tags.map((tag) => (
                       <tr key={tag.id || tag.name}>
-                        <td>{tag.id || "-"}</td>
                         <td>
                           <strong>{tag.name || "-"}</strong>
                         </td>
@@ -292,21 +901,36 @@ export function Tags() {
                           <span className="badge bg-info">{tag.data_type || "float"}</span>
                         </td>
                         <td>
-                          <small className="text-muted" style={{ fontFamily: "monospace" }}>
-                            {tag.opcua_address || "-"}
-                          </small>
+                          {tag.opcua_address
+                            ? opcuaClientNamesByAddress[tag.opcua_address] || tag.opcua_address
+                            : "-"}
                         </td>
                         <td>
-                          <small className="text-muted" style={{ fontFamily: "monospace" }}>
-                            {tag.node_namespace || "-"}
-                          </small>
+                          {tag.node_namespace
+                            ? opcuaNodeDisplayNames[tag.node_namespace] || tag.node_namespace
+                            : "-"}
                         </td>
                         <td>{tag.scan_time || "-"}</td>
                         <td>{tag.dead_band !== undefined ? tag.dead_band : "-"}</td>
                         <td>
-                          <small className="text-muted">
-                            {tag.description || "-"}
-                          </small>
+                          <div className="d-flex gap-2">
+                            <Button
+                              variant="secondary"
+                              className="btn-sm"
+                              onClick={() => handleEditTag(tag)}
+                              title="Editar tag"
+                            >
+                              <i className="bi bi-pencil"></i>
+                            </Button>
+                            <Button
+                              variant="danger"
+                              className="btn-sm"
+                              onClick={() => handleDeleteTag(tag)}
+                              title="Eliminar tag"
+                            >
+                              <i className="bi bi-trash"></i>
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -325,9 +949,9 @@ export function Tags() {
             tabIndex={-1}
             role="dialog"
           >
-            <div className="modal-dialog modal-lg modal-dialog-scrollable" role="document">
-              <div className="modal-content">
-                <div className="modal-header">
+            <div className="modal-dialog modal-lg modal-dialog-scrollable" role="document" style={{ maxHeight: "90vh" }}>
+              <div className="modal-content" style={{ maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+                <div className="modal-header" style={{ flexShrink: 0 }}>
                   <h5 className="modal-title">Crear Nuevo Tag</h5>
                   <button
                     type="button"
@@ -335,12 +959,14 @@ export function Tags() {
                     onClick={() => {
                       setShowCreateModal(false);
                       setError(null);
+                      setAvailableUnits([]);
+                      setOpcuaNodes([]);
                     }}
                     aria-label="Close"
                   ></button>
                 </div>
-                <form onSubmit={handleCreateTag}>
-                  <div className="modal-body">
+                <form onSubmit={handleCreateTag} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+                  <div className="modal-body" style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
                     {error && (
                       <div className="alert alert-danger" role="alert">
                         {error}
@@ -365,32 +991,56 @@ export function Tags() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
+                          Variable <span className="text-danger">*</span>
+                        </label>
+                        <select
+                          className="form-select"
+                          required
+                          value={formData.variable}
+                          onChange={(e) =>
+                            setFormData({ ...formData, variable: e.target.value, unit: "", display_unit: "" })
+                          }
+                          disabled={loadingVariables}
+                        >
+                          <option value="">Seleccione una variable</option>
+                          {variables.map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                        {loadingVariables && (
+                          <small className="text-muted">Cargando variables...</small>
+                        )}
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">
                           Unit <span className="text-danger">*</span>
                         </label>
-                        <input
-                          type="text"
-                          className="form-control"
+                        <select
+                          className="form-select"
                           required
                           value={formData.unit}
                           onChange={(e) =>
                             setFormData({ ...formData, unit: e.target.value })
                           }
-                        />
-                      </div>
-                      <div className="col-md-6">
-                        <label className="form-label">
-                          Variable <span className="text-danger">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          className="form-control"
-                          required
-                          value={formData.variable}
-                          onChange={(e) =>
-                            setFormData({ ...formData, variable: e.target.value })
-                          }
-                          placeholder="e.g., Pressure, Temperature"
-                        />
+                          disabled={!formData.variable || loadingUnits || availableUnits.length === 0}
+                        >
+                          <option value="">
+                            {!formData.variable
+                              ? "Seleccione primero una variable"
+                              : loadingUnits
+                              ? "Cargando unidades..."
+                              : availableUnits.length === 0
+                              ? "No hay unidades disponibles"
+                              : "Seleccione una unidad"}
+                          </option>
+                          {availableUnits.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">Data Type</label>
@@ -422,14 +1072,29 @@ export function Tags() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">Display Unit</label>
-                        <input
-                          type="text"
-                          className="form-control"
+                        <select
+                          className="form-select"
                           value={formData.display_unit}
                           onChange={(e) =>
                             setFormData({ ...formData, display_unit: e.target.value })
                           }
-                        />
+                          disabled={!formData.variable || loadingUnits || availableUnits.length === 0}
+                        >
+                          <option value="">
+                            {!formData.variable
+                              ? "Seleccione primero una variable"
+                              : loadingUnits
+                              ? "Cargando unidades..."
+                              : availableUnits.length === 0
+                              ? "No hay unidades disponibles"
+                              : "Seleccione una unidad (opcional)"}
+                          </option>
+                          {availableUnits.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div className="col-12">
                         <label className="form-label">Description</label>
@@ -448,28 +1113,62 @@ export function Tags() {
                         <h6 className="border-bottom pb-2">OPC UA Configuration</h6>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">OPC UA Address</label>
-                        <input
-                          type="text"
-                          className="form-control"
-                          value={formData.opcua_address}
-                          onChange={(e) =>
-                            setFormData({ ...formData, opcua_address: e.target.value })
+                        <label className="form-label">OPC UA Client</label>
+                        <select
+                          className="form-select"
+                          value={
+                            Object.keys(opcuaClientAddresses).find(
+                              (name) => opcuaClientAddresses[name] === formData.opcua_address
+                            ) || ""
                           }
-                          placeholder="opc.tcp://host:port"
-                        />
+                          onChange={(e) => {
+                            const selectedClientName = e.target.value;
+                            const address = opcuaClientAddresses[selectedClientName] || "";
+                            setFormData({
+                              ...formData,
+                              opcua_address: address,
+                              node_namespace: "", // Limpiar namespace al cambiar cliente
+                            });
+                          }}
+                          disabled={loadingClients}
+                        >
+                          <option value="">
+                            {loadingClients ? "Cargando clientes..." : "Seleccione un cliente OPC UA"}
+                          </option>
+                          {Object.keys(opcuaClientAddresses).map((clientName) => (
+                            <option key={clientName} value={clientName}>
+                              {clientName} ({opcuaClientAddresses[clientName]})
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">Node Namespace</label>
-                        <input
-                          type="text"
-                          className="form-control"
+                        <select
+                          className="form-select"
                           value={formData.node_namespace}
                           onChange={(e) =>
                             setFormData({ ...formData, node_namespace: e.target.value })
                           }
-                          placeholder="ns=2;i=1"
-                        />
+                          disabled={
+                            !formData.opcua_address || loadingNodes || opcuaNodes.length === 0
+                          }
+                        >
+                          <option value="">
+                            {!formData.opcua_address
+                              ? "Seleccione primero un cliente OPC UA"
+                              : loadingNodes
+                              ? "Cargando nodos..."
+                              : opcuaNodes.length === 0
+                              ? "No hay nodos disponibles"
+                              : "Seleccione un nodo"}
+                          </option>
+                          {opcuaNodes.map((node) => (
+                            <option key={node.namespace} value={node.namespace}>
+                              {node.displayName || node.namespace}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       {/* Polling y Deadband */}
@@ -653,13 +1352,15 @@ export function Tags() {
                       </div>
                     </div>
                   </div>
-                  <div className="modal-footer">
+                  <div className="modal-footer" style={{ flexShrink: 0 }}>
                     <button
                       type="button"
                       className="btn btn-secondary"
                       onClick={() => {
                         setShowCreateModal(false);
                         setError(null);
+                        setAvailableUnits([]);
+                        setOpcuaNodes([]);
                       }}
                       disabled={creating}
                     >
@@ -670,6 +1371,506 @@ export function Tags() {
                     </Button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para editar tag */}
+        {showEditModal && editingTag && (
+          <div
+            className="modal fade show"
+            style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
+            tabIndex={-1}
+            role="dialog"
+          >
+            <div className="modal-dialog modal-lg modal-dialog-scrollable" role="document" style={{ maxHeight: "90vh" }}>
+              <div className="modal-content" style={{ maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+                <div className="modal-header" style={{ flexShrink: 0 }}>
+                  <h5 className="modal-title">Editar Tag: {editingTag.name}</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setEditingTag(null);
+                      setError(null);
+                      setAvailableUnits([]);
+                      setOpcuaNodes([]);
+                    }}
+                    aria-label="Close"
+                  ></button>
+                </div>
+                <form onSubmit={handleUpdateTag} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+                  <div className="modal-body" style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
+                    {error && (
+                      <div className="alert alert-danger" role="alert">
+                        {error}
+                      </div>
+                    )}
+
+                    <div className="row g-3">
+                      {/* Campos requeridos */}
+                      <div className="col-md-6">
+                        <label className="form-label">
+                          Nombre <span className="text-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          required
+                          value={formData.name}
+                          onChange={(e) =>
+                            setFormData({ ...formData, name: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">
+                          Variable <span className="text-danger">*</span>
+                        </label>
+                        <select
+                          className="form-select"
+                          required
+                          value={formData.variable}
+                          onChange={(e) =>
+                            setFormData({ ...formData, variable: e.target.value, unit: "", display_unit: "" })
+                          }
+                          disabled={loadingVariables}
+                        >
+                          <option value="">Seleccione una variable</option>
+                          {variables.map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                        {loadingVariables && (
+                          <small className="text-muted">Cargando variables...</small>
+                        )}
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">
+                          Unit <span className="text-danger">*</span>
+                        </label>
+                        <select
+                          className="form-select"
+                          required
+                          value={formData.unit}
+                          onChange={(e) =>
+                            setFormData({ ...formData, unit: e.target.value })
+                          }
+                          disabled={!formData.variable || loadingUnits || availableUnits.length === 0}
+                        >
+                          <option value="">
+                            {!formData.variable
+                              ? "Seleccione primero una variable"
+                              : loadingUnits
+                              ? "Cargando unidades..."
+                              : availableUnits.length === 0
+                              ? "No hay unidades disponibles"
+                              : "Seleccione una unidad"}
+                          </option>
+                          {availableUnits.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Data Type</label>
+                        <select
+                          className="form-select"
+                          value={formData.data_type}
+                          onChange={(e) =>
+                            setFormData({ ...formData, data_type: e.target.value })
+                          }
+                        >
+                          <option value="float">float</option>
+                          <option value="int">int</option>
+                          <option value="bool">bool</option>
+                          <option value="str">str</option>
+                        </select>
+                      </div>
+
+                      {/* Campos opcionales básicos */}
+                      <div className="col-md-6">
+                        <label className="form-label">Display Name</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={formData.display_name}
+                          onChange={(e) =>
+                            setFormData({ ...formData, display_name: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Display Unit</label>
+                        <select
+                          className="form-select"
+                          value={formData.display_unit}
+                          onChange={(e) =>
+                            setFormData({ ...formData, display_unit: e.target.value })
+                          }
+                          disabled={!formData.variable || loadingUnits || availableUnits.length === 0}
+                        >
+                          <option value="">
+                            {!formData.variable
+                              ? "Seleccione primero una variable"
+                              : loadingUnits
+                              ? "Cargando unidades..."
+                              : availableUnits.length === 0
+                              ? "No hay unidades disponibles"
+                              : "Seleccione una unidad (opcional)"}
+                          </option>
+                          {availableUnits.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-12">
+                        <label className="form-label">Description</label>
+                        <textarea
+                          className="form-control"
+                          rows={2}
+                          value={formData.description}
+                          onChange={(e) =>
+                            setFormData({ ...formData, description: e.target.value })
+                          }
+                        />
+                      </div>
+
+                      {/* OPC UA */}
+                      <div className="col-12">
+                        <h6 className="border-bottom pb-2">OPC UA Configuration</h6>
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">OPC UA Client</label>
+                        <select
+                          className="form-select"
+                          value={
+                            Object.keys(opcuaClientAddresses).find(
+                              (name) => opcuaClientAddresses[name] === formData.opcua_address
+                            ) || ""
+                          }
+                          onChange={(e) => {
+                            const selectedClientName = e.target.value;
+                            const address = opcuaClientAddresses[selectedClientName] || "";
+                            setFormData({
+                              ...formData,
+                              opcua_address: address,
+                              node_namespace: "", // Limpiar namespace al cambiar cliente
+                            });
+                          }}
+                          disabled={loadingClients}
+                        >
+                          <option value="">
+                            {loadingClients ? "Cargando clientes..." : "Seleccione un cliente OPC UA"}
+                          </option>
+                          {Object.keys(opcuaClientAddresses).map((clientName) => (
+                            <option key={clientName} value={clientName}>
+                              {clientName} ({opcuaClientAddresses[clientName]})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Node Namespace</label>
+                        <select
+                          className="form-select"
+                          value={formData.node_namespace}
+                          onChange={(e) =>
+                            setFormData({ ...formData, node_namespace: e.target.value })
+                          }
+                          disabled={
+                            !formData.opcua_address || loadingNodes || opcuaNodes.length === 0
+                          }
+                        >
+                          <option value="">
+                            {!formData.opcua_address
+                              ? "Seleccione primero un cliente OPC UA"
+                              : loadingNodes
+                              ? "Cargando nodos..."
+                              : opcuaNodes.length === 0
+                              ? "No hay nodos disponibles"
+                              : "Seleccione un nodo"}
+                          </option>
+                          {opcuaNodes.map((node) => (
+                            <option key={node.namespace} value={node.namespace}>
+                              {node.displayName || node.namespace}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Polling y Deadband */}
+                      <div className="col-12">
+                        <h6 className="border-bottom pb-2">Polling Configuration</h6>
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Scan Time (ms)</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          min="0"
+                          value={formData.scan_time}
+                          onChange={(e) =>
+                            setFormData({ ...formData, scan_time: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Dead Band</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          step="0.01"
+                          value={formData.dead_band}
+                          onChange={(e) =>
+                            setFormData({ ...formData, dead_band: e.target.value })
+                          }
+                        />
+                      </div>
+
+                      {/* Filtros */}
+                      <div className="col-12">
+                        <h6 className="border-bottom pb-2">Filters</h6>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="form-check">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={formData.process_filter}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                process_filter: e.target.checked,
+                              })
+                            }
+                          />
+                          <label className="form-check-label">Process Filter</label>
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <div className="form-check">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={formData.gaussian_filter}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                gaussian_filter: e.target.checked,
+                              })
+                            }
+                          />
+                          <label className="form-check-label">Gaussian Filter</label>
+                        </div>
+                      </div>
+                      {formData.gaussian_filter && (
+                        <>
+                          <div className="col-md-6">
+                            <label className="form-label">Gaussian Threshold</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              step="0.1"
+                              value={formData.gaussian_filter_threshold}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  gaussian_filter_threshold: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="col-md-6">
+                            <label className="form-label">Gaussian R Value</label>
+                            <input
+                              type="number"
+                              className="form-control"
+                              step="0.1"
+                              value={formData.gaussian_filter_r_value}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  gaussian_filter_r_value: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* Detección */}
+                      <div className="col-12">
+                        <h6 className="border-bottom pb-2">Detection</h6>
+                      </div>
+                      <div className="col-md-4">
+                        <div className="form-check">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={formData.outlier_detection}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                outlier_detection: e.target.checked,
+                              })
+                            }
+                          />
+                          <label className="form-check-label">Outlier Detection</label>
+                        </div>
+                      </div>
+                      <div className="col-md-4">
+                        <div className="form-check">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={formData.out_of_range_detection}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                out_of_range_detection: e.target.checked,
+                              })
+                            }
+                          />
+                          <label className="form-check-label">Out of Range Detection</label>
+                        </div>
+                      </div>
+                      <div className="col-md-4">
+                        <div className="form-check">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={formData.frozen_data_detection}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                frozen_data_detection: e.target.checked,
+                              })
+                            }
+                          />
+                          <label className="form-check-label">Frozen Data Detection</label>
+                        </div>
+                      </div>
+
+                      {/* Información adicional */}
+                      <div className="col-12">
+                        <h6 className="border-bottom pb-2">Additional Information</h6>
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Segment</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={formData.segment}
+                          onChange={(e) =>
+                            setFormData({ ...formData, segment: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Manufacturer</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={formData.manufacturer}
+                          onChange={(e) =>
+                            setFormData({ ...formData, manufacturer: e.target.value })
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="modal-footer" style={{ flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setShowEditModal(false);
+                        setEditingTag(null);
+                        setError(null);
+                        setAvailableUnits([]);
+                        setOpcuaNodes([]);
+                      }}
+                      disabled={updating}
+                    >
+                      Cancelar
+                    </button>
+                    <Button type="submit" variant="success" loading={updating}>
+                      Actualizar Tag
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para confirmar eliminación de tag */}
+        {showDeleteModal && tagToDelete && (
+          <div
+            className="modal fade show"
+            style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
+            tabIndex={-1}
+            role="dialog"
+          >
+            <div className="modal-dialog" role="document">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Confirmar Eliminación</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      setTagToDelete(null);
+                      setError(null);
+                    }}
+                    aria-label="Close"
+                    disabled={deleting}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  {error && (
+                    <div className="alert alert-danger" role="alert">
+                      {error}
+                    </div>
+                  )}
+                  <p>
+                    ¿Está seguro de que desea eliminar el tag <strong>"{tagToDelete.name}"</strong>?
+                  </p>
+                  <p className="text-muted small mb-0">
+                    Esta acción no se puede deshacer.
+                  </p>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      setTagToDelete(null);
+                      setError(null);
+                    }}
+                    disabled={deleting}
+                  >
+                    Cancelar
+                  </button>
+                  <Button
+                    variant="danger"
+                    onClick={confirmDeleteTag}
+                    loading={deleting}
+                  >
+                    Eliminar
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
