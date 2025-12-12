@@ -48,11 +48,11 @@ class LogsLogger(BaseLogger):
         """
         if not self.is_history_logged:
 
-            return None
+            return None, "History logging is not enabled"
         
         if not self.check_connectivity():
 
-            return list()
+            return None, "Database is not connected"
             
         query, message = Logs.create(
             message=message, 
@@ -97,10 +97,12 @@ class LogsLogger(BaseLogger):
         description:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
-        timezone:str='UTC'
+        timezone:str='UTC',
+        page:int=1,
+        limit:int=20
         ):
         r"""
-        Filters logs by various criteria.
+        Filters logs by various criteria with pagination.
 
         **Parameters:**
 
@@ -112,6 +114,7 @@ class LogsLogger(BaseLogger):
         * **greater_than_timestamp** (datetime): Start time.
         * **less_than_timestamp** (datetime): End time.
         * **timezone** (str): Timezone.
+        * **page**, **limit**: Pagination control.
         """
         if not self.is_history_logged:
 
@@ -119,7 +122,17 @@ class LogsLogger(BaseLogger):
         
         if not self.check_connectivity():
 
-            return list()
+            return {
+                "data": [],
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total_records": 0,
+                    "total_pages": 0,
+                    "has_next": False,
+                    "has_prev": False
+                }
+            }
         
         return Logs.filter_by(
             usernames=usernames,
@@ -130,7 +143,9 @@ class LogsLogger(BaseLogger):
             classification=classification,
             greater_than_timestamp=greater_than_timestamp,
             less_than_timestamp=less_than_timestamp,
-            timezone=timezone
+            timezone=timezone,
+            page=page,
+            limit=limit
         )
 
     @db_rollback  
@@ -209,10 +224,12 @@ class LogsLoggerEngine(BaseEngine):
         description:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
-        timezone:str='UTC'
+        timezone:str='UTC',
+        page:int=1,
+        limit:int=20
         ):
         r"""
-        Thread-safe log filtering.
+        Thread-safe log filtering with pagination.
         """
         _query = dict()
         _query["action"] = "filter_by"
@@ -226,6 +243,8 @@ class LogsLoggerEngine(BaseEngine):
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
         _query["parameters"]["timezone"] = timezone
+        _query["parameters"]["page"] = page
+        _query["parameters"]["limit"] = limit
         
         return self.query(_query)
 

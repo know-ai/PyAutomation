@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import {
@@ -8,6 +8,7 @@ import {
   type AlarmSummaryResponse,
 } from "../services/alarms";
 import { getTimezones } from "../services/tags";
+import { createLog } from "../services/logs";
 
 type PresetDate = 
   | "Last Hour"
@@ -105,6 +106,24 @@ export function AlarmsSummary() {
     return localStorage.getItem("alarms_summary_timezone") || "";
   });
 
+  // Estado para el menú contextual y comentarios
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    alarmId: number | undefined;
+  }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    alarmId: undefined,
+  });
+  const [selectedAlarmId, setSelectedAlarmId] = useState<number | undefined>(undefined);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [commentMessage, setCommentMessage] = useState("");
+  const [addingComment, setAddingComment] = useState(false);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
   // Cargar opciones para los filtros
   useEffect(() => {
     loadFilterOptions();
@@ -114,6 +133,22 @@ export function AlarmsSummary() {
   useEffect(() => {
     loadAlarmsSummary();
   }, [filters]);
+
+  // Cerrar menú contextual al hacer click fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
+        setContextMenu({ visible: false, x: 0, y: 0, alarmId: undefined });
+      }
+    };
+
+    if (contextMenu.visible) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [contextMenu.visible]);
 
   // Función helper para convertir Date a formato datetime-local (sin UTC)
   const formatToLocalDateTime = (date: Date): string => {
@@ -286,6 +321,57 @@ export function AlarmsSummary() {
       localStorage.setItem("alarms_summary_page", "1");
       localStorage.setItem("alarms_summary_limit", String(newLimit));
     }
+  };
+
+  const handleRowContextMenu = (e: React.MouseEvent, alarm: AlarmSummary) => {
+    e.preventDefault();
+    const alarmId = typeof alarm.id === "number" ? alarm.id : typeof alarm.id === "string" ? Number(alarm.id) : undefined;
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      alarmId: alarmId || undefined,
+    });
+  };
+
+  const handleAddComment = () => {
+    if (contextMenu.alarmId) {
+      setSelectedAlarmId(contextMenu.alarmId);
+      setShowCommentModal(true);
+    }
+    setContextMenu({ visible: false, x: 0, y: 0, alarmId: undefined });
+  };
+
+  const handleSaveComment = async () => {
+    if (!commentMessage.trim() || !selectedAlarmId) {
+      setError("El mensaje es requerido");
+      return;
+    }
+
+    setAddingComment(true);
+    setError(null);
+    try {
+      await createLog({
+        message: commentMessage.trim(),
+        alarm_summary_id: selectedAlarmId,
+      });
+      setCommentMessage("");
+      setShowCommentModal(false);
+      setSelectedAlarmId(undefined);
+      // Recargar alarmas para actualizar has_comments
+      loadAlarmsSummary();
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || "Error al agregar el comentario";
+      setError(errorMsg);
+    } finally {
+      setAddingComment(false);
+    }
+  };
+
+  const handleCancelComment = () => {
+    setShowCommentModal(false);
+    setCommentMessage("");
+    setSelectedAlarmId(undefined);
   };
 
   const handleExportCSV = async () => {
@@ -578,7 +664,11 @@ export function AlarmsSummary() {
                     </tr>
                   ) : (
                     alarmsSummary.map((alarm) => (
-                      <tr key={alarm.id}>
+                      <tr
+                        key={alarm.id}
+                        onContextMenu={(e) => handleRowContextMenu(e, alarm)}
+                        style={{ cursor: "context-menu" }}
+                      >
                         <td>{alarm.id || "-"}</td>
                         <td>
                           <strong>{alarm.name || "-"}</strong>
@@ -602,6 +692,79 @@ export function AlarmsSummary() {
                   )}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Menú contextual */}
+          {contextMenu.visible && (
+            <div
+              ref={contextMenuRef}
+              className="dropdown-menu show"
+              style={{
+                position: "fixed",
+                top: `${contextMenu.y}px`,
+                left: `${contextMenu.x}px`,
+                zIndex: 1000,
+              }}
+            >
+              <button
+                className="dropdown-item"
+                onClick={handleAddComment}
+              >
+                <i className="bi bi-chat-left-text me-2"></i>
+                Agregar comentario
+              </button>
+            </div>
+          )}
+
+          {/* Modal para agregar comentario */}
+          {showCommentModal && (
+            <div
+              className="modal show d-block"
+              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+              onClick={handleCancelComment}
+            >
+              <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">Agregar Comentario</h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      onClick={handleCancelComment}
+                    ></button>
+                  </div>
+                  <div className="modal-body">
+                    <div className="mb-3">
+                      <label className="form-label">Mensaje *</label>
+                      <textarea
+                        className="form-control"
+                        rows={4}
+                        value={commentMessage}
+                        onChange={(e) => setCommentMessage(e.target.value)}
+                        placeholder="Ingrese el comentario para esta alarma"
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <Button
+                      variant="secondary"
+                      onClick={handleCancelComment}
+                      disabled={addingComment}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={handleSaveComment}
+                      disabled={addingComment || !commentMessage.trim()}
+                      loading={addingComment}
+                    >
+                      Agregar
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </Card>

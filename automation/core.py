@@ -2813,7 +2813,7 @@ class PyAutomation(Singleton):
                 timestamp=timestamp
             )
 
-            if self.sio:
+            if log and self.sio:
 
                 self.sio.emit("on.log", data=log.serialize())
 
@@ -2832,20 +2832,30 @@ class PyAutomation(Singleton):
             description:str="",
             greater_than_timestamp:datetime=None,
             less_than_timestamp:datetime=None,
-            timezone:str="UTC"
-        )->list:
+            timezone:str="UTC",
+            page:int=1,
+            limit:int=20
+        )->dict:
         r"""
-        Filters system logs based on criteria.
+        Filters system logs based on criteria with pagination.
 
         **Parameters:**
 
         * **usernames** (list[str]): Filter by user.
+        * **alarm_names** (list[str]): Filter by linked alarm names.
+        * **event_ids** (list[int]): Filter by linked event IDs.
         * **classification** (str): Filter by category.
+        * **message** (str): Partial match message.
+        * **description** (str): Partial match description.
+        * **greater_than_timestamp** (datetime): Start time.
+        * **less_than_timestamp** (datetime): End time.
         * **timezone** (str): Timezone.
+        * **page** (int): Page number for pagination.
+        * **limit** (int): Items per page.
 
         **Returns:**
 
-        * **list**: Filtered list of logs.
+        * **dict**: {data: list, pagination: dict}
         """
         if self.is_db_connected():
 
@@ -2858,7 +2868,9 @@ class PyAutomation(Singleton):
                 description=description,
                 greater_than_timestamp=greater_than_timestamp,
                 less_than_timestamp=less_than_timestamp,
-                timezone=timezone
+                timezone=timezone,
+                page=page,
+                limit=limit
             )
         
     @logging_error_handler

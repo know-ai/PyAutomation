@@ -9,6 +9,7 @@ def init_app(app):
     from ..modules.events.resources import init_app as init_events
     from ..modules.settings.resources import init_app as init_settings
     from ..modules.opcua.resources import init_app as init_opcua
+    from ..modules.database.resources import init_app as init_database
 
     init_tags()
     init_alarms()
@@ -16,3 +17,4 @@ def init_app(app):
     init_events()
     init_settings()
     init_opcua()
+    init_database()

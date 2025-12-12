@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import {
@@ -9,6 +9,7 @@ import {
 } from "../services/events";
 import { getTimezones } from "../services/tags";
 import { getUsers, type User } from "../services/users";
+import { createLog } from "../services/logs";
 
 type PresetDate = 
   | "Last Hour"
@@ -115,6 +116,24 @@ export function Events() {
   const PRIORITY_OPTIONS = [0, 1, 2, 3, 4, 5];
   const CRITICITY_OPTIONS = [0, 1, 2, 3, 4, 5];
 
+  // Estado para el menú contextual y comentarios
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    eventId: number | undefined;
+  }>({
+    visible: false,
+    x: 0,
+    y: 0,
+    eventId: undefined,
+  });
+  const [selectedEventId, setSelectedEventId] = useState<number | undefined>(undefined);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [commentMessage, setCommentMessage] = useState("");
+  const [addingComment, setAddingComment] = useState(false);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
   // Cargar opciones para los filtros
   useEffect(() => {
     loadFilterOptions();
@@ -124,6 +143,22 @@ export function Events() {
   useEffect(() => {
     loadEvents();
   }, [filters]);
+
+  // Cerrar menú contextual al hacer click fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
+        setContextMenu({ visible: false, x: 0, y: 0, eventId: undefined });
+      }
+    };
+
+    if (contextMenu.visible) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [contextMenu.visible]);
 
   // Función helper para convertir Date a formato datetime-local (sin UTC)
   const formatToLocalDateTime = (date: Date): string => {
@@ -270,6 +305,57 @@ export function Events() {
     const finalValue = selectedEnd > now ? formatToLocalDateTime(now) : value;
     setEndDate(finalValue);
     localStorage.setItem("events_endDate", finalValue);
+  };
+
+  const handleRowContextMenu = (e: React.MouseEvent, event: Event) => {
+    e.preventDefault();
+    const eventId = typeof event.id === "number" ? event.id : typeof event.id === "string" ? Number(event.id) : undefined;
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      eventId: eventId || undefined,
+    });
+  };
+
+  const handleAddComment = () => {
+    if (contextMenu.eventId) {
+      setSelectedEventId(contextMenu.eventId);
+      setShowCommentModal(true);
+    }
+    setContextMenu({ visible: false, x: 0, y: 0, eventId: undefined });
+  };
+
+  const handleSaveComment = async () => {
+    if (!commentMessage.trim() || !selectedEventId) {
+      setError("El mensaje es requerido");
+      return;
+    }
+
+    setAddingComment(true);
+    setError(null);
+    try {
+      await createLog({
+        message: commentMessage.trim(),
+        event_id: selectedEventId,
+      });
+      setCommentMessage("");
+      setShowCommentModal(false);
+      setSelectedEventId(undefined);
+      // Recargar eventos
+      loadEvents();
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || "Error al agregar el comentario";
+      setError(errorMsg);
+    } finally {
+      setAddingComment(false);
+    }
+  };
+
+  const handleCancelComment = () => {
+    setShowCommentModal(false);
+    setCommentMessage("");
+    setSelectedEventId(undefined);
   };
 
   const handleClearFilters = () => {
@@ -643,7 +729,11 @@ export function Events() {
                     </tr>
                   ) : (
                     events.map((event) => (
-                      <tr key={event.id}>
+                      <tr
+                        key={event.id}
+                        onContextMenu={(e) => handleRowContextMenu(e, event)}
+                        style={{ cursor: "context-menu" }}
+                      >
                         <td>{event.id || "-"}</td>
                         <td>{event.timestamp || "-"}</td>
                         <td>{event.user?.username || event.username || "-"}</td>
@@ -669,6 +759,79 @@ export function Events() {
                   )}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Menú contextual */}
+          {contextMenu.visible && (
+            <div
+              ref={contextMenuRef}
+              className="dropdown-menu show"
+              style={{
+                position: "fixed",
+                top: `${contextMenu.y}px`,
+                left: `${contextMenu.x}px`,
+                zIndex: 1000,
+              }}
+            >
+              <button
+                className="dropdown-item"
+                onClick={handleAddComment}
+              >
+                <i className="bi bi-chat-left-text me-2"></i>
+                Agregar comentario
+              </button>
+            </div>
+          )}
+
+          {/* Modal para agregar comentario */}
+          {showCommentModal && (
+            <div
+              className="modal show d-block"
+              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+              onClick={handleCancelComment}
+            >
+              <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">Agregar Comentario</h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      onClick={handleCancelComment}
+                    ></button>
+                  </div>
+                  <div className="modal-body">
+                    <div className="mb-3">
+                      <label className="form-label">Mensaje *</label>
+                      <textarea
+                        className="form-control"
+                        rows={4}
+                        value={commentMessage}
+                        onChange={(e) => setCommentMessage(e.target.value)}
+                        placeholder="Ingrese el comentario para este evento"
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <Button
+                      variant="secondary"
+                      onClick={handleCancelComment}
+                      disabled={addingComment}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={handleSaveComment}
+                      disabled={addingComment || !commentMessage.trim()}
+                      loading={addingComment}
+                    >
+                      Agregar
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </Card>

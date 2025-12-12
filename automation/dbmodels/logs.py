@@ -109,10 +109,12 @@ class Logs(BaseModel):
         classification:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
-        timezone:str='UTC'
+        timezone:str='UTC',
+        page:int=1,
+        limit:int=20
         ):
         r"""
-        Filters logs based on various criteria.
+        Filters logs based on various criteria with pagination.
 
         **Parameters:**
 
@@ -121,11 +123,13 @@ class Logs(BaseModel):
         * **event_ids** (list[int]): Filter by linked event ID.
         * **message**, **description**, **classification**: Text search.
         * **greater_than_timestamp**, **less_than_timestamp**: Time range.
+        * **page**, **limit**: Pagination control.
 
         **Returns:**
 
-        * **list**: List of matching logs.
+        * **dict**: {data: list, pagination: dict}
         """
+        import math
         _timezone = pytz.timezone(timezone)
         query = cls.select()
         
@@ -161,11 +165,32 @@ class Logs(BaseModel):
         
         query = query.order_by(cls.id.desc())
 
-        if not query.exists():
-            
-            return []
+        total_records = query.count()
         
-        return [log.serialize() for log in query]
+        if limit <= 0: limit = 20
+        if page <= 0: page = 1
+        
+        total_pages = math.ceil(total_records / limit)
+        if total_pages == 0: total_pages = 1
+        
+        has_next = page < total_pages
+        has_prev = page > 1
+        
+        paginated_query = query.paginate(page, limit)
+        
+        data = [log.serialize() for log in paginated_query]
+        
+        return {
+            "data": data,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_records": total_records,
+                "total_pages": total_pages,
+                "has_next": has_next,
+                "has_prev": has_prev
+            }
+        }
 
     def serialize(self)-> dict:
         r"""

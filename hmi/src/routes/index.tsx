@@ -3,7 +3,6 @@ import { useAppSelector } from "../hooks/useAppSelector";
 import { Login } from "../pages/Login";
 import { Signup } from "../pages/Signup";
 import { ForgotPassword } from "../pages/ForgotPassword";
-import { Dashboard } from "../pages/Dashboard";
 import { Communications } from "../pages/Communications";
 import { Database } from "../pages/Database";
 import { Tags } from "../pages/Tags";
@@ -11,7 +10,7 @@ import { DataLogger } from "../pages/DataLogger";
 import { Trends } from "../pages/Trends";
 import { Alarms } from "../pages/Alarms";
 import { AlarmsSummary } from "../pages/AlarmsSummary";
-import { Machines } from "../pages/Machines";
+// import { Machines } from "../pages/Machines";
 import { UserManagement } from "../pages/UserManagement";
 import { Settings } from "../pages/Settings";
 import { Events } from "../pages/Events";
@@ -37,7 +36,6 @@ export function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
 
       <Route element={<ProtectedLayout />}>
-        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/communications" element={<Communications />} />
         <Route path="/database" element={<Database />} />
         <Route path="/tags" element={<Navigate to="/tags/definitions" replace />} />
@@ -47,7 +45,7 @@ export function AppRoutes() {
         <Route path="/alarms" element={<Navigate to="/alarms/definitions" replace />} />
         <Route path="/alarms/definitions" element={<Alarms />} />
         <Route path="/alarms/summary" element={<AlarmsSummary />} />
-        <Route path="/machines" element={<Machines />} />
+        {/* <Route path="/machines" element={<Machines />} /> */}
         <Route path="/events" element={<Events />} />
         <Route path="/operational-logs" element={<OperationalLogs />} />
         <Route path="/performance" element={<Performance />} />
