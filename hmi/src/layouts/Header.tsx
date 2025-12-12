@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   getDatabaseConfig,
   isDatabaseConnected,
@@ -7,10 +8,40 @@ import {
   type DatabaseConfig,
 } from "../services/database";
 import { useTheme } from "../hooks/useTheme";
+import { logout as logoutService } from "../services/auth";
+import { useAppDispatch } from "../hooks/useAppDispatch";
+import { logout as logoutAction } from "../store/slices/authSlice";
 
 export function Header() {
   const { mode, toggle } = useTheme();
+  const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  // Prevenir scroll del body cuando el modal está abierto
+  useEffect(() => {
+    if (showLogoutModal) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showLogoutModal]);
+
+  // Cerrar modal con ESC
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showLogoutModal && !isLoggingOut) {
+        setShowLogoutModal(false);
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [showLogoutModal, isLoggingOut]);
   const [dbType, setDbType] = useState<"postgres" | "mysql" | "sqlite">("postgres");
   const [dbName, setDbName] = useState("");
   const [dbHost, setDbHost] = useState("");
@@ -135,6 +166,28 @@ export function Header() {
       }
     };
   }, []);
+
+  const handleLogoutClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowLogoutModal(true);
+  }, []);
+
+  const handleLogoutConfirm = useCallback(async () => {
+    setShowLogoutModal(false);
+    setIsLoggingOut(true);
+    try {
+      // Llamar al endpoint de logout
+      await logoutService();
+    } catch (error) {
+      // Continuar con el logout incluso si hay error en el endpoint
+      console.error("Error al hacer logout:", error);
+    } finally {
+      // Hacer logout en Redux
+      dispatch(logoutAction());
+      // Redirigir a login
+      navigate("/login");
+    }
+  }, [dispatch, navigate]);
 
   const handleConnectDisconnect = useCallback(async () => {
     setIsConnecting(true);
@@ -306,8 +359,84 @@ export function Header() {
               )}
             </a>
           </li>
+          <li className="nav-item">
+            <a
+              className="nav-link"
+              href="#"
+              role="button"
+              onClick={handleLogoutClick}
+              title="Cerrar sesión"
+              style={{ cursor: isLoggingOut ? "wait" : "pointer" }}
+            >
+              {isLoggingOut ? (
+                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              ) : (
+                <i className="bi bi-box-arrow-right" />
+              )}
+            </a>
+          </li>
         </ul>
       </div>
+
+      {/* Modal de confirmación de logout */}
+      {showLogoutModal && (
+        <div
+          className="modal fade show"
+          style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            // Cerrar modal al hacer clic fuera del contenido
+            if (e.target === e.currentTarget && !isLoggingOut) {
+              setShowLogoutModal(false);
+            }
+          }}
+        >
+          <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h5 className="modal-title">Confirmar cierre de sesión</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowLogoutModal(false)}
+                  aria-label="Close"
+                  disabled={isLoggingOut}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>¿Está seguro de que desea cerrar sesión?</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowLogoutModal(false)}
+                  disabled={isLoggingOut}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={handleLogoutConfirm}
+                  disabled={isLoggingOut}
+                >
+                  {isLoggingOut ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      Cerrando...
+                    </>
+                  ) : (
+                    "Cerrar sesión"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

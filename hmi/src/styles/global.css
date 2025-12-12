@@ -204,10 +204,187 @@ a {
   color: #e9ecef;
 }
 
+/* Estilos para páginas de autenticación en tema oscuro */
 [data-bs-theme="dark"] .login-page,
 .dark .login-page,
 .dark-mode .login-page {
-  background-color: #1a1d29;
+  background-color: #1a1d29 !important;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] body.login-page,
+.dark body.login-page,
+.dark-mode body.login-page {
+  background-color: #1a1d29 !important;
+}
+
+[data-bs-theme="dark"] body.bg-body-secondary,
+.dark body.bg-body-secondary,
+.dark-mode body.bg-body-secondary {
+  background-color: #1a1d29 !important;
+}
+
+[data-bs-theme="dark"] html.dark,
+.dark html,
+.dark-mode html {
+  background-color: #1a1d29 !important;
+}
+
+[data-bs-theme="dark"] .login-box,
+.dark .login-box,
+.dark-mode .login-box {
+  background-color: transparent !important;
+}
+
+[data-bs-theme="dark"] .login-box > *,
+.dark .login-box > *,
+.dark-mode .login-box > * {
+  background-color: transparent !important;
+}
+
+[data-bs-theme="dark"] .login-card-body,
+.dark .login-card-body,
+.dark-mode .login-card-body {
+  background-color: #252936 !important;
+  color: #e9ecef !important;
+}
+
+/* Asegurar que todos los elementos dentro de login-page tengan el fondo correcto */
+[data-bs-theme="dark"] .login-page *,
+.dark .login-page *,
+.dark-mode .login-page * {
+  box-sizing: border-box;
+}
+
+/* Override para cualquier wrapper adicional */
+[data-bs-theme="dark"] .login-page > div,
+.dark .login-page > div,
+.dark-mode .login-page > div {
+  background-color: transparent !important;
+}
+
+/* Asegurar que las cards dentro de login-box tengan el fondo correcto */
+[data-bs-theme="dark"] .login-box .card,
+.dark .login-box .card,
+.dark-mode .login-box .card {
+  background-color: #252936 !important;
+  border-color: #3d4455 !important;
+  color: #e9ecef !important;
+}
+
+[data-bs-theme="dark"] .login-box .card .card-body,
+.dark .login-box .card .card-body,
+.dark-mode .login-box .card .card-body {
+  background-color: #252936 !important;
+  color: #e9ecef !important;
+}
+
+[data-bs-theme="dark"] .login-box .card .card-header,
+.dark .login-box .card .card-header,
+.dark-mode .login-box .card .card-header {
+  background-color: #2d323f !important;
+  border-bottom-color: #3d4455 !important;
+  color: #e9ecef !important;
+}
+
+[data-bs-theme="dark"] .login-box .card .card-footer,
+.dark .login-box .card .card-footer,
+.dark-mode .login-box .card .card-footer {
+  background-color: #2d323f !important;
+  border-top-color: #3d4455 !important;
+  color: #e9ecef !important;
+}
+
+[data-bs-theme="dark"] .card-outline,
+.dark .card-outline,
+.dark-mode .card-outline {
+  background-color: #252936 !important;
+  border-color: #3d4455 !important;
+  color: #e9ecef !important;
+}
+
+[data-bs-theme="dark"] .card-outline.card-primary,
+.dark .card-outline.card-primary,
+.dark-mode .card-outline.card-primary {
+  border-color: #3d4455 !important;
+}
+
+[data-bs-theme="dark"] .card-outline .card-header,
+.dark .card-outline .card-header,
+.dark-mode .card-outline .card-header {
+  background-color: #2d323f !important;
+  border-bottom-color: #3d4455 !important;
+  color: #e9ecef !important;
+}
+
+[data-bs-theme="dark"] .card-outline .card-body,
+.dark .card-outline .card-body,
+.dark-mode .card-outline .card-body {
+  background-color: #252936 !important;
+  color: #e9ecef !important;
+}
+
+[data-bs-theme="dark"] .input-group-text,
+.dark .input-group-text,
+.dark-mode .input-group-text {
+  background-color: #2d323f !important;
+  border-color: #3d4455 !important;
+  color: #e9ecef !important;
+}
+
+[data-bs-theme="dark"] .form-floating > label,
+.dark .form-floating > label,
+.dark-mode .form-floating > label {
+  color: #adb5bd !important;
+}
+
+[data-bs-theme="dark"] .form-floating > .form-control:focus ~ label,
+[data-bs-theme="dark"] .form-floating > .form-control:not(:placeholder-shown) ~ label,
+.dark .form-floating > .form-control:focus ~ label,
+.dark .form-floating > .form-control:not(:placeholder-shown) ~ label,
+.dark-mode .form-floating > .form-control:focus ~ label,
+.dark-mode .form-floating > .form-control:not(:placeholder-shown) ~ label {
+  color: #adb5bd !important;
+}
+
+[data-bs-theme="dark"] .form-check-label,
+.dark .form-check-label,
+.dark-mode .form-check-label {
+  color: #e9ecef !important;
+}
+
+[data-bs-theme="dark"] .alert-danger,
+.dark .alert-danger,
+.dark-mode .alert-danger {
+  background-color: #842029 !important;
+  border-color: #842029 !important;
+  color: #fff !important;
+}
+
+[data-bs-theme="dark"] .alert-success,
+.dark .alert-success,
+.dark-mode .alert-success {
+  background-color: #0f5132 !important;
+  border-color: #0f5132 !important;
+  color: #fff !important;
+}
+
+[data-bs-theme="dark"] .login-page a,
+[data-bs-theme="dark"] .login-box a,
+.dark .login-page a,
+.dark .login-box a,
+.dark-mode .login-page a,
+.dark-mode .login-box a {
+  color: #0d6efd !important;
+}
+
+[data-bs-theme="dark"] .login-page a:hover,
+[data-bs-theme="dark"] .login-box a:hover,
+.dark .login-page a:hover,
+.dark .login-box a:hover,
+.dark-mode .login-page a:hover,
+.dark-mode .login-box a:hover {
+  color: #0a58ca !important;
 }
 
 [data-bs-theme="dark"] .text-muted,

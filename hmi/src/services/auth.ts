@@ -29,4 +29,9 @@ export const forgotPassword = async (username: string, new_password: string) => 
   return data;
 };
 
+export const logout = async () => {
+  const { data } = await api.post("/users/logout");
+  return data;
+};
+
 
