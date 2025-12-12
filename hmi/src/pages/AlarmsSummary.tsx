@@ -9,6 +9,58 @@ import {
 } from "../services/alarms";
 import { getTimezones } from "../services/tags";
 
+type PresetDate = 
+  | "Last Hour"
+  | "Last 6 Hours"
+  | "Last 12 Hours"
+  | "Last Day"
+  | "Last Week"
+  | "Last Month"
+  | "Custom";
+
+const PRESET_DATES: PresetDate[] = [
+  "Last Hour",
+  "Last 6 Hours",
+  "Last 12 Hours",
+  "Last Day",
+  "Last Week",
+  "Last Month",
+  "Custom",
+];
+
+// Calcular fecha basada en preset
+const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
+  const end = new Date();
+  let start = new Date();
+
+  switch (preset) {
+    case "Last Hour":
+      start = new Date(end.getTime() - 60 * 60 * 1000);
+      break;
+    case "Last 6 Hours":
+      start = new Date(end.getTime() - 6 * 60 * 60 * 1000);
+      break;
+    case "Last 12 Hours":
+      start = new Date(end.getTime() - 12 * 60 * 60 * 1000);
+      break;
+    case "Last Day":
+      start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+      break;
+    case "Last Week":
+      start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case "Last Month":
+      // Aproximadamente 30 días
+      start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+      break;
+    case "Custom":
+      // No hacer nada, usar las fechas personalizadas
+      break;
+  }
+
+  return { start, end };
+};
+
 export function AlarmsSummary() {
   const [alarmsSummary, setAlarmsSummary] = useState<AlarmSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -21,9 +73,13 @@ export function AlarmsSummary() {
   });
 
   // Filtros
-  const [filters, setFilters] = useState<AlarmSummaryFilter>({
-    page: 1,
-    limit: 20,
+  const [filters, setFilters] = useState<AlarmSummaryFilter>(() => {
+    const savedPage = localStorage.getItem("alarms_summary_page");
+    const savedLimit = localStorage.getItem("alarms_summary_limit");
+    return {
+      page: savedPage ? Number(savedPage) : 1,
+      limit: savedLimit ? Number(savedLimit) : 20,
+    };
   });
 
   // Opciones para los filtros
@@ -31,10 +87,23 @@ export function AlarmsSummary() {
   const [availableTimezones, setAvailableTimezones] = useState<string[]>([]);
 
   // Valores seleccionados en los filtros
-  const [selectedStates, setSelectedStates] = useState<string[]>([]);
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
-  const [selectedTimezone, setSelectedTimezone] = useState<string>("");
+  const [selectedStates, setSelectedStates] = useState<string[]>(() => {
+    const saved = localStorage.getItem("alarms_summary_selectedStates");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [presetDate, setPresetDate] = useState<PresetDate>(() => {
+    const saved = localStorage.getItem("alarms_summary_presetDate");
+    return (saved as PresetDate) || "Last Hour";
+  });
+  const [startDate, setStartDate] = useState<string>(() => {
+    return localStorage.getItem("alarms_summary_startDate") || "";
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    return localStorage.getItem("alarms_summary_endDate") || "";
+  });
+  const [selectedTimezone, setSelectedTimezone] = useState<string>(() => {
+    return localStorage.getItem("alarms_summary_timezone") || "";
+  });
 
   // Cargar opciones para los filtros
   useEffect(() => {
@@ -45,6 +114,16 @@ export function AlarmsSummary() {
   useEffect(() => {
     loadAlarmsSummary();
   }, [filters]);
+
+  // Función helper para convertir Date a formato datetime-local (sin UTC)
+  const formatToLocalDateTime = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
 
   // Función para convertir el formato de fecha del input al formato esperado por el backend
   const formatDateTimeForBackend = (dateTimeString: string): string => {
@@ -61,6 +140,10 @@ export function AlarmsSummary() {
       setAvailableTimezones(timezones);
       if (timezones.length > 0 && !selectedTimezone) {
         setSelectedTimezone(timezones[0]);
+        localStorage.setItem("alarms_summary_timezone", timezones[0]);
+      } else if (selectedTimezone) {
+        // Guardar el timezone si ya existe
+        localStorage.setItem("alarms_summary_timezone", selectedTimezone);
       }
 
       // Estados comunes de alarmas (ISA 18.2)
@@ -75,11 +158,18 @@ export function AlarmsSummary() {
       ];
       setAvailableStates(commonStates);
 
-      // Establecer fechas por defecto (últimos 30 minutos)
-      const now = new Date();
-      const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
-      setEndDate(now.toISOString().slice(0, 16));
-      setStartDate(thirtyMinutesAgo.toISOString().slice(0, 16));
+      // Establecer fechas por defecto solo si no hay fechas guardadas
+      if (!startDate || !endDate) {
+        const { start, end } = getPresetDateRange("Last Hour");
+        const now = new Date();
+        const finalEnd = end > now ? now : end;
+        const startStr = formatToLocalDateTime(start);
+        const endStr = formatToLocalDateTime(finalEnd);
+        setEndDate(endStr);
+        setStartDate(startStr);
+        localStorage.setItem("alarms_summary_startDate", startStr);
+        localStorage.setItem("alarms_summary_endDate", endStr);
+      }
     } catch (e: any) {
       console.error("Error loading filter options:", e);
     }
@@ -106,11 +196,11 @@ export function AlarmsSummary() {
 
       const response: AlarmSummaryResponse = await filterAlarmsSummary(payload);
       setAlarmsSummary(response.data || []);
-      setPagination(response.pagination || {
-        page: 1,
-        limit: 20,
-        total: 0,
-        pages: 0,
+      setPagination({
+        page: response.pagination?.page || 1,
+        limit: response.pagination?.limit || 20,
+        total: response.pagination?.total_records || 0,
+        pages: response.pagination?.total_pages || 0,
       });
     } catch (e: any) {
       const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar el resumen de alarmas";
@@ -122,34 +212,79 @@ export function AlarmsSummary() {
   };
 
   const handleApplyFilters = () => {
-    setFilters({
+    const newFilters = {
       ...filters,
       page: 1, // Resetear a la primera página al aplicar filtros
-    });
+    };
+    setFilters(newFilters);
+    localStorage.setItem("alarms_summary_page", "1");
+    localStorage.setItem("alarms_summary_limit", String(newFilters.limit || 20));
+  };
+
+  const handlePresetDateChange = (preset: PresetDate) => {
+    setPresetDate(preset);
+    localStorage.setItem("alarms_summary_presetDate", preset);
+    if (preset !== "Custom") {
+      const { start, end } = getPresetDateRange(preset);
+      const now = new Date();
+      // Asegurar que la fecha final no exceda la actual
+      const finalEnd = end > now ? now : end;
+      const startStr = formatToLocalDateTime(start);
+      const endStr = formatToLocalDateTime(finalEnd);
+      setStartDate(startStr);
+      setEndDate(endStr);
+      localStorage.setItem("alarms_summary_startDate", startStr);
+      localStorage.setItem("alarms_summary_endDate", endStr);
+    }
+  };
+
+  const handleEndDateChange = (value: string) => {
+    const selectedEnd = new Date(value);
+    const now = new Date();
+    
+    // Validar que la fecha final no exceda la actual
+    const finalValue = selectedEnd > now ? formatToLocalDateTime(now) : value;
+    setEndDate(finalValue);
+    localStorage.setItem("alarms_summary_endDate", finalValue);
   };
 
   const handleClearFilters = () => {
     setSelectedStates([]);
+    localStorage.removeItem("alarms_summary_selectedStates");
+    setPresetDate("Last Hour");
+    localStorage.setItem("alarms_summary_presetDate", "Last Hour");
+    const { start, end } = getPresetDateRange("Last Hour");
     const now = new Date();
-    const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
-    setEndDate(now.toISOString().slice(0, 16));
-    setStartDate(thirtyMinutesAgo.toISOString().slice(0, 16));
-    setSelectedTimezone(availableTimezones[0] || "");
+    const finalEnd = end > now ? now : end;
+    const startStr = formatToLocalDateTime(start);
+    const endStr = formatToLocalDateTime(finalEnd);
+    setEndDate(endStr);
+    setStartDate(startStr);
+    localStorage.setItem("alarms_summary_startDate", startStr);
+    localStorage.setItem("alarms_summary_endDate", endStr);
+    const defaultTimezone = availableTimezones[0] || "";
+    setSelectedTimezone(defaultTimezone);
+    localStorage.setItem("alarms_summary_timezone", defaultTimezone);
     setFilters({
       page: 1,
       limit: 20,
     });
+    localStorage.setItem("alarms_summary_page", "1");
+    localStorage.setItem("alarms_summary_limit", "20");
   };
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.pages) {
       setFilters({ ...filters, page: newPage });
+      localStorage.setItem("alarms_summary_page", String(newPage));
     }
   };
 
   const handleLimitChange = (newLimit: number) => {
     if (newLimit > 0) {
       setFilters({ ...filters, page: 1, limit: newLimit });
+      localStorage.setItem("alarms_summary_page", "1");
+      localStorage.setItem("alarms_summary_limit", String(newLimit));
     }
   };
 
@@ -258,25 +393,48 @@ export function AlarmsSummary() {
               <span className="me-auto">Resumen de Alarmas</span>
               <div className="d-flex align-items-center gap-2">
                 <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">Inicio:</label>
-                  <input
-                    type="datetime-local"
-                    className="form-control form-control-sm"
-                    style={{ width: "180px" }}
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
+                  <label className="form-label small mb-0 me-1">Rango:</label>
+                  <select
+                    className="form-select form-select-sm"
+                    style={{ width: "150px" }}
+                    value={presetDate}
+                    onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
+                  >
+                    {PRESET_DATES.map((preset) => (
+                      <option key={preset} value={preset}>
+                        {preset}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">Fin:</label>
-                  <input
-                    type="datetime-local"
-                    className="form-control form-control-sm"
-                    style={{ width: "180px" }}
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
-                </div>
+                {presetDate === "Custom" && (
+                  <>
+                    <div className="d-flex align-items-center gap-1">
+                      <label className="form-label small mb-0 me-1">Inicio:</label>
+                      <input
+                        type="datetime-local"
+                        className="form-control form-control-sm"
+                        style={{ width: "180px" }}
+                        value={startDate}
+                        onChange={(e) => {
+                          setStartDate(e.target.value);
+                          localStorage.setItem("alarms_summary_startDate", e.target.value);
+                        }}
+                      />
+                    </div>
+                    <div className="d-flex align-items-center gap-1">
+                      <label className="form-label small mb-0 me-1">Fin:</label>
+                      <input
+                        type="datetime-local"
+                        className="form-control form-control-sm"
+                        style={{ width: "180px" }}
+                        value={endDate}
+                        onChange={(e) => handleEndDateChange(e.target.value)}
+                        max={new Date().toISOString().slice(0, 16)}
+                      />
+                    </div>
+                  </>
+                )}
                 <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
                   Aplicar
                 </Button>
@@ -370,11 +528,11 @@ export function AlarmsSummary() {
                       type="button"
                       className={`btn btn-sm ${isSelected ? "btn-primary" : "btn-outline-secondary"}`}
                       onClick={() => {
-                        if (isSelected) {
-                          setSelectedStates(selectedStates.filter((s) => s !== state));
-                        } else {
-                          setSelectedStates([...selectedStates, state]);
-                        }
+                        const newSelectedStates = isSelected
+                          ? selectedStates.filter((s) => s !== state)
+                          : [...selectedStates, state];
+                        setSelectedStates(newSelectedStates);
+                        localStorage.setItem("alarms_summary_selectedStates", JSON.stringify(newSelectedStates));
                       }}
                     >
                       {state}

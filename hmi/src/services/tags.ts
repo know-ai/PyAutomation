@@ -120,3 +120,37 @@ export const getUnitsByVariable = async (variableName: string): Promise<string[]
   return data?.data || [];
 };
 
+export type TabularDataFilter = {
+  tags: string[];
+  greater_than_timestamp: string;
+  less_than_timestamp: string;
+  sample_time: number;
+  timezone?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type TabularDataResponse = {
+  tag_names: string[];
+  display_names: string[];
+  values: any[][];
+  pagination: {
+    page: number;
+    limit: number;
+    total_records: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+  };
+};
+
+/**
+ * Obtiene datos tabulares históricos de tags con resampling
+ */
+export const getTabularData = async (
+  filters: TabularDataFilter
+): Promise<TabularDataResponse> => {
+  const { data } = await api.post("/tags/get_tabular_data", filters);
+  return data;
+};
+

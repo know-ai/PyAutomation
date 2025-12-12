@@ -119,8 +119,10 @@ export type AlarmSummaryResponse = {
   pagination: {
     page: number;
     limit: number;
-    total: number;
-    pages: number;
+    total_records: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
   };
 };
 
