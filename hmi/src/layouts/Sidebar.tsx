@@ -1,16 +1,23 @@
-import { useState, useEffect } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "../hooks/useTranslation";
+import { logout as logoutService } from "../services/auth";
+import { useAppDispatch } from "../hooks/useAppDispatch";
+import { logout as logoutAction } from "../store/slices/authSlice";
 
 export function Sidebar() {
   const { t } = useTranslation();
   const location = useLocation();
+  const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const [tagsExpanded, setTagsExpanded] = useState(
     location.pathname.startsWith("/tags")
   );
   const [alarmsExpanded, setAlarmsExpanded] = useState(
     location.pathname.startsWith("/alarms")
   );
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const isTagsActive = location.pathname.startsWith("/tags");
   const isAlarmsActive = location.pathname.startsWith("/alarms");
@@ -47,6 +54,51 @@ export function Sidebar() {
     }
   }, [location.pathname]);
 
+  // Prevenir scroll del body cuando el modal está abierto
+  useEffect(() => {
+    if (showLogoutModal) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showLogoutModal]);
+
+  // Cerrar modal con ESC
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showLogoutModal && !isLoggingOut) {
+        setShowLogoutModal(false);
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [showLogoutModal, isLoggingOut]);
+
+  const handleLogoutClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowLogoutModal(true);
+  }, []);
+
+  const handleLogoutConfirm = useCallback(async () => {
+    setShowLogoutModal(false);
+    setIsLoggingOut(true);
+    try {
+      // Llamar al endpoint de logout
+      await logoutService();
+    } catch (error) {
+      // Continuar con el logout incluso si hay error en el endpoint
+      console.error("Error al hacer logout:", error);
+    } finally {
+      // Hacer logout en Redux
+      dispatch(logoutAction());
+      // Redirigir a login
+      navigate("/login");
+    }
+  }, [dispatch, navigate]);
+
   return (
     <aside className="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
       <div className="sidebar-brand">
@@ -54,8 +106,8 @@ export function Sidebar() {
           <span className="brand-text fw-light">PyAutomation</span>
         </NavLink>
       </div>
-      <div className="sidebar-wrapper">
-        <nav className="mt-2">
+      <div className="sidebar-wrapper" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 57px)" }}>
+        <nav className="mt-2" style={{ flex: 1, overflowY: "auto" }}>
           <ul className="nav sidebar-menu flex-column" role="menu" data-lte-toggle="treeview" aria-label="Main navigation">
             {/* Communications */}
             <li className="nav-item">
@@ -156,7 +208,95 @@ export function Sidebar() {
             ))}
           </ul>
         </nav>
+        
+        {/* Botón de Logout - Fuera del nav, fijo al final */}
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", padding: "0.5rem 0", marginTop: "auto" }}>
+          <ul className="nav sidebar-menu flex-column">
+            <li className="nav-item">
+              <a
+                href="#"
+                className="nav-link"
+                role="button"
+                onClick={handleLogoutClick}
+                title={t("auth.logout")}
+                style={{ cursor: isLoggingOut ? "wait" : "pointer" }}
+              >
+                <i className="nav-icon bi bi-box-arrow-right" />
+                <p>
+                  {isLoggingOut ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      {t("auth.loggingOut")}
+                    </>
+                  ) : (
+                    t("auth.logout")
+                  )}
+                </p>
+              </a>
+            </li>
+          </ul>
+        </div>
       </div>
+
+      {/* Modal de confirmación de logout */}
+      {showLogoutModal && (
+        <div
+          className="modal fade show"
+          style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            // Cerrar modal al hacer clic fuera del contenido
+            if (e.target === e.currentTarget && !isLoggingOut) {
+              setShowLogoutModal(false);
+            }
+          }}
+        >
+          <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h5 className="modal-title">{t("auth.logoutConfirm")}</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowLogoutModal(false)}
+                  aria-label="Close"
+                  disabled={isLoggingOut}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <p>{t("auth.logoutConfirmMessage")}</p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowLogoutModal(false)}
+                  disabled={isLoggingOut}
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={handleLogoutConfirm}
+                  disabled={isLoggingOut}
+                >
+                  {isLoggingOut ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      {t("auth.loggingOut")}
+                    </>
+                  ) : (
+                    t("auth.signOut")
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
