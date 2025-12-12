@@ -14,6 +14,9 @@ import { AlarmsSummary } from "../pages/AlarmsSummary";
 import { Machines } from "../pages/Machines";
 import { UserManagement } from "../pages/UserManagement";
 import { Settings } from "../pages/Settings";
+import { Events } from "../pages/Events";
+import { OperationalLogs } from "../pages/OperationalLogs";
+import { Performance } from "../pages/Performance";
 import { MainLayout } from "../layouts/MainLayout";
 
 function ProtectedLayout() {
@@ -45,6 +48,9 @@ export function AppRoutes() {
         <Route path="/alarms/definitions" element={<Alarms />} />
         <Route path="/alarms/summary" element={<AlarmsSummary />} />
         <Route path="/machines" element={<Machines />} />
+        <Route path="/events" element={<Events />} />
+        <Route path="/operational-logs" element={<OperationalLogs />} />
+        <Route path="/performance" element={<Performance />} />
         <Route path="/user-management" element={<UserManagement />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
