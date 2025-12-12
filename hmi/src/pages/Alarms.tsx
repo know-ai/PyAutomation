@@ -5,6 +5,8 @@ import { getAlarms, createAlarm, updateAlarm, deleteAlarm, type Alarm, type Alar
 import { getTags, type Tag } from "../services/tags";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppSelector } from "../hooks/useAppSelector";
+import { useAppDispatch } from "../hooks/useAppDispatch";
+import { loadAllAlarms } from "../store/slices/alarmsSlice";
 
 export function Alarms() {
   const { t } = useTranslation();
@@ -178,6 +180,16 @@ export function Alarms() {
         total: 0,
         pages: 0,
       });
+      
+      // Update Redux buffer with all alarms (get all for buffer)
+      try {
+        const allAlarmsResponse = await getAlarms(1, 10000);
+        if (allAlarmsResponse.data) {
+          dispatch(loadAllAlarms(allAlarmsResponse.data));
+        }
+      } catch (_e) {
+        // Silently fail - buffer update is not critical
+      }
     } catch (e: any) {
       const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar alarmas";
       setError(errorMsg);
@@ -378,8 +390,8 @@ export function Alarms() {
       setShowDeleteModal(false);
       setAlarmToDelete(null);
       
-      // Recargar alarmas
-      loadAlarms(pagination.page, pagination.limit);
+      // Recargar alarmas and update buffer
+      await loadAlarms(pagination.page, pagination.limit);
     } catch (e: any) {
       const errorMsg = e?.response?.data?.message || e?.message || "Error al eliminar la alarma";
       setError(errorMsg);
@@ -520,8 +532,8 @@ export function Alarms() {
         description: "",
       });
       
-      // Recargar alarmas
-      loadAlarms(pagination.page, pagination.limit);
+      // Recargar alarmas and update buffer
+      await loadAlarms(pagination.page, pagination.limit);
     } catch (e: any) {
       const errorMsg = e?.response?.data?.message || e?.message || "Error al crear la alarma";
       setError(errorMsg);

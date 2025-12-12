@@ -136,3 +136,19 @@ export const filterAlarmsSummary = async (
   return data;
 };
 
+/**
+ * Reconoce una alarma por su nombre
+ */
+export const acknowledgeAlarm = async (alarmName: string): Promise<any> => {
+  const { data } = await api.post(`/alarms/acknowledge/${encodeURIComponent(alarmName)}`);
+  return data;
+};
+
+/**
+ * Reconoce todas las alarmas activas
+ */
+export const acknowledgeAllAlarms = async (): Promise<any> => {
+  const { data } = await api.post("/alarms/acknowledge_all");
+  return data;
+};
+

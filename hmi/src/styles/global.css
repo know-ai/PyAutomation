@@ -177,6 +177,17 @@ a {
   background-color: #2d323f;
 }
 
+/* Override table hover styles for footer alarms */
+.footer-alarms-table tbody tr.footer-alarm-row.alarm-unacknowledged:hover,
+.footer-alarms-table tbody tr.footer-alarm-row.alarm-acknowledged:hover {
+  background-color: #dc3545 !important;
+}
+
+.footer-alarms-table tbody tr.footer-alarm-row.alarm-unacknowledged:hover td,
+.footer-alarms-table tbody tr.footer-alarm-row.alarm-acknowledged:hover td {
+  background-color: #dc3545 !important;
+}
+
 [data-bs-theme="dark"] .navbar,
 .dark .navbar,
 .dark-mode .navbar {
@@ -475,6 +486,8 @@ a {
   position: sticky;
   bottom: 0;
   z-index: 1034;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 .app-main {
@@ -487,4 +500,130 @@ a {
 .app-content {
   min-height: 100%;
 }
+
+/* Footer Alarms Table Styles */
+
+.footer-alarms-table {
+  font-size: 0.7rem;
+  margin: 0 !important;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.footer-alarms-table thead th {
+  padding: 0.25rem 0.5rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--bs-border-color);
+  white-space: nowrap;
+}
+
+.footer-alarms-table tbody td {
+  padding: 0.25rem 0.5rem;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.footer-alarm-row {
+  transition: background-color 0.3s ease;
+}
+
+.footer-alarms-table tbody .footer-alarm-row.alarm-unacknowledged {
+  background-color: #dc3545 !important;
+  animation: blink-alarm 1s infinite;
+  color: #fff !important;
+}
+
+.footer-alarms-table tbody .footer-alarm-row.alarm-unacknowledged td {
+  background-color: #dc3545 !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.footer-alarms-table tbody .footer-alarm-row.alarm-unacknowledged td .badge {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.footer-alarms-table tbody .footer-alarm-row.alarm-acknowledged {
+  background-color: #dc3545 !important;
+  color: #fff !important;
+}
+
+.footer-alarms-table tbody .footer-alarm-row.alarm-acknowledged td {
+  background-color: #dc3545 !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.footer-alarms-table tbody .footer-alarm-row.alarm-acknowledged td .badge {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.footer-alarms-table tbody .footer-alarm-row:hover {
+  background-color: #dc3545 !important;
+  opacity: 0.9;
+}
+
+.footer-alarms-table tbody .footer-alarm-row:hover td {
+  background-color: #dc3545 !important;
+}
+
+.footer-alarm-row-empty {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+@keyframes blink-alarm {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.alarm-unacknowledged,
+.dark .footer-alarms-table tbody .footer-alarm-row.alarm-unacknowledged,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.alarm-unacknowledged {
+  background-color: #dc3545 !important;
+  color: #fff !important;
+}
+
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.alarm-unacknowledged td,
+.dark .footer-alarms-table tbody .footer-alarm-row.alarm-unacknowledged td,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.alarm-unacknowledged td {
+  background-color: #dc3545 !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.alarm-acknowledged,
+.dark .footer-alarms-table tbody .footer-alarm-row.alarm-acknowledged,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.alarm-acknowledged {
+  background-color: #dc3545 !important;
+  color: #fff !important;
+}
+
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.alarm-acknowledged td,
+.dark .footer-alarms-table tbody .footer-alarm-row.alarm-acknowledged td,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.alarm-acknowledged td {
+  background-color: #dc3545 !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row:hover,
+.dark .footer-alarms-table tbody .footer-alarm-row:hover,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row:hover {
+  background-color: #dc3545 !important;
+  opacity: 0.9;
+}
+
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row:hover td,
+.dark .footer-alarms-table tbody .footer-alarm-row:hover td,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row:hover td {
+  background-color: #dc3545 !important;
+}
+
 

@@ -32,9 +32,19 @@ const alarmsSlice = createSlice({
     clearAlarms: (state) => {
       state.alarms = {};
     },
+    loadAllAlarms: (state, action: PayloadAction<Alarm[]>) => {
+      // Replace all alarms with the new list
+      state.alarms = {};
+      action.payload.forEach((alarm) => {
+        const key = alarm.identifier || alarm.id || alarm.name;
+        if (key) {
+          state.alarms[String(key)] = alarm;
+        }
+      });
+    },
   },
 });
 
-export const { updateAlarm, updateAlarmsBatch, clearAlarms } = alarmsSlice.actions;
+export const { updateAlarm, updateAlarmsBatch, clearAlarms, loadAllAlarms } = alarmsSlice.actions;
 export default alarmsSlice.reducer;
 
