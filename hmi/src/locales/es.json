@@ -155,6 +155,42 @@
     "role": "Rol",
     "roleLevel": "Nivel de Rol",
     "level": "Nivel"
+  },
+  "settings": {
+    "title": "Configuración del Sistema",
+    "applicationSettings": "Configuración de la Aplicación",
+    "loggerPeriod": "Período del Logger (segundos)",
+    "logMaxBytes": "Tamaño Máximo de Log (bytes)",
+    "logBackupCount": "Número de Backups de Log",
+    "logLevel": "Nivel de Log",
+    "logLevels": {
+      "0": "NOTSET",
+      "10": "DEBUG",
+      "20": "INFO",
+      "30": "WARNING",
+      "40": "ERROR",
+      "50": "CRITICAL"
+    },
+    "saveSettings": "Guardar Configuración",
+    "exportConfig": "Exportar Configuración",
+    "importConfig": "Importar Configuración",
+    "loading": "Cargando configuración...",
+    "saving": "Guardando...",
+    "exporting": "Exportando...",
+    "importing": "Importando...",
+    "settingsSaved": "Configuración guardada exitosamente",
+    "settingsError": "Error al guardar la configuración",
+    "configExported": "Configuración exportada exitosamente",
+    "configExportedError": "Error al exportar la configuración",
+    "configImported": "Configuración importada exitosamente",
+    "configImportedError": "Error al importar la configuración",
+    "selectFile": "Seleccionar archivo JSON",
+    "noFileSelected": "No se ha seleccionado ningún archivo",
+    "invalidFile": "El archivo debe ser un archivo JSON",
+    "importSummary": "Resumen de importación",
+    "imported": "Importados",
+    "skipped": "Omitidos",
+    "errors": "Errores"
   }
 }
 

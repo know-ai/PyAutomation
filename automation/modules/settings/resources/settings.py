@@ -15,6 +15,25 @@ settings_model = api.model("settings_model", {
     'log_level': fields.Integer(required=False, min=0, max=50, description='Logging level (0=NOTSET, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL)')
 })
 
+@ns.route('/')
+class SettingsResource(Resource):
+    
+    @api.doc(security='apikey', description="Retrieves current application configuration settings.")
+    @api.response(200, "Settings retrieved successfully")
+    @api.response(401, "Unauthorized")
+    @Api.token_required(auth=True)
+    def get(self):
+        """
+        Get settings.
+
+        Retrieves current application configuration including logger period, log rotation settings, and logging level.
+        """
+        try:
+            config = app.get_app_config()
+            return config, 200
+        except Exception as e:
+            return {'message': f'Failed to retrieve settings: {str(e)}'}, 500
+
 @ns.route('/update')
 class SettingsUpdateResource(Resource):
     
@@ -63,29 +82,7 @@ class SettingsUpdateResource(Resource):
             app.update_log_level(log_level)
 
         return "Settings updated", 200
-
-@ns.route('/logger_period')
-class LoggerPeriodResource(Resource):
-    
-    @api.doc(security='apikey', description="Updates only the logger worker period.")
-    @api.response(200, "Logger period updated successfully")
-    @api.response(400, "Invalid logger period")
-    @Api.token_required(auth=True)
-    @ns.expect(settings_model)
-    def put(self):
-        """
-        Update logger period.
-
-        Updates the execution period of the logger worker.
-        """
-        logger_period = api.payload.get('logger_period')
         
-        if logger_period < 1.0:
-            return "Logger period must be >= 1.0", 400
-            
-        app.update_logger_period(logger_period)
-        
-        return "Logger period updated", 200
 
 @ns.route('/export_config')
 class ExportConfigResource(Resource):

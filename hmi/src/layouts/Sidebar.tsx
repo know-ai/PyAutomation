@@ -16,7 +16,6 @@ export function Sidebar() {
   const isAlarmsActive = location.pathname.startsWith("/alarms");
 
   const navItems = [
-    { to: "/communications", icon: "bi bi-hdd-network", labelKey: "navigation.communications" },
     { to: "/events", icon: "bi bi-calendar-event", labelKey: "navigation.events" },
     { to: "/operational-logs", icon: "bi bi-journal-text", labelKey: "navigation.operationalLogs" },
     { to: "/user-management", icon: "bi bi-people", labelKey: "navigation.userManagement" },
@@ -24,14 +23,14 @@ export function Sidebar() {
   ];
 
   const tagsSubItems = [
-    { to: "/tags/definitions", labelKey: "sidebar.tags.definitions" },
-    { to: "/tags/datalogger", labelKey: "sidebar.tags.dataLogger" },
-    { to: "/tags/trends", labelKey: "sidebar.tags.trends" },
+    { to: "/tags/definitions", labelKey: "sidebar.tags.definitions", icon: "bi bi-card-list" },
+    { to: "/tags/datalogger", labelKey: "sidebar.tags.dataLogger", icon: "bi bi-database" },
+    { to: "/tags/trends", labelKey: "sidebar.tags.trends", icon: "bi bi-graph-up" },
   ];
 
   const alarmsSubItems = [
-    { to: "/alarms/definitions", labelKey: "sidebar.alarms.definitions" },
-    { to: "/alarms/summary", labelKey: "sidebar.alarms.summary" },
+    { to: "/alarms/definitions", labelKey: "sidebar.alarms.definitions", icon: "bi bi-list-check" },
+    { to: "/alarms/summary", labelKey: "sidebar.alarms.summary", icon: "bi bi-clipboard-data" },
   ];
 
   // Expandir automáticamente el menú de Tags cuando se navega a una ruta de tags
@@ -98,7 +97,7 @@ export function Sidebar() {
                       className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
                       style={{ paddingLeft: "2rem" }}
                     >
-                      <i className="nav-icon bi bi-circle" style={{ fontSize: "0.5rem" }} />
+                      <i className={`nav-icon ${subItem.icon}`} />
                       <p>{t(subItem.labelKey)}</p>
                     </NavLink>
                   </li>
@@ -138,7 +137,7 @@ export function Sidebar() {
                       className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
                       style={{ paddingLeft: "2rem" }}
                     >
-                      <i className="nav-icon bi bi-circle" style={{ fontSize: "0.5rem" }} />
+                      <i className={`nav-icon ${subItem.icon}`} />
                       <p>{t(subItem.labelKey)}</p>
                     </NavLink>
                   </li>

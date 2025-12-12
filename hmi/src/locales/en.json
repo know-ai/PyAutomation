@@ -155,6 +155,42 @@
     "role": "Role",
     "roleLevel": "Role Level",
     "level": "Level"
+  },
+  "settings": {
+    "title": "System Settings",
+    "applicationSettings": "Application Settings",
+    "loggerPeriod": "Logger Period (seconds)",
+    "logMaxBytes": "Log Max Bytes",
+    "logBackupCount": "Log Backup Count",
+    "logLevel": "Log Level",
+    "logLevels": {
+      "0": "NOTSET",
+      "10": "DEBUG",
+      "20": "INFO",
+      "30": "WARNING",
+      "40": "ERROR",
+      "50": "CRITICAL"
+    },
+    "saveSettings": "Save Settings",
+    "exportConfig": "Export Configuration",
+    "importConfig": "Import Configuration",
+    "loading": "Loading configuration...",
+    "saving": "Saving...",
+    "exporting": "Exporting...",
+    "importing": "Importing...",
+    "settingsSaved": "Settings saved successfully",
+    "settingsError": "Error saving settings",
+    "configExported": "Configuration exported successfully",
+    "configExportedError": "Error exporting configuration",
+    "configImported": "Configuration imported successfully",
+    "configImportedError": "Error importing configuration",
+    "selectFile": "Select JSON file",
+    "noFileSelected": "No file selected",
+    "invalidFile": "File must be a JSON file",
+    "importSummary": "Import Summary",
+    "imported": "Imported",
+    "skipped": "Skipped",
+    "errors": "Errors"
   }
 }
 
