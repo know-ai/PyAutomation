@@ -1072,6 +1072,59 @@ class PyAutomation(Singleton):
 
         return message, "Password reset successfully"
 
+    @logging_error_handler
+    @validate_types(
+            target_username=str,
+            new_role_name=str,
+            output=tuple
+    )
+    def update_user_role(
+            self,
+            target_username:str,
+            new_role_name:str
+        )->tuple[str|None, str]:
+        r"""
+        Updates a user's role. Internal method without authorization restrictions.
+
+        **Parameters:**
+
+        * **target_username** (str): Username whose role will be updated.
+        * **new_role_name** (str): New role name to assign.
+
+        **Returns:**
+
+        * **tuple[str|None, str]**: Success message or None, and status message.
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> # Update user role (internal use, no restrictions)
+        >>> msg, status = app.update_user_role("john", "operator")
+        ```
+        """
+        # Get target user
+        target_user = users.get_by_username(username=target_username)
+        if not target_user:
+            return None, f"User {target_username} not found"
+
+        # Update role
+        if self.is_db_connected():
+            _, message = self.db_manager.update_role(username=target_username, new_role_name=new_role_name)
+            # Also update CVT user role
+            if target_user:
+                updated_user, cvt_message = users.update_role(username=target_username, new_role_name=new_role_name)
+                if updated_user:
+                    message = f"Role updated successfully for {target_username}"
+        else:
+            # Update CVT user role
+            updated_user, message = users.update_role(username=target_username, new_role_name=new_role_name)
+            if not updated_user:
+                return None, message
+
+        return message, "Role updated successfully"
+
     # OPCUA METHODS
     @logging_error_handler
     @validate_types(host=str|type(None), port=int|type(None), output=dict)

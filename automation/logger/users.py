@@ -93,6 +93,21 @@ class UsersLogger(BaseLogger):
             new_password=new_password
         )
     
+    @db_rollback
+    def update_role(self, username:str, new_role_name:str):
+        r"""
+        Updates a user's role in the database.
+
+        **Parameters:**
+
+        * **username** (str): Username of the user.
+        * **new_role_name** (str): New role name to assign.
+        """
+        return Users.update_role(
+            username=username,
+            new_role_name=new_role_name
+        )
+    
 class UsersLoggerEngine(BaseEngine):
     r"""
     Thread-safe Engine for the UsersLogger.
@@ -149,5 +164,17 @@ class UsersLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         _query["parameters"]["username"] = username
         _query["parameters"]["new_password"] = new_password
+        
+        return self.query(_query)
+    
+    def update_role(self, username:str, new_role_name:str):
+        r"""
+        Thread-safe role update.
+        """
+        _query = dict()
+        _query["action"] = "update_role"
+        _query["parameters"] = dict()
+        _query["parameters"]["username"] = username
+        _query["parameters"]["new_role_name"] = new_role_name
         
         return self.query(_query)

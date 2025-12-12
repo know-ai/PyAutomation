@@ -6,7 +6,7 @@ const navItems = [
   // { to: "/machines", icon: "bi bi-cpu", label: "Machines" },
   { to: "/events", icon: "bi bi-calendar-event", label: "Events" },
   { to: "/operational-logs", icon: "bi bi-journal-text", label: "Operational Logs" },
-  { to: "/performance", icon: "bi bi-speedometer2", label: "Performance" },
+  // { to: "/performance", icon: "bi bi-speedometer2", label: "Performance" },
   { to: "/user-management", icon: "bi bi-people", label: "User Management" },
   { to: "/settings", icon: "bi bi-gear", label: "Settings" },
 ];

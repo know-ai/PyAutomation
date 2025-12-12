@@ -331,6 +331,13 @@ class DBManager(Singleton):
         Updates a user's password in the database.
         """
         return self.users_logger.update_password(username=username, new_password=new_password)
+    
+    @logging_error_handler
+    def update_role(self, username:str, new_role_name:str):
+        r"""
+        Updates a user's role in the database.
+        """
+        return self.users_logger.update_role(username=username, new_role_name=new_role_name)
 
     @logging_error_handler
     def summary(self)->dict:

@@ -8,7 +8,7 @@ import {
   type EventResponse,
 } from "../services/events";
 import { getTimezones } from "../services/tags";
-import { getUsers, type User } from "../services/users";
+import { getAllUsers, type User } from "../services/users";
 import { createLog } from "../services/logs";
 
 type PresetDate = 
@@ -182,7 +182,7 @@ export function Events() {
       const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
       // Cargar usuarios
-      const users = await getUsers();
+      const users = await getAllUsers();
       setAvailableUsers(users);
 
       // Cargar timezones

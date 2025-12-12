@@ -321,6 +321,32 @@ class Users(Singleton):
 
         return generate_password_hash(value)
     
+    def update_role(self, username:str, new_role_name:str)->tuple:
+        r"""
+        Updates a user's role in the CVT.
+
+        **Parameters:**
+
+        * **username** (str): Username of the user whose role will be updated.
+        * **new_role_name** (str): New role name to assign.
+
+        **Returns:**
+
+        * **tuple**: (User object, status message)
+        """
+        user = self.get_by_username(username=username)
+        if not user:
+            return None, f"User {username} not found"
+        
+        roles = Roles()
+        new_role = roles.get_by_name(name=new_role_name)
+        if not new_role:
+            return None, f"Role {new_role_name} not found"
+        
+        user.role = new_role
+        
+        return user, f"Role updated successfully for {username}"
+    
     def _delete_all(self):
         
         self.__reset()

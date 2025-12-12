@@ -335,6 +335,34 @@ class Users(BaseModel):
         return user, f"Password updated successfully for {username}"
     
     @classmethod
+    def update_role(cls, username:str, new_role_name:str)->tuple:
+        r"""
+        Updates a user's role.
+
+        **Parameters:**
+
+        * **username** (str): Username of the user whose role will be updated.
+        * **new_role_name** (str): New role name to assign.
+
+        **Returns:**
+
+        * **tuple**: (User record, status message)
+        """
+        user = cls.get_or_none(username=username)
+        
+        if not user:
+            return None, f"User {username} not found"
+        
+        new_role = Roles.read_by_name(name=new_role_name)
+        if not new_role:
+            return None, f"Role {new_role_name} not found"
+        
+        user.role = new_role
+        user.save()
+        
+        return user, f"Role updated successfully for {username}"
+    
+    @classmethod
     def fill_cvt_users(cls):
         r"""
         Loads users from the database into the in-memory User Manager (CVT).

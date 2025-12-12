@@ -9,7 +9,7 @@ import {
   type LogResponse,
 } from "../services/logs";
 import { getTimezones } from "../services/tags";
-import { getUsers, type User } from "../services/users";
+import { getAllUsers, type User } from "../services/users";
 import { getAlarms, type Alarm } from "../services/alarms";
 
 type PresetDate = 
@@ -148,7 +148,7 @@ export function OperationalLogs() {
       const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
       // Cargar usuarios
-      const users = await getUsers();
+      const users = await getAllUsers();
       setAvailableUsers(users);
 
       // Cargar nombres de alarmas

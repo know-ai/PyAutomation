@@ -1,9 +1,10 @@
 from flask import request
+from flask_restx import reqparse
 from datetime import datetime, timezone
 import jwt
 import logging
 from flask_restx import Namespace, Resource
-from .models.users import signup_parser, login_parser, change_password_parser, reset_password_parser, create_tpt_parser
+from .models.users import signup_parser, login_parser, change_password_parser, reset_password_parser, update_role_parser, create_tpt_parser
 from .... import PyAutomation, TIMEZONE, _TIMEZONE
 from ....extensions.api import api
 from ....extensions import _api as Api
@@ -18,17 +19,49 @@ users = CVTUsers()
 @ns.route('/')
 class UsersCollection(Resource):
 
-    @api.doc(security='apikey', description="Retrieves a list of all registered users.")
+    parser = reqparse.RequestParser()
+    parser.add_argument('page', type=int, location='args', help='Page number', default=1)
+    parser.add_argument('limit', type=int, location='args', help='Items per page', default=20)
+
+    @api.doc(security='apikey', description="Retrieves a list of all registered users with pagination support.")
     @api.response(200, "Success")
+    @ns.expect(parser)
     @Api.token_required(auth=True)
     def get(self):
         """
         Get all users.
 
-        Retrieves a list of all users currently registered in the system.
+        Retrieves a paginated list of all users currently registered in the system.
+        Supports pagination via query parameters: page (default: 1) and limit (default: 20).
         """
-
-        return users.serialize(), 200
+        args = self.parser.parse_args()
+        page = args.get('page', 1)
+        limit = args.get('limit', 20)
+        
+        # Validate pagination parameters
+        if page < 1:
+            return {'message': 'Page number must be greater than 0'}, 400
+        if limit < 1:
+            return {'message': 'Limit must be greater than 0'}, 400
+        
+        # Get all users
+        all_users = users.serialize()
+        total = len(all_users)
+        
+        # Calculate pagination
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paginated_users = all_users[start_idx:end_idx]
+        
+        return {
+            'data': paginated_users,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total_records': total,
+                'total_pages': (total + limit - 1) // limit if total > 0 else 0
+            }
+        }, 200
 
 @ns.route('/signup')
 class SignUpResource(Resource):
@@ -312,6 +345,84 @@ class ResetPasswordResource(Resource):
         result, status_msg = app.reset_password(
             target_username=target_username,
             new_password=new_password
+        )
+
+        if result:
+            return {'message': status_msg}, 200
+        else:
+            return {'message': status_msg}, 400
+
+@ns.route('/update_role')
+class UpdateRoleResource(Resource):
+
+    @Api.validate_reqparser(reqparser=update_role_parser)
+    @api.doc(security='apikey', description="Updates a user's role with role-based authorization. Only admin and sudo users can access this endpoint.")
+    @api.response(200, "Role updated successfully")
+    @api.response(400, "Invalid request or authorization denied")
+    @api.response(401, "Unauthorized")
+    @api.response(403, "Forbidden - Admin or Sudo access required")
+    @ns.expect(update_role_parser)
+    @Api.token_required(auth=True)
+    def post(self):
+        """
+        Update user role.
+
+        Updates a user's role following role-based authorization rules:
+        - Only admin and sudo users can access this endpoint
+        - Sudo users can change roles of users with role_level >= admin (admin, operator, supervisor, guest, etc.)
+        - Admin users can change roles of users with role_level >= admin (admin, operator, supervisor, guest, etc.)
+        - Users can only change roles of users with equal or higher role level than themselves
+        """
+        # Get token from headers
+        token = None
+        if 'X-API-KEY' in request.headers:
+            token = request.headers['X-API-KEY']
+        elif 'Authorization' in request.headers:
+            token = request.headers['Authorization'].split('Token ')[-1]
+        
+        if not token:
+            return {'message': 'Token is required'}, 401
+
+        # Get current user from token
+        current_user = users.get_active_user(token=token)
+        if not current_user:
+            return {'message': 'Invalid token or user not found'}, 401
+
+        # Parse arguments
+        args = update_role_parser.parse_args()
+        target_username = args['target_username']
+        new_role_name = args['new_role_name']
+
+        # Get target user
+        target_user = users.get_by_username(username=target_username)
+        if not target_user:
+            return {'message': f'User {target_username} not found'}, 400
+
+        # Extract role information
+        current_role_name = current_user.role.name.upper()
+        current_role_level = current_user.role.level
+        target_role_name = target_user.role.name.upper()
+        target_role_level = target_user.role.level
+
+        # Check authorization: Only admin and sudo can access this endpoint
+        if current_role_name not in ["ADMIN", "SUDO"]:
+            return {'message': 'Only admin and sudo users can update user roles'}, 403
+
+        # Business logic validation - API level restrictions
+        # Users can only change roles of users with role_level >= their own level
+        if target_role_level < current_role_level:
+            return {'message': f'You cannot change roles of users with role level lower than {current_role_level}'}, 400
+
+        # Verify that the new role exists
+        from ....modules.users.roles import roles as cvt_roles
+        new_role = cvt_roles.get_by_name(name=new_role_name)
+        if not new_role:
+            return {'message': f'Role {new_role_name} not found'}, 400
+
+        # Call core method (internal, no restrictions)
+        result, status_msg = app.update_user_role(
+            target_username=target_username,
+            new_role_name=new_role_name
         )
 
         if result:
