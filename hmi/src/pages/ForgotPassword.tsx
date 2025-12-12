@@ -5,8 +5,10 @@ import { Card } from "../components/Card";
 import { Input } from "../components/Input";
 import { Button } from "../components/Button";
 import { forgotPassword } from "../services/auth";
+import { useTranslation } from "../hooks/useTranslation";
 
 export function ForgotPassword() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -21,11 +23,11 @@ export function ForgotPassword() {
     setLoading(true);
     try {
       const resp = await forgotPassword(username, newPassword);
-      setSuccess(resp?.message || "Contraseña restablecida");
+      setSuccess(resp?.message || t("auth.resetPassword"));
       setTimeout(() => navigate("/login"), 1500);
     } catch (err: any) {
       const message =
-        err?.response?.data?.message || err?.message || "Error al restablecer contraseña";
+        err?.response?.data?.message || err?.message || t("auth.resetPassword");
       setError(message);
     } finally {
       setLoading(false);
@@ -34,16 +36,16 @@ export function ForgotPassword() {
 
   return (
     <AuthLayout>
-      <Card title="Restablecer contraseña">
+      <Card title={t("auth.resetPassword")}>
         <form onSubmit={handleSubmit}>
           <Input
-            label="Usuario"
+            label={t("auth.username")}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
           />
           <Input
-            label="Nueva contraseña"
+            label={t("auth.newPassword")}
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
@@ -53,9 +55,9 @@ export function ForgotPassword() {
           {success && <div className="alert alert-success py-2">{success}</div>}
           <div className="d-flex justify-content-between align-items-center">
             <Button type="submit" loading={loading}>
-              Restablecer
+              {t("auth.resetPassword")}
             </Button>
-            <Link to="/login">Volver a login</Link>
+            <Link to="/login">{t("auth.backToLogin")}</Link>
           </div>
         </form>
       </Card>

@@ -2,8 +2,10 @@ import { useEffect, useState, useCallback } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getUsers, changePassword, resetPassword, updateUserRole, getRoles, getAllRoles, createRole, type User, type UsersResponse, type Role, type CreateRolePayload } from "../services/users";
+import { useTranslation } from "../hooks/useTranslation";
 
 export function UserManagement() {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -371,13 +373,13 @@ export function UserManagement() {
               <table className="table table-striped table-hover table-sm">
                 <thead className="table-light" style={{ position: "sticky", top: 0, zIndex: 10 }}>
                   <tr>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Nombre</th>
-                    <th>Apellido</th>
-                    <th>Rol</th>
-                    <th>Nivel de Rol</th>
-                    <th>Acciones</th>
+                    <th>{t("tables.username")}</th>
+                    <th>{t("tables.email")}</th>
+                    <th>{t("tables.name")}</th>
+                    <th>{t("tables.lastname")}</th>
+                    <th>{t("tables.role")}</th>
+                    <th>{t("tables.roleLevel")}</th>
+                    <th>{t("tables.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -743,8 +745,8 @@ export function UserManagement() {
                               <table className="table table-striped table-hover table-sm">
                                 <thead className="table-light">
                                   <tr>
-                                    <th>Nombre</th>
-                                    <th>Nivel</th>
+                                    <th>{t("tables.name")}</th>
+                                    <th>{t("tables.level")}</th>
                                   </tr>
                                 </thead>
                                 <tbody>

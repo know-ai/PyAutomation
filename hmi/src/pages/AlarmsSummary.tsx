@@ -9,6 +9,7 @@ import {
 } from "../services/alarms";
 import { getTimezones } from "../services/tags";
 import { createLog } from "../services/logs";
+import { useTranslation } from "../hooks/useTranslation";
 
 type PresetDate = 
   | "Last Hour"
@@ -63,6 +64,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 };
 
 export function AlarmsSummary() {
+  const { t } = useTranslation();
   const [alarmsSummary, setAlarmsSummary] = useState<AlarmSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -645,14 +647,14 @@ export function AlarmsSummary() {
               <table className="table table-striped table-hover table-sm">
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Nombre</th>
-                    <th>Tag</th>
-                    <th>Descripción</th>
-                    <th>Estado</th>
-                    <th>Fecha/Hora Alarma</th>
-                    <th>Fecha/Hora ACK</th>
-                    <th>Comentarios</th>
+                    <th>{t("tables.id")}</th>
+                    <th>{t("tables.name")}</th>
+                    <th>{t("tables.tag")}</th>
+                    <th>{t("tables.description")}</th>
+                    <th>{t("tables.status")}</th>
+                    <th>{t("tables.alarmDateTime")}</th>
+                    <th>{t("tables.ackDateTime")}</th>
+                    <th>{t("tables.comments")}</th>
                   </tr>
                 </thead>
                 <tbody>

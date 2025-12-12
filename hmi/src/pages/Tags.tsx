@@ -3,8 +3,10 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getTags, createTag, updateTag, deleteTag, getVariables, getUnitsByVariable, type Tag, type TagsResponse } from "../services/tags";
 import { listClients, getClientTree, type OpcUaClient, type OpcUaTreeNode } from "../services/opcua";
+import { useTranslation } from "../hooks/useTranslation";
 
 export function Tags() {
+  const { t } = useTranslation();
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -867,17 +869,17 @@ export function Tags() {
               <table className="table table-striped table-hover table-sm">
                 <thead>
                   <tr>
-                    <th>Nombre</th>
-                    <th>Display Name</th>
-                    <th>Variable</th>
-                    <th>Unit</th>
-                    <th>Display Unit</th>
-                    <th>Data Type</th>
-                    <th>OPC UA Address</th>
-                    <th>Node Namespace</th>
-                    <th>Scan Time (ms)</th>
-                    <th>Dead Band</th>
-                    <th>Acciones</th>
+                    <th>{t("tables.name")}</th>
+                    <th>{t("tables.displayName")}</th>
+                    <th>{t("tables.variable")}</th>
+                    <th>{t("tables.unit")}</th>
+                    <th>{t("tables.displayUnit")}</th>
+                    <th>{t("tables.dataType")}</th>
+                    <th>{t("tables.opcuaAddress")}</th>
+                    <th>{t("tables.nodeNamespace")}</th>
+                    <th>{t("tables.scanTime")}</th>
+                    <th>{t("tables.deadBand")}</th>
+                    <th>{t("tables.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>

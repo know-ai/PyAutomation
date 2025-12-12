@@ -3,6 +3,7 @@ import type { PropsWithChildren } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { useTheme } from "../hooks/useTheme";
+import { useTranslation } from "../hooks/useTranslation";
 
 export function MainLayout({ children }: PropsWithChildren) {
   // Aplicar el tema

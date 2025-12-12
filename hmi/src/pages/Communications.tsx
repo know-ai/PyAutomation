@@ -11,6 +11,7 @@ import {
   type OpcUaTreeNode,
   type OpcUaNodeValue,
 } from "../services/opcua";
+import { useTranslation } from "../hooks/useTranslation";
 
 type SelectedNode = {
   client: string;
@@ -250,6 +251,7 @@ const loadSelectedNodes = (): SelectedNode[] => {
 };
 
 export function Communications() {
+  const { t } = useTranslation();
   const [clients, setClients] = useState<string[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>(() => {
     // Cargar cliente seleccionado previamente desde localStorage
@@ -312,7 +314,7 @@ export function Communications() {
         localStorage.removeItem(SELECTED_CLIENT_STORAGE_KEY);
       }
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al obtener clientes OPC UA";
+      const errorMsg = e?.response?.data?.message || e?.message || t("communications.title");
       setError(errorMsg);
       setClients([]);
       setSelectedClient("");
@@ -337,7 +339,7 @@ export function Communications() {
       console.log("Tree array to set:", treeArray);
       setTree(treeArray);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "No se pudo obtener el árbol OPC UA";
+      const errorMsg = e?.response?.data?.message || e?.message || t("communications.explorer");
       setError(errorMsg);
       setTree([]);
       console.error("Error loading tree:", e);
@@ -597,7 +599,7 @@ export function Communications() {
 
   const handleAddClient = async () => {
     if (!form.name || !form.host || !form.port) {
-      setError("Por favor complete todos los campos requeridos");
+      setError(t("common.error"));
       return;
     }
     try {
@@ -610,7 +612,7 @@ export function Communications() {
       setSelectedClient(clientName);
       localStorage.setItem(SELECTED_CLIENT_STORAGE_KEY, clientName);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "No se pudo crear el cliente";
+      const errorMsg = e?.response?.data?.message || e?.message || t("communications.title");
       setError(errorMsg);
     }
   };
@@ -641,7 +643,7 @@ export function Communications() {
       }
       await loadClients();
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "No se pudo eliminar el cliente";
+      const errorMsg = e?.response?.data?.message || e?.message || t("communications.title");
       setError(errorMsg);
     }
   };
@@ -650,7 +652,7 @@ export function Communications() {
     <div className="row">
       <div className="col-lg-4">
         <Card
-          title="Clientes OPC UA"
+          title={t("communications.title")}
           footer={
             <div className="d-flex gap-2">
               <Button 
@@ -658,27 +660,27 @@ export function Communications() {
                 onClick={handleAddClient}
                 disabled={!isFormComplete}
               >
-                Crear
+                {t("communications.create")}
               </Button>
               <Button
                 variant="danger"
                 onClick={() => selectedClient && handleRemoveClient(selectedClient)}
                 disabled={!selectedClient}
               >
-                Remover
+                {t("communications.remove")}
               </Button>
             </div>
           }
         >
           <div className="mb-2">
-            <label className="form-label mb-1">Cliente seleccionado</label>
+            <label className="form-label mb-1">{t("communications.selectedClient")}</label>
             <select
               className="form-select"
               value={selectedClient}
               onChange={(e) => setSelectedClient(e.target.value)}
               disabled={loadingClients}
             >
-              <option value="">{loadingClients ? "Cargando..." : "Seleccione cliente"}</option>
+              <option value="">{loadingClients ? t("communications.loading") : t("communications.selectClient")}</option>
               {clients.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -690,7 +692,7 @@ export function Communications() {
             <div className="col-12 col-md-4">
               <input
                 className="form-control"
-                placeholder="Nombre"
+                placeholder={t("communications.clientName")}
                 value={form.name}
                 onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
               />
@@ -698,7 +700,7 @@ export function Communications() {
             <div className="col-12 col-md-5">
               <input
                 className="form-control"
-                placeholder="Host"
+                placeholder={t("communications.host")}
                 value={form.host}
                 onChange={(e) => setForm((p) => ({ ...p, host: e.target.value }))}
               />
@@ -706,7 +708,7 @@ export function Communications() {
             <div className="col-12 col-md-3">
               <input
                 className="form-control"
-                placeholder="Puerto"
+                placeholder={t("communications.port")}
                 type="number"
                 value={form.port}
                 onChange={(e) => setForm((p) => ({ ...p, port: Number(e.target.value) }))}
@@ -716,20 +718,20 @@ export function Communications() {
           {error && <div className="alert alert-danger mt-2 mb-0 py-2">{error}</div>}
         </Card>
 
-        <Card title={`Explorador OPC UA ${selectedClient ? `(${selectedClient})` : ""}`}>
+        <Card title={`${t("communications.explorer")} ${selectedClient ? `(${selectedClient})` : ""}`}>
           {!selectedClient && (
-            <div className="text-muted">Seleccione un cliente para ver el árbol de nodos</div>
+            <div className="text-muted">{t("communications.selectClientToView")}</div>
           )}
           {selectedClient && loadingTree && (
             <div className="text-muted">
               <div className="spinner-border spinner-border-sm me-2" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t("communications.loading")}</span>
               </div>
-              Cargando árbol...
+              {t("communications.loadingTree")}
             </div>
           )}
           {selectedClient && !loadingTree && tree.length === 0 && (
-            <div className="text-muted">Sin nodos disponibles</div>
+            <div className="text-muted">{t("communications.noNodesAvailable")}</div>
           )}
           {selectedClient && !loadingTree && tree.length > 0 && (
             <div
@@ -744,7 +746,7 @@ export function Communications() {
             >
               <div className="mb-2 d-flex justify-content-between align-items-center">
                 <small className="text-muted">
-                  Ctrl+Click en variables para selección múltiple
+                  {t("communications.ctrlClickForMultiSelect")}
                 </small>
                 {selectedTreeNodes.length > 0 && (
                   <Button
@@ -752,7 +754,7 @@ export function Communications() {
                     className="btn-sm"
                     onClick={() => setSelectedTreeNodes([])}
                   >
-                    Limpiar selección ({selectedTreeNodes.length})
+                    {t("communications.clearSelection")} ({selectedTreeNodes.length})
                   </Button>
                 )}
               </div>
@@ -783,7 +785,7 @@ export function Communications() {
 
       <div className="col-lg-8">
         <Card
-          title="Tags seleccionados"
+          title={t("communications.selectedTags")}
           footer={
             <div className="d-flex justify-content-between align-items-center">
               <div className="form-check">
@@ -795,7 +797,7 @@ export function Communications() {
                   onChange={(e) => setPolling(e.target.checked)}
                 />
                 <label className="form-check-label ms-1" htmlFor="pollingToggle">
-                  Polling cada 1s
+                  {t("communications.pollingEvery1s")}
                 </label>
               </div>
               <Button
@@ -806,7 +808,7 @@ export function Communications() {
                 }}
                 disabled={selectedNodes.length === 0}
               >
-                Limpiar
+                {t("common.clear")}
               </Button>
             </div>
           }
@@ -818,21 +820,21 @@ export function Communications() {
             onDrop={onDropNode}
           >
             <div className="text-muted small mb-2">
-              Arrastra nodos desde el árbol OPC UA para monitorearlos.
+              {t("communications.dragNodesToMonitor")}
             </div>
             {selectedNodes.length === 0 && (
-              <div className="text-muted">Sin nodos seleccionados.</div>
+              <div className="text-muted">{t("communications.noNodesSelected")}</div>
             )}
             {selectedNodes.length > 0 && (
               <div className="table-responsive">
                 <table className="table table-sm align-middle mb-0">
                   <thead>
                     <tr>
-                      <th>Namespace</th>
-                      <th>Display Name</th>
-                      <th>Valor</th>
-                      <th>Timestamp</th>
-                      <th>Estado</th>
+                      <th>{t("communications.namespace")}</th>
+                      <th>{t("communications.displayName")}</th>
+                      <th>{t("communications.value")}</th>
+                      <th>{t("communications.timestamp")}</th>
+                      <th>{t("communications.status")}</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -878,7 +880,7 @@ export function Communications() {
                               });
                             }}
                           >
-                            Quitar
+                            {t("communications.remove")}
                           </Button>
                         </td>
                       </tr>

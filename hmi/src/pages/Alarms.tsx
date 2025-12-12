@@ -3,8 +3,10 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getAlarms, createAlarm, updateAlarm, deleteAlarm, type Alarm, type AlarmsResponse } from "../services/alarms";
 import { getTags, type Tag } from "../services/tags";
+import { useTranslation } from "../hooks/useTranslation";
 
 export function Alarms() {
+  const { t } = useTranslation();
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -508,13 +510,13 @@ export function Alarms() {
               <table className="table table-striped table-hover table-sm">
                 <thead>
                   <tr>
-                    <th>Nombre</th>
-                    <th>Tag</th>
-                    <th>Tipo</th>
-                    <th>Valor de Disparo</th>
-                    <th>Descripción</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
+                    <th>{t("tables.name")}</th>
+                    <th>{t("tables.tag")}</th>
+                    <th>{t("tables.type")}</th>
+                    <th>{t("tables.triggerValue")}</th>
+                    <th>{t("tables.description")}</th>
+                    <th>{t("tables.state")}</th>
+                    <th>{t("tables.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>

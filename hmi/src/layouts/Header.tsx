@@ -11,14 +11,18 @@ import { useTheme } from "../hooks/useTheme";
 import { logout as logoutService } from "../services/auth";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { logout as logoutAction } from "../store/slices/authSlice";
+import { useTranslation } from "../hooks/useTranslation";
+import { setLocale } from "../store/slices/localeSlice";
 
 export function Header() {
   const { mode, toggle } = useTheme();
+  const { t, locale } = useTranslation();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
 
   // Prevenir scroll del body cuando el modal está abierto
   useEffect(() => {
@@ -42,6 +46,20 @@ export function Header() {
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
   }, [showLogoutModal, isLoggingOut]);
+
+  // Cerrar dropdown de idioma al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showLanguageDropdown) {
+        const target = e.target as HTMLElement;
+        if (!target.closest(".nav-item[style*='position: relative']")) {
+          setShowLanguageDropdown(false);
+        }
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [showLanguageDropdown]);
   const [dbType, setDbType] = useState<"postgres" | "mysql" | "sqlite">("postgres");
   const [dbName, setDbName] = useState("");
   const [dbHost, setDbHost] = useState("");
@@ -220,11 +238,11 @@ export function Header() {
         if (response.connected) {
           setDbConnected(true);
         } else {
-          setConnectionError(response.message || "Error al conectar");
+          setConnectionError(response.message || t("database.connect"));
         }
       }
     } catch (error: any) {
-      const errorMsg = error?.response?.data?.message || error?.message || "Error al conectar/desconectar";
+      const errorMsg = error?.response?.data?.message || error?.message || t("database.connect");
       setConnectionError(errorMsg);
       setDbConnected(false);
     } finally {
@@ -260,7 +278,7 @@ export function Header() {
           <input
             className="form-control form-control-sm"
             style={{ width: "120px", flexShrink: 0 }}
-            placeholder={dbType === "sqlite" ? "dbFile" : "dbName"}
+            placeholder={dbType === "sqlite" ? t("communications.dbFile") : t("communications.dbName")}
             value={dbName}
             onChange={(e) => setDbName(e.target.value)}
             disabled={dbConnected}
@@ -270,20 +288,20 @@ export function Header() {
               <input
                 className="form-control form-control-sm"
                 style={{ width: "140px", flexShrink: 0 }}
-                placeholder="dbHostName (IP)"
+                placeholder={t("communications.dbHostName")}
                 type="text"
                 inputMode="decimal"
                 pattern="^[0-9]{1,3}(\\.[0-9]{1,3}){3}$"
                 maxLength={15}
                 value={dbHost}
                 onChange={(e) => setDbHost(formatIp(e.target.value))}
-                title="Ingrese una IP válida, e.g., 192.168.0.10"
+                title={t("communications.enterValidIP")}
                 disabled={dbConnected}
               />
               <input
                 className="form-control form-control-sm"
                 style={{ width: "80px", flexShrink: 0 }}
-                placeholder="dbPort"
+                placeholder={t("communications.dbPort")}
                 inputMode="numeric"
                 value={dbPort}
                 onChange={(e) => setDbPort(e.target.value)}
@@ -292,7 +310,7 @@ export function Header() {
               <input
                 className="form-control form-control-sm"
                 style={{ width: "120px", flexShrink: 0 }}
-                placeholder="dbUser"
+                placeholder={t("communications.dbUser")}
                 value={dbUser}
                 onChange={(e) => setDbUser(e.target.value)}
                 disabled={dbConnected}
@@ -300,7 +318,7 @@ export function Header() {
               <input
                 className="form-control form-control-sm"
                 style={{ width: "120px", flexShrink: 0 }}
-                placeholder="dbPassword"
+                placeholder={t("communications.dbPassword")}
                 type="password"
                 value={dbPassword}
                 onChange={(e) => setDbPassword(e.target.value)}
@@ -312,7 +330,7 @@ export function Header() {
             type="button"
             className={`btn btn-sm ${dbConnected ? "btn-danger" : "btn-success"}`}
             onClick={handleConnectDisconnect}
-            title={dbConnected ? "Desconectar de la base de datos" : "Conectar a la base de datos"}
+            title={dbConnected ? t("communications.disconnectFromDatabase") : t("communications.connectToDatabase")}
             style={{ flexShrink: 0 }}
             disabled={isConnecting}
           >
@@ -332,6 +350,56 @@ export function Header() {
         </form>
 
         <ul className="navbar-nav ms-auto">
+          <li className="nav-item" style={{ position: "relative" }}>
+            <a
+              className="nav-link"
+              href="#"
+              role="button"
+              onClick={(e) => {
+                e.preventDefault();
+                setShowLanguageDropdown(!showLanguageDropdown);
+              }}
+              title="Select language"
+            >
+              {locale === "en" ? "🇺🇸 EN" : "🇪🇸 ES"}
+            </a>
+            {showLanguageDropdown && (
+              <div
+                className="dropdown-menu dropdown-menu-end show"
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "100%",
+                  zIndex: 1000,
+                  minWidth: "150px",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <a
+                  className={`dropdown-item ${locale === "en" ? "active" : ""}`}
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    dispatch(setLocale("en"));
+                    setShowLanguageDropdown(false);
+                  }}
+                >
+                  🇺🇸 English
+                </a>
+                <a
+                  className={`dropdown-item ${locale === "es" ? "active" : ""}`}
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    dispatch(setLocale("es"));
+                    setShowLanguageDropdown(false);
+                  }}
+                >
+                  🇪🇸 Español
+                </a>
+              </div>
+            )}
+          </li>
           <li className="nav-item">
             <a
               className="nav-link"
@@ -341,7 +409,7 @@ export function Header() {
                 e.preventDefault();
                 toggle();
               }}
-              title={mode === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+              title={mode === "dark" ? t("header.switchToLight") : t("header.switchToDark")}
             >
               {mode === "dark" ? (
                 <i className="bi bi-sun-fill" />
@@ -351,7 +419,13 @@ export function Header() {
             </a>
           </li>
           <li className="nav-item">
-            <a className="nav-link" href="#" role="button" onClick={toggleFullscreen}>
+            <a
+              className="nav-link"
+              href="#"
+              role="button"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? t("header.exitFullscreen") : t("header.fullscreen")}
+            >
               {isFullscreen ? (
                 <i className="bi bi-fullscreen-exit" />
               ) : (
@@ -365,7 +439,7 @@ export function Header() {
               href="#"
               role="button"
               onClick={handleLogoutClick}
-              title="Cerrar sesión"
+              title={t("auth.logout")}
               style={{ cursor: isLoggingOut ? "wait" : "pointer" }}
             >
               {isLoggingOut ? (
@@ -396,7 +470,7 @@ export function Header() {
           <div className="modal-dialog modal-dialog-centered" role="document">
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <h5 className="modal-title">Confirmar cierre de sesión</h5>
+                <h5 className="modal-title">{t("auth.logoutConfirm")}</h5>
                 <button
                   type="button"
                   className="btn-close"
@@ -406,7 +480,7 @@ export function Header() {
                 ></button>
               </div>
               <div className="modal-body">
-                <p>¿Está seguro de que desea cerrar sesión?</p>
+                <p>{t("auth.logoutConfirmMessage")}</p>
               </div>
               <div className="modal-footer">
                 <button
@@ -415,7 +489,7 @@ export function Header() {
                   onClick={() => setShowLogoutModal(false)}
                   disabled={isLoggingOut}
                 >
-                  Cancelar
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="button"
@@ -426,10 +500,10 @@ export function Header() {
                   {isLoggingOut ? (
                     <>
                       <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      Cerrando...
+                      {t("auth.loggingOut")}
                     </>
                   ) : (
-                    "Cerrar sesión"
+                    t("auth.signOut")
                   )}
                 </button>
               </div>

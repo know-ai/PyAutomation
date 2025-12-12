@@ -6,11 +6,12 @@
     <title>PyAutomation HMI</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
     <script>
-      // Aplicar tema antes de que React se monte para evitar flash
+      // Aplicar tema e idioma antes de que React se monte para evitar flash
       (function() {
         try {
-          const saved = localStorage.getItem('pyautomation.theme');
-          const theme = saved === 'dark' ? 'dark' : 
+          // Aplicar tema
+          const savedTheme = localStorage.getItem('pyautomation.theme');
+          const theme = savedTheme === 'dark' ? 'dark' : 
                        (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
           
           if (theme === 'dark') {
@@ -22,6 +23,14 @@
             document.documentElement.setAttribute('data-bs-theme', 'light');
             document.body.classList.add('light');
           }
+
+          // Aplicar idioma
+          const savedLocale = localStorage.getItem('pyautomation.locale');
+          const browserLang = navigator.language.split('-')[0];
+          const locale = savedLocale === 'en' || savedLocale === 'es' 
+            ? savedLocale 
+            : (browserLang === 'es' ? 'es' : 'en');
+          document.documentElement.setAttribute('lang', locale);
         } catch (e) {
           // ignore
         }

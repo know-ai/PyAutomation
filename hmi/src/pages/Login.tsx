@@ -8,8 +8,10 @@ import { login } from "../services/auth";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { loginFailure, loginStart, loginSuccess } from "../store/slices/authSlice";
 import { showToast } from "../utils/toast";
+import { useTranslation } from "../hooks/useTranslation";
 
 export function Login() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const [username, setUsername] = useState("");
@@ -24,8 +26,12 @@ export function Login() {
       try {
         const pendingToast = sessionStorage.getItem("pendingToast");
         if (pendingToast) {
-          const { message, type, duration } = JSON.parse(pendingToast);
+          const toastData = JSON.parse(pendingToast);
           sessionStorage.removeItem("pendingToast");
+          // Si tiene messageKey, traducirlo; si tiene message, usarlo directamente
+          const message = toastData.messageKey ? t(toastData.messageKey) : toastData.message;
+          const type = toastData.type || "warning";
+          const duration = toastData.duration || 0;
           // Mostrar el toast después de asegurar que el DOM esté completamente listo
           showToast(message, type, duration);
         }
@@ -40,7 +46,7 @@ export function Login() {
         setTimeout(showPendingToast, 100);
       });
     });
-  }, []);
+  }, [t]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,11 +57,11 @@ export function Login() {
       const resp = await login({ username, password });
       const token = resp?.apiKey || resp?.token || resp?.api_key || null;
       const user = resp?.user || { username };
-      if (!token) throw new Error("Token no recibido");
+      if (!token) throw new Error("Token not received");
       dispatch(loginSuccess({ token, user }));
       navigate("/communications");
     } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || "Error al iniciar sesión";
+      const message = err?.response?.data?.message || err?.message || t("auth.login");
       setError(message);
       dispatch(loginFailure(message));
     } finally {
@@ -70,7 +76,7 @@ export function Login() {
           <h1 className="m-0">
             <b>Py</b>Automation
           </h1>
-          <p className="mb-0 text-muted">Inicia sesión para continuar</p>
+          <p className="mb-0 text-muted">{t("auth.loginToContinue")}</p>
         </div>
         <div className="card-body login-card-body">
           <form onSubmit={handleSubmit} className="mb-3">
@@ -80,12 +86,12 @@ export function Login() {
                   id="loginUsername"
                   type="text"
                   className="form-control"
-                  placeholder="Usuario"
+                  placeholder={t("auth.username")}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
                 />
-                <label htmlFor="loginUsername">Usuario</label>
+                <label htmlFor="loginUsername">{t("auth.username")}</label>
               </div>
               <div className="input-group-text">
                 <span className="fas fa-user" aria-hidden="true" />
@@ -98,12 +104,12 @@ export function Login() {
                   id="loginPassword"
                   type="password"
                   className="form-control"
-                  placeholder="Contraseña"
+                  placeholder={t("auth.password")}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
-                <label htmlFor="loginPassword">Contraseña</label>
+                <label htmlFor="loginPassword">{t("auth.password")}</label>
               </div>
               <div className="input-group-text">
                 <span className="fas fa-lock" aria-hidden="true" />
@@ -121,13 +127,13 @@ export function Login() {
                     onChange={(e) => setRemember(e.target.checked)}
                   />
                   <label className="form-check-label" htmlFor="rememberMe">
-                    Recordarme
+                    {t("auth.rememberMe")}
                   </label>
                 </div>
               </div>
               <div className="col-5 text-end">
                 <Button type="submit" loading={loading} className="w-100">
-                  Entrar
+                  {t("auth.login")}
                 </Button>
               </div>
             </div>
@@ -137,10 +143,10 @@ export function Login() {
 
           <div className="d-grid gap-2 mb-2">
             <Link className="text-center d-block" to="/forgot-password">
-              ¿Olvidó su contraseña?
+              {t("auth.forgotPassword")}
             </Link>
             <Link className="text-center d-block" to="/signup">
-              Crear una nueva cuenta
+              {t("auth.createNewAccount")}
             </Link>
           </div>
         </div>

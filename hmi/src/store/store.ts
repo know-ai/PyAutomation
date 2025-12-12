@@ -1,6 +1,7 @@
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer, { AUTH_STORAGE_KEY } from "./slices/authSlice";
 import themeReducer, { loadThemeFromStorage } from "./slices/themeSlice";
+import localeReducer, { loadLocaleFromStorage } from "./slices/localeSlice";
 
 const loadAuthState = () => {
   try {
@@ -22,14 +23,25 @@ const loadThemeState = () => {
   }
 };
 
+const loadLocaleState = () => {
+  try {
+    const locale = loadLocaleFromStorage();
+    return { locale: { locale } };
+  } catch (_e) {
+    return undefined;
+  }
+};
+
 export const store = configureStore({
   reducer: {
     auth: authReducer,
     theme: themeReducer,
+    locale: localeReducer,
   },
   preloadedState: {
     ...loadAuthState(),
     ...loadThemeState(),
+    ...loadLocaleState(),
   },
 });
 

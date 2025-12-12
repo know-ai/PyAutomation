@@ -10,6 +10,7 @@ import {
 import { getTimezones } from "../services/tags";
 import { getAllUsers, type User } from "../services/users";
 import { createLog } from "../services/logs";
+import { useTranslation } from "../hooks/useTranslation";
 
 type PresetDate = 
   | "Last Hour"
@@ -62,6 +63,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 };
 
 export function Events() {
+  const { t } = useTranslation();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -710,14 +712,14 @@ export function Events() {
               <table className="table table-striped table-hover table-sm">
                 <thead className="table-light" style={{ position: "sticky", top: 0, zIndex: 10 }}>
                   <tr>
-                    <th>ID</th>
-                    <th>Timestamp</th>
-                    <th>Usuario</th>
-                    <th>Mensaje</th>
-                    <th>Descripción</th>
-                    <th>Clasificación</th>
-                    <th>Prioridad</th>
-                    <th>Criticidad</th>
+                    <th>{t("tables.id")}</th>
+                    <th>{t("tables.timestamp")}</th>
+                    <th>{t("tables.user")}</th>
+                    <th>{t("tables.message")}</th>
+                    <th>{t("tables.description")}</th>
+                    <th>{t("tables.classification")}</th>
+                    <th>{t("tables.priority")}</th>
+                    <th>{t("tables.criticity")}</th>
                   </tr>
                 </thead>
                 <tbody>

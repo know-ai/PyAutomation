@@ -54,10 +54,10 @@ api.interceptors.response.use(
         store.dispatch(logout());
 
         // Guardar el mensaje del toast en sessionStorage para mostrarlo después de la redirección
-        const toastMessage = "Se ha iniciado sesión en otro dispositivo. Por favor, inicie sesión nuevamente.";
+        // El mensaje se traducirá en la página de login usando la clave de traducción
         try {
           sessionStorage.setItem("pendingToast", JSON.stringify({
-            message: toastMessage,
+            messageKey: "auth.sessionExpired", // Clave de traducción
             type: "warning",
             duration: 0 // 0 = no auto-cerrar, solo con el botón
           }));

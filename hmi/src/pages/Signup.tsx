@@ -5,8 +5,10 @@ import { Card } from "../components/Card";
 import { Input } from "../components/Input";
 import { Button } from "../components/Button";
 import { signup } from "../services/auth";
+import { useTranslation } from "../hooks/useTranslation";
 
 export function Signup() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [form, setForm] = useState({
     username: "",
@@ -36,7 +38,7 @@ export function Signup() {
       });
       navigate("/login");
     } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || "Error al registrarse";
+      const message = err?.response?.data?.message || err?.message || t("auth.signup");
       setError(message);
     } finally {
       setLoading(false);
@@ -45,23 +47,23 @@ export function Signup() {
 
   return (
     <AuthLayout>
-      <Card title="Crear cuenta">
+      <Card title={t("auth.createAccount")}>
         <form onSubmit={handleSubmit}>
           <Input
-            label="Usuario"
+            label={t("auth.username")}
             value={form.username}
             onChange={(e) => onChange("username", e.target.value)}
             required
           />
           <Input
-            label="Email"
+            label={t("auth.email")}
             type="email"
             value={form.email}
             onChange={(e) => onChange("email", e.target.value)}
             required
           />
           <Input
-            label="Contraseña"
+            label={t("auth.password")}
             type="password"
             value={form.password}
             onChange={(e) => onChange("password", e.target.value)}
@@ -70,14 +72,14 @@ export function Signup() {
           <div className="row">
             <div className="col-6">
               <Input
-                label="Nombre"
+                label={t("auth.name")}
                 value={form.name}
                 onChange={(e) => onChange("name", e.target.value)}
               />
             </div>
             <div className="col-6">
               <Input
-                label="Apellido"
+                label={t("auth.lastname")}
                 value={form.lastname}
                 onChange={(e) => onChange("lastname", e.target.value)}
               />
@@ -86,9 +88,9 @@ export function Signup() {
           {error && <div className="alert alert-danger py-2">{error}</div>}
           <div className="d-flex justify-content-between align-items-center">
             <Button type="submit" loading={loading}>
-              Registrarse
+              {t("auth.signup")}
             </Button>
-            <Link to="/login">Volver a login</Link>
+            <Link to="/login">{t("auth.backToLogin")}</Link>
           </div>
         </form>
       </Card>

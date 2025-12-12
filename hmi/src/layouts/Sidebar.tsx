@@ -1,28 +1,9 @@
 import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-
-const navItems = [
-  { to: "/communications", icon: "bi bi-hdd-network", label: "Communications" },
-  // { to: "/machines", icon: "bi bi-cpu", label: "Machines" },
-  { to: "/events", icon: "bi bi-calendar-event", label: "Events" },
-  { to: "/operational-logs", icon: "bi bi-journal-text", label: "Operational Logs" },
-  // { to: "/performance", icon: "bi bi-speedometer2", label: "Performance" },
-  { to: "/user-management", icon: "bi bi-people", label: "User Management" },
-  { to: "/settings", icon: "bi bi-gear", label: "Settings" },
-];
-
-const tagsSubItems = [
-  { to: "/tags/definitions", label: "Definitions" },
-  { to: "/tags/datalogger", label: "DataLogger" },
-  { to: "/tags/trends", label: "Trends" },
-];
-
-const alarmsSubItems = [
-  { to: "/alarms/definitions", label: "Definitions" },
-  { to: "/alarms/summary", label: "Summary" },
-];
+import { useTranslation } from "../hooks/useTranslation";
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [tagsExpanded, setTagsExpanded] = useState(
     location.pathname.startsWith("/tags")
@@ -33,6 +14,25 @@ export function Sidebar() {
 
   const isTagsActive = location.pathname.startsWith("/tags");
   const isAlarmsActive = location.pathname.startsWith("/alarms");
+
+  const navItems = [
+    { to: "/communications", icon: "bi bi-hdd-network", labelKey: "navigation.communications" },
+    { to: "/events", icon: "bi bi-calendar-event", labelKey: "navigation.events" },
+    { to: "/operational-logs", icon: "bi bi-journal-text", labelKey: "navigation.operationalLogs" },
+    { to: "/user-management", icon: "bi bi-people", labelKey: "navigation.userManagement" },
+    { to: "/settings", icon: "bi bi-gear", labelKey: "navigation.settings" },
+  ];
+
+  const tagsSubItems = [
+    { to: "/tags/definitions", labelKey: "sidebar.tags.definitions" },
+    { to: "/tags/datalogger", labelKey: "sidebar.tags.dataLogger" },
+    { to: "/tags/trends", labelKey: "sidebar.tags.trends" },
+  ];
+
+  const alarmsSubItems = [
+    { to: "/alarms/definitions", labelKey: "sidebar.alarms.definitions" },
+    { to: "/alarms/summary", labelKey: "sidebar.alarms.summary" },
+  ];
 
   // Expandir automáticamente el menú de Tags cuando se navega a una ruta de tags
   useEffect(() => {
@@ -62,7 +62,7 @@ export function Sidebar() {
             <li className="nav-item">
               <NavLink to="/communications" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
                 <i className="nav-icon bi bi-hdd-network" />
-                <p>Communications</p>
+                <p>{t("navigation.communications")}</p>
               </NavLink>
             </li>
             
@@ -79,7 +79,7 @@ export function Sidebar() {
               >
                 <div className="d-flex align-items-center">
                   <i className="nav-icon bi bi-tags" />
-                  <p className="mb-0">Tags</p>
+                  <p className="mb-0">{t("sidebar.tags.title")}</p>
                 </div>
                 <i 
                   className={`bi ${tagsExpanded ? "bi-chevron-down" : "bi-chevron-right"}`}
@@ -99,7 +99,7 @@ export function Sidebar() {
                       style={{ paddingLeft: "2rem" }}
                     >
                       <i className="nav-icon bi bi-circle" style={{ fontSize: "0.5rem" }} />
-                      <p>{subItem.label}</p>
+                      <p>{t(subItem.labelKey)}</p>
                     </NavLink>
                   </li>
                 ))}
@@ -119,7 +119,7 @@ export function Sidebar() {
               >
                 <div className="d-flex align-items-center">
                   <i className="nav-icon bi bi-bell-fill" />
-                  <p className="mb-0">Alarms</p>
+                  <p className="mb-0">{t("sidebar.alarms.title")}</p>
                 </div>
                 <i 
                   className={`bi ${alarmsExpanded ? "bi-chevron-down" : "bi-chevron-right"}`}
@@ -139,7 +139,7 @@ export function Sidebar() {
                       style={{ paddingLeft: "2rem" }}
                     >
                       <i className="nav-icon bi bi-circle" style={{ fontSize: "0.5rem" }} />
-                      <p>{subItem.label}</p>
+                      <p>{t(subItem.labelKey)}</p>
                     </NavLink>
                   </li>
                 ))}
@@ -147,11 +147,11 @@ export function Sidebar() {
             </li>
             
             {/* Otros items del menú */}
-            {navItems.slice(1).map((item) => (
+            {navItems.map((item) => (
               <li className="nav-item" key={item.to}>
                 <NavLink to={item.to} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
                   <i className={`nav-icon ${item.icon}`} />
-                  <p>{item.label}</p>
+                  <p>{t(item.labelKey)}</p>
                 </NavLink>
               </li>
             ))}
