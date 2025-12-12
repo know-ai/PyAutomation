@@ -70,10 +70,10 @@ export function Header() {
           </li>
         </ul>
 
-        <form className="d-flex align-items-center gap-2 flex-wrap flex-grow-1 px-3">
+        <form className="d-flex align-items-center gap-2 flex-nowrap flex-grow-1 px-3" style={{ minWidth: 0, overflowX: "auto" }}>
           <select
             className="form-select form-select-sm"
-            style={{ maxWidth: 140 }}
+            style={{ width: "120px", flexShrink: 0 }}
             value={dbType}
             onChange={(e) =>
               setDbType((e.target.value as "postgres" | "mysql" | "sqlite") ?? "postgres")
@@ -85,14 +85,14 @@ export function Header() {
           </select>
           <input
             className="form-control form-control-sm"
-            style={{ maxWidth: 150 }}
+            style={{ width: "120px", flexShrink: 0 }}
             placeholder="dbName"
             value={dbName}
             onChange={(e) => setDbName(e.target.value)}
           />
           <input
             className="form-control form-control-sm"
-            style={{ maxWidth: 160 }}
+            style={{ width: "140px", flexShrink: 0 }}
             placeholder="dbHostName (IP)"
             type="text"
             inputMode="decimal"
@@ -104,7 +104,7 @@ export function Header() {
           />
           <input
             className="form-control form-control-sm"
-            style={{ maxWidth: 100 }}
+            style={{ width: "80px", flexShrink: 0 }}
             placeholder="dbPort"
             inputMode="numeric"
             value={dbPort}
@@ -112,14 +112,14 @@ export function Header() {
           />
           <input
             className="form-control form-control-sm"
-            style={{ maxWidth: 140 }}
+            style={{ width: "120px", flexShrink: 0 }}
             placeholder="dbUser"
             value={dbUser}
             onChange={(e) => setDbUser(e.target.value)}
           />
           <input
             className="form-control form-control-sm"
-            style={{ maxWidth: 160 }}
+            style={{ width: "120px", flexShrink: 0 }}
             placeholder="dbPassword"
             type="password"
             value={dbPassword}
@@ -129,9 +129,14 @@ export function Header() {
             type="button"
             className={`btn btn-sm ${dbConnected ? "btn-success" : "btn-outline-primary"}`}
             onClick={() => setDbConnected((prev) => !prev)}
-            style={{ minWidth: 120 }}
+            title={dbConnected ? "Desconectar" : "Conectar"}
+            style={{ flexShrink: 0 }}
           >
-            {dbConnected ? "Desconectar" : "Conectar"}
+            {dbConnected ? (
+              <i className="bi bi-plug-fill" />
+            ) : (
+              <i className="bi bi-plug" />
+            )}
           </button>
         </form>
 
