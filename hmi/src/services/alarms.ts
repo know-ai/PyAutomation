@@ -90,3 +90,47 @@ export const getAlarmByName = async (alarmName: string): Promise<Alarm> => {
   return data;
 };
 
+export type AlarmSummary = {
+  id?: string | number;
+  name: string;
+  tag: string;
+  description?: string;
+  state: string;
+  mnemonic?: string;
+  status?: string;
+  alarm_time: string;
+  ack_time?: string | null;
+  has_comments?: boolean;
+};
+
+export type AlarmSummaryFilter = {
+  names?: string[];
+  states?: string[];
+  tags?: string[];
+  greater_than_timestamp?: string;
+  less_than_timestamp?: string;
+  timezone?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type AlarmSummaryResponse = {
+  data: AlarmSummary[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+};
+
+/**
+ * Filtra el histórico de alarmas según los criterios proporcionados
+ */
+export const filterAlarmsSummary = async (
+  filters: AlarmSummaryFilter
+): Promise<AlarmSummaryResponse> => {
+  const { data } = await api.post("/alarms/summary/filter_by", filters);
+  return data;
+};
+
