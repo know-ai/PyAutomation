@@ -272,7 +272,7 @@ class Client(OPCClient):
                         }
                     result.append(node)
 
-        return result, 200
+        return result
 
     def write_value(self, node_namespace: str, value):
         r"""

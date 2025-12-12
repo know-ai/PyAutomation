@@ -8,9 +8,11 @@ def init_app(app):
     from ..modules.users.resources import init_app as init_users
     from ..modules.events.resources import init_app as init_events
     from ..modules.settings.resources import init_app as init_settings
+    from ..modules.opcua.resources import init_app as init_opcua
 
     init_tags()
     init_alarms()
     init_users()
     init_events()
     init_settings()
+    init_opcua()

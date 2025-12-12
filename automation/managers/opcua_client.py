@@ -203,8 +203,10 @@ class OPCUAClientManager:
         if client_name in self._clients:
 
             client = self._clients[client_name]
-            if client.is_conneted():
+            if client.is_connected():
                 return client.get_nodes_values(namespaces=namespaces)
+        
+        return list()
         
     @logging_error_handler
     def get_client_by_address(self, opcua_address:str)->Client|None:
@@ -262,11 +264,11 @@ class OPCUAClientManager:
 
             client = self._clients[client_name]
 
-            for namespace in namespaces:
-                if client.is_connected():
+            if client.is_connected():
+                for namespace in namespaces:
                     result.append(client.get_node_attributes(node_namespace=namespace))
 
-            return result
+        return result
 
     @logging_error_handler
     def serialize(self, client_name:str=None)->dict:
