@@ -10,6 +10,7 @@ def init_app(app):
     from ..modules.settings.resources import init_app as init_settings
     from ..modules.opcua.resources import init_app as init_opcua
     from ..modules.database.resources import init_app as init_database
+    from ..modules.machines.resources import init_app as init_machines
 
     init_tags()
     init_alarms()
@@ -18,3 +19,4 @@ def init_app(app):
     init_settings()
     init_opcua()
     init_database()
+    init_machines()
