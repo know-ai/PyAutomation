@@ -48,6 +48,7 @@
     "database": "Base de datos",
     "tags": "Etiquetas",
     "alarms": "Alarmas",
+    "machines": "Máquinas",
     "events": "Eventos",
     "operationalLogs": "Registros operacionales",
     "userManagement": "Gestión de usuarios",
@@ -57,6 +58,11 @@
   },
   "sidebar": {
     "mainNavigation": "Navegación principal",
+    "communications": {
+      "title": "Comunicaciones",
+      "clients": "Clientes OPC UA",
+      "server": "Servidor OPC UA"
+    },
     "tags": {
       "title": "Etiquetas",
       "definitions": "Definiciones",
@@ -78,6 +84,8 @@
   },
   "communications": {
     "title": "Clientes OPC UA",
+    "opcuaServer": "Servidor OPC UA",
+    "opcuaServerPlaceholder": "Esta sección será implementada en el futuro.",
     "selectedClient": "Cliente seleccionado",
     "selectClient": "Seleccione cliente",
     "clientName": "Nombre",

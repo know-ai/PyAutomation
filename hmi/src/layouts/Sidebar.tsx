@@ -10,6 +10,9 @@ export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const [communicationsExpanded, setCommunicationsExpanded] = useState(
+    location.pathname.startsWith("/communications")
+  );
   const [tagsExpanded, setTagsExpanded] = useState(
     location.pathname.startsWith("/tags")
   );
@@ -19,10 +22,12 @@ export function Sidebar() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
+  const isCommunicationsActive = location.pathname.startsWith("/communications");
   const isTagsActive = location.pathname.startsWith("/tags");
   const isAlarmsActive = location.pathname.startsWith("/alarms");
 
   const navItems = [
+    { to: "/machines", icon: "bi bi-cpu", labelKey: "navigation.machines" },
     { to: "/events", icon: "bi bi-calendar-event", labelKey: "navigation.events" },
     { to: "/operational-logs", icon: "bi bi-journal-text", labelKey: "navigation.operationalLogs" },
     { to: "/user-management", icon: "bi bi-people", labelKey: "navigation.userManagement" },
@@ -35,10 +40,22 @@ export function Sidebar() {
     { to: "/tags/trends", labelKey: "sidebar.tags.trends", icon: "bi bi-graph-up" },
   ];
 
+  const communicationsSubItems = [
+    { to: "/communications/clients", labelKey: "sidebar.communications.clients", icon: "bi bi-hdd-network" },
+    { to: "/communications/server", labelKey: "sidebar.communications.server", icon: "bi bi-server" },
+  ];
+
   const alarmsSubItems = [
     { to: "/alarms/definitions", labelKey: "sidebar.alarms.definitions", icon: "bi bi-list-check" },
     { to: "/alarms/summary", labelKey: "sidebar.alarms.summary", icon: "bi bi-clipboard-data" },
   ];
+
+  // Expandir automáticamente el menú de Communications cuando se navega a una ruta de communications
+  useEffect(() => {
+    if (location.pathname.startsWith("/communications")) {
+      setCommunicationsExpanded(true);
+    }
+  }, [location.pathname]);
 
   // Expandir automáticamente el menú de Tags cuando se navega a una ruta de tags
   useEffect(() => {
@@ -109,12 +126,44 @@ export function Sidebar() {
       <div className="sidebar-wrapper" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 57px)" }}>
         <nav className="mt-2" style={{ flex: 1, overflowY: "auto" }}>
           <ul className="nav sidebar-menu flex-column" role="menu" data-lte-toggle="treeview" aria-label="Main navigation">
-            {/* Communications */}
-            <li className="nav-item">
-              <NavLink to="/communications" className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
-                <i className="nav-icon bi bi-hdd-network" />
-                <p>{t("navigation.communications")}</p>
-              </NavLink>
+            {/* Communications con submenu desplegable */}
+            <li className={`nav-item ${communicationsExpanded ? "menu-open" : ""}`}>
+              <a
+                href="#"
+                className={`nav-link ${isCommunicationsActive ? "active" : ""} d-flex align-items-center justify-content-between`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCommunicationsExpanded(!communicationsExpanded);
+                }}
+                style={{ paddingRight: "1rem" }}
+              >
+                <div className="d-flex align-items-center">
+                  <i className="nav-icon bi bi-hdd-network" />
+                  <p className="mb-0">{t("sidebar.communications.title")}</p>
+                </div>
+                <i 
+                  className={`bi ${communicationsExpanded ? "bi-chevron-down" : "bi-chevron-right"}`}
+                  style={{ 
+                    fontSize: "0.875rem",
+                    transition: "transform 0.2s ease",
+                    marginLeft: "auto"
+                  }}
+                />
+              </a>
+              <ul className="nav nav-treeview" style={{ display: communicationsExpanded ? "block" : "none" }}>
+                {communicationsSubItems.map((subItem) => (
+                  <li className="nav-item" key={subItem.to}>
+                    <NavLink
+                      to={subItem.to}
+                      className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                      style={{ paddingLeft: "2rem" }}
+                    >
+                      <i className={`nav-icon ${subItem.icon}`} />
+                      <p>{t(subItem.labelKey)}</p>
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
             </li>
             
             {/* Tags con submenu desplegable */}

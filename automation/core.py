@@ -1333,6 +1333,232 @@ class PyAutomation(Singleton):
         return self.opcua_server_engine.read_by_namespace(namespace=namespace)
 
     @logging_error_handler
+    @validate_types(output=list)
+    def get_opcua_server_attrs(self)->list:
+        r"""
+        Retrieves all attributes (variables and properties) from the OPC UA Server state machine.
+
+        This method scans the OPCUAServer state machine instance and extracts all OPC UA nodes
+        (variables and their properties) with their access levels.
+
+        **Returns:**
+
+        * **list**: List of dictionaries containing:
+            - **name**: Full name path (parent_folder.variable_name or parent_folder.variable_name.property_name)
+            - **namespace**: OPC UA node namespace string
+            - **access_type**: Access level ("Read", "Write", or "ReadWrite")
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> attrs = app.get_opcua_server_attrs()
+        >>> isinstance(attrs, list)
+        True
+        >>> if attrs:
+        ...     print(attrs[0].keys())
+        dict_keys(['name', 'namespace', 'access_type'])
+        ```
+        """
+        from .state_machine import Node, ua
+        from .models import StringType
+        
+        attrs = list()
+        
+        # Get OPCUAServer machine by name
+        opcua_server_machine = self.get_machine(name=StringType("OPCUAServer"))
+        
+        if not opcua_server_machine:
+            return attrs
+        
+        # Iterate through all attributes of the machine
+        for attr in dir(opcua_server_machine):
+            if hasattr(opcua_server_machine, attr):
+                node = getattr(opcua_server_machine, attr)
+                if isinstance(node, Node):
+                    
+                    node_class = node.get_node_class()
+                    if node_class == ua.NodeClass.Variable:
+                        
+                        display_name = node.get_attribute(ua.AttributeIds.DisplayName).Value.Value.Text
+                        # Get parent node
+                        parent_node = node.get_parent()
+                        
+                        # Get parent folder name
+                        parent_name = parent_node.get_browse_name().Name
+                        access_level = node.get_access_level()
+                        
+                        # Determine access type
+                        write_only = ua.AccessLevel.CurrentWrite in access_level and ua.AccessLevel.CurrentRead not in access_level
+                        read_write = ua.AccessLevel.CurrentRead in access_level and ua.AccessLevel.CurrentWrite in access_level
+                        access_type = "Read"
+                        if write_only:
+                            access_type = "Write"
+                        elif read_write:
+                            access_type = "ReadWrite"
+                        
+                        attrs.append({
+                            "name": f"{parent_name}.{display_name}",
+                            "namespace": node.nodeid.to_string(),
+                            "access_type": access_type
+                        })
+                        
+                        # Get properties of the variable
+                        properties = node.get_properties()
+                        for prop in properties:
+                            prop_name = prop.get_display_name().Text
+                            
+                            access_level = prop.get_access_level()
+                            # Determine access type for property
+                            write_only = ua.AccessLevel.CurrentWrite in access_level and ua.AccessLevel.CurrentRead not in access_level
+                            read_write = ua.AccessLevel.CurrentRead in access_level and ua.AccessLevel.CurrentWrite in access_level
+                            access_type = "Read"
+                            if write_only:
+                                access_type = "Write"
+                            elif read_write:
+                                access_type = "ReadWrite"
+                            
+                            attrs.append({
+                                "name": f"{parent_name}.{display_name}.{prop_name}",
+                                "namespace": prop.nodeid.to_string(),
+                                "access_type": access_type
+                            })
+        
+        return attrs
+
+    @logging_error_handler
+    @validate_types(namespace=str, access_type=str, name=str|type(None), output=tuple)
+    def update_opcua_server_node_access_type(self, namespace:str, access_type:str, name:str=None)->tuple[bool, str]:
+        r"""
+        Updates the access type (Read, Write, ReadWrite) for a specific OPC UA Server node.
+
+        This method finds the node by its namespace, updates the access type in the database,
+        modifies the node's access level bits, and manages subscriptions for write-enabled nodes.
+
+        **Parameters:**
+
+        * **namespace** (str): The OPC UA node namespace string (e.g., "ns=2;i=1234").
+        * **access_type** (str): New access type ("Read", "Write", or "ReadWrite").
+        * **name** (str, optional): Node name for database record creation if it doesn't exist.
+
+        **Returns:**
+
+        * **tuple[bool, str]**: (Success boolean, Message string).
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> app = PyAutomation()
+        >>> success, msg = app.update_opcua_server_node_access_type(
+        ...     namespace="ns=2;i=1234",
+        ...     access_type="ReadWrite"
+        ... )
+        >>> success
+        True
+        ```
+        """
+        from .state_machine import Node, ua
+        from .models import StringType
+        from .opcua.subscription import SubHandlerServer
+        
+        # Get OPCUAServer machine
+        opcua_server_machine = self.get_machine(name=StringType("OPCUAServer"))
+        
+        if not opcua_server_machine:
+            return False, "OPC UA Server machine not found"
+        
+        # Find the node by namespace
+        node = None
+        opcua_server_attrs = dir(opcua_server_machine)
+        
+        for item in opcua_server_attrs:
+            if hasattr(opcua_server_machine, item):
+                candidate_node = getattr(opcua_server_machine, item)
+                if isinstance(candidate_node, Node):
+                    node_class = candidate_node.get_node_class()
+                    
+                    if node_class == ua.NodeClass.Variable:
+                        if candidate_node.nodeid.to_string() == namespace:
+                            node = candidate_node
+                            break
+                        else:
+                            # Check properties
+                            props = candidate_node.get_properties()
+                            for prop in props:
+                                if prop.nodeid.to_string() == namespace:
+                                    node = prop
+                                    break
+                            if node:
+                                break
+        
+        if not node:
+            return False, f"Node with namespace '{namespace}' not found"
+        
+        # Validate access_type
+        access_type_lower = access_type.lower()
+        if access_type_lower not in ["read", "write", "readwrite"]:
+            return False, f"Invalid access_type '{access_type}'. Must be 'Read', 'Write', or 'ReadWrite'"
+        
+        # Update or create database record
+        opcua_server_obj = self.get_opcua_server_record_by_namespace(namespace=namespace)
+        if opcua_server_obj:
+            self.update_opcua_server_access_type(namespace=namespace, access_type=access_type)
+        else:
+            if not name:
+                # Try to get name from node
+                try:
+                    display_name = node.get_display_name().Text
+                    parent_node = node.get_parent()
+                    parent_name = parent_node.get_browse_name().Name
+                    name = f"{parent_name}.{display_name}"
+                except:
+                    name = f"Node_{namespace}"
+            self.create_opcua_server_record(name=name, namespace=namespace, access_type=access_type)
+        
+        # Get handler for subscriptions
+        handler = SubHandlerServer()
+        
+        # Clear all access bits first
+        node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
+        node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
+        node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
+        node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
+        
+        # Unsubscribe if exists
+        subscriptions = handler.subscriptions
+        if namespace in subscriptions:
+            _sub = subscriptions.pop(namespace)
+            _sub.delete()
+        
+        # Set new access level
+        if access_type_lower == "write":
+            # Write only: disable read, enable write
+            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
+            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
+            # Create subscription for write-enabled nodes
+            sub = opcua_server_machine.server.create_subscription(100, handler)
+            sub.subscribe_data_change(node)
+            handler.subscriptions[namespace] = sub
+        elif access_type_lower == "read":
+            # Read only: enable read, disable write
+            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
+            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
+        elif access_type_lower == "readwrite":
+            # Read and write: enable both
+            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
+            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
+            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
+            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
+            # Create subscription for readwrite nodes
+            sub = opcua_server_machine.server.create_subscription(100, handler)
+            sub.subscribe_data_change(node)
+            handler.subscriptions[namespace] = sub
+        
+        return True, f"Access type updated successfully to '{access_type}'"
+
+    @logging_error_handler
     @validate_types(client_name=str, namespaces=list, output=list)
     def get_node_values(self, client_name:str, namespaces:list)->list:
         r"""
