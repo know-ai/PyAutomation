@@ -160,7 +160,6 @@ class AlarmsLogger(BaseLogger):
             tags:list[str]=None,
             greater_than_timestamp:datetime=None,
             less_than_timestamp:datetime=None,
-            timezone:str="UTC",
             page:int=1,
             limit:int=20
         ):
@@ -172,15 +171,18 @@ class AlarmsLogger(BaseLogger):
         * **states** (list[str]): Filter by alarm states.
         * **names** (list[str]): Filter by alarm names.
         * **tags** (list[str]): Filter by tag names.
-        * **greater_than_timestamp** (datetime): Start time.
-        * **less_than_timestamp** (datetime): End time.
-        * **timezone** (str): Timezone.
+        * **greater_than_timestamp** (datetime): Start time in UTC.
+        * **less_than_timestamp** (datetime): End time in UTC.
         * **page** (int): Pagination page.
         * **limit** (int): Entries per page.
 
         **Returns:**
 
         * **list**: Filtered list of alarm summaries.
+        
+        **Note:**
+        All timestamps are expected to be in UTC. Timezone conversions should be handled
+        at the API endpoint level before calling this method.
         """
         if not self.is_history_logged:
 
@@ -196,7 +198,6 @@ class AlarmsLogger(BaseLogger):
             tags=tags,
             greater_than_timestamp=greater_than_timestamp,
             less_than_timestamp=less_than_timestamp,
-            timezone=timezone,
             page=page,
             limit=limit
         )
@@ -442,12 +443,15 @@ class AlarmsLoggerEngine(BaseEngine):
         tags:list[int]=None,
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
-        timezone:str='UTC',
         page:int=1,
         limit:int=20
         ):
         r"""
         Thread-safe filtering of alarm summary.
+        
+        **Note:**
+        All timestamps are expected to be in UTC. Timezone conversions should be handled
+        at the API endpoint level before calling this method.
         """
         _query = dict()
         _query["action"] = "filter_alarm_summary_by"
@@ -457,7 +461,6 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["tags"] = tags
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
-        _query["parameters"]["timezone"] = timezone
         _query["parameters"]["page"] = page
         _query["parameters"]["limit"] = limit
         

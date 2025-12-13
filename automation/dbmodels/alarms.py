@@ -436,7 +436,6 @@ class AlarmSummary(BaseModel):
         tags:list[str]=None,
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
-        timezone:str='UTC',
         page:int=1,
         limit:int=20
         ):
@@ -448,38 +447,104 @@ class AlarmSummary(BaseModel):
         * **states** (list[str]): Filter by states.
         * **names** (list[str]): Filter by alarm names.
         * **tags** (list[str]): Filter by tag names.
-        * **greater_than_timestamp** (datetime): Start time.
-        * **less_than_timestamp** (datetime): End time.
+        * **greater_than_timestamp** (datetime): Start time in UTC (naive or timezone-aware).
+        * **less_than_timestamp** (datetime): End time in UTC (naive or timezone-aware).
         * **page**, **limit**: Pagination control.
 
         **Returns:**
 
         * **dict**: {data: list, pagination: dict}
+        
+        **Note:**
+        All timestamps are expected to be in UTC. The model always works with UTC.
+        Timezone conversions should be handled at the API endpoint level.
         """
         import math
-        _timezone = pytz.timezone(timezone)
         query = cls.select()
         
-        if states:
-            subquery = AlarmStates.select(AlarmStates.id).where(AlarmStates.name.in_(states))
-            query = query.join(AlarmStates).where(AlarmStates.id.in_(subquery))
+        # Only apply filters if the lists are provided and not empty
+        # If None or empty list, return all records (no filtering)
+        if states and len(states) > 0:
+            # Use the ForeignKey relationship directly instead of JOIN
+            state_ids = AlarmStates.select(AlarmStates.id).where(AlarmStates.name.in_(states))
+            query = query.where(cls.state.in_(state_ids))
         
-        if names:
-            subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(names))
-            query = query.join(Alarms).where(Alarms.id.in_(subquery))
+        if names and len(names) > 0:
+            # Use the ForeignKey relationship directly instead of JOIN
+            alarm_ids = Alarms.select(Alarms.id).where(Alarms.name.in_(names))
+            query = query.where(cls.alarm.in_(alarm_ids))
         
-        if tags:
-            subquery = Tags.select(Tags.id).where(Tags.name.in_(tags))
-            subquery = Alarms.select(Alarms.id).join(Tags).where(Tags.id.in_(subquery))
-            query = query.join(Alarms).where(Alarms.id.in_(subquery))
+        if tags and len(tags) > 0:
+            # Filter by tags: get alarm IDs that have these tags
+            tag_ids = Tags.select(Tags.id).where(Tags.name.in_(tags))
+            alarm_ids = Alarms.select(Alarms.id).where(Alarms.tag.in_(tag_ids))
+            query = query.where(cls.alarm.in_(alarm_ids))
         
         if greater_than_timestamp:
-            greater_than_timestamp = _timezone.localize(datetime.strptime(greater_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC)
-            query = query.where(cls.alarm_time > greater_than_timestamp)
+            # Expect datetime object in UTC (already converted by endpoint)
+            # If it's timezone-aware, convert to UTC and then to naive
+            # If it's naive, assume it's already in UTC
+            if isinstance(greater_than_timestamp, datetime):
+                if greater_than_timestamp.tzinfo is not None:
+                    # Timezone-aware: convert to UTC
+                    dt_utc = greater_than_timestamp.astimezone(pytz.UTC)
+                    dt_naive = dt_utc.replace(tzinfo=None)
+                else:
+                    # Naive: assume already in UTC
+                    dt_naive = greater_than_timestamp
+            else:
+                # String: parse and assume UTC
+                try:
+                    if '.' in str(greater_than_timestamp):
+                        parts = str(greater_than_timestamp).split('.')
+                        base_time = parts[0]
+                        microseconds = parts[1] if len(parts) > 1 else '0'
+                        microseconds = microseconds.ljust(6, '0')[:6]
+                        formatted_str = f"{base_time}.{microseconds}"
+                        dt_naive = datetime.strptime(formatted_str, '%Y-%m-%d %H:%M:%S.%f')
+                    else:
+                        dt_naive = datetime.strptime(str(greater_than_timestamp), '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    dt = datetime.fromisoformat(str(greater_than_timestamp).replace('Z', '+00:00'))
+                    if dt.tzinfo:
+                        dt_naive = dt.astimezone(pytz.UTC).replace(tzinfo=None)
+                    else:
+                        dt_naive = dt
+            
+            query = query.where(cls.alarm_time > dt_naive)
         
         if less_than_timestamp:
-            less_than_timestamp = _timezone.localize(datetime.strptime(less_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC)
-            query = query.where(cls.alarm_time < less_than_timestamp)
+            # Expect datetime object in UTC (already converted by endpoint)
+            # If it's timezone-aware, convert to UTC and then to naive
+            # If it's naive, assume it's already in UTC
+            if isinstance(less_than_timestamp, datetime):
+                if less_than_timestamp.tzinfo is not None:
+                    # Timezone-aware: convert to UTC
+                    dt_utc = less_than_timestamp.astimezone(pytz.UTC)
+                    dt_naive = dt_utc.replace(tzinfo=None)
+                else:
+                    # Naive: assume already in UTC
+                    dt_naive = less_than_timestamp
+            else:
+                # String: parse and assume UTC
+                try:
+                    if '.' in str(less_than_timestamp):
+                        parts = str(less_than_timestamp).split('.')
+                        base_time = parts[0]
+                        microseconds = parts[1] if len(parts) > 1 else '0'
+                        microseconds = microseconds.ljust(6, '0')[:6]
+                        formatted_str = f"{base_time}.{microseconds}"
+                        dt_naive = datetime.strptime(formatted_str, '%Y-%m-%d %H:%M:%S.%f')
+                    else:
+                        dt_naive = datetime.strptime(str(less_than_timestamp), '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    dt = datetime.fromisoformat(str(less_than_timestamp).replace('Z', '+00:00'))
+                    if dt.tzinfo:
+                        dt_naive = dt.astimezone(pytz.UTC).replace(tzinfo=None)
+                    else:
+                        dt_naive = dt
+            
+            query = query.where(cls.alarm_time < dt_naive)
         
         query = query.order_by(cls.id.desc())
         
