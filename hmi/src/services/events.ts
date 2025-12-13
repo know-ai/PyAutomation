@@ -9,6 +9,7 @@ export type Event = {
   priority?: number;
   criticity?: number;
   username?: string;
+  has_comments?: boolean;
   user?: {
     username?: string;
     [key: string]: any;
@@ -47,6 +48,14 @@ export type EventResponse = {
  */
 export const filterEvents = async (filters: EventFilter): Promise<EventResponse> => {
   const { data } = await api.post("/events/filter_by", filters);
+  return data;
+};
+
+/**
+ * Obtiene los comentarios de un evento
+ */
+export const getEventComments = async (id: number): Promise<any[]> => {
+  const { data } = await api.get(`/events/${id}/comments`);
   return data;
 };
 
