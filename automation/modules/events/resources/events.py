@@ -42,25 +42,58 @@ class EventsSummaryFilterByResource(Resource):
         """
         timezone = _TIMEZONE
         if "timezone" in api.payload:
-
             timezone = api.payload["timezone"]
 
         if timezone not in pytz.all_timezones:
-
             return f"Invalid Timezone", 400
+
+        # Get timezone object for conversions
+        tz = pytz.timezone(timezone)
         
         separator = '.'
+        
+        # Convert timestamps from user timezone to UTC before passing to model
         if 'greater_than_timestamp' in api.payload:
-            
             greater_than_timestamp = api.payload['greater_than_timestamp']
-            api.payload['greater_than_timestamp'] = greater_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+            # Format the string
+            timestamp_str = greater_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+            
+            # Parse as naive datetime in user's timezone
+            try:
+                dt_naive = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+            except ValueError:
+                dt_naive = datetime.strptime(timestamp_str.split('.')[0], '%Y-%m-%d %H:%M:%S')
+            
+            # Localize to user's timezone, then convert to UTC
+            dt_local = tz.localize(dt_naive)
+            dt_utc = dt_local.astimezone(pytz.UTC)
+            
+            # Pass as naive UTC datetime to model (model expects UTC naive)
+            api.payload['greater_than_timestamp'] = dt_utc.replace(tzinfo=None)
         
         if "less_than_timestamp" in api.payload:
-
             less_than_timestamp = api.payload['less_than_timestamp']
-            api.payload['less_than_timestamp'] = less_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+            # Format the string
+            timestamp_str = less_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+            
+            # Parse as naive datetime in user's timezone
+            try:
+                dt_naive = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+            except ValueError:
+                dt_naive = datetime.strptime(timestamp_str.split('.')[0], '%Y-%m-%d %H:%M:%S')
+            
+            # Localize to user's timezone, then convert to UTC
+            dt_local = tz.localize(dt_naive)
+            dt_utc = dt_local.astimezone(pytz.UTC)
+            
+            # Pass as naive UTC datetime to model (model expects UTC naive)
+            api.payload['less_than_timestamp'] = dt_utc.replace(tzinfo=None)
         
-        return app.filter_events_by(**api.payload)
+        # Keep timezone in payload for serialization
+        result = app.filter_events_by(**api.payload)
+        
+        # The timezone is already passed to filter_by and used in serialize()
+        return result
     
 
 @ns.route('/lasts/<lasts>')
