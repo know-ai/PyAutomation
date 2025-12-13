@@ -3,10 +3,12 @@ import { useAppDispatch } from "./useAppDispatch";
 import { socketService } from "../services/socket";
 import { updateTagValuesBatch } from "../store/slices/tagsSlice";
 import { updateAlarmsBatch } from "../store/slices/alarmsSlice";
+import { updateMachinesBatch } from "../store/slices/machinesSlice";
 import { useAppSelector } from "./useAppSelector";
 import { batch } from "react-redux";
 import type { Tag } from "../services/tags";
 import type { Alarm } from "../services/alarms";
+import type { Machine } from "../services/machines";
 
 // Buffer interval: 1 second (1000ms)
 const BUFFER_INTERVAL_MS = 1000;
@@ -16,6 +18,7 @@ export function useSocket() {
   const isAuthenticated = useAppSelector((state) => state.auth.status === "authenticated");
   const pendingTagUpdatesRef = useRef<Map<string, Tag>>(new Map());
   const pendingAlarmUpdatesRef = useRef<Map<string, Alarm>>(new Map());
+  const pendingMachineUpdatesRef = useRef<Map<string, Machine>>(new Map());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -29,6 +32,7 @@ export function useSocket() {
       }
       pendingTagUpdatesRef.current.clear();
       pendingAlarmUpdatesRef.current.clear();
+      pendingMachineUpdatesRef.current.clear();
       return;
     }
 
@@ -39,16 +43,19 @@ export function useSocket() {
     const flushUpdates = () => {
       const hasTagUpdates = pendingTagUpdatesRef.current.size > 0;
       const hasAlarmUpdates = pendingAlarmUpdatesRef.current.size > 0;
+      const hasMachineUpdates = pendingMachineUpdatesRef.current.size > 0;
 
-      if (!hasTagUpdates && !hasAlarmUpdates) {
+      if (!hasTagUpdates && !hasAlarmUpdates && !hasMachineUpdates) {
         return;
       }
 
       const tagUpdates = hasTagUpdates ? Array.from(pendingTagUpdatesRef.current.values()) : [];
       const alarmUpdates = hasAlarmUpdates ? Array.from(pendingAlarmUpdatesRef.current.values()) : [];
+      const machineUpdates = hasMachineUpdates ? Array.from(pendingMachineUpdatesRef.current.values()) : [];
 
       pendingTagUpdatesRef.current.clear();
       pendingAlarmUpdatesRef.current.clear();
+      pendingMachineUpdatesRef.current.clear();
 
       // Use batch to group all updates together in a single render
       batch(() => {
@@ -57,6 +64,9 @@ export function useSocket() {
         }
         if (hasAlarmUpdates) {
           dispatch(updateAlarmsBatch(alarmUpdates));
+        }
+        if (hasMachineUpdates) {
+          dispatch(updateMachinesBatch(machineUpdates));
         }
       });
     };
@@ -83,10 +93,19 @@ export function useSocket() {
       }
     });
 
+    // Subscribe to machine updates - they go into the buffer
+    const cleanupMachines = socketService.onMachineUpdate((machine) => {
+      // Add to buffer (will overwrite if same machine name already exists)
+      if (machine.name) {
+        pendingMachineUpdatesRef.current.set(machine.name, machine);
+      }
+    });
+
     // Cleanup on unmount or when authentication changes
     return () => {
       cleanupTags();
       cleanupAlarms();
+      cleanupMachines();
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -95,6 +114,7 @@ export function useSocket() {
       flushUpdates();
       pendingTagUpdatesRef.current.clear();
       pendingAlarmUpdatesRef.current.clear();
+      pendingMachineUpdatesRef.current.clear();
     };
   }, [dispatch, isAuthenticated]);
 

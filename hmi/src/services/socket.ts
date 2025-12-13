@@ -2,6 +2,7 @@ import { io, Socket } from "socket.io-client";
 import { SOCKET_IO_URL } from "../config/constants";
 import type { Tag } from "./tags";
 import type { Alarm } from "./alarms";
+import type { Machine } from "./machines";
 import { store } from "../store/store";
 import { AUTH_STORAGE_KEY } from "../store/slices/authSlice";
 
@@ -12,6 +13,7 @@ class SocketService {
   private maxReconnectAttempts: number = Infinity;
   private tagCallbacks: Array<(tag: Tag) => void> = [];
   private alarmCallbacks: Array<(alarm: Alarm) => void> = [];
+  private machineCallbacks: Array<(machine: Machine) => void> = [];
 
   private getToken(): string | null {
     const state = store.getState();
@@ -154,6 +156,42 @@ class SocketService {
 
   getSocket(): Socket | null {
     return this.socket;
+  }
+
+  onMachineUpdate(callback: (machine: Machine) => void): () => void {
+    // Store callback for reconnection
+    if (!this.machineCallbacks.includes(callback)) {
+      this.machineCallbacks.push(callback);
+    }
+
+    const handler = (data: Machine) => {
+      callback(data);
+    };
+
+    // Ensure socket is connected
+    if (!this.socket || !this.socket.connected) {
+      this.connect();
+      // Wait for connection before adding listener
+      if (this.socket) {
+        this.socket.once("connect", () => {
+          this.socket?.on("on.machine", handler);
+        });
+      }
+    } else {
+      // Socket is already connected, add listener immediately
+      this.socket.on("on.machine", handler);
+    }
+
+    // Return cleanup function
+    return () => {
+      // Remove from callbacks array
+      const index = this.machineCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.machineCallbacks.splice(index, 1);
+      }
+      // Remove listener
+      this.socket?.off("on.machine", handler);
+    };
   }
 
   getIsConnected(): boolean {

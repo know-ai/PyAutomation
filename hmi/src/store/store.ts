@@ -4,6 +4,7 @@ import themeReducer, { loadThemeFromStorage } from "./slices/themeSlice";
 import localeReducer, { loadLocaleFromStorage } from "./slices/localeSlice";
 import tagsReducer from "./slices/tagsSlice";
 import alarmsReducer from "./slices/alarmsSlice";
+import machinesReducer from "./slices/machinesSlice";
 
 const loadAuthState = () => {
   try {
@@ -41,6 +42,7 @@ export const store = configureStore({
     locale: localeReducer,
     tags: tagsReducer,
     alarms: alarmsReducer,
+    machines: machinesReducer,
   },
   preloadedState: {
     ...loadAuthState(),
