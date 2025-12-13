@@ -65,6 +65,14 @@ class Events(BaseModel):
         if not isinstance(timestamp, datetime):
 
             return None, f"Timestamp must be a datetime Object"
+        
+        # Ensure timestamp is timezone-aware and in UTC
+        if timestamp.tzinfo is None:
+            # If naive, assume it's UTC
+            timestamp = pytz.UTC.localize(timestamp)
+        else:
+            # If timezone-aware, convert to UTC
+            timestamp = timestamp.astimezone(pytz.UTC)
 
         query = cls(
             message=message,

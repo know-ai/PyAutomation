@@ -62,11 +62,19 @@ class Logs(BaseModel):
 
         if not timestamp:
 
-            timestamp = datetime.now()
+            timestamp = datetime.now(pytz.UTC)
         
         if not isinstance(timestamp, datetime):
 
             return None, f"Timestamp must be a datetime Object"
+        
+        # Ensure timestamp is timezone-aware and in UTC
+        if timestamp.tzinfo is None:
+            # If naive, assume it's UTC
+            timestamp = pytz.UTC.localize(timestamp)
+        else:
+            # If timezone-aware, convert to UTC
+            timestamp = timestamp.astimezone(pytz.UTC)
         
         query = cls(
             message=message,
@@ -156,11 +164,65 @@ class Logs(BaseModel):
             query = query.where(fn.LOWER(cls.classification).contains(classification.lower()))
         
         if greater_than_timestamp:
-            greater_than_timestamp = _timezone.localize(datetime.strptime(greater_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC)
+            # If it's already a datetime object (naive UTC from endpoint), use it directly
+            if isinstance(greater_than_timestamp, datetime):
+                if greater_than_timestamp.tzinfo is not None:
+                    # Convert to naive UTC
+                    dt_utc = greater_than_timestamp.astimezone(pytz.UTC)
+                    greater_than_timestamp = dt_utc.replace(tzinfo=None)
+            else:
+                # Legacy: parse string and convert from user timezone to UTC
+                try:
+                    if '.' in str(greater_than_timestamp):
+                        parts = str(greater_than_timestamp).split('.')
+                        base_time = parts[0]
+                        microseconds = parts[1] if len(parts) > 1 else '0'
+                        microseconds = microseconds.ljust(6, '0')[:6]
+                        formatted_str = f"{base_time}.{microseconds}"
+                        dt_naive = datetime.strptime(formatted_str, '%Y-%m-%d %H:%M:%S.%f')
+                    else:
+                        dt_naive = datetime.strptime(str(greater_than_timestamp), '%Y-%m-%d %H:%M:%S')
+                    dt_local = _timezone.localize(dt_naive)
+                    dt_utc = dt_local.astimezone(pytz.UTC)
+                    greater_than_timestamp = dt_utc.replace(tzinfo=None)
+                except ValueError:
+                    # Try ISO format as fallback
+                    dt = datetime.fromisoformat(str(greater_than_timestamp).replace('Z', '+00:00'))
+                    if dt.tzinfo is not None:
+                        dt = dt.astimezone(pytz.UTC)
+                    greater_than_timestamp = dt.replace(tzinfo=None)
+            
             query = query.where(cls.timestamp > greater_than_timestamp)
         
         if less_than_timestamp:
-            less_than_timestamp = _timezone.localize(datetime.strptime(less_than_timestamp, '%Y-%m-%d %H:%M:%S.%f')).astimezone(pytz.UTC)
+            # If it's already a datetime object (naive UTC from endpoint), use it directly
+            if isinstance(less_than_timestamp, datetime):
+                if less_than_timestamp.tzinfo is not None:
+                    # Convert to naive UTC
+                    dt_utc = less_than_timestamp.astimezone(pytz.UTC)
+                    less_than_timestamp = dt_utc.replace(tzinfo=None)
+            else:
+                # Legacy: parse string and convert from user timezone to UTC
+                try:
+                    if '.' in str(less_than_timestamp):
+                        parts = str(less_than_timestamp).split('.')
+                        base_time = parts[0]
+                        microseconds = parts[1] if len(parts) > 1 else '0'
+                        microseconds = microseconds.ljust(6, '0')[:6]
+                        formatted_str = f"{base_time}.{microseconds}"
+                        dt_naive = datetime.strptime(formatted_str, '%Y-%m-%d %H:%M:%S.%f')
+                    else:
+                        dt_naive = datetime.strptime(str(less_than_timestamp), '%Y-%m-%d %H:%M:%S')
+                    dt_local = _timezone.localize(dt_naive)
+                    dt_utc = dt_local.astimezone(pytz.UTC)
+                    less_than_timestamp = dt_utc.replace(tzinfo=None)
+                except ValueError:
+                    # Try ISO format as fallback
+                    dt = datetime.fromisoformat(str(less_than_timestamp).replace('Z', '+00:00'))
+                    if dt.tzinfo is not None:
+                        dt = dt.astimezone(pytz.UTC)
+                    less_than_timestamp = dt.replace(tzinfo=None)
+            
             query = query.where(cls.timestamp < less_than_timestamp)
         
         query = query.order_by(cls.id.desc())
@@ -178,7 +240,8 @@ class Logs(BaseModel):
         
         paginated_query = query.paginate(page, limit)
         
-        data = [log.serialize() for log in paginated_query]
+        # Serialize logs with the specified timezone
+        data = [log.serialize(timezone=timezone) for log in paginated_query]
         
         return {
             "data": data,
@@ -192,14 +255,23 @@ class Logs(BaseModel):
             }
         }
 
-    def serialize(self)-> dict:
+    def serialize(self, timezone=None)-> dict:
         r"""
         Serializes the log record.
+        
+        **Parameters:**
+        
+        * **timezone** (str, optional): Timezone to convert timestamp to. If None, uses default TIMEZONE.
         """
         from .. import MANUFACTURER, SEGMENT, TIMEZONE
         timestamp = self.timestamp
         if timestamp:
-            timestamp = pytz.UTC.localize(timestamp).astimezone(TIMEZONE)
+            # Convert to specified timezone or default TIMEZONE
+            target_tz = pytz.timezone(timezone) if timezone else TIMEZONE
+            # If timestamp is naive, assume it's UTC
+            if timestamp.tzinfo is None:
+                timestamp = pytz.UTC.localize(timestamp)
+            timestamp = timestamp.astimezone(target_tz)
             timestamp = timestamp.strftime(DATETIME_FORMAT)
 
         _event = None

@@ -86,24 +86,88 @@ class LogsFilterByResource(Resource):
         """
         timezone = _TIMEZONE
         if "timezone" in api.payload:
-
             timezone = api.payload["timezone"]
 
         if timezone not in pytz.all_timezones:
-
             return f"Invalid Timezone", 400
+
+        # Get timezone object for conversions
+        tz = pytz.timezone(timezone)
         
         separator = '.'
+        
+        # Convert timestamps from user timezone to UTC before passing to model
         if 'greater_than_timestamp' in api.payload:
-            
             greater_than_timestamp = api.payload['greater_than_timestamp']
-            api.payload['greater_than_timestamp'] = greater_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+            
+            # Handle ISO format with timezone offset (e.g., "2025-12-12T20:34:54.071260-04:00")
+            if isinstance(greater_than_timestamp, str) and ('T' in greater_than_timestamp or '+' in greater_than_timestamp or '-' in greater_than_timestamp[-6:]):
+                # Parse ISO format datetime
+                try:
+                    # Try parsing with timezone info
+                    dt = datetime.fromisoformat(greater_than_timestamp.replace('Z', '+00:00'))
+                except ValueError:
+                    # Fallback: format the string and parse
+                    timestamp_str = greater_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+                    dt_naive = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+                    dt = tz.localize(dt_naive)
+            else:
+                # Format the string
+                timestamp_str = greater_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+                
+                # Parse as naive datetime in user's timezone
+                try:
+                    dt_naive = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+                except ValueError:
+                    dt_naive = datetime.strptime(timestamp_str.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                
+                # Localize to user's timezone
+                dt = tz.localize(dt_naive)
+            
+            # Convert to UTC
+            dt_utc = dt.astimezone(pytz.UTC)
+            
+            # Pass as naive UTC datetime to model (model expects UTC naive)
+            api.payload['greater_than_timestamp'] = dt_utc.replace(tzinfo=None)
         
         if "less_than_timestamp" in api.payload:
-
             less_than_timestamp = api.payload['less_than_timestamp']
-            api.payload['less_than_timestamp'] = less_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
-        return app.filter_logs_by(**api.payload), 200
+            
+            # Handle ISO format with timezone offset (e.g., "2025-12-12T21:04:54.071301-04:00")
+            if isinstance(less_than_timestamp, str) and ('T' in less_than_timestamp or '+' in less_than_timestamp or '-' in less_than_timestamp[-6:]):
+                # Parse ISO format datetime
+                try:
+                    # Try parsing with timezone info
+                    dt = datetime.fromisoformat(less_than_timestamp.replace('Z', '+00:00'))
+                except ValueError:
+                    # Fallback: format the string and parse
+                    timestamp_str = less_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+                    dt_naive = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+                    dt = tz.localize(dt_naive)
+            else:
+                # Format the string
+                timestamp_str = less_than_timestamp.replace("T", " ").split(separator, 1)[0] + '.00'
+                
+                # Parse as naive datetime in user's timezone
+                try:
+                    dt_naive = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+                except ValueError:
+                    dt_naive = datetime.strptime(timestamp_str.split('.')[0], '%Y-%m-%d %H:%M:%S')
+                
+                # Localize to user's timezone
+                dt = tz.localize(dt_naive)
+            
+            # Convert to UTC
+            dt_utc = dt.astimezone(pytz.UTC)
+            
+            # Pass as naive UTC datetime to model (model expects UTC naive)
+            api.payload['less_than_timestamp'] = dt_utc.replace(tzinfo=None)
+        
+        # Keep timezone in payload for serialization
+        result = app.filter_logs_by(**api.payload)
+        
+        # The timezone is already passed to filter_by and used in serialize()
+        return result, 200
     
 
 @ns.route('/lasts/<lasts>')

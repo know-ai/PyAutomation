@@ -3,6 +3,7 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import {
   filterAlarmsSummary,
+  getAlarmSummaryComments,
   type AlarmSummary,
   type AlarmSummaryFilter,
   type AlarmSummaryResponse,
@@ -125,6 +126,12 @@ export function AlarmsSummary() {
   const [commentMessage, setCommentMessage] = useState("");
   const [addingComment, setAddingComment] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  
+  // Estado para el modal de visualización de comentarios
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [selectedAlarmForComments, setSelectedAlarmForComments] = useState<AlarmSummary | null>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
 
   // Cargar opciones para los filtros
   useEffect(() => {
@@ -374,6 +381,98 @@ export function AlarmsSummary() {
     setShowCommentModal(false);
     setCommentMessage("");
     setSelectedAlarmId(undefined);
+  };
+
+  const handleViewComments = async (alarm: AlarmSummary) => {
+    if (!alarm.id) return;
+    
+    setSelectedAlarmForComments(alarm);
+    setShowCommentsModal(true);
+    setLoadingComments(true);
+    setError(null);
+    
+    try {
+      const alarmId = typeof alarm.id === "string" ? Number(alarm.id) : alarm.id;
+      const commentsData = await getAlarmSummaryComments(alarmId);
+      setComments(commentsData || []);
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar los comentarios";
+      setError(errorMsg);
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handleExportCommentsCSV = () => {
+    if (!comments || comments.length === 0) {
+      setError("No hay comentarios para exportar");
+      return;
+    }
+
+    try {
+      // Preparar los datos para CSV
+      const headers = [
+        "ID",
+        "Timestamp",
+        "Usuario",
+        "Mensaje",
+        "Descripción",
+        "Clasificación",
+        "Alarma",
+      ];
+
+      // Convertir comentarios a filas CSV
+      const rows = comments.map((comment: any) => {
+        return [
+          comment.id || "",
+          comment.timestamp || "",
+          comment.user?.username || "",
+          comment.message || "",
+          comment.description || "",
+          comment.classification || "",
+          comment.alarm?.name || "",
+        ];
+      });
+
+      // Crear contenido CSV
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) =>
+          row
+            .map((cell) => {
+              // Escapar comillas y envolver en comillas si contiene comas o comillas
+              const cellStr = String(cell);
+              if (cellStr.includes(",") || cellStr.includes('"') || cellStr.includes("\n")) {
+                return `"${cellStr.replace(/"/g, '""')}"`;
+              }
+              return cellStr;
+            })
+            .join(",")
+        ),
+      ].join("\n");
+
+      // Crear blob y descargar
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `alarm_comments_${selectedAlarmForComments?.name || "alarm"}_${new Date().toISOString().split("T")[0]}.csv`
+      );
+      link.style.visibility = "hidden";
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      const errorMsg = e?.message || "Error al exportar comentarios a CSV";
+      setError(errorMsg);
+    }
   };
 
   const handleExportCSV = async () => {
@@ -684,7 +783,12 @@ export function AlarmsSummary() {
                         <td>{alarm.ack_time || "-"}</td>
                         <td>
                           {alarm.has_comments ? (
-                            <i className="bi bi-check-circle text-success" title="Tiene comentarios"></i>
+                            <i 
+                              className="bi bi-check-circle text-success" 
+                              title="Tiene comentarios - Click para ver"
+                              style={{ cursor: "pointer" }}
+                              onClick={() => handleViewComments(alarm)}
+                            ></i>
                           ) : (
                             <i className="bi bi-x-circle text-muted" title="Sin comentarios"></i>
                           )}
@@ -763,6 +867,107 @@ export function AlarmsSummary() {
                       loading={addingComment}
                     >
                       Agregar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal para visualizar comentarios */}
+          {showCommentsModal && selectedAlarmForComments && (
+            <div
+              className="modal show d-block"
+              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+              onClick={() => {
+                setShowCommentsModal(false);
+                setSelectedAlarmForComments(null);
+                setComments([]);
+              }}
+            >
+              <div className="modal-dialog modal-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-content">
+                  <div className="modal-header d-flex justify-content-between align-items-center w-100">
+                    <h5 className="modal-title mb-0">
+                      Comentarios - {selectedAlarmForComments.name || "Alarma"}
+                    </h5>
+                    <div className="d-flex align-items-center gap-2">
+                      <Button
+                        variant="primary"
+                        className="btn-sm"
+                        onClick={handleExportCommentsCSV}
+                        disabled={loadingComments || comments.length === 0}
+                      >
+                        <i className="bi bi-download me-1"></i>
+                        CSV
+                      </Button>
+                      <button
+                        type="button"
+                        className="btn-close"
+                        onClick={() => {
+                          setShowCommentsModal(false);
+                          setSelectedAlarmForComments(null);
+                          setComments([]);
+                        }}
+                      ></button>
+                    </div>
+                  </div>
+                  <div className="modal-body">
+                    {loadingComments ? (
+                      <div className="text-center py-4">
+                        <div className="spinner-border text-primary" role="status">
+                          <span className="visually-hidden">Cargando...</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="table-responsive" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+                        <table className="table table-striped table-hover table-sm">
+                          <thead className="table-light" style={{ position: "sticky", top: 0, zIndex: 10 }}>
+                            <tr>
+                              <th>{t("tables.id")}</th>
+                              <th>{t("tables.timestamp")}</th>
+                              <th>{t("tables.user")}</th>
+                              <th>{t("tables.message")}</th>
+                              <th>{t("tables.description")}</th>
+                              <th>{t("tables.classification")}</th>
+                              <th>{t("tables.alarm")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {comments.length === 0 ? (
+                              <tr>
+                                <td colSpan={7} className="text-center text-muted py-4">
+                                  No hay comentarios disponibles
+                                </td>
+                              </tr>
+                            ) : (
+                              comments.map((comment) => (
+                                <tr key={comment.id}>
+                                  <td>{comment.id || "-"}</td>
+                                  <td>{comment.timestamp || "-"}</td>
+                                  <td>{comment.user?.username || "-"}</td>
+                                  <td>{comment.message || "-"}</td>
+                                  <td>{comment.description || "-"}</td>
+                                  <td>{comment.classification || "-"}</td>
+                                  <td>{comment.alarm?.name || "-"}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                  <div className="modal-footer">
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setShowCommentsModal(false);
+                        setSelectedAlarmForComments(null);
+                        setComments([]);
+                      }}
+                    >
+                      Cerrar
                     </Button>
                   </div>
                 </div>

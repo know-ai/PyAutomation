@@ -167,6 +167,14 @@ export const executeAlarmAction = async (
 };
 
 /**
+ * Obtiene los comentarios de un resumen de alarma
+ */
+export const getAlarmSummaryComments = async (id: number): Promise<any[]> => {
+  const { data } = await api.get(`/alarms/summary/${id}/comments`);
+  return data;
+};
+
+/**
  * Shelve una alarma con duración específica
  */
 export const shelveAlarm = async (
