@@ -24,6 +24,9 @@ export type Alarm = {
     type?: string;
     value?: number | boolean;
   };
+  actions?: {
+    [key: string]: string;
+  };
   [key: string]: any;
 };
 
@@ -149,6 +152,34 @@ export const acknowledgeAlarm = async (alarmName: string): Promise<any> => {
  */
 export const acknowledgeAllAlarms = async (): Promise<any> => {
   const { data } = await api.post("/alarms/acknowledge_all");
+  return data;
+};
+
+/**
+ * Ejecuta una acción en una alarma
+ */
+export const executeAlarmAction = async (
+  actionValue: string,
+  alarmName: string
+): Promise<any> => {
+  const { data } = await api.post(`/alarms/${encodeURIComponent(actionValue)}/${encodeURIComponent(alarmName)}`);
+  return data;
+};
+
+/**
+ * Shelve una alarma con duración específica
+ */
+export const shelveAlarm = async (
+  alarmName: string,
+  duration: {
+    seconds?: number;
+    minutes?: number;
+    hours?: number;
+    days?: number;
+    weeks?: number;
+  }
+): Promise<any> => {
+  const { data } = await api.post(`/alarms/shelve/${encodeURIComponent(alarmName)}`, duration);
   return data;
 };
 

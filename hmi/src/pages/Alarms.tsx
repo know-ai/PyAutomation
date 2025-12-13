@@ -1,15 +1,17 @@
-import { useEffect, useState, useMemo, memo } from "react";
+import { useEffect, useState, useMemo, memo, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
-import { getAlarms, createAlarm, updateAlarm, deleteAlarm, type Alarm, type AlarmsResponse } from "../services/alarms";
+import { getAlarms, createAlarm, updateAlarm, deleteAlarm, getAlarmByName, executeAlarmAction, shelveAlarm, type Alarm, type AlarmsResponse } from "../services/alarms";
 import { getTags, type Tag } from "../services/tags";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { loadAllAlarms } from "../store/slices/alarmsSlice";
+import { showToast } from "../utils/toast";
 
 export function Alarms() {
   const { t } = useTranslation();
+  const dispatch = useAppDispatch();
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +31,21 @@ export function Alarms() {
     total: 0,
     pages: 0,
   });
+  const [alarmActions, setAlarmActions] = useState<Record<string, { [key: string]: string }>>({});
+  const [loadingActions, setLoadingActions] = useState<Record<string, boolean>>({});
+  const [executingAction, setExecutingAction] = useState<Record<string, boolean>>({});
+  const [openActionDropdowns, setOpenActionDropdowns] = useState<Record<string, boolean>>({});
+  const actionDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [showShelveModal, setShowShelveModal] = useState(false);
+  const [alarmToShelve, setAlarmToShelve] = useState<string | null>(null);
+  const [shelveDuration, setShelveDuration] = useState({
+    seconds: 0,
+    minutes: 0,
+    hours: 0,
+    days: 0,
+    weeks: 0,
+  });
+  const [shelving, setShelving] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -53,7 +70,15 @@ export function Alarms() {
     onEdit,
     onDelete,
     getStateBadgeClass,
-    getStateLabel
+    getStateLabel,
+    actions,
+    loadingActions,
+    executingAction,
+    onLoadActions,
+    onExecuteAction,
+    isActionDropdownOpen,
+    onToggleActionDropdown,
+    actionDropdownRef
   }: {
     alarm: Alarm;
     realTimeAlarms: Record<string, Alarm>;
@@ -62,6 +87,14 @@ export function Alarms() {
     onDelete: (alarm: Alarm) => void;
     getStateBadgeClass: (state: any) => string;
     getStateLabel: (state: any) => string;
+    actions: { [key: string]: string } | undefined;
+    loadingActions: boolean;
+    executingAction: boolean;
+    onLoadActions: (alarmName: string) => void;
+    onExecuteAction: (actionValue: string, alarmName: string) => void;
+    isActionDropdownOpen: boolean;
+    onToggleActionDropdown: (alarmName: string) => void;
+    actionDropdownRef: (el: HTMLDivElement | null) => void;
   }) => {
     // Get real-time alarm data from store if available, otherwise use alarm prop
     const alarmKey = alarm.identifier || alarm.id || alarm.name;
@@ -127,6 +160,69 @@ export function Alarms() {
             >
               <i className="bi bi-trash"></i>
             </Button>
+            <div 
+              className="btn-group" 
+              ref={actionDropdownRef}
+              style={{ position: "relative" }}
+            >
+              <Button
+                variant="info"
+                className="btn-sm dropdown-toggle"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleActionDropdown(currentAlarm.name);
+                  if (!actions && !loadingActions) {
+                    onLoadActions(currentAlarm.name);
+                  }
+                }}
+                disabled={executingAction}
+                title="Acciones de alarma"
+              >
+                {loadingActions ? (
+                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                ) : (
+                  <i className="bi bi-gear"></i>
+                )}
+              </Button>
+              {isActionDropdownOpen && (
+                <div
+                  className="dropdown-menu show"
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "100%",
+                    zIndex: 1000,
+                    minWidth: "200px",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {loadingActions ? (
+                    <div className="dropdown-item-text">
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      Cargando acciones...
+                    </div>
+                  ) : actions && Object.keys(actions).length > 0 ? (
+                    Object.entries(actions).map(([actionLabel, actionValue]) => (
+                      <button
+                        key={actionValue}
+                        className="dropdown-item"
+                        onClick={() => {
+                          onExecuteAction(actionValue, currentAlarm.name);
+                          onToggleActionDropdown(currentAlarm.name);
+                        }}
+                        disabled={executingAction}
+                      >
+                        {actionLabel}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="dropdown-item-text text-muted">
+                      No hay acciones disponibles
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </td>
       </tr>
@@ -153,6 +249,8 @@ export function Alarms() {
     // - Alarm state changed
     // - Tag value changed
     // - Other alarm properties changed
+    // - Actions changed
+    // - Loading/executing state changed
     return (
       prevAlarmKey === nextAlarmKey &&
       prevAlarm.name === nextAlarm.name &&
@@ -161,7 +259,11 @@ export function Alarms() {
       prevAlarm.trigger_value === nextAlarm.trigger_value &&
       prevAlarm.description === nextAlarm.description &&
       JSON.stringify(prevAlarm.state) === JSON.stringify(nextAlarm.state) &&
-      prevTagValue === nextTagValue
+      prevTagValue === nextTagValue &&
+      JSON.stringify(prevProps.actions) === JSON.stringify(nextProps.actions) &&
+      prevProps.loadingActions === nextProps.loadingActions &&
+      prevProps.executingAction === nextProps.executingAction &&
+      prevProps.isActionDropdownOpen === nextProps.isActionDropdownOpen
     );
   });
 
@@ -240,6 +342,152 @@ export function Alarms() {
       loadTags();
     }
   }, [showCreateModal, showEditModal]);
+
+  // Close action dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Don't close if clicking on a dropdown toggle button
+      if (target.closest('.dropdown-toggle') || target.closest('.dropdown-menu')) {
+        return;
+      }
+      Object.keys(openActionDropdowns).forEach((alarmName) => {
+        if (openActionDropdowns[alarmName]) {
+          const ref = actionDropdownRefs.current[alarmName];
+          if (ref && !ref.contains(target)) {
+            setOpenActionDropdowns((prev) => ({ ...prev, [alarmName]: false }));
+          }
+        }
+      });
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [openActionDropdowns]);
+
+  const loadAlarmActions = async (alarmName: string) => {
+    if (loadingActions[alarmName] || alarmActions[alarmName]) {
+      return; // Already loading or loaded
+    }
+
+    setLoadingActions((prev) => ({ ...prev, [alarmName]: true }));
+    try {
+      const alarm = await getAlarmByName(alarmName);
+      if (alarm.actions) {
+        setAlarmActions((prev) => ({ ...prev, [alarmName]: alarm.actions! }));
+      }
+    } catch (e: any) {
+      console.error(`Error loading actions for alarm ${alarmName}:`, e);
+    } finally {
+      setLoadingActions((prev) => ({ ...prev, [alarmName]: false }));
+    }
+  };
+
+  const handleExecuteAction = async (actionValue: string, alarmName: string) => {
+    // If action is "shelve", open modal instead of executing directly
+    if (actionValue === "shelve") {
+      setAlarmToShelve(alarmName);
+      setShowShelveModal(true);
+      setShelveDuration({
+        seconds: 0,
+        minutes: 0,
+        hours: 0,
+        days: 0,
+        weeks: 0,
+      });
+      return;
+    }
+
+    // For other actions, execute directly
+    setExecutingAction((prev) => ({ ...prev, [alarmName]: true }));
+    try {
+      const result = await executeAlarmAction(actionValue, alarmName);
+      showToast("success", result.message || `Acción ejecutada exitosamente para ${alarmName}`);
+      
+      // Reload alarms to get updated state
+      await loadAlarms(pagination.page, pagination.limit);
+      
+      // Clear cached actions to reload them next time
+      setAlarmActions((prev) => {
+        const updated = { ...prev };
+        delete updated[alarmName];
+        return updated;
+      });
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || `Error al ejecutar acción para ${alarmName}`;
+      showToast("error", errorMsg);
+    } finally {
+      setExecutingAction((prev) => ({ ...prev, [alarmName]: false }));
+    }
+  };
+
+  const handleShelveAlarm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!alarmToShelve) return;
+
+    // Validate that at least one duration field is set
+    const hasDuration = shelveDuration.seconds > 0 || 
+                       shelveDuration.minutes > 0 || 
+                       shelveDuration.hours > 0 || 
+                       shelveDuration.days > 0 || 
+                       shelveDuration.weeks > 0;
+
+    if (!hasDuration) {
+      setError("Debe especificar al menos una duración (segundos, minutos, horas, días o semanas)");
+      return;
+    }
+
+    setShelving(true);
+    setError(null);
+    try {
+      // Build payload with only non-zero values
+      const payload: any = {};
+      if (shelveDuration.seconds > 0) payload.seconds = shelveDuration.seconds;
+      if (shelveDuration.minutes > 0) payload.minutes = shelveDuration.minutes;
+      if (shelveDuration.hours > 0) payload.hours = shelveDuration.hours;
+      if (shelveDuration.days > 0) payload.days = shelveDuration.days;
+      if (shelveDuration.weeks > 0) payload.weeks = shelveDuration.weeks;
+
+      const result = await shelveAlarm(alarmToShelve, payload);
+      showToast("success", result.message || `Alarma ${alarmToShelve} puesta en shelve exitosamente`);
+      
+      // Close modal
+      setShowShelveModal(false);
+      setAlarmToShelve(null);
+      setShelveDuration({
+        seconds: 0,
+        minutes: 0,
+        hours: 0,
+        days: 0,
+        weeks: 0,
+      });
+      
+      // Close action dropdown
+      setOpenActionDropdowns((prev) => ({ ...prev, [alarmToShelve]: false }));
+      
+      // Reload alarms to get updated state
+      await loadAlarms(pagination.page, pagination.limit);
+      
+      // Clear cached actions to reload them next time
+      setAlarmActions((prev) => {
+        const updated = { ...prev };
+        delete updated[alarmToShelve];
+        return updated;
+      });
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || `Error al poner en shelve la alarma ${alarmToShelve}`;
+      setError(errorMsg);
+      showToast("error", errorMsg);
+    } finally {
+      setShelving(false);
+    }
+  };
+
+  const toggleActionDropdown = (alarmName: string) => {
+    setOpenActionDropdowns((prev) => ({
+      ...prev,
+      [alarmName]: !prev[alarmName],
+    }));
+  };
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.pages) {
@@ -683,18 +931,31 @@ export function Alarms() {
                       </td>
                     </tr>
                   ) : (
-                    alarms.map((alarm) => (
-                      <AlarmTableRow
-                        key={alarm.identifier || alarm.id || alarm.name}
-                        alarm={alarm}
-                        realTimeAlarms={realTimeAlarms}
-                        tagValues={tagValues}
-                        onEdit={handleEditAlarm}
-                        onDelete={handleDeleteAlarm}
-                        getStateBadgeClass={getStateBadgeClass}
-                        getStateLabel={getStateLabel}
-                      />
-                    ))
+                    alarms.map((alarm) => {
+                      const alarmName = alarm.name;
+                      return (
+                        <AlarmTableRow
+                          key={alarm.identifier || alarm.id || alarmName}
+                          alarm={alarm}
+                          realTimeAlarms={realTimeAlarms}
+                          tagValues={tagValues}
+                          onEdit={handleEditAlarm}
+                          onDelete={handleDeleteAlarm}
+                          getStateBadgeClass={getStateBadgeClass}
+                          getStateLabel={getStateLabel}
+                          actions={alarmActions[alarmName]}
+                          loadingActions={loadingActions[alarmName] || false}
+                          executingAction={executingAction[alarmName] || false}
+                          onLoadActions={loadAlarmActions}
+                          onExecuteAction={handleExecuteAction}
+                          isActionDropdownOpen={openActionDropdowns[alarmName] || false}
+                          onToggleActionDropdown={toggleActionDropdown}
+                          actionDropdownRef={(el) => {
+                            actionDropdownRefs.current[alarmName] = el;
+                          }}
+                        />
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -1074,6 +1335,147 @@ export function Alarms() {
                     Eliminar
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para configurar Shelve */}
+        {showShelveModal && alarmToShelve && (
+          <div
+            className="modal fade show"
+            style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
+            tabIndex={-1}
+            role="dialog"
+          >
+            <div className="modal-dialog" role="document">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Configurar Shelve para: {alarmToShelve}</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={() => {
+                      setShowShelveModal(false);
+                      setAlarmToShelve(null);
+                      setError(null);
+                      setShelveDuration({
+                        seconds: 0,
+                        minutes: 0,
+                        hours: 0,
+                        days: 0,
+                        weeks: 0,
+                      });
+                    }}
+                    aria-label="Close"
+                    disabled={shelving}
+                  ></button>
+                </div>
+                <form onSubmit={handleShelveAlarm}>
+                  <div className="modal-body">
+                    {error && (
+                      <div className="alert alert-danger" role="alert">
+                        {error}
+                      </div>
+                    )}
+
+                    <p className="text-muted mb-3">
+                      Configure la duración para mantener la alarma en estado Shelve. Debe especificar al menos un valor.
+                    </p>
+
+                    <div className="row g-3">
+                      <div className="col-md-6">
+                        <label className="form-label">Semanas</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          min="0"
+                          value={shelveDuration.weeks}
+                          onChange={(e) =>
+                            setShelveDuration({ ...shelveDuration, weeks: parseInt(e.target.value) || 0 })
+                          }
+                          disabled={shelving}
+                        />
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Días</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          min="0"
+                          value={shelveDuration.days}
+                          onChange={(e) =>
+                            setShelveDuration({ ...shelveDuration, days: parseInt(e.target.value) || 0 })
+                          }
+                          disabled={shelving}
+                        />
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Horas</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          min="0"
+                          value={shelveDuration.hours}
+                          onChange={(e) =>
+                            setShelveDuration({ ...shelveDuration, hours: parseInt(e.target.value) || 0 })
+                          }
+                          disabled={shelving}
+                        />
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Minutos</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          min="0"
+                          value={shelveDuration.minutes}
+                          onChange={(e) =>
+                            setShelveDuration({ ...shelveDuration, minutes: parseInt(e.target.value) || 0 })
+                          }
+                          disabled={shelving}
+                        />
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Segundos</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          min="0"
+                          value={shelveDuration.seconds}
+                          onChange={(e) =>
+                            setShelveDuration({ ...shelveDuration, seconds: parseInt(e.target.value) || 0 })
+                          }
+                          disabled={shelving}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setShowShelveModal(false);
+                        setAlarmToShelve(null);
+                        setError(null);
+                        setShelveDuration({
+                          seconds: 0,
+                          minutes: 0,
+                          hours: 0,
+                          days: 0,
+                          weeks: 0,
+                        });
+                      }}
+                      disabled={shelving}
+                    >
+                      Cancelar
+                    </button>
+                    <Button type="submit" variant="info" loading={shelving}>
+                      Aplicar Shelve
+                    </Button>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
