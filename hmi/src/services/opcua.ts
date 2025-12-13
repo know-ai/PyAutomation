@@ -212,4 +212,39 @@ export const getNodeAttributes = async (
   return data?.data ?? [];
 };
 
+// OPC UA Server types
+export type OpcUaServerAttribute = {
+  name: string;
+  namespace: string;
+  access_type: "Read" | "Write" | "ReadWrite";
+};
+
+export type OpcUaServerAttributesResponse = {
+  data: OpcUaServerAttribute[];
+};
+
+/**
+ * Obtiene todos los atributos del OPC UA Server
+ */
+export const getOpcUaServerAttributes = async (): Promise<OpcUaServerAttribute[]> => {
+  const { data } = await api.get("/opcua/server/attrs");
+  return data?.data ?? [];
+};
+
+/**
+ * Actualiza el tipo de acceso de un nodo del OPC UA Server
+ */
+export const updateOpcUaServerAccessType = async (
+  namespace: string,
+  access_type: "Read" | "Write" | "ReadWrite",
+  name?: string
+): Promise<{ message: string; namespace: string; access_type: string }> => {
+  const { data } = await api.put("/opcua/server/attrs/update", {
+    namespace,
+    access_type,
+    name,
+  });
+  return data;
+};
+
 

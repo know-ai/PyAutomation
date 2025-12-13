@@ -162,7 +162,8 @@
     "lastname": "Last Name",
     "role": "Role",
     "roleLevel": "Role Level",
-    "level": "Level"
+    "level": "Level",
+    "accessType": "Access Type"
   },
   "settings": {
     "title": "System Settings",

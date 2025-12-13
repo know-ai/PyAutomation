@@ -162,7 +162,8 @@
     "lastname": "Apellido",
     "role": "Rol",
     "roleLevel": "Nivel de Rol",
-    "level": "Nivel"
+    "level": "Nivel",
+    "accessType": "Tipo de Acceso"
   },
   "settings": {
     "title": "Configuración del Sistema",
