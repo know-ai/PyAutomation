@@ -626,4 +626,120 @@ a {
   background-color: #dc3545 !important;
 }
 
+/* React Grid Layout Styles */
+.react-grid-layout {
+  position: relative;
+}
+
+.react-grid-item {
+  transition: all 200ms ease;
+  transition-property: left, top, width, height;
+  overflow: visible; /* allow resize handles to sit slightly outside */
+}
+
+.react-grid-item.cssTransforms {
+  transition-property: transform, width, height;
+}
+
+.react-grid-item.resizing {
+  transition: none;
+  z-index: 1;
+  will-change: width, height;
+}
+
+.react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: 3;
+  will-change: transform;
+}
+
+.react-grid-item.dropping {
+  visibility: hidden;
+}
+
+.react-grid-item.react-grid-placeholder {
+  background: rgb(0, 128, 255);
+  opacity: 0.2;
+  transition-duration: 100ms;
+  z-index: 2;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -o-user-select: none;
+  user-select: none;
+}
+
+.react-grid-item > .react-resizable-handle {
+  position: absolute;
+  background: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNiIgaGVpZ2h0PSI2IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxnIGZpbGw9IiM2NjYiIGZpbGwtcnVsZT0iZXZlbm9kZCI+PHBhdGggZD0ibTMgMy0zLTMgMyAzIDMgM3oiLz48L2c+PC9zdmc+');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-origin: content-box;
+  box-sizing: border-box;
+  z-index: 10;
+  opacity: 0.8;
+}
+
+.react-grid-item > .react-resizable-handle:hover {
+  opacity: 1;
+  background-color: rgba(0, 123, 255, 0.2);
+}
+
+/* Handle inferior (south) - solo vertical */
+.react-grid-item > .react-resizable-handle.react-resizable-handle-s {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 10px;
+  cursor: ns-resize;
+  background-position: center bottom;
+  display: block !important;
+}
+
+/* Handle derecho (east) - solo horizontal */
+.react-grid-item > .react-resizable-handle.react-resizable-handle-e {
+  right: 0;
+  top: 0;
+  width: 12px;
+  height: 100%;
+  cursor: ew-resize;
+  background: transparent;
+  display: block !important;
+  pointer-events: auto !important;
+  touch-action: none;
+}
+
+/* Handle esquina inferior derecha (southeast) - ambos */
+.react-grid-item > .react-resizable-handle.react-resizable-handle-se {
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  cursor: se-resize;
+  display: block !important;
+}
+
+/* Handle esquina inferior izquierda (southwest) - ambos */
+.react-grid-item > .react-resizable-handle.react-resizable-handle-sw {
+  bottom: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  cursor: sw-resize;
+}
+
+/* Handle esquina superior derecha (northeast) - ambos */
+.react-grid-item > .react-resizable-handle.react-resizable-handle-ne {
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  cursor: ne-resize;
+}
+
+.react-grid-item.react-grid-placeholder {
+  background: rgba(0, 128, 255, 0.2);
+  border: 2px dashed rgba(0, 128, 255, 0.5);
+}
+
 

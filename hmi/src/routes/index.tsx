@@ -9,6 +9,7 @@ import { Database } from "../pages/Database";
 import { Tags } from "../pages/Tags";
 import { DataLogger } from "../pages/DataLogger";
 import { Trends } from "../pages/Trends";
+import { RealTimeTrends } from "../pages/RealTimeTrends";
 import { Alarms } from "../pages/Alarms";
 import { AlarmsSummary } from "../pages/AlarmsSummary";
 import { Machines } from "../pages/Machines";
@@ -45,6 +46,7 @@ export function AppRoutes() {
         <Route path="/tags/definitions" element={<Tags />} />
         <Route path="/tags/datalogger" element={<DataLogger />} />
         <Route path="/tags/trends" element={<Trends />} />
+        <Route path="/real-time-trends" element={<RealTimeTrends />} />
         <Route path="/alarms" element={<Navigate to="/alarms/definitions" replace />} />
         <Route path="/alarms/definitions" element={<Alarms />} />
         <Route path="/alarms/summary" element={<AlarmsSummary />} />

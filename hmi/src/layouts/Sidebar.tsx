@@ -27,6 +27,7 @@ export function Sidebar() {
   const isAlarmsActive = location.pathname.startsWith("/alarms");
 
   const navItems = [
+    { to: "/real-time-trends", icon: "bi bi-graph-up-arrow", labelKey: "navigation.realTimeTrends" },
     { to: "/machines", icon: "bi bi-cpu", labelKey: "navigation.machines" },
     { to: "/events", icon: "bi bi-calendar-event", labelKey: "navigation.events" },
     { to: "/operational-logs", icon: "bi bi-journal-text", labelKey: "navigation.operationalLogs" },

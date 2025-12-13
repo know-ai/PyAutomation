@@ -54,6 +54,7 @@
     "userManagement": "User Management",
     "settings": "Settings",
     "trends": "Trends",
+    "realTimeTrends": "Real Time Trends",
     "dataLogger": "Data Logger"
   },
   "sidebar": {

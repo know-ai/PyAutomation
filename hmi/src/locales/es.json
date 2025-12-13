@@ -54,6 +54,7 @@
     "userManagement": "Gestión de usuarios",
     "settings": "Configuración",
     "trends": "Tendencias",
+    "realTimeTrends": "Tendencias en Tiempo Real",
     "dataLogger": "Registrador de datos"
   },
   "sidebar": {
