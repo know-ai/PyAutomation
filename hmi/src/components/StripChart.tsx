@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Card } from "./Card";
 import { Button } from "./Button";
 import Plot from "react-plotly.js";
@@ -33,8 +33,10 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [tagSearch, setTagSearch] = useState("");
   const [loadingTags, setLoadingTags] = useState(false);
+  const [bufferVersion, setBufferVersion] = useState(0);
   const tagConfigRef = useRef<HTMLDivElement>(null);
   const dataBufferRef = useRef<Map<string, Array<{ x: Date; y: number }>>>(new Map());
+  const pendingRenderRef = useRef(false);
 
   // Cargar tags disponibles
   useEffect(() => {
@@ -45,7 +47,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
         setAvailableTags(response.data || []);
       } catch (err: any) {
         console.error("Error loading tags:", err);
-        showToast("error", "Error al cargar los tags");
+        showToast("Error al cargar los tags", "error");
       } finally {
         setLoadingTags(false);
       }
@@ -84,10 +86,18 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     );
   }, [availableTags, tagSearch]);
 
-  // Actualizar buffer con datos en tiempo real
+  // Actualizar buffer con datos en tiempo real (no disparar render inmediato)
   useEffect(() => {
+    const getRealTimeTag = (tagName: string) => {
+      return (
+        tagValues[tagName] ||
+        tagValues[tagName.toUpperCase()] ||
+        tagValues[tagName.toLowerCase()]
+      );
+    };
+
     config.tagNames.forEach((tagName) => {
-      const realTimeTag = tagValues[tagName];
+      const realTimeTag = getRealTimeTag(tagName);
       if (realTimeTag && realTimeTag.value !== undefined && realTimeTag.value !== null) {
         const buffer = dataBufferRef.current.get(tagName) || [];
         const newPoint = {
@@ -98,11 +108,31 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
         // Agregar nuevo punto y mantener solo los últimos bufferSize puntos
         const updatedBuffer = [...buffer, newPoint].slice(-config.bufferSize);
         dataBufferRef.current.set(tagName, updatedBuffer);
+        pendingRenderRef.current = true;
       }
     });
   }, [tagValues, config.tagNames, config.bufferSize]);
 
-  // Preparar datos para Plotly
+  // Búfer de render: aplicar cambios cada 1s como en tablas
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (pendingRenderRef.current) {
+        pendingRenderRef.current = false;
+        setBufferVersion((prev) => prev + 1);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const getTagUnit = useCallback(
+    (tagName: string) => {
+      const tag = availableTags.find((t) => t.name === tagName);
+      return tag?.display_unit || tag?.unit || "—";
+    },
+    [availableTags]
+  );
+
+  // Preparar datos para Plotly (soporta hasta 2 unidades distintas -> dos ejes Y)
   const plotData = useMemo(() => {
     if (config.tagNames.length === 0) {
       return { data: [], layout: {} };
@@ -113,10 +143,22 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
       "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
     ];
 
+    // Orden de unidades según aparición de los tags seleccionados
+    const unitOrder: string[] = [];
+    config.tagNames.forEach((tagName) => {
+      const unit = getTagUnit(tagName);
+      if (!unitOrder.includes(unit)) unitOrder.push(unit);
+    });
+
+    const unitAxis: Record<string, string> = {};
+    unitOrder.forEach((unit, idx) => {
+      unitAxis[unit] = idx === 0 ? "y" : "y2";
+    });
+
     const traces: Data[] = config.tagNames.map((tagName, index) => {
       const buffer = dataBufferRef.current.get(tagName) || [];
       const tag = availableTags.find((t) => t.name === tagName);
-      
+      const unit = getTagUnit(tagName);
       return {
         x: buffer.map((p) => p.x),
         y: buffer.map((p) => p.y),
@@ -124,14 +166,23 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
         mode: "lines",
         name: tag?.display_name || tagName,
         line: { color: colorPalette[index % colorPalette.length], width: 2 },
-        yaxis: "y",
+        yaxis: unitAxis[unit] || "y",
       } as Data;
+    });
+
+    // Color de los ejes basado en el primer trazo de cada unidad
+    const axisColors: Record<string, string> = {};
+    traces.forEach((t) => {
+      const axis = (t as any).yaxis || "y";
+      if (!axisColors[axis]) {
+        axisColors[axis] = (t as any).line?.color || "#6c757d";
+      }
     });
 
     const layout: Partial<Layout> = {
       title: config.title || "Strip Chart",
       autosize: true,
-      margin: { l: 60, r: 20, t: 40, b: 40 },
+      margin: { l: 60, r: unitOrder.length > 1 ? 60 : 20, t: 40, b: 40 },
       paper_bgcolor: mode === "dark" ? "#212529" : "#ffffff",
       plot_bgcolor: mode === "dark" ? "#2c3034" : "#f8f9fa",
       font: { color: mode === "dark" ? "#ffffff" : "#212529" },
@@ -141,8 +192,8 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
         gridcolor: mode === "dark" ? "#495057" : "#dee2e6",
       },
       yaxis: {
-        title: "Valor",
-        color: mode === "dark" ? "#ffffff" : "#212529",
+        title: unitOrder[0] || "Valor",
+        color: axisColors["y"] || (mode === "dark" ? "#ffffff" : "#212529"),
         gridcolor: mode === "dark" ? "#495057" : "#dee2e6",
       },
       showlegend: config.tagNames.length > 1,
@@ -154,14 +205,37 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
       },
     };
 
-    return { data: traces, layout };
-  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags]);
+    if (unitOrder.length > 1) {
+      (layout as any).yaxis2 = {
+        title: unitOrder[1],
+        overlaying: "y",
+        side: "right",
+        color: axisColors["y2"] || (mode === "dark" ? "#ffffff" : "#212529"),
+        gridcolor: "rgba(0,0,0,0)",
+      };
+    }
 
+    return { data: traces, layout };
+  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, bufferVersion]);
+
+  // Máximo 2 unidades distintas; número de tags ilimitado mientras no se supere ese tope de unidades
   const handleTagToggle = (tagName: string) => {
-    const newTagNames = config.tagNames.includes(tagName)
+    const isSelected = config.tagNames.includes(tagName);
+    const unit = getTagUnit(tagName);
+
+    // Unidades actuales
+    const currentUnits = new Set(config.tagNames.map(getTagUnit));
+    const wouldAddNewUnit = !isSelected && !currentUnits.has(unit);
+
+    if (wouldAddNewUnit && currentUnits.size >= 2) {
+      showToast("Máximo 2 unidades por gráfico", "warning");
+      return;
+    }
+
+    const newTagNames = isSelected
       ? config.tagNames.filter((name) => name !== tagName)
       : [...config.tagNames, tagName];
-    
+
     onConfigChange({
       ...config,
       tagNames: newTagNames,
@@ -210,7 +284,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
               {isEditMode && (
                 <>
                   <Button
-                    variant="info"
+                    variant="primary"
                     className="btn-sm"
                     onClick={() => setShowTagConfig(!showTagConfig)}
                     title="Configurar tags"
@@ -270,7 +344,12 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
               />
             </div>
             <div className="mb-2">
-              <label className="form-label small">Tags seleccionados:</label>
+              <label className="form-label small d-flex justify-content-between align-items-center">
+                <span>Tags seleccionados:</span>
+                <span className="badge bg-secondary">
+                  {Array.from(new Set(config.tagNames.map(getTagUnit))).length}/2 unidades
+                </span>
+              </label>
               <div className="d-flex flex-wrap gap-1">
                 {config.tagNames.map((tagName) => {
                   const tag = availableTags.find((t) => t.name === tagName);
@@ -304,20 +383,29 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
                   ) : (
                     filteredTags.map((tag) => {
                       const isSelected = config.tagNames.includes(tag.name);
+                      const unit = getTagUnit(tag.name);
+                      const unitsInUse = new Set(config.tagNames.map(getTagUnit));
+                      const reachedLimit = unitsInUse.size >= 2 && !unitsInUse.has(unit);
                       return (
                         <div
                           key={tag.name}
-                          className={`p-2 border-bottom cursor-pointer ${isSelected ? "bg-primary bg-opacity-10" : ""}`}
-                          style={{ cursor: "pointer" }}
-                          onClick={() => handleTagToggle(tag.name)}
+                          className={`p-2 border-bottom ${isSelected ? "bg-primary bg-opacity-10" : ""} ${reachedLimit ? "text-muted" : "cursor-pointer"}`}
+                          style={{ cursor: reachedLimit ? "not-allowed" : "pointer", opacity: reachedLimit ? 0.6 : 1 }}
+                          onClick={() => {
+                            if (reachedLimit) return;
+                            handleTagToggle(tag.name);
+                          }}
                         >
                           <div className="d-flex justify-content-between align-items-center">
                             <div>
                               <strong className="small">{tag.display_name || tag.name}</strong>
                               <br />
-                              <span className="text-muted small">{tag.name}</span>
+                              <span className="text-muted small">
+                                {tag.name} · {unit}
+                              </span>
                             </div>
                             {isSelected && <i className="bi bi-check-circle-fill text-primary"></i>}
+                            {!isSelected && reachedLimit && <small className="text-muted">máx 2 unidades</small>}
                           </div>
                         </div>
                       );

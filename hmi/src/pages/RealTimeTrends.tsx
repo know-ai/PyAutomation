@@ -28,11 +28,9 @@ export function RealTimeTrends() {
     return [];
   });
 
-  // Persistir layout en localStorage
+  // Persistir layout en localStorage (también cuando está vacío)
   useEffect(() => {
-    if (stripCharts.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stripCharts));
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stripCharts));
   }, [stripCharts]);
 
   // Cargar layout guardado al montar
@@ -195,7 +193,11 @@ export function RealTimeTrends() {
                 resizeHandles={isEditMode ? ['e', 's', 'se', 'sw'] : ['se']}
               >
                 {stripCharts.map((chart) => (
-                  <div key={chart.id} data-chart-id={chart.id} style={{ height: "100%", width: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                  <div
+                    key={chart.id}
+                    data-chart-id={chart.id}
+                    style={{ height: "100%", width: "100%", overflow: "visible", display: "flex", flexDirection: "column" }}
+                  >
                     <StripChart
                       config={chart}
                       isEditMode={isEditMode}
