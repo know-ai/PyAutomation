@@ -12,6 +12,7 @@ import {
 import Plot from "react-plotly.js";
 import type { Data, Layout } from "plotly.js";
 import { useTheme } from "../hooks/useTheme";
+import { useTranslation } from "../hooks/useTranslation";
 
 type PresetDate =
   | "Last Hour"
@@ -83,6 +84,7 @@ const formatDateTimeForBackend = (dateString: string): string => {
 };
 
 export function Trends() {
+  const { t } = useTranslation();
   const { mode } = useTheme();
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("trends_presetDate");
@@ -195,7 +197,7 @@ export function Trends() {
           data?.message ??
           data?.detail ??
           data?.error;
-        const errorMsg = backendMessage || e?.message || "Error al cargar opciones";
+        const errorMsg = backendMessage || e?.message || t("trends.loadOptionsError");
         setError(errorMsg);
         setOptionsLoaded(true);
       }
@@ -244,24 +246,24 @@ export function Trends() {
 
   const handleLoadTrends = useCallback(async () => {
     if (selectedTags.length === 0) {
-      setError("Debe seleccionar al menos un tag");
+      setError(t("trends.selectAtLeastOneTag"));
       return;
     }
 
     if (!startDate || !endDate) {
-      setError("Debe seleccionar un rango de fechas");
+      setError(t("trends.selectDateRange"));
       return;
     }
 
     const start = new Date(startDate);
     const end = new Date(endDate);
     if (end > new Date()) {
-      setError("La fecha final no puede ser mayor a la fecha actual");
+      setError(t("trends.endDateCannotBeFuture"));
       return;
     }
 
     if (start >= end) {
-      setError("La fecha de inicio debe ser menor a la fecha final");
+      setError(t("trends.startDateMustBeBeforeEnd"));
       return;
     }
 
@@ -283,7 +285,7 @@ export function Trends() {
         data?.message ??
         data?.detail ??
         data?.error;
-      const errorMsg = backendMessage || e?.message || "Error al cargar las tendencias";
+      const errorMsg = backendMessage || e?.message || t("trends.loadError");
       setError(errorMsg);
       setTrendsData({});
     } finally {
@@ -490,7 +492,7 @@ export function Trends() {
         color: textColor,
       },
       xaxis: {
-        title: "Tiempo",
+        title: t("trends.time"),
         type: "date",
         gridcolor: gridColor,
         linecolor: lineColor,
@@ -586,7 +588,7 @@ export function Trends() {
         <Card
           title={
             <div className="d-flex justify-content-between align-items-center w-100 flex-wrap gap-2">
-              <h3 className="card-title m-0">Trends</h3>
+              <h3 className="card-title m-0">{t("navigation.trends")}</h3>
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 <select
                   className="form-select form-select-sm"
@@ -599,11 +601,14 @@ export function Trends() {
                   }}
                   disabled={loading}
                 >
-                  {PRESET_DATES.map((preset) => (
-                    <option key={preset} value={preset}>
-                      {preset}
-                    </option>
-                  ))}
+                  {PRESET_DATES.map((preset) => {
+                    const presetKey = preset === "Last Hour" ? "LastHour" : preset.replace(/\s+/g, "");
+                    return (
+                      <option key={preset} value={preset}>
+                        {t(`trends.preset.${presetKey}`)}
+                      </option>
+                    );
+                  })}
                 </select>
                 {presetDate === "Custom" && (
                   <>
@@ -645,7 +650,7 @@ export function Trends() {
                   loading={loading}
                 >
                   <i className="bi bi-graph-up me-1"></i>
-                  Cargar Trends
+                  {t("trends.loadTrends")}
                 </Button>
               </div>
             </div>
@@ -662,7 +667,7 @@ export function Trends() {
             <div className="col-4">
               <div className="card">
                 <div className="card-header">
-                  <h6 className="mb-0">Seleccionar Tags</h6>
+                  <h6 className="mb-0">{t("trends.selectTags")}</h6>
                 </div>
                 <div className="card-body">
                   <div className="position-relative" ref={tagDropdownRef}>
@@ -673,7 +678,7 @@ export function Trends() {
                     >
                       <div className="d-flex flex-wrap gap-1" style={{ flex: 1 }}>
                         {selectedTags.length === 0 ? (
-                          <span className="text-muted">Seleccionar tags...</span>
+                          <span className="text-muted">{t("trends.selectTagsPlaceholder")}</span>
                         ) : (
                           selectedTags.slice(0, 3).map((tagName) => {
                             const tag = availableTags.find((t) => t.name === tagName);
@@ -694,7 +699,7 @@ export function Trends() {
                         )}
                         {selectedTags.length > 3 && (
                           <span className="badge bg-secondary">
-                            +{selectedTags.length - 3} más
+                            +{selectedTags.length - 3} {t("trends.more")}
                           </span>
                         )}
                       </div>
@@ -717,7 +722,7 @@ export function Trends() {
                           <input
                             type="text"
                             className="form-control form-control-sm"
-                            placeholder="Buscar tags..."
+                            placeholder={t("trends.searchTags")}
                             value={tagSearch}
                             onChange={(e) => {
                               setTagSearch(e.target.value);
@@ -736,7 +741,7 @@ export function Trends() {
                         >
                           {filteredTags.length === 0 ? (
                             <div className="p-3 text-center text-muted">
-                              <small>No se encontraron tags</small>
+                              <small>{t("trends.noTagsFound")}</small>
                             </div>
                           ) : (
                             <div className="list-group list-group-flush">
@@ -804,7 +809,7 @@ export function Trends() {
                   <div className="card-body">
                     <div className="text-center py-5 text-muted">
                       <i className="bi bi-graph-up" style={{ fontSize: "3rem" }}></i>
-                      <p className="mt-3">Seleccione tags y fechas para visualizar las tendencias</p>
+                      <p className="mt-3">{t("trends.selectTagsAndDates")}</p>
                     </div>
                   </div>
                 </div>

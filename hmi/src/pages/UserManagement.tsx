@@ -119,12 +119,12 @@ export function UserManagement() {
     if (!selectedUser) return;
 
     if (!newPassword || !confirmPassword) {
-      setError("Todos los campos son requeridos");
+      setError(t("userManagement.allFieldsRequired"));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("Las contraseñas no coinciden");
+      setError(t("userManagement.passwordsMismatch"));
       return;
     }
 
@@ -144,7 +144,10 @@ export function UserManagement() {
       // Recargar usuarios
       loadUsers();
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cambiar la contraseña";
+      const errorMsg =
+        e?.response?.data?.message ||
+        e?.message ||
+        t("userManagement.changePasswordError");
       setError(errorMsg);
     } finally {
       setIsProcessing(false);
@@ -155,12 +158,12 @@ export function UserManagement() {
     if (!selectedUser) return;
 
     if (!newPassword || !confirmPassword) {
-      setError("Todos los campos son requeridos");
+      setError(t("userManagement.allFieldsRequired"));
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("Las contraseñas no coinciden");
+      setError(t("userManagement.passwordsMismatch"));
       return;
     }
 
@@ -178,7 +181,10 @@ export function UserManagement() {
       // Recargar usuarios
       loadUsers();
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al resetear la contraseña";
+      const errorMsg =
+        e?.response?.data?.message ||
+        e?.message ||
+        t("userManagement.resetPasswordError");
       setError(errorMsg);
     } finally {
       setIsProcessing(false);
@@ -201,7 +207,10 @@ export function UserManagement() {
       // Recargar usuarios
       loadUsers();
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al actualizar el rol";
+      const errorMsg =
+        e?.response?.data?.message ||
+        e?.message ||
+        t("userManagement.updateRoleError");
       setError(errorMsg);
     } finally {
       setIsProcessing(false);
@@ -222,7 +231,10 @@ export function UserManagement() {
       const roles = await getAllRoles();
       setAllRoles(roles);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar los roles";
+      const errorMsg =
+        e?.response?.data?.message ||
+        e?.message ||
+        t("userManagement.loadRolesError");
       setRoleError(errorMsg);
     } finally {
       setLoadingRoles(false);
@@ -231,12 +243,12 @@ export function UserManagement() {
 
   const handleCreateRole = async () => {
     if (!newRoleName.trim()) {
-      setRoleError("El nombre del rol es requerido");
+      setRoleError(t("userManagement.roleNameRequired"));
       return;
     }
 
     if (newRoleLevel < 2) {
-      setRoleError("El nivel del rol debe ser 2 o mayor");
+      setRoleError(t("userManagement.roleLevelMin"));
       return;
     }
 
@@ -254,7 +266,10 @@ export function UserManagement() {
       const roles = await getRoles();
       setAvailableRoles(roles);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al crear el rol";
+      const errorMsg =
+        e?.response?.data?.message ||
+        e?.message ||
+        t("userManagement.createRoleError");
       setRoleError(errorMsg);
     } finally {
       setIsCreatingRole(false);
@@ -283,15 +298,15 @@ export function UserManagement() {
         <Card
           title={
             <div className="d-flex justify-content-between align-items-center w-100">
-              <h3 className="card-title m-0">Gestión de Usuarios</h3>
+              <h3 className="card-title m-0">{t("navigation.userManagement")}</h3>
               <Button
-                variant="info"
+                variant="secondary"
                 className="btn-sm"
                 onClick={handleOpenRolesManagement}
-                title="Gestionar roles"
+                title={t("userManagement.manageRoles")}
               >
                 <i className="bi bi-shield-check me-1"></i>
-                Gestionar Roles
+                {t("userManagement.manageRoles")}
               </Button>
             </div>
           }
@@ -390,7 +405,7 @@ export function UserManagement() {
                   {users.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="text-center text-muted py-4">
-                        No hay usuarios disponibles
+                        {t("userManagement.noUsers")}
                       </td>
                     </tr>
                   ) : (

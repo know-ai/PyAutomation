@@ -53,7 +53,7 @@ export function Machines() {
         data?.detail ??
         data?.error;
       const errorMessage =
-        backendMessage || err?.message || "Error al cargar las máquinas de estado";
+        backendMessage || err?.message || t("machines.loadError");
       setError(errorMessage);
       console.error("Error loading machines:", err);
     } finally {
@@ -99,7 +99,7 @@ export function Machines() {
     const intervalValue = parseFloat(String(newInterval));
     
     if (isNaN(intervalValue) || intervalValue < 0.1) {
-      showToast("El intervalo debe ser un número mayor o igual a 0.1 segundos", "error");
+      showToast(t("machines.invalidInterval"), "error");
       return;
     }
 
@@ -138,7 +138,7 @@ export function Machines() {
       // Recargar máquinas para sincronizar con el store
       loadMachines();
 
-      showToast(response.message || "Intervalo actualizado correctamente", "success");
+      showToast(response.message || t("machines.intervalUpdated"), "success");
       setShowIntervalModal(false);
       setPendingIntervalUpdate(null);
     } catch (err: any) {
@@ -149,7 +149,7 @@ export function Machines() {
         data?.detail ??
         data?.error;
       const errorMessage =
-        backendMessage || err?.message || "Error al actualizar el intervalo";
+        backendMessage || err?.message || t("machines.updateIntervalError");
       showToast(errorMessage, "error");
       console.error("Error updating interval:", err);
     } finally {
@@ -200,7 +200,7 @@ export function Machines() {
       // Recargar máquinas para sincronizar con el store
       loadMachines();
 
-      showToast(response.message || "Transición ejecutada correctamente", "success");
+      showToast(response.message || t("machines.transitionSuccess"), "success");
       setShowTransitionModal(false);
       setPendingTransition(null);
     } catch (err: any) {
@@ -211,7 +211,7 @@ export function Machines() {
         data?.detail ??
         data?.error;
       const errorMessage =
-        backendMessage || err?.message || "Error al ejecutar la transición";
+        backendMessage || err?.message || t("machines.transitionError");
       showToast(errorMessage, "error");
       console.error("Error executing transition:", err);
     } finally {
@@ -228,20 +228,20 @@ export function Machines() {
   // Exportar a CSV
   const handleExportCSV = () => {
     if (!machines || machines.length === 0) {
-      showToast("No hay datos para exportar", "error");
+      showToast(t("machines.noDataToExport"), "error");
       return;
     }
 
     try {
       // Preparar los datos para CSV
       const headers = [
-        "Nombre",
-        "Intervalo (s)",
-        "Estado",
-        "Prioridad",
-        "Criticidad",
-        "Descripción",
-        "Clasificación",
+        t("tables.name"),
+        t("tables.interval"),
+        t("tables.state"),
+        t("tables.priority"),
+        t("tables.criticity"),
+        t("tables.description"),
+        t("tables.classification"),
       ];
 
       // Convertir máquinas a filas CSV (usar máquinas con tiempo real)
@@ -284,7 +284,7 @@ export function Machines() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      showToast("Datos exportados correctamente", "success");
+      showToast(t("machines.exportSuccess"), "success");
     } catch (err: any) {
       const data = err?.response?.data;
       const backendMessage =
@@ -292,7 +292,7 @@ export function Machines() {
         data?.message ??
         data?.detail ??
         data?.error;
-      const errorMessage = backendMessage || err?.message || "Error al exportar los datos";
+      const errorMessage = backendMessage || err?.message || t("machines.exportError");
       showToast(errorMessage, "error");
       console.error("Error exporting CSV:", err);
     }
@@ -307,7 +307,7 @@ export function Machines() {
         onClick={handleExportCSV}
         className="btn-sm"
         disabled={loading || machinesWithRealTime.length === 0}
-        title="Exportar a CSV"
+        title={t("machines.exportToCSV")}
       >
         <i className="bi bi-download me-1"></i>
         CSV
@@ -328,14 +328,14 @@ export function Machines() {
           {loading ? (
             <div className="text-center py-5">
               <div className="spinner-border" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t("common.loading")}</span>
               </div>
             </div>
           ) : machinesWithRealTime.length === 0 ? (
             <div className="text-center py-5">
               <i className="bi bi-cpu" style={{ fontSize: "4rem", color: "#6c757d" }}></i>
               <h4 className="mt-3 text-muted">{t("navigation.machines")}</h4>
-              <p className="text-muted">No hay máquinas disponibles</p>
+              <p className="text-muted">{t("machines.noMachinesAvailable")}</p>
             </div>
           ) : (
             <>
@@ -344,12 +344,12 @@ export function Machines() {
                   <thead>
                     <tr>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.name")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>Intervalo (s)</th>
+                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.interval")}</th>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.state")}</th>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.priority")}</th>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.criticity")}</th>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.description")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>Clasificación</th>
+                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.classification")}</th>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.actions")}</th>
                     </tr>
                   </thead>
@@ -371,7 +371,7 @@ export function Machines() {
                                 handleIntervalChange(machine, value);
                               } else if (isNaN(value) || value < 0.1) {
                                 e.target.value = String(machine.machine_interval);
-                                showToast("El intervalo debe ser un número mayor o igual a 0.1 segundos", "error");
+                                showToast(t("machines.invalidInterval"), "error");
                               }
                             }}
                             onKeyDown={(e) => {
@@ -423,9 +423,9 @@ export function Machines() {
                             className="btn-sm"
                             onClick={() => {
                               // Por ahora no hace nada, se implementará más adelante
-                              showToast("Funcionalidad de edición de configuración próximamente", "info");
+                              showToast(t("machines.editConfigComingSoon"), "info");
                             }}
-                            title="Editar configuración"
+                            title={t("machines.editConfiguration")}
                           >
                             <i className="bi bi-gear"></i>
                           </Button>
@@ -502,7 +502,7 @@ export function Machines() {
           <div className="modal-dialog modal-dialog-centered" role="document">
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <h5 className="modal-title">Confirmar cambio de intervalo</h5>
+                <h5 className="modal-title">{t("machines.confirmIntervalChange")}</h5>
                 <button
                   type="button"
                   className="btn-close"
@@ -513,16 +513,16 @@ export function Machines() {
               </div>
               <div className="modal-body">
                 <p>
-                  ¿Está seguro de que desea cambiar el intervalo de ejecución de la máquina?
+                  {t("machines.confirmIntervalChangeMessage")}
                 </p>
                 <div className="mb-2">
-                  <strong>Máquina:</strong> {pendingIntervalUpdate.machineName}
+                  <strong>{t("machines.machine")}:</strong> {pendingIntervalUpdate.machineName}
                 </div>
                 <div className="mb-2">
-                  <strong>Intervalo actual:</strong> {pendingIntervalUpdate.oldInterval} segundos
+                  <strong>{t("machines.currentInterval")}:</strong> {pendingIntervalUpdate.oldInterval} {t("machines.seconds")}
                 </div>
                 <div>
-                  <strong>Intervalo nuevo:</strong> {pendingIntervalUpdate.newInterval} segundos
+                  <strong>{t("machines.newInterval")}:</strong> {pendingIntervalUpdate.newInterval} {t("machines.seconds")}
                 </div>
               </div>
               <div className="modal-footer">
@@ -531,7 +531,7 @@ export function Machines() {
                   onClick={handleCancelIntervalUpdate}
                   disabled={!!updatingMachine}
                 >
-                  Cancelar
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   variant="primary"
@@ -541,10 +541,10 @@ export function Machines() {
                   {updatingMachine ? (
                     <>
                       <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      Actualizando...
+                      {t("machines.updating")}
                     </>
                   ) : (
-                    "Confirmar"
+                    t("common.confirm")
                   )}
                 </Button>
               </div>
@@ -570,7 +570,7 @@ export function Machines() {
           <div className="modal-dialog modal-dialog-centered" role="document">
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <h5 className="modal-title">Confirmar transición de estado</h5>
+                <h5 className="modal-title">{t("machines.confirmStateTransition")}</h5>
                 <button
                   type="button"
                   className="btn-close"
@@ -581,17 +581,17 @@ export function Machines() {
               </div>
               <div className="modal-body">
                 <p>
-                  ¿Está seguro de que desea cambiar el estado de la máquina?
+                  {t("machines.confirmStateTransitionMessage")}
                 </p>
                 <div className="mb-2">
-                  <strong>Máquina:</strong> {pendingTransition.machineName}
+                  <strong>{t("machines.machine")}:</strong> {pendingTransition.machineName}
                 </div>
                 <div className="mb-2">
-                  <strong>Estado actual:</strong>{" "}
+                  <strong>{t("machines.currentState")}:</strong>{" "}
                   <span className="badge bg-secondary">{pendingTransition.oldState}</span>
                 </div>
                 <div>
-                  <strong>Estado nuevo:</strong>{" "}
+                  <strong>{t("machines.newState")}:</strong>{" "}
                   <span className="badge bg-primary">{pendingTransition.newState}</span>
                 </div>
               </div>
@@ -601,7 +601,7 @@ export function Machines() {
                   onClick={handleCancelTransition}
                   disabled={!!updatingMachine}
                 >
-                  Cancelar
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   variant="primary"
@@ -611,10 +611,10 @@ export function Machines() {
                   {updatingMachine ? (
                     <>
                       <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      Ejecutando...
+                      {t("machines.executing")}
                     </>
                   ) : (
-                    "Confirmar"
+                    t("common.confirm")
                   )}
                 </Button>
               </div>

@@ -1,18 +1,19 @@
 import { Card } from "../components/Card";
+import { useTranslation } from "../hooks/useTranslation";
 
 export function Database() {
+  const { t } = useTranslation();
   return (
     <div className="row">
       <div className="col-12">
-        <Card title="Database">
+        <Card title={t("navigation.database")}>
           <p className="mb-2">
-            Configuración de conexión a base de datos (PostgreSQL/MySQL/SQLite) usando endpoints
-            existentes.
+            {t("database.description")}
           </p>
           <ul className="mb-0">
-            <li>Form de credenciales y prueba de conexión.</li>
-            <li>Estado de conexión y reconexión.</li>
-            <li>Export/Import de configuración (ya soportado por backend).</li>
+            <li>{t("database.feature1")}</li>
+            <li>{t("database.feature2")}</li>
+            <li>{t("database.feature3")}</li>
           </ul>
         </Card>
       </div>

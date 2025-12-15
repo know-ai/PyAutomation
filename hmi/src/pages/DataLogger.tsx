@@ -325,7 +325,7 @@ export function DataLogger() {
     const filtersToUse = customFilters || filters;
     
     if (selectedTags.length === 0) {
-      setError("Debe seleccionar al menos un tag");
+      setError(t("dataLogger.selectAtLeastOneTag"));
       return;
     }
 
@@ -360,7 +360,7 @@ export function DataLogger() {
         data?.message ??
         data?.detail ??
         data?.error;
-      const errorMsg = backendMessage || e?.message || "Error al cargar los datos";
+      const errorMsg = backendMessage || e?.message || t("dataLogger.loadError");
       setError(errorMsg);
       setTabularData(null);
     } finally {
@@ -382,7 +382,7 @@ export function DataLogger() {
 
   const handleExportCSV = async () => {
     if (!tabularData || !tabularData.values || tabularData.values.length === 0) {
-      setError("No hay datos para exportar");
+      setError(t("dataLogger.noDataToExport"));
       return;
     }
 
@@ -409,7 +409,7 @@ export function DataLogger() {
       const displayNames = response.display_names || [];
 
       if (!allData || allData.length === 0) {
-        setError("No hay datos para exportar");
+        setError(t("dataLogger.noDataToExport"));
         return;
       }
 
@@ -464,7 +464,7 @@ export function DataLogger() {
         data?.detail ??
         data?.error;
       const errorMsg =
-        backendMessage || e?.message || "Error al exportar datos a CSV";
+        backendMessage || e?.message || t("dataLogger.exportError");
       setError(errorMsg);
     }
   };
@@ -475,27 +475,30 @@ export function DataLogger() {
         <Card
           title={
             <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
-              <span className="me-auto">DataLogger</span>
+              <span className="me-auto">{t("navigation.dataLogger")}</span>
               <div className="d-flex align-items-center gap-2">
                 <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">Rango:</label>
+                  <label className="form-label small mb-0 me-1">{t("dataLogger.range")}:</label>
                   <select
                     className="form-select form-select-sm"
                     style={{ width: "150px" }}
                     value={presetDate}
                     onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
                   >
-                    {PRESET_DATES.map((preset) => (
-                      <option key={preset} value={preset}>
-                        {preset}
-                      </option>
-                    ))}
+                    {PRESET_DATES.map((preset) => {
+                      const presetKey = preset === "Last hour" ? "Lasthour" : preset.replace(/\s+/g, "");
+                      return (
+                        <option key={preset} value={preset}>
+                          {t(`dataLogger.preset.${presetKey}`)}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 {presetDate === "Custom" && (
                   <>
                     <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">Inicio:</label>
+                      <label className="form-label small mb-0 me-1">{t("dataLogger.start")}:</label>
                       <input
                         type="datetime-local"
                         className="form-control form-control-sm"
@@ -508,7 +511,7 @@ export function DataLogger() {
                       />
                     </div>
                     <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">Fin:</label>
+                      <label className="form-label small mb-0 me-1">{t("dataLogger.end")}:</label>
                       <input
                         type="datetime-local"
                         className="form-control form-control-sm"
@@ -521,7 +524,7 @@ export function DataLogger() {
                   </>
                 )}
                 <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">Sample:</label>
+                  <label className="form-label small mb-0 me-1">{t("dataLogger.sample")}:</label>
                   <select
                     className="form-select form-select-sm"
                     style={{ width: "120px" }}
@@ -534,13 +537,13 @@ export function DataLogger() {
                   >
                     {SAMPLE_TIME_OPTIONS.map((option) => (
                       <option key={option} value={option}>
-                        {option}
+                        {t(`dataLogger.sampleTime.${option.replace(/\s+/g, "")}`)}
                       </option>
                     ))}
                   </select>
                 </div>
                 <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
-                  Aplicar
+                  {t("common.filter")}
                 </Button>
                 <Button
                   variant="primary"
@@ -549,7 +552,7 @@ export function DataLogger() {
                   disabled={loading || !tabularData || !tabularData.values || tabularData.values.length === 0}
                 >
                   <i className="bi bi-download me-1"></i>
-                  CSV
+                  {t("common.csv")}
                 </Button>
               </div>
             </div>
@@ -626,7 +629,7 @@ export function DataLogger() {
           {/* Filtro de tags */}
           <div className="mb-3">
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="form-label mb-0 me-2">Tag Names:</label>
+              <label className="form-label mb-0 me-2">{t("dataLogger.tagNames")}:</label>
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 {availableTags.map((tag) => {
                   const isSelected = selectedTags.includes(tag.name);
@@ -654,7 +657,7 @@ export function DataLogger() {
           {loading && (
             <div className="text-center py-4">
               <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t("common.loading")}</span>
               </div>
             </div>
           )}
@@ -682,7 +685,7 @@ export function DataLogger() {
                         }
                         className="text-center text-muted py-4"
                       >
-                        No hay datos disponibles
+                        {t("dataLogger.noDataAvailable")}
                       </td>
                     </tr>
                   ) : (

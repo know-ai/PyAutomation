@@ -33,7 +33,7 @@ export function OpcUaServer() {
       const data = await getOpcUaServerAttributes();
       setAttributes(data);
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || "Error al cargar los atributos del servidor OPC UA";
+      const errorMessage = err?.response?.data?.message || err?.message || t("opcuaServer.loadError");
       setError(errorMessage);
       console.error("Error loading OPC UA Server attributes:", err);
     } finally {
@@ -90,12 +90,12 @@ export function OpcUaServer() {
         )
       );
 
-      showToast("success", "Access type actualizado correctamente");
+      showToast(t("opcuaServer.accessTypeUpdated"), "success");
       setShowConfirmModal(false);
       setPendingUpdate(null);
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || "Error al actualizar el access type";
-      showToast("error", errorMessage);
+      const errorMessage = err?.response?.data?.message || err?.message || t("opcuaServer.updateError");
+      showToast(errorMessage, "error");
       console.error("Error updating access type:", err);
     } finally {
       setUpdatingNamespace(null);
@@ -111,16 +111,16 @@ export function OpcUaServer() {
   // Exportar a CSV
   const handleExportCSV = () => {
     if (!attributes || attributes.length === 0) {
-      showToast("error", "No hay datos para exportar");
+      showToast(t("opcuaServer.noDataToExport"), "error");
       return;
     }
 
     try {
       // Preparar los datos para CSV
       const headers = [
-        "Nombre",
-        "Namespace",
-        "Access Type",
+        t("tables.name"),
+        t("tables.nodeNamespace"),
+        t("tables.accessType"),
       ];
 
       // Convertir atributos a filas CSV
@@ -159,10 +159,10 @@ export function OpcUaServer() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      showToast("success", "Datos exportados correctamente");
+      showToast(t("opcuaServer.exportSuccess"), "success");
     } catch (err: any) {
-      const errorMessage = err?.message || "Error al exportar los datos";
-      showToast("error", errorMessage);
+      const errorMessage = err?.message || t("opcuaServer.exportError");
+      showToast(errorMessage, "error");
       console.error("Error exporting CSV:", err);
     }
   };
@@ -176,10 +176,10 @@ export function OpcUaServer() {
         onClick={handleExportCSV}
         className="btn-sm"
         disabled={loading || attributes.length === 0}
-        title="Exportar a CSV"
+        title={t("opcuaServer.exportCSV")}
       >
         <i className="bi bi-download me-1"></i>
-        CSV
+        {t("common.csv")}
       </Button>
     </div>
   );
@@ -197,14 +197,14 @@ export function OpcUaServer() {
           {loading ? (
             <div className="text-center py-5">
               <div className="spinner-border" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t("common.loading")}</span>
               </div>
             </div>
           ) : attributes.length === 0 ? (
             <div className="text-center py-5">
               <i className="bi bi-server" style={{ fontSize: "4rem", color: "#6c757d" }}></i>
               <h4 className="mt-3 text-muted">{t("communications.opcuaServer")}</h4>
-              <p className="text-muted">No hay atributos disponibles</p>
+              <p className="text-muted">{t("opcuaServer.noAttributesAvailable")}</p>
             </div>
           ) : (
             <>
@@ -239,7 +239,7 @@ export function OpcUaServer() {
                           >
                             {ACCESS_TYPE_OPTIONS.map((option) => (
                               <option key={option} value={option}>
-                                {option}
+                                {t(`opcuaServer.accessType.${option}`)}
                               </option>
                             ))}
                           </select>
@@ -316,7 +316,7 @@ export function OpcUaServer() {
           <div className="modal-dialog modal-dialog-centered" role="document">
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <h5 className="modal-title">Confirmar cambio de Access Type</h5>
+                <h5 className="modal-title">{t("opcuaServer.confirmChangeTitle")}</h5>
                 <button
                   type="button"
                   className="btn-close"
@@ -327,21 +327,21 @@ export function OpcUaServer() {
               </div>
               <div className="modal-body">
                 <p>
-                  ¿Está seguro de que desea cambiar el Access Type del nodo?
+                  {t("opcuaServer.confirmChangeMessage")}
                 </p>
                 <div className="mb-2">
-                  <strong>Nombre:</strong> {pendingUpdate.name || pendingUpdate.namespace}
+                  <strong>{t("tables.name")}:</strong> {pendingUpdate.name || pendingUpdate.namespace}
                 </div>
                 <div className="mb-2">
-                  <strong>Namespace:</strong> <code>{pendingUpdate.namespace}</code>
+                  <strong>{t("tables.nodeNamespace")}:</strong> <code>{pendingUpdate.namespace}</code>
                 </div>
                 <div className="mb-2">
-                  <strong>Access Type actual:</strong>{" "}
-                  <span className="badge bg-secondary">{pendingUpdate.oldAccessType}</span>
+                  <strong>{t("opcuaServer.currentAccessType")}:</strong>{" "}
+                  <span className="badge bg-secondary">{t(`opcuaServer.accessType.${pendingUpdate.oldAccessType}`)}</span>
                 </div>
                 <div>
-                  <strong>Access Type nuevo:</strong>{" "}
-                  <span className="badge bg-primary">{pendingUpdate.newAccessType}</span>
+                  <strong>{t("opcuaServer.newAccessType")}:</strong>{" "}
+                  <span className="badge bg-primary">{t(`opcuaServer.accessType.${pendingUpdate.newAccessType}`)}</span>
                 </div>
               </div>
               <div className="modal-footer">
@@ -350,7 +350,7 @@ export function OpcUaServer() {
                   onClick={handleCancelUpdate}
                   disabled={!!updatingNamespace}
                 >
-                  Cancelar
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   variant="primary"
@@ -360,10 +360,10 @@ export function OpcUaServer() {
                   {updatingNamespace ? (
                     <>
                       <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      Actualizando...
+                      {t("opcuaServer.updating")}
                     </>
                   ) : (
-                    "Confirmar"
+                    t("common.confirm")
                   )}
                 </Button>
               </div>

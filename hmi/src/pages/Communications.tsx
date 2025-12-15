@@ -60,13 +60,15 @@ function TreeNode({
   const [isExpanded, setIsExpanded] = useState(level < 2); // Expandir los primeros 2 niveles por defecto
   
   // Extraer nombre - priorizar name, luego title, evitar strings vacíos
-  const nodeName = (node.name && node.name.trim()) || (node.title && node.title.trim()) || "Unnamed";
+  const { t } = useTranslation();
+  const nodeName = (node.name && node.name.trim()) || (node.title && node.title.trim()) || t("communications.unnamed");
   const nodeNamespace = (node.namespace && node.namespace.trim()) || (node.key && node.key.trim()) || "";
   const nodeClass = node.NodeClass || "";
   const isSelected = selectedNodes.includes(nodeNamespace);
   
   // Debug si el nombre es "Unnamed"
-  if (nodeName === "Unnamed" && level === 0) {
+  const unnamedText = t("communications.unnamed");
+  if (nodeName === unnamedText && level === 0) {
     console.warn("Root node is Unnamed, raw node:", node);
   }
   const hasChildren = node.children && node.children.length > 0;
@@ -111,8 +113,8 @@ function TreeNode({
                   }
                   
                   const displayName = foundNode
-                    ? (foundNode.name || foundNode.title || "Unnamed").trim()
-                    : "Unnamed";
+                    ? (foundNode.name || foundNode.title || t("communications.unnamed")).trim()
+                    : t("communications.unnamed");
                   
                   return { client, namespace: ns, displayName };
                 })
@@ -178,7 +180,7 @@ function TreeNode({
             }}
             onClick={(e) => e.stopPropagation()}
             style={{ marginRight: "4px", cursor: "pointer" }}
-            title="Ctrl+Click para selección múltiple"
+            title={t("communications.ctrlClickForMultiSelect")}
           />
         )}
         <i className={`bi ${getIcon()}`} style={{ fontSize: "0.875rem" }} />

@@ -57,7 +57,7 @@ export function Login() {
       const resp = await login({ username, password });
       const token = resp?.apiKey || resp?.token || resp?.api_key || null;
       const user = resp?.user || { username };
-      if (!token) throw new Error("Token not received");
+      if (!token) throw new Error(t("auth.tokenNotReceived"));
       dispatch(loginSuccess({ token, user }));
       navigate("/communications");
     } catch (err: any) {

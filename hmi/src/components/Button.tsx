@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
 import clsx from "clsx";
+import { useTranslation } from "../hooks/useTranslation";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean;
@@ -13,13 +14,15 @@ export function Button({
   variant = "primary",
   ...props
 }: PropsWithChildren<ButtonProps>) {
+  const { t } = useTranslation();
+
   return (
     <button
       className={clsx("btn", `btn-${variant}`, className)}
       disabled={loading || props.disabled}
       {...props}
     >
-      {loading ? "Cargando..." : children}
+      {loading ? t("common.loading") : children}
     </button>
   );
 }

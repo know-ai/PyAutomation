@@ -286,7 +286,7 @@ export function OperationalLogs() {
 
   const handleAddLog = async () => {
     if (!newLogMessage.trim()) {
-      setError("El mensaje es requerido");
+      setError(t("operationalLogs.messageRequired"));
       return;
     }
 
@@ -301,7 +301,10 @@ export function OperationalLogs() {
       // Recargar logs
       loadLogs();
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al crear el log";
+      const errorMsg =
+        e?.response?.data?.message ||
+        e?.message ||
+        t("operationalLogs.createLogError");
       setError(errorMsg);
     } finally {
       setAddingLog(false);
@@ -377,19 +380,19 @@ export function OperationalLogs() {
       const allLogs = response.data || [];
 
       if (!allLogs || allLogs.length === 0) {
-        setError("No hay datos para exportar");
+        setError(t("operationalLogs.noDataToExport"));
         return;
       }
 
       const headers = [
-        "ID",
-        "Timestamp",
-        "Usuario",
-        "Mensaje",
-        "Descripción",
-        "Clasificación",
-        "Alarma",
-        "Evento",
+        t("tables.id"),
+        t("tables.timestamp"),
+        t("tables.user"),
+        t("tables.message"),
+        t("tables.description"),
+        t("tables.classification"),
+        t("tables.alarm"),
+        t("tables.event"),
       ];
 
       const rows = allLogs.map((log: Log) => {
@@ -438,7 +441,9 @@ export function OperationalLogs() {
       URL.revokeObjectURL(url);
     } catch (e: any) {
       const errorMsg =
-        e?.response?.data?.message || e?.message || "Error al exportar logs a CSV";
+        e?.response?.data?.message ||
+        e?.message ||
+        t("operationalLogs.exportError");
       setError(errorMsg);
     }
   };
@@ -449,10 +454,12 @@ export function OperationalLogs() {
         <Card
           title={
             <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
-              <span className="me-auto">Operational Logs</span>
+              <span className="me-auto">{t("navigation.operationalLogs")}</span>
               <div className="d-flex align-items-center gap-2">
                 <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">Rango:</label>
+                  <label className="form-label small mb-0 me-1">
+                    {t("operationalLogs.range")}
+                  </label>
                   <select
                     className="form-select form-select-sm"
                     style={{ width: "150px" }}
@@ -461,7 +468,7 @@ export function OperationalLogs() {
                   >
                     {PRESET_DATES.map((preset) => (
                       <option key={preset} value={preset}>
-                        {preset}
+                        {t(`operationalLogs.preset.${preset}`)}
                       </option>
                     ))}
                   </select>
@@ -469,7 +476,9 @@ export function OperationalLogs() {
                 {presetDate === "Custom" && (
                   <>
                     <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">Inicio:</label>
+                      <label className="form-label small mb-0 me-1">
+                        {t("operationalLogs.start")}
+                      </label>
                       <input
                         type="datetime-local"
                         className="form-control form-control-sm"
@@ -482,7 +491,9 @@ export function OperationalLogs() {
                       />
                     </div>
                     <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">Fin:</label>
+                      <label className="form-label small mb-0 me-1">
+                        {t("operationalLogs.end")}
+                      </label>
                       <input
                         type="datetime-local"
                         className="form-control form-control-sm"
@@ -494,8 +505,13 @@ export function OperationalLogs() {
                     </div>
                   </>
                 )}
-                <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
-                  Aplicar
+                <Button
+                  variant="primary"
+                  className="btn-sm"
+                  onClick={handleApplyFilters}
+                  disabled={loading}
+                >
+                  {t("common.filter")}
                 </Button>
                 <Button
                   variant="success"
@@ -504,7 +520,7 @@ export function OperationalLogs() {
                   disabled={loading}
                 >
                   <i className="bi bi-plus-circle me-1"></i>
-                  Agregar
+                  {t("operationalLogs.add")}
                 </Button>
                 <Button
                   variant="primary"
@@ -590,7 +606,9 @@ export function OperationalLogs() {
           {/* Filtros */}
           <div className="mb-3">
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="form-label mb-0 me-2">Usernames:</label>
+              <label className="form-label mb-0 me-2">
+                {t("operationalLogs.usernames")}
+              </label>
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 {availableUsers.map((user) => {
                   const isSelected = selectedUsernames.includes(user.username);
@@ -617,7 +635,9 @@ export function OperationalLogs() {
 
           <div className="mb-3">
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="form-label mb-0 me-2">Alarm Names:</label>
+              <label className="form-label mb-0 me-2">
+                {t("operationalLogs.alarmNames")}
+              </label>
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 {availableAlarmNames.map((alarmName) => {
                   const isSelected = selectedAlarmNames.includes(alarmName);
@@ -645,7 +665,7 @@ export function OperationalLogs() {
           {loading && (
             <div className="text-center py-4">
               <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t("common.loading")}</span>
               </div>
             </div>
           )}
@@ -669,7 +689,7 @@ export function OperationalLogs() {
                   {logs.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="text-center text-muted py-4">
-                        No hay logs disponibles
+                        {t("operationalLogs.noLogs")}
                       </td>
                     </tr>
                   ) : (
@@ -701,7 +721,9 @@ export function OperationalLogs() {
               <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-content">
                   <div className="modal-header">
-                    <h5 className="modal-title">Agregar Log Operacional</h5>
+                    <h5 className="modal-title">
+                      {t("operationalLogs.addOperationalLog")}
+                    </h5>
                     <button
                       type="button"
                       className="btn-close"
@@ -710,13 +732,15 @@ export function OperationalLogs() {
                   </div>
                   <div className="modal-body">
                     <div className="mb-3">
-                      <label className="form-label">Mensaje *</label>
+                      <label className="form-label">
+                        {t("operationalLogs.messageLabel")}
+                      </label>
                       <textarea
                         className="form-control"
                         rows={4}
                         value={newLogMessage}
                         onChange={(e) => setNewLogMessage(e.target.value)}
-                        placeholder="Ingrese el mensaje del log"
+                        placeholder={t("operationalLogs.messagePlaceholder")}
                       />
                     </div>
                   </div>
@@ -729,7 +753,7 @@ export function OperationalLogs() {
                       }}
                       disabled={addingLog}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </Button>
                     <Button
                       variant="primary"
@@ -737,7 +761,7 @@ export function OperationalLogs() {
                       disabled={addingLog || !newLogMessage.trim()}
                       loading={addingLog}
                     >
-                      Agregar
+                      {t("operationalLogs.add")}
                     </Button>
                   </div>
                 </div>

@@ -22,6 +22,7 @@ const TagTableRow = memo(({
   onEdit: (tag: Tag) => void;
   onDelete: (tag: Tag) => void;
 }) => {
+  const { t } = useTranslation();
   // Get real-time value from store if available, otherwise use tag.value
   const realTimeTag = tag.name ? tagValues[tag.name] : null;
   const value = realTimeTag?.value !== undefined && realTimeTag?.value !== null
@@ -70,7 +71,7 @@ const TagTableRow = memo(({
             variant="secondary"
             className="btn-sm"
             onClick={() => onEdit(tag)}
-            title="Editar tag"
+            title={t("tags.editTag")}
           >
             <i className="bi bi-pencil"></i>
           </Button>
@@ -78,7 +79,7 @@ const TagTableRow = memo(({
             variant="danger"
             className="btn-sm"
             onClick={() => onDelete(tag)}
-            title="Eliminar tag"
+            title={t("tags.deleteTag")}
           >
             <i className="bi bi-trash"></i>
           </Button>
@@ -241,7 +242,7 @@ export function Tags() {
         data?.message ??
         data?.detail ??
         data?.error;
-      const errorMsg = backendMessage || e?.message || "Error al cargar tags";
+      const errorMsg = backendMessage || e?.message || t("tags.loadError");
       setError(errorMsg);
       setTags([]);
     } finally {
@@ -435,7 +436,7 @@ export function Tags() {
 
   const handleEditTag = (tag: Tag) => {
     if (!tag.id) {
-      setError("El tag no tiene ID, no se puede editar");
+      setError(t("tags.noIdToEdit"));
       return;
     }
     
@@ -483,7 +484,7 @@ export function Tags() {
 
   const handleDeleteTag = (tag: Tag) => {
     if (!tag.name) {
-      setError("El tag no tiene nombre, no se puede eliminar");
+      setError(t("tags.noNameToDelete"));
       return;
     }
     
@@ -501,32 +502,32 @@ export function Tags() {
       const allTags = response.data || [];
       
       if (!allTags || allTags.length === 0) {
-        setError("No hay tags para exportar");
+        setError(t("tags.noTagsToExport"));
         return;
       }
 
       // Preparar los datos para CSV
       const headers = [
-        "Nombre",
-        "Display Name",
-        "Variable",
-        "Unit",
-        "Display Unit",
-        "Data Type",
-        "OPC UA Address",
-        "Node Namespace",
-        "Scan Time (ms)",
-        "Dead Band",
-        "Process Filter",
-        "Gaussian Filter",
-        "Gaussian Filter Threshold",
-        "Gaussian Filter R Value",
-        "Outlier Detection",
-        "Out of Range Detection",
-        "Frozen Data Detection",
-        "Segment",
-        "Manufacturer",
-        "Description"
+        t("tables.name"),
+        t("tables.displayName"),
+        t("tables.variable"),
+        t("tags.unit"),
+        t("tables.displayUnit"),
+        t("tables.dataType"),
+        t("tables.opcuaAddress"),
+        t("tables.nodeNamespace"),
+        t("tables.scanTime"),
+        t("tables.deadBand"),
+        t("tags.processFilter"),
+        t("tags.gaussianFilter"),
+        t("tags.gaussianFilterThreshold"),
+        t("tags.gaussianFilterRValue"),
+        t("tags.outlierDetection"),
+        t("tags.outOfRangeDetection"),
+        t("tags.frozenDataDetection"),
+        t("tags.segment"),
+        t("tags.manufacturer"),
+        t("tables.description")
       ];
 
       // Convertir tags a filas CSV
@@ -542,13 +543,13 @@ export function Tags() {
           tag.node_namespace ? (opcuaNodeDisplayNames[tag.node_namespace] || tag.node_namespace) : "",
           tag.scan_time || "",
           tag.dead_band !== undefined ? tag.dead_band : "",
-          tag.process_filter ? "Sí" : "No",
-          tag.gaussian_filter ? "Sí" : "No",
+          tag.process_filter ? t("common.yes") : t("common.no"),
+          tag.gaussian_filter ? t("common.yes") : t("common.no"),
           tag.gaussian_filter_threshold !== undefined ? tag.gaussian_filter_threshold : "",
           tag.gaussian_filter_r_value !== undefined ? tag.gaussian_filter_r_value : "",
-          tag.outlier_detection ? "Sí" : "No",
-          tag.out_of_range_detection ? "Sí" : "No",
-          tag.frozen_data_detection ? "Sí" : "No",
+          tag.outlier_detection ? t("common.yes") : t("common.no"),
+          tag.out_of_range_detection ? t("common.yes") : t("common.no"),
+          tag.frozen_data_detection ? t("common.yes") : t("common.no"),
           tag.segment || "",
           tag.manufacturer || "",
           tag.description || ""
@@ -591,14 +592,14 @@ export function Tags() {
         data?.message ??
         data?.detail ??
         data?.error;
-      const errorMsg = backendMessage || e?.message || "Error al exportar tags a CSV";
+      const errorMsg = backendMessage || e?.message || t("tags.exportError");
       setError(errorMsg);
     }
   };
 
   const confirmDeleteTag = async () => {
     if (!tagToDelete || !tagToDelete.name) {
-      setError("No hay tag seleccionado para eliminar");
+      setError(t("tags.noTagSelectedToDelete"));
       return;
     }
 
@@ -621,7 +622,7 @@ export function Tags() {
         data?.message ??
         data?.detail ??
         data?.error;
-      const errorMsg = backendMessage || e?.message || "Error al eliminar el tag";
+      const errorMsg = backendMessage || e?.message || t("tags.deleteError");
       setError(errorMsg);
     } finally {
       setDeleting(false);
@@ -631,7 +632,7 @@ export function Tags() {
   const handleUpdateTag = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTag || !editingTag.id) {
-      setError("No hay tag seleccionado para actualizar");
+      setError(t("tags.noTagSelectedToUpdate"));
       return;
     }
     
@@ -761,7 +762,7 @@ export function Tags() {
       // Si no hay campos para actualizar, mostrar error
       const fieldsToUpdate = Object.keys(payload).filter(key => key !== 'id');
       if (fieldsToUpdate.length === 0) {
-        setError("No se han realizado cambios para actualizar");
+        setError(t("tags.noChangesToUpdate"));
         setUpdating(false);
         return;
       }
@@ -805,7 +806,7 @@ export function Tags() {
         data?.message ??
         data?.detail ??
         data?.error;
-      const errorMsg = backendMessage || e?.message || "Error al actualizar el tag";
+      const errorMsg = backendMessage || e?.message || t("tags.updateError");
       setError(errorMsg);
     } finally {
       setUpdating(false);
@@ -820,7 +821,7 @@ export function Tags() {
     try {
       // Validar campos requeridos
       if (!formData.name || !formData.unit || !formData.variable) {
-        setError("Los campos Nombre, Unit y Variable son requeridos");
+        setError(t("tags.nameUnitVariableRequired"));
         setCreating(false);
         return;
       }
@@ -897,7 +898,7 @@ export function Tags() {
         data?.message ??
         data?.detail ??
         data?.error;
-      const errorMsg = backendMessage || e?.message || "Error al crear el tag";
+      const errorMsg = backendMessage || e?.message || t("tags.createError");
       setError(errorMsg);
     } finally {
       setCreating(false);
@@ -910,16 +911,16 @@ export function Tags() {
         <Card
           title={
             <div className="d-flex justify-content-between align-items-center w-100">
-              <span>Tags</span>
+              <span>{t("navigation.tags")}</span>
               <div className="d-flex gap-2">
                 <Button
-                  variant="info"
+                  variant="secondary"
                   className="btn-sm"
                   onClick={handleExportCSV}
                   disabled={loading || tags.length === 0}
                 >
                   <i className="bi bi-download me-1"></i>
-                  Exportar CSV
+                  {t("tags.exportCSV")}
                 </Button>
                 <Button
                   variant="success"
@@ -927,7 +928,7 @@ export function Tags() {
                   onClick={() => setShowCreateModal(true)}
                 >
                   <i className="bi bi-plus-circle me-1"></i>
-                  Crear Tag
+                  {t("tags.createTag")}
                 </Button>
               </div>
             </div>
@@ -1004,7 +1005,7 @@ export function Tags() {
           {loading && (
             <div className="text-center py-4">
               <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t("common.loading")}</span>
               </div>
             </div>
           )}
@@ -1016,7 +1017,7 @@ export function Tags() {
                   <tr>
                     <th>{t("tables.name")}</th>
                     <th>{t("tables.variable")}</th>
-                    <th>Value</th>
+                    <th>{t("tables.value")}</th>
                     <th>{t("tables.displayUnit")}</th>
                     <th>{t("tables.opcuaAddress")}</th>
                     <th>{t("tables.nodeNamespace")}</th>
@@ -1029,7 +1030,7 @@ export function Tags() {
                   {tags.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="text-center text-muted py-4">
-                        No hay tags disponibles
+                        {t("tags.noTagsAvailable")}
                       </td>
                     </tr>
                   ) : (
@@ -1062,7 +1063,7 @@ export function Tags() {
             <div className="modal-dialog modal-lg modal-dialog-scrollable" role="document" style={{ maxHeight: "90vh" }}>
               <div className="modal-content" style={{ maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
                 <div className="modal-header" style={{ flexShrink: 0 }}>
-                  <h5 className="modal-title">Crear Nuevo Tag</h5>
+                  <h5 className="modal-title">{t("tags.createNewTag")}</h5>
                   <button
                     type="button"
                     className="btn-close"
@@ -1087,7 +1088,7 @@ export function Tags() {
                       {/* Campos requeridos */}
                       <div className="col-md-6">
                         <label className="form-label">
-                          Nombre <span className="text-danger">*</span>
+                          {t("tables.name")} <span className="text-danger">*</span>
                         </label>
                         <input
                           type="text"
@@ -1101,7 +1102,7 @@ export function Tags() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
-                          Variable <span className="text-danger">*</span>
+                          {t("tables.variable")} <span className="text-danger">*</span>
                         </label>
                         <select
                           className="form-select"
@@ -1112,7 +1113,7 @@ export function Tags() {
                           }
                           disabled={loadingVariables}
                         >
-                          <option value="">Seleccione una variable</option>
+                          <option value="">{t("tags.selectVariable")}</option>
                           {variables.map((v) => (
                             <option key={v} value={v}>
                               {v}
@@ -1120,12 +1121,12 @@ export function Tags() {
                           ))}
                         </select>
                         {loadingVariables && (
-                          <small className="text-muted">Cargando variables...</small>
+                          <small className="text-muted">{t("tags.loadingVariables")}</small>
                         )}
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
-                          Unit <span className="text-danger">*</span>
+                          {t("tags.unit")} <span className="text-danger">*</span>
                         </label>
                         <select
                           className="form-select"
@@ -1138,12 +1139,12 @@ export function Tags() {
                         >
                           <option value="">
                             {!formData.variable
-                              ? "Seleccione primero una variable"
+                              ? t("tags.selectVariableFirst")
                               : loadingUnits
-                              ? "Cargando unidades..."
+                              ? t("tags.loadingUnits")
                               : availableUnits.length === 0
-                              ? "No hay unidades disponibles"
-                              : "Seleccione una unidad"}
+                              ? t("tags.noUnitsAvailable")
+                              : t("tags.selectUnit")}
                           </option>
                           {availableUnits.map((u) => (
                             <option key={u} value={u}>
@@ -1153,7 +1154,7 @@ export function Tags() {
                         </select>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Data Type</label>
+                        <label className="form-label">{t("tables.dataType")}</label>
                         <select
                           className="form-select"
                           value={formData.data_type}
@@ -1170,7 +1171,7 @@ export function Tags() {
 
                       {/* Campos opcionales básicos */}
                       <div className="col-md-6">
-                        <label className="form-label">Display Name</label>
+                        <label className="form-label">{t("tables.displayName")}</label>
                         <input
                           type="text"
                           className="form-control"
@@ -1181,7 +1182,7 @@ export function Tags() {
                         />
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Display Unit</label>
+                        <label className="form-label">{t("tables.displayUnit")}</label>
                         <select
                           className="form-select"
                           value={formData.display_unit}
@@ -1192,12 +1193,12 @@ export function Tags() {
                         >
                           <option value="">
                             {!formData.variable
-                              ? "Seleccione primero una variable"
+                              ? t("tags.selectVariableFirst")
                               : loadingUnits
-                              ? "Cargando unidades..."
+                              ? t("tags.loadingUnits")
                               : availableUnits.length === 0
-                              ? "No hay unidades disponibles"
-                              : "Seleccione una unidad (opcional)"}
+                              ? t("tags.noUnitsAvailable")
+                              : t("tags.selectUnitOptional")}
                           </option>
                           {availableUnits.map((u) => (
                             <option key={u} value={u}>
@@ -1207,7 +1208,7 @@ export function Tags() {
                         </select>
                       </div>
                       <div className="col-12">
-                        <label className="form-label">Description</label>
+                        <label className="form-label">{t("tables.description")}</label>
                         <textarea
                           className="form-control"
                           rows={2}
@@ -1220,10 +1221,10 @@ export function Tags() {
 
                       {/* OPC UA */}
                       <div className="col-12">
-                        <h6 className="border-bottom pb-2">OPC UA Configuration</h6>
+                        <h6 className="border-bottom pb-2">{t("tags.opcuaConfiguration")}</h6>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">OPC UA Client</label>
+                        <label className="form-label">{t("tags.opcuaClient")}</label>
                         <select
                           className="form-select"
                           value={
@@ -1243,7 +1244,7 @@ export function Tags() {
                           disabled={loadingClients}
                         >
                           <option value="">
-                            {loadingClients ? "Cargando clientes..." : "Seleccione un cliente OPC UA"}
+                            {loadingClients ? t("tags.loadingClients") : t("tags.selectOpcuaClient")}
                           </option>
                           {Object.keys(opcuaClientAddresses).map((clientName) => (
                             <option key={clientName} value={clientName}>
@@ -1253,7 +1254,7 @@ export function Tags() {
                         </select>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Node Namespace</label>
+                        <label className="form-label">{t("tables.nodeNamespace")}</label>
                         <select
                           className="form-select"
                           value={formData.node_namespace}
@@ -1266,12 +1267,12 @@ export function Tags() {
                         >
                           <option value="">
                             {!formData.opcua_address
-                              ? "Seleccione primero un cliente OPC UA"
+                              ? t("tags.selectOpcuaClientFirst")
                               : loadingNodes
-                              ? "Cargando nodos..."
+                              ? t("tags.loadingNodes")
                               : opcuaNodes.length === 0
-                              ? "No hay nodos disponibles"
-                              : "Seleccione un nodo"}
+                              ? t("tags.noNodesAvailable")
+                              : t("tags.selectNode")}
                           </option>
                           {opcuaNodes.map((node) => (
                             <option key={node.namespace} value={node.namespace}>
@@ -1283,10 +1284,10 @@ export function Tags() {
 
                       {/* Polling y Deadband */}
                       <div className="col-12">
-                        <h6 className="border-bottom pb-2">Polling Configuration</h6>
+                        <h6 className="border-bottom pb-2">{t("tags.pollingConfiguration")}</h6>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Scan Time (ms)</label>
+                        <label className="form-label">{t("tables.scanTime")}</label>
                         <input
                           type="number"
                           className="form-control"
@@ -1298,7 +1299,7 @@ export function Tags() {
                         />
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Dead Band</label>
+                        <label className="form-label">{t("tables.deadBand")}</label>
                         <input
                           type="number"
                           className="form-control"
@@ -1312,7 +1313,7 @@ export function Tags() {
 
                       {/* Filtros */}
                       <div className="col-12">
-                        <h6 className="border-bottom pb-2">Filters</h6>
+                        <h6 className="border-bottom pb-2">{t("tags.filters")}</h6>
                       </div>
                       <div className="col-md-6">
                         <div className="form-check">
@@ -1327,7 +1328,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">Process Filter</label>
+                          <label className="form-check-label">{t("tags.processFilter")}</label>
                         </div>
                       </div>
                       <div className="col-md-6">
@@ -1343,13 +1344,13 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">Gaussian Filter</label>
+                          <label className="form-check-label">{t("tags.gaussianFilter")}</label>
                         </div>
                       </div>
                       {formData.gaussian_filter && (
                         <>
                           <div className="col-md-6">
-                            <label className="form-label">Gaussian Threshold</label>
+                            <label className="form-label">{t("tags.gaussianFilterThreshold")}</label>
                             <input
                               type="number"
                               className="form-control"
@@ -1364,7 +1365,7 @@ export function Tags() {
                             />
                           </div>
                           <div className="col-md-6">
-                            <label className="form-label">Gaussian R Value</label>
+                            <label className="form-label">{t("tags.gaussianFilterRValue")}</label>
                             <input
                               type="number"
                               className="form-control"
@@ -1383,7 +1384,7 @@ export function Tags() {
 
                       {/* Detección */}
                       <div className="col-12">
-                        <h6 className="border-bottom pb-2">Detection</h6>
+                        <h6 className="border-bottom pb-2">{t("tags.detection")}</h6>
                       </div>
                       <div className="col-md-4">
                         <div className="form-check">
@@ -1398,7 +1399,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">Outlier Detection</label>
+                          <label className="form-check-label">{t("tags.outlierDetection")}</label>
                         </div>
                       </div>
                       <div className="col-md-4">
@@ -1414,7 +1415,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">Out of Range Detection</label>
+                          <label className="form-check-label">{t("tags.outOfRangeDetection")}</label>
                         </div>
                       </div>
                       <div className="col-md-4">
@@ -1430,16 +1431,16 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">Frozen Data Detection</label>
+                          <label className="form-check-label">{t("tags.frozenDataDetection")}</label>
                         </div>
                       </div>
 
                       {/* Información adicional */}
                       <div className="col-12">
-                        <h6 className="border-bottom pb-2">Additional Information</h6>
+                        <h6 className="border-bottom pb-2">{t("tags.additionalInformation")}</h6>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Segment</label>
+                        <label className="form-label">{t("tags.segment")}</label>
                         <input
                           type="text"
                           className="form-control"
@@ -1450,7 +1451,7 @@ export function Tags() {
                         />
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Manufacturer</label>
+                        <label className="form-label">{t("tags.manufacturer")}</label>
                         <input
                           type="text"
                           className="form-control"
@@ -1474,10 +1475,10 @@ export function Tags() {
                       }}
                       disabled={creating}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </button>
                     <Button type="submit" variant="success" loading={creating}>
-                      Crear Tag
+                      {t("tags.createTag")}
                     </Button>
                   </div>
                 </form>
@@ -1497,7 +1498,7 @@ export function Tags() {
             <div className="modal-dialog modal-lg modal-dialog-scrollable" role="document" style={{ maxHeight: "90vh" }}>
               <div className="modal-content" style={{ maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
                 <div className="modal-header" style={{ flexShrink: 0 }}>
-                  <h5 className="modal-title">Editar Tag: {editingTag.name}</h5>
+                  <h5 className="modal-title">{t("tags.editTagTitle", { name: editingTag.name })}</h5>
                   <button
                     type="button"
                     className="btn-close"
@@ -1523,7 +1524,7 @@ export function Tags() {
                       {/* Campos requeridos */}
                       <div className="col-md-6">
                         <label className="form-label">
-                          Nombre <span className="text-danger">*</span>
+                          {t("tables.name")} <span className="text-danger">*</span>
                         </label>
                         <input
                           type="text"
@@ -1537,7 +1538,7 @@ export function Tags() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
-                          Variable <span className="text-danger">*</span>
+                          {t("tables.variable")} <span className="text-danger">*</span>
                         </label>
                         <select
                           className="form-select"
@@ -1548,7 +1549,7 @@ export function Tags() {
                           }
                           disabled={loadingVariables}
                         >
-                          <option value="">Seleccione una variable</option>
+                          <option value="">{t("tags.selectVariable")}</option>
                           {variables.map((v) => (
                             <option key={v} value={v}>
                               {v}
@@ -1556,12 +1557,12 @@ export function Tags() {
                           ))}
                         </select>
                         {loadingVariables && (
-                          <small className="text-muted">Cargando variables...</small>
+                          <small className="text-muted">{t("tags.loadingVariables")}</small>
                         )}
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
-                          Unit <span className="text-danger">*</span>
+                          {t("tags.unit")} <span className="text-danger">*</span>
                         </label>
                         <select
                           className="form-select"
@@ -1574,12 +1575,12 @@ export function Tags() {
                         >
                           <option value="">
                             {!formData.variable
-                              ? "Seleccione primero una variable"
+                              ? t("tags.selectVariableFirst")
                               : loadingUnits
-                              ? "Cargando unidades..."
+                              ? t("tags.loadingUnits")
                               : availableUnits.length === 0
-                              ? "No hay unidades disponibles"
-                              : "Seleccione una unidad"}
+                              ? t("tags.noUnitsAvailable")
+                              : t("tags.selectUnit")}
                           </option>
                           {availableUnits.map((u) => (
                             <option key={u} value={u}>
@@ -1589,7 +1590,7 @@ export function Tags() {
                         </select>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Data Type</label>
+                        <label className="form-label">{t("tables.dataType")}</label>
                         <select
                           className="form-select"
                           value={formData.data_type}
@@ -1606,7 +1607,7 @@ export function Tags() {
 
                       {/* Campos opcionales básicos */}
                       <div className="col-md-6">
-                        <label className="form-label">Display Name</label>
+                        <label className="form-label">{t("tables.displayName")}</label>
                         <input
                           type="text"
                           className="form-control"
@@ -1617,7 +1618,7 @@ export function Tags() {
                         />
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Display Unit</label>
+                        <label className="form-label">{t("tables.displayUnit")}</label>
                         <select
                           className="form-select"
                           value={formData.display_unit}
@@ -1628,12 +1629,12 @@ export function Tags() {
                         >
                           <option value="">
                             {!formData.variable
-                              ? "Seleccione primero una variable"
+                              ? t("tags.selectVariableFirst")
                               : loadingUnits
-                              ? "Cargando unidades..."
+                              ? t("tags.loadingUnits")
                               : availableUnits.length === 0
-                              ? "No hay unidades disponibles"
-                              : "Seleccione una unidad (opcional)"}
+                              ? t("tags.noUnitsAvailable")
+                              : t("tags.selectUnitOptional")}
                           </option>
                           {availableUnits.map((u) => (
                             <option key={u} value={u}>
@@ -1643,7 +1644,7 @@ export function Tags() {
                         </select>
                       </div>
                       <div className="col-12">
-                        <label className="form-label">Description</label>
+                        <label className="form-label">{t("tables.description")}</label>
                         <textarea
                           className="form-control"
                           rows={2}
@@ -1656,10 +1657,10 @@ export function Tags() {
 
                       {/* OPC UA */}
                       <div className="col-12">
-                        <h6 className="border-bottom pb-2">OPC UA Configuration</h6>
+                        <h6 className="border-bottom pb-2">{t("tags.opcuaConfiguration")}</h6>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">OPC UA Client</label>
+                        <label className="form-label">{t("tags.opcuaClient")}</label>
                         <select
                           className="form-select"
                           value={
@@ -1679,7 +1680,7 @@ export function Tags() {
                           disabled={loadingClients}
                         >
                           <option value="">
-                            {loadingClients ? "Cargando clientes..." : "Seleccione un cliente OPC UA"}
+                            {loadingClients ? t("tags.loadingClients") : t("tags.selectOpcuaClient")}
                           </option>
                           {Object.keys(opcuaClientAddresses).map((clientName) => (
                             <option key={clientName} value={clientName}>
@@ -1689,7 +1690,7 @@ export function Tags() {
                         </select>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Node Namespace</label>
+                        <label className="form-label">{t("tables.nodeNamespace")}</label>
                         <select
                           className="form-select"
                           value={formData.node_namespace}
@@ -1702,12 +1703,12 @@ export function Tags() {
                         >
                           <option value="">
                             {!formData.opcua_address
-                              ? "Seleccione primero un cliente OPC UA"
+                              ? t("tags.selectOpcuaClientFirst")
                               : loadingNodes
-                              ? "Cargando nodos..."
+                              ? t("tags.loadingNodes")
                               : opcuaNodes.length === 0
-                              ? "No hay nodos disponibles"
-                              : "Seleccione un nodo"}
+                              ? t("tags.noNodesAvailable")
+                              : t("tags.selectNode")}
                           </option>
                           {opcuaNodes.map((node) => (
                             <option key={node.namespace} value={node.namespace}>
@@ -1719,10 +1720,10 @@ export function Tags() {
 
                       {/* Polling y Deadband */}
                       <div className="col-12">
-                        <h6 className="border-bottom pb-2">Polling Configuration</h6>
+                        <h6 className="border-bottom pb-2">{t("tags.pollingConfiguration")}</h6>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Scan Time (ms)</label>
+                        <label className="form-label">{t("tables.scanTime")}</label>
                         <input
                           type="number"
                           className="form-control"
@@ -1734,7 +1735,7 @@ export function Tags() {
                         />
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Dead Band</label>
+                        <label className="form-label">{t("tables.deadBand")}</label>
                         <input
                           type="number"
                           className="form-control"
@@ -1748,7 +1749,7 @@ export function Tags() {
 
                       {/* Filtros */}
                       <div className="col-12">
-                        <h6 className="border-bottom pb-2">Filters</h6>
+                        <h6 className="border-bottom pb-2">{t("tags.filters")}</h6>
                       </div>
                       <div className="col-md-6">
                         <div className="form-check">
@@ -1763,7 +1764,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">Process Filter</label>
+                          <label className="form-check-label">{t("tags.processFilter")}</label>
                         </div>
                       </div>
                       <div className="col-md-6">
@@ -1779,13 +1780,13 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">Gaussian Filter</label>
+                          <label className="form-check-label">{t("tags.gaussianFilter")}</label>
                         </div>
                       </div>
                       {formData.gaussian_filter && (
                         <>
                           <div className="col-md-6">
-                            <label className="form-label">Gaussian Threshold</label>
+                            <label className="form-label">{t("tags.gaussianFilterThreshold")}</label>
                             <input
                               type="number"
                               className="form-control"
@@ -1800,7 +1801,7 @@ export function Tags() {
                             />
                           </div>
                           <div className="col-md-6">
-                            <label className="form-label">Gaussian R Value</label>
+                            <label className="form-label">{t("tags.gaussianFilterRValue")}</label>
                             <input
                               type="number"
                               className="form-control"
@@ -1819,7 +1820,7 @@ export function Tags() {
 
                       {/* Detección */}
                       <div className="col-12">
-                        <h6 className="border-bottom pb-2">Detection</h6>
+                        <h6 className="border-bottom pb-2">{t("tags.detection")}</h6>
                       </div>
                       <div className="col-md-4">
                         <div className="form-check">
@@ -1834,7 +1835,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">Outlier Detection</label>
+                          <label className="form-check-label">{t("tags.outlierDetection")}</label>
                         </div>
                       </div>
                       <div className="col-md-4">
@@ -1850,7 +1851,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">Out of Range Detection</label>
+                          <label className="form-check-label">{t("tags.outOfRangeDetection")}</label>
                         </div>
                       </div>
                       <div className="col-md-4">
@@ -1866,16 +1867,16 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">Frozen Data Detection</label>
+                          <label className="form-check-label">{t("tags.frozenDataDetection")}</label>
                         </div>
                       </div>
 
                       {/* Información adicional */}
                       <div className="col-12">
-                        <h6 className="border-bottom pb-2">Additional Information</h6>
+                        <h6 className="border-bottom pb-2">{t("tags.additionalInformation")}</h6>
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Segment</label>
+                        <label className="form-label">{t("tags.segment")}</label>
                         <input
                           type="text"
                           className="form-control"
@@ -1886,7 +1887,7 @@ export function Tags() {
                         />
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Manufacturer</label>
+                        <label className="form-label">{t("tags.manufacturer")}</label>
                         <input
                           type="text"
                           className="form-control"
@@ -1911,10 +1912,10 @@ export function Tags() {
                       }}
                       disabled={updating}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </button>
                     <Button type="submit" variant="success" loading={updating}>
-                      Actualizar Tag
+                      {t("tags.updateTag")}
                     </Button>
                   </div>
                 </form>
@@ -1934,7 +1935,7 @@ export function Tags() {
             <div className="modal-dialog" role="document">
               <div className="modal-content">
                 <div className="modal-header">
-                  <h5 className="modal-title">Confirmar Eliminación</h5>
+                  <h5 className="modal-title">{t("tags.confirmDelete")}</h5>
                   <button
                     type="button"
                     className="btn-close"
@@ -1954,10 +1955,10 @@ export function Tags() {
                     </div>
                   )}
                   <p>
-                    ¿Está seguro de que desea eliminar el tag <strong>"{tagToDelete.name}"</strong>?
+                    {t("tags.confirmDeleteMessage", { name: tagToDelete.name })}
                   </p>
                   <p className="text-muted small mb-0">
-                    Esta acción no se puede deshacer.
+                    {t("tags.cannotUndo")}
                   </p>
                 </div>
                 <div className="modal-footer">
@@ -1978,7 +1979,7 @@ export function Tags() {
                     onClick={confirmDeleteTag}
                     loading={deleting}
                   >
-                    Eliminar
+                    {t("common.delete")}
                   </Button>
                 </div>
               </div>

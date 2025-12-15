@@ -337,7 +337,7 @@ export function Events() {
 
   const handleSaveComment = async () => {
     if (!commentMessage.trim() || !selectedEventId) {
-      setError("El mensaje es requerido");
+      setError(t("events.messageRequired"));
       return;
     }
 
@@ -354,7 +354,10 @@ export function Events() {
       // Recargar eventos
       loadEvents();
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al agregar el comentario";
+      const errorMsg =
+        e?.response?.data?.message ||
+        e?.message ||
+        t("events.addCommentError");
       setError(errorMsg);
     } finally {
       setAddingComment(false);
@@ -390,20 +393,20 @@ export function Events() {
 
   const handleExportCommentsCSV = () => {
     if (!comments || comments.length === 0) {
-      setError("No hay comentarios para exportar");
+      setError(t("events.noCommentsToExport"));
       return;
     }
 
     try {
       // Preparar los datos para CSV
       const headers = [
-        "ID",
-        "Timestamp",
-        "Usuario",
-        "Mensaje",
-        "Descripción",
-        "Clasificación",
-        "Evento",
+        t("tables.id"),
+        t("tables.timestamp"),
+        t("tables.user"),
+        t("tables.message"),
+        t("tables.description"),
+        t("tables.classification"),
+        t("tables.event"),
       ];
 
       // Convertir comentarios a filas CSV
@@ -454,7 +457,7 @@ export function Events() {
 
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      const errorMsg = e?.message || "Error al exportar comentarios a CSV";
+      const errorMsg = e?.message || t("events.exportCommentsError");
       setError(errorMsg);
     }
   };
@@ -533,19 +536,19 @@ export function Events() {
       const allEvents = response.data || [];
 
       if (!allEvents || allEvents.length === 0) {
-        setError("No hay datos para exportar");
+        setError(t("events.noDataToExport"));
         return;
       }
 
       const headers = [
-        "ID",
-        "Timestamp",
-        "Usuario",
-        "Mensaje",
-        "Descripción",
-        "Clasificación",
-        "Prioridad",
-        "Criticidad",
+        t("tables.id"),
+        t("tables.timestamp"),
+        t("tables.user"),
+        t("tables.message"),
+        t("tables.description"),
+        t("tables.classification"),
+        t("tables.priority"),
+        t("tables.criticity"),
       ];
 
       const rows = allEvents.map((event: Event) => {
@@ -594,7 +597,9 @@ export function Events() {
       URL.revokeObjectURL(url);
     } catch (e: any) {
       const errorMsg =
-        e?.response?.data?.message || e?.message || "Error al exportar eventos a CSV";
+        e?.response?.data?.message ||
+        e?.message ||
+        t("events.exportError");
       setError(errorMsg);
     }
   };
@@ -605,10 +610,12 @@ export function Events() {
         <Card
           title={
             <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
-              <span className="me-auto">Events</span>
+              <span className="me-auto">{t("navigation.events")}</span>
               <div className="d-flex align-items-center gap-2">
                 <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">Rango:</label>
+                  <label className="form-label small mb-0 me-1">
+                    {t("events.range")}
+                  </label>
                   <select
                     className="form-select form-select-sm"
                     style={{ width: "150px" }}
@@ -617,7 +624,7 @@ export function Events() {
                   >
                     {PRESET_DATES.map((preset) => (
                       <option key={preset} value={preset}>
-                        {preset}
+                        {t(`operationalLogs.preset.${preset}`)}
                       </option>
                     ))}
                   </select>
@@ -625,7 +632,9 @@ export function Events() {
                 {presetDate === "Custom" && (
                   <>
                     <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">Inicio:</label>
+                      <label className="form-label small mb-0 me-1">
+                        {t("operationalLogs.start")}
+                      </label>
                       <input
                         type="datetime-local"
                         className="form-control form-control-sm"
@@ -638,7 +647,9 @@ export function Events() {
                       />
                     </div>
                     <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">Fin:</label>
+                      <label className="form-label small mb-0 me-1">
+                        {t("operationalLogs.end")}
+                      </label>
                       <input
                         type="datetime-local"
                         className="form-control form-control-sm"
@@ -651,7 +662,9 @@ export function Events() {
                   </>
                 )}
                 <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">Prioridad:</label>
+                  <label className="form-label small mb-0 me-1">
+                    {t("events.priority")}
+                  </label>
                   <select
                     className="form-select form-select-sm"
                     style={{ width: "100px" }}
@@ -662,7 +675,7 @@ export function Events() {
                       localStorage.setItem("events_selectedPriorities", JSON.stringify(value));
                     }}
                   >
-                    <option value="">Todos</option>
+                    <option value="">{t("events.all")}</option>
                     {PRIORITY_OPTIONS.map((priority) => (
                       <option key={priority} value={String(priority)}>
                         {priority}
@@ -671,7 +684,9 @@ export function Events() {
                   </select>
                 </div>
                 <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">Criticidad:</label>
+                  <label className="form-label small mb-0 me-1">
+                    {t("events.criticity")}
+                  </label>
                   <select
                     className="form-select form-select-sm"
                     style={{ width: "100px" }}
@@ -682,7 +697,7 @@ export function Events() {
                       localStorage.setItem("events_selectedCriticities", JSON.stringify(value));
                     }}
                   >
-                    <option value="">Todos</option>
+                    <option value="">{t("events.all")}</option>
                     {CRITICITY_OPTIONS.map((criticity) => (
                       <option key={criticity} value={String(criticity)}>
                         {criticity}
@@ -690,8 +705,13 @@ export function Events() {
                     ))}
                   </select>
                 </div>
-                <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
-                  Aplicar
+                <Button
+                  variant="primary"
+                  className="btn-sm"
+                  onClick={handleApplyFilters}
+                  disabled={loading}
+                >
+                  {t("common.filter")}
                 </Button>
                 <Button
                   variant="primary"
@@ -805,7 +825,7 @@ export function Events() {
           {loading && (
             <div className="text-center py-4">
               <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t("common.loading")}</span>
               </div>
             </div>
           )}
@@ -830,7 +850,7 @@ export function Events() {
                   {events.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="text-center text-muted py-4">
-                        No hay eventos disponibles
+                        {t("events.noEvents")}
                       </td>
                     </tr>
                   ) : (
@@ -897,7 +917,7 @@ export function Events() {
                 onClick={handleAddComment}
               >
                 <i className="bi bi-chat-left-text me-2"></i>
-                Agregar comentario
+                {t("events.addComment")}
               </button>
             </div>
           )}
@@ -912,7 +932,9 @@ export function Events() {
               <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-content">
                   <div className="modal-header">
-                    <h5 className="modal-title">Agregar Comentario</h5>
+                    <h5 className="modal-title">
+                      {t("events.addComment")}
+                    </h5>
                     <button
                       type="button"
                       className="btn-close"
@@ -921,13 +943,15 @@ export function Events() {
                   </div>
                   <div className="modal-body">
                     <div className="mb-3">
-                      <label className="form-label">Mensaje *</label>
+                      <label className="form-label">
+                        {t("operationalLogs.messageLabel")}
+                      </label>
                       <textarea
                         className="form-control"
                         rows={4}
                         value={commentMessage}
                         onChange={(e) => setCommentMessage(e.target.value)}
-                        placeholder="Ingrese el comentario para este evento"
+                        placeholder={t("events.commentPlaceholder")}
                       />
                     </div>
                   </div>
@@ -937,7 +961,7 @@ export function Events() {
                       onClick={handleCancelComment}
                       disabled={addingComment}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </Button>
                     <Button
                       variant="primary"
@@ -945,7 +969,7 @@ export function Events() {
                       disabled={addingComment || !commentMessage.trim()}
                       loading={addingComment}
                     >
-                      Agregar
+                      {t("events.addComment")}
                     </Button>
                   </div>
                 </div>

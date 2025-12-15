@@ -190,7 +190,7 @@ export function Settings() {
                       }
                     />
                     <small className="form-text text-muted">
-                      Mínimo: 1.0 segundos
+                      {t("settings.loggerPeriodHint")}
                     </small>
                   </div>
 
@@ -238,7 +238,7 @@ export function Settings() {
                       }
                     />
                     <small className="form-text text-muted">
-                      Mínimo: 1024 bytes
+                      {t("settings.logMaxBytesHint")}
                     </small>
                   </div>
 
@@ -260,7 +260,7 @@ export function Settings() {
                       }
                     />
                     <small className="form-text text-muted">
-                      Mínimo: 1 backup
+                      {t("settings.logBackupCountHint")}
                     </small>
                   </div>
                 </div>

@@ -254,7 +254,7 @@ export function AlarmsSummary() {
         data?.detail ??
         data?.error;
       const errorMsg =
-        backendMessage || e?.message || "Error al cargar el resumen de alarmas";
+        backendMessage || e?.message || t("alarmsSummary.loadError");
       setError(errorMsg);
       setAlarmsSummary([]);
     } finally {
@@ -360,7 +360,7 @@ export function AlarmsSummary() {
 
   const handleSaveComment = async () => {
     if (!commentMessage.trim() || !selectedAlarmId) {
-      setError("El mensaje es requerido");
+      setError(t("alarmsSummary.messageRequired"));
       return;
     }
 
@@ -384,7 +384,7 @@ export function AlarmsSummary() {
         data?.detail ??
         data?.error;
       const errorMsg =
-        backendMessage || e?.message || "Error al agregar el comentario";
+        backendMessage || e?.message || t("alarmsSummary.addCommentError");
       setError(errorMsg);
     } finally {
       setAddingComment(false);
@@ -417,7 +417,7 @@ export function AlarmsSummary() {
         data?.detail ??
         data?.error;
       const errorMsg =
-        backendMessage || e?.message || "Error al cargar los comentarios";
+        backendMessage || e?.message || t("alarmsSummary.loadCommentsError");
       setError(errorMsg);
       setComments([]);
     } finally {
@@ -427,20 +427,20 @@ export function AlarmsSummary() {
 
   const handleExportCommentsCSV = () => {
     if (!comments || comments.length === 0) {
-      setError("No hay comentarios para exportar");
+      setError(t("alarmsSummary.noCommentsToExport"));
       return;
     }
 
     try {
       // Preparar los datos para CSV
       const headers = [
-        "ID",
-        "Timestamp",
-        "Usuario",
-        "Mensaje",
-        "Descripción",
-        "Clasificación",
-        "Alarma",
+        t("tables.id"),
+        t("tables.timestamp"),
+        t("tables.user"),
+        t("tables.message"),
+        t("tables.description"),
+        t("tables.classification"),
+        t("tables.alarm"),
       ];
 
       // Convertir comentarios a filas CSV
@@ -491,7 +491,7 @@ export function AlarmsSummary() {
 
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      const errorMsg = e?.message || "Error al exportar comentarios a CSV";
+      const errorMsg = e?.message || t("alarmsSummary.exportCommentsError");
       setError(errorMsg);
     }
   };
@@ -521,20 +521,20 @@ export function AlarmsSummary() {
       const allAlarms = response.data || [];
 
       if (!allAlarms || allAlarms.length === 0) {
-        setError("No hay datos para exportar");
+        setError(t("alarmsSummary.noDataToExport"));
         return;
       }
 
       // Preparar los datos para CSV
       const headers = [
-        "ID",
-        "Nombre",
-        "Tag",
-        "Descripción",
-        "Estado",
-        "Fecha/Hora Alarma",
-        "Fecha/Hora ACK",
-        "Tiene Comentarios",
+        t("tables.id"),
+        t("tables.name"),
+        t("tables.tag"),
+        t("tables.description"),
+        t("tables.status"),
+        t("tables.alarmDateTime"),
+        t("tables.ackDateTime"),
+        t("alarmsSummary.hasComments"),
       ];
 
       // Convertir alarmas a filas CSV
@@ -547,7 +547,7 @@ export function AlarmsSummary() {
           alarm.state || "",
           alarm.alarm_time || "",
           alarm.ack_time || "",
-          alarm.has_comments ? "Sí" : "No",
+          alarm.has_comments ? t("common.yes") : t("common.no"),
         ];
       });
 
@@ -595,7 +595,7 @@ export function AlarmsSummary() {
       const errorMsg =
         backendMessage ||
         e?.message ||
-        "Error al exportar resumen de alarmas a CSV";
+        t("alarmsSummary.exportError");
       setError(errorMsg);
     }
   };
@@ -606,10 +606,10 @@ export function AlarmsSummary() {
         <Card
           title={
             <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
-              <span className="me-auto">Resumen de Alarmas</span>
+              <span className="me-auto">{t("navigation.alarmsSummary")}</span>
               <div className="d-flex align-items-center gap-2">
                 <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">Rango:</label>
+                  <label className="form-label small mb-0 me-1">{t("alarmsSummary.range")}:</label>
                   <select
                     className="form-select form-select-sm"
                     style={{ width: "150px" }}
@@ -626,7 +626,7 @@ export function AlarmsSummary() {
                 {presetDate === "Custom" && (
                   <>
                     <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">Inicio:</label>
+                      <label className="form-label small mb-0 me-1">{t("alarmsSummary.start")}:</label>
                       <input
                         type="datetime-local"
                         className="form-control form-control-sm"
@@ -639,7 +639,7 @@ export function AlarmsSummary() {
                       />
                     </div>
                     <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">Fin:</label>
+                      <label className="form-label small mb-0 me-1">{t("alarmsSummary.end")}:</label>
                       <input
                         type="datetime-local"
                         className="form-control form-control-sm"
@@ -652,7 +652,7 @@ export function AlarmsSummary() {
                   </>
                 )}
                 <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
-                  Aplicar
+                  {t("common.filter")}
                 </Button>
                 <Button
                   variant="primary"
@@ -738,7 +738,7 @@ export function AlarmsSummary() {
           {/* Filtro de estados */}
           <div className="mb-3">
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="form-label mb-0 me-2">Estado:</label>
+              <label className="form-label mb-0 me-2">{t("alarmsSummary.state")}:</label>
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 {availableStates.map((state) => {
                   const isSelected = selectedStates.includes(state);
@@ -761,7 +761,7 @@ export function AlarmsSummary() {
                 })}
               </div>
               <Button variant="secondary" className="btn-sm ms-auto" onClick={handleClearFilters} disabled={loading}>
-                Limpiar
+                {t("common.clear")}
               </Button>
             </div>
           </div>
@@ -769,7 +769,7 @@ export function AlarmsSummary() {
           {loading && (
             <div className="text-center py-4">
               <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t("common.loading")}</span>
               </div>
             </div>
           )}
@@ -793,7 +793,7 @@ export function AlarmsSummary() {
                   {alarmsSummary.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="text-center text-muted py-4">
-                        No hay registros de alarmas disponibles
+                        {t("alarmsSummary.noAlarmsAvailable")}
                       </td>
                     </tr>
                   ) : (
@@ -818,12 +818,12 @@ export function AlarmsSummary() {
                           {alarm.has_comments ? (
                             <i 
                               className="bi bi-check-circle text-success" 
-                              title="Tiene comentarios - Click para ver"
+                              title={t("alarmsSummary.hasCommentsClick")}
                               style={{ cursor: "pointer" }}
                               onClick={() => handleViewComments(alarm)}
                             ></i>
                           ) : (
-                            <i className="bi bi-x-circle text-muted" title="Sin comentarios"></i>
+                            <i className="bi bi-x-circle text-muted" title={t("alarmsSummary.noComments")}></i>
                           )}
                         </td>
                       </tr>
@@ -851,7 +851,7 @@ export function AlarmsSummary() {
                 onClick={handleAddComment}
               >
                 <i className="bi bi-chat-left-text me-2"></i>
-                Agregar comentario
+                {t("alarmsSummary.addComment")}
               </button>
             </div>
           )}
@@ -866,7 +866,7 @@ export function AlarmsSummary() {
               <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-content">
                   <div className="modal-header">
-                    <h5 className="modal-title">Agregar Comentario</h5>
+                    <h5 className="modal-title">{t("alarmsSummary.addCommentTitle")}</h5>
                     <button
                       type="button"
                       className="btn-close"
@@ -875,13 +875,13 @@ export function AlarmsSummary() {
                   </div>
                   <div className="modal-body">
                     <div className="mb-3">
-                      <label className="form-label">Mensaje *</label>
+                      <label className="form-label">{t("alarmsSummary.messageLabel")}</label>
                       <textarea
                         className="form-control"
                         rows={4}
                         value={commentMessage}
                         onChange={(e) => setCommentMessage(e.target.value)}
-                        placeholder="Ingrese el comentario para esta alarma"
+                        placeholder={t("alarmsSummary.commentPlaceholder")}
                       />
                     </div>
                   </div>
@@ -891,7 +891,7 @@ export function AlarmsSummary() {
                       onClick={handleCancelComment}
                       disabled={addingComment}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </Button>
                     <Button
                       variant="primary"
@@ -899,7 +899,7 @@ export function AlarmsSummary() {
                       disabled={addingComment || !commentMessage.trim()}
                       loading={addingComment}
                     >
-                      Agregar
+                      {t("alarmsSummary.add")}
                     </Button>
                   </div>
                 </div>
@@ -922,7 +922,7 @@ export function AlarmsSummary() {
                 <div className="modal-content">
                   <div className="modal-header d-flex justify-content-between align-items-center w-100">
                     <h5 className="modal-title mb-0">
-                      Comentarios - {selectedAlarmForComments.name || "Alarma"}
+                      {t("alarmsSummary.commentsTitle", { name: selectedAlarmForComments.name || t("tables.alarm") })}
                     </h5>
                     <div className="d-flex align-items-center gap-2">
                       <Button
@@ -949,7 +949,7 @@ export function AlarmsSummary() {
                     {loadingComments ? (
                       <div className="text-center py-4">
                         <div className="spinner-border text-primary" role="status">
-                          <span className="visually-hidden">Cargando...</span>
+                          <span className="visually-hidden">{t("common.loading")}</span>
                         </div>
                       </div>
                     ) : (
@@ -970,7 +970,7 @@ export function AlarmsSummary() {
                             {comments.length === 0 ? (
                               <tr>
                                 <td colSpan={7} className="text-center text-muted py-4">
-                                  No hay comentarios disponibles
+                                  {t("alarmsSummary.noCommentsAvailable")}
                                 </td>
                               </tr>
                             ) : (
@@ -1000,7 +1000,7 @@ export function AlarmsSummary() {
                         setComments([]);
                       }}
                     >
-                      Cerrar
+                      {t("common.close")}
                     </Button>
                   </div>
                 </div>

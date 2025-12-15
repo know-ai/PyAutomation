@@ -148,7 +148,7 @@ export function Alarms() {
               variant="secondary"
               className="btn-sm"
               onClick={() => onEdit(currentAlarm)}
-              title="Editar alarma"
+              title={t("alarms.editAlarm")}
             >
               <i className="bi bi-pencil"></i>
             </Button>
@@ -156,7 +156,7 @@ export function Alarms() {
               variant="danger"
               className="btn-sm"
               onClick={() => onDelete(currentAlarm)}
-              title="Eliminar alarma"
+              title={t("alarms.deleteAlarm")}
             >
               <i className="bi bi-trash"></i>
             </Button>
@@ -176,7 +176,7 @@ export function Alarms() {
                   }
                 }}
                 disabled={executingAction}
-                title="Acciones de alarma"
+                title={t("alarms.alarmActions")}
               >
                 {loadingActions ? (
                   <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -199,7 +199,7 @@ export function Alarms() {
                   {loadingActions ? (
                     <div className="dropdown-item-text">
                       <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      Cargando acciones...
+                      {t("alarms.loadingActions")}
                     </div>
                   ) : actions && Object.keys(actions).length > 0 ? (
                     Object.entries(actions).map(([actionLabel, actionValue]) => (
@@ -217,7 +217,7 @@ export function Alarms() {
                     ))
                   ) : (
                     <div className="dropdown-item-text text-muted">
-                      No hay acciones disponibles
+                      {t("alarms.noActionsAvailable")}
                     </div>
                   )}
                 </div>
@@ -299,7 +299,7 @@ export function Alarms() {
         data?.message ??
         data?.detail ??
         data?.error;
-      const errorMsg = backendMessage || e?.message || "Error al cargar alarmas";
+      const errorMsg = backendMessage || e?.message || t("alarms.loadError");
       setError(errorMsg);
       setAlarms([]);
     } finally {
@@ -407,7 +407,7 @@ export function Alarms() {
     setExecutingAction((prev) => ({ ...prev, [alarmName]: true }));
     try {
       const result = await executeAlarmAction(actionValue, alarmName);
-      showToast("success", result.message || `Acción ejecutada exitosamente para ${alarmName}`);
+      showToast("success", result.message || t("alarms.actionExecutedSuccess", { alarmName }));
       
       // Reload alarms to get updated state
       await loadAlarms(pagination.page, pagination.limit);
@@ -426,7 +426,7 @@ export function Alarms() {
         data?.detail ??
         data?.error;
       const errorMsg =
-        backendMessage || e?.message || `Error al ejecutar acción para ${alarmName}`;
+        backendMessage || e?.message || t("alarms.executeActionError", { alarmName });
       showToast("error", errorMsg);
     } finally {
       setExecutingAction((prev) => ({ ...prev, [alarmName]: false }));
@@ -445,7 +445,7 @@ export function Alarms() {
                        shelveDuration.weeks > 0;
 
     if (!hasDuration) {
-      setError("Debe especificar al menos una duración (segundos, minutos, horas, días o semanas)");
+      setError(t("alarms.durationRequired"));
       return;
     }
 
@@ -461,7 +461,7 @@ export function Alarms() {
       if (shelveDuration.weeks > 0) payload.weeks = shelveDuration.weeks;
 
       const result = await shelveAlarm(alarmToShelve, payload);
-      showToast("success", result.message || `Alarma ${alarmToShelve} puesta en shelve exitosamente`);
+      showToast("success", result.message || t("alarms.shelveSuccess", { alarmName: alarmToShelve }));
       
       // Close modal
       setShowShelveModal(false);
@@ -496,7 +496,7 @@ export function Alarms() {
       const errorMsg =
         backendMessage ||
         e?.message ||
-        `Error al poner en shelve la alarma ${alarmToShelve}`;
+        t("alarms.shelveError", { alarmName: alarmToShelve });
       setError(errorMsg);
       showToast("error", errorMsg);
     } finally {
@@ -525,7 +525,7 @@ export function Alarms() {
 
   const handleEditAlarm = (alarm: Alarm) => {
     if (!alarm.identifier && !alarm.id) {
-      setError("La alarma no tiene ID, no se puede editar");
+      setError(t("alarms.noIdToEdit"));
       return;
     }
     
@@ -551,7 +551,7 @@ export function Alarms() {
 
   const handleDeleteAlarm = (alarm: Alarm) => {
     if (!alarm.identifier && !alarm.id) {
-      setError("La alarma no tiene ID, no se puede eliminar");
+      setError(t("alarms.noIdToDelete"));
       return;
     }
     
@@ -568,21 +568,21 @@ export function Alarms() {
       const allAlarms = response.data || [];
       
       if (!allAlarms || allAlarms.length === 0) {
-        setError("No hay alarmas para exportar");
+        setError(t("alarms.noAlarmsToExport"));
         return;
       }
 
       // Preparar los datos para CSV
       const headers = [
-        "Nombre",
-        "Tag",
-        "Tipo de Alarma",
-        "Valor de Disparo",
-        "Descripción",
-        "Estado",
-        "Mnemonic",
-        "Timestamp",
-        "Ack Timestamp"
+        t("tables.name"),
+        t("tables.tag"),
+        t("alarms.alarmType"),
+        t("tables.triggerValue"),
+        t("tables.description"),
+        t("tables.state"),
+        t("alarms.mnemonic"),
+        t("tables.timestamp"),
+        t("alarms.ackTimestamp")
       ];
 
       // Convertir alarmas a filas CSV
@@ -645,14 +645,14 @@ export function Alarms() {
         data?.detail ??
         data?.error;
       const errorMsg =
-        backendMessage || e?.message || "Error al exportar alarmas a CSV";
+        backendMessage || e?.message || t("alarms.exportError");
       setError(errorMsg);
     }
   };
 
   const confirmDeleteAlarm = async () => {
     if (!alarmToDelete || (!alarmToDelete.identifier && !alarmToDelete.id)) {
-      setError("No hay alarma seleccionada para eliminar");
+      setError(t("alarms.noAlarmSelectedToDelete"));
       return;
     }
 
@@ -677,7 +677,7 @@ export function Alarms() {
         data?.detail ??
         data?.error;
       const errorMsg =
-        backendMessage || e?.message || "Error al eliminar la alarma";
+        backendMessage || e?.message || t("alarms.deleteError");
       setError(errorMsg);
     } finally {
       setDeleting(false);
@@ -687,7 +687,7 @@ export function Alarms() {
   const handleUpdateAlarm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingAlarm || (!editingAlarm.identifier && !editingAlarm.id)) {
-      setError("No hay alarma seleccionada para actualizar");
+      setError(t("alarms.noAlarmSelectedToUpdate"));
       return;
     }
     
@@ -739,7 +739,7 @@ export function Alarms() {
       // Si no hay campos para actualizar, mostrar error
       const fieldsToUpdate = Object.keys(payload).filter(key => key !== 'id');
       if (fieldsToUpdate.length === 0) {
-        setError("No se han realizado cambios para actualizar");
+        setError(t("alarms.noChangesToUpdate"));
         setUpdating(false);
         return;
       }
@@ -767,7 +767,7 @@ export function Alarms() {
         data?.detail ??
         data?.error;
       const errorMsg =
-        backendMessage || e?.message || "Error al actualizar la alarma";
+        backendMessage || e?.message || t("alarms.updateError");
       setError(errorMsg);
     } finally {
       setUpdating(false);
@@ -782,7 +782,7 @@ export function Alarms() {
     try {
       // Validar campos requeridos
       if (!formData.name || !formData.tag) {
-        setError("Los campos Nombre y Tag son requeridos");
+        setError(t("alarms.nameAndTagRequired"));
         setCreating(false);
         return;
       }
@@ -833,7 +833,7 @@ export function Alarms() {
         data?.detail ??
         data?.error;
       const errorMsg =
-        backendMessage || e?.message || "Error al crear la alarma";
+        backendMessage || e?.message || t("alarms.createError");
       setError(errorMsg);
     } finally {
       setCreating(false);
@@ -864,7 +864,7 @@ export function Alarms() {
         <Card
           title={
             <div className="d-flex justify-content-between align-items-center w-100">
-              <span>Alarmas</span>
+              <span>{t("navigation.alarms")}</span>
               <div className="d-flex gap-2">
                 <Button
                   variant="secondary"
@@ -873,7 +873,7 @@ export function Alarms() {
                   disabled={loading || alarms.length === 0}
                 >
                   <i className="bi bi-download me-1"></i>
-                  Exportar CSV
+                  {t("alarms.exportCSV")}
                 </Button>
                 <Button
                   variant="success"
@@ -881,7 +881,7 @@ export function Alarms() {
                   onClick={() => setShowCreateModal(true)}
                 >
                   <i className="bi bi-plus-circle me-1"></i>
-                  Crear Alarma
+                  {t("alarms.createAlarm")}
                 </Button>
               </div>
             </div>
@@ -958,7 +958,7 @@ export function Alarms() {
           {loading && (
             <div className="text-center py-4">
               <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t("common.loading")}</span>
               </div>
             </div>
           )}
@@ -970,7 +970,7 @@ export function Alarms() {
                   <tr>
                     <th>{t("tables.name")}</th>
                     <th>{t("tables.type")}</th>
-                    <th>Value</th>
+                    <th>{t("tables.value")}</th>
                     <th>{t("tables.triggerValue")}</th>
                     <th>{t("tables.description")}</th>
                     <th>{t("tables.state")}</th>
@@ -981,7 +981,7 @@ export function Alarms() {
                   {alarms.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="text-center text-muted py-4">
-                        No hay alarmas disponibles
+                        {t("alarms.noAlarmsAvailable")}
                       </td>
                     </tr>
                   ) : (
@@ -1028,7 +1028,7 @@ export function Alarms() {
             <div className="modal-dialog modal-lg" role="document">
               <div className="modal-content">
                 <div className="modal-header">
-                  <h5 className="modal-title">Crear Nueva Alarma</h5>
+                  <h5 className="modal-title">{t("alarms.createNewAlarm")}</h5>
                   <button
                     type="button"
                     className="btn-close"
@@ -1050,7 +1050,7 @@ export function Alarms() {
                     <div className="row g-3">
                       <div className="col-md-6">
                         <label className="form-label">
-                          Nombre <span className="text-danger">*</span>
+                          {t("tables.name")} <span className="text-danger">*</span>
                         </label>
                         <input
                           type="text"
@@ -1064,7 +1064,7 @@ export function Alarms() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
-                          Tag <span className="text-danger">*</span>
+                          {t("tables.tag")} <span className="text-danger">*</span>
                         </label>
                         <select
                           className="form-select"
@@ -1076,7 +1076,7 @@ export function Alarms() {
                           disabled={loadingTags}
                         >
                           <option value="">
-                            {loadingTags ? "Cargando tags..." : "Seleccione un tag"}
+                            {loadingTags ? t("alarms.loadingTags") : t("alarms.selectTag")}
                           </option>
                           {availableTags.map((tag) => (
                             <option key={tag.name} value={tag.name}>
@@ -1087,7 +1087,7 @@ export function Alarms() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
-                          Tipo de Alarma <span className="text-danger">*</span>
+                          {t("alarms.alarmType")} <span className="text-danger">*</span>
                         </label>
                         <select
                           className="form-select"
@@ -1110,7 +1110,7 @@ export function Alarms() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
-                          Valor de Disparo <span className="text-danger">*</span>
+                          {t("tables.triggerValue")} <span className="text-danger">*</span>
                         </label>
                         {formData.alarm_type === "BOOL" ? (
                           <select
@@ -1121,9 +1121,9 @@ export function Alarms() {
                               setFormData({ ...formData, trigger_value: e.target.value })
                             }
                           >
-                            <option value="">Seleccione un valor</option>
-                            <option value="true">True</option>
-                            <option value="false">False</option>
+                            <option value="">{t("alarms.selectValue")}</option>
+                            <option value="true">{t("alarms.true")}</option>
+                            <option value="false">{t("alarms.false")}</option>
                           </select>
                         ) : (
                           <input
@@ -1135,12 +1135,12 @@ export function Alarms() {
                             onChange={(e) =>
                               setFormData({ ...formData, trigger_value: e.target.value })
                             }
-                            placeholder="Ingrese el valor de disparo"
+                            placeholder={t("alarms.enterTriggerValue")}
                           />
                         )}
                       </div>
                       <div className="col-12">
-                        <label className="form-label">Descripción</label>
+                        <label className="form-label">{t("tables.description")}</label>
                         <textarea
                           className="form-control"
                           rows={2}
@@ -1162,10 +1162,10 @@ export function Alarms() {
                       }}
                       disabled={creating}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </button>
                     <Button type="submit" variant="success" loading={creating}>
-                      Crear Alarma
+                      {t("alarms.createAlarm")}
                     </Button>
                   </div>
                 </form>
@@ -1185,7 +1185,7 @@ export function Alarms() {
             <div className="modal-dialog modal-lg" role="document">
               <div className="modal-content">
                 <div className="modal-header">
-                  <h5 className="modal-title">Editar Alarma: {editingAlarm.name}</h5>
+                  <h5 className="modal-title">{t("alarms.editAlarmTitle", { name: editingAlarm.name })}</h5>
                   <button
                     type="button"
                     className="btn-close"
@@ -1208,7 +1208,7 @@ export function Alarms() {
                     <div className="row g-3">
                       <div className="col-md-6">
                         <label className="form-label">
-                          Nombre <span className="text-danger">*</span>
+                          {t("tables.name")} <span className="text-danger">*</span>
                         </label>
                         <input
                           type="text"
@@ -1222,7 +1222,7 @@ export function Alarms() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
-                          Tag <span className="text-danger">*</span>
+                          {t("tables.tag")} <span className="text-danger">*</span>
                         </label>
                         <select
                           className="form-select"
@@ -1233,7 +1233,7 @@ export function Alarms() {
                           }
                           disabled={loadingTags}
                         >
-                          <option value="">Seleccione un tag</option>
+                          <option value="">{t("alarms.selectTag")}</option>
                           {availableTags.map((tag) => (
                             <option key={tag.name} value={tag.name}>
                               {tag.name}
@@ -1243,7 +1243,7 @@ export function Alarms() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
-                          Tipo de Alarma <span className="text-danger">*</span>
+                          {t("alarms.alarmType")} <span className="text-danger">*</span>
                         </label>
                         <select
                           className="form-select"
@@ -1266,7 +1266,7 @@ export function Alarms() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
-                          Valor de Disparo <span className="text-danger">*</span>
+                          {t("tables.triggerValue")} <span className="text-danger">*</span>
                         </label>
                         {formData.alarm_type === "BOOL" ? (
                           <select
@@ -1277,9 +1277,9 @@ export function Alarms() {
                               setFormData({ ...formData, trigger_value: e.target.value })
                             }
                           >
-                            <option value="">Seleccione un valor</option>
-                            <option value="true">True</option>
-                            <option value="false">False</option>
+                            <option value="">{t("alarms.selectValue")}</option>
+                            <option value="true">{t("alarms.true")}</option>
+                            <option value="false">{t("alarms.false")}</option>
                           </select>
                         ) : (
                           <input
@@ -1291,12 +1291,12 @@ export function Alarms() {
                             onChange={(e) =>
                               setFormData({ ...formData, trigger_value: e.target.value })
                             }
-                            placeholder="Ingrese el valor de disparo"
+                            placeholder={t("alarms.enterTriggerValue")}
                           />
                         )}
                       </div>
                       <div className="col-12">
-                        <label className="form-label">Descripción</label>
+                        <label className="form-label">{t("tables.description")}</label>
                         <textarea
                           className="form-control"
                           rows={2}
@@ -1319,10 +1319,10 @@ export function Alarms() {
                       }}
                       disabled={updating}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </button>
                     <Button type="submit" variant="success" loading={updating}>
-                      Actualizar Alarma
+                      {t("alarms.updateAlarm")}
                     </Button>
                   </div>
                 </form>
@@ -1342,7 +1342,7 @@ export function Alarms() {
             <div className="modal-dialog" role="document">
               <div className="modal-content">
                 <div className="modal-header">
-                  <h5 className="modal-title">Confirmar Eliminación</h5>
+                  <h5 className="modal-title">{t("alarms.confirmDelete")}</h5>
                   <button
                     type="button"
                     className="btn-close"
@@ -1362,10 +1362,10 @@ export function Alarms() {
                     </div>
                   )}
                   <p>
-                    ¿Está seguro de que desea eliminar la alarma <strong>"{alarmToDelete.name}"</strong>?
+                    {t("alarms.confirmDeleteMessage", { name: alarmToDelete.name })}
                   </p>
                   <p className="text-muted small mb-0">
-                    Esta acción no se puede deshacer.
+                    {t("alarms.cannotUndo")}
                   </p>
                 </div>
                 <div className="modal-footer">
@@ -1379,14 +1379,14 @@ export function Alarms() {
                     }}
                     disabled={deleting}
                   >
-                    Cancelar
+                    {t("common.cancel")}
                   </button>
                   <Button
                     variant="danger"
                     onClick={confirmDeleteAlarm}
                     loading={deleting}
                   >
-                    Eliminar
+                    {t("common.delete")}
                   </Button>
                 </div>
               </div>
@@ -1405,7 +1405,7 @@ export function Alarms() {
             <div className="modal-dialog" role="document">
               <div className="modal-content">
                 <div className="modal-header">
-                  <h5 className="modal-title">Configurar Shelve para: {alarmToShelve}</h5>
+                  <h5 className="modal-title">{t("alarms.configureShelve", { alarmName: alarmToShelve })}</h5>
                   <button
                     type="button"
                     className="btn-close"
@@ -1434,12 +1434,12 @@ export function Alarms() {
                     )}
 
                     <p className="text-muted mb-3">
-                      Configure la duración para mantener la alarma en estado Shelve. Debe especificar al menos un valor.
+                      {t("alarms.shelveDurationDescription")}
                     </p>
 
                     <div className="row g-3">
                       <div className="col-md-6">
-                        <label className="form-label">Semanas</label>
+                        <label className="form-label">{t("alarms.weeks")}</label>
                         <input
                           type="number"
                           className="form-control"
@@ -1452,7 +1452,7 @@ export function Alarms() {
                         />
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Días</label>
+                        <label className="form-label">{t("alarms.days")}</label>
                         <input
                           type="number"
                           className="form-control"
@@ -1465,7 +1465,7 @@ export function Alarms() {
                         />
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Horas</label>
+                        <label className="form-label">{t("alarms.hours")}</label>
                         <input
                           type="number"
                           className="form-control"
@@ -1478,7 +1478,7 @@ export function Alarms() {
                         />
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Minutos</label>
+                        <label className="form-label">{t("alarms.minutes")}</label>
                         <input
                           type="number"
                           className="form-control"
@@ -1491,7 +1491,7 @@ export function Alarms() {
                         />
                       </div>
                       <div className="col-md-6">
-                        <label className="form-label">Segundos</label>
+                        <label className="form-label">{t("alarms.seconds")}</label>
                         <input
                           type="number"
                           className="form-control"
@@ -1523,10 +1523,10 @@ export function Alarms() {
                       }}
                       disabled={shelving}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </button>
                 <Button type="submit" variant="secondary" loading={shelving}>
-                      Aplicar Shelve
+                      {t("alarms.applyShelve")}
                     </Button>
                   </div>
                 </form>
