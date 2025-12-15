@@ -18,7 +18,21 @@
     "info": "Info",
     "confirm": "Confirm",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "time": "Time"
+  },
+  "stripChart": {
+    "tags": "Tags",
+    "configureTags": "Configure tags",
+    "deleteChart": "Delete chart",
+    "searchTag": "Search tag:",
+    "searchPlaceholder": "Search...",
+    "bufferSizeLabel": "Buffer size (points):",
+    "selectedTags": "Selected tags:",
+    "unitsCount": "Units: {{count}}/2",
+    "availableTags": "Available tags:",
+    "noTagsAvailable": "No tags available",
+    "maxUnitsReached": "max 2 units"
   },
   "auth": {
     "login": "Login",

@@ -18,7 +18,21 @@
     "info": "Información",
     "confirm": "Confirmar",
     "yes": "Sí",
-    "no": "No"
+    "no": "No",
+    "time": "Tiempo"
+  },
+  "stripChart": {
+    "tags": "Tags",
+    "configureTags": "Configurar tags",
+    "deleteChart": "Eliminar gráfico",
+    "searchTag": "Buscar tag:",
+    "searchPlaceholder": "Buscar...",
+    "bufferSizeLabel": "Buffer size (puntos):",
+    "selectedTags": "Tags seleccionados:",
+    "unitsCount": "Unidades: {{count}}/2",
+    "availableTags": "Tags disponibles:",
+    "noTagsAvailable": "No hay tags disponibles",
+    "maxUnitsReached": "máx 2 unidades"
   },
   "auth": {
     "login": "Iniciar sesión",

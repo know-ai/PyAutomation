@@ -10,11 +10,13 @@ import "react-resizable/css/styles.css";
 const STORAGE_KEY = "realTimeTrends_layout";
 const GRID_COLS = 12;
 const GRID_ROW_HEIGHT = 50;
+const MIN_STRIPCHART_ROWS = 8; // Garantiza altura mínima suficiente para el plot
 
 export function RealTimeTrends() {
   const { t } = useTranslation();
   const [isEditMode, setIsEditMode] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastLayoutRef = useRef<GridLayoutType[] | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [stripCharts, setStripCharts] = useState<StripChartConfig[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -70,7 +72,7 @@ export function RealTimeTrends() {
       x: 0,
       y: 0,
       w: 6,
-      h: 6,
+      h: MIN_STRIPCHART_ROWS,
     };
 
     // Calcular posición Y para evitar solapamiento
@@ -93,7 +95,34 @@ export function RealTimeTrends() {
   }, []);
 
   // Manejar cambios en el layout (drag and drop, resize)
-  const handleLayoutChange = useCallback((layout: GridLayoutType[]) => {
+  const handleLayoutChange = useCallback(
+    (layout: GridLayoutType[]) => {
+      lastLayoutRef.current = layout;
+      if (!isEditMode) return; // Solo persistir cambios cuando se está editando
+      setStripCharts((prev) =>
+        prev.map((chart) => {
+          const layoutItem = layout.find((item) => item.i === chart.id);
+          if (layoutItem) {
+            return {
+              ...chart,
+              x: layoutItem.x,
+              y: layoutItem.y,
+              w: layoutItem.w,
+              h: layoutItem.h,
+            };
+          }
+          return chart;
+        })
+      );
+    },
+    [isEditMode]
+  );
+
+  // Al salir de modo edición, aplicar la última disposición capturada
+  useEffect(() => {
+    if (isEditMode) return;
+    if (!lastLayoutRef.current) return;
+    const layout = lastLayoutRef.current;
     setStripCharts((prev) =>
       prev.map((chart) => {
         const layoutItem = layout.find((item) => item.i === chart.id);
@@ -109,7 +138,7 @@ export function RealTimeTrends() {
         return chart;
       })
     );
-  }, []);
+  }, [isEditMode]);
 
   // Convertir StripChartConfig a GridLayout
   const gridLayout = useMemo<GridLayoutType[]>(() => {
@@ -118,11 +147,12 @@ export function RealTimeTrends() {
       x: chart.x,
       y: chart.y,
       w: chart.w,
-      h: chart.h,
+      h: Math.max(chart.h, MIN_STRIPCHART_ROWS),
       minW: 4, // Mínimo de ancho (4 columnas)
       maxW: 12, // Máximo de ancho (12 columnas)
-      minH: 1, // Mínimo de altura muy bajo (casi sin restricción)
-      resizeHandles: isEditMode ? ["e", "s", "se", "sw"] : ["se"],
+      minH: MIN_STRIPCHART_ROWS, // Evita que el body sea menor al alto mínimo del plot
+      static: !isEditMode, // En producción no permite mover ni redimensionar
+      resizeHandles: isEditMode ? ["e", "s", "se", "sw"] : [],
     } as GridLayoutType & { resizeHandles?: string[] }));
   }, [stripCharts, isEditMode]);
 
@@ -184,13 +214,13 @@ export function RealTimeTrends() {
                 }}
                 isDraggable={isEditMode}
                 isResizable={isEditMode}
-                draggableHandle=".drag-handle"
+                draggableHandle={isEditMode ? ".drag-handle" : undefined}
                 preventCollision={false}
                 compactType={null}
                 margin={[10, 10]}
                 containerPadding={[0, 0]}
                 breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-                resizeHandles={isEditMode ? ['e', 's', 'se', 'sw'] : ['se']}
+                resizeHandles={isEditMode ? ['e', 's', 'se', 'sw'] : []}
               >
                 {stripCharts.map((chart) => (
                   <div

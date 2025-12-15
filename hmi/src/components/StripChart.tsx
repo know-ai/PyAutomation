@@ -5,6 +5,7 @@ import Plot from "react-plotly.js";
 import type { Data, Layout } from "plotly.js";
 import { useTheme } from "../hooks/useTheme";
 import { useAppSelector } from "../hooks/useAppSelector";
+import { useTranslation } from "../hooks/useTranslation";
 import { getTags, type Tag } from "../services/tags";
 import { showToast } from "../utils/toast";
 
@@ -28,10 +29,12 @@ interface StripChartProps {
 
 export function StripChart({ config, isEditMode, onConfigChange, onDelete }: StripChartProps) {
   const { mode } = useTheme();
+  const { t } = useTranslation();
   const tagValues = useAppSelector((state) => state.tags.tagValues);
   const [showTagConfig, setShowTagConfig] = useState(false);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [tagSearch, setTagSearch] = useState("");
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [loadingTags, setLoadingTags] = useState(false);
   const [bufferVersion, setBufferVersion] = useState(0);
   const tagConfigRef = useRef<HTMLDivElement>(null);
@@ -85,6 +88,11 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
         tag.description?.toLowerCase().includes(searchLower)
     );
   }, [availableTags, tagSearch]);
+
+  const unselectedFilteredTags = useMemo(
+    () => filteredTags.filter((tag) => !config.tagNames.includes(tag.name)),
+    [filteredTags, config.tagNames]
+  );
 
   // Actualizar buffer con datos en tiempo real (no disparar render inmediato)
   useEffect(() => {
@@ -180,14 +188,13 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     });
 
     const layout: Partial<Layout> = {
-      title: config.title || "Strip Chart",
       autosize: true,
       margin: { l: 60, r: unitOrder.length > 1 ? 60 : 20, t: 40, b: 40 },
       paper_bgcolor: mode === "dark" ? "#212529" : "#ffffff",
       plot_bgcolor: mode === "dark" ? "#2c3034" : "#f8f9fa",
       font: { color: mode === "dark" ? "#ffffff" : "#212529" },
       xaxis: {
-        title: "Tiempo",
+        title: t("common.time"),
         color: mode === "dark" ? "#ffffff" : "#212529",
         gridcolor: mode === "dark" ? "#495057" : "#dee2e6",
       },
@@ -216,7 +223,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     }
 
     return { data: traces, layout };
-  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, bufferVersion]);
+  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, bufferVersion, t]);
 
   // Máximo 2 unidades distintas; número de tags ilimitado mientras no se supere ese tope de unidades
   const handleTagToggle = (tagName: string) => {
@@ -280,143 +287,135 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
                 <span>{config.title || "Strip Chart"}</span>
               )}
             </div>
-            <div className="d-flex gap-2" onClick={(e) => e.stopPropagation()}>
+            <div className="d-flex gap-2 position-relative" onClick={(e) => e.stopPropagation()}>
               {isEditMode && (
                 <>
                   <Button
                     variant="primary"
                     className="btn-sm"
                     onClick={() => setShowTagConfig(!showTagConfig)}
-                    title="Configurar tags"
+                    title={t("stripChart.configureTags")}
                   >
                     <i className="bi bi-tags me-1"></i>
-                    Tags ({config.tagNames.length})
+                    {t("stripChart.tags")} ({config.tagNames.length})
                   </Button>
                   <Button
                     variant="danger"
                     className="btn-sm"
                     onClick={onDelete}
-                    title="Eliminar gráfico"
+                    title={t("stripChart.deleteChart")}
                   >
                     <i className="bi bi-trash"></i>
                   </Button>
+                  {showTagConfig && (
+                    <div
+                      ref={tagConfigRef}
+                      className="position-absolute bg-body border rounded shadow-lg p-3"
+                      style={{
+                        zIndex: 10000,
+                        top: "calc(100% + 4px)",
+                        right: 0,
+                        minWidth: "300px",
+                        maxHeight: "400px",
+                        overflowY: "auto",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="mb-2 position-relative">
+                        <label className="form-label small">{t("stripChart.searchTag")}</label>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm"
+                          value={tagSearch}
+                          onChange={(e) => {
+                            setTagSearch(e.target.value);
+                            setShowSearchDropdown(true);
+                          }}
+                          placeholder={t("stripChart.searchPlaceholder")}
+                          onFocus={() => setShowSearchDropdown(true)}
+                        />
+                        {showSearchDropdown && (
+                          <div
+                            className="position-absolute bg-body border rounded shadow-sm w-100"
+                            style={{ zIndex: 10001, maxHeight: "200px", overflowY: "auto", top: "100%", left: 0 }}
+                          >
+                            {unselectedFilteredTags.length === 0 ? (
+                              <div className="text-muted small p-2">{t("stripChart.noTagsAvailable")}</div>
+                            ) : (
+                              unselectedFilteredTags.map((tag) => (
+                                <div
+                                  key={tag.name}
+                                  className="p-2 border-bottom cursor-pointer"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    handleTagToggle(tag.name);
+                                    setShowSearchDropdown(false);
+                                    setTagSearch("");
+                                  }}
+                                >
+                                  <div className="d-flex justify-content-between align-items-center">
+                                    <div>
+                                      <strong className="small">{tag.display_name || tag.name}</strong>
+                                      <br />
+                                      <span className="text-muted small">
+                                        {tag.name} · {getTagUnit(tag.name)}
+                                      </span>
+                                    </div>
+                                    <i className="bi bi-plus-circle text-primary"></i>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="mb-2">
+                        <label className="form-label small">{t("stripChart.bufferSizeLabel")}</label>
+                        <input
+                          type="number"
+                          className="form-control form-control-sm"
+                          value={config.bufferSize}
+                          onChange={(e) => handleBufferSizeChange(Number(e.target.value))}
+                          min={10}
+                          max={10000}
+                          step={10}
+                        />
+                      </div>
+                      <div className="mb-2">
+                        <label className="form-label small d-flex justify-content-between align-items-center">
+                          <span>{t("stripChart.selectedTags")}</span>
+                          <span className="badge bg-secondary">
+                            {t("stripChart.unitsCount", {
+                              count: Array.from(new Set(config.tagNames.map(getTagUnit))).length,
+                            })}
+                          </span>
+                        </label>
+                        <div className="d-flex flex-wrap gap-1">
+                          {config.tagNames.map((tagName) => {
+                            const tag = availableTags.find((t) => t.name === tagName);
+                            return (
+                              <span key={tagName} className="badge bg-primary">
+                                {tag?.display_name || tagName}
+                                <button
+                                  type="button"
+                                  className="btn-close btn-close-white ms-1"
+                                  style={{ fontSize: "0.6rem" }}
+                                  onClick={() => handleTagToggle(tagName)}
+                                  aria-label="Remove"
+                                ></button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
           </div>
         }
       >
-        {/* Configuración de tags (dropdown) */}
-        {showTagConfig && isEditMode && (
-          <div
-            ref={tagConfigRef}
-            className="position-absolute bg-body border rounded shadow-lg p-3"
-            style={{
-              zIndex: 10000,
-              top: "100%",
-              right: 0,
-              minWidth: "300px",
-              maxHeight: "400px",
-              overflowY: "auto",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-2">
-              <label className="form-label small">Buscar tag:</label>
-              <input
-                type="text"
-                className="form-control form-control-sm"
-                value={tagSearch}
-                onChange={(e) => setTagSearch(e.target.value)}
-                placeholder="Buscar..."
-              />
-            </div>
-            <div className="mb-2">
-              <label className="form-label small">Buffer size (puntos):</label>
-              <input
-                type="number"
-                className="form-control form-control-sm"
-                value={config.bufferSize}
-                onChange={(e) => handleBufferSizeChange(Number(e.target.value))}
-                min={10}
-                max={10000}
-                step={10}
-              />
-            </div>
-            <div className="mb-2">
-              <label className="form-label small d-flex justify-content-between align-items-center">
-                <span>Tags seleccionados:</span>
-                <span className="badge bg-secondary">
-                  {Array.from(new Set(config.tagNames.map(getTagUnit))).length}/2 unidades
-                </span>
-              </label>
-              <div className="d-flex flex-wrap gap-1">
-                {config.tagNames.map((tagName) => {
-                  const tag = availableTags.find((t) => t.name === tagName);
-                  return (
-                    <span key={tagName} className="badge bg-primary">
-                      {tag?.display_name || tagName}
-                      <button
-                        type="button"
-                        className="btn-close btn-close-white ms-1"
-                        style={{ fontSize: "0.6rem" }}
-                        onClick={() => handleTagToggle(tagName)}
-                        aria-label="Remove"
-                      ></button>
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <label className="form-label small">Tags disponibles:</label>
-              {loadingTags ? (
-                <div className="text-center py-2">
-                  <div className="spinner-border spinner-border-sm" role="status">
-                    <span className="visually-hidden">Cargando...</span>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ maxHeight: "200px", overflowY: "auto" }}>
-                  {filteredTags.length === 0 ? (
-                    <p className="text-muted small mb-0">No hay tags disponibles</p>
-                  ) : (
-                    filteredTags.map((tag) => {
-                      const isSelected = config.tagNames.includes(tag.name);
-                      const unit = getTagUnit(tag.name);
-                      const unitsInUse = new Set(config.tagNames.map(getTagUnit));
-                      const reachedLimit = unitsInUse.size >= 2 && !unitsInUse.has(unit);
-                      return (
-                        <div
-                          key={tag.name}
-                          className={`p-2 border-bottom ${isSelected ? "bg-primary bg-opacity-10" : ""} ${reachedLimit ? "text-muted" : "cursor-pointer"}`}
-                          style={{ cursor: reachedLimit ? "not-allowed" : "pointer", opacity: reachedLimit ? 0.6 : 1 }}
-                          onClick={() => {
-                            if (reachedLimit) return;
-                            handleTagToggle(tag.name);
-                          }}
-                        >
-                          <div className="d-flex justify-content-between align-items-center">
-                            <div>
-                              <strong className="small">{tag.display_name || tag.name}</strong>
-                              <br />
-                              <span className="text-muted small">
-                                {tag.name} · {unit}
-                              </span>
-                            </div>
-                            {isSelected && <i className="bi bi-check-circle-fill text-primary"></i>}
-                            {!isSelected && reachedLimit && <small className="text-muted">máx 2 unidades</small>}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Gráfico */}
         <div style={{ width: "100%", flex: 1, minHeight: "300px", position: "relative", display: "flex", flexDirection: "column" }}>
           {config.tagNames.length === 0 ? (
