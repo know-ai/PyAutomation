@@ -32,7 +32,19 @@
     "unitsCount": "Unidades: {{count}}/2",
     "availableTags": "Tags disponibles:",
     "noTagsAvailable": "No hay tags disponibles",
-    "maxUnitsReached": "máx 2 unidades"
+    "maxUnitsReached": "máx 2 unidades",
+    "errorLoadingTags": "Error al cargar los tags",
+    "maxUnitsPerChart": "Máximo 2 unidades por gráfico",
+    "titlePlaceholder": "Título del gráfico",
+    "defaultTitle": "Strip Chart",
+    "emptyState": "Seleccione tags para visualizar"
+  },
+  "realTimeTrends": {
+    "editMode": "Modo Edición",
+    "addChart": "Agregar Gráfico",
+    "newChartTitle": "Gráfico {{index}}",
+    "emptyEdit": "Haga doble clic en la vista y luego en 'Agregar Gráfico' para crear su primer gráfico en tiempo real",
+    "emptyProduction": "No hay gráficos configurados. Haga doble clic en la vista para entrar en modo edición."
   },
   "auth": {
     "login": "Iniciar sesión",

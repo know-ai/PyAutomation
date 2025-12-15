@@ -32,7 +32,19 @@
     "unitsCount": "Units: {{count}}/2",
     "availableTags": "Available tags:",
     "noTagsAvailable": "No tags available",
-    "maxUnitsReached": "max 2 units"
+    "maxUnitsReached": "max 2 units",
+    "errorLoadingTags": "Error loading tags",
+    "maxUnitsPerChart": "Maximum 2 units per chart",
+    "titlePlaceholder": "Chart title",
+    "defaultTitle": "Strip Chart",
+    "emptyState": "Select tags to visualize"
+  },
+  "realTimeTrends": {
+    "editMode": "Edit Mode",
+    "addChart": "Add Chart",
+    "newChartTitle": "Chart {{index}}",
+    "emptyEdit": "Double-click the view and then 'Add Chart' to create your first real-time chart",
+    "emptyProduction": "No charts configured. Double-click the view to enter edit mode."
   },
   "auth": {
     "login": "Login",

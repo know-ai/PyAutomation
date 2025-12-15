@@ -6,13 +6,15 @@ type CardProps = PropsWithChildren<{
   footer?: ReactNode;
   className?: string;
   style?: React.CSSProperties;
+  headerClassName?: string;
+  bodyClassName?: string;
 }>;
 
-export function Card({ title, footer, className, style, children }: CardProps) {
+export function Card({ title, footer, className, style, headerClassName, bodyClassName, children }: CardProps) {
   return (
     <div className={clsx("card shadow-sm", className)} style={style}>
       {title && (
-        <div className="card-header">
+        <div className={clsx("card-header py-1", headerClassName)}>
           {typeof title === "string" ? (
             <h3 className="card-title m-0">{title}</h3>
           ) : (
@@ -20,10 +22,17 @@ export function Card({ title, footer, className, style, children }: CardProps) {
           )}
         </div>
       )}
-      <div className="card-body" style={style?.display === "flex" ? { flex: 1, display: "flex", flexDirection: "column", minHeight: 0 } : undefined}>{children}</div>
+      <div
+        className={clsx("card-body", bodyClassName)}
+        style={
+          style?.display === "flex"
+            ? { flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }
+            : undefined
+        }
+      >
+        {children}
+      </div>
       {footer && <div className="card-footer">{footer}</div>}
     </div>
   );
 }
-
-

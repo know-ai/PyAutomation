@@ -8,8 +8,8 @@ import "react-resizable/css/styles.css";
 
 const STORAGE_KEY = "realTimeTrends_layout";
 const GRID_COLS = 12;
-const GRID_ROW_HEIGHT = 50;
-const MIN_STRIPCHART_ROWS = 8; // Garantiza altura mínima suficiente para el plot
+const GRID_ROW_HEIGHT = 40;
+const MIN_STRIPCHART_ROWS = 6; // Altura mínima pensada para permitir ~3 gráficos en vertical sin scroll
 
 export function RealTimeTrends() {
   const { t } = useTranslation();
@@ -64,7 +64,7 @@ export function RealTimeTrends() {
   const handleAddStripChart = useCallback(() => {
     const newChart: StripChartConfig = {
       id: `stripchart-${Date.now()}`,
-      title: `Gráfico ${stripCharts.length + 1}`,
+      title: t("realTimeTrends.newChartTitle", { index: stripCharts.length + 1 }),
       tagNames: [],
       bufferSize: 100,
       x: 0,
@@ -138,34 +138,32 @@ export function RealTimeTrends() {
   return (
     <div className="row" onDoubleClick={handleToggleEditMode} style={{ cursor: "default" }}>
       <div className="col-12">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <h3 className="card-title m-0">{t("navigation.realTimeTrends")}</h3>
-          <div className="d-flex gap-2 align-items-center">
-            <span className={`badge ${isEditMode ? "bg-warning text-dark" : "bg-secondary"}`}>
-              {isEditMode ? "Modo Edición" : "Modo Producción"}
-            </span>
-            {isEditMode && (
+        {isEditMode && (
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <h3 className="card-title m-0">{t("navigation.realTimeTrends")}</h3>
+            <div className="d-flex gap-2 align-items-center">
+              <span className="badge bg-warning text-dark">{t("realTimeTrends.editMode")}</span>
               <Button variant="success" className="btn-sm" onClick={handleAddStripChart}>
                 <i className="bi bi-plus-circle me-1"></i>
-                Agregar Gráfico
+                {t("realTimeTrends.addChart")}
               </Button>
-            )}
+            </div>
           </div>
-        </div>
+        )}
         {stripCharts.length === 0 ? (
           <div className="text-center py-5">
             <i className="bi bi-graph-up" style={{ fontSize: "4rem", color: "#6c757d" }}></i>
             <h4 className="mt-3 text-muted">{t("navigation.realTimeTrends")}</h4>
             <p className="text-muted">
               {isEditMode
-                ? "Haga doble clic en la vista y luego en 'Agregar Gráfico' para crear su primer gráfico en tiempo real"
-                : "No hay gráficos configurados. Haga doble clic en la vista para entrar en modo edición."}
+                ? t("realTimeTrends.emptyEdit")
+                : t("realTimeTrends.emptyProduction")}
             </p>
           </div>
         ) : (
           <div
             ref={containerRef}
-            style={{ position: "relative", width: "100%", minHeight: "500px" }}
+            style={{ position: "relative", width: "100%", minHeight: "300px" }}
           >
             <ResponsiveGridLayout
               className="layout"

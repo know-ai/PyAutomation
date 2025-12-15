@@ -47,7 +47,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
         setAvailableTags(response.data || []);
       } catch (err: any) {
         console.error("Error loading tags:", err);
-        showToast("Error al cargar los tags", "error");
+        showToast(t("stripChart.errorLoadingTags"), "error");
       } finally {
         setLoadingTags(false);
       }
@@ -195,7 +195,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     const wouldAddNewUnit = !isSelected && !currentUnits.has(unit);
 
     if (wouldAddNewUnit && currentUnits.size >= 2) {
-      showToast("Máximo 2 unidades por gráfico", "warning");
+      showToast(t("stripChart.maxUnitsPerChart"), "warning");
       return;
     }
 
@@ -229,6 +229,8 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     <div style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}>
       <Card
         style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
+        headerClassName="py-1 px-2"
+        bodyClassName="p-0"
         title={
           <div className="d-flex justify-content-between align-items-center w-100 drag-handle" style={{ cursor: isEditMode ? "move" : "default" }}>
             <div className="d-flex align-items-center gap-2">
@@ -240,11 +242,11 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
                   value={config.title}
                   onChange={(e) => handleTitleChange(e.target.value)}
                   style={{ width: "auto", minWidth: "150px", maxWidth: "300px" }}
-                  placeholder="Título del gráfico"
+                  placeholder={t("stripChart.titlePlaceholder")}
                   onClick={(e) => e.stopPropagation()}
                 />
               ) : (
-                <span>{config.title || "Strip Chart"}</span>
+                <span>{config.title || t("stripChart.defaultTitle")}</span>
               )}
             </div>
             <div className="d-flex gap-2 position-relative" onClick={(e) => e.stopPropagation()}>
@@ -377,11 +379,11 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
         }
       >
         {/* Gráfico */}
-        <div style={{ width: "100%", flex: 1, minHeight: "300px", position: "relative", display: "flex", flexDirection: "column" }}>
+        <div style={{ width: "100%", flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }}>
           {config.tagNames.length === 0 ? (
             <div className="text-center py-5 text-muted" style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <i className="bi bi-graph-up" style={{ fontSize: "3rem" }}></i>
-              <p className="mt-3">Seleccione tags para visualizar</p>
+              <p className="mt-3">{t("stripChart.emptyState")}</p>
             </div>
           ) : (
             <Plot
