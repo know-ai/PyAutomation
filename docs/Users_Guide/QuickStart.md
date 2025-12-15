@@ -6,7 +6,9 @@ It is aimed at engineers and operators who want to go from zero to a working sys
 
 > **Note:** Throughout this guide we assume you are working on a single host (your laptop or a server) and have Docker and Docker Compose installed.
 
-<!-- Image placeholder: High-level architecture of PyAutomation + HMI + Database + OPC UA -->
+![OPC UA Client Screen](images/OPCUAClientScreen.png)
+
+*Figure 0: PyAutomation HMI showing OPC UA client connections and database integration*
 
 ---
 
@@ -136,7 +138,9 @@ These logs are the primary place to look when:
 - The API is not responding as expected.
 - You need to debug authentication, database connections, or OPC UA issues.
 
-<!-- Image placeholder: Browser showing PyAutomation login screen after Docker startup -->
+![Login Screen](images/LoginScreen.png)
+
+*Figure 1: PyAutomation login screen after Docker startup*
 
 ---
 
@@ -198,7 +202,9 @@ volumes:
 
 > **Important:** PyAutomation will create all its tables automatically the first time you configure the DB connection from the HMI (see section 6). You only need to ensure that PostgreSQL is up and reachable.
 
-<!-- Image placeholder: Diagram showing PyAutomation container talking to PostgreSQL container -->
+![Database Configuration](images/DatabaseConfigInNavBar.png)
+
+*Figure 2.1: Database configuration interface for connecting PyAutomation to PostgreSQL*
 
 ---
 
@@ -331,7 +337,9 @@ At a glance:
 
 > **Tip:** This stack is ideal for demos, automated tests, and onboarding workshops.
 
-<!-- Image placeholder: Diagram of db + opcua_server_simulator + automation containers -->
+![OPC UA Client Screen](images/OPCUAClientScreen.png)
+
+*Figure 3.1: OPC UA client screen showing integration with database and simulator services*
 
 ### 3.2. OPC UA Simulator Configuration: opcua_server_simulator.yml
 
@@ -374,7 +382,9 @@ Key fields:
 
 The simulator uses this configuration plus the CSV file to drive the time series it serves.
 
-<!-- Image placeholder: Screenshot of OPC UA namespace tree showing FI_01, PI_01, etc. -->
+![OPC UA Explorer](images/OPCUAExplorer.png)
+
+*Figure 3.2: OPC UA namespace tree showing variables like FI_01, PI_01, etc. from the simulator*
 
 ### 3.3. CSV Data Format: data_for_tests.csv
 
@@ -409,7 +419,7 @@ If you want to customize the simulation:
    - It contains corresponding columns for your variables.
    - Values fall within the desired ranges.
 
-<!-- Image placeholder: Sample of data_for_tests.csv opened in a spreadsheet -->
+> **Note:** The `data_for_tests.csv` file follows a standard CSV format with a header row and numeric data columns. You can open it in any spreadsheet application (Excel, LibreOffice Calc, etc.) to view and edit the time-series data.
 
 ### 3.4. Starting the full demo stack
 
@@ -442,7 +452,9 @@ From this point, you have a realistic test environment with:
 - A configurable OPC UA simulator serving data from a CSV file.
 - PyAutomation HMI ready to define tags, trends, alarms, and real‑time charts based on that data.
 
-<!-- Image placeholder: Combined screenshot of HMI connected to db + OPC UA simulator with live values -->
+![First Page After Login](images/FirstPageAfterLogin.png)
+
+*Figure 34: Main dashboard after successful login, showing the HMI connected to database and ready for configuration*
 
 ---
 
@@ -473,7 +485,9 @@ At this stage, the new user can log in but has **limited permissions**. To promo
 
 > From this point, you should use admin and operator accounts for daily work, and reserve the superuser only for recovery procedures and role management when no admin is available.
 
-<!-- Image placeholder: New user creation form with roles selection -->
+![Signup Screen](images/SignupScreen.png)
+
+*Figure 2: User signup form for creating new accounts*
 
 ### 4.2. User login
 
@@ -483,7 +497,9 @@ At this stage, the new user can log in but has **limited permissions**. To promo
   - Container logs.
   - That the user is active and has a valid role assigned.
 
-<!-- Image placeholder: Login page highlighting username/password fields -->
+![Login Screen with User](images/LoginScreenWithUser1.png)
+
+*Figure 3: Login page with username/password fields*
 
 ---
 
@@ -503,7 +519,9 @@ Steps:
 2. Toggle the theme icon to switch between light and dark modes.
 3. Use the fullscreen button when deploying on wall screens or operator stations.
 
-<!-- Image placeholder: Navbar with language switch, theme toggle, fullscreen highlighted -->
+![Navbar Controls](images/ButtonsForLanguageThemesAndFullScreen.png)
+
+*Figure 4: Navbar with language switch, theme toggle, and fullscreen controls*
 
 ---
 
@@ -530,7 +548,9 @@ If connection fails, check:
 - Credentials and DB name.
 - Docker network configuration (if using multiple containers).
 
-<!-- Image placeholder: Database configuration form with successful connection status -->
+![Database Configuration](images/DatabaseConfigInNavBar.png)
+
+*Figure 5: Database configuration form in the navbar*
 
 ---
 
@@ -549,7 +569,21 @@ To bring real (or simulated) field data into PyAutomation:
    - Select variables to monitor.
    - Add them as tags into the system (see next section).
 
-<!-- Image placeholder: OPC UA client configuration and node browser screenshot -->
+![OPC UA Clients](images/OPCUAClientsConnections.png)
+
+*Figure 6: OPC UA client connections management*
+
+![OPC UA Explorer](images/OPCUAExplorer.png)
+
+*Figure 7: OPC UA node explorer for browsing the address space*
+
+![OPC UA Multi-Selection](images/OPCUAExplorerMultiSelection.png)
+
+*Figure 8: Multi-selection of OPC UA nodes using Ctrl+Click*
+
+![Selected Tags with Polling](images/SelectedTagsInOPCUAExplorerWithPollingConnection.png)
+
+*Figure 9: Selected tags in OPC UA explorer with active polling connection*
 
 ---
 
@@ -578,7 +612,25 @@ Tags are the core data points of PyAutomation.
 - Use the **Export** function to download tag definitions (for backup or replication).
 - Use **Import** to load predefined tag sets in bulk.
 
-<!-- Image placeholder: Tags list with create/edit/delete buttons and an example tag form -->
+![Tags Empty Page](images/TagsDefinitionEmptyPage.png)
+
+*Figure 10: Tags definition page (empty state)*
+
+![Create Tag Form](images/CreateTagForm.png)
+
+*Figure 11: Create new tag form with basic configuration*
+
+![Create Tag Polling Configuration](images/CreateTagPollingAndFilterConfiguration.png)
+
+*Figure 12: Tag creation form showing polling and filter configuration options*
+
+![Tags Created](images/TagsCreated.png)
+
+*Figure 13: Tags list after creating multiple tags*
+
+![Edit Tag Form](images/EditTagForm.png)
+
+*Figure 14: Edit tag form for modifying existing tag parameters*
 
 ---
 
@@ -596,7 +648,13 @@ The DataLogger module stores tag values for long‑term analysis.
    - Select specific tags.
    - Download data as CSV/Excel for offline analysis.
 
-<!-- Image placeholder: DataLogger filter form and sample table export -->
+![DataLogger Empty Table](images/DataLoggerEmptyTable.png)
+
+*Figure 15: DataLogger empty state with no historical data*
+
+![DataLogger Filters](images/DataLoggerFilterSample5Sec.png)
+
+*Figure 16: DataLogger with filters applied (5-second sample time)*
 
 ---
 
@@ -614,7 +672,9 @@ Historical trends provide graphical visualization of logged data.
    - Zoom, pan, and cursors (if supported).
 4. Export underlying data if needed.
 
-<!-- Image placeholder: Historical trends chart with multiple tags and time range selector -->
+![Historical Trends](images/TrendsLastHour.png)
+
+*Figure 17: Historical trends chart showing multiple tags over the last hour*
 
 ---
 
@@ -639,7 +699,21 @@ The Alarms module manages process conditions and notifications.
 - Use filters to focus on active, unacknowledged, or historical alarms.
 - Export alarm tables to CSV/Excel for reports and audits.
 
-<!-- Image placeholder: Alarm definition form and runtime alarm list with actions -->
+![Alarms Empty Page](images/AlarmDefinitionEmptyPage.png)
+
+*Figure 18: Alarm definition page (empty state)*
+
+![Create Alarm Form](images/CreateNewAlarmForm.png)
+
+*Figure 19: Create new alarm form with tag selection and threshold configuration*
+
+![Edit Alarm Form](images/EditAlarmForm.png)
+
+*Figure 20: Edit alarm form for modifying alarm parameters*
+
+![Alarm History](images/AlarmHistoryPage.png)
+
+*Figure 21: Alarm history page showing active and historical alarms*
 
 ---
 
@@ -658,7 +732,9 @@ Key capabilities:
   - Evaluate alarm flood situations.
   - Support root cause analysis.
 
-<!-- Image placeholder: Alarm summary dashboard with filters and KPIs -->
+![Alarm Summary](images/AlarmHistoryPage.png)
+
+*Figure 22: Alarm summary view with filters and aggregated alarm information*
 
 ---
 
@@ -692,7 +768,25 @@ Real‑time trends (strip charts) are provided by the new HMI module.
 4. Drag and resize the charts to build your HMI layout.
 5. Switch back to **Production mode** (double‑click) to lock the layout.
 
-<!-- Image placeholder: RealTimeTrends view showing multiple strip charts in production mode -->
+![Real-Time Trends Empty](images/RealTimeEmptyPage.png)
+
+*Figure 23: Real-time trends page (empty state)*
+
+![Real-Time Edit Mode](images/RealTimeEditMode.png)
+
+*Figure 24: Real-time trends in edit mode for configuring strip charts*
+
+![Search Tags in Strip Chart](images/SearchTagIntoStripChartConfiguration.png)
+
+*Figure 25: Searching and selecting tags for strip chart configuration*
+
+![First Strip Chart Configured](images/FirstStripChartConfigured.png)
+
+*Figure 26: First strip chart configured with selected tags*
+
+![Real-Time Production Mode](images/RealTimeStripChartIntoProductionMode.png)
+
+*Figure 27: Real-time trends in production mode with multiple strip charts displaying live data*
 
 ---
 
@@ -706,7 +800,9 @@ Typical operations:
 - View machine status and KPIs.
 - Export machine lists and configurations for documentation or replication.
 
-<!-- Image placeholder: Machines list and detail configuration view -->
+![Machines Page](images/MachinePage.png)
+
+*Figure 28: Machines page showing state machine configurations and status*
 
 ---
 
@@ -727,7 +823,13 @@ Capabilities:
 - **Export**:
   - Download event tables to CSV/Excel for audits and incident analysis.
 
-<!-- Image placeholder: Events table with filters and comment column -->
+![Events Page](images/EventPage.png)
+
+*Figure 29: Events page with filters and event history table*
+
+![Add Comment to Event](images/AddCommentEvent.png)
+
+*Figure 30: Adding a comment to an event for context and hand-over*
 
 ---
 
@@ -747,7 +849,9 @@ Features:
 +- Advanced **filters** by date, classification, user.
  - **Exports** for monthly / quarterly reporting.
 
-<!-- Image placeholder: Operational logbook view with classification filters -->
+![Operational Logbook](images/OperationalLog.png)
+
+*Figure 31: Operational logbook view with classification filters and log entries*
 
 ---
 
@@ -778,7 +882,9 @@ The **Users** module provides robust access control.
   - Creating initial admin users.
   - Recovering from a state where no admin can log in.
 
-<!-- Image placeholder: User management page showing roles and reset password actions -->
+![User Management](images/UserManagementPage.png)
+
+*Figure 32: User management page showing user list, roles, and password management actions*
 
 ---
 
@@ -809,7 +915,9 @@ Best practices:
   - `DEBUG` for development.
   - `INFO` or `WARNING` for production.
 
-<!-- Image placeholder: Settings page highlighting logger parameters and import/export buttons -->
+![System Settings](images/SystemSettingsPage.png)
+
+*Figure 33: System settings page with logger parameters and configuration import/export options*
 
 ---
 

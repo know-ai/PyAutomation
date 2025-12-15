@@ -274,7 +274,13 @@ export function Events() {
         pages: response.pagination?.total_pages || 0,
       });
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar los eventos";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || t("events.loadError");
       setError(errorMsg);
       setEvents([]);
     } finally {
@@ -383,7 +389,13 @@ export function Events() {
       const commentsData = await getEventComments(eventId);
       setComments(commentsData || []);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar los comentarios";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || t("events.loadCommentsError");
       setError(errorMsg);
       setComments([]);
     } finally {
@@ -624,7 +636,7 @@ export function Events() {
                   >
                     {PRESET_DATES.map((preset) => (
                       <option key={preset} value={preset}>
-                        {t(`operationalLogs.preset.${preset}`)}
+                        {t(`events.preset.${preset}`)}
                       </option>
                     ))}
                   </select>
@@ -633,7 +645,7 @@ export function Events() {
                   <>
                     <div className="d-flex align-items-center gap-1">
                       <label className="form-label small mb-0 me-1">
-                        {t("operationalLogs.start")}
+                        {t("events.start")}
                       </label>
                       <input
                         type="datetime-local"
@@ -648,7 +660,7 @@ export function Events() {
                     </div>
                     <div className="d-flex align-items-center gap-1">
                       <label className="form-label small mb-0 me-1">
-                        {t("operationalLogs.end")}
+                        {t("events.end")}
                       </label>
                       <input
                         type="datetime-local"
@@ -720,7 +732,7 @@ export function Events() {
                   disabled={loading || events.length === 0}
                 >
                   <i className="bi bi-download me-1"></i>
-                  CSV
+                  {t("common.csv")}
                 </Button>
               </div>
             </div>
@@ -797,7 +809,7 @@ export function Events() {
           {/* Filtro de usuarios */}
           <div className="mb-3">
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="form-label mb-0 me-2">Usernames:</label>
+              <label className="form-label mb-0 me-2">{t("events.usernames")}</label>
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 {availableUsers.map((user) => {
                   const isSelected = selectedUsernames.includes(user.username);
@@ -884,12 +896,12 @@ export function Events() {
                           {event.has_comments ? (
                             <i 
                               className="bi bi-check-circle text-success" 
-                              title="Tiene comentarios - Click para ver"
+                              title={t("events.hasCommentsClick")}
                               style={{ cursor: "pointer" }}
                               onClick={() => handleViewComments(event)}
                             ></i>
                           ) : (
-                            <i className="bi bi-x-circle text-muted" title="Sin comentarios"></i>
+                            <i className="bi bi-x-circle text-muted" title={t("events.noComments")}></i>
                           )}
                         </td>
                       </tr>
@@ -944,7 +956,7 @@ export function Events() {
                   <div className="modal-body">
                     <div className="mb-3">
                       <label className="form-label">
-                        {t("operationalLogs.messageLabel")}
+                        {t("events.messageLabel")}
                       </label>
                       <textarea
                         className="form-control"
@@ -992,7 +1004,7 @@ export function Events() {
                 <div className="modal-content">
                   <div className="modal-header d-flex justify-content-between align-items-center w-100">
                     <h5 className="modal-title mb-0">
-                      Comentarios - Evento #{selectedEventForComments.id || "N/A"}
+                      {t("events.commentsTitle", { id: selectedEventForComments.id || "N/A" })}
                     </h5>
                     <div className="d-flex align-items-center gap-2">
                       <Button
@@ -1002,7 +1014,7 @@ export function Events() {
                         disabled={loadingComments || comments.length === 0}
                       >
                         <i className="bi bi-download me-1"></i>
-                        CSV
+                        {t("common.csv")}
                       </Button>
                       <button
                         type="button"
@@ -1019,7 +1031,7 @@ export function Events() {
                     {loadingComments ? (
                       <div className="text-center py-4">
                         <div className="spinner-border text-primary" role="status">
-                          <span className="visually-hidden">Cargando...</span>
+                          <span className="visually-hidden">{t("events.loading")}</span>
                         </div>
                       </div>
                     ) : (
@@ -1040,7 +1052,7 @@ export function Events() {
                             {comments.length === 0 ? (
                               <tr>
                                 <td colSpan={7} className="text-center text-muted py-4">
-                                  No hay comentarios disponibles
+                                  {t("events.noCommentsAvailable")}
                                 </td>
                               </tr>
                             ) : (
@@ -1070,7 +1082,7 @@ export function Events() {
                         setComments([]);
                       }}
                     >
-                      Cerrar
+                      {t("events.close")}
                     </Button>
                   </div>
                 </div>

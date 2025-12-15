@@ -1972,7 +1972,7 @@ export function Tags() {
                     }}
                     disabled={deleting}
                   >
-                    Cancelar
+                    {t("common.cancel")}
                   </button>
                   <Button
                     variant="danger"

@@ -53,7 +53,13 @@ export function UserManagement() {
         pages: response.pagination.total_pages || 0,
       }));
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar los usuarios";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || t("userManagement.loadUsersError");
       setError(errorMsg);
       setUsers([]);
     } finally {
@@ -382,7 +388,7 @@ export function UserManagement() {
           {loading && (
             <div className="text-center py-4">
               <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">Cargando...</span>
+                <span className="visually-hidden">{t("common.loading")}</span>
               </div>
             </div>
           )}
@@ -427,7 +433,7 @@ export function UserManagement() {
                               variant="primary"
                               className="btn-sm"
                               onClick={() => handleOpenChangePassword(user)}
-                              title="Cambiar contraseña"
+                              title={t("userManagement.changePassword")}
                             >
                               <i className="bi bi-key"></i>
                             </Button>
@@ -435,7 +441,7 @@ export function UserManagement() {
                               variant="danger"
                               className="btn-sm"
                               onClick={() => handleOpenResetPassword(user)}
-                              title="Resetear contraseña"
+                              title={t("userManagement.resetPassword")}
                             >
                               <i className="bi bi-arrow-clockwise"></i>
                             </Button>
@@ -443,7 +449,7 @@ export function UserManagement() {
                               variant="success"
                               className="btn-sm"
                               onClick={() => handleOpenUpdateRole(user)}
-                              title="Actualizar rol"
+                              title={t("userManagement.updateRole")}
                             >
                               <i className="bi bi-person-badge"></i>
                             </Button>
@@ -467,7 +473,7 @@ export function UserManagement() {
               <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-content">
                   <div className="modal-header">
-                    <h5 className="modal-title">Cambiar Contraseña - {selectedUser.username}</h5>
+                    <h5 className="modal-title">{t("userManagement.changePasswordTitle", { username: selectedUser.username })}</h5>
                     <button
                       type="button"
                       className="btn-close"
@@ -481,33 +487,33 @@ export function UserManagement() {
                       </div>
                     )}
                     <div className="mb-3">
-                      <label className="form-label">Contraseña Actual (opcional)</label>
+                      <label className="form-label">{t("userManagement.currentPassword")}</label>
                       <input
                         type="password"
                         className="form-control"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
-                        placeholder="Ingrese la contraseña actual (requerida si cambia su propia contraseña)"
+                        placeholder={t("userManagement.currentPasswordPlaceholder")}
                       />
                     </div>
                     <div className="mb-3">
-                      <label className="form-label">Nueva Contraseña *</label>
+                      <label className="form-label">{t("userManagement.newPassword")}</label>
                       <input
                         type="password"
                         className="form-control"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Ingrese la nueva contraseña"
+                        placeholder={t("userManagement.newPasswordPlaceholder")}
                       />
                     </div>
                     <div className="mb-3">
-                      <label className="form-label">Confirmar Nueva Contraseña *</label>
+                      <label className="form-label">{t("userManagement.confirmNewPassword")}</label>
                       <input
                         type="password"
                         className="form-control"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirme la nueva contraseña"
+                        placeholder={t("userManagement.confirmNewPasswordPlaceholder")}
                       />
                     </div>
                   </div>
@@ -517,7 +523,7 @@ export function UserManagement() {
                       onClick={handleCloseModals}
                       disabled={isProcessing}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </Button>
                     <Button
                       variant="primary"
@@ -525,7 +531,7 @@ export function UserManagement() {
                       disabled={isProcessing || !newPassword || !confirmPassword}
                       loading={isProcessing}
                     >
-                      Cambiar Contraseña
+                      {t("userManagement.changePasswordButton")}
                     </Button>
                   </div>
                 </div>
@@ -543,7 +549,7 @@ export function UserManagement() {
               <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-content">
                   <div className="modal-header">
-                    <h5 className="modal-title">Resetear Contraseña - {selectedUser.username}</h5>
+                    <h5 className="modal-title">{t("userManagement.resetPasswordTitle", { username: selectedUser.username })}</h5>
                     <button
                       type="button"
                       className="btn-close"
@@ -558,26 +564,26 @@ export function UserManagement() {
                     )}
                     <div className="alert alert-warning mb-3" role="alert">
                       <i className="bi bi-exclamation-triangle me-2"></i>
-                      Esta acción reseteará la contraseña sin requerir la contraseña actual.
+                      {t("userManagement.resetPasswordWarning")}
                     </div>
                     <div className="mb-3">
-                      <label className="form-label">Nueva Contraseña *</label>
+                      <label className="form-label">{t("userManagement.newPassword")}</label>
                       <input
                         type="password"
                         className="form-control"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Ingrese la nueva contraseña"
+                        placeholder={t("userManagement.newPasswordPlaceholder")}
                       />
                     </div>
                     <div className="mb-3">
-                      <label className="form-label">Confirmar Nueva Contraseña *</label>
+                      <label className="form-label">{t("userManagement.confirmNewPassword")}</label>
                       <input
                         type="password"
                         className="form-control"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirme la nueva contraseña"
+                        placeholder={t("userManagement.confirmNewPasswordPlaceholder")}
                       />
                     </div>
                   </div>
@@ -587,7 +593,7 @@ export function UserManagement() {
                       onClick={handleCloseModals}
                       disabled={isProcessing}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </Button>
                     <Button
                       variant="danger"
@@ -595,7 +601,7 @@ export function UserManagement() {
                       disabled={isProcessing || !newPassword || !confirmPassword}
                       loading={isProcessing}
                     >
-                      Resetear Contraseña
+                      {t("userManagement.resetPasswordButton")}
                     </Button>
                   </div>
                 </div>
@@ -613,7 +619,7 @@ export function UserManagement() {
               <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-content">
                   <div className="modal-header">
-                    <h5 className="modal-title">Actualizar Rol - {selectedUser.username}</h5>
+                    <h5 className="modal-title">{t("userManagement.updateRoleTitle", { username: selectedUser.username })}</h5>
                     <button
                       type="button"
                       className="btn-close"
@@ -627,7 +633,7 @@ export function UserManagement() {
                       </div>
                     )}
                     <div className="mb-3">
-                      <label className="form-label">Rol Actual</label>
+                      <label className="form-label">{t("userManagement.currentRole")}</label>
                       <input
                         type="text"
                         className="form-control"
@@ -636,16 +642,16 @@ export function UserManagement() {
                       />
                     </div>
                     <div className="mb-3">
-                      <label className="form-label">Nuevo Rol *</label>
+                      <label className="form-label">{t("userManagement.newRole")}</label>
                       <select
                         className="form-select"
                         value={selectedRole}
                         onChange={(e) => setSelectedRole(e.target.value)}
                       >
-                        <option value="">Seleccione un rol</option>
+                        <option value="">{t("userManagement.selectRole")}</option>
                         {availableRoles.map((role) => (
                           <option key={role.name} value={role.name}>
-                            {role.name} (Nivel: {role.level})
+                            {role.name} ({t("userManagement.roleLevel", { level: role.level })})
                           </option>
                         ))}
                       </select>
@@ -657,7 +663,7 @@ export function UserManagement() {
                       onClick={handleCloseModals}
                       disabled={isProcessing}
                     >
-                      Cancelar
+                      {t("common.cancel")}
                     </Button>
                     <Button
                       variant="success"
@@ -665,7 +671,7 @@ export function UserManagement() {
                       disabled={isProcessing || !selectedRole}
                       loading={isProcessing}
                     >
-                      Actualizar Rol
+                      {t("userManagement.updateRoleButton")}
                     </Button>
                   </div>
                 </div>
@@ -683,7 +689,7 @@ export function UserManagement() {
               <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-content">
                   <div className="modal-header">
-                    <h5 className="modal-title">Gestión de Roles</h5>
+                    <h5 className="modal-title">{t("userManagement.rolesManagement")}</h5>
                     <button
                       type="button"
                       className="btn-close"
@@ -700,23 +706,23 @@ export function UserManagement() {
                     {/* Formulario para agregar nuevo rol */}
                     <div className="card mb-4">
                       <div className="card-header">
-                        <h6 className="mb-0">Agregar Nuevo Rol</h6>
+                        <h6 className="mb-0">{t("userManagement.addNewRole")}</h6>
                       </div>
                       <div className="card-body">
                         <div className="row">
                           <div className="col-md-6 mb-3">
-                            <label className="form-label">Nombre del Rol *</label>
+                            <label className="form-label">{t("userManagement.roleName")}</label>
                             <input
                               type="text"
                               className="form-control"
                               value={newRoleName}
                               onChange={(e) => setNewRoleName(e.target.value)}
-                              placeholder="Ej: OPERATOR"
+                              placeholder={t("userManagement.roleNamePlaceholder")}
                               disabled={isCreatingRole}
                             />
                           </div>
                           <div className="col-md-4 mb-3">
-                            <label className="form-label">Nivel del Rol *</label>
+                            <label className="form-label">{t("userManagement.roleLevelLabel")}</label>
                             <input
                               type="number"
                               className="form-control"
@@ -739,7 +745,7 @@ export function UserManagement() {
                               loading={isCreatingRole}
                               className="w-100"
                             >
-                              Agregar
+                              {t("userManagement.add")}
                             </Button>
                           </div>
                         </div>
@@ -749,13 +755,13 @@ export function UserManagement() {
                     {/* Lista de roles existentes */}
                     <div className="card">
                       <div className="card-header">
-                        <h6 className="mb-0">Roles Disponibles</h6>
+                        <h6 className="mb-0">{t("userManagement.availableRoles")}</h6>
                       </div>
                       <div className="card-body">
                         {loadingRoles ? (
                           <div className="text-center py-4">
                             <div className="spinner-border text-primary" role="status">
-                              <span className="visually-hidden">Cargando...</span>
+                              <span className="visually-hidden">{t("common.loading")}</span>
                             </div>
                           </div>
                         ) : (
@@ -772,7 +778,7 @@ export function UserManagement() {
                                   {allRoles.length === 0 ? (
                                     <tr>
                                       <td colSpan={2} className="text-center text-muted py-4">
-                                        No hay roles disponibles
+                                        {t("userManagement.noRoles")}
                                       </td>
                                     </tr>
                                   ) : (
@@ -850,7 +856,7 @@ export function UserManagement() {
                       onClick={handleCloseModals}
                       disabled={isCreatingRole}
                     >
-                      Cerrar
+                      {t("userManagement.close")}
                     </Button>
                   </div>
                 </div>
