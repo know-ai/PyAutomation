@@ -32,9 +32,9 @@ from flask_socketio import SocketIO
 from geventwebsocket.handler import WebSocketHandler
 from .variables import VARIABLES
 # DASH APP CONFIGURATION PAGES IMPORTATION
-from .pages.main import ConfigView
-from .pages.callbacks import init_callbacks
-import dash_bootstrap_components as dbc
+# from .pages.main import ConfigView
+# from .pages.callbacks import init_callbacks
+# import dash_bootstrap_components as dbc
 
 
 class PyAutomation(Singleton):
@@ -128,13 +128,13 @@ class PyAutomation(Singleton):
         This method sets up the Dash frontend, configures callbacks, and initializes the Socket.IO server 
         for real-time communication.
         """
-        self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
-        self.dash_app.set_automation_app(self)
-        init_callbacks(app=self.dash_app)
+        # self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
+        # self.dash_app.set_automation_app(self)
+        # init_callbacks(app=self.dash_app)
         if certfile and keyfile:
             
             self.sio = SocketIO(
-                self.dash_app.server, 
+                kwargs.get('server'), 
                 cors_allowed_origins='*', 
                 ping_timeout=10, 
                 ping_interval=10, 
@@ -144,7 +144,7 @@ class PyAutomation(Singleton):
             )
         
         else:
-            self.sio = SocketIO(self.dash_app.server, cors_allowed_origins='*', ping_timeout=10, ping_interval=10, async_mode='gevent', handler_class=WebSocketHandler)
+            self.sio = SocketIO(kwargs.get('server'), cors_allowed_origins='*', ping_timeout=10, ping_interval=10, async_mode='gevent', handler_class=WebSocketHandler)
 
         self.cvt._cvt.set_socketio(sio=self.sio)
 
@@ -3214,11 +3214,11 @@ class PyAutomation(Singleton):
         self.safe_start(test=test, create_tables=create_tables, machines=machines)
         self.create_system_user()
 
-        if not test:
+        # if not test:
         
-            if debug:
+        #     if debug:
                 
-                self.dash_app.run(debug=debug, use_reloader=False)
+        #         self.dash_app.run(debug=debug, use_reloader=False)
 
     @logging_error_handler
     def create_system_user(self):

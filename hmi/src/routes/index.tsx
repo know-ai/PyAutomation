@@ -2,7 +2,7 @@ import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { Login } from "../pages/Login";
 import { Signup } from "../pages/Signup";
-import { ForgotPassword } from "../pages/ForgotPassword";
+// import { ForgotPassword } from "../pages/ForgotPassword";
 import { Communications } from "../pages/Communications";
 import { OpcUaServer } from "../pages/OpcUaServer";
 import { Database } from "../pages/Database";
@@ -35,7 +35,7 @@ export function AppRoutes() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
+      {/* <Route path="/forgot-password" element={<ForgotPassword />} /> */}
 
       <Route element={<ProtectedLayout />}>
         <Route path="/communications" element={<Navigate to="/communications/clients" replace />} />

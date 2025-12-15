@@ -142,9 +142,9 @@ export function Login() {
           </form>
 
           <div className="d-grid gap-2 mb-2">
-            <Link className="text-center d-block" to="/forgot-password">
+            {/* <Link className="text-center d-block" to="/forgot-password">
               {t("auth.forgotPassword")}
-            </Link>
+            </Link> */}
             <Link className="text-center d-block" to="/signup">
               {t("auth.createNewAccount")}
             </Link>
