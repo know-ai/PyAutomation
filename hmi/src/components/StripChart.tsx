@@ -30,16 +30,13 @@ interface StripChartProps {
 export function StripChart({ config, isEditMode, onConfigChange, onDelete }: StripChartProps) {
   const { mode } = useTheme();
   const { t } = useTranslation();
-  const tagValues = useAppSelector((state) => state.tags.tagValues);
+  const tagHistory = useAppSelector((state) => state.tags.tagHistory);
   const [showTagConfig, setShowTagConfig] = useState(false);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [tagSearch, setTagSearch] = useState("");
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [loadingTags, setLoadingTags] = useState(false);
-  const [bufferVersion, setBufferVersion] = useState(0);
   const tagConfigRef = useRef<HTMLDivElement>(null);
-  const dataBufferRef = useRef<Map<string, Array<{ x: Date; y: number }>>>(new Map());
-  const pendingRenderRef = useRef(false);
 
   // Cargar tags disponibles
   useEffect(() => {
@@ -94,44 +91,6 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     [filteredTags, config.tagNames]
   );
 
-  // Actualizar buffer con datos en tiempo real (no disparar render inmediato)
-  useEffect(() => {
-    const getRealTimeTag = (tagName: string) => {
-      return (
-        tagValues[tagName] ||
-        tagValues[tagName.toUpperCase()] ||
-        tagValues[tagName.toLowerCase()]
-      );
-    };
-
-    config.tagNames.forEach((tagName) => {
-      const realTimeTag = getRealTimeTag(tagName);
-      if (realTimeTag && realTimeTag.value !== undefined && realTimeTag.value !== null) {
-        const buffer = dataBufferRef.current.get(tagName) || [];
-        const newPoint = {
-          x: new Date(),
-          y: typeof realTimeTag.value === "boolean" ? (realTimeTag.value ? 1 : 0) : Number(realTimeTag.value),
-        };
-
-        // Agregar nuevo punto y mantener solo los últimos bufferSize puntos
-        const updatedBuffer = [...buffer, newPoint].slice(-config.bufferSize);
-        dataBufferRef.current.set(tagName, updatedBuffer);
-        pendingRenderRef.current = true;
-      }
-    });
-  }, [tagValues, config.tagNames, config.bufferSize]);
-
-  // Búfer de render: aplicar cambios cada 1s como en tablas
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (pendingRenderRef.current) {
-        pendingRenderRef.current = false;
-        setBufferVersion((prev) => prev + 1);
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
   const getTagUnit = useCallback(
     (tagName: string) => {
       const tag = availableTags.find((t) => t.name === tagName);
@@ -164,12 +123,13 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     });
 
     const traces: Data[] = config.tagNames.map((tagName, index) => {
-      const buffer = dataBufferRef.current.get(tagName) || [];
+      const history = tagHistory[tagName] || [];
+      const bufferSlice = history.slice(-config.bufferSize);
       const tag = availableTags.find((t) => t.name === tagName);
       const unit = getTagUnit(tagName);
       return {
-        x: buffer.map((p) => p.x),
-        y: buffer.map((p) => p.y),
+        x: bufferSlice.map((p) => new Date(p.timestamp)),
+        y: bufferSlice.map((p) => p.value),
         type: "scatter",
         mode: "lines",
         name: tag?.display_name || tagName,
@@ -223,7 +183,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     }
 
     return { data: traces, layout };
-  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, bufferVersion, t]);
+  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, tagHistory, t]);
 
   // Máximo 2 unidades distintas; número de tags ilimitado mientras no se supere ese tope de unidades
   const handleTagToggle = (tagName: string) => {

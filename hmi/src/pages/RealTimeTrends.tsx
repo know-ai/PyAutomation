@@ -16,7 +16,6 @@ export function RealTimeTrends() {
   const { t } = useTranslation();
   const [isEditMode, setIsEditMode] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastLayoutRef = useRef<GridLayoutType[] | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [stripCharts, setStripCharts] = useState<StripChartConfig[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -94,11 +93,10 @@ export function RealTimeTrends() {
     );
   }, []);
 
-  // Manejar cambios en el layout (drag and drop, resize)
+  // Manejar cambios en el layout (drag and drop, resize) SOLO en modo edición
   const handleLayoutChange = useCallback(
     (layout: GridLayoutType[]) => {
-      lastLayoutRef.current = layout;
-      if (!isEditMode) return; // Solo persistir cambios cuando se está editando
+      if (!isEditMode) return;
       setStripCharts((prev) =>
         prev.map((chart) => {
           const layoutItem = layout.find((item) => item.i === chart.id);
@@ -118,29 +116,7 @@ export function RealTimeTrends() {
     [isEditMode]
   );
 
-  // Al salir de modo edición, aplicar la última disposición capturada
-  useEffect(() => {
-    if (isEditMode) return;
-    if (!lastLayoutRef.current) return;
-    const layout = lastLayoutRef.current;
-    setStripCharts((prev) =>
-      prev.map((chart) => {
-        const layoutItem = layout.find((item) => item.i === chart.id);
-        if (layoutItem) {
-          return {
-            ...chart,
-            x: layoutItem.x,
-            y: layoutItem.y,
-            w: layoutItem.w,
-            h: layoutItem.h,
-          };
-        }
-        return chart;
-      })
-    );
-  }, [isEditMode]);
-
-  // Convertir StripChartConfig a GridLayout
+  // Layout que se entrega al grid, derivado SIEMPRE de stripCharts (fuente de verdad persistida)
   const gridLayout = useMemo<GridLayoutType[]>(() => {
     return stripCharts.map((chart) => ({
       i: chart.id,
@@ -148,10 +124,10 @@ export function RealTimeTrends() {
       y: chart.y,
       w: chart.w,
       h: Math.max(chart.h, MIN_STRIPCHART_ROWS),
-      minW: 4, // Mínimo de ancho (4 columnas)
-      maxW: 12, // Máximo de ancho (12 columnas)
-      minH: MIN_STRIPCHART_ROWS, // Evita que el body sea menor al alto mínimo del plot
-      static: !isEditMode, // En producción no permite mover ni redimensionar
+      minW: 4,
+      maxW: 12,
+      minH: MIN_STRIPCHART_ROWS,
+      static: !isEditMode,
       resizeHandles: isEditMode ? ["e", "s", "se", "sw"] : [],
     } as GridLayoutType & { resizeHandles?: string[] }));
   }, [stripCharts, isEditMode]);
@@ -202,16 +178,10 @@ export function RealTimeTrends() {
               <ResponsiveGridLayout
                 className="layout"
                 layouts={{ lg: gridLayout }}
-                cols={{ lg: GRID_COLS, md: GRID_COLS, sm: GRID_COLS, xs: GRID_COLS, xxs: GRID_COLS }}
+                cols={{ lg: GRID_COLS }}
                 rowHeight={GRID_ROW_HEIGHT}
                 width={containerWidth}
-                onLayoutChange={(layout, layouts) => {
-                  if (layouts && layouts.lg) {
-                    handleLayoutChange(layouts.lg);
-                  } else {
-                    handleLayoutChange(layout);
-                  }
-                }}
+                onLayoutChange={(layout) => handleLayoutChange(layout as unknown as GridLayoutType[])}
                 isDraggable={isEditMode}
                 isResizable={isEditMode}
                 draggableHandle={isEditMode ? ".drag-handle" : undefined}
@@ -219,7 +189,7 @@ export function RealTimeTrends() {
                 compactType={null}
                 margin={[10, 10]}
                 containerPadding={[0, 0]}
-                breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+                breakpoints={{ lg: 0 }} // Un solo breakpoint para que el layout no cambie entre modos
                 resizeHandles={isEditMode ? ['e', 's', 'se', 'sw'] : []}
               >
                 {stripCharts.map((chart) => (
