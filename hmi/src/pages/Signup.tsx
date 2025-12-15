@@ -38,7 +38,23 @@ export function Signup() {
       });
       navigate("/login");
     } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || t("auth.signup");
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error ??
+        err?.message;
+
+      let message: string;
+      if (status === 400 && !backendMessage) {
+        // Errores típicos de validación en signup (usuario ya existe, email inválido, etc.)
+        message = t("auth.signupError");
+      } else {
+        message = backendMessage || t("auth.signupError");
+      }
+
       setError(message);
     } finally {
       setLoading(false);

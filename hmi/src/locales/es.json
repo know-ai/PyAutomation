@@ -67,7 +67,10 @@
     "logoutConfirm": "Confirmar cierre de sesión",
     "logoutConfirmMessage": "¿Está seguro de que desea cerrar sesión?",
     "loggingOut": "Cerrando...",
-    "signOut": "Cerrar sesión"
+    "signOut": "Cerrar sesión",
+    "invalidCredentials": "Usuario o contraseña inválidos. Verifique sus credenciales.",
+    "loginError": "No se pudo iniciar sesión. Intente nuevamente o contacte al administrador.",
+    "signupError": "No se pudo crear la cuenta. Revise los datos ingresados o contacte al administrador."
   },
   "navigation": {
     "communications": "Comunicaciones",
@@ -227,6 +230,19 @@
     "imported": "Importados",
     "skipped": "Omitidos",
     "errors": "Errores"
+  },
+  "pagination": {
+    "itemsPerPage": "Items por página:",
+    "pageOf": "Página {{current}} de {{total}} ({{count}} total)",
+    "showing": "Mostrando {{start}} - {{end}} de {{total}} {{item}}",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "first": "Primera",
+    "last": "Última",
+    "items": {
+      "machines": "máquinas",
+      "attributes": "atributos"
+    }
   }
 }
 

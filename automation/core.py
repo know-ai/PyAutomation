@@ -113,6 +113,83 @@ class PyAutomation(Singleton):
 
         self.set_log(file=os.path.join(folder_path, "app.log") ,level=logging.WARNING)
         self.__log_histories = False
+
+    @logging_error_handler
+    def ensure_db_config_from_env(self) -> None:
+        r"""
+        Bootstrap database configuration from environment variables if no
+        ``db/db_config.json`` is present yet.
+
+        This is intended for the very first startup of the application:
+
+        - If ``db/db_config.json`` already exists, it is considered the
+          single source of truth and **environment variables are ignored**.
+        - If it does not exist and the appropriate ``AUTOMATION_DB_*`` env
+          variables are defined, a new configuration file is written and will
+          be used for all subsequent connections.
+
+        Supported environment variables:
+
+        - ``AUTOMATION_DB_TYPE``: ``sqlite`` (default), ``postgresql`` or ``mysql``.
+        - For SQLite:
+          - ``AUTOMATION_DB_FILE``: database filename (default: ``app.db``).
+        - For PostgreSQL/MySQL:
+          - ``AUTOMATION_DB_HOST`` (default: ``127.0.0.1``)
+          - ``AUTOMATION_DB_PORT`` (default: ``5432`` for PostgreSQL, ``3306`` for MySQL)
+          - ``AUTOMATION_DB_USER`` (required)
+          - ``AUTOMATION_DB_PASSWORD`` (required)
+          - ``AUTOMATION_DB_NAME`` (required)
+        """
+        # If there is already a persisted config, it is the source of truth.
+        existing_config = self.get_db_config()
+        if existing_config:
+            return
+
+        dbtype = os.environ.get("AUTOMATION_DB_TYPE", "sqlite").lower()
+
+        if dbtype == "sqlite":
+            dbfile = os.environ.get("AUTOMATION_DB_FILE", "app.db")
+            logging.info(f"Bootstrapping SQLite DB config from env: file={dbfile}")
+            self.set_db_config(dbtype="sqlite", dbfile=dbfile)
+            return
+
+        if dbtype in ("postgresql", "mysql"):
+            user = os.environ.get("AUTOMATION_DB_USER")
+            password = os.environ.get("AUTOMATION_DB_PASSWORD")
+            host = os.environ.get("AUTOMATION_DB_HOST", "127.0.0.1")
+            port = os.environ.get("AUTOMATION_DB_PORT")
+            name = os.environ.get("AUTOMATION_DB_NAME")
+
+            if not user or not password or not name:
+                logging.warning(
+                    "AUTOMATION_DB_USER, AUTOMATION_DB_PASSWORD and "
+                    "AUTOMATION_DB_NAME must be set to bootstrap DB config "
+                    f"for type '{dbtype}'. Skipping env-based DB bootstrap."
+                )
+                return
+
+            if not port:
+                port = "5432" if dbtype == "postgresql" else "3306"
+
+            logging.info(
+                f"Bootstrapping {dbtype} DB config from env: host={host}, "
+                f"port={port}, name={name}, user={user}"
+            )
+
+            self.set_db_config(
+                dbtype=dbtype,
+                user=user,
+                password=password,
+                host=host,
+                port=port,
+                name=name,
+            )
+            return
+
+        logging.warning(
+            f"Unsupported AUTMATION_DB_TYPE '{dbtype}' for env-based DB bootstrap. "
+            "Supported types are: sqlite, postgresql, mysql."
+        )
     
     @logging_error_handler
     def define_dash_app(self,  certfile:str=None, keyfile:str=None, **kwargs)->None:
@@ -2060,12 +2137,18 @@ class PyAutomation(Singleton):
 
         else:
 
+            # Asegurar que el puerto sea un entero si es posible
+            try:
+                port_value = int(port) if port is not None else None
+            except (TypeError, ValueError):
+                port_value = None
+
             db_config = {
                 "dbtype": dbtype,
                 'user': user,
                 'password': password,
                 'host': host,
-                'port': port,
+                'port': port_value,
                 'name': name,
             }
 
@@ -2210,11 +2293,19 @@ class PyAutomation(Singleton):
 
         ```
         """
-        if self.db_manager.get_db():
+        """
+        Lightweight check to know whether a live DB connection has been
+        established for the current process.
 
-            return True
-        
-        return False
+        It intentionally does **not** attempt to connect or bootstrap
+        configuration; it only reflects the current state of the DB manager.
+
+        Connection attempts and configuration bootstrap are handled by:
+
+        - ``ensure_db_config_from_env()`` (for first-run bootstrap), and
+        - ``connect_to_db()`` / ``reconnect_to_db()``.
+        """
+        return bool(self.db_manager.get_db())
 
     @validate_types(test=bool|type(None), reload=bool|type(None), output=None|bool)
     def connect_to_db(self, test:bool=False, reload:bool=False):
@@ -2248,27 +2339,55 @@ class PyAutomation(Singleton):
         try:
             db_config = self.get_db_config()
 
+            # Para tests forzamos siempre una DB SQLite temporal.
             if test:
-                
                 db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
-            
-            if db_config:
-            
-                dbtype = db_config.pop("dbtype")
-                self.__log_histories = True
-                self.set_db(dbtype=dbtype, **db_config)
-                self.db_manager.init_database()
-                self.load_opcua_clients_from_db()
-                self.load_db_to_cvt()
-                self.load_db_to_alarm_manager()
-                self.load_db_to_roles()
-                self.load_db_to_users()
-                if reload:
 
-                    self.load_db_tags_to_machine()
-                
+            # Si no hay configuración y no estamos en modo test,
+            # intentamos hacer bootstrap desde variables de entorno.
+            if not test and not db_config:
+                try:
+                    self.ensure_db_config_from_env()
+                    db_config = self.get_db_config()
+                except Exception as env_err:
+                    logging.warning(
+                        f"Error while bootstrapping DB config from environment: {env_err}"
+                    )
+
+            if not db_config:
+                logging.warning(
+                    "No database configuration available (db_config.json not found "
+                    "and no valid AUTOMATION_DB_* env vars). Skipping DB connection."
+                )
+                return False
+
+            # Normalizar tipos (especialmente el puerto) antes de set_db
+            dbtype = db_config.pop("dbtype")
+            if "port" in db_config:
+                try:
+                    if db_config["port"] is not None:
+                        db_config["port"] = int(db_config["port"])
+                except (TypeError, ValueError):
+                    logging.warning(
+                        f"Invalid port value in db_config ({db_config.get('port')}), "
+                        "setting port=None."
+                    )
+                    db_config["port"] = None
+
+            self.__log_histories = True
+            self.set_db(dbtype=dbtype, **db_config)
+            # init_database crea tablas y aplica migraciones si corresponde
+            self.db_manager.init_database()
+            self.load_opcua_clients_from_db()
+            self.load_db_to_cvt()
+            self.load_db_to_alarm_manager()
+            self.load_db_to_roles()
+            self.load_db_to_users()
+            if reload:
+                self.load_db_tags_to_machine()
+
             return True
-        
+
         except Exception as err:
             logging.critical(f"CONNECTING DATABASE ERROR: {err}")
             return False
@@ -2302,12 +2421,22 @@ class PyAutomation(Singleton):
             db_config = self.get_db_config()
 
             if test:
-                
                 db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
-            
+
             if db_config:
-            
+
                 dbtype = db_config.pop("dbtype")
+                if "port" in db_config:
+                    try:
+                        if db_config["port"] is not None:
+                            db_config["port"] = int(db_config["port"])
+                    except (TypeError, ValueError):
+                        logging.warning(
+                            f"Invalid port value in db_config ({db_config.get('port')}), "
+                            "setting port=None."
+                        )
+                        db_config["port"] = None
+
                 self.__log_histories = True
                 self.set_db(dbtype=dbtype, **db_config) 
                 self.db_manager.init_database()   
@@ -3211,8 +3340,24 @@ class PyAutomation(Singleton):
         print(f"[INFO] {str_date} Log backup count: {self.get_app_config().get('log_backup_count', 3)} backups")
         print(f"[INFO] {str_date} Log level: {self.get_app_config().get('log_level', 20)}")
 
+        # Start workers (logger, DB worker, state machines)
         self.safe_start(test=test, create_tables=create_tables, machines=machines)
-        self.create_system_user()
+
+        # After safe_start, the DB may still not be connected (e.g. DB container
+        # was not ready on first attempt). Try one more time to ensure that:
+        # - env-based bootstrap has a chance to run, and
+        # - a connection is established before creating the system user.
+        if not self.is_db_connected():
+            # Bootstrap from env if needed (no-op if db_config.json already exists)
+            self.ensure_db_config_from_env()
+            # Attempt to connect using the current configuration
+            self.connect_to_db(test=test)
+
+        if self.is_db_connected():
+            self.create_system_user()
+        else:
+            logging.critical("Database is not connected, skipping system user creation")
+            print(f"[INFO] {str_date} Database is not connected, skipping system user creation")
 
         # if not test:
         
@@ -3314,6 +3459,11 @@ class PyAutomation(Singleton):
             logger_period = float(app_config.get("logger_period", 10.0))
 
             self.db_worker = LoggerWorker(self.db_manager, period=logger_period)
+
+            # Bootstrap DB configuration from environment variables on first run,
+            # but once db_config.json exists, it will override any env changes.
+            self.ensure_db_config_from_env()
+
             self.connect_to_db(test=test)
             self.db_worker.start()
 

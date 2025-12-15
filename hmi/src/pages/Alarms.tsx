@@ -166,7 +166,7 @@ export function Alarms() {
               style={{ position: "relative" }}
             >
               <Button
-                variant="info"
+                variant="secondary"
                 className="btn-sm dropdown-toggle"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -293,7 +293,13 @@ export function Alarms() {
         // Silently fail - buffer update is not critical
       }
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar alarmas";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || "Error al cargar alarmas";
       setError(errorMsg);
       setAlarms([]);
     } finally {
@@ -413,7 +419,14 @@ export function Alarms() {
         return updated;
       });
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || `Error al ejecutar acción para ${alarmName}`;
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg =
+        backendMessage || e?.message || `Error al ejecutar acción para ${alarmName}`;
       showToast("error", errorMsg);
     } finally {
       setExecutingAction((prev) => ({ ...prev, [alarmName]: false }));
@@ -474,7 +487,16 @@ export function Alarms() {
         return updated;
       });
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || `Error al poner en shelve la alarma ${alarmToShelve}`;
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg =
+        backendMessage ||
+        e?.message ||
+        `Error al poner en shelve la alarma ${alarmToShelve}`;
       setError(errorMsg);
       showToast("error", errorMsg);
     } finally {
@@ -616,7 +638,14 @@ export function Alarms() {
       
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al exportar alarmas a CSV";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg =
+        backendMessage || e?.message || "Error al exportar alarmas a CSV";
       setError(errorMsg);
     }
   };
@@ -641,7 +670,14 @@ export function Alarms() {
       // Recargar alarmas and update buffer
       await loadAlarms(pagination.page, pagination.limit);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al eliminar la alarma";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg =
+        backendMessage || e?.message || "Error al eliminar la alarma";
       setError(errorMsg);
     } finally {
       setDeleting(false);
@@ -724,7 +760,14 @@ export function Alarms() {
       // Recargar alarmas
       loadAlarms(pagination.page, pagination.limit);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al actualizar la alarma";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg =
+        backendMessage || e?.message || "Error al actualizar la alarma";
       setError(errorMsg);
     } finally {
       setUpdating(false);
@@ -783,7 +826,14 @@ export function Alarms() {
       // Recargar alarmas and update buffer
       await loadAlarms(pagination.page, pagination.limit);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al crear la alarma";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg =
+        backendMessage || e?.message || "Error al crear la alarma";
       setError(errorMsg);
     } finally {
       setCreating(false);
@@ -817,7 +867,7 @@ export function Alarms() {
               <span>Alarmas</span>
               <div className="d-flex gap-2">
                 <Button
-                  variant="info"
+                  variant="secondary"
                   className="btn-sm"
                   onClick={handleExportCSV}
                   disabled={loading || alarms.length === 0}
@@ -839,7 +889,7 @@ export function Alarms() {
           footer={
             <div className="d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2">
-                <label className="mb-0 small">Items por página:</label>
+                <label className="mb-0 small">{t("pagination.itemsPerPage")}</label>
                 <select
                   className="form-select form-select-sm"
                   style={{ width: "auto" }}
@@ -855,7 +905,11 @@ export function Alarms() {
               </div>
               <div className="d-flex align-items-center gap-2">
                 <span className="small text-muted">
-                  Página {pagination.page} de {pagination.pages} ({pagination.total} total)
+                  {t("pagination.pageOf", {
+                    current: pagination.page,
+                    total: pagination.pages,
+                    count: pagination.total,
+                  })}
                 </span>
                 <div className="btn-group" role="group">
                   <Button
@@ -1471,7 +1525,7 @@ export function Alarms() {
                     >
                       Cancelar
                     </button>
-                    <Button type="submit" variant="info" loading={shelving}>
+                <Button type="submit" variant="secondary" loading={shelving}>
                       Aplicar Shelve
                     </Button>
                   </div>

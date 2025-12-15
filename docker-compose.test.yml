@@ -1,4 +1,51 @@
 services:
+
+  db:
+    container_name: app_db
+    image: "postgres:17-bullseye"
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "7"
+    ports:
+      - ${AUTOMATION_DB_PORT:-5432}:5432
+    environment:
+      POSTGRES_PASSWORD: ${AUTOMATION_DB_PASSWORD:-postgres}
+      POSTGRES_USER: ${AUTOMATION_DB_USER:-postgres}
+      POSTGRES_DB: ${AUTOMATION_DB_NAME:-app_db}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  opcua_server_simulator:
+    container_name: opcua_server_simulator
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "7"
+    image: "knowai/opcua_server_simulator:2.2.1"
+    ports:
+      - 0.0.0.0:5015:5015
+      - 0.0.0.0:4840:4840
+    environment:
+      - APP_THREADS=5
+      - APP_PORT=5015
+      - ASYNC_APP=0
+    healthcheck:
+      test: curl --fail -s -k http://0.0.0.0:5015/api/healthcheck/ || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - ./opcua_server_simulator.yml:/app/app/config.yml
+      - ./data_for_tests.csv:/app/app/data/data_for_tests.csv
+
   automation:
     container_name: "Automation"
     image: "knowai/automation:${AUTOMATION_VERSION:-latest}"
@@ -28,6 +75,9 @@ services:
       AUTOMATION_DB_PASSWORD: ${AUTOMATION_DB_PASSWORD:-postgres}
     tmpfs:
       - /tmp:size=500k
+    depends_on:
+      - db
+      - opcua_server_simulator
     deploy:
       resources:
         limits:

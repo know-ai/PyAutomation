@@ -521,7 +521,7 @@ export function OperationalLogs() {
           footer={
             <div className="d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2">
-                <label className="mb-0 small">Items por página:</label>
+                <label className="mb-0 small">{t("pagination.itemsPerPage")}</label>
                 <select
                   className="form-select form-select-sm"
                   style={{ width: "auto" }}
@@ -537,7 +537,11 @@ export function OperationalLogs() {
               </div>
               <div className="d-flex align-items-center gap-2">
                 <span className="small text-muted">
-                  Página {pagination.page} de {pagination.pages} ({pagination.total} total)
+                  {t("pagination.pageOf", {
+                    current: pagination.page,
+                    total: pagination.pages,
+                    count: pagination.total,
+                  })}
                 </span>
                 <div className="btn-group" role="group">
                   <Button

@@ -10,6 +10,7 @@ import {
   type TabularDataResponse,
 } from "../services/tags";
 import { getTimezones } from "../services/tags";
+import { useTranslation } from "../hooks/useTranslation";
 
 type PresetDate = 
   | "Last Minute"
@@ -134,6 +135,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 };
 
 export function DataLogger() {
+  const { t } = useTranslation();
   const [tabularData, setTabularData] = useState<TabularDataResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -352,7 +354,13 @@ export function DataLogger() {
         pages: response.pagination?.total_pages || 0,
       });
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar los datos";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || "Error al cargar los datos";
       setError(errorMsg);
       setTabularData(null);
     } finally {
@@ -449,8 +457,14 @@ export function DataLogger() {
 
       URL.revokeObjectURL(url);
     } catch (e: any) {
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
       const errorMsg =
-        e?.response?.data?.message || e?.message || "Error al exportar datos a CSV";
+        backendMessage || e?.message || "Error al exportar datos a CSV";
       setError(errorMsg);
     }
   };
@@ -543,7 +557,7 @@ export function DataLogger() {
           footer={
             <div className="d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2">
-                <label className="mb-0 small">Items por página:</label>
+                <label className="mb-0 small">{t("pagination.itemsPerPage")}</label>
                 <select
                   className="form-select form-select-sm"
                   style={{ width: "auto" }}
@@ -559,7 +573,11 @@ export function DataLogger() {
               </div>
               <div className="d-flex align-items-center gap-2">
                 <span className="small text-muted">
-                  Página {pagination.page} de {pagination.pages} ({pagination.total} total)
+                  {t("pagination.pageOf", {
+                    current: pagination.page,
+                    total: pagination.pages,
+                    count: pagination.total,
+                  })}
                 </span>
                 <div className="btn-group" role="group">
                   <Button

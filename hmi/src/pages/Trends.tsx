@@ -189,7 +189,13 @@ export function Trends() {
 
         setOptionsLoaded(true);
       } catch (e: any) {
-        const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar opciones";
+        const data = e?.response?.data;
+        const backendMessage =
+          (typeof data === "string" ? data : undefined) ??
+          data?.message ??
+          data?.detail ??
+          data?.error;
+        const errorMsg = backendMessage || e?.message || "Error al cargar opciones";
         setError(errorMsg);
         setOptionsLoaded(true);
       }
@@ -271,7 +277,13 @@ export function Trends() {
       const data = await getTrends(filters);
       setTrendsData(data);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar las tendencias";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || "Error al cargar las tendencias";
       setError(errorMsg);
       setTrendsData({});
     } finally {

@@ -46,7 +46,14 @@ export function Machines() {
       // Cargar máquinas iniciales en el store para sincronizar con tiempo real
       dispatch(loadAllMachines(data));
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || "Error al cargar las máquinas de estado";
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMessage =
+        backendMessage || err?.message || "Error al cargar las máquinas de estado";
       setError(errorMessage);
       console.error("Error loading machines:", err);
     } finally {
@@ -92,7 +99,7 @@ export function Machines() {
     const intervalValue = parseFloat(String(newInterval));
     
     if (isNaN(intervalValue) || intervalValue < 0.1) {
-      showToast("error", "El intervalo debe ser un número mayor o igual a 0.1 segundos");
+      showToast("El intervalo debe ser un número mayor o igual a 0.1 segundos", "error");
       return;
     }
 
@@ -131,12 +138,19 @@ export function Machines() {
       // Recargar máquinas para sincronizar con el store
       loadMachines();
 
-      showToast("success", response.message || "Intervalo actualizado correctamente");
+      showToast(response.message || "Intervalo actualizado correctamente", "success");
       setShowIntervalModal(false);
       setPendingIntervalUpdate(null);
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || "Error al actualizar el intervalo";
-      showToast("error", errorMessage);
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMessage =
+        backendMessage || err?.message || "Error al actualizar el intervalo";
+      showToast(errorMessage, "error");
       console.error("Error updating interval:", err);
     } finally {
       setUpdatingMachine(null);
@@ -179,19 +193,26 @@ export function Machines() {
       setMachines((prev) =>
         prev.map((m) =>
           m.name === pendingTransition.machineName
-            ? { ...m, state: pendingTransition.newState, ...response.data }
+            ? { ...m, ...response.data, state: pendingTransition.newState }
             : m
         )
       );
       // Recargar máquinas para sincronizar con el store
       loadMachines();
 
-      showToast("success", response.message || "Transición ejecutada correctamente");
+      showToast(response.message || "Transición ejecutada correctamente", "success");
       setShowTransitionModal(false);
       setPendingTransition(null);
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || "Error al ejecutar la transición";
-      showToast("error", errorMessage);
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMessage =
+        backendMessage || err?.message || "Error al ejecutar la transición";
+      showToast(errorMessage, "error");
       console.error("Error executing transition:", err);
     } finally {
       setUpdatingMachine(null);
@@ -207,7 +228,7 @@ export function Machines() {
   // Exportar a CSV
   const handleExportCSV = () => {
     if (!machines || machines.length === 0) {
-      showToast("error", "No hay datos para exportar");
+      showToast("No hay datos para exportar", "error");
       return;
     }
 
@@ -263,10 +284,16 @@ export function Machines() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      showToast("success", "Datos exportados correctamente");
+      showToast("Datos exportados correctamente", "success");
     } catch (err: any) {
-      const errorMessage = err?.message || "Error al exportar los datos";
-      showToast("error", errorMessage);
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMessage = backendMessage || err?.message || "Error al exportar los datos";
+      showToast(errorMessage, "error");
       console.error("Error exporting CSV:", err);
     }
   };
@@ -344,7 +371,7 @@ export function Machines() {
                                 handleIntervalChange(machine, value);
                               } else if (isNaN(value) || value < 0.1) {
                                 e.target.value = String(machine.machine_interval);
-                                showToast("error", "El intervalo debe ser un número mayor o igual a 0.1 segundos");
+                                showToast("El intervalo debe ser un número mayor o igual a 0.1 segundos", "error");
                               }
                             }}
                             onKeyDown={(e) => {
@@ -396,7 +423,7 @@ export function Machines() {
                             className="btn-sm"
                             onClick={() => {
                               // Por ahora no hace nada, se implementará más adelante
-                              showToast("info", "Funcionalidad de edición de configuración próximamente");
+                              showToast("Funcionalidad de edición de configuración próximamente", "info");
                             }}
                             title="Editar configuración"
                           >
@@ -414,8 +441,12 @@ export function Machines() {
                 <div className="d-flex justify-content-between align-items-center mt-3">
                   <div>
                     <span className="text-muted">
-                      Mostrando {(currentPage - 1) * ITEMS_PER_PAGE + 1} -{" "}
-                      {Math.min(currentPage * ITEMS_PER_PAGE, machines.length)} de {machines.length} máquinas
+                      {t("pagination.showing", {
+                        start: (currentPage - 1) * ITEMS_PER_PAGE + 1,
+                        end: Math.min(currentPage * ITEMS_PER_PAGE, machines.length),
+                        total: machines.length,
+                        item: t("pagination.items.machines"),
+                      })}
                     </span>
                   </div>
                   <nav>
@@ -426,7 +457,7 @@ export function Machines() {
                           onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                           disabled={currentPage === 1}
                         >
-                          Anterior
+                          {t("pagination.previous")}
                         </button>
                       </li>
                       {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
@@ -442,7 +473,7 @@ export function Machines() {
                           onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                           disabled={currentPage === totalPages}
                         >
-                          Siguiente
+                          {t("pagination.next")}
                         </button>
                       </li>
                     </ul>

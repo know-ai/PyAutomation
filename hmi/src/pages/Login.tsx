@@ -61,7 +61,24 @@ export function Login() {
       dispatch(loginSuccess({ token, user }));
       navigate("/communications");
     } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || t("auth.login");
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error ??
+        err?.message;
+
+      let message: string;
+      if (status === 401) {
+        // Credenciales inválidas u otro error de autenticación
+        message = backendMessage || t("auth.invalidCredentials");
+      } else {
+        // Cualquier otro error: mostrar mensaje del backend si existe
+        message = backendMessage || t("auth.loginError");
+      }
+
       setError(message);
       dispatch(loginFailure(message));
     } finally {

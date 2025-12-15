@@ -247,7 +247,14 @@ export function AlarmsSummary() {
         pages: response.pagination?.total_pages || 0,
       });
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar el resumen de alarmas";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg =
+        backendMessage || e?.message || "Error al cargar el resumen de alarmas";
       setError(errorMsg);
       setAlarmsSummary([]);
     } finally {
@@ -370,7 +377,14 @@ export function AlarmsSummary() {
       // Recargar alarmas para actualizar has_comments
       loadAlarmsSummary();
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al agregar el comentario";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg =
+        backendMessage || e?.message || "Error al agregar el comentario";
       setError(errorMsg);
     } finally {
       setAddingComment(false);
@@ -396,7 +410,14 @@ export function AlarmsSummary() {
       const commentsData = await getAlarmSummaryComments(alarmId);
       setComments(commentsData || []);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar los comentarios";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg =
+        backendMessage || e?.message || "Error al cargar los comentarios";
       setError(errorMsg);
       setComments([]);
     } finally {
@@ -565,8 +586,16 @@ export function AlarmsSummary() {
 
       URL.revokeObjectURL(url);
     } catch (e: any) {
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
       const errorMsg =
-        e?.response?.data?.message || e?.message || "Error al exportar resumen de alarmas a CSV";
+        backendMessage ||
+        e?.message ||
+        "Error al exportar resumen de alarmas a CSV";
       setError(errorMsg);
     }
   };
@@ -640,7 +669,7 @@ export function AlarmsSummary() {
           footer={
             <div className="d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2">
-                <label className="mb-0 small">Items por página:</label>
+                <label className="mb-0 small">{t("pagination.itemsPerPage")}</label>
                 <select
                   className="form-select form-select-sm"
                   style={{ width: "auto" }}
@@ -656,7 +685,11 @@ export function AlarmsSummary() {
               </div>
               <div className="d-flex align-items-center gap-2">
                 <span className="small text-muted">
-                  Página {pagination.page} de {pagination.pages} ({pagination.total} total)
+                  {t("pagination.pageOf", {
+                    current: pagination.page,
+                    total: pagination.pages,
+                    count: pagination.total,
+                  })}
                 </span>
                 <div className="btn-group" role="group">
                   <Button

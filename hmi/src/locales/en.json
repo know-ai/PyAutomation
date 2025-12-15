@@ -67,7 +67,10 @@
     "logoutConfirm": "Confirm logout",
     "logoutConfirmMessage": "Are you sure you want to log out?",
     "loggingOut": "Logging out...",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "invalidCredentials": "Invalid username or password. Please check your credentials.",
+    "loginError": "Could not sign in. Please try again or contact the administrator.",
+    "signupError": "Could not create the account. Please review the entered data or contact the administrator."
   },
   "navigation": {
     "communications": "Communications",
@@ -227,6 +230,19 @@
     "imported": "Imported",
     "skipped": "Skipped",
     "errors": "Errors"
+  },
+  "pagination": {
+    "itemsPerPage": "Items per page:",
+    "pageOf": "Page {{current}} of {{total}} ({{count}} total)",
+    "showing": "Showing {{start}} - {{end}} of {{total}} {{item}}",
+    "previous": "Previous",
+    "next": "Next",
+    "first": "First",
+    "last": "Last",
+    "items": {
+      "machines": "machines",
+      "attributes": "attributes"
+    }
   }
 }
 

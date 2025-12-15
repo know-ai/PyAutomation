@@ -1,0 +1,48 @@
+version: "3.3"
+
+filename: "data_for_tests"
+separator: ","
+header: [0]
+interval: 1.0
+variables:
+  FI_01:
+    name: "FIRST_TRANSMITTER_MASS_FLOW"
+    uncertainty: 0.1 # percentage uncertainty / accuracy -> 0.1%  --> Default 'accuracy' = 0.1 %
+    min: 0 # Default = 0
+    max: 200 # Default = 100
+  PI_01:
+    name: "FIRST_TRANSMITTER_PRESSURE"
+    uncertainty: 0.1 # percentage uncertainty / accuracy -> 0.1% --> Default 'accuracy' = 0.1 %
+    min: 200000 # Default = 0
+    max: 1200000 # Default = 100
+  DI_01:
+    name: "FIRST_TRANSMITTER_FLUID_DENSITY"
+    uncertainty: 0.1 # percentage uncertainty / accuracy -> 0.1% --> Default 'accuracy' = 0.1 %
+    min: 600 # Default = 0
+    max: 1000 # Default = 100
+  TI_01:
+    name: "FIRST_TRANSMITTER_FLUID_TEMPERATURE"
+    uncertainty: 0.1 # percentage uncertainty / accuracy -> 0.1% --> Default 'accuracy' = 0.1 %
+    min: 0 # Default = 0
+    max: 50 # Default = 100
+  FI_02:
+    name: "LAST_TRANSMITTER_MASS_FLOW"
+    uncertainty: 0.1 # percentage uncertainty / accuracy -> 0.1%  --> Default 'accuracy' = 0.1 %
+    min: 0 # Default = 0
+    max: 200 # Default = 100
+  PI_02:
+    name: "LAST_TRANSMITTER_PRESSURE"
+    uncertainty: 0.1 # percentage uncertainty / accuracy -> 0.1% --> Default 'accuracy' = 0.1 %
+    min: 200000 # Default = 0
+    max: 1200000 # Default = 100
+  DI_02:
+    name: "LAST_TRANSMITTER_FLUID_DENSITY"
+    uncertainty: 0.1 # percentage uncertainty / accuracy -> 0.1% --> Default 'accuracy' = 0.1 %
+    min: 600 # Default = 0
+    max: 1000 # Default = 100
+  TI_02:
+    name: "LAST_TRANSMITTER_FLUID_TEMPERATURE"
+    uncertainty: 0.1 # percentage uncertainty / accuracy -> 0.1% --> Default 'accuracy' = 0.1 %
+    min: 0 # Default = 0
+    max: 50 # Default = 100
+server_folder_namespace: iDetectFugas

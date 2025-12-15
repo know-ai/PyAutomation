@@ -42,6 +42,7 @@ nav:
   - Setup: "setup.md"
   - User Guide:
       - Summary: "Users_Guide/index.md"
+      - Quick Start: "Users_Guide/QuickStart.md"
       - Database:
           - Summary: "Users_Guide/Database/index.md"
       - Communications:

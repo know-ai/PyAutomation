@@ -255,8 +255,12 @@ export function OpcUaServer() {
                 <div className="d-flex justify-content-between align-items-center mt-3">
                   <div>
                     <span className="text-muted">
-                      Mostrando {(currentPage - 1) * ITEMS_PER_PAGE + 1} -{" "}
-                      {Math.min(currentPage * ITEMS_PER_PAGE, attributes.length)} de {attributes.length} atributos
+                      {t("pagination.showing", {
+                        start: (currentPage - 1) * ITEMS_PER_PAGE + 1,
+                        end: Math.min(currentPage * ITEMS_PER_PAGE, attributes.length),
+                        total: attributes.length,
+                        item: t("pagination.items.attributes"),
+                      })}
                     </span>
                   </div>
                   <nav>
@@ -267,7 +271,7 @@ export function OpcUaServer() {
                           onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                           disabled={currentPage === 1}
                         >
-                          Anterior
+                          {t("pagination.previous")}
                         </button>
                       </li>
                       {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
@@ -283,7 +287,7 @@ export function OpcUaServer() {
                           onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                           disabled={currentPage === totalPages}
                         >
-                          Siguiente
+                          {t("pagination.next")}
                         </button>
                       </li>
                     </ul>

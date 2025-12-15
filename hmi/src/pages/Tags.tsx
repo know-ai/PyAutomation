@@ -235,7 +235,13 @@ export function Tags() {
       }
       setOpcuaNodeDisplayNames((prev) => ({ ...prev, ...displayNamesMap }));
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar tags";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || "Error al cargar tags";
       setError(errorMsg);
       setTags([]);
     } finally {
@@ -579,7 +585,13 @@ export function Tags() {
       
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al exportar tags a CSV";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || "Error al exportar tags a CSV";
       setError(errorMsg);
     }
   };
@@ -603,7 +615,13 @@ export function Tags() {
       // Recargar tags
       loadTags(pagination.page, pagination.limit);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al eliminar el tag";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || "Error al eliminar el tag";
       setError(errorMsg);
     } finally {
       setDeleting(false);
@@ -781,7 +799,13 @@ export function Tags() {
       // Recargar tags
       loadTags(pagination.page, pagination.limit);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al actualizar el tag";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || "Error al actualizar el tag";
       setError(errorMsg);
     } finally {
       setUpdating(false);
@@ -867,7 +891,13 @@ export function Tags() {
       // Recargar tags
       loadTags(pagination.page, pagination.limit);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || "Error al crear el tag";
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMsg = backendMessage || e?.message || "Error al crear el tag";
       setError(errorMsg);
     } finally {
       setCreating(false);
@@ -905,7 +935,7 @@ export function Tags() {
           footer={
             <div className="d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2">
-                <label className="mb-0 small">Items por página:</label>
+                <label className="mb-0 small">{t("pagination.itemsPerPage")}</label>
                 <select
                   className="form-select form-select-sm"
                   style={{ width: "auto" }}
@@ -921,7 +951,11 @@ export function Tags() {
               </div>
               <div className="d-flex align-items-center gap-2">
                 <span className="small text-muted">
-                  Página {pagination.page} de {pagination.pages} ({pagination.total} total)
+                  {t("pagination.pageOf", {
+                    current: pagination.page,
+                    total: pagination.pages,
+                    count: pagination.total,
+                  })}
                 </span>
                 <div className="btn-group" role="group">
                   <Button

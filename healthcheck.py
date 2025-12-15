@@ -13,20 +13,31 @@ def check_url(url, context=None):
 def main():
     port = os.environ.get("PORT", "8050")
     
-    # Try HTTP
-    http_url = f"http://127.0.0.1:{port}/api/healthcheck/"
-    if check_url(http_url):
+    # Prefer explicit API health endpoint if available
+    # New REST health resource: /api/health/ping
+    http_health_url = f"http://127.0.0.1:{port}/api/health/ping"
+    if check_url(http_health_url):
         sys.exit(0)
 
-    # Try HTTPS (ignoring self-signed certs for localhost healthcheck if needed)
-    https_url = f"https://127.0.0.1:{port}/api/healthcheck/"
+    # Fallback: check application root (many deployments expose a 200 here)
+    http_root_url = f"http://127.0.0.1:{port}/"
+    if check_url(http_root_url):
+        sys.exit(0)
+
+    # Try HTTPS variants (ignoring self-signed certs for localhost healthcheck if needed)
+    https_health_url = f"https://127.0.0.1:{port}/api/health/ping"
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     
-    if check_url(https_url, context=ctx):
+    if check_url(https_health_url, context=ctx):
         sys.exit(0)
 
+    https_root_url = f"https://127.0.0.1:{port}/"
+    if check_url(https_root_url, context=ctx):
+        sys.exit(0)
+
+    # None of the URLs responded with HTTP 200
     sys.exit(1)
 
 if __name__ == "__main__":
