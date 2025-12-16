@@ -1,6 +1,16 @@
 # User Management Module
 
-The **User Management Module** provides comprehensive functionality for managing user accounts, authentication, authorization, and password operations in PyAutomation. This module implements a role-based access control (RBAC) system that ensures secure access to system resources while providing flexible permission management for different user roles.
+<div align="center" style="background: linear-gradient(135deg, #e0f2f1 0%, #b2dfdb 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: #00695c; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  👥 Secure Access Control
+</h2>
+
+<p style="color: #004d40; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  The <strong>User Management Module</strong> provides comprehensive functionality for managing user accounts, authentication, authorization, and password operations in PyAutomation. This module implements a role-based access control (RBAC) system that ensures secure access to system resources while providing flexible permission management for different user roles.
+</p>
+
+</div>
 
 ## Overview
 

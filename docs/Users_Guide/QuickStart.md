@@ -1,10 +1,26 @@
 # Quick Start: Running PyAutomation with HMI using Docker
 
+<div align="center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: white; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">
+  🚀 From Zero to Production in Minutes
+</h2>
+
+<p style="color: white; font-size: 1.4em; margin-top: 1em; font-weight: 300; text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">
+  Complete Docker Deployment Guide for PyAutomation 2.0.0
+</p>
+
+</div>
+
 This Quick Start guide walks you through bringing up a fully functional PyAutomation instance (backend + HMI) using Docker, and performing the minimum configuration needed to operate the system end‑to‑end.
 
 It is aimed at engineers and operators who want to go from zero to a working system as quickly as possible, while still following production‑grade practices.
 
-> **Note:** Throughout this guide we assume you are working on a single host (your laptop or a server) and have Docker and Docker Compose installed.
+<div style="background: #fff3cd; border-left: 5px solid #ffc107; padding: 1.5em; margin: 2em 0; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+
+> **📌 Note:** Throughout this guide we assume you are working on a single host (your laptop or a server) and have Docker and Docker Compose installed.
+
+</div>
 
 ![OPC UA Client Screen](images/OPCUAClientScreen.png)
 
@@ -12,9 +28,19 @@ It is aimed at engineers and operators who want to go from zero to a working sys
 
 ---
 
-## 1. Deploy PyAutomation with Docker Compose
+## 🐳 1. Deploy PyAutomation with Docker Compose
 
-The recommended way to run PyAutomation (including the HMI) is to use the provided `docker-compose.yml` in the project root:
+<div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #2196f3;">
+
+<h3 style="color: #1976d2; font-size: 1.8em; margin-bottom: 1em;">
+  🚀 Get Started with Docker Compose
+</h3>
+
+<p style="font-size: 1.1em; color: #1565c0; margin-bottom: 1.5em;">
+  The recommended way to run PyAutomation (including the HMI) is to use the provided <code>docker-compose.yml</code> in the project root:
+</p>
+
+</div>
 
 ```yaml
 services:
@@ -57,9 +83,15 @@ volumes:
   automation_logs:
 ```
 
-### 1.1. Environment variables and superuser password
+### 🔐 1.1. Environment variables and superuser password
 
-Create a `.env` file next to `docker-compose.yml`:
+<div style="background: #f8f9fa; border-left: 5px solid #667eea; padding: 1.5em; margin: 1.5em 0; border-radius: 5px;">
+
+<p style="font-size: 1.1em; color: #2d3748; margin-bottom: 1em;">
+  Create a <code>.env</code> file next to <code>docker-compose.yml</code>:
+</p>
+
+</div>
 
 ```ini
 AUTOMATION_PORT=8050
@@ -81,7 +113,11 @@ AUTOMATION_SUPERUSER_PASSWORD="CHANGE_ME_SUPERUSER_PASSWORD"
   3. Start the container again (the superuser will use the new password).
   4. Log in as superuser and reset user passwords / roles.
 
-> **Security tip:** Treat the superuser password like a root password. Use it only for bootstrap and recovery, and store it securely.
+<div style="background: #ffebee; border-left: 5px solid #f44336; padding: 1.5em; margin: 1.5em 0; border-radius: 5px;">
+
+> **🔒 Security tip:** Treat the superuser password like a root password. Use it only for bootstrap and recovery, and store it securely.
+
+</div>
 
 ### 1.2. Starting the service
 
@@ -144,9 +180,19 @@ These logs are the primary place to look when:
 
 ---
 
-## 2. Deploy a PostgreSQL Database with Docker
+## 💾 2. Deploy a PostgreSQL Database with Docker
 
-For production or serious testing, PostgreSQL is the recommended backend database. You can run it as a separate service in Docker Compose or as a standalone container.
+<div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #4caf50;">
+
+<h3 style="color: #2e7d32; font-size: 1.8em; margin-bottom: 1em;">
+  🗄️ Production-Grade Database Setup
+</h3>
+
+<p style="font-size: 1.1em; color: #1b5e20; margin-bottom: 1.5em;">
+  For production or serious testing, PostgreSQL is the recommended backend database. You can run it as a separate service in Docker Compose or as a standalone container.
+</p>
+
+</div>
 
 ### 2.1. Minimal PostgreSQL container
 
@@ -200,7 +246,11 @@ volumes:
   postgres_data:
 ```
 
-> **Important:** PyAutomation will create all its tables automatically the first time you configure the DB connection from the HMI (see section 6). You only need to ensure that PostgreSQL is up and reachable.
+<div style="background: #fff3cd; border-left: 5px solid #ffc107; padding: 1.5em; margin: 1.5em 0; border-radius: 5px;">
+
+> **⚠️ Important:** PyAutomation will create all its tables automatically the first time you configure the DB connection from the HMI (see section 6). You only need to ensure that PostgreSQL is up and reachable.
+
+</div>
 
 ![Database Configuration](images/DatabaseConfigInNavBar.png)
 
@@ -258,9 +308,19 @@ After this initial bootstrap:
 
 ---
 
-## 3. End-to-End Demo Stack with Docker (DB + OPC UA Simulator + PyAutomation)
+## 🎯 3. End-to-End Demo Stack with Docker (DB + OPC UA Simulator + PyAutomation)
 
-For a complete test environment, PyAutomation provides a `docker-compose.test.yml` file that starts:
+<div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #ff9800;">
+
+<h3 style="color: #e65100; font-size: 1.8em; margin-bottom: 1em;">
+  🧪 Complete Test Environment
+</h3>
+
+<p style="font-size: 1.1em; color: #d84315; margin-bottom: 1.5em;">
+  For a complete test environment, PyAutomation provides a <code>docker-compose.test.yml</code> file that starts:
+</p>
+
+</div>
 
 - A **PostgreSQL database** (`db` service).
 - An **OPC UA simulation server** (`opcua_server_simulator` service).
@@ -335,7 +395,11 @@ At a glance:
   - Configuration and data injected via `opcua_server_simulator.yml` and `data_for_tests.csv`.
 - `automation` is the same PyAutomation service described in section 1, wired to the simulator and DB.
 
-> **Tip:** This stack is ideal for demos, automated tests, and onboarding workshops.
+<div style="background: #e1f5fe; border-left: 5px solid #03a9f4; padding: 1.5em; margin: 1.5em 0; border-radius: 5px;">
+
+> **💡 Tip:** This stack is ideal for demos, automated tests, and onboarding workshops.
+
+</div>
 
 ![OPC UA Client Screen](images/OPCUAClientScreen.png)
 
@@ -458,9 +522,19 @@ From this point, you have a realistic test environment with:
 
 ---
 
-## 4. First Steps in the HMI
+## 🖥️ 4. First Steps in the HMI
 
-Once the containers are running, open the HMI in your browser.
+<div style="background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #9c27b0;">
+
+<h3 style="color: #7b1fa2; font-size: 1.8em; margin-bottom: 1em;">
+  🎨 Getting Started with the Interface
+</h3>
+
+<p style="font-size: 1.1em; color: #6a1b9a; margin-bottom: 1.5em;">
+  Once the containers are running, open the HMI in your browser.
+</p>
+
+</div>
 
 ### 4.1. Creating the first user (Signup flow)
 
@@ -921,15 +995,46 @@ Best practices:
 
 ---
 
-## 19. Summary
+## ✅ 19. Summary
 
-By following this Quick Start, you should now have:
+<div align="center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; padding: 3em 2em; margin: 3em 0; box-shadow: 0 15px 35px rgba(0,0,0,0.2);">
 
-- PyAutomation (backend + HMI) running in Docker.
-- A PostgreSQL database connected and initialized.
-- An OPC UA simulator providing test data.
-- Users, tags, alarms, trends, and logs configured for a complete end‑to‑end workflow.
+<h2 style="color: white; font-size: 2em; margin-bottom: 1.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">
+  🎉 Congratulations! You're Ready to Go
+</h2>
 
-From here, you can refine your configuration, connect to real plant equipment, and tailor the HMI to your operations.
+<p style="color: white; font-size: 1.3em; line-height: 1.8; margin-bottom: 2em; opacity: 0.95;">
+  By following this Quick Start, you should now have:
+</p>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5em;">
+
+<div style="background: white; border-radius: 10px; padding: 2em; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+<h4 style="color: #667eea; font-size: 1.3em; margin-bottom: 0.5em;">🐳 PyAutomation Running</h4>
+<p style="color: #4a5568; margin: 0;">Backend + HMI running in Docker</p>
+</div>
+
+<div style="background: white; border-radius: 10px; padding: 2em; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+<h4 style="color: #667eea; font-size: 1.3em; margin-bottom: 0.5em;">💾 Database Connected</h4>
+<p style="color: #4a5568; margin: 0;">PostgreSQL connected and initialized</p>
+</div>
+
+<div style="background: white; border-radius: 10px; padding: 2em; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+<h4 style="color: #667eea; font-size: 1.3em; margin-bottom: 0.5em;">🔌 OPC UA Simulator</h4>
+<p style="color: #4a5568; margin: 0;">Providing realistic test data</p>
+</div>
+
+<div style="background: white; border-radius: 10px; padding: 2em; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+<h4 style="color: #667eea; font-size: 1.3em; margin-bottom: 0.5em;">⚙️ Full Configuration</h4>
+<p style="color: #4a5568; margin: 0;">Users, tags, alarms, trends, and logs configured</p>
+</div>
+
+</div>
+
+<p style="color: white; font-size: 1.2em; line-height: 1.8; margin-top: 2em; opacity: 0.95;">
+  From here, you can refine your configuration, connect to real plant equipment, and tailor the HMI to your operations.
+</p>
+
+</div>
 
 

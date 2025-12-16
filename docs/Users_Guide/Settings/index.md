@@ -1,6 +1,16 @@
 # System Settings Module
 
-The **System Settings Module** provides centralized configuration management for PyAutomation, allowing administrators to control application behavior, logging parameters, and system-wide configurations. This module also enables backup and restoration of system configuration through export and import functionality.
+<div align="center" style="background: linear-gradient(135deg, #fff8e1 0%, #ffecb3 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: #f57c00; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  ⚙️ Centralized Configuration
+</h2>
+
+<p style="color: #e65100; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  The <strong>System Settings Module</strong> provides centralized configuration management for PyAutomation, allowing administrators to control application behavior, logging parameters, and system-wide configurations. This module also enables backup and restoration of system configuration through export and import functionality.
+</p>
+
+</div>
 
 ## Overview
 

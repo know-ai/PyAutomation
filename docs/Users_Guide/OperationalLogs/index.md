@@ -1,6 +1,16 @@
 # Operational Logs Module
 
-The **Operational Logs Module** provides a comprehensive audit trail of operational activities, system messages, and application-level logs. Unlike Events which track high-level system occurrences, Operational Logs capture detailed operational information, often linked to specific alarms or events for complete traceability.
+<div align="center" style="background: linear-gradient(135deg, #ede7f6 0%, #d1c4e9 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: #4527a0; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  📝 Detailed Operational Documentation
+</h2>
+
+<p style="color: #311b92; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  The <strong>Operational Logs Module</strong> provides a comprehensive audit trail of operational activities, system messages, and application-level logs. Unlike Events which track high-level system occurrences, Operational Logs capture detailed operational information, often linked to specific alarms or events for complete traceability.
+</p>
+
+</div>
 
 ## What are Operational Logs?
 

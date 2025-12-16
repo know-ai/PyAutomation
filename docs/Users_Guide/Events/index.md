@@ -1,6 +1,16 @@
 # Events Module
 
-The **Events Module** provides comprehensive tracking and analysis of system events, including user actions, system notifications, alarm state changes, and other significant occurrences. This module serves as an audit trail and diagnostic tool for understanding system behavior and operator activities.
+<div align="center" style="background: linear-gradient(135deg, #f1f8e9 0%, #dcedc8 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: #558b2f; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  🔔 Complete Audit Trail
+</h2>
+
+<p style="color: #33691e; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  The <strong>Events Module</strong> provides comprehensive tracking and analysis of system events, including user actions, system notifications, alarm state changes, and other significant occurrences. This module serves as an audit trail and diagnostic tool for understanding system behavior and operator activities.
+</p>
+
+</div>
 
 ## What are Events?
 

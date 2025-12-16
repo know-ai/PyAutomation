@@ -1,69 +1,156 @@
 # Installation and Setup
 
-This guide covers the installation and configuration of PyAutomation for both development and production environments.
+<div align="center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
 
-## Prerequisites
+<h2 style="color: white; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">
+  🚀 Get Started with PyAutomation
+</h2>
 
-Before installing PyAutomation, ensure you have the following installed:
+<p style="color: white; font-size: 1.4em; margin-top: 1em; font-weight: 300; text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">
+  Quick Setup Guide for Development and Production
+</p>
 
-- **Python**: Version 3.10 or higher.
-- **pip**: Python package installer.
-- **Virtualenv**: (Optional but recommended) for creating isolated Python environments.
-- **Git**: For version control and cloning the repository.
+</div>
 
-## Installation Steps
+---
 
-### 1. Clone the Repository
+This comprehensive guide covers the installation and configuration of PyAutomation for both **development** and **production** environments. Follow these steps to get PyAutomation up and running in minutes!
 
-Start by cloning the PyAutomation repository to your local machine:
+---
+
+## 📋 Prerequisites
+
+<div style="background: #f8f9fa; border-left: 5px solid #667eea; padding: 2em; margin: 2em 0; border-radius: 5px;">
+
+<p style="font-size: 1.2em; line-height: 1.8; color: #2d3748; margin-bottom: 1em;">
+  Before installing PyAutomation, ensure you have the following installed on your system:
+</p>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5em; margin-top: 1.5em;">
+
+<div style="background: white; border: 2px solid #667eea; border-radius: 10px; padding: 1.5em; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+<h4 style="color: #667eea; font-size: 1.2em; margin-bottom: 0.5em;">🐍 Python</h4>
+<p style="color: #4a5568; margin: 0; font-weight: 600;">Version 3.10 or higher</p>
+</div>
+
+<div style="background: white; border: 2px solid #667eea; border-radius: 10px; padding: 1.5em; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+<h4 style="color: #667eea; font-size: 1.2em; margin-bottom: 0.5em;">📦 pip</h4>
+<p style="color: #4a5568; margin: 0; font-weight: 600;">Python package installer</p>
+</div>
+
+<div style="background: white; border: 2px solid #667eea; border-radius: 10px; padding: 1.5em; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+<h4 style="color: #667eea; font-size: 1.2em; margin-bottom: 0.5em;">🔧 Virtualenv</h4>
+<p style="color: #4a5568; margin: 0; font-weight: 600;">Optional but recommended</p>
+</div>
+
+<div style="background: white; border: 2px solid #667eea; border-radius: 10px; padding: 1.5em; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+<h4 style="color: #667eea; font-size: 1.2em; margin-bottom: 0.5em;">🔀 Git</h4>
+<p style="color: #4a5568; margin: 0; font-weight: 600;">Version control system</p>
+</div>
+
+</div>
+
+</div>
+
+---
+
+## ⚡ Installation Steps
+
+### Step 1: Clone the Repository
+
+<div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #667eea;">
+
+<p style="font-size: 1.1em; color: #2d3748; margin-bottom: 1em; font-weight: 600;">
+  Start by cloning the PyAutomation repository to your local machine:
+</p>
 
 ```bash
 git clone https://github.com/know-ai/PyAutomation.git
 cd PyAutomation
 ```
 
-### 2. Set Up a Virtual Environment
+</div>
 
-It is best practice to run Python applications in a virtual environment to avoid dependency conflicts.
+---
 
-**On Linux/macOS:**
+### Step 2: Set Up a Virtual Environment
 
+<div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #667eea;">
+
+<p style="font-size: 1.1em; color: #2d3748; margin-bottom: 1em;">
+  It is <strong>best practice</strong> to run Python applications in a virtual environment to avoid dependency conflicts.
+</p>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5em; margin-top: 1.5em;">
+
+<div style="background: white; border-radius: 8px; padding: 1.5em; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+<h4 style="color: #667eea; font-size: 1.1em; margin-bottom: 0.5em;">🐧 Linux/macOS</h4>
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
+</div>
 
-**On Windows:**
-
+<div style="background: white; border-radius: 8px; padding: 1.5em; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+<h4 style="color: #667eea; font-size: 1.1em; margin-bottom: 0.5em;">🪟 Windows</h4>
 ```powershell
 python -m venv venv
 .\venv\Scripts\activate
 ```
+</div>
 
-### 3. Install Dependencies
+</div>
 
-Install the required Python packages using `pip`:
+</div>
+
+---
+
+### Step 3: Install Dependencies
+
+<div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #667eea;">
+
+<p style="font-size: 1.1em; color: #2d3748; margin-bottom: 1em;">
+  Install the required Python packages using <code style="background: rgba(102, 126, 234, 0.1); padding: 0.2em 0.4em; border-radius: 4px;">pip</code>:
+</p>
 
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-If you are developing documentation or running tests, you might also want to install additional requirements:
+<div style="background: rgba(102, 126, 234, 0.1); border-left: 4px solid #667eea; padding: 1em; margin-top: 1.5em; border-radius: 4px;">
+
+<p style="margin: 0; color: #4a5568;">
+  <strong>💡 Tip:</strong> If you are developing documentation or running tests, you might also want to install additional requirements:
+</p>
 
 ```bash
 pip install -r docs_requirements.txt
 ```
 
-## Configuration
+</div>
 
-PyAutomation uses environment variables and configuration files to manage settings.
+</div>
+
+---
+
+## ⚙️ Configuration
 
 ### Environment Variables
 
-Create a `.env` file in the root directory (or set these variables in your environment) to configure the application.
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 2em; margin: 2em 0; color: white; box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);">
 
-Example `.env`:
+<h3 style="color: white; font-size: 1.8em; margin-bottom: 1em;">
+  🔐 Configure Your Environment
+</h3>
+
+<p style="font-size: 1.1em; line-height: 1.8; margin-bottom: 1.5em; opacity: 0.95;">
+  PyAutomation uses environment variables and configuration files to manage settings. Create a <code style="background: rgba(255,255,255,0.2); padding: 0.2em 0.4em; border-radius: 4px;">.env</code> file in the root directory to configure the application.
+</p>
+
+</div>
+
+**Example `.env` file:**
 
 ```ini
 # Web Server Configuration  
@@ -74,24 +161,44 @@ AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER" # defaul
 AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
 ```
 
-### Database Configuration
+---
 
-PyAutomation requires a database to be set up and running before you can connect to it through the web configuration interface.
+### 💾 Database Configuration
 
-**Important Steps:**
+<div style="background: #fff3cd; border-left: 5px solid #ffc107; padding: 2em; margin: 2em 0; border-radius: 5px;">
 
-1. **Create the Database Server/Instance** (Database Administration Task):
-   - **SQLite**: No setup required - the database file will be created automatically
-   - **PostgreSQL**: Create the database server and database instance manually or using Docker
-   - **MySQL**: Create the database server and database instance manually or using Docker
+<h3 style="color: #856404; font-size: 1.5em; margin-bottom: 1em;">
+  ⚠️ Important: Database Setup Required
+</h3>
 
-2. **PyAutomation Connection and Table Creation**:
-   - Once the database server is running, PyAutomation will connect to it
-   - PyAutomation automatically creates all necessary tables when you establish the connection
-   - This includes tables for Tags, Alarms, Users, Events, Logs, and all system configuration tables
-   - Default data (roles, variables, units, data types) is also initialized automatically
+<p style="font-size: 1.1em; line-height: 1.8; color: #856404; margin-bottom: 1.5em;">
+  PyAutomation requires a database to be set up and running <strong>before</strong> you can connect to it through the web configuration interface.
+</p>
 
-**Example: Setting up PostgreSQL with Docker**
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5em; margin-top: 1.5em;">
+
+<div style="background: white; border: 2px solid #ffc107; border-radius: 10px; padding: 1.5em; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+<h4 style="color: #856404; font-size: 1.2em; margin-bottom: 0.5em;">1️⃣ Create Database</h4>
+<p style="color: #4a5568; margin: 0;">
+  <strong>SQLite:</strong> No setup required - auto-created<br>
+  <strong>PostgreSQL/MySQL:</strong> Create server/instance manually or using Docker
+</p>
+</div>
+
+<div style="background: white; border: 2px solid #ffc107; border-radius: 10px; padding: 1.5em; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+<h4 style="color: #856404; font-size: 1.2em; margin-bottom: 0.5em;">2️⃣ Connect PyAutomation</h4>
+<p style="color: #4a5568; margin: 0;">
+  PyAutomation automatically creates all necessary tables when you establish the connection
+</p>
+</div>
+
+</div>
+
+</div>
+
+#### PostgreSQL Setup with Docker
+
+<div style="background: white; border: 2px solid #667eea; border-radius: 10px; padding: 2em; margin: 2em 0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
 
 ```bash
 # Create PostgreSQL container
@@ -107,7 +214,11 @@ docker run -d \
 # Wait for PostgreSQL to be ready, then connect PyAutomation
 ```
 
-**Example: Setting up MySQL with Docker**
+</div>
+
+#### MySQL Setup with Docker
+
+<div style="background: white; border: 2px solid #667eea; border-radius: 10px; padding: 2em; margin: 2em 0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
 
 ```bash
 # Create MySQL container
@@ -124,33 +235,51 @@ docker run -d \
 # Wait for MySQL to be ready, then connect PyAutomation
 ```
 
+</div>
+
 !!! warning "Database Must Be Created Before Connection"
     **You must create and configure the database server/instance before attempting to connect through the web configuration interface.**
-
+    
     - The database server must be running and accessible
     - The database instance must exist (for PostgreSQL/MySQL)
     - Connection credentials (host, port, user, password, database name) must be available
     - PyAutomation will automatically create all required tables when you establish the connection
-
+    
     If you try to connect before the database is ready, you will encounter connection errors in the web interface.
 
-## Running the Application
+---
+
+## 🏃 Running the Application
 
 ### Development Mode
 
-To run the application locally for development:
+<div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #2196f3;">
+
+<h3 style="color: #1976d2; font-size: 1.8em; margin-bottom: 1em;">
+  💻 Development Setup
+</h3>
+
+<p style="font-size: 1.1em; color: #1565c0; margin-bottom: 1.5em;">
+  To run the application locally for development:
+</p>
 
 ```bash
 python wsgi.py
 ```
 
-Or simply:
+<p style="font-size: 1em; color: #1565c0; margin-top: 1em;">
+  Or simply:
+</p>
 
 ```bash
 ./docker-entrypoint.sh
 ```
 
-The application will start and be accessible at `http://localhost:8050`.
+<p style="font-size: 1.1em; color: #1565c0; margin-top: 1.5em; font-weight: 600;">
+  The application will start and be accessible at <code style="background: rgba(33, 150, 243, 0.2); padding: 0.2em 0.4em; border-radius: 4px;">http://localhost:8050</code>
+</p>
+
+</div>
 
 !!! note "Database Connection Process"
     When you connect PyAutomation to a database through the web interface:
@@ -162,9 +291,21 @@ The application will start and be accessible at `http://localhost:8050`.
     
     **No manual table creation is required** - PyAutomation handles all schema initialization automatically upon connection.
 
-### Production (Docker)
+---
 
-For production deployments, Docker is the recommended approach.
+### 🐳 Production (Docker)
+
+<div style="background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #9c27b0;">
+
+<h3 style="color: #7b1fa2; font-size: 1.8em; margin-bottom: 1em;">
+  🚀 Production Deployment
+</h3>
+
+<p style="font-size: 1.1em; color: #6a1b9a; margin-bottom: 1.5em;">
+  For production deployments, <strong>Docker is the recommended approach</strong> for reliability, scalability, and ease of management.
+</p>
+
+</div>
 
 #### Docker Compose Configuration
 
@@ -208,23 +349,30 @@ volumes:
   automation_logs:
 ```
 
-**Configuration Notes:**
+<div style="background: #e8f5e9; border-left: 5px solid #4caf50; padding: 1.5em; margin: 2em 0; border-radius: 5px;">
 
-- **Image**: Uses the official `knowai/automation` image. Set `AUTOMATION_VERSION` environment variable to pin a specific version (defaults to `latest`).
-- **Ports**: Web interface port (default `8050`). Override with `AUTOMATION_PORT` environment variable.
-- **Volumes**: Persistent storage for database (`automation_db`) and logs (`automation_logs`) to survive container restarts.
-- **Logging**: JSON file driver with rotation (10MB per file, max 3 files).
-- **Resources**: CPU and memory limits for production stability.
-- **Healthcheck**: Automatic health monitoring every 15 seconds.
+<h4 style="color: #2e7d32; font-size: 1.3em; margin-bottom: 0.5em;">
+  📝 Configuration Notes
+</h4>
+
+<ul style="color: #1b5e20; line-height: 1.8;">
+  <li><strong>Image:</strong> Uses the official <code>knowai/automation</code> image. Set <code>AUTOMATION_VERSION</code> environment variable to pin a specific version (defaults to <code>latest</code>).</li>
+  <li><strong>Ports:</strong> Web interface port (default <code>8050</code>). Override with <code>AUTOMATION_PORT</code> environment variable.</li>
+  <li><strong>Volumes:</strong> Persistent storage for database (<code>automation_db</code>) and logs (<code>automation_logs</code>) to survive container restarts.</li>
+  <li><strong>Logging:</strong> JSON file driver with rotation (10MB per file, max 3 files).</li>
+  <li><strong>Resources:</strong> CPU and memory limits for production stability.</li>
+  <li><strong>Healthcheck:</strong> Automatic health monitoring every 15 seconds.</li>
+</ul>
+
+</div>
 
 #### Environment Variables for Production
 
-For production deployments, you can create a `.env` file in the same directory as `docker-compose.yml` to customize the Docker Compose template without modifying the `docker-compose.yml` file itself. This approach allows you to:
+<div style="background: white; border: 2px solid #667eea; border-radius: 10px; padding: 2em; margin: 2em 0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
 
-- Keep the `docker-compose.yml` template unchanged
-- Use different configurations for different environments (dev, staging, production)
-- Override default values easily
-- Maintain version control without exposing sensitive values
+<p style="font-size: 1.1em; color: #2d3748; margin-bottom: 1em;">
+  For production deployments, you can create a <code>.env</code> file in the same directory as <code>docker-compose.yml</code> to customize the Docker Compose template without modifying the <code>docker-compose.yml</code> file itself.
+</p>
 
 **Example `.env` file for production:**
 
@@ -237,48 +385,52 @@ AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER" # defaul
 AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
 ```
 
-**How it works:**
+<div style="background: rgba(102, 126, 234, 0.1); border-left: 4px solid #667eea; padding: 1em; margin-top: 1.5em; border-radius: 4px;">
 
-Docker Compose automatically reads the `.env` file from the same directory when you run `docker-compose up`. The variables defined in `.env` will replace the placeholders in `docker-compose.yml` (e.g., `${AUTOMATION_PORT:-8050}` will use the value from `.env` if present, or default to `8050` if not).
+<p style="margin: 0; color: #4a5568;">
+  <strong>💡 Best Practices:</strong>
+</p>
 
-**Best Practices:**
+<ul style="color: #4a5568; margin-top: 0.5em;">
+  <li><strong>Never commit <code>.env</code> files</strong> to version control if they contain sensitive information</li>
+  <li>Use different <code>.env</code> files for different environments (<code>.env.production</code>, <code>.env.staging</code>)</li>
+  <li>Document required variables in your deployment guide</li>
+  <li>Use <code>.env.example</code> as a template that can be safely committed to version control</li>
+</ul>
 
-- **Never commit `.env` files** to version control if they contain sensitive information
-- Use different `.env` files for different environments (`.env.production`, `.env.staging`)
-- Document required variables in your deployment guide
-- Use `.env.example` as a template that can be safely committed to version control
+</div>
+
+</div>
 
 #### Running with Docker Compose
 
-1. **Build the image** (optional, or use the pre-built one):
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5em; margin: 2em 0;">
 
-    ```bash
-    docker build -t pyautomation .
-    ```
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
+<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">1️⃣ Build</h4>
+<p style="margin: 0; opacity: 0.9;">Build the image (optional, or use pre-built)</p>
+<code style="background: rgba(255,255,255,0.2); padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker build -t pyautomation .</code>
+</div>
 
-2. **Start the container**:
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
+<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">2️⃣ Start</h4>
+<p style="margin: 0; opacity: 0.9;">Start the container</p>
+<code style="background: rgba(255,255,255,0.2); padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker-compose up -d</code>
+</div>
 
-    ```bash
-    docker-compose up -d
-    ```
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
+<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">3️⃣ Logs</h4>
+<p style="margin: 0; opacity: 0.9;">View logs</p>
+<code style="background: rgba(255,255,255,0.2); padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker-compose logs -f</code>
+</div>
 
-3. **View logs**:
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
+<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">4️⃣ Stop</h4>
+<p style="margin: 0; opacity: 0.9;">Stop the container</p>
+<code style="background: rgba(255,255,255,0.2); padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker-compose down</code>
+</div>
 
-    ```bash
-    docker-compose logs -f automation
-    ```
-
-4. **Stop the container**:
-
-    ```bash
-    docker-compose down
-    ```
-
-5. **Restart the container**:
-
-    ```bash
-    docker-compose restart
-    ```
+</div>
 
 !!! note "Database Setup for Docker Deployment"
     **For Docker deployments, ensure your database server is running before starting PyAutomation:**
@@ -318,27 +470,91 @@ Docker Compose automatically reads the `.env` file from the same directory when 
     4. Connect to PyAutomation web interface and configure database connection
     5. PyAutomation will automatically create all tables upon successful connection
 
-## Verify Installation
+---
 
-Once running, navigate to `http://localhost:8050/api/docs` (if API docs are enabled) or check the health endpoint:
-`http://localhost:8050/api/healthcheck/` (Assuming standard routes are set up).
+## ✅ Verify Installation
 
-You should see a JSON response indicating the service is healthy.
+<div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #4caf50;">
 
-## Next Steps: Complete Configuration
+<h3 style="color: #2e7d32; font-size: 1.8em; margin-bottom: 1em;">
+  🎉 Installation Complete!
+</h3>
 
-After successfully installing and starting PyAutomation, you need to configure the system to make it fully operational. The following configuration steps are essential:
+<p style="font-size: 1.1em; color: #1b5e20; margin-bottom: 1.5em;">
+  Once running, navigate to the following endpoints to verify your installation:
+</p>
 
-1. **Database Configuration**: Set up database connections for data persistence and historical logging
-2. **Tags Configuration**: Create and configure process variables (tags) that represent your industrial data points
-3. **Communications Setup**: Configure OPC UA servers and clients for field device connectivity
-4. **Alarms Configuration**: Define alarm conditions and thresholds for process monitoring and safety
+<div style="background: white; border-radius: 8px; padding: 1.5em; margin-top: 1em; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+
+<p style="margin: 0; color: #2d3748;">
+  <strong>API Documentation:</strong> <code style="background: rgba(76, 175, 80, 0.1); padding: 0.2em 0.4em; border-radius: 4px;">http://localhost:8050/api/docs</code>
+</p>
+
+<p style="margin: 0.5em 0 0 0; color: #2d3748;">
+  <strong>Health Check:</strong> <code style="background: rgba(76, 175, 80, 0.1); padding: 0.2em 0.4em; border-radius: 4px;">http://localhost:8050/api/healthcheck/</code>
+</p>
+
+</div>
+
+<p style="font-size: 1em; color: #1b5e20; margin-top: 1.5em;">
+  You should see a JSON response indicating the service is healthy. ✅
+</p>
+
+</div>
+
+---
+
+## 🎯 Next Steps: Complete Configuration
+
+<div align="center" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 15px; padding: 3em 2em; margin: 3em 0; box-shadow: 0 15px 35px rgba(0,0,0,0.2);">
+
+<h2 style="color: white; font-size: 2em; margin-bottom: 1.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">
+  Ready to Configure PyAutomation?
+</h2>
+
+<p style="color: white; font-size: 1.3em; line-height: 1.8; margin-bottom: 2em; opacity: 0.95;">
+  After successfully installing and starting PyAutomation, you need to configure the system to make it fully operational. The following configuration steps are essential:
+</p>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5em;">
+
+<div style="background: white; border-radius: 10px; padding: 1.5em; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+<h4 style="color: #667eea; font-size: 1.2em; margin-bottom: 0.5em;">💾 Database</h4>
+<p style="color: #4a5568; margin: 0;">Set up database connections for data persistence</p>
+</div>
+
+<div style="background: white; border-radius: 10px; padding: 1.5em; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+<h4 style="color: #667eea; font-size: 1.2em; margin-bottom: 0.5em;">🏷️ Tags</h4>
+<p style="color: #4a5568; margin: 0;">Create and configure process variables</p>
+</div>
+
+<div style="background: white; border-radius: 10px; padding: 1.5em; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+<h4 style="color: #667eea; font-size: 1.2em; margin-bottom: 0.5em;">🔌 Communications</h4>
+<p style="color: #4a5568; margin: 0;">Configure OPC UA servers and clients</p>
+</div>
+
+<div style="background: white; border-radius: 10px; padding: 1.5em; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+<h4 style="color: #667eea; font-size: 1.2em; margin-bottom: 0.5em;">🚨 Alarms</h4>
+<p style="color: #4a5568; margin: 0;">Define alarm conditions and thresholds</p>
+</div>
+
+</div>
+
+<div style="margin-top: 2em;">
+
+<a href="Users_Guide/index.md" style="display: inline-block; background: white; color: #667eea; padding: 1em 2em; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 1.1em; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: transform 0.2s;">
+  📖 Explore User Guide →
+</a>
+
+</div>
+
+</div>
 
 For detailed step-by-step instructions on completing these configurations, please refer to the **[User Guide](Users_Guide/index.md)**. The User Guide provides comprehensive documentation on:
 
-- [Database Configuration](Users_Guide/Database/index.md): Connecting to SQLite, PostgreSQL, or MySQL databases
-- [Tags Management](Users_Guide/Tags/index.md): Creating, updating, and managing process tags
-- [OPC UA Communications](Users_Guide/Communications/index.md): Setting up OPC UA server and client connections
-- [Alarms Setup](Users_Guide/Alarms/index.md): Configuring alarm conditions, thresholds, and states
+- **[Database Configuration](Users_Guide/Database/index.md)**: Connecting to SQLite, PostgreSQL, or MySQL databases
+- **[Tags Management](Users_Guide/Tags/index.md)**: Creating, updating, and managing process tags
+- **[OPC UA Communications](Users_Guide/Communications/index.md)**: Setting up OPC UA server and client connections
+- **[Alarms Setup](Users_Guide/Alarms/index.md)**: Configuring alarm conditions, thresholds, and states
 
 Follow the User Guide modules in sequence to ensure a complete and properly configured PyAutomation deployment.

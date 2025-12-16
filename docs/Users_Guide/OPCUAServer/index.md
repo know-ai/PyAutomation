@@ -1,6 +1,16 @@
 # OPC UA Server Module
 
-The **OPC UA Server Module** manages PyAutomation's embedded OPC UA Server, which exposes your automation data (tags, alarms, and state machines) to external OPC UA clients such as SCADA systems, HMIs, and other industrial automation applications.
+<div align="center" style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: #e65100; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  🌐 Expose Your Data
+</h2>
+
+<p style="color: #d84315; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  The <strong>OPC UA Server Module</strong> manages PyAutomation's embedded OPC UA Server, which exposes your automation data (tags, alarms, and state machines) to external OPC UA clients such as SCADA systems, HMIs, and other industrial automation applications.
+</p>
+
+</div>
 
 ## What is an OPC UA Server?
 

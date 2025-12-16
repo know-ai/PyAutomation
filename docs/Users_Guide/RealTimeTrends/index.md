@@ -1,6 +1,16 @@
 # Real-Time Trends Module
 
-The **Real-Time Trends Module** provides a powerful visualization interface for monitoring process variables in real-time using configurable strip charts. This module enables operators and engineers to create custom dashboards with multiple charts displaying live data from selected tags.
+<div align="center" style="background: linear-gradient(135deg, #e1f5fe 0%, #b3e5fc 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: #0277bd; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  📊 Live Process Visualization
+</h2>
+
+<p style="color: #01579b; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  The <strong>Real-Time Trends Module</strong> provides a powerful visualization interface for monitoring process variables in real-time using configurable strip charts. This module enables operators and engineers to create custom dashboards with multiple charts displaying live data from selected tags.
+</p>
+
+</div>
 
 ## What are Real-Time Trends?
 

@@ -1,6 +1,16 @@
 # Updating a Tag
 
-PyAutomation allows for the seamless modification of tag properties through an edit form. This ensures that all tag configurations can be updated in a structured and organized manner.
+<div align="center" style="background: linear-gradient(135deg, #e1f5fe 0%, #b3e5fc 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: #0277bd; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  ✏️ Modify Tag Properties
+</h2>
+
+<p style="color: #01579b; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  PyAutomation allows for the seamless modification of tag properties through an edit form. This ensures that all tag configurations can be updated in a structured and organized manner.
+</p>
+
+</div>
 
 ## Editing Procedure
 

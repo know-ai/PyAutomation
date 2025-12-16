@@ -641,11 +641,11 @@ PyAutomation follows SOLID principles for maintainable, extensible code:
 
 Want to learn more about specific components?
 
-*   **[Architecture Components](Developments_Guide/architecture_components.md)**: Detailed explanation of Workers, Engines, and Managers
-*   **[State Machines](Developments_Guide/core/state_machines.md)**: How to build custom state machines
-*   **[CVT Engine](Developments_Guide/core/cvt.md)**: Current Value Table internals
-*   **[Alarm System](Developments_Guide/core/alarms.md)**: Alarm management architecture
-*   **[API Reference](Developments_Guide/API/index.md)**: Complete API documentation
+*   **[Architecture Components](../Developments_Guide/architecture_components/)**: Detailed explanation of Workers, Engines, and Managers
+*   **[State Machines](../Developments_Guide/core/state_machines/)**: How to build custom state machines
+*   **[CVT Engine](../Developments_Guide/core/cvt/)**: Current Value Table internals
+*   **[Alarm System](../Developments_Guide/core/alarms/)**: Alarm management architecture
+*   **[API Reference](../Developments_Guide/API/)**: Complete API documentation
 
 ---
 
@@ -706,15 +706,15 @@ Want to learn more about specific components?
 
 <div style="display: flex; flex-direction: column; gap: 1em; align-items: center;">
 
-<a href="Users_Guide/index.md" style="display: inline-block; background: white; color: #667eea; padding: 1em 2em; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 1.1em; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: transform 0.2s;">
+<a href="../Users_Guide/" style="display: inline-block; background: white; color: #667eea; padding: 1em 2em; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 1.1em; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: transform 0.2s;">
   📖 User Guide - Learn how to use PyAutomation
 </a>
 
-<a href="Developments_Guide/index.md" style="display: inline-block; background: white; color: #667eea; padding: 1em 2em; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 1.1em; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: transform 0.2s;">
+<a href="../Developments_Guide/" style="display: inline-block; background: white; color: #667eea; padding: 1em 2em; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 1.1em; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: transform 0.2s;">
   🔧 Developer Guide - Build custom extensions
 </a>
 
-<a href="Developments_Guide/API/index.md" style="display: inline-block; background: white; color: #667eea; padding: 1em 2em; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 1.1em; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: transform 0.2s;">
+<a href="../Developments_Guide/API/" style="display: inline-block; background: white; color: #667eea; padding: 1em 2em; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 1.1em; box-shadow: 0 4px 6px rgba(0,0,0,0.2); transition: transform 0.2s;">
   📚 API Reference - Complete API documentation
 </a>
 

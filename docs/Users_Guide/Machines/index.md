@@ -1,6 +1,16 @@
 # Machines Module
 
-The **Machines Module** provides a comprehensive interface for monitoring and managing state machines (engines) running in the PyAutomation system. State machines are the core execution units that handle control logic, data acquisition, alarm processing, and other automation tasks.
+<div align="center" style="background: linear-gradient(135deg, #fce4ec 0%, #f8bbd0 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: #ad1457; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  🤖 State Machine Management
+</h2>
+
+<p style="color: #880e4f; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  The <strong>Machines Module</strong> provides a comprehensive interface for monitoring and managing state machines (engines) running in the PyAutomation system. State machines are the core execution units that handle control logic, data acquisition, alarm processing, and other automation tasks.
+</p>
+
+</div>
 
 ## What are State Machines?
 

@@ -7,26 +7,37 @@ edit_uri: ""
 theme:
   name: material
   language: en
+  logo: img/PyAutomationCore.svg
+  favicon: img/PyAutomationCore.svg
   features:
     - navigation.tabs
     - navigation.sections
     - navigation.top
     - navigation.indexes
+    - navigation.expand
+    - navigation.path
+    - navigation.tracking
     - search.suggest
     - search.highlight
+    - search.share
     - content.tabs.link
     - content.code.copy
+    - content.code.annotate
+    - content.tooltips
     - toc.follow
+    - toc.integrate
   palette:
+    # Light mode - Modern gradient theme
     - scheme: default
       primary: indigo
-      accent: indigo
+      accent: pink
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
+    # Dark mode - Professional slate theme
     - scheme: slate
       primary: indigo
-      accent: indigo
+      accent: pink
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -35,6 +46,7 @@ theme:
     code: Roboto Mono
   icon:
     repo: fontawesome/brands/github
+    logo: fontawesome/solid/robot
 
 nav:
   - Summary: "index.md"

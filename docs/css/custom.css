@@ -1,10 +1,908 @@
-div.autodoc-docstring {
-  padding-left: 20px;
-  margin-bottom: 30px;
-  border-left: 5px solid rgba(64, 81, 181);
+/* ============================================
+   PyAutomation - World-Class Documentation Styles
+   Premium Theme with Modern Design
+   ============================================ */
+
+/* CSS Variables for Consistent Theming */
+:root {
+  --pyautomation-primary: #6366f1;
+  --pyautomation-primary-dark: #4f46e5;
+  --pyautomation-primary-light: #818cf8;
+  --pyautomation-accent: #ec4899;
+  --pyautomation-accent-light: #f472b6;
+  --pyautomation-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --pyautomation-gradient-alt: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  --pyautomation-gradient-navbar: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --pyautomation-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+  --pyautomation-shadow-hover: 0 15px 40px rgba(102, 126, 234, 0.4);
+  --pyautomation-border-radius: 12px;
+  --pyautomation-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-div.autodoc-members {
+/* ============================================
+   Navbar Enhancements - Premium Design
+   ============================================ */
+.md-header {
+  background: var(--pyautomation-gradient-navbar) !important;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+  border-bottom: 3px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  transition: var(--pyautomation-transition);
+}
+
+.md-header:hover {
+  box-shadow: 0 6px 25px rgba(102, 126, 234, 0.5);
+}
+
+.md-header__title {
+  font-weight: 700;
+  font-size: 1.3rem;
+  letter-spacing: 0.5px;
+}
+
+.md-header__button {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.md-header__button:hover {
+  transform: scale(1.1);
+  opacity: 0.9;
+}
+
+/* Navbar search enhancement */
+.md-search__form {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  border-radius: 25px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.md-search__form:hover {
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.md-search__input {
+  color: white;
+}
+
+.md-search__input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ============================================
+   Sidebar Enhancements - Premium Navigation
+   ============================================ */
+.md-sidebar {
+  background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+  border-right: 2px solid #e5e7eb;
+  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.08);
+}
+
+.md-sidebar--primary {
+  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+  border-right: 2px solid rgba(99, 102, 241, 0.1);
+}
+
+/* Sidebar scrollbar */
+.md-sidebar__scrollwrap {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pyautomation-primary) #f1f5f9;
+}
+
+/* Sidebar navigation items */
+.md-nav__item {
+  margin: 2px 0;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.md-nav__item:hover {
+  background: rgba(99, 102, 241, 0.1);
+  transform: translateX(4px);
+}
+
+.md-nav__link {
+  padding: 8px 16px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.md-nav__link:hover {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--pyautomation-primary);
   padding-left: 20px;
-  margin-bottom: 15px;
+}
+
+.md-nav__link--active {
+  background: var(--pyautomation-gradient);
+  color: white !important;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  position: relative;
+}
+
+.md-nav__link--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: white;
+  border-radius: 0 4px 4px 0;
+  box-shadow: 2px 0 8px rgba(255, 255, 255, 0.5);
+}
+
+.md-nav__link--active:hover {
+  background: var(--pyautomation-primary-dark);
+  transform: translateX(4px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.5);
+}
+
+/* Nested navigation items */
+.md-nav__item--nested > .md-nav__link {
+  font-weight: 600;
+  color: #374151;
+}
+
+.md-nav__item--nested > .md-nav__link::after {
+  color: var(--pyautomation-primary);
+}
+
+/* ============================================
+   Content Area Enhancements
+   ============================================ */
+.md-content {
+  background: #ffffff;
+}
+
+.md-content__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Headings with gradient accents */
+.md-content h1 {
+  background: var(--pyautomation-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 800;
+  font-size: 2.5em;
+  margin-bottom: 1em;
+  border-bottom: 3px solid;
+  border-image: var(--pyautomation-gradient) 1;
+  padding-bottom: 0.5em;
+}
+
+.md-content h2 {
+  color: var(--pyautomation-primary);
+  font-weight: 700;
+  font-size: 2em;
+  margin-top: 2em;
+  margin-bottom: 1em;
+  padding-left: 1rem;
+  border-left: 4px solid var(--pyautomation-primary);
+}
+
+.md-content h3 {
+  color: var(--pyautomation-primary-dark);
+  font-weight: 600;
+  font-size: 1.5em;
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+}
+
+.md-content h4 {
+  color: #4b5563;
+  font-weight: 600;
+  font-size: 1.25em;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+/* ============================================
+   Code Blocks Enhancement
+   ============================================ */
+.highlight {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.highlight pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 1.5em;
+  margin: 0;
+  overflow-x: auto;
+}
+
+/* Inline code */
+code {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--pyautomation-primary-dark);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+/* ============================================
+   Tables Enhancement
+   ============================================ */
+.md-typeset table:not([class]) {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+}
+
+.md-typeset table:not([class]) thead {
+  background: var(--pyautomation-gradient);
+  color: white;
+}
+
+.md-typeset table:not([class]) thead th {
+  font-weight: 600;
+  padding: 1em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.85em;
+}
+
+.md-typeset table:not([class]) tbody tr {
+  transition: all 0.2s ease;
+}
+
+.md-typeset table:not([class]) tbody tr:hover {
+  background: rgba(99, 102, 241, 0.05);
+  transform: scale(1.01);
+}
+
+.md-typeset table:not([class]) tbody td {
+  padding: 1em;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* ============================================
+   Admonitions Enhancement
+   ============================================ */
+.md-typeset .admonition {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid;
+  overflow: hidden;
+}
+
+.md-typeset .admonition-title {
+  font-weight: 600;
+  padding: 1em 1.5em;
+  margin: 0;
+}
+
+.md-typeset .admonition-title::before {
+  font-size: 1.5em;
+  margin-right: 0.5em;
+}
+
+/* ============================================
+   Links Enhancement
+   ============================================ */
+.md-typeset a {
+  color: var(--pyautomation-primary);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.md-typeset a:hover {
+  color: var(--pyautomation-primary-dark);
+  border-bottom-color: var(--pyautomation-primary);
+  transform: translateY(-1px);
+}
+
+.md-typeset a:visited {
+  color: var(--pyautomation-primary-light);
+}
+
+/* ============================================
+   Buttons and Call-to-Actions
+   ============================================ */
+.md-typeset a[href^="http"]:not(.md-button)::after {
+  content: " ↗";
+  font-size: 0.8em;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.md-typeset a[href^="http"]:not(.md-button):hover::after {
+  opacity: 1;
+}
+
+/* ============================================
+   Custom Div Styling
+   ============================================ */
+.md-typeset div[align="center"] {
+  margin: 2em 0;
+}
+
+/* Gradient boxes */
+.md-typeset div[style*="gradient"] {
+  border-radius: 15px;
+  padding: 2em;
+  margin: 2em 0;
+  box-shadow: var(--pyautomation-shadow);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.md-typeset div[style*="gradient"]:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--pyautomation-shadow-hover);
+}
+
+/* ============================================
+   Images Enhancement
+   ============================================ */
+.md-typeset img {
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border: 2px solid #e5e7eb;
+}
+
+.md-typeset img:hover {
+  transform: scale(1.02);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================
+   Blockquotes Enhancement
+   ============================================ */
+.md-typeset blockquote {
+  border-left: 4px solid var(--pyautomation-primary);
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 8px;
+  padding: 1.5em;
+  margin: 1.5em 0;
+  font-style: italic;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* ============================================
+   Lists Enhancement
+   ============================================ */
+.md-typeset ul li::marker {
+  color: var(--pyautomation-primary);
+  font-weight: bold;
+}
+
+.md-typeset ol li::marker {
+  color: var(--pyautomation-primary);
+  font-weight: bold;
+}
+
+.md-typeset ul li,
+.md-typeset ol li {
+  margin: 0.5em 0;
+  padding-left: 0.5em;
+}
+
+/* ============================================
+   Tabs Enhancement (if using pymdownx.tabbed)
+   ============================================ */
+.md-typeset .tabbed-set {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.md-typeset .tabbed-set > input:checked + label {
+  background: var(--pyautomation-gradient);
+  color: white;
+  font-weight: 600;
+}
+
+.md-typeset .tabbed-content {
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  padding: 1.5em;
+}
+
+/* ============================================
+   Scrollbar Styling
+   ============================================ */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--pyautomation-gradient);
+  border-radius: 6px;
+  border: 2px solid #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--pyautomation-primary-dark);
+}
+
+/* ============================================
+   Footer Enhancement
+   ============================================ */
+.md-footer {
+  background: #1e293b;
+  color: #e2e8f0;
+  margin-top: 4em;
+}
+
+.md-footer__inner {
+  padding: 2em 0;
+}
+
+.md-footer__link {
+  color: var(--pyautomation-primary-light);
+  transition: color 0.2s ease;
+}
+
+.md-footer__link:hover {
+  color: white;
+}
+
+/* ============================================
+   Search Results Enhancement
+   ============================================ */
+.md-search-result__article {
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.md-search-result__article:hover {
+  background: rgba(99, 102, 241, 0.1);
+  transform: translateX(4px);
+}
+
+/* ============================================
+   Dark Mode Enhancements
+   ============================================ */
+[data-md-color-scheme="slate"] {
+  --pyautomation-primary: #818cf8;
+  --pyautomation-primary-dark: #6366f1;
+}
+
+[data-md-color-scheme="slate"] .md-sidebar {
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  border-right: 1px solid #334155;
+}
+
+[data-md-color-scheme="slate"] .md-content {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+[data-md-color-scheme="slate"] .md-typeset h2 {
+  border-left-color: var(--pyautomation-primary);
+}
+
+[data-md-color-scheme="slate"] code {
+  background: rgba(129, 140, 248, 0.2);
+  color: var(--pyautomation-primary-light);
+}
+
+[data-md-color-scheme="slate"] .md-typeset blockquote {
+  background: rgba(129, 140, 248, 0.1);
+  border-left-color: var(--pyautomation-primary);
+}
+
+/* Dark mode tabs enhancement */
+[data-md-color-scheme="slate"] .md-tabs {
+  background: rgba(30, 41, 59, 0.98) !important;
+  border-bottom: 3px solid rgba(129, 140, 248, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-md-color-scheme="slate"] .md-tabs__link {
+  color: #cbd5e1 !important;
+  background: rgba(99, 102, 241, 0.15) !important;
+  border-color: rgba(129, 140, 248, 0.2);
+}
+
+[data-md-color-scheme="slate"] .md-tabs__link:hover {
+  background: rgba(99, 102, 241, 0.25) !important;
+  color: var(--pyautomation-primary-light) !important;
+  border-color: rgba(129, 140, 248, 0.4);
+}
+
+[data-md-color-scheme="slate"] .md-tabs__link--active {
+  background: var(--pyautomation-gradient) !important;
+  color: white !important;
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.md-content__inner {
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* ============================================
+   Print Styles
+   ============================================ */
+@media print {
+  .md-sidebar,
+  .md-header {
+    display: none;
+  }
+  
+  .md-content {
+    max-width: 100%;
+  }
+}
+
+/* ============================================
+   Mobile Responsiveness
+   ============================================ */
+@media screen and (max-width: 768px) {
+  .md-content__inner {
+    padding: 1rem;
+  }
+  
+  .md-content h1 {
+    font-size: 2em;
+  }
+  
+  .md-content h2 {
+    font-size: 1.5em;
+  }
+}
+
+/* ============================================
+   Special Effects for Key Sections
+   ============================================ */
+.md-typeset hr {
+  border: none;
+  height: 3px;
+  background: var(--pyautomation-gradient);
+  border-radius: 2px;
+  margin: 3em 0;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+/* Mermaid diagram containers */
+.mermaid {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5em;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  margin: 2em 0;
+}
+
+[data-md-color-scheme="slate"] .mermaid {
+  background: #1e293b;
+}
+
+/* ============================================
+   Badge and Label Styling
+   ============================================ */
+.md-typeset .badge {
+  display: inline-block;
+  padding: 0.25em 0.75em;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: 600;
+  background: var(--pyautomation-gradient);
+  color: white;
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+}
+
+/* ============================================
+   Custom Card Styling
+   ============================================ */
+.md-typeset .card {
+  background: white;
+  border-radius: 12px;
+  padding: 2em;
+  margin: 1.5em 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  transition: all 0.3s ease;
+}
+
+.md-typeset .card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .card {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+/* ============================================
+   Navigation Tabs Enhancement - Highly Visible
+   ============================================ */
+.md-tabs {
+  background: rgba(255, 255, 255, 0.98) !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 3px solid rgba(99, 102, 241, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 2.4rem;
+  z-index: 999;
+  padding: 0.5rem 0;
+}
+
+/* Make tabs more visible with better contrast */
+.md-tabs__link {
+  transition: var(--pyautomation-transition);
+  border-radius: 8px 8px 0 0;
+  margin: 0 3px;
+  padding: 0.8em 1.5em;
+  font-weight: 600;
+  color: #4b5563 !important;
+  background: rgba(99, 102, 241, 0.05) !important;
+  border: 1px solid rgba(99, 102, 241, 0.1);
+  border-bottom: none;
+  opacity: 1 !important;
+  display: inline-block;
+}
+
+.md-tabs__link:hover {
+  background: rgba(99, 102, 241, 0.15) !important;
+  color: var(--pyautomation-primary) !important;
+  transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.md-tabs__link--active {
+  background: var(--pyautomation-gradient) !important;
+  color: white !important;
+  font-weight: 700;
+  box-shadow: 0 -6px 16px rgba(99, 102, 241, 0.4);
+  border-color: transparent;
+  transform: translateY(-2px);
+}
+
+.md-tabs__link--active:hover {
+  background: var(--pyautomation-primary-dark) !important;
+  transform: translateY(-4px);
+  box-shadow: 0 -8px 20px rgba(99, 102, 241, 0.5);
+}
+
+/* ============================================
+   Table of Contents Enhancement
+   ============================================ */
+.md-nav--secondary {
+  border-left: 2px solid rgba(99, 102, 241, 0.1);
+  padding-left: 1em;
+}
+
+.md-nav--secondary .md-nav__link {
+  color: #6b7280;
+  font-size: 0.9em;
+  padding: 0.5em 1em;
+  border-radius: 6px;
+  transition: var(--pyautomation-transition);
+}
+
+.md-nav--secondary .md-nav__link:hover {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--pyautomation-primary);
+  padding-left: 1.2em;
+}
+
+.md-nav--secondary .md-nav__link--active {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--pyautomation-primary);
+  font-weight: 600;
+  border-left: 3px solid var(--pyautomation-primary);
+  padding-left: 1.5em;
+}
+
+/* ============================================
+   Logo and Branding
+   ============================================ */
+.md-header__button.md-logo {
+  padding: 0.4rem;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 2rem;
+  width: 2rem;
+  transition: transform 0.3s ease;
+}
+
+.md-header__button.md-logo:hover img,
+.md-header__button.md-logo:hover svg {
+  transform: scale(1.1) rotate(5deg);
+}
+
+/* ============================================
+   Search Modal Enhancement
+   ============================================ */
+.md-search__overlay {
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+.md-search__inner {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 2px solid rgba(99, 102, 241, 0.2);
+}
+
+[data-md-color-scheme="slate"] .md-search__inner {
+  background: #1e293b;
+  border-color: rgba(129, 140, 248, 0.3);
+}
+
+/* ============================================
+   Code Copy Button Enhancement
+   ============================================ */
+.md-clipboard {
+  color: var(--pyautomation-primary);
+  transition: var(--pyautomation-transition);
+}
+
+.md-clipboard:hover {
+  color: var(--pyautomation-primary-dark);
+  transform: scale(1.2);
+}
+
+.md-clipboard:after {
+  background: var(--pyautomation-gradient);
+  color: white;
+  border-radius: 6px;
+  padding: 0.5em 1em;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+/* ============================================
+   Tooltip Enhancement
+   ============================================ */
+.md-tooltip {
+  background: #1e293b;
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   Selection Enhancement
+   ============================================ */
+::selection {
+  background: rgba(99, 102, 241, 0.3);
+  color: inherit;
+}
+
+::-moz-selection {
+  background: rgba(99, 102, 241, 0.3);
+  color: inherit;
+}
+
+/* ============================================
+   Focus States
+   ============================================ */
+.md-typeset a:focus,
+.md-typeset button:focus,
+.md-typeset input:focus {
+  outline: 2px solid var(--pyautomation-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============================================
+   Loading States
+   ============================================ */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.md-content__inner.loading {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ============================================
+   Smooth Scrolling
+   ============================================ */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ============================================
+   Print Optimization
+   ============================================ */
+@media print {
+  .md-sidebar,
+  .md-header,
+  .md-footer,
+  .md-tabs {
+    display: none !important;
+  }
+  
+  .md-content {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  .md-content__inner {
+    padding: 0 !important;
+  }
+  
+  .md-typeset img {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+  }
+  
+  .md-typeset a {
+    color: #000 !important;
+    text-decoration: underline !important;
+  }
+  
+  .md-typeset a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #666;
+  }
+}
+
+/* ============================================
+   Accessibility Enhancements
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .md-typeset a {
+    text-decoration: underline;
+  }
+  
+  .md-nav__link--active {
+    outline: 2px solid currentColor;
+  }
 }

@@ -1,12 +1,30 @@
 # Alarms Module
 
-The **Alarms Module** is a critical component of PyAutomation that enables real-time monitoring, detection, and notification of abnormal process conditions. This module implements the ISA-18.2 alarm management standard, providing a robust framework for industrial alarm systems that ensures operators are promptly informed of conditions requiring attention.
+<div align="center" style="background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
 
-## What is an Alarm?
+<h2 style="color: #c62828; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  🚨 Enterprise-Grade Alarm Management
+</h2>
 
-An **Alarm** in PyAutomation is a configurable monitoring mechanism that continuously evaluates a tag's value against predefined trigger conditions. When a condition is met, the alarm transitions to an active state and notifies operators through the user interface and, if configured, external notification systems.
+<p style="color: #b71c1c; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  The <strong>Alarms Module</strong> is a critical component of PyAutomation that enables real-time monitoring, detection, and notification of abnormal process conditions. This module implements the ISA-18.2 alarm management standard, providing a robust framework for industrial alarm systems that ensures operators are promptly informed of conditions requiring attention.
+</p>
 
-Alarms serve multiple critical functions in industrial automation:
+</div>
+
+## 🔔 What is an Alarm?
+
+<div style="background: #f8f9fa; border-left: 5px solid #f44336; padding: 1.5em; margin: 2em 0; border-radius: 5px;">
+
+<p style="font-size: 1.1em; color: #2d3748; margin-bottom: 1em;">
+  An <strong>Alarm</strong> in PyAutomation is a configurable monitoring mechanism that continuously evaluates a tag's value against predefined trigger conditions. When a condition is met, the alarm transitions to an active state and notifies operators through the user interface and, if configured, external notification systems.
+</p>
+
+<p style="font-size: 1.1em; color: #2d3748; margin-top: 1em;">
+  Alarms serve multiple critical functions in industrial automation:
+</p>
+
+</div>
 
 *   **Safety**: Detect dangerous conditions that could lead to equipment damage or safety hazards
 *   **Process Quality**: Monitor process variables to ensure product quality and operational efficiency
@@ -26,9 +44,19 @@ When you first access the Alarms Module, you'll see an empty dashboard indicatin
 
 Once alarms are created and active, the dashboard displays them in a comprehensive table showing current states, trigger values, and management actions.
 
-## Alarm Types
+## 📋 Alarm Types
 
-PyAutomation supports several alarm types to accommodate different monitoring requirements:
+<div align="center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; padding: 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h3 style="color: white; font-size: 1.8em; margin-bottom: 1em; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">
+  Comprehensive Alarm Type Support
+</h3>
+
+<p style="color: white; font-size: 1.2em; opacity: 0.95;">
+  PyAutomation supports several alarm types to accommodate different monitoring requirements
+</p>
+
+</div>
 
 ### BOOL (Boolean)
 
@@ -462,9 +490,19 @@ Alarms integrate with other PyAutomation modules:
 *   **Events**: Alarm state changes generate events that are logged in the Events Module
 *   **Operational Logs**: Alarm acknowledgments and state changes are recorded in operational logs
 
-## Getting Started
+## 🚀 Getting Started
 
-To begin working with alarms:
+<div align="center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; padding: 2.5em; margin: 3em 0; box-shadow: 0 15px 35px rgba(0,0,0,0.2);">
+
+<h3 style="color: white; font-size: 1.8em; margin-bottom: 1em; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">
+  Ready to Set Up Your Alarm System?
+</h3>
+
+<p style="color: white; font-size: 1.2em; line-height: 1.8; margin-bottom: 1.5em; opacity: 0.95;">
+  To begin working with alarms:
+</p>
+
+</div>
 
 1.   **Ensure Prerequisites**: 
      *   Tags are created and receiving data (see [Tags Module](../Tags/index.md))

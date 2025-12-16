@@ -1,6 +1,16 @@
 # Deleting a Tag
 
-When a tag is no longer required in the automation system, it can be permanently removed from the configuration.
+<div align="center" style="background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: #c62828; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  🗑️ Remove Tags from Your System
+</h2>
+
+<p style="color: #b71c1c; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  When a tag is no longer required in the automation system, it can be permanently removed from the configuration.
+</p>
+
+</div>
 
 ## Deletion Procedure
 

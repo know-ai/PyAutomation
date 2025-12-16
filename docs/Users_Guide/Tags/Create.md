@@ -1,10 +1,26 @@
 # Creating a Tag
 
-The creation of a new tag involves defining its identity, physical properties, and communication settings. Follow the steps below to configure a new tag in the PyAutomation dashboard.
+<div align="center" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
 
-## Opening the Create Tag Dialog
+<h2 style="color: #1976d2; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1);">
+  ➕ Create Your First Tag
+</h2>
 
-To begin creating a new tag:
+<p style="color: #1565c0; font-size: 1.4em; margin-top: 1em; font-weight: 300;">
+  The creation of a new tag involves defining its identity, physical properties, and communication settings. Follow the steps below to configure a new tag in the PyAutomation dashboard.
+</p>
+
+</div>
+
+## 🚪 Opening the Create Tag Dialog
+
+<div style="background: #f8f9fa; border-left: 5px solid #2196f3; padding: 1.5em; margin: 2em 0; border-radius: 5px;">
+
+<p style="font-size: 1.1em; color: #2d3748; margin-bottom: 1em;">
+  To begin creating a new tag:
+</p>
+
+</div>
 
 1. Navigate to the **Tags** module from the main menu
 2. Click the **Create Tag** button (green button with plus icon) located in the top-right corner of the Tags Dashboard
@@ -100,9 +116,19 @@ Set a threshold for value changes. Updates are only processed if the value chang
 
 ![Deadband Configuration](../images/CreateTagForm_Deadband.png)
 
-### 10. Advanced Configuration (Optional)
+### 🔧 10. Advanced Configuration (Optional)
 
-The Advanced Configuration section provides powerful tools for improving data quality, detecting anomalies, and organizing tags within your industrial system. These features help ensure reliable data collection and early detection of potential issues.
+<div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #ff9800;">
+
+<h4 style="color: #e65100; font-size: 1.5em; margin-bottom: 1em;">
+  ⚙️ Powerful Tools for Data Quality
+</h4>
+
+<p style="font-size: 1.1em; color: #d84315; margin-bottom: 1.5em;">
+  The Advanced Configuration section provides powerful tools for improving data quality, detecting anomalies, and organizing tags within your industrial system. These features help ensure reliable data collection and early detection of potential issues.
+</p>
+
+</div>
 
 ![Advanced Configuration Options](../images/CreateTagPollingAndFilterConfiguration.png)
 
