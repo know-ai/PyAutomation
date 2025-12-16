@@ -41,7 +41,7 @@ The Operational Logs Module provides a powerful interface to:
 2. The dashboard displays logs in a table with filtering controls at the top
 3. Logs are sorted by timestamp (newest first) by default
 
-<!-- TODO: Add image OperationalLogs_EmptyState.png - Screenshot of the Operational Logs page when no logs are available -->
+![Operational Logs Empty State](../images/OperationalLogs_EmptyState.png)
 
 ## Understanding Log Information
 
@@ -56,7 +56,7 @@ The Operational Logs Module provides a powerful interface to:
 *   **Linked Event**: Reference to the event this log is associated with (if applicable)
 *   **Actions**: Button to view details or create related logs
 
-<!-- TODO: Add image OperationalLogs_TableColumns.png - Screenshot showing the log table with all columns visible -->
+![Operational Logs Table Columns](../images/OperationalLogs_TableColumns.png)
 
 ## Filtering Operational Logs
 
@@ -76,7 +76,7 @@ Quick selection buttons for common time ranges:
 *   **Last Month**: Logs from the past 30 days
 *   **Custom**: Define your own date range
 
-<!-- TODO: Add image OperationalLogs_DateRangePresets.png - Screenshot showing the preset date range buttons -->
+![Operational Logs Date Range Presets](../images/OperationalLogs_DateRangePresets.png)
 
 #### Custom Date Range
 
@@ -89,7 +89,7 @@ To define a custom date range:
 3. Select dates and times using the pickers
 4. The filter automatically applies when dates are selected
 
-<!-- TODO: Add image OperationalLogs_CustomDateRange.png - Screenshot showing custom date/time pickers -->
+![Operational Logs Custom Date Range](../images/OperationalLogs_CustomDateRange.png)
 
 ### User Filter
 
@@ -99,7 +99,7 @@ Filter logs by specific users:
 *   **Multiple Users**: Select multiple users to see logs from any of them
 *   **Clear Selection**: Deselect all to show logs from all users
 
-<!-- TODO: Add image OperationalLogs_UserFilter.png - Screenshot showing the user filter dropdown -->
+![Operational Logs User Filter](../images/OperationalLog_UsersFilter.png)
 
 ### Alarm Filter
 
@@ -110,59 +110,17 @@ Filter logs linked to specific alarms:
 *   **Use Case**: Review all operational notes and comments for specific alarm occurrences
 *   **Clear Selection**: Deselect all to show logs not filtered by alarm
 
-<!-- TODO: Add image OperationalLogs_AlarmFilter.png - Screenshot showing the alarm filter dropdown -->
+![Operational Logs Alarm Filter](../images/OperationalLogs_AlarmsFilter.png)
 
-### Classification Filter
-
-Filter logs by classification/category:
-
-*   **Options**: Alarm, Event, Operational, System, etc.
-*   **Selection**: Dropdown or multi-select depending on implementation
-*   **Use Case**: Focus on specific types of operational activities
-
-<!-- TODO: Add image OperationalLogs_ClassificationFilter.png - Screenshot showing the classification filter -->
-
-### Message Search
-
-Search for logs by message content:
-
-*   **Text Input**: Enter keywords or phrases to search
-*   **Partial Matching**: Searches for partial matches in log messages
-*   **Case Sensitivity**: Typically case-insensitive
-*   **Use Case**: Find specific logs by searching for keywords
-
-<!-- TODO: Add image OperationalLogs_MessageSearch.png - Screenshot showing the message search input field -->
-
-### Description Search
-
-Search for logs by description content:
-
-*   **Text Input**: Enter keywords to search in log descriptions
-*   **Partial Matching**: Finds logs with matching text in descriptions
-*   **Use Case**: Find logs with specific details or context
-
-<!-- TODO: Add image OperationalLogs_DescriptionSearch.png - Screenshot showing the description search field -->
-
-### Timezone Selection
-
-View logs in your preferred timezone:
-
-*   **Dropdown**: Select from available timezones
-*   **Options**: UTC, local timezone, and other common timezones
-*   **Impact**: Changes timestamp display for all logs
-*   **Persistence**: Timezone selection may be saved in browser storage
-
-<!-- TODO: Add image OperationalLogs_TimezoneSelector.png - Screenshot showing the timezone dropdown -->
 
 ### Applying Filters
 
 *   **Automatic Application**: Filters apply automatically as you change them
 *   **Combined Filters**: Multiple filters work together (AND logic)
-*   **Clear Filters**: Button to reset all filters to defaults
 *   **Filter Count**: May show number of logs matching current filters
 
-<!-- TODO: Add image OperationalLogs_FiltersApplied.png - Screenshot showing multiple filters applied with results -->
-<!-- TODO: Add image OperationalLogs_ClearFiltersButton.png - Screenshot showing the clear filters button -->
+![Operational Logs Filters Applied](../images/OperationalLogs_FilterApplied.png)
+
 
 ## Creating Operational Logs
 
@@ -181,9 +139,9 @@ You can create new operational logs to document activities, decisions, or observ
 4. Click **Create** or **Save** to create the log entry
 5. The new log appears in the table
 
-<!-- TODO: Add image OperationalLogs_CreateLogButton.png - Screenshot showing the create log button -->
-<!-- TODO: Add image OperationalLogs_CreateLogDialog.png - Screenshot showing the create log form/dialog -->
-<!-- TODO: Add image OperationalLogs_LogCreated.png - Screenshot showing the newly created log in the table -->
+![Operational Logs Filter Create Export Button](../images/OperationalLogs_FilterCreateExportButton.png)
+![Operational Logs Create Log Dialog](../images/OperatioanlLogs_CreateLogDialog.png)
+![Operational Logs Log Created](../images/OperationalLogs_LogCreated.png)
 
 ### Linking Logs to Alarms
 
@@ -262,7 +220,7 @@ The Operational Logs Module uses pagination to handle large datasets:
 *   **Total Count**: Shows total number of logs matching current filters
 *   **Page Indicator**: Displays current page and total pages
 
-<!-- TODO: Add image OperationalLogs_Pagination.png - Screenshot showing pagination controls -->
+![Operational Logs Pagination](../images/OperationalLogs_Pagination.png)
 
 ## Exporting Logs
 
@@ -273,8 +231,7 @@ Export filtered logs for external analysis:
 *   **Content**: Includes all visible columns and filtered results
 *   **Use Case**: Reporting, compliance documentation, external analysis
 
-<!-- TODO: Add image OperationalLogs_ExportButton.png - Screenshot showing the export button -->
-<!-- TODO: Add image OperationalLogs_ExportDialog.png - Screenshot showing export options or confirmation -->
+![Operational Logs Filter Create Export Button](../images/OperationalLogs_FilterCreateExportButton.png)
 
 ## Best Practices
 
