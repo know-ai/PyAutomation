@@ -34,4 +34,24 @@ The **Users Module** manages user accounts, authentication, and password operati
 
 The **Settings Module** provides configuration management capabilities, allowing you to export and import system configuration. This includes all configuration tables (tags, alarms, users, OPC UA settings, etc.) while preserving historical data. This section covers how to create backups, migrate configurations between systems, and restore settings from previous exports.
 
+### [OPC UA Server Module](OPCUAServer/index.md)
+
+The **OPC UA Server Module** manages PyAutomation's embedded OPC UA Server, which exposes your automation data (tags, alarms, and state machines) to external OPC UA clients. This section covers viewing exposed attributes, configuring access permissions, and understanding the server's address space structure for seamless integration with SCADA systems and other industrial applications.
+
+### [Real-Time Trends Module](RealTimeTrends/index.md)
+
+The **Real-Time Trends Module** provides powerful visualization capabilities through configurable strip charts for monitoring process variables in real-time. This section covers creating custom dashboards, configuring charts with multiple tags, managing buffer sizes, and switching between edit and production modes for optimal operational monitoring.
+
+### [Machines Module](Machines/index.md)
+
+The **Machines Module** provides comprehensive monitoring and management of state machines (engines) running in the PyAutomation system. This section covers viewing machine states, configuring execution intervals, performing state transitions, and understanding the lifecycle of automation engines that execute control logic and data processing.
+
+### [Events Module](Events/index.md)
+
+The **Events Module** provides comprehensive tracking and analysis of system events, including user actions, system notifications, alarm state changes, and other significant occurrences. This section covers filtering events by multiple criteria, adding comments, searching event history, and using events as an audit trail for system behavior analysis.
+
+### [Operational Logs Module](OperationalLogs/index.md)
+
+The **Operational Logs Module** provides a detailed audit trail of operational activities, system messages, and application-level logs. This section covers creating operational logs, linking logs to alarms and events, filtering log data, and using logs for documentation, incident analysis, and compliance reporting.
+
 

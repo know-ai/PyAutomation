@@ -276,7 +276,7 @@ class Alarm(StateMachine):
 
             if datetime.now(timezone.utc) >= self._shelved_until:
 
-                self.unshelve()
+                self.unshelve(current_value=value)
         
     @logging_error_handler
     def abnormal_condition(self):
@@ -357,11 +357,22 @@ class Alarm(StateMachine):
 
     @logging_error_handler
     @set_event(message=f"Unshelved", classification="Alarm", priority=2, criticity=3)
-    def unshelve(self, user:User=None):
+    def unshelve(self, user:User=None, current_value=None):
         r"""
         Manually un-shelves the alarm, returning it to service.
+        After unshelving, re-evaluates the current tag value to determine the correct state.
+        
+        **Parameters:**
+        
+        * **user** (User, optional): User performing the unshelve action.
+        * **current_value** (Quantity, optional): Current tag value. If not provided, will be obtained from the tag.
         """
         self.__return_to_service()
+        # Re-evaluate the alarm condition with current tag value after unshelving
+        if current_value is None:
+            current_value = self.tag.value
+        if current_value:
+            self.update(current_value)
         return self, f"{self.tag.get_name()}"
 
     @logging_error_handler

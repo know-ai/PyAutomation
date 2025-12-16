@@ -47,14 +47,24 @@ nav:
           - Summary: "Users_Guide/Database/index.md"
       - Communications:
           - Summary: "Users_Guide/Communications/index.md"
+      - OPC UA Server:
+          - Summary: "Users_Guide/OPCUAServer/index.md"
       - Tags:
           - Summary: "Users_Guide/Tags/index.md"
           - Create Tag: "Users_Guide/Tags/Create.md"
           - Update Tag: "Users_Guide/Tags/Update.md"
           - Delete Tag: "Users_Guide/Tags/Delete.md"
           - Trends: "Users_Guide/Tags/Trends.md"
+      - Real-Time Trends:
+          - Summary: "Users_Guide/RealTimeTrends/index.md"
       - Alarms:
           - Summary: "Users_Guide/Alarms/index.md"
+      - Events:
+          - Summary: "Users_Guide/Events/index.md"
+      - Operational Logs:
+          - Summary: "Users_Guide/OperationalLogs/index.md"
+      - Machines:
+          - Summary: "Users_Guide/Machines/index.md"
       - Users:
           - Summary: "Users_Guide/Users/index.md"
       - Settings:

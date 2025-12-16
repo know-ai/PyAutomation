@@ -156,13 +156,30 @@ class AlarmManager(Singleton):
             tag = alarm.tag
         if not alarm_type:
             alarm_type = alarm.alarm_setpoint.type
+        else:
+            # Convert string to TriggerType if needed
+            from ..alarms.trigger import TriggerType
+            if isinstance(alarm_type, str):
+                alarm_type = TriggerType(alarm_type.upper())
+            elif hasattr(alarm_type, 'value'):
+                # If it's already a TriggerType, use it directly
+                pass
+            else:
+                # If it's a StringType or similar, extract the value
+                alarm_type = TriggerType(alarm_type.value.upper() if hasattr(alarm_type, 'value') else str(alarm_type).upper())
+        
         if not trigger_value:
-            trigger_value = FloatType(alarm.alarm_setpoint.value)
+            trigger_value = alarm.alarm_setpoint.value
+        elif isinstance(trigger_value, FloatType):
+            trigger_value = trigger_value.value
 
+        # Get string value for validation
+        alarm_type_str = alarm_type.value if hasattr(alarm_type, 'value') else str(alarm_type)
+        
         trigger_value_message = self.__check_trigger_values(
             name=alarm.name,
             tag=tag,
-            type=alarm_type,
+            type=alarm_type_str,
             trigger_value=trigger_value
             )
         if trigger_value_message:
@@ -500,6 +517,8 @@ class AlarmManager(Singleton):
         * **tag_name** (str): Name of the tag to evaluate.
         """
         value = self.tag_engine.get_value_by_name(tag_name=tag_name)['value']
+        # Get the tag object to pass the full value object to unshelve
+        tag_obj = self.tag_engine.get_tag_by_name(name=tag_name)
 
         for _, _alarm in self._alarms.items():
 
@@ -511,7 +530,9 @@ class AlarmManager(Singleton):
 
                     if _now >= _alarm._shelved_until:
 
-                        _alarm.unshelve()
+                        # Pass the current tag value object for re-evaluation after unshelving
+                        current_tag_value = tag_obj.value if tag_obj else None
+                        _alarm.unshelve(current_value=current_tag_value)
                         continue
 
                     continue

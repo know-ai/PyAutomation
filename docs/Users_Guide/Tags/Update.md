@@ -12,7 +12,7 @@ PyAutomation allows for the seamless modification of tag properties through an e
 
 ![Edit Button](../images/TagsCreated_DeleteAndEditTagButton.png)
 
-<!-- TODO: Add image EditTag_EditButtonHighlighted.png - Screenshot highlighting the edit icon button in the Actions column for a specific tag row -->
+![Edit Button Highlighted](../images/EditTag_EditButtonHighlighted.png)
 
 3.  **Edit Tag Properties**: The edit form will open, displaying all tag configuration fields. Modify the desired properties:
     *   **Name**: Change the unique identifier (must remain unique)
@@ -26,8 +26,13 @@ PyAutomation allows for the seamless modification of tag properties through an e
 
 ![Edit Tag Form](../images/EditTagForm.png)
 
+![Edit Tag Form Empty](../images/EditTagForm_EmptyForm.png)
+
+![Description Field](../images/EditTagForm_Description.png)
+
+![Display Unit Field](../images/EditTagForm_DisplayUnit.png)
+
 <!-- TODO: Add image EditTagForm_NameField.png - Screenshot showing the Name field in the edit form with a value being modified -->
-<!-- TODO: Add image EditTagForm_DescriptionField.png - Screenshot showing the Description field in the edit form -->
 <!-- TODO: Add image EditTagForm_ScanTimeField.png - Screenshot showing the Scan Time field being edited in the edit form -->
 <!-- TODO: Add image EditTagForm_DeadbandField.png - Screenshot showing the Deadband field in the edit form -->
 <!-- TODO: Add image EditTagForm_OPCUAConfiguration.png - Screenshot showing the OPC UA Configuration section in the edit form -->
@@ -41,6 +46,8 @@ PyAutomation allows for the seamless modification of tag properties through an e
 5.  **Verification**: The dashboard will refresh to reflect the updated tag properties. The modified fields will be displayed with their new values in the Tags Dashboard.
 
 ![Final Result After Update](../images/TagsCreated.png)
+
+![Edit Tag Completed](../images/EditTag_Completed.png)
 
 <!-- TODO: Add image EditTag_UpdatedFieldInTable.png - Screenshot showing a specific updated field (e.g., Name, Description, Scan Time) displayed in the Tags Dashboard table after the update -->
 <!-- TODO: Add image EditTag_ComparisonBeforeAfter.png - Screenshot showing a side-by-side comparison or highlighting the changed value in the table (optional, if useful) -->

@@ -22,7 +22,7 @@ The Alarms Module provides a comprehensive interface for managing the entire ala
 
 When you first access the Alarms Module, you'll see an empty dashboard indicating no alarms have been configured yet. This is your starting point for building your alarm system.
 
-<!-- TODO: Add image AlarmsDashboard_WithAlarms.png - Screenshot of the Alarms dashboard showing configured alarms with their current states -->
+![Alarms Dashboard with Alarms](../images/AlarmsDashboard_WithAlarms.png)
 
 Once alarms are created and active, the dashboard displays them in a comprehensive table showing current states, trigger values, and management actions.
 
@@ -178,7 +178,7 @@ Assign a unique and descriptive name to the alarm.
 *   **Best Practice**: Use descriptive names that indicate the monitored variable and condition (e.g., `Tank_01_High_Temp`, `Pump_02_Low_Pressure`)
 *   **Example**: `Boiler_High_Temp_Alarm`, `PI_02_L` (Pressure Indicator 02 Low)
 
-<!-- TODO: Add image CreateNewAlarmForm_NameField.png - Screenshot highlighting the Name field with a value entered -->
+![Name Field](../images/CreateNewAlarmForm_NameField.png)
 
 #### Tag Selection (Required)
 
@@ -188,7 +188,7 @@ Select the tag that the alarm will monitor.
 *   **Behavior**: The alarm continuously evaluates this tag's value against the trigger condition
 *   **Tip**: Use the dropdown to search and select from available tags
 
-<!-- TODO: Add image CreateNewAlarmForm_TagDropdown.png - Screenshot showing the Tag dropdown menu opened with available tags -->
+![Tag Dropdown](../images/CreateNewAlarmForm_TagDropdown.png)
 
 #### Alarm Type (Required)
 
@@ -198,7 +198,7 @@ Select the type of alarm logic that determines when the alarm triggers.
 *   **Selection**: Choose based on the nature of the condition you want to detect
 *   **Note**: For boolean tags, only BOOL type is applicable
 
-<!-- TODO: Add image CreateNewAlarmForm_AlarmTypeDropdown.png - Screenshot showing the Alarm Type dropdown with available types (BOOL, HIGH, LOW, HH, LL) -->
+![Alarm Type Dropdown](../images/CreateNewAlarmForm_AlarmTypeDropdown.png)
 
 #### Trigger Value (Required)
 
@@ -209,7 +209,7 @@ Define the threshold or condition that activates the alarm.
 *   **Important**: The trigger value uses the tag's base unit; ensure you're using the correct scale
 *   **Example**: For a HIGH temperature alarm on a tag with units °C, enter `100.0` to trigger at 100°C
 
-<!-- TODO: Add image CreateNewAlarmForm_TriggerValue.png - Screenshot showing the Trigger Value field with a numeric value entered (for HIGH/LOW) or dropdown selection (for BOOL) -->
+![Trigger Value Field](../images/CreateNewAlarmForm_TriggerValue.png)
 
 #### Description (Optional)
 
@@ -218,7 +218,7 @@ Provide additional context, potential causes, or recommended operator actions.
 *   **Usage**: Document what the alarm means and what operators should do when it triggers
 *   **Example**: "High tank temperature. Check cooling water flow and verify heat exchanger operation."
 
-<!-- TODO: Add image CreateNewAlarmForm_Description.png - Screenshot of the Description text area with example text -->
+![Description Field](../images/CreateNewAlarmForm_Description.png)
 
 ### 3. Finalize and Create
 
@@ -227,7 +227,9 @@ Provide additional context, potential causes, or recommended operator actions.
 3. Click the **Create Alarm** button (green button) to save and activate the alarm
 4. The alarm will immediately appear in the Alarms Dashboard
 
-<!-- TODO: Add image CreateNewAlarmForm_CreateButton.png - Screenshot highlighting the green "Create Alarm" button -->
+![Create and Cancel Buttons](../images/CreateNewAlarm_CreateAndCancelButton.png)
+
+![New Alarm Created](../images/NewAlarmCreated.png)
 
 The newly created alarm will be in the **Normal** state and will begin monitoring the tag value. When the trigger condition is met, it will automatically transition to **Unacknowledged** state.
 
@@ -243,7 +245,7 @@ The Alarms Dashboard displays the current state of each alarm using standard ISA
 *   **RTN Unacknowledged**: Blue or cyan indicator (return to normal)
 *   **Shelved**: Gray indicator (temporarily suppressed)
 
-<!-- TODO: Add image AlarmsDashboard_StateIndicators.png - Screenshot showing different alarm states with their color indicators -->
+![Alarm State Indicators](../images/AlarmDashboard_StateIndicators.png)
 
 ### Editing Alarms
 
@@ -256,6 +258,11 @@ To modify an existing alarm:
 ![Edit Alarm Form](../images/EditAlarmForm.png)
 
 4. Modify the desired fields (Name, Tag, Alarm Type, Trigger Value, Description)
+
+![Edit Button in Dashboard](../images/EditAlarmForm_EditButtonInDashboard.png)
+
+![Editing Alarm Type and Trigger Value](../images/EditAlarmForm_EdittingAlarmTypeAndTriggerValue.png)
+
 5. Click **Update Alarm** to save changes
 6. Changes take effect immediately
 
@@ -263,8 +270,6 @@ To modify an existing alarm:
 *   Changing the trigger value will not affect the alarm's current state; it only changes when future triggers occur
 *   Changing the tag will reset the alarm state to Normal
 *   Alarm names must remain unique after editing
-
-<!-- TODO: Add image EditAlarmForm_UpdateButton.png - Screenshot highlighting the "Update Alarm" button -->
 
 ### Deleting Alarms
 
@@ -275,9 +280,11 @@ To remove an alarm from the system:
 3. Confirm the deletion in the confirmation dialog
 4. The alarm will be removed from active monitoring
 
-**Note**: Deleting an alarm removes its configuration, but historical alarm records remain in the database for reporting purposes.
+![Edit and Delete Buttons](../images/AlarmDashboard_ActionsEditAndDeleteButton.png)
 
-<!-- TODO: Add image AlarmsDashboard_DeleteAction.png - Screenshot showing the delete icon and confirmation dialog -->
+![Delete Confirmation Dialog](../images/AlarmDashboard_ConfirmDialogToDeleteAlarm.png)
+
+**Note**: Deleting an alarm removes its configuration, but historical alarm records remain in the database for reporting purposes.
 
 ### Alarm Actions and State Transitions
 
@@ -290,7 +297,23 @@ Operators can perform various actions on alarms depending on their current state
 
 These actions are typically performed from alarm detail views or alarm summary interfaces.
 
-<!-- TODO: Add image AlarmActions_ContextMenu.png - Screenshot showing available alarm actions based on current state -->
+![Available Actions in Normal State](../images/AlarmDashboard_AvailableActionsInNormalState.png)
+
+![Alarm Actions Context Menu](../images/AlarmsActions_ContextMenu.png)
+
+![Acknowledge Alarm Action](../images/AlarmActions_AcknowledgeAlarm.png)
+
+![Shelve Form](../images/AlarmShelveForm.png)
+
+![Shelve Form with 30 Seconds](../images/AlarmShelveForm_30Seconds.png)
+
+![Shelve Activated](../images/AlarmDashboard_ShelveActivated.png)
+
+![Return to Service](../images/AlarmDashboard_ReturnToServiceAlarm.png)
+
+![Remove From Service](../images/AlarmDashboard_RemoveFromServiceAlarm.png)
+
+![State Indicator After Acknowledge](../images/AlarmDashboard_StateIndicatorAfterAckAlarm.png)
 
 ## Alarm History
 
@@ -329,7 +352,7 @@ To export:
 2. The CSV file will be generated with all current alarm configurations
 3. Download and save the file for your records
 
-<!-- TODO: Add image AlarmsDashboard_ExportButton.png - Screenshot of the Export CSV button and export process -->
+![Export CSV Button](../images/AlarmDashboard_ExportCSVButton.png)
 
 ## Best Practices
 
