@@ -1,27 +1,46 @@
 # Updating a Tag
 
-PyAutomation allows for the seamless modification of tag properties directly from the Tags Dashboard. This "inline editing" capability ensures that changes can be made quickly without navigating away from the overview.
+PyAutomation allows for the seamless modification of tag properties through an edit form. This ensures that all tag configurations can be updated in a structured and organized manner.
 
 ## Editing Procedure
 
 1.  **Locate the Tag**: Navigate to the Tags Dashboard and find the row corresponding to the tag you wish to modify.
 
-2.  **Select the Field**: Double-click on the specific cell you want to edit (e.g., **Tag Name**, **Description**, **Scan Time**).
+![Tags Dashboard with Tags](../images/TagsCreated.png)
 
-    ![Select Field](images_update/image-18.png)
+2.  **Open Edit Form**: Click the **edit icon** (✏️) located in the **Actions** column of the tag's row to open the edit form.
 
-3.  **Modify the Value**: Type the new value into the input field.
-    *   **Note**: If modifying the **Tag Name**, ensure the new name is unique. The system will reject duplicate names.
+![Edit Button](../images/TagsCreated_DeleteAndEditTagButton.png)
 
-4.  **Confirm Changes**: Press `Enter` to submit the change. A confirmation dialog will appear to prevent accidental modifications. Click **Yes** to save.
+<!-- TODO: Add image EditTag_EditButtonHighlighted.png - Screenshot highlighting the edit icon button in the Actions column for a specific tag row -->
 
-    ![Confirmation Dialog](images_update/image-19.png)
+3.  **Edit Tag Properties**: The edit form will open, displaying all tag configuration fields. Modify the desired properties:
+    *   **Name**: Change the unique identifier (must remain unique)
+    *   **Description**: Update the tag description
+    *   **Display Name**: Modify the friendly name for visualization
+    *   **Scan Time**: Adjust the polling frequency
+    *   **Deadband**: Update the change threshold
+    *   **OPC UA Configuration**: Modify client or node namespace
+    *   **Advanced Configuration**: Update filters, anomaly detection, or segment/manufacturer information
+    *   **Note**: All fields can be modified except the tag's unique identifier (ID).
 
-5.  **Verification**: The dashboard will refresh to reflect the updated value.
+![Edit Tag Form](../images/EditTagForm.png)
 
-    ![Updated Field](images_update/image-20.png)
+<!-- TODO: Add image EditTagForm_NameField.png - Screenshot showing the Name field in the edit form with a value being modified -->
+<!-- TODO: Add image EditTagForm_DescriptionField.png - Screenshot showing the Description field in the edit form -->
+<!-- TODO: Add image EditTagForm_ScanTimeField.png - Screenshot showing the Scan Time field being edited in the edit form -->
+<!-- TODO: Add image EditTagForm_DeadbandField.png - Screenshot showing the Deadband field in the edit form -->
+<!-- TODO: Add image EditTagForm_OPCUAConfiguration.png - Screenshot showing the OPC UA Configuration section in the edit form -->
+<!-- TODO: Add image EditTagForm_AdvancedConfiguration.png - Screenshot showing the Advanced Configuration section (filters, anomaly detection) in the edit form -->
 
-This procedure applies to all editable columns in the Tags Dashboard.
+4.  **Save Changes**: Click the **Save** or **Update** button at the bottom of the form to apply the changes.
 
-![Editing Other Fields](images_update/image-21.png)
-![Final Result](images_update/image-22.png)
+<!-- TODO: Add image EditTagForm_SaveButton.png - Screenshot highlighting the Save/Update button at the bottom of the edit form -->
+<!-- TODO: Add image EditTagForm_ConfirmationDialog.png - Screenshot of the confirmation dialog (if any) asking to confirm the tag update -->
+
+5.  **Verification**: The dashboard will refresh to reflect the updated tag properties. The modified fields will be displayed with their new values in the Tags Dashboard.
+
+![Final Result After Update](../images/TagsCreated.png)
+
+<!-- TODO: Add image EditTag_UpdatedFieldInTable.png - Screenshot showing a specific updated field (e.g., Name, Description, Scan Time) displayed in the Tags Dashboard table after the update -->
+<!-- TODO: Add image EditTag_ComparisonBeforeAfter.png - Screenshot showing a side-by-side comparison or highlighting the changed value in the table (optional, if useful) -->

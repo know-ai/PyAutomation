@@ -9,7 +9,7 @@ The Trends interface displays a time-series graph for selected tags. It is parti
 *   **Analysis**: Historical review of data to identify patterns or faults.
 *   **Verification**: Checking the stability and responsiveness of OPC UA inputs.
 
-![Trends Dashboard](image.png)
+![Trends Dashboard](../images/TrendsLastHour.png)
 
 ## Usage
 
