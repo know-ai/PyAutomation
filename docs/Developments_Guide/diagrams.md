@@ -1,18 +1,36 @@
 # Creating Diagrams with Mermaid
 
-PyAutomation documentation supports **Mermaid diagrams**, which allow you to create professional diagrams using simple text-based syntax. No screenshots or external image editors needed!
+<div align="center" style="background: linear-gradient(135deg, #e1f5fe 0%, #b3e5fc 100%); border-radius: 15px; padding: 3em 2em; margin: 2em 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+
+<h2 style="color: #01579b; font-size: 2.5em; margin-bottom: 0.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); font-weight: 700;">
+  📊 Visual Documentation Made Easy
+</h2>
+
+<p style="color: #003d5c; font-size: 1.4em; margin-top: 1em; font-weight: 500;">
+  PyAutomation documentation supports <strong>Mermaid diagrams</strong>, which allow you to create professional diagrams using simple text-based syntax. No screenshots or external image editors needed!
+</p>
+
+</div>
 
 ## Supported Diagram Types
 
-Mermaid supports many diagram types that are useful for technical documentation:
+<div style="background: #e3f2fd; border-radius: 8px; padding: 1.5em; margin: 2em 0; border: 2px solid #2196f3;">
 
-- **Flowcharts**: Process flows, decision trees
-- **Sequence Diagrams**: Interactions between components over time
-- **State Diagrams**: State machine visualizations
-- **Class Diagrams**: Object-oriented relationships
-- **Entity Relationship Diagrams**: Database schemas
-- **Gantt Charts**: Project timelines
-- **Git Graphs**: Version control history
+<p style="color: #1a202c; font-size: 1.1em; line-height: 1.8; margin: 0 0 1em 0; font-weight: 500;">
+Mermaid supports many diagram types that are useful for technical documentation:
+</p>
+
+<ul style="color: #1a202c; font-size: 1em; line-height: 1.8; margin: 0; padding-left: 1.5em; font-weight: 400;">
+<li><strong>Flowcharts</strong>: Process flows, decision trees</li>
+<li><strong>Sequence Diagrams</strong>: Interactions between components over time</li>
+<li><strong>State Diagrams</strong>: State machine visualizations</li>
+<li><strong>Class Diagrams</strong>: Object-oriented relationships</li>
+<li><strong>Entity Relationship Diagrams</strong>: Database schemas</li>
+<li><strong>Gantt Charts</strong>: Project timelines</li>
+<li><strong>Git Graphs</strong>: Version control history</li>
+</ul>
+
+</div>
 
 ## Basic Syntax
 
@@ -135,25 +153,47 @@ graph TB
 ```
 ````
 
+---
+
 ## Best Practices
 
-1. **Keep diagrams simple**: Focus on the key concepts, avoid clutter
-2. **Use descriptive labels**: Make node and edge labels clear and meaningful
-3. **Maintain consistency**: Use similar styles across related diagrams
-4. **Test locally**: Use `mkdocs serve` to preview diagrams before committing
-5. **Version control friendly**: Mermaid diagrams are text-based, so they work great with Git
+<div style="background: #f8f9fa; border-left: 5px solid #03a9f4; padding: 1.5em; margin: 2em 0; border-radius: 5px;">
+
+<ol style="color: #1a202c; font-size: 1em; line-height: 1.8; margin: 0; padding-left: 1.5em; font-weight: 400;">
+<li><strong>Keep diagrams simple</strong>: Focus on the key concepts, avoid clutter</li>
+<li><strong>Use descriptive labels</strong>: Make node and edge labels clear and meaningful</li>
+<li><strong>Maintain consistency</strong>: Use similar styles across related diagrams</li>
+<li><strong>Test locally</strong>: Use <code>mkdocs serve</code> to preview diagrams before committing</li>
+<li><strong>Version control friendly</strong>: Mermaid diagrams are text-based, so they work great with Git</li>
+</ol>
+
+</div>
 
 ## Resources
 
-- [Mermaid Live Editor](https://mermaid.live/): Online tool to create and test diagrams
-- [Mermaid Documentation](https://mermaid.js.org/): Complete syntax reference
-- [Mermaid Examples](https://mermaid.js.org/ecosystem/tutorials.html): Tutorials and examples
+<div style="background: #e8f5e9; border-radius: 8px; padding: 1.5em; margin: 2em 0; border: 2px solid #4caf50;">
+
+<ul style="color: #1a202c; font-size: 1em; line-height: 1.8; margin: 0; padding-left: 1.5em; font-weight: 400;">
+<li><a href="https://mermaid.live/" style="color: #2e7d32; font-weight: 600;">Mermaid Live Editor</a>: Online tool to create and test diagrams</li>
+<li><a href="https://mermaid.js.org/" style="color: #2e7d32; font-weight: 600;">Mermaid Documentation</a>: Complete syntax reference</li>
+<li><a href="https://mermaid.js.org/ecosystem/tutorials.html" style="color: #2e7d32; font-weight: 600;">Mermaid Examples</a>: Tutorials and examples</li>
+</ul>
+
+</div>
+
+---
 
 ## Tips
 
-- Use `flowchart` for modern flowcharts (recommended over `graph`)
-- Use `stateDiagram-v2` for state machines (more features than v1)
-- Add `note` annotations to explain complex transitions
-- Use `subgraph` to group related components
-- Use different arrow styles (`-->`, `-->>`, `-.->`) to show different types of relationships
+<div style="background: #fff3e0; border-radius: 8px; padding: 1.5em; margin: 2em 0; border: 2px solid #ff9800;">
+
+<ul style="color: #1a202c; font-size: 1em; line-height: 1.8; margin: 0; padding-left: 1.5em; font-weight: 400;">
+<li>Use <code>flowchart</code> for modern flowcharts (recommended over <code>graph</code>)</li>
+<li>Use <code>stateDiagram-v2</code> for state machines (more features than v1)</li>
+<li>Add <code>note</code> annotations to explain complex transitions</li>
+<li>Use <code>subgraph</code> to group related components</li>
+<li>Use different arrow styles (<code>--&gt;</code>, <code>--&gt;&gt;</code>, <code>-.&gt;</code>) to show different types of relationships</li>
+</ul>
+
+</div>
 
