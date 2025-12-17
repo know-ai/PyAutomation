@@ -47,6 +47,17 @@
     "emptyEdit": "Haga doble clic en la vista y luego en 'Agregar Gráfico' para crear su primer gráfico en tiempo real",
     "emptyProduction": "No hay gráficos configurados. Haga doble clic en la vista para entrar en modo edición."
   },
+  "scada": {
+    "editMode": "Modo Edición",
+    "palette": {
+      "title": "Objetos Industriales"
+    },
+    "emptyEdit": "Haga doble clic para salir del modo edición. Arrastre objetos desde la paleta al canvas.",
+    "emptyProduction": "Haga doble clic para entrar en modo edición y comenzar a construir su diagrama SCADA.",
+    "confirmClear": "¿Limpiar todos los objetos?",
+    "clear": "Limpiar",
+    "delete": "Eliminar"
+  },
   "auth": {
     "login": "Iniciar sesión",
     "logout": "Cerrar sesión",
@@ -177,7 +188,8 @@
     "settings": "Configuración",
     "trends": "Tendencias",
     "realTimeTrends": "Tendencias en Tiempo Real",
-    "dataLogger": "Registrador de datos"
+    "dataLogger": "Registrador de datos",
+    "scada": "SCADA"
   },
   "sidebar": {
     "mainNavigation": "Navegación principal",

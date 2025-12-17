@@ -47,6 +47,17 @@
     "emptyEdit": "Double-click the view and then 'Add Chart' to create your first real-time chart",
     "emptyProduction": "No charts configured. Double-click the view to enter edit mode."
   },
+  "scada": {
+    "editMode": "Edit Mode",
+    "palette": {
+      "title": "Industrial Objects"
+    },
+    "emptyEdit": "Double-click to exit edit mode. Drag objects from the palette to the canvas.",
+    "emptyProduction": "Double-click to enter edit mode and start building your SCADA diagram.",
+    "confirmClear": "Clear all objects?",
+    "clear": "Clear",
+    "delete": "Delete"
+  },
   "auth": {
     "login": "Login",
     "logout": "Logout",
@@ -177,7 +188,8 @@
     "settings": "Settings",
     "trends": "Trends",
     "realTimeTrends": "Real Time Trends",
-    "dataLogger": "Data Logger"
+    "dataLogger": "Data Logger",
+    "scada": "SCADA"
   },
   "sidebar": {
     "mainNavigation": "Main Navigation",
