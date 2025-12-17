@@ -52,7 +52,7 @@ PyAutomation serves as the **bridge between Operational Technology (OT) and Info
 
 ## What You Can Do with PyAutomation 2.0.0
 
-### 🔍 **Sistema de Monitoreo (Monitoring System)**
+### 🔍 **Monitoring System**
 
 Comprehensive real-time monitoring of all your industrial processes with intuitive dashboards and live data visualization.
 
@@ -69,7 +69,7 @@ Comprehensive real-time monitoring of all your industrial processes with intuiti
 
 ---
 
-### 📊 **Tendencias en Tiempo Real (Real-Time Trends)**
+### 📊 **Real-Time Trends**
 
 Advanced strip chart visualization for live process monitoring with configurable dashboards and multiple chart support.
 
@@ -87,7 +87,7 @@ Advanced strip chart visualization for live process monitoring with configurable
 
 ---
 
-### 🚨 **Gestión de Alarmas (Alarm Management)**
+### 🚨 **Alarm Management**
 
 Enterprise-grade alarm management system following ISA-18.2 standards, ensuring operational safety and compliance.
 
@@ -105,7 +105,7 @@ Enterprise-grade alarm management system following ISA-18.2 standards, ensuring 
 
 ---
 
-### 💾 **DataLogging (Historical Data Logging)**
+### 💾 **Historical Data Logging**
 
 Comprehensive historical data logging for trend analysis, compliance, and process optimization.
 
@@ -122,7 +122,7 @@ Comprehensive historical data logging for trend analysis, compliance, and proces
 
 ---
 
-### 👥 **Gestión de Usuarios (User Management)**
+### 👥 **User Management**
 
 Robust user management with role-based access control (RBAC) for secure system operation.
 
@@ -161,17 +161,17 @@ Robust user management with role-based access control (RBAC) for secure system o
 
 ## 🔮 Coming Soon
 
-### Próximas Funcionalidades (Upcoming Features)
+### Upcoming Features
 
 We are continuously working to enhance PyAutomation. In upcoming releases, you can expect:
 
-#### **Acceso Configurable a Diagramas SCADA**
+#### **Configurable SCADA Diagram Access**
 *   Customizable SCADA diagram access
 *   Visual process flow diagrams
 *   Interactive process visualization
 *   Custom diagram creation tools
 
-#### **Control de Acceso a Vistas Basados en Roles**
+#### **Role-Based View Access Control**
 *   Role-based view access control
 *   Customizable dashboard permissions
 *   User-specific view configurations
