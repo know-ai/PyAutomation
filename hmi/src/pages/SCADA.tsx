@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "../components/Button";
 import { useTranslation } from "../hooks/useTranslation";
 import { useTheme } from "../hooks/useTheme";
@@ -33,7 +33,7 @@ const STORAGE_KEY = "scada_layout";
 const PALETTE_STORAGE_KEY = "scada_palette_position";
 const GRID_COLS = 24;
 const GRID_ROW_HEIGHT = 10;
-const MIN_OBJECT_SIZE = 2;
+const MIN_OBJECT_SIZE = 1; // Reducido para permitir objetos más pequeños y precisos
 
 // Configuración de iconos disponibles
 const PALETTE_ITEMS: Array<{
@@ -67,27 +67,42 @@ function ScadaObjectRenderer({ obj, isEditMode, isDark }: { obj: ScadaObject; is
       style={{
         width: "100%",
         height: "100%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        display: "block",
         position: "relative",
-        border: isEditMode ? `1px dashed ${isDark ? "#666" : "#ccc"}` : "none",
-        borderRadius: "4px",
-        overflow: "hidden",
-        backgroundColor: isEditMode ? (isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)") : "transparent",
+        border: "none",
+        borderRadius: "0",
+        overflow: "visible",
+        backgroundColor: "transparent",
+        padding: 0,
+        margin: 0,
+        boxSizing: "border-box",
+        lineHeight: 0,
+        fontSize: 0, // Eliminar cualquier espacio de fuente
       }}
     >
       {iconUrl && (
         <img
           src={iconUrl}
           alt={paletteItem?.label}
+          className="scada-object-icon"
           style={{
             width: "100%",
             height: "100%",
-            objectFit: "contain",
+            objectFit: "fill", // Fill para que ocupe exactamente el espacio asignado - aplica a TODOS los objetos
+            objectPosition: "center",
             pointerEvents: "none",
             filter: isDark ? "brightness(0.9)" : "none",
+            display: "block",
+            margin: 0,
+            padding: 0,
+            border: "none",
+            outline: "none",
+            verticalAlign: "top",
+            maxWidth: "100%",
+            maxHeight: "100%",
+            boxSizing: "border-box",
           }}
+          draggable={false}
           onError={(e) => {
             console.error("Failed to load icon:", iconUrl);
             e.currentTarget.style.display = "none";
@@ -95,18 +110,39 @@ function ScadaObjectRenderer({ obj, isEditMode, isDark }: { obj: ScadaObject; is
         />
       )}
       {isEditMode && (
-        <div
-          className="drag-handle"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            cursor: "move",
-            zIndex: 10,
-          }}
-        />
+        <>
+          {/* Drag handle que cubre exactamente el área del SVG */}
+          <div
+            className="drag-handle"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              cursor: "move",
+              zIndex: 10,
+              backgroundColor: "transparent",
+            }}
+          />
+          {/* Indicador visual sutil en modo edición - exactamente en el borde del SVG */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              border: `1px dashed ${isDark ? "rgba(100, 181, 246, 0.6)" : "rgba(33, 150, 243, 0.6)"}`,
+              borderRadius: "0",
+              pointerEvents: "none",
+              zIndex: 5,
+              boxSizing: "border-box",
+              margin: 0,
+              padding: 0,
+            }}
+          />
+        </>
       )}
     </div>
   );
@@ -366,6 +402,12 @@ export function SCADA() {
         return;
       }
 
+      // Evitar dobles drops si ya estamos procesando uno
+      if (isAddingObjectRef.current || isProcessingLayoutRef.current) {
+        console.log("⏭️ Drop ignored - already processing another drop");
+        return;
+      }
+
       e.preventDefault();
       e.stopPropagation();
 
@@ -385,30 +427,71 @@ export function SCADA() {
         const gridContainer = canvasRef.current.querySelector('.react-grid-layout') as HTMLElement;
         console.log("📐 Grid container found:", !!gridContainer);
         
-        let rect: DOMRect;
-        if (gridContainer) {
-          rect = gridContainer.getBoundingClientRect();
-        } else {
-          // Fallback: usar el canvas directamente
-          rect = canvasRef.current.getBoundingClientRect();
+        if (!gridContainer) {
+          console.error("❌ Grid container not found");
+          return;
         }
         
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        console.log("📍 Drop coordinates:", { x, y, rect: { width: rect.width, height: rect.height } });
+        // Obtener el rect del grid container directamente
+        const gridRect = gridContainer.getBoundingClientRect();
+        
+        // Obtener el scroll del contenedor del canvas (que tiene el overflow)
+        const canvasScrollTop = canvasRef.current?.scrollTop || 0;
+        const canvasScrollLeft = canvasRef.current?.scrollLeft || 0;
+        
+        // Calcular coordenadas relativas al grid container
+        // e.clientX/Y son coordenadas absolutas de la ventana
+        // gridRect.left/top son las coordenadas absolutas del grid container
+        // La diferencia nos da la posición relativa al grid SIN scroll
+        // Luego sumamos el scroll del canvas para obtener la posición real dentro del grid
+        const relativeX = e.clientX - gridRect.left + canvasScrollLeft;
+        const relativeY = e.clientY - gridRect.top + canvasScrollTop;
+        
+        console.log("📍 Drop coordinates:", { 
+          clientX: e.clientX, 
+          clientY: e.clientY,
+          gridRect: { 
+            left: gridRect.left, 
+            top: gridRect.top, 
+            width: gridRect.width, 
+            height: gridRect.height 
+          },
+          canvasScroll: { scrollTop: canvasScrollTop, scrollLeft: canvasScrollLeft },
+          relativeX,
+          relativeY,
+          calculation: {
+            clientY_minus_top: e.clientY - gridRect.top,
+            plus_scroll: (e.clientY - gridRect.top) + canvasScrollTop
+          }
+        });
         
         // Convertir coordenadas de píxeles a grid
-        const paddingX = 10;
-        const paddingY = 10;
-        const availableWidth = rect.width - (paddingX * 2);
+        // Usar containerPadding del ResponsiveGridLayout (que es [2, 2])
+        const paddingX = 2;
+        const paddingY = 2;
+        const availableWidth = gridRect.width - (paddingX * 2);
         
+        // Calcular posición X en el grid
         const gridX = Math.max(0, Math.min(
-          Math.floor(((x - paddingX) / availableWidth) * GRID_COLS),
+          Math.floor(((relativeX - paddingX) / availableWidth) * GRID_COLS),
           GRID_COLS - defaultSize.w
         ));
-        const gridY = Math.max(0, Math.floor((y - paddingY) / GRID_ROW_HEIGHT));
+        
+        // Calcular posición Y - SIN límite máximo para permitir scroll infinito
+        // El grid puede crecer verticalmente sin restricciones
+        // Usar directamente relativeY dividido por rowHeight
+        const gridY = Math.max(0, Math.floor((relativeY - paddingY) / GRID_ROW_HEIGHT));
 
-        console.log("🎯 Calculated grid position:", { gridX, gridY });
+        console.log("🎯 Calculated grid position:", { 
+          gridX, 
+          gridY, 
+          availableWidth, 
+          rowHeight: GRID_ROW_HEIGHT,
+          relativeY,
+          relativeY_minus_padding: relativeY - paddingY,
+          division: (relativeY - paddingY) / GRID_ROW_HEIGHT,
+          floor: Math.floor((relativeY - paddingY) / GRID_ROW_HEIGHT)
+        });
 
         const newObject: ScadaObject = {
           id: `scada-obj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -421,9 +504,48 @@ export function SCADA() {
         };
 
         console.log("🆕 Creating new object:", newObject);
+        console.log("🔍 Object position details:", {
+          x: newObject.x,
+          y: newObject.y,
+          w: newObject.w,
+          h: newObject.h,
+          gridY_calculation: {
+            relativeY,
+            paddingY,
+            rowHeight: GRID_ROW_HEIGHT,
+            result: gridY
+          }
+        });
+        
+        // Marcar que estamos agregando un objeto para evitar cascadas durante el drop
+        isAddingObjectRef.current = true;
+        isProcessingLayoutRef.current = true;
+        
+        // Actualizar el hash antes de agregar el objeto para evitar comparaciones incorrectas
+        const tempHash = JSON.stringify(
+          [...scadaObjects, newObject]
+            .map(obj => `${obj.id}:${obj.x},${obj.y},${obj.w},${obj.h}`)
+            .sort()
+            .join('|')
+        );
+        lastLayoutHashRef.current = tempHash;
+        
         setScadaObjects((prev) => {
           const updated = [...prev, newObject];
           console.log("💾 Updated objects array, new length:", updated.length);
+          
+          // Liberar flags inmediatamente tras el render siguiente
+          requestAnimationFrame(() => {
+            isAddingObjectRef.current = false;
+            isProcessingLayoutRef.current = false;
+            lastLayoutHashForEffect.current = JSON.stringify(
+              updated
+                .map(obj => `${obj.id}:${obj.x},${obj.y}`)
+                .sort()
+                .join('|')
+            );
+          });
+          
           return updated;
         });
       } catch (error) {
@@ -435,12 +557,18 @@ export function SCADA() {
 
   // Referencia para evitar loops infinitos
   const isProcessingLayoutRef = useRef(false);
+  const isAddingObjectRef = useRef(false);
   const lastLayoutHashRef = useRef<string>("");
+  const lastLayoutHashForEffect = useRef<string>("");
   
   // Manejar cambios en el layout (drag and drop, resize) SOLO en modo edición
   const handleLayoutChange = useCallback(
     (layout: GridLayoutType[]) => {
-      if (!isEditMode || isProcessingLayoutRef.current) return;
+      if (!isEditMode || isProcessingLayoutRef.current || isAddingObjectRef.current) {
+        return;
+      }
+      
+      console.log("🔄 handleLayoutChange called with layout:", layout.map(item => `${item.i}:(${item.x},${item.y})`));
       
       // Crear un hash del layout para comparar
       const layoutHash = JSON.stringify(
@@ -452,6 +580,7 @@ export function SCADA() {
       
       // Si el layout no cambió, no hacer nada
       if (lastLayoutHashRef.current === layoutHash) {
+        console.log("⏭️ Layout hash unchanged, skipping update");
         return;
       }
       
@@ -472,10 +601,24 @@ export function SCADA() {
             ) {
               return obj;
             }
+            console.log("🔄 Updating object position from handleLayoutChange:", {
+              objId: obj.id,
+              oldPos: `(${obj.x},${obj.y})`,
+              newPos: `(${layoutItem.x},${layoutItem.y})`,
+              oldSize: `${obj.w}x${obj.h}`,
+              newSize: `${layoutItem.w}x${layoutItem.h}`,
+              layoutItem: layoutItem
+            });
+            
+            // IMPORTANTE: Si el layoutItem tiene y=0 pero el objeto tenía una posición Y mayor,
+            // y estamos en modo edición, NO actualizar la posición Y a menos que sea un cambio real del usuario
+            // Esto previene que react-grid-layout resetee la posición Y a 0
+            const finalY = layoutItem.y === 0 && obj.y > 0 ? obj.y : layoutItem.y;
+            
             return {
               ...obj,
               x: layoutItem.x,
-              y: layoutItem.y,
+              y: finalY,
               w: layoutItem.w,
               h: layoutItem.h,
             };
@@ -491,11 +634,15 @@ export function SCADA() {
             .join('|')
         );
         
+        // Actualizar el hash inmediatamente para evitar loops
+        lastLayoutHashRef.current = newHash;
+        
         // Resetear el flag después de que React procese el update
-        setTimeout(() => {
-          isProcessingLayoutRef.current = false;
-          lastLayoutHashRef.current = newHash;
-        }, 50);
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            isProcessingLayoutRef.current = false;
+          }, 100);
+        });
         
         return updated;
       });
@@ -503,18 +650,8 @@ export function SCADA() {
     [isEditMode]
   );
   
-  // Sincronizar el hash cuando se agregan nuevos objetos
-  useEffect(() => {
-    if (!isProcessingLayoutRef.current) {
-      const currentHash = JSON.stringify(
-        scadaObjects
-          .map(obj => `${obj.id}:${obj.x},${obj.y},${obj.w},${obj.h}`)
-          .sort()
-          .join('|')
-      );
-      lastLayoutHashRef.current = currentHash;
-    }
-  }, [scadaObjects.length]); // Solo cuando cambia el número de objetos
+  // NO usar useEffect para sincronizar el hash - esto causa loops infinitos
+  // El hash se actualiza directamente en handleCanvasDrop y handleLayoutChange
 
   // Eliminar objeto
   const handleDeleteObject = useCallback((id: string) => {
@@ -524,18 +661,30 @@ export function SCADA() {
 
   // Layout para react-grid-layout - mantener estable para evitar loops
   const gridLayout = useMemo<GridLayoutType[]>(() => {
-    return scadaObjects.map((obj) => ({
-      i: obj.id,
-      x: obj.x,
-      y: obj.y,
-      w: Math.max(obj.w, MIN_OBJECT_SIZE),
-      h: Math.max(obj.h, MIN_OBJECT_SIZE),
-      minW: MIN_OBJECT_SIZE,
-      minH: MIN_OBJECT_SIZE,
-      static: !isEditMode,
-      resizeHandles: isEditMode ? ["se", "sw", "ne", "nw", "e", "w", "s", "n"] : [],
-    } as GridLayoutType & { resizeHandles?: string[] }));
+    const newLayout = scadaObjects.map((obj) => {
+      const layoutItem = {
+        i: obj.id,
+        x: obj.x,
+        y: obj.y,
+        w: Math.max(obj.w, MIN_OBJECT_SIZE),
+        h: Math.max(obj.h, MIN_OBJECT_SIZE),
+        minW: MIN_OBJECT_SIZE,
+        minH: MIN_OBJECT_SIZE,
+        static: !isEditMode,
+        resizeHandles: isEditMode ? ["se", "sw", "ne", "nw", "e", "w", "s", "n"] : [],
+      } as GridLayoutType & { resizeHandles?: string[] };
+      
+      return layoutItem;
+    });
+    
+    return newLayout;
   }, [scadaObjects, isEditMode]);
+  
+  // Forzar que react-grid-layout respete las posiciones Y después de actualizar el estado
+  // Deshabilitado temporalmente para evitar loops de render.
+  useLayoutEffect(() => {
+    return;
+  }, [scadaObjects, containerWidth, isEditMode]);
 
   const handleToggleEditMode = useCallback(() => {
     setIsEditMode((prev) => !prev);
@@ -604,132 +753,170 @@ export function SCADA() {
               borderRadius: "8px",
               minHeight: "500px",
               transition: "all 0.3s ease",
+              overflow: "auto", // Permitir scroll vertical
             }}
           >
-            {scadaObjects.length === 0 ? (
-              <div
-                className="text-center py-5"
-                style={{
-                  minHeight: "400px",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  pointerEvents: "none",
-                }}
-              >
-                <i className="bi bi-diagram-3" style={{ fontSize: "4rem", color: mutedText }}></i>
-                <h4 className="mt-3" style={{ color: textColor }}>{t("navigation.scada", "SCADA")}</h4>
-                <p style={{ color: mutedText }}>
-                  {isEditMode
-                    ? t("scada.emptyEdit", "Double-click to exit edit mode. Drag objects from the palette to the canvas.")
-                    : t("scada.emptyProduction", "Double-click to enter edit mode and start building your SCADA diagram.")}
-                </p>
-              </div>
-            ) : (
-              <div
-                onDragOver={(e) => {
-                  if (isEditMode) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.dataTransfer.dropEffect = "copy";
-                  }
-                }}
-                onDragEnter={(e) => {
-                  if (isEditMode) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }
-                }}
-                onDrop={handleCanvasDrop}
-                style={{ width: "100%", height: "100%", position: "relative" }}
-              >
-                <ResponsiveGridLayout
-                  className="layout"
-                  layouts={{ lg: gridLayout }}
-                  cols={{ lg: GRID_COLS }}
-                  rowHeight={GRID_ROW_HEIGHT}
-                  width={containerWidth}
-                  onLayoutChange={(layout, allLayouts) => {
-                    if (isEditMode) {
-                      const newLayout = (allLayouts.lg || layout) as GridLayoutType[];
-                      handleLayoutChange(newLayout);
-                    }
-                  }}
-                  isDraggable={isEditMode}
-                  isResizable={isEditMode}
-                  draggableHandle={isEditMode ? ".drag-handle" : undefined}
-                  preventCollision={false}
-                  compactType={null}
-                  margin={[5, 5]}
-                  containerPadding={[10, 10]}
-                  breakpoints={{ lg: 0 }}
-                  resizeHandles={isEditMode ? ["se", "sw", "ne", "nw", "e", "w", "s", "n"] : []}
-                  onDragStop={() => {
-                    // Asegurar que el flag se resetee después de drag
-                    setTimeout(() => {
-                      isProcessingLayoutRef.current = false;
-                    }, 100);
-                  }}
-                  onResizeStop={() => {
-                    // Asegurar que el flag se resetee después de resize
-                    setTimeout(() => {
-                      isProcessingLayoutRef.current = false;
-                    }, 100);
+              {scadaObjects.length === 0 ? (
+                <div
+                  className="text-center py-5"
+                  style={{
+                    minHeight: "400px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    pointerEvents: "none",
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 1,
                   }}
                 >
-                  {scadaObjects.map((obj) => (
-                    <div
-                      key={obj.id}
-                      style={{
-                        height: "100%",
-                        width: "100%",
-                        overflow: "visible",
-                        position: "relative",
-                      }}
-                    >
-                      <ScadaObjectRenderer obj={obj} isEditMode={isEditMode} isDark={isDark} />
-                      {isEditMode && (
-                        <button
-                          onClick={() => handleDeleteObject(obj.id)}
-                          style={{
-                            position: "absolute",
-                            top: "-8px",
-                            right: "-8px",
-                            width: "24px",
-                            height: "24px",
-                            borderRadius: "50%",
-                            backgroundColor: "#dc3545",
-                            color: "white",
-                            border: "2px solid white",
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "16px",
-                            fontWeight: "bold",
-                            zIndex: 1000,
-                            padding: 0,
-                            lineHeight: 1,
-                            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                            transition: "transform 0.2s ease",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = "scale(1.1)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = "scale(1)";
-                          }}
-                          title={t("scada.delete", "Delete")}
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </ResponsiveGridLayout>
-              </div>
-            )}
+                  <i className="bi bi-diagram-3" style={{ fontSize: "4rem", color: mutedText }}></i>
+                  <h4 className="mt-3" style={{ color: textColor }}>{t("navigation.scada", "SCADA")}</h4>
+                  <p style={{ color: mutedText }}>
+                    {isEditMode
+                      ? t("scada.emptyEdit", "Double-click to exit edit mode. Drag objects from the palette to the canvas.")
+                      : t("scada.emptyProduction", "Double-click to enter edit mode and start building your SCADA diagram.")}
+                  </p>
+                </div>
+              ) : null}
+              <ResponsiveGridLayout
+                className="layout scada-layout"
+                layouts={{ lg: gridLayout }}
+                cols={{ lg: GRID_COLS }}
+                rowHeight={GRID_ROW_HEIGHT}
+                width={containerWidth}
+                onLayoutChange={undefined} // Deshabilitar completamente onLayoutChange para evitar loops
+                isDraggable={isEditMode}
+                isResizable={isEditMode}
+                draggableHandle={isEditMode ? ".drag-handle" : undefined}
+                preventCollision={false}
+                compactType={null} // Deshabilitar compactación - CRÍTICO para mantener posiciones Y
+                margin={[1, 1]} // Mínimo espacio entre objetos (1px)
+                containerPadding={[2, 2]} // Mínimo padding del contenedor
+                breakpoints={{ lg: 0 }}
+                resizeHandles={isEditMode ? ["se", "sw", "ne", "nw", "e", "w", "s", "n"] : []}
+                autoSize={false} // Desactivar autoSize para permitir scroll
+                useCSSTransforms={true} // Usar CSS transforms para mejor rendimiento
+                isBounded={false} // Permitir que los objetos estén fuera de los límites visibles
+                verticalCompact={false} // Deshabilitar compactación vertical - CRÍTICO
+                allowOverlap={true} // Permitir superposición de objetos
+                onDrag={undefined} // Deshabilitar onDrag para evitar loops - solo usar onDragStop
+                onDragStop={(layout, oldItem, newItem, placeholder, e, element) => {
+                  console.log("🖱️ onDragStop called:", { 
+                    oldItem: oldItem ? `${oldItem.i}:(${oldItem.x},${oldItem.y})` : null, 
+                    newItem: newItem ? `${newItem.i}:(${newItem.x},${newItem.y})` : null,
+                    layout: layout.map(item => `${item.i}:(${item.x},${item.y})`) 
+                  });
+                  // Actualizar solo cuando el usuario termina de arrastrar
+                  if (isEditMode && !isProcessingLayoutRef.current && !isAddingObjectRef.current && newItem) {
+                    // Actualizar directamente el estado sin pasar por handleLayoutChange
+                    // para evitar que react-grid-layout resetee la posición
+                    isProcessingLayoutRef.current = true;
+                    
+                    setScadaObjects((prev) => {
+                      const updated = prev.map((obj) => {
+                        if (obj.id === newItem.i) {
+                          return {
+                            ...obj,
+                            x: newItem.x,
+                            y: newItem.y,
+                            w: newItem.w,
+                            h: newItem.h,
+                          };
+                        }
+                        return obj;
+                      });
+                      
+                      // Actualizar el hash
+                      const newHash = JSON.stringify(
+                        updated
+                          .map(obj => `${obj.id}:${obj.x},${obj.y},${obj.w},${obj.h}`)
+                          .sort()
+                          .join('|')
+                      );
+                      lastLayoutHashRef.current = newHash;
+                      
+                      // Resetear el flag después de que React procese el update
+                      setTimeout(() => {
+                        isProcessingLayoutRef.current = false;
+                      }, 300);
+                      
+                      return updated;
+                    });
+                  }
+                }}
+                  onResizeStop={undefined} // Deshabilitar para evitar setState en cascada
+              >
+                {scadaObjects.map((obj) => (
+                  <div
+                    key={obj.id}
+                    style={{
+                      height: "100%",
+                      width: "100%",
+                      overflow: "visible",
+                      position: "relative",
+                      padding: 0,
+                      margin: 0,
+                      boxSizing: "border-box",
+                      lineHeight: 0,
+                      fontSize: 0,
+                    }}
+                  >
+                    <ScadaObjectRenderer obj={obj} isEditMode={isEditMode} isDark={isDark} />
+                    {isEditMode && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          handleDeleteObject(obj.id);
+                        }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation(); // Evitar que active el drag
+                        }}
+                        style={{
+                          position: "absolute",
+                          top: "0px",
+                          right: "0px",
+                          width: "18px",
+                          height: "18px",
+                          borderRadius: "50%",
+                          backgroundColor: "#dc3545",
+                          color: "white",
+                          border: `1.5px solid ${isDark ? "#1a1d29" : "#fff"}`,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          zIndex: 1001,
+                          padding: 0,
+                          lineHeight: 1,
+                          boxShadow: "0 2px 4px rgba(0,0,0,0.4)",
+                          transition: "all 0.2s ease",
+                          pointerEvents: "auto",
+                          transform: "translate(50%, -50%)", // Centrar en la esquina
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = "translate(50%, -50%) scale(1.2)";
+                          e.currentTarget.style.backgroundColor = "#c82333";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = "translate(50%, -50%) scale(1)";
+                          e.currentTarget.style.backgroundColor = "#dc3545";
+                        }}
+                        title={t("scada.delete", "Delete")}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </ResponsiveGridLayout>
           </div>
         </div>
         

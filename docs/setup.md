@@ -157,8 +157,15 @@ pip install -r docs_requirements.txt
 AUTOMATION_PORT=8050                  # default 8050         
 AUTOMATION_VERSION=1.1.10             # default latest
 AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
-AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER" # default "073821603fcc483f9afee3f1500782a4"
+AUTOMATION_HMI_PORT=5000
+AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER"
 AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
+AUTOMATION_DB_TYPE=postgresql
+AUTOMATION_DB_HOST=xxx.xxx.xxx.xxx
+AUTOMATION_DB_PORT=5432
+AUTOMATION_DB_USER=xxxxxxxx
+AUTOMATION_DB_PASSWORD=xxxxxxxxx
+AUTOMATION_DB_NAME=xxxxxxx
 ```
 
 ---
@@ -318,7 +325,10 @@ services:
     image: "knowai/automation:${AUTOMATION_VERSION:-latest}"
     restart: always
     ports:
+      # Backend API (Flask/Gunicorn)
       - ${AUTOMATION_PORT:-8050}:${AUTOMATION_PORT:-8050}
+      # HMI frontend served by Nginx inside the container (listen 3000)
+      - ${AUTOMATION_HMI_PORT:-3000}:3000
     volumes:
       - automation_db:/app/db
       - automation_logs:/app/logs
@@ -331,6 +341,12 @@ services:
       AUTOMATION_OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT:-53530}
       AUTOMATION_APP_SECRET_KEY: ${AUTOMATION_APP_SECRET_KEY:-073821603fcc483f9afee3f1500782a4}
       AUTOMATION_SUPERUSER_PASSWORD: ${AUTOMATION_SUPERUSER_PASSWORD:-super_ultra_secret_password}
+      AUTOMATION_DB_TYPE: ${AUTOMATION_DB_TYPE:-postgresql}
+      AUTOMATION_DB_HOST: ${AUTOMATION_DB_HOST:-127.0.0.1}
+      AUTOMATION_DB_PORT: ${AUTOMATION_DB_PORT:-5432}
+      AUTOMATION_DB_NAME: ${AUTOMATION_DB_NAME:-app_db}
+      AUTOMATION_DB_USER: ${AUTOMATION_DB_USER:-postgres}
+      AUTOMATION_DB_PASSWORD: ${AUTOMATION_DB_PASSWORD:-postgres}
     tmpfs:
       - /tmp:size=500k
     deploy:
@@ -347,6 +363,7 @@ services:
 volumes:
   automation_db:
   automation_logs:
+
 ```
 
 <div style="background: #e8f5e9; border-left: 5px solid #4caf50; padding: 1.5em; margin: 2em 0; border-radius: 5px;">
@@ -381,8 +398,15 @@ volumes:
 AUTOMATION_PORT=8050                  # default 8050         
 AUTOMATION_VERSION=1.1.10             # default latest
 AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
-AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER" # default "073821603fcc483f9afee3f1500782a4"
+AUTOMATION_HMI_PORT=5000
+AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER"
 AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
+AUTOMATION_DB_TYPE=postgresql
+AUTOMATION_DB_HOST=xxx.xxx.xxx.xxx
+AUTOMATION_DB_PORT=5432
+AUTOMATION_DB_USER=xxxxxxxx
+AUTOMATION_DB_PASSWORD=xxxxxxxxx
+AUTOMATION_DB_NAME=xxxxxxx
 ```
 
 <div style="background: rgba(102, 126, 234, 0.1); border-left: 4px solid #667eea; padding: 1em; margin-top: 1.5em; border-radius: 4px;">

@@ -637,6 +637,137 @@ a {
   overflow: visible; /* allow resize handles to sit slightly outside */
 }
 
+/* Estilos específicos para SCADA - área exacta del objeto */
+.scada-layout .react-grid-item {
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+}
+
+.scada-layout .react-grid-item > div {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+}
+
+.scada-layout .react-grid-item > div > div {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+}
+
+.scada-layout .react-grid-item img,
+.scada-layout .scada-object-icon {
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: none !important;
+  vertical-align: top !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+  object-fit: fill !important; /* Aplicar a TODOS los objetos */
+  width: 100% !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Handles de resize exactamente en el borde del SVG */
+.scada-layout .react-grid-item > .react-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  background-color: transparent !important;
+}
+
+.scada-layout .react-grid-item:hover > .react-resizable-handle,
+.scada-layout .react-grid-item.resizing > .react-resizable-handle {
+  opacity: 0.8;
+  background-color: rgba(33, 150, 243, 0.3) !important;
+}
+
+/* Handles de esquina - exactamente en las esquinas del SVG */
+.scada-layout .react-grid-item > .react-resizable-handle-se {
+  bottom: 0 !important;
+  right: 0 !important;
+  width: 14px !important;
+  height: 14px !important;
+  background-size: 10px 10px !important;
+  cursor: se-resize;
+}
+
+.scada-layout .react-grid-item > .react-resizable-handle-sw {
+  bottom: 0 !important;
+  left: 0 !important;
+  width: 14px !important;
+  height: 14px !important;
+  background-size: 10px 10px !important;
+  cursor: sw-resize;
+}
+
+.scada-layout .react-grid-item > .react-resizable-handle-ne {
+  top: 0 !important;
+  right: 0 !important;
+  width: 14px !important;
+  height: 14px !important;
+  background-size: 10px 10px !important;
+  cursor: ne-resize;
+}
+
+.scada-layout .react-grid-item > .react-resizable-handle-nw {
+  top: 0 !important;
+  left: 0 !important;
+  width: 14px !important;
+  height: 14px !important;
+  background-size: 10px 10px !important;
+  cursor: nw-resize;
+}
+
+/* Handles de borde - exactamente en los bordes del SVG */
+.scada-layout .react-grid-item > .react-resizable-handle-s {
+  bottom: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 6px !important;
+  cursor: ns-resize;
+}
+
+.scada-layout .react-grid-item > .react-resizable-handle-n {
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 6px !important;
+  cursor: ns-resize;
+}
+
+.scada-layout .react-grid-item > .react-resizable-handle-e {
+  right: 0 !important;
+  top: 0 !important;
+  width: 6px !important;
+  height: 100% !important;
+  cursor: ew-resize;
+}
+
+.scada-layout .react-grid-item > .react-resizable-handle-w {
+  left: 0 !important;
+  top: 0 !important;
+  width: 6px !important;
+  height: 100% !important;
+  cursor: ew-resize;
+}
+
 .react-grid-item.cssTransforms {
   transition-property: transform, width, height;
 }

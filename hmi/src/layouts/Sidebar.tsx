@@ -28,7 +28,7 @@ export function Sidebar() {
 
   const navItems = [
     { to: "/real-time-trends", icon: "bi bi-graph-up-arrow", labelKey: "navigation.realTimeTrends" },
-    { to: "/scada", icon: "bi bi-diagram-3", labelKey: "navigation.scada" },
+    // { to: "/scada", icon: "bi bi-diagram-3", labelKey: "navigation.scada" },
     { to: "/machines", icon: "bi bi-cpu", labelKey: "navigation.machines" },
     { to: "/events", icon: "bi bi-calendar-event", labelKey: "navigation.events" },
     { to: "/operational-logs", icon: "bi bi-journal-text", labelKey: "navigation.operationalLogs" },

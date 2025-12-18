@@ -95,11 +95,16 @@ volumes:
 
 ```ini
 AUTOMATION_PORT=8050
-AUTOMATION_HMI_PORT=3000
-AUTOMATION_VERSION=latest
+AUTOMATION_HMI_PORT=5000
+AUTOMATION_VERSION=2.0.0
 AUTOMATION_OPCUA_SERVER_PORT=53530
-AUTOMATION_APP_SECRET_KEY="CHANGE_ME_TO_A_SECURE_RANDOM_VALUE"
-AUTOMATION_SUPERUSER_PASSWORD="CHANGE_ME_SUPERUSER_PASSWORD"
+AUTOMATION_SUPERUSER_PASSWORD="xxXXXXxxx"
+AUTOMATION_DB_TYPE=postgresql
+AUTOMATION_DB_NAME=app_db
+AUTOMATION_DB_PORT=32800
+AUTOMATION_DB_HOST=xxx.xxx.xxx.xxx
+AUTOMATION_DB_USER=xxxxxxxxx
+AUTOMATION_DB_PASSWORD=xxxxxxxxxx
 ```
 
 - **`AUTOMATION_SUPERUSER_PASSWORD`** defines the password of the **superuser** account shipped with PyAutomation.
@@ -124,13 +129,13 @@ AUTOMATION_SUPERUSER_PASSWORD="CHANGE_ME_SUPERUSER_PASSWORD"
 From the project root:
 
 ```bash
-sudo docker compose up -d
+sudo docker compose --env-file .env up -d
 ```
 
 Check the logs to verify that PyAutomation is healthy:
 
 ```bash
-sudo docker compose logs -f automation
+sudo docker compose logs -f Automation
 ```
 
 Once the container is healthy, the HMI will be available at:
@@ -150,22 +155,22 @@ The automation container runs **nginx** (HMI) and the **backend** under `supervi
 1. **Container-level logs (stdout/stderr):**
 
    ```bash
-   docker logs automation
+   docker logs Automation
    # Or follow in real time:
-   docker logs -f automation
+   docker logs -f Automation
    ```
 
 2. **Backend-specific logs inside the container (managed by supervisord):**
 
    ```bash
    # Standard output of the backend (Gunicorn/Flask)
-   docker exec -it automation tail -n 100 /var/log/supervisor/backend.out.log
+   docker exec -it Automation tail -n 100 /var/log/supervisor/backend.out.log
 
    # Error log of the backend
-   docker exec -it automation tail -n 100 /var/log/supervisor/backend.err.log
+   docker exec -it Automation tail -n 100 /var/log/supervisor/backend.err.log
 
    # Follow backend logs in real time
-   docker exec -it automation tail -f /var/log/supervisor/backend.out.log
+   docker exec -it Automation tail -f /var/log/supervisor/backend.out.log
    ```
 
 These logs are the primary place to look when:
@@ -220,30 +225,50 @@ A typical multi‑service `docker-compose.yml`:
 
 ```yaml
 services:
-  postgres:
-    image: postgres:15
-    container_name: "PostgreSQL"
-    restart: always
-    environment:
-      POSTGRES_DB: automation_db
-      POSTGRES_USER: automation_user
-      POSTGRES_PASSWORD: your_password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-
   automation:
+    container_name: "Automation"
     image: "knowai/automation:${AUTOMATION_VERSION:-latest}"
     restart: always
-    depends_on:
-      - postgres
-    # ...rest of the automation service as in section 1...
+    ports:
+      # Backend API (Flask/Gunicorn)
+      - ${AUTOMATION_PORT:-8050}:${AUTOMATION_PORT:-8050}
+      # HMI frontend served by Nginx inside the container (listen 3000)
+      - ${AUTOMATION_HMI_PORT:-3000}:3000
+    volumes:
+      - automation_db:/app/db
+      - automation_logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m" # Rota cuando llega a 10MB
+        max-file: "3" # Guarda máximo 3 archivos (30MB total)
+    environment:
+      AUTOMATION_OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT:-53530}
+      AUTOMATION_APP_SECRET_KEY: ${AUTOMATION_APP_SECRET_KEY:-073821603fcc483f9afee3f1500782a4}
+      AUTOMATION_SUPERUSER_PASSWORD: ${AUTOMATION_SUPERUSER_PASSWORD:-super_ultra_secret_password}
+      AUTOMATION_DB_TYPE: ${AUTOMATION_DB_TYPE:-postgresql}
+      AUTOMATION_DB_HOST: ${AUTOMATION_DB_HOST:-127.0.0.1}
+      AUTOMATION_DB_PORT: ${AUTOMATION_DB_PORT:-5432}
+      AUTOMATION_DB_NAME: ${AUTOMATION_DB_NAME:-app_db}
+      AUTOMATION_DB_USER: ${AUTOMATION_DB_USER:-postgres}
+      AUTOMATION_DB_PASSWORD: ${AUTOMATION_DB_PASSWORD:-postgres}
+    tmpfs:
+      - /tmp:size=500k
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
 
 volumes:
   automation_db:
   automation_logs:
-  postgres_data:
+
 ```
 
 <div style="background: #fff3cd; border-left: 5px solid #ffc107; padding: 1.5em; margin: 1.5em 0; border-radius: 5px;">
