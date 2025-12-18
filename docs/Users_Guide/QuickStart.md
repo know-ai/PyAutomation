@@ -94,17 +94,18 @@ volumes:
 </div>
 
 ```ini
-AUTOMATION_PORT=8050
+AUTOMATION_PORT=8050                  # default 8050         
+AUTOMATION_VERSION=2.0.0             # default latest
+AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
 AUTOMATION_HMI_PORT=5000
-AUTOMATION_VERSION=2.0.0
-AUTOMATION_OPCUA_SERVER_PORT=53530
-AUTOMATION_SUPERUSER_PASSWORD="xxXXXXxxx"
+AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER"
+AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
 AUTOMATION_DB_TYPE=postgresql
-AUTOMATION_DB_NAME=app_db
-AUTOMATION_DB_PORT=32800
 AUTOMATION_DB_HOST=xxx.xxx.xxx.xxx
-AUTOMATION_DB_USER=xxxxxxxxx
-AUTOMATION_DB_PASSWORD=xxxxxxxxxx
+AUTOMATION_DB_PORT=5432
+AUTOMATION_DB_USER=xxxxxxxx
+AUTOMATION_DB_PASSWORD=xxxxxxxxx
+AUTOMATION_DB_NAME=xxxxxxx
 ```
 
 - **`AUTOMATION_SUPERUSER_PASSWORD`** defines the password of the **superuser** account shipped with PyAutomation.
@@ -118,10 +119,11 @@ AUTOMATION_DB_PASSWORD=xxxxxxxxxx
   3. Start the container again (the superuser will use the new password).
   4. Log in as superuser and reset user passwords / roles.
 
-<div style="background: #ffebee; border-left: 5px solid #f44336; padding: 1.5em; margin: 1.5em 0; border-radius: 5px;">
-
-> **🔒 Security tip:** Treat the superuser password like a root password. Use it only for bootstrap and recovery, and store it securely.
-
+<div style="background: #fff7e6; border-left: 5px solid #ef6c00; padding: 1.2em 1.5em; margin: 1.5em 0; border-radius: 6px; color: #1a202c;">
+<p style="margin: 0; font-weight: 700;">🔒 Security tip</p>
+<p style="margin: 0.35em 0 0 0; font-weight: 500;">
+Treat the superuser password like a root password. Use it only for bootstrap and recovery, and store it securely.
+</p>
 </div>
 
 ### 1.2. Starting the service
@@ -271,10 +273,11 @@ volumes:
 
 ```
 
-<div style="background: #fff3cd; border-left: 5px solid #ffc107; padding: 1.5em; margin: 1.5em 0; border-radius: 5px;">
-
-> **⚠️ Important:** PyAutomation will create all its tables automatically the first time you configure the DB connection from the HMI (see section 6). You only need to ensure that PostgreSQL is up and reachable.
-
+<div style="background: #eef7ff; border-left: 5px solid #1976d2; padding: 1.2em 1.5em; margin: 1.5em 0; border-radius: 6px; color: #0f172a;">
+<p style="margin: 0; font-weight: 700;">⚠️ Importante</p>
+<p style="margin: 0.35em 0 0 0; font-weight: 500;">
+PyAutomation creará todas sus tablas automáticamente la primera vez que configures la conexión a BD desde el HMI (ver sección 6). Solo asegúrate de que PostgreSQL esté arriba y accesible.
+</p>
 </div>
 
 ![Database Configuration](images/DatabaseConfigInNavBar.png)
@@ -310,12 +313,18 @@ Supported variables:
 Example `.env` snippet for a PostgreSQL bootstrap:
 
 ```ini
+AUTOMATION_PORT=8050                  # default 8050         
+AUTOMATION_VERSION=2.0.0             # default latest
+AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
+AUTOMATION_HMI_PORT=5000
+AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER"
+AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
 AUTOMATION_DB_TYPE=postgresql
-AUTOMATION_DB_HOST=app_db
+AUTOMATION_DB_HOST=xxx.xxx.xxx.xxx
 AUTOMATION_DB_PORT=5432
-AUTOMATION_DB_USER=postgres
-AUTOMATION_DB_PASSWORD=postgres
-AUTOMATION_DB_NAME=app_db
+AUTOMATION_DB_USER=xxxxxxxx
+AUTOMATION_DB_PASSWORD=xxxxxxxxx
+AUTOMATION_DB_NAME=xxxxxxx
 ```
 
 On first startup with these variables:
@@ -420,10 +429,11 @@ At a glance:
   - Configuration and data injected via `opcua_server_simulator.yml` and `data_for_tests.csv`.
 - `automation` is the same PyAutomation service described in section 1, wired to the simulator and DB.
 
-<div style="background: #e1f5fe; border-left: 5px solid #03a9f4; padding: 1.5em; margin: 1.5em 0; border-radius: 5px;">
-
-> **💡 Tip:** This stack is ideal for demos, automated tests, and onboarding workshops.
-
+<div style="background: #fff7e6; border-left: 5px solid #ef6c00; padding: 1.2em 1.5em; margin: 1.5em 0; border-radius: 6px; color: #0f172a;">
+<p style="margin: 0; font-weight: 700;">💡 Tip</p>
+<p style="margin: 0.35em 0 0 0; font-weight: 500;">
+This stack is ideal for demos, automated tests, and onboarding workshops.
+</p>
 </div>
 
 ![OPC UA Client Screen](images/OPCUAClientScreen.png)

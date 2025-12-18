@@ -155,7 +155,7 @@ pip install -r docs_requirements.txt
 ```ini
 # Web Server Configuration  
 AUTOMATION_PORT=8050                  # default 8050         
-AUTOMATION_VERSION=1.1.10             # default latest
+AUTOMATION_VERSION=2.0.0             # default latest
 AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
 AUTOMATION_HMI_PORT=5000
 AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER"
@@ -396,7 +396,7 @@ volumes:
 ```ini
 # Web Server Configuration  
 AUTOMATION_PORT=8050                  # default 8050         
-AUTOMATION_VERSION=1.1.10             # default latest
+AUTOMATION_VERSION=2.0.0             # default latest
 AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
 AUTOMATION_HMI_PORT=5000
 AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER"
@@ -431,27 +431,29 @@ AUTOMATION_DB_NAME=xxxxxxx
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5em; margin: 2em 0;">
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">1️⃣ Build</h4>
-<p style="margin: 0; opacity: 0.9;">Build the image (optional, or use pre-built)</p>
-<code style="background: rgba(255,255,255,0.2); padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker build -t pyautomation .</code>
-</div>
-
-<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
 <h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">2️⃣ Start</h4>
 <p style="margin: 0; opacity: 0.9;">Start the container</p>
-<code style="background: rgba(255,255,255,0.2); padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker-compose up -d</code>
+<code style="background: rgba(255,255,255,0.2); color: white; padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker compose --env-file .env up -d</code>
 </div>
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
 <h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">3️⃣ Logs</h4>
 <p style="margin: 0; opacity: 0.9;">View logs</p>
-<code style="background: rgba(255,255,255,0.2); padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker-compose logs -f</code>
+<code style="background: rgba(255,255,255,0.2); color: white; padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker compose logs -f Automation</code>
 </div>
+
+
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
 <h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">4️⃣ Stop</h4>
 <p style="margin: 0; opacity: 0.9;">Stop the container</p>
-<code style="background: rgba(255,255,255,0.2); padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker-compose down</code>
+<code style="background: rgba(255,255,255,0.2); color: white; padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker compose down</code>
+</div>
+
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
+<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">4️⃣ Stop</h4>
+<p style="margin: 0; opacity: 0.9;">Detailed Backend Logs</p>
+<code style="background: rgba(255,255,255,0.2); color: white; padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker exec -it Automation tail -n 100 /var/log/supervisor/backend.out.log</code>
 </div>
 
 </div>
@@ -512,6 +514,10 @@ AUTOMATION_DB_NAME=xxxxxxx
 
 <p style="margin: 0; color: #2d3748;">
   <strong>API Documentation:</strong> <code style="background: rgba(76, 175, 80, 0.1); padding: 0.2em 0.4em; border-radius: 4px;">http://localhost:8050/api/docs</code>
+</p>
+
+<p style="margin: 0.5em 0 0 0; color: #2d3748;">
+  <strong>Config Wbesite:</strong> <code style="background: rgba(76, 175, 80, 0.1); padding: 0.2em 0.4em; border-radius: 4px;">http://localhost:{AUTOMATION_HMI_PORT}/hmi</code>
 </p>
 
 <p style="margin: 0.5em 0 0 0; color: #2d3748;">

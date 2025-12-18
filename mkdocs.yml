@@ -27,20 +27,20 @@ theme:
     - toc.follow
     - toc.integrate
   palette:
-    # Light mode - Modern gradient theme
+    # Dark mode as default
     - scheme: default
-      primary: indigo
-      accent: pink
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    # Dark mode - Professional slate theme
-    - scheme: slate
       primary: indigo
       accent: pink
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+    # Light mode as secondary
+    - scheme: slate
+      primary: indigo
+      accent: pink
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
   font:
     text: Roboto
     code: Roboto Mono
