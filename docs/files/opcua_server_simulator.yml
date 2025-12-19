@@ -1,6 +1,6 @@
 version: "3.3"
 
-filename: "data_for_tests"
+filename: "data"
 separator: ","
 header: [0]
 interval: 1.0

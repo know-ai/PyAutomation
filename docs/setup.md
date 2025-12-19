@@ -391,7 +391,7 @@ volumes:
   For production deployments, you can create a <code>.env</code> file in the same directory as <code>docker-compose.yml</code> to customize the Docker Compose template without modifying the <code>docker-compose.yml</code> file itself.
 </p>
 
-**Example `.env` file for production:**
+<p style="margin: 1.5em 0 0.5em 0; font-weight: 700; color: #0f172a; font-size: 1.1em;">Example `.env` file for production:</p>
 
 ```ini
 # Web Server Configuration  
@@ -431,13 +431,13 @@ AUTOMATION_DB_NAME=xxxxxxx
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5em; margin: 2em 0;">
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">2️⃣ Start</h4>
+<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">1️⃣ Start</h4>
 <p style="margin: 0; opacity: 0.9;">Start the container</p>
 <code style="background: rgba(255,255,255,0.2); color: white; padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker compose --env-file .env up -d</code>
 </div>
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">3️⃣ Logs</h4>
+<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">2️⃣ Logs</h4>
 <p style="margin: 0; opacity: 0.9;">View logs</p>
 <code style="background: rgba(255,255,255,0.2); color: white; padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker compose logs -f Automation</code>
 </div>
@@ -445,13 +445,13 @@ AUTOMATION_DB_NAME=xxxxxxx
 
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">4️⃣ Stop</h4>
+<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">3️⃣ Stop</h4>
 <p style="margin: 0; opacity: 0.9;">Stop the container</p>
 <code style="background: rgba(255,255,255,0.2); color: white; padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker compose down</code>
 </div>
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 1.5em; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">4️⃣ Stop</h4>
+<h4 style="color: white; font-size: 1.2em; margin-bottom: 0.5em;">4️⃣ Backend Logs</h4>
 <p style="margin: 0; opacity: 0.9;">Detailed Backend Logs</p>
 <code style="background: rgba(255,255,255,0.2); color: white; padding: 0.3em 0.6em; border-radius: 4px; display: block; margin-top: 0.5em;">docker exec -it Automation tail -n 100 /var/log/supervisor/backend.out.log</code>
 </div>
@@ -490,9 +490,9 @@ AUTOMATION_DB_NAME=xxxxxxx
     ```
     
     **Connection Process:**
-    1. Start the database container: `docker-compose up -d postgres`
+    1. Start the database container: `docker compose up -d postgres`
     2. Wait for database to be ready
-    3. Start PyAutomation: `docker-compose up -d automation`
+    3. Start PyAutomation: `docker compose up -d automation`
     4. Connect to PyAutomation web interface and configure database connection
     5. PyAutomation will automatically create all tables upon successful connection
 

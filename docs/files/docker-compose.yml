@@ -44,7 +44,7 @@ services:
       retries: 5
     volumes:
       - ./opcua_server_simulator.yml:/app/app/config.yml
-      - ./data_for_tests.csv:/app/app/data/data_for_tests.csv
+      - ./data.csv:/app/app/data/data.csv
 
   automation:
     container_name: "Automation"
@@ -76,8 +76,10 @@ services:
     tmpfs:
       - /tmp:size=500k
     depends_on:
-      - db
-      - opcua_server_simulator
+      db:
+        condition: service_healthy
+      opcua_server_simulator:
+        condition: service_healthy
     deploy:
       resources:
         limits:

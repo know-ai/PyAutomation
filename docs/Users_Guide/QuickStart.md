@@ -16,10 +16,11 @@ This Quick Start guide walks you through bringing up a fully functional PyAutoma
 
 It is aimed at engineers and operators who want to go from zero to a working system as quickly as possible, while still following production‑grade practices.
 
-<div style="background: #fff3cd; border-left: 5px solid #ffc107; padding: 1.5em; margin: 2em 0; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-
-> **📌 Note:** Throughout this guide we assume you are working on a single host (your laptop or a server) and have Docker and Docker Compose installed.
-
+<div style="background: #eef7ff; border-left: 5px solid #1976d2; padding: 1.2em 1.5em; margin: 2em 0; border-radius: 6px; color: #0f172a; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+<p style="margin: 0; font-weight: 700;">📌 Note</p>
+<p style="margin: 0.35em 0 0 0; font-weight: 500;">
+Throughout this guide we assume you are working on a single host (your laptop or a server) and have Docker and Docker Compose installed.
+</p>
 </div>
 
 ![OPC UA Client Screen](images/OPCUAClientScreen.png)
@@ -28,205 +29,130 @@ It is aimed at engineers and operators who want to go from zero to a working sys
 
 ---
 
-## 🐳 1. Deploy PyAutomation with Docker Compose
 
-<div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #2196f3;">
+## 🎯 🐳 1. End-to-End Demo Stack with Docker (DB + OPC UA Simulator + PyAutomation)
 
-<h3 style="color: #1976d2; font-size: 1.8em; margin-bottom: 1em;">
-  🚀 Get Started with Docker Compose
+<div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #ff9800;">
+
+<h3 style="color: #e65100; font-size: 1.8em; margin-bottom: 1em;">
+  🧪 Complete Test Environment
 </h3>
 
-<p style="font-size: 1.1em; color: #1565c0; margin-bottom: 1.5em;">
-  The recommended way to run PyAutomation (including the HMI) is to use the provided <code>docker-compose.yml</code> in the project root:
+<p style="font-size: 1.1em; color: #d84315; margin-bottom: 1.5em;">
+  For a complete test environment, the recommended way to run PyAutomation (including the HMI) is to use the provided <code>docker-compose.yml</code> in the project root: PyAutomation provides a <code>docker-compose.yml</code> file that starts:
 </p>
 
 </div>
 
-```yaml
-services:
-  automation:
-    container_name: "Automation"
-    image: "knowai/automation:${AUTOMATION_VERSION:-latest}"
-    restart: always
-    ports:
-      # Backend API (Flask/Gunicorn)
-      - ${AUTOMATION_PORT:-8050}:${AUTOMATION_PORT:-8050}
-      # HMI frontend served by Nginx inside the container (listen 3000)
-      - ${AUTOMATION_HMI_PORT:-3000}:3000
-    volumes:
-      - automation_db:/app/db
-      - automation_logs:/app/logs
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m" # Rota cuando llega a 10MB
-        max-file: "3"   # Guarda máximo 3 archivos (30MB total)
-    environment:
-      AUTOMATION_OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT:-53530}
-      AUTOMATION_APP_SECRET_KEY: ${AUTOMATION_APP_SECRET_KEY:-073821603fcc483f9afee3f1500782a4}
-      AUTOMATION_SUPERUSER_PASSWORD: ${AUTOMATION_SUPERUSER_PASSWORD:-super_ultra_secret_password}
-    tmpfs:
-      - /tmp:size=500k
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
-    healthcheck:
-      test: ["CMD", "python", "/app/healthcheck.py"]
-      interval: 15s
-      timeout: 10s
-      retries: 3
+- A **PostgreSQL database** (`db` service).
+- An **OPC UA simulation server** (`opcua_server_simulator` service).
+- The **PyAutomation automation + HMI** container (`automation` service).
 
-volumes:
-  automation_db:
-  automation_logs:
-```
+<div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 1em; margin: 1.5em 0; border-radius: 4px;">
 
-### 🔐 1.1. Environment variables and superuser password
+<p style="margin: 0; font-weight: 600; color: #856404;">📝 Configuration File Required</p>
 
-<div style="background: #f8f9fa; border-left: 5px solid #667eea; padding: 1.5em; margin: 1.5em 0; border-radius: 5px;">
+<p style="margin: 0.5em 0 0 0; color: #856404; font-size: 0.95em; line-height: 1.6;">
+Before deploying the demo stack, you <strong>must create a <code>.env</code> file</strong> in the same directory as your <code>docker-compose.yml</code> file. This configuration file is essential for both <strong>development and production deployments</strong> as it contains all the environment variables needed to configure PyAutomation.
+</p>
 
-<p style="font-size: 1.1em; color: #2d3748; margin-bottom: 1em;">
-  Create a <code>.env</code> file next to <code>docker-compose.yml</code>:
+<p style="margin: 0.8em 0 0 0; color: #856404; font-size: 0.95em; line-height: 1.6;">
+Create a <code>.env</code> file in your deployment folder with the following variables (adjust values according to your environment):
 </p>
 
 </div>
 
 ```ini
 AUTOMATION_PORT=8050                  # default 8050         
-AUTOMATION_VERSION=2.0.0             # default latest
+AUTOMATION_VERSION=2.0.3              # default latest
 AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
 AUTOMATION_HMI_PORT=5000
 AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER"
 AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
 AUTOMATION_DB_TYPE=postgresql
-AUTOMATION_DB_HOST=xxx.xxx.xxx.xxx
+AUTOMATION_DB_HOST=xxx.xxx.xxx.xxx    # It's important change for your host ip
 AUTOMATION_DB_PORT=5432
-AUTOMATION_DB_USER=xxxxxxxx
-AUTOMATION_DB_PASSWORD=xxxxxxxxx
-AUTOMATION_DB_NAME=xxxxxxx
+AUTOMATION_DB_USER=postgres
+AUTOMATION_DB_PASSWORD=postgres
+AUTOMATION_DB_NAME=app_db
 ```
 
-- **`AUTOMATION_SUPERUSER_PASSWORD`** defines the password of the **superuser** account shipped with PyAutomation.
-  - This superuser is intended for **initial bootstrap**:
-    - Creating your first admin user.
-    - Recovering access if all admin users are lost or locked out.
-  - For security, change this value from the default before exposing the system.
-- If you completely lose all passwords (including all admin users), the recovery path is:
-  1. Stop the container.
-  2. Edit `.env` and set a **new** `AUTOMATION_SUPERUSER_PASSWORD`.
-  3. Start the container again (the superuser will use the new password).
-  4. Log in as superuser and reset user passwords / roles.
+<div style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 1em; margin: 1.5em 0; border-radius: 4px;">
 
-<div style="background: #fff7e6; border-left: 5px solid #ef6c00; padding: 1.2em 1.5em; margin: 1.5em 0; border-radius: 6px; color: #1a202c;">
-<p style="margin: 0; font-weight: 700;">🔒 Security tip</p>
-<p style="margin: 0.35em 0 0 0; font-weight: 500;">
-Treat the superuser password like a root password. Use it only for bootstrap and recovery, and store it securely.
-</p>
+<p style="margin: 0; font-weight: 600; color: #2e7d32;">💡 Important Notes:</p>
+
+<ul style="margin: 0.5em 0 0 1.5em; color: #1b5e20; line-height: 1.8; font-size: 0.95em;">
+<li>The <code>.env</code> file must be in the <strong>same directory</strong> as your <code>docker-compose.yml</code> file.</li>
+<li>For <strong>production deployments</strong>, ensure you use secure values for <code>AUTOMATION_SUPERUSER_PASSWORD</code> and <code>AUTOMATION_APP_SECRET_KEY</code>.</li>
+<li>The <code>AUTOMATION_DB_*</code> variables should match your PostgreSQL database configuration.</li>
+<li>Never commit the <code>.env</code> file to version control if it contains sensitive information.</li>
+</ul>
+
 </div>
 
-### 1.2. Starting the service
+This is the fastest way to try PyAutomation with realistic field data, database, and HMI in a single command.
 
-From the project root:
+### 1.1. docker-compose.yml: Services Overview
 
-```bash
-sudo docker compose --env-file .env up -d
-```
+<div style="background: #eef7ff; border-left: 4px solid #1976d2; padding: 0.8em; margin-bottom: 1em; border-radius: 4px;">
 
-Check the logs to verify that PyAutomation is healthy:
-
-```bash
-sudo docker compose logs -f Automation
-```
-
-Once the container is healthy, the HMI will be available at:
-
-- `http://localhost:${AUTOMATION_HMI_PORT:-3000}` (default `http://localhost:3000`)
-
-The backend API will be listening on:
-
-- `http://localhost:${AUTOMATION_PORT:-8050}` (default `http://localhost:8050`)
-
-> In a typical setup, the HMI (React + Nginx) talks to the backend API over the internal Docker network; you usually only expose the HMI port publicly.
-
-### 1.3. Inspecting backend logs
-
-The automation container runs **nginx** (HMI) and the **backend** under `supervisord`. Logs can be inspected at two levels:
-
-1. **Container-level logs (stdout/stderr):**
-
-   ```bash
-   docker logs Automation
-   # Or follow in real time:
-   docker logs -f Automation
-   ```
-
-2. **Backend-specific logs inside the container (managed by supervisord):**
-
-   ```bash
-   # Standard output of the backend (Gunicorn/Flask)
-   docker exec -it Automation tail -n 100 /var/log/supervisor/backend.out.log
-
-   # Error log of the backend
-   docker exec -it Automation tail -n 100 /var/log/supervisor/backend.err.log
-
-   # Follow backend logs in real time
-   docker exec -it Automation tail -f /var/log/supervisor/backend.out.log
-   ```
-
-These logs are the primary place to look when:
-
-- Health checks fail.
-- The API is not responding as expected.
-- You need to debug authentication, database connections, or OPC UA issues.
-
-![Login Screen](images/LoginScreen.png)
-
-*Figure 1: PyAutomation login screen after Docker startup*
-
----
-
-## 💾 2. Deploy a PostgreSQL Database with Docker
-
-<div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #4caf50;">
-
-<h3 style="color: #2e7d32; font-size: 1.8em; margin-bottom: 1em;">
-  🗄️ Production-Grade Database Setup
-</h3>
-
-<p style="font-size: 1.1em; color: #1b5e20; margin-bottom: 1.5em;">
-  For production or serious testing, PostgreSQL is the recommended backend database. You can run it as a separate service in Docker Compose or as a standalone container.
+<p style="margin: 0; font-size: 0.95em; color: #0f172a;">
+<strong>📥 Download Files:</strong> This file (<code>docker-compose.yml</code>) and other required configuration files can be downloaded in <a href="#32-download-required-files" style="color: #1976d2; font-weight: 600;">section 1.2</a> below.
 </p>
 
 </div>
 
-### 2.1. Minimal PostgreSQL container
-
-Example standalone container:
-
-```bash
-docker run -d \
-  --name postgres-automation \
-  -e POSTGRES_DB=automation_db \
-  -e POSTGRES_USER=automation_user \
-  -e POSTGRES_PASSWORD=your_password \
-  -p 5432:5432 \
-  -v postgres_data:/var/lib/postgresql/data \
-  postgres:15
-```
-
-Key points:
-
-- `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` define the initial database and credentials.
-- The `postgres_data` volume ensures data persistence across container restarts.
-
-### 2.2. PostgreSQL alongside PyAutomation in Docker Compose
-
-A typical multi‑service `docker-compose.yml`:
+The `docker-compose.yml` file defines three services:
 
 ```yaml
 services:
+
+  db:
+    container_name: app_db
+    image: "postgres:17-bullseye"
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "7"
+    ports:
+      - ${AUTOMATION_DB_PORT:-5432}:5432
+    environment:
+      POSTGRES_PASSWORD: ${AUTOMATION_DB_PASSWORD:-postgres}
+      POSTGRES_USER: ${AUTOMATION_DB_USER:-postgres}
+      POSTGRES_DB: ${AUTOMATION_DB_NAME:-app_db}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  opcua_server_simulator:
+    container_name: opcua_server_simulator
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "7"
+    image: "knowai/opcua_server_simulator:2.2.1"
+    ports:
+      - 0.0.0.0:5015:5015
+      - 0.0.0.0:4840:4840
+    environment:
+      - APP_THREADS=5
+      - APP_PORT=5015
+      - ASYNC_APP=0
+    healthcheck:
+      test: curl --fail -s -k http://0.0.0.0:5015/api/healthcheck/ || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - ./opcua_server_simulator.yml:/app/app/config.yml
+      - ./data_for_tests.csv:/app/app/data/data_for_tests.csv
+
   automation:
     container_name: "Automation"
     image: "knowai/automation:${AUTOMATION_VERSION:-latest}"
@@ -256,6 +182,11 @@ services:
       AUTOMATION_DB_PASSWORD: ${AUTOMATION_DB_PASSWORD:-postgres}
     tmpfs:
       - /tmp:size=500k
+    depends_on:
+      db:
+        condition: service_healthy
+      opcua_server_simulator:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -271,153 +202,7 @@ volumes:
   automation_db:
   automation_logs:
 
-```
 
-<div style="background: #eef7ff; border-left: 5px solid #1976d2; padding: 1.2em 1.5em; margin: 1.5em 0; border-radius: 6px; color: #0f172a;">
-<p style="margin: 0; font-weight: 700;">⚠️ Importante</p>
-<p style="margin: 0.35em 0 0 0; font-weight: 500;">
-PyAutomation creará todas sus tablas automáticamente la primera vez que configures la conexión a BD desde el HMI (ver sección 6). Solo asegúrate de que PostgreSQL esté arriba y accesible.
-</p>
-</div>
-
-![Database Configuration](images/DatabaseConfigInNavBar.png)
-
-*Figure 2.1: Database configuration interface for connecting PyAutomation to PostgreSQL*
-
----
-
-### 2.3. Bootstrapping the initial database connection via environment variables
-
-On the **very first startup**, before any database has been configured through the HMI, you can instruct PyAutomation to automatically create a primary connection configuration (and then create the `system` user and default data) using environment variables.
-
-This bootstrap happens only if:
-
-- There is **no** existing `db/db_config.json` file, and
-- The appropriate `AUTOMATION_DB_*` environment variables are defined.
-
-Once `db/db_config.json` exists, it becomes the **single source of truth** and **overrides any future changes in environment variables**. If you later change the DB connection from the HMI, the new configuration is written to `db/db_config.json` and will be used on subsequent restarts.
-
-Supported variables:
-
-- **`AUTOMATION_DB_TYPE`**:
-  - `sqlite` (default), `postgresql`, or `mysql`.
-- For **SQLite**:
-  - `AUTOMATION_DB_FILE`: database filename (default: `app.db`).
-- For **PostgreSQL/MySQL**:
-  - `AUTOMATION_DB_HOST`: database host (default: `127.0.0.1`).
-  - `AUTOMATION_DB_PORT`: database port (default: `5432` for PostgreSQL, `3306` for MySQL if not provided).
-  - `AUTOMATION_DB_USER`: database user (**required**).
-  - `AUTOMATION_DB_PASSWORD`: database password (**required**).
-  - `AUTOMATION_DB_NAME`: database name (**required**).
-
-Example `.env` snippet for a PostgreSQL bootstrap:
-
-```ini
-AUTOMATION_PORT=8050                  # default 8050         
-AUTOMATION_VERSION=2.0.0             # default latest
-AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
-AUTOMATION_HMI_PORT=5000
-AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER"
-AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
-AUTOMATION_DB_TYPE=postgresql
-AUTOMATION_DB_HOST=xxx.xxx.xxx.xxx
-AUTOMATION_DB_PORT=5432
-AUTOMATION_DB_USER=xxxxxxxx
-AUTOMATION_DB_PASSWORD=xxxxxxxxx
-AUTOMATION_DB_NAME=xxxxxxx
-```
-
-On first startup with these variables:
-
-1. PyAutomation detects that `db/db_config.json` does not exist.
-2. It writes a new `db/db_config.json` using the `AUTOMATION_DB_*` values.
-3. It connects to the database, creates all tables, roles, and the internal `system` user.
-
-After this initial bootstrap:
-
-- Any subsequent changes made via the **Database** section in the HMI update `db/db_config.json`.
-- On restart, **`db/db_config.json` always wins** over environment variables, ensuring that UI‑driven configuration is preserved.
-
-> This pattern allows you to have a clean “infrastructure‑driven” first configuration for CI/CD and ops, while still giving operators a convenient way to adjust DB settings later from the HMI without being overridden by container env vars.
-
----
-
-## 🎯 3. End-to-End Demo Stack with Docker (DB + OPC UA Simulator + PyAutomation)
-
-<div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #ff9800;">
-
-<h3 style="color: #e65100; font-size: 1.8em; margin-bottom: 1em;">
-  🧪 Complete Test Environment
-</h3>
-
-<p style="font-size: 1.1em; color: #d84315; margin-bottom: 1.5em;">
-  For a complete test environment, PyAutomation provides a <code>docker-compose.test.yml</code> file that starts:
-</p>
-
-</div>
-
-- A **PostgreSQL database** (`db` service).
-- An **OPC UA simulation server** (`opcua_server_simulator` service).
-- The **PyAutomation automation + HMI** container (`automation` service).
-
-This is the fastest way to try PyAutomation with realistic field data, database, and HMI in a single command.
-
-### 3.1. docker-compose.test.yml: Services Overview
-
-The `docker-compose.test.yml` file defines three services:
-
-```yaml
-services:
-
-  db:
-    container_name: app_db
-    image: "postgres:17-bullseye"
-    restart: always
-    ports:
-      - 32800:5432
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_DB: app_db
-    # ...
-
-  opcua_server_simulator:
-    container_name: opcua_server_simulator
-    image: "knowai/opcua_server_simulator:2.2.1"
-    restart: always
-    ports:
-      - 0.0.0.0:5015:5015
-      - 0.0.0.0:4840:4840
-    environment:
-      - APP_THREADS=5
-      - APP_PORT=5015
-      - ASYNC_APP=0
-    volumes:
-      - ./opcua_server_simulator.yml:/app/app/config.yml
-      - ./data_for_tests.csv:/app/app/data/data_for_tests.csv
-    # ...
-
-  automation:
-    container_name: "Automation"
-    image: "knowai/automation:${AUTOMATION_VERSION:-latest}"
-    restart: always
-    ports:
-      # Backend API (Flask/Gunicorn)
-      - ${AUTOMATION_PORT:-8050}:${AUTOMATION_PORT:-8050}
-      # HMI frontend served by Nginx inside the container (listen 3000)
-      - ${AUTOMATION_HMI_PORT:-3000}:3000
-    volumes:
-      - automation_db:/app/db
-      - automation_logs:/app/logs
-    environment:
-      AUTOMATION_OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT:-53530}
-      AUTOMATION_APP_SECRET_KEY: ${AUTOMATION_APP_SECRET_KEY:-073821603fcc483f9afee3f1500782a4}
-      AUTOMATION_SUPERUSER_PASSWORD: ${AUTOMATION_SUPERUSER_PASSWORD:-super_ultra_secret_password}
-    # ...
-
-volumes:
-  automation_db:
-  automation_logs:
 ```
 
 At a glance:
@@ -436,11 +221,201 @@ This stack is ideal for demos, automated tests, and onboarding workshops.
 </p>
 </div>
 
-![OPC UA Client Screen](images/OPCUAClientScreen.png)
 
-*Figure 3.1: OPC UA client screen showing integration with database and simulator services*
+### 1.2. Download Required Files
 
-### 3.2. OPC UA Simulator Configuration: opcua_server_simulator.yml
+To run the demo stack, you need to download the following configuration and data files. **Download all files to the same directory** to ensure everything works together:
+
+<div style="background: #e8f5e9; border-left: 5px solid #4caf50; padding: 1.5em; margin: 1.5em 0; border-radius: 6px; color: #0f172a;">
+
+<p style="margin: 0 0 1em 0; font-weight: 700; font-size: 1.1em;">📥 Download All Files</p>
+
+<div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 1em; margin-bottom: 1.5em;">
+<p style="margin: 0; font-weight: 600; color: #856404; font-size: 0.95em;">
+💡 <strong>Quick Setup:</strong> Create a new folder (e.g., <code>pyautomation-demo</code>), download all three files below to that folder, then follow the deployment instructions in section 1.2.1.
+</p>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1em; margin-top: 1em;">
+
+<div style="background: white; border: 2px solid #4caf50; border-radius: 8px; padding: 1.2em; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
+<p style="margin: 0 0 0.5em 0; font-weight: 600; color: #2e7d32;">🐳 Docker Compose</p>
+<p style="margin: 0 0 0.8em 0; font-size: 0.9em; color: #4a5568;">Main orchestration file for the demo stack</p>
+<a href="../../files/docker-compose.yml" download style="display: inline-block; background: #4caf50; color: white; padding: 0.5em 1em; border-radius: 5px; text-decoration: none; font-weight: 600; font-size: 0.9em;">Download docker-compose.yml</a>
+</div>
+
+<div style="background: white; border: 2px solid #4caf50; border-radius: 8px; padding: 1.2em; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
+<p style="margin: 0 0 0.5em 0; font-weight: 600; color: #2e7d32;">📄 OPC UA Simulator Config</p>
+<p style="margin: 0 0 0.8em 0; font-size: 0.9em; color: #4a5568;">Configuration file for the OPC UA server simulator</p>
+<a href="../../files/opcua_server_simulator.yml" download style="display: inline-block; background: #4caf50; color: white; padding: 0.5em 1em; border-radius: 5px; text-decoration: none; font-weight: 600; font-size: 0.9em;">Download opcua_server_simulator.yml</a>
+</div>
+
+<div style="background: white; border: 2px solid #4caf50; border-radius: 8px; padding: 1.2em; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
+<p style="margin: 0 0 0.5em 0; font-weight: 600; color: #2e7d32;">📊 Test Data CSV</p>
+<p style="margin: 0 0 0.8em 0; font-size: 0.9em; color: #4a5568;">Sample data file for the OPC UA simulator</p>
+<a href="../../files/data.csv" download style="display: inline-block; background: #4caf50; color: white; padding: 0.5em 1em; border-radius: 5px; text-decoration: none; font-weight: 600; font-size: 0.9em;">Download data.csv</a>
+</div>
+
+</div>
+
+<p style="margin: 1.5em 0 0 0; font-size: 0.95em; color: #4a5568;">
+<strong>Important:</strong> All three files must be in the <strong>same directory</strong>. The <code>docker-compose.yml</code> file references the other two files using relative paths (<code>./opcua_server_simulator.yml</code> and <code>./data.csv</code>).
+</p>
+
+</div>
+
+#### 1.2.1. Deployment Instructions
+
+Once you have downloaded all three files to the same directory, follow these steps to deploy the complete demo stack:
+
+<div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 10px; padding: 2em; margin: 2em 0; border: 2px solid #2196f3;">
+
+<h4 style="color: #1976d2; font-size: 1.3em; margin-bottom: 1em;">🚀 Quick Deployment Steps</h4>
+
+<div style="background: white; border-radius: 8px; padding: 1.5em; margin-bottom: 1.5em; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+
+<p style="margin: 0 0 1em 0; font-weight: 600; color: #1565c0;">Step 1: Navigate to your files directory</p>
+
+```bash
+cd pyautomation-demo  # or whatever folder you created
+```
+
+<p style="margin: 1em 0 0 0; font-weight: 600; color: #1565c0;">Step 2: Verify all files are present</p>
+
+```bash
+ls -la
+# You should see:
+# - docker-compose.yml
+# - opcua_server_simulator.yml
+# - data_for_tests.csv
+```
+
+<p style="margin: 1em 0 0 0; font-weight: 600; color: #1565c0;">Step 3: Create a .env file</p>
+
+<p style="margin: 0.5em 0 1em 0; color: #4a5568; font-size: 0.95em;">
+You must create a <code>.env</code> file to customize ports and credentials, or use the default values defined in <code>docker-compose.yml</code>.
+</p>
+
+```ini
+AUTOMATION_PORT=8050                  # default 8050         
+AUTOMATION_VERSION=2.0.3              # default latest
+AUTOMATION_OPCUA_SERVER_PORT=53530    # default 53530
+AUTOMATION_HMI_PORT=5000
+AUTOMATION_APP_SECRET_KEY="12DFW7HJHJWER6W73338343-FEDF94-EF9EF-EFR9ER"
+AUTOMATION_SUPERUSER_PASSWORD="super_ultra_secret_password"
+AUTOMATION_DB_TYPE=postgresql
+AUTOMATION_DB_HOST=xxx.xxx.xxx.xxx    # It's important change for your host ip
+AUTOMATION_DB_PORT=5432
+AUTOMATION_DB_USER=postgres
+AUTOMATION_DB_PASSWORD=postgres
+AUTOMATION_DB_NAME=app_db
+```
+
+<p style="margin: 1em 0 0 0; font-weight: 600; color: #1565c0;">Step 4: Start the demo stack</p>
+
+```bash
+docker compose --env-file .env up -d
+```
+
+<p style="margin: 1em 0 0 0; font-weight: 600; color: #1565c0;">Step 5: Check service status</p>
+
+```bash
+docker compose ps
+```
+
+<p style="margin: 1em 0 0 0; font-weight: 600; color: #1565c0;">Step 6: View logs</p>
+
+
+```bash
+docker compose logs -f automation
+```
+
+<p style="margin: 1em 0 0.5em 0; font-weight: 600; color: #0f172a; font-size: 0.95em;">If everything is working correctly, you should see output similar to this:</p>
+
+```
+Automation  | 2025-12-19 00:32:19,939 INFO Set uid to user 0 succeeded
+Automation  | 2025-12-19 00:32:19,942 INFO supervisord started with pid 1
+Automation  | 2025-12-19 00:32:20,946 INFO spawned: 'nginx' with pid 7
+Automation  | 2025-12-19 00:32:20,948 INFO spawned: 'backend' with pid 8
+Automation  | 2025-12-19 00:32:22,873 INFO success: nginx entered RUNNING state, process has stayed up for > than 1 seconds (startsecs)
+Automation  | 2025-12-19 00:32:31,722 INFO success: backend entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)
+```
+
+<p style="margin: 1em 0 0 0; font-weight: 600; color: #1565c0;">Step 7: View backend logs</p>
+
+```bash
+docker exec -it Automation tail -n 100 /var/log/supervisor/backend.out.log
+```
+
+<p style="margin: 1em 0 0.5em 0; font-weight: 600; color: #0f172a; font-size: 0.95em;">If everything is working correctly, you should see backend application logs here.</p>
+
+```
+[WARNING] -  Not Found service without SSL Certificate
+[OK] - Worker connections: 100
+[OK] - Number of workers: 1
+[INFO] 2025-12-19 00:48:33 Starting app with configuration:
+[INFO] 2025-12-19 00:48:33 Logger period: 10.0 seconds
+[INFO] 2025-12-19 00:48:33 Log max bytes: 10485760 bytes
+[INFO] 2025-12-19 00:48:33 Log backup count: 3 backups
+[INFO] 2025-12-19 00:48:33 Log level: 20
+[INFO] 2025-12-19 00:48:34 App started successfully
+```
+
+</div>
+
+<div style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 1em; margin-top: 1.5em; border-radius: 4px;">
+
+<p style="margin: 0; font-weight: 600; color: #2e7d32;">✅ Once running, access the services:</p>
+
+<ul style="margin: 0.5em 0 0 1.5em; color: #1b5e20; line-height: 1.8;">
+<li><strong>PyAutomation HMI:</strong> <code>http://localhost:3000</code> (or the port specified in your <code>AUTOMATION_HMI_PORT</code> environment variable)</li>
+<li><strong>PyAutomation API:</strong> <code>http://localhost:8050/api/docs</code> (or the port specified in your <code>AUTOMATION_PORT</code> environment variable)</li>
+<li><strong>OPC UA Server:</strong> <code>opc.tcp://localhost:4840</code></li>
+<li><strong>OPC UA Simulator API:</strong> <code>http://localhost:5015/api/docs</code></li>
+</ul>
+
+</div>
+
+<div style="background: #eef7ff; border-left: 4px solid #1976d2; padding: 1em; margin-top: 1.5em; border-radius: 4px;">
+
+<p style="margin: 0; font-weight: 600; color: #0f172a;">🔐 Superuser Account Created</p>
+
+<p style="margin: 0.5em 0 0 0; color: #0f172a; font-size: 0.95em; line-height: 1.6;">
+During the initial startup, PyAutomation automatically creates a <strong>superuser account</strong> with the following credentials:
+</p>
+
+<ul style="margin: 0.5em 0 0 1.5em; color: #0f172a; line-height: 1.8; font-size: 0.95em;">
+<li><strong>Username:</strong> <code>system</code></li>
+<li><strong>Password:</strong> The value configured in your <code>AUTOMATION_SUPERUSER_PASSWORD</code> environment variable (from your <code>.env</code> file)</li>
+</ul>
+
+<p style="margin: 0.8em 0 0 0; color: #0f172a; font-size: 0.95em; line-height: 1.6;">
+You can use these credentials to log in to the PyAutomation HMI at <code>http://localhost:3000</code> (or your configured HMI port). This superuser account has full administrative privileges and is intended for initial setup, creating additional users, and system recovery.
+</p>
+
+<p style="margin: 0.8em 0 0 0; color: #0f172a; font-size: 0.9em; line-height: 1.6; font-style: italic;">
+<strong>Security Note:</strong> Change the <code>AUTOMATION_SUPERUSER_PASSWORD</code> value in your <code>.env</code> file from the default before deploying to production environments.
+</p>
+
+</div>
+
+<div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 1em; margin-top: 1.5em; border-radius: 4px;">
+
+<p style="margin: 0; font-weight: 600; color: #856404;">🛑 To stop the demo stack:</p>
+
+```bash
+docker compose down
+```
+
+<p style="margin: 0.5em 0 0 0; color: #856404; font-size: 0.95em;">
+To remove volumes (database data) as well, use: <code>docker compose down -v</code>
+</p>
+
+</div>
+
+</div>
+
+### 1.3. OPC UA Simulator Configuration: opcua_server_simulator.yml
 
 The OPC UA simulator uses a YAML configuration file mounted into the container:
 
@@ -485,11 +460,11 @@ The simulator uses this configuration plus the CSV file to drive the time series
 
 *Figure 3.2: OPC UA namespace tree showing variables like FI_01, PI_01, etc. from the simulator*
 
-### 3.3. CSV Data Format: data_for_tests.csv
+### 1.4. CSV Data Format: data_for_tests.csv
 
 The `data_for_tests.csv` file (mounted into the container) provides the raw time‑series used by the simulator:
 
-- Must be located in the **project root** (as referenced in `docker-compose.test.yml`).
+- Must be located in the **project root** (as referenced in `docker-compose.yml`).
 - Is mounted to `/app/app/data/data_for_tests.csv` inside the container.
 - Must match the `filename` specified in `opcua_server_simulator.yml` (`data_for_tests` → `data_for_tests.csv`).
 
@@ -520,12 +495,12 @@ If you want to customize the simulation:
 
 > **Note:** The `data_for_tests.csv` file follows a standard CSV format with a header row and numeric data columns. You can open it in any spreadsheet application (Excel, LibreOffice Calc, etc.) to view and edit the time-series data.
 
-### 3.4. Starting the full demo stack
+### 1.5. Starting the full demo stack
 
-From the project root, run:
+Once you run your command:
 
 ```bash
-docker-compose -f docker-compose.test.yml up -d
+docker compose --env-file .env up -d
 ```
 
 This will:
