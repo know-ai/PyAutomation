@@ -461,6 +461,29 @@ class DataLogger(BaseLogger):
             "pagination": {}
         }
 
+        # Validate stop date: if it's in the future, adjust to the most recent timestamp in database
+        max_ts = (TagValue
+            .select(fn.Max(TagValue.timestamp))
+            .join(Tags)
+            .where(
+                (Tags.name.in_(tags)) & 
+                (TagValue.value.is_null(False))
+            )
+            .scalar())
+        
+        if max_ts is not None:
+            if isinstance(max_ts, datetime):
+                if max_ts.tzinfo is None:
+                    max_ts = utc_timezone.localize(max_ts)
+                max_dt = max_ts
+            else:
+                max_dt = datetime.fromtimestamp(float(max_ts), pytz.UTC)
+            
+            # If stop_dt is in the future compared to the most recent data, adjust it
+            if stop_dt > max_dt:
+                stop_dt = max_dt
+                stop_ts = stop_dt.timestamp()
+
         # Check for data presence to adjust start time if necessary
         # 1. Check if there is any data BEFORE or AT start_dt (history)
         has_history = (TagValue
