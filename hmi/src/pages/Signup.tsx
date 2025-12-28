@@ -36,6 +36,13 @@ export function Signup() {
         name: form.name,
         lastname: form.lastname,
       });
+      // Guardar toast de éxito en sessionStorage para que persista al navegar
+      const toastData = {
+        messageKey: "auth.signupSuccess",
+        type: "success",
+        duration: 5000, // 5 segundos
+      };
+      sessionStorage.setItem("pendingToast", JSON.stringify(toastData));
       navigate("/login");
     } catch (err: any) {
       const status = err?.response?.status;

@@ -83,6 +83,7 @@
     "invalidCredentials": "Invalid username or password. Please check your credentials.",
     "loginError": "Could not sign in. Please try again or contact the administrator.",
     "signupError": "Could not create the account. Please review the entered data or contact the administrator.",
+    "signupSuccess": "Account created successfully! You can now log in.",
     "tokenNotReceived": "Authentication token not received. Please try again."
   },
   "events": {

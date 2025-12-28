@@ -83,6 +83,7 @@
     "invalidCredentials": "Usuario o contraseña inválidos. Verifique sus credenciales.",
     "loginError": "No se pudo iniciar sesión. Intente nuevamente o contacte al administrador.",
     "signupError": "No se pudo crear la cuenta. Revise los datos ingresados o contacte al administrador.",
+    "signupSuccess": "¡Cuenta creada exitosamente! Ahora puede iniciar sesión.",
     "tokenNotReceived": "No se recibió el token de autenticación. Por favor, intente nuevamente."
   },
   "events": {
