@@ -28,9 +28,11 @@ from .modules.users.users import users, User
 from .modules.users.roles import roles, Role
 from .dbmodels.core import BaseModel
 from .utils.decorators import validate_types, logging_error_handler
+from .utils import _colorize_message
 from flask_socketio import SocketIO
 from geventwebsocket.handler import WebSocketHandler
 from .variables import VARIABLES
+from flask import Flask
 # DASH APP CONFIGURATION PAGES IMPORTATION
 # from .pages.main import ConfigView
 # from .pages.callbacks import init_callbacks
@@ -46,9 +48,8 @@ class PyAutomation(Singleton):
     **Example 1**: Using only PyAutomation Framework
 
     ```python
-    from automation import PyAutomation, server
-    app = PyAutomation()
-    app.define_dash_app(server=server)  # This is the configuration page
+    from automation import PyAutomation
+    app = PyAutomation(certfile=certfile, keyfile=keyfile)
     app.run(debug=True, create_tables=True)
 
     ```
@@ -60,8 +61,7 @@ class PyAutomation(Singleton):
     from app import CreateApp
     application = CreateApp()
     server = application()  # Flask App
-    app = PyAutomation()
-    app.define_dash_app(server=server)  # This is the configuration page
+    app = PyAutomation(certfile=certfile, keyfile=keyfile)
     app.run(create_tables=True)
 
     ```
@@ -69,8 +69,11 @@ class PyAutomation(Singleton):
 """
 
     PORTS = 65535
-    def __init__(self):
+    
 
+    def __init__(self):
+        
+        # Initial setup (first time initialization)
         self.machine = Machine()
         self.machine_manager = self.machine.get_state_machine_manager()
         self.is_starting = True
@@ -87,6 +90,7 @@ class PyAutomation(Singleton):
         self.workers = list()
         self.das = DAS()
         self.sio = None
+        self.server = None
         folder_path = os.path.join(".", "logs")
 
         if not os.path.exists(folder_path):
@@ -192,26 +196,25 @@ class PyAutomation(Singleton):
         )
     
     @logging_error_handler
-    def define_dash_app(self,  certfile:str=None, keyfile:str=None, **kwargs)->None:
+    def define_socketio(self, server:Flask, certfile:str=None, keyfile:str=None)->None:
         r"""
-        Initializes and configures the Dash application integrated within PyAutomation.
+        Initializes and configures the Socket.IO server integrated within PyAutomation.
 
         **Parameters:**
         
         * **certfile** (str, optional): Path to the SSL certificate file.
         * **keyfile** (str, optional): Path to the SSL key file.
-        * **kwargs**: Additional keyword arguments passed to the Dash application constructor.
 
-        This method sets up the Dash frontend, configures callbacks, and initializes the Socket.IO server 
+        This method sets up the Socket.IO server, configures callbacks, and initializes the Socket.IO server 
         for real-time communication.
         """
-        # self.dash_app = ConfigView(use_pages=True, external_stylesheets=[dbc.themes.BOOTSTRAP], prevent_initial_callbacks=True, pages_folder=".", **kwargs)
-        # self.dash_app.set_automation_app(self)
-        # init_callbacks(app=self.dash_app)
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(_colorize_message(f"[{str_date}] [INFO] Defining Socket.IO server with certfile: {certfile} and keyfile: {keyfile}", "INFO"))
+        self.server = server
         if certfile and keyfile:
-            
+
             self.sio = SocketIO(
-                kwargs.get('server'), 
+                self.server, 
                 cors_allowed_origins='*', 
                 ping_timeout=10, 
                 ping_interval=10, 
@@ -221,7 +224,7 @@ class PyAutomation(Singleton):
             )
         
         else:
-            self.sio = SocketIO(kwargs.get('server'), cors_allowed_origins='*', ping_timeout=10, ping_interval=10, async_mode='gevent', handler_class=WebSocketHandler)
+            self.sio = SocketIO(self.server, cors_allowed_origins='*', ping_timeout=10, ping_interval=10, async_mode='gevent', handler_class=WebSocketHandler)
 
         self.cvt._cvt.set_socketio(sio=self.sio)
 
@@ -238,6 +241,7 @@ class PyAutomation(Singleton):
                 "last_logs": self.get_lasts_logs(lasts=10) or list()
             }
             self.sio.emit("on_connection", data=payload)
+        print(_colorize_message(f"[{str_date}] [INFO] Socket.IO server defined successfully", "INFO"))
 
     @logging_error_handler
     @validate_types(name=StringType, output=StateMachine|None)
@@ -2045,7 +2049,7 @@ class PyAutomation(Singleton):
         """
 
         from .dbmodels import proxy
-
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if clear_default_tables:
 
             self.db_manager.clear_default_tables()
@@ -2065,6 +2069,8 @@ class PyAutomation(Singleton):
                 'synchronous': 1
                 }
             )
+            logging.warning(f"SQLite database is not recommended for production: {dbfile}")
+            print(_colorize_message(f"[{str_date}] [WARNING] SQLite database is not recommended for production: {dbfile}", "WARNING"))
 
         elif dbtype.lower()=='mysql':
 
@@ -2128,12 +2134,15 @@ class PyAutomation(Singleton):
 
         ```
         """
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if dbtype.lower()=="sqlite":
 
             db_config = {
                 "dbtype": dbtype,
                 "dbfile": dbfile
             }
+            logging.warning(f"Setting database config: {db_config}")
+            print(_colorize_message(f"[{str_date}] [WARNING] Setting database config: {db_config}", "WARNING"))
 
         else:
 
@@ -2187,12 +2196,14 @@ class PyAutomation(Singleton):
             return db_config
         
         except Exception as e:
+            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             _, _, e_traceback = sys.exc_info()
             e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
             e_message = str(e)
             e_line_number = e_traceback.tb_lineno
             message = f"Database is not configured: {e_line_number} - {e_filename} - {e_message}"
             logging.warning(message)
+            print(_colorize_message(f"[{str_date}] [WARNING] {message}", "WARNING"))
             return None
 
     @logging_error_handler
@@ -2336,9 +2347,13 @@ class PyAutomation(Singleton):
 
         ```
         """
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
         try:
             db_config = self.get_db_config()
 
+            logging.info(f"Connecting to database {db_config['dbtype']} with config: {db_config}")
+            print(_colorize_message(f"[{str_date}] [INFO] Connecting to database {db_config['dbtype']} with config: {db_config}", "INFO"))
             # Para tests forzamos siempre una DB SQLite temporal.
             if test:
                 db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
@@ -2353,12 +2368,14 @@ class PyAutomation(Singleton):
                     logging.warning(
                         f"Error while bootstrapping DB config from environment: {env_err}"
                     )
+                    print(_colorize_message(f"[{str_date}] [WARNING] Error while bootstrapping DB config from environment: {env_err}", "WARNING"))
 
             if not db_config:
                 logging.warning(
                     "No database configuration available (db_config.json not found "
                     "and no valid AUTOMATION_DB_* env vars). Skipping DB connection."
                 )
+                print(_colorize_message(f"[{str_date}] [WARNING] No database configuration available (db_config.json not found and no valid AUTOMATION_DB_* env vars). Skipping DB connection.", "WARNING"))
                 return False
 
             # Normalizar tipos (especialmente el puerto) antes de set_db
@@ -2372,6 +2389,7 @@ class PyAutomation(Singleton):
                         f"Invalid port value in db_config ({db_config.get('port')}), "
                         "setting port=None."
                     )
+                    print(_colorize_message(f"[{str_date}] [WARNING] Invalid port value in db_config ({db_config.get('port')}), setting port=None.", "WARNING"))
                     db_config["port"] = None
 
             self.__log_histories = True
@@ -2385,11 +2403,13 @@ class PyAutomation(Singleton):
             self.load_db_to_users()
             if reload:
                 self.load_db_tags_to_machine()
-
+            logging.info(f"Database connected successfully")
+            print(_colorize_message(f"[{str_date}] [INFO] Database connected successfully", "INFO"))
             return True
 
         except Exception as err:
             logging.critical(f"CONNECTING DATABASE ERROR: {err}")
+            print(_colorize_message(f"[{str_date}] [CRITICAL] CONNECTING DATABASE ERROR: {err}", "CRITICAL"))
             return False
         
     @validate_types(test=bool|type(None), reload=bool|type(None), output=None|bool)
@@ -2476,6 +2496,9 @@ class PyAutomation(Singleton):
         """
         self.__log_histories = False
         self.db_manager._logger.logger.stop_db()
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        logging.info(f"Database disconnected successfully")
+        print(_colorize_message(f"[{str_date}] [INFO] Database disconnected successfully", "INFO"))
 
     @logging_error_handler
     @validate_types(output=None)
@@ -2503,15 +2526,18 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             tags = self.db_manager.get_tags()
-
+            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             for tag in tags:
 
                 active = tag.pop("active")
 
                 if active:
-                    
+                    logging.info(f"Loading tag {tag['name']} from database")
+                    print(_colorize_message(f"[{str_date}] [INFO] Loading tag {tag['name']} from database", "INFO"))
                     self.create_tag(reload=True, **tag)
+                    logging.info(f"Tag {tag['name']} loaded from database")
+                    print(_colorize_message(f"[{str_date}] [INFO] Tag {tag['name']} loaded from database", "INFO"))
 
     @logging_error_handler
     @validate_types(output=None)
@@ -2536,13 +2562,23 @@ class PyAutomation(Singleton):
 
         ```
         """
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        logging.info(f"Loading alarms from database")
+        print(_colorize_message(f"[{str_date}] [INFO] Loading alarms from database", "INFO"))
         if self.is_db_connected():
 
-            alarms = self.db_manager.get_alarms()
+            alarms = self.db_manager.get_alarms() or list()
+            logging.info(f"{len(alarms)} alarms found in database")
+            print(_colorize_message(f"[{str_date}] [INFO] {len(alarms)} alarms found in database", "INFO"))
             if alarms:
                 for alarm in alarms:
 
-                        self.create_alarm(reload=True, **alarm)
+                    self.create_alarm(reload=True, **alarm)
+                    logging.info(f"Alarm {alarm['name']} loaded from database")
+                    print(_colorize_message(f"[{str_date}] [INFO] Alarm {alarm['name']} loaded from database", "INFO"))
+            else:
+                logging.info(f"No alarms found in database")
+                print(_colorize_message(f"[{str_date}] [INFO] No alarms found in database", "INFO"))
 
     @logging_error_handler
     @validate_types(output=None)
@@ -2567,9 +2603,14 @@ class PyAutomation(Singleton):
 
         ```
         """
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        logging.info(f"Loading roles from database")
+        print(_colorize_message(f"[{str_date}] [INFO] Loading roles from database", "INFO"))
         if self.is_db_connected():
 
             Roles.fill_cvt_roles()
+            logging.info(f"Roles loaded from database")
+            print(_colorize_message(f"[{str_date}] [INFO] Roles loaded from database", "INFO"))
 
     @logging_error_handler
     @validate_types(output=None)
@@ -2595,34 +2636,52 @@ class PyAutomation(Singleton):
 
         ```
         """
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        logging.info(f"Loading users from database")
+        print(_colorize_message(f"[{str_date}] [INFO] Loading users from database", "INFO"))
         if self.is_db_connected():
 
             Users.fill_cvt_users()
-        
+            logging.info(f"Users loaded from database")
+            print(_colorize_message(f"[{str_date}] [INFO] Users loaded from database", "INFO"))
     @logging_error_handler
     @validate_types(output=None)
     def load_opcua_clients_from_db(self):
         r"""
         Loads OPC UA client configurations from the database and initializes them.
         """
-        
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        logging.info(f"Loading OPC UA clients from database")
+        print(_colorize_message(f"[{str_date}] [INFO] Loading OPC UA clients from database", "INFO"))
         if self.is_db_connected():
 
             clients = self.db_manager.get_opcua_clients()
+            logging.info(f"{len(clients)} OPC UA clients found in database")
+            if len(clients)>0:
+                
+                print(_colorize_message(f"[{str_date}] [INFO] {len(clients)} OPC UA clients found in database", "INFO"))
+            else:
+                print(_colorize_message(f"[{str_date}] [WARNING] No OPC UA clients found in database", "WARNING"))
             
             for client in clients:
-
                 self.add_opcua_client(**client)
+                logging.info(f"OPC UA client {client['client_name']} loaded from database")
+                print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {client['client_name']} loaded from database", "INFO"))
 
     @logging_error_handler
     def load_db_tags_to_machine(self):
         r"""
         Loads tag subscriptions for state machines from the database.
         """
-        
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        logging.info(f"Loading tag subscriptions for state machines from database")
+        print(_colorize_message(f"[{str_date}] [INFO] Loading tag subscriptions for state machines from database", "INFO"))
         machines = self.machine_manager.get_machines()
 
+
         for machine, _, _ in machines:
+            logging.info(f"Loading tag subscriptions for state machine {machine.name.value} from database")
+            print(_colorize_message(f"[{str_date}] [INFO] Loading tag subscriptions for state machine {machine.name.value} from database", "INFO"))
 
             if machine.classification.value.lower()!="data acquisition system":
 
@@ -2634,17 +2693,24 @@ class PyAutomation(Singleton):
                     return f"{machine_name} not found into DB", 404
                 
                 machine.identifier.value = machine_db.identifier
+                logging.info(f"State machine {machine.name.value} identifier set to {machine.identifier.value} from database")
+                print(_colorize_message(f"[{str_date}] [INFO] State machine {machine.name.value} identifier set to {machine.identifier.value} from database", "INFO"))
                 tags_machine = machine_db.get_tags()
-                
+                logging.info(f"{len(tags_machine)} tags found for state machine {machine.name.value} in database")
+                print(_colorize_message(f"[{str_date}] [INFO] {len(tags_machine)} tags found for state machine {machine.name.value} in database", "INFO"))
                 for tag_machine in tags_machine:
 
+                    logging.info(f"Loading tag {tag_machine.name} from database")
+                    print(_colorize_message(f"[{str_date}] [INFO] Loading tag {tag_machine.name} from database", "INFO"))
                     _tag = tag_machine.serialize()
                     tag_name = _tag["tag"]["name"]
                     tag = self.cvt.get_tag_by_name(name=tag_name)
                     machine.subscribe_to(tag=tag, default_tag_name=_tag["default_tag_name"])
-
+                    logging.info(f"Tag {tag_machine.name} loaded from database")
+                    print(_colorize_message(f"[{str_date}] [INFO] Tag {tag_machine.name} loaded from database", "INFO"))
             else:
-
+                logging.info(f"State machine {machine.name.value} is a data acquisition system, skipping tag subscriptions")
+                print(_colorize_message(f"[{str_date}] [INFO] State machine {machine.name.value} is a data acquisition system, skipping tag subscriptions", "INFO"))
                 machine_name = machine.name.value
                 machine_db = Machines.get_or_none(name=machine_name)
                 machine.identifier.value = machine_db.identifier
@@ -3303,7 +3369,7 @@ class PyAutomation(Singleton):
 
     # INIT APP
     @logging_error_handler
-    def run(self, debug:bool=False, test:bool=False, create_tables:bool=False, machines:tuple=None)->None:
+    def run(self, server:Flask, debug:bool=False, test:bool=False, create_tables:bool=False, machines:tuple=None, certfile:str=None, keyfile:str=None)->None:
         r"""
         Starts the PyAutomation application.
 
@@ -3329,16 +3395,17 @@ class PyAutomation(Singleton):
         ```
         """
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        logging.critical(f"{str_date} Starting app with configuration:")
-        logging.critical(f"{str_date} Logger period: {self.get_app_config().get('logger_period', 10.0)} seconds")
-        logging.critical(f"{str_date} Log max bytes: {self.get_app_config().get('log_max_bytes', 10 * 1024 * 1024)} bytes")
-        logging.critical(f"{str_date} Log backup count: {self.get_app_config().get('log_backup_count', 3)} backups")
-        logging.critical(f"{str_date} Log level: {self.get_app_config().get('log_level', 20)}")
-        print(f"[INFO] {str_date} Starting app with configuration:")
-        print(f"[INFO] {str_date} Logger period: {self.get_app_config().get('logger_period', 10.0)} seconds")
-        print(f"[INFO] {str_date} Log max bytes: {self.get_app_config().get('log_max_bytes', 10 * 1024 * 1024)} bytes")
-        print(f"[INFO] {str_date} Log backup count: {self.get_app_config().get('log_backup_count', 3)} backups")
-        print(f"[INFO] {str_date} Log level: {self.get_app_config().get('log_level', 20)}")
+        self.define_socketio(server=server, certfile=certfile, keyfile=keyfile)
+        logging.info(f"Starting app with configuration:")
+        logging.info(f"Logger period: {self.get_app_config().get('logger_period', 10.0)} seconds")
+        logging.info(f"Log max bytes: {self.get_app_config().get('log_max_bytes', 10 * 1024 * 1024)} bytes")
+        logging.info(f"Log backup count: {self.get_app_config().get('log_backup_count', 3)} backups")
+        logging.info(f"Log level: {self.get_app_config().get('log_level', 20)}")
+        print(_colorize_message(f"[{str_date}] [INFO] Starting app with configuration:", "INFO"))
+        print(_colorize_message(f"[{str_date}] [INFO] Logger period: {self.get_app_config().get('logger_period', 10.0)} seconds", "INFO"))
+        print(_colorize_message(f"[{str_date}] [INFO] Log max bytes: {self.get_app_config().get('log_max_bytes', 10 * 1024 * 1024)} bytes", "INFO"))
+        print(_colorize_message(f"[{str_date}] [INFO] Log backup count: {self.get_app_config().get('log_backup_count', 3)} backups", "INFO"))
+        print(_colorize_message(f"[{str_date}] [INFO] Log level: {self.get_app_config().get('log_level', 20)}", "INFO"))
 
         # Start workers (logger, DB worker, state machines)
         self.safe_start(test=test, create_tables=create_tables, machines=machines)
@@ -3357,13 +3424,8 @@ class PyAutomation(Singleton):
             self.create_system_user()
         else:
             logging.critical("Database is not connected, skipping system user creation")
-            print(f"[INFO] {str_date} Database is not connected, skipping system user creation")
+            print(_colorize_message(f"[{str_date}] [CRITICAL] Database is not connected, skipping system user creation", "CRITICAL"))
 
-        # if not test:
-        
-        #     if debug:
-                
-        #         self.dash_app.run(debug=debug, use_reloader=False)
 
     @logging_error_handler
     def create_system_user(self):
@@ -3404,8 +3466,8 @@ class PyAutomation(Singleton):
         self.__start_logger()
         self.__start_workers(test=test, machines=machines)
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        logging.critical(f"{str_date} App started successfully")
-        print(f"[INFO] {str_date} App started successfully")
+        logging.info(f"App started successfully")
+        print(_colorize_message(f"[{str_date}] [INFO] App started successfully", "INFO"))
 
     @logging_error_handler
     @validate_types(period=float, output=None)
@@ -3420,7 +3482,7 @@ class PyAutomation(Singleton):
         if hasattr(self, 'db_worker'):
             self.db_worker._period = period
             str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            logging.info(f"{str_date} Logger period updated to {period} seconds")
+            logging.info(f"Logger period updated to {period} seconds")
             print(f"[INFO] {str_date} Logger period updated to {period} seconds")
         
         self.set_app_config(logger_period=period)
@@ -3538,7 +3600,7 @@ class PyAutomation(Singleton):
                 # Trigger rollover if needed (optional, or wait for next write)
                 # handler.doRollover() 
                 str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                logging.info(f"{str_date} Log configuration updated: maxBytes={max_bytes}, backupCount={backup_count}")
+                logging.info(f"Log configuration updated: maxBytes={max_bytes}, backupCount={backup_count}")
                 print(f"[INFO] {str_date} Log configuration updated: maxBytes={max_bytes}, backupCount={backup_count}")
                 break
         

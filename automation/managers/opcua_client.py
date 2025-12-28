@@ -1,3 +1,6 @@
+from datetime import datetime
+import logging
+from ..utils import _colorize_message
 from ..opcua.models import Client
 from ..dbmodels import OPCUA
 from ..logger.datalogger import DataLoggerEngine
@@ -62,7 +65,9 @@ class OPCUAClientManager:
         
         message, status_connection = opcua_client.connect()
         if status_connection==200:
-
+            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logging.info(f"OPC UA client {client_name} connected successfully")
+            print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {client_name} connected successfully", "INFO"))
             self._clients[client_name] = opcua_client
             
             # DATABASE PERSISTENCY
@@ -175,6 +180,8 @@ class OPCUAClientManager:
         * **tuple**: (Tree dict, HTTP status code).
         """
         client = self.get(client_name=client_name)
+        if not client:
+            return {}, 404
         if client.is_connected():
             root_node = client.get_root_node()
             _tree = client.browse_tree(root_node)
@@ -182,8 +189,7 @@ class OPCUAClientManager:
                 "Objects": _tree[0]["children"]
             }
             return result, 200
-        
-        return {}, 400
+    
         
     @logging_error_handler
     def get_node_values(self, client_name:str, namespaces:list)->list:

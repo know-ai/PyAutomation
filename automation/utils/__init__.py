@@ -3,6 +3,32 @@ from .observer import Observer
 from ..variables import VARIABLES
 from ..alarms.states import ACTIONS
 
+def _colorize_message(message: str, level: str) -> str:
+        """
+        Agrega códigos de color ANSI al mensaje según el nivel de log.
+        
+        Args:
+            message: Mensaje a colorear
+            level: Nivel del log (CRITICAL, ERROR, WARNING, INFO, DEBUG)
+        
+        Returns:
+            Mensaje con códigos de color ANSI
+        """
+        colors = {
+            'CRITICAL': '\033[91m',  # Rojo brillante
+            'ERROR': '\033[91m',     # Rojo brillante
+            'WARNING': '\033[93m',   # Amarillo brillante
+            'INFO': '\033[92m',      # Verde brillante
+            'DEBUG': '\033[90m',     # Gris
+        }
+        reset = '\033[0m'  # Reset color
+        
+        color = colors.get(level.upper(), '')
+        if color:
+            # Colorear solo el nivel [LEVEL]
+            return message.replace(f'[{level}]', f'{color}[{level}]{reset}')
+        return message
+
 def log_detailed(e, message):
     logger = logging.getLogger("pyautomation")
     logger.error(message)

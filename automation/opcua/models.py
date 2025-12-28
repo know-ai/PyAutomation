@@ -1,8 +1,10 @@
 from opcua import Client as OPCClient
 from opcua import ua
+from datetime import datetime
 # import sched
 from opcua.ua.uatypes import NodeId, datatype_to_varianttype
 import re, uuid, logging, time
+from ..utils import _colorize_message
 
 
 class Client(OPCClient):
@@ -65,8 +67,10 @@ class Client(OPCClient):
             return result, 200
             
         except Exception as _err:
+            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             logger = logging.getLogger("pyautomation")
-            logger.error(f"Error during connection: {_err}")
+            logger.error(f"Error during OPCUA server {self._server_url} connection")
+            print(_colorize_message(f"[{str_date}] [ERROR] Error during OPCUA server {self._server_url} connection", "ERROR"))
             self._is_open = False
             result = {
                 'message': 'Connection could not be established',
@@ -91,8 +95,10 @@ class Client(OPCClient):
             
             from automation import PyAutomation
             app = PyAutomation()
+            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             app.sio.emit("on.opcua.disconnected", data={"message": f"Disconneted from {self._server_url}"})
-            logging.critical(f"Attempting to reconnect to {self._server_url}")  
+            logging.critical(f"Attempting to reconnect to OPCUA server {self._server_url}")  
+            print(_colorize_message(f"[{str_date}] [CRITICAL] Attempting to reconnect to OPCUA server {self._server_url}", "CRITICAL"))
             try:
 
                 result, status = self.connect()
@@ -107,8 +113,10 @@ class Client(OPCClient):
                         app.subscribe_opcua(tag=_tag, opcua_address=tag['opcua_address'], node_namespace=tag['node_namespace'], scan_time=tag['scan_time'], reload=True)
                         
                     logging.critical(f"Reconnected to {self._server_url}") 
+                    print(_colorize_message(f"[{str_date}] [INFO] Reconnected to OPCUA server {self._server_url}", "INFO"))
             except: 
-                logging.critical(f"Reconnection failed...")
+                logging.critical(f"Reconnection to OPCUA server {self._server_url} failed...")
+                print(_colorize_message(f"[{str_date}] [CRITICAL] Reconnection to OPCUA server {self._server_url} failed...", "CRITICAL"))
 
     def __reset_object_attributes(self):
         r"""
@@ -333,20 +341,31 @@ class Client(OPCClient):
         r"""
         Documentation here
         """
-        
-        _client = OPCClient(f'opc.tcp://{hostname}:{port}')
-        servers = _client.connect_and_find_servers()
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            logging.info(f"Searching OPCUA servers in opc.tcp://{hostname}:{port}")
+            print(_colorize_message(f"[{str_date}] [INFO] Searching OPCUA servers in opc.tcp://{hostname}:{port}", "INFO"))
+            _client = OPCClient(f'opc.tcp://{hostname}:{port}')
+            servers = _client.connect_and_find_servers()
+            logging.info(f"OPCUA servers found: {len(servers)}")
+            print(_colorize_message(f"[{str_date}] [INFO] OPCUA servers found: {len(servers)}", "INFO"))
+        except Exception as err:
+            logging.error(f"Error searching OPCUA servers in opc.tcp://{hostname}:{port}, Make sure the server is running and the port is correct")
+            print(_colorize_message(f"[{str_date}] [ERROR] Error searching OPCUA servers in opc.tcp://{hostname}:{port}, Make sure the server is running and the port is correct", "ERROR"))
+            
         _servers = list()
-        for server in servers:
-            _server = dict()
-            _server['ApplicationUri'] = server.ApplicationUri
-            _server['ProductUri'] = server.ProductUri
-            _server['ApplicationName'] = server.ApplicationName.Text
-            _server['ApplicationType'] = server.ApplicationType.Server
-            _server['GatewayServerUri'] = server.GatewayServerUri
-            _server['DiscoveryProfileUri'] = server.DiscoveryProfileUri
-            _server['DiscoveryUrls'] = server.DiscoveryUrls
-            _servers.append(_server)
+        if _servers:
+            for server in _servers:
+                _server = dict()
+                _server['ApplicationUri'] = server.ApplicationUri
+                _server['ProductUri'] = server.ProductUri
+                _server['ApplicationName'] = server.ApplicationName.Text
+                _server['ApplicationType'] = server.ApplicationType.Server
+                _server['GatewayServerUri'] = server.GatewayServerUri
+                _server['DiscoveryProfileUri'] = server.DiscoveryProfileUri
+                _server['DiscoveryUrls'] = server.DiscoveryUrls
+                _servers.append(_server)
+
 
         return _servers
 
