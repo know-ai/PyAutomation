@@ -112,7 +112,7 @@ class TestUsers(unittest.TestCase):
         role = Role(name=ROLE_NAME, level=0)
         self.roles.add(role=role)
         user, _ = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
-        self.assertFalse(self.users.login(password=user.password, username="user1"))
+        self.assertFalse(self.users.login(password=user.password, username="user1")[0])
 
     def test_get_user(self):
 

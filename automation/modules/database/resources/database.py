@@ -21,10 +21,11 @@ db_connect_model = api.model("db_connect_model", {
 @ns.route('/config')
 class DatabaseConfigResource(Resource):
 
-    @api.doc(security='apikey', description="Retrieves the current database configuration.")
+    # @api.doc(security='apikey', description="Retrieves the current database configuration.")
+    @api.doc(security=None, description="Retrieves the current database configuration.")
     @api.response(200, "Success")
     @api.response(404, "Configuration not found")
-    @Api.token_required(auth=True)
+    # @Api.token_required(auth=True)
     def get(self):
         r"""
         Get database configuration.
@@ -54,10 +55,11 @@ class DatabaseConnectedResource(Resource):
 @ns.route('/connect')
 class DatabaseConnectResource(Resource):
 
-    @api.doc(security='apikey', description="Connects to the database with the provided configuration.")
+    # @api.doc(security='apikey', description="Connects to the database with the provided configuration.")
+    @api.doc(security=None, description="Connects to the database with the provided configuration.")
     @api.response(200, "Connection successful")
     @api.response(400, "Connection failed")
-    @Api.token_required(auth=True)
+    # @Api.token_required(auth=True)
     @ns.expect(db_connect_model)
     def post(self):
         r"""

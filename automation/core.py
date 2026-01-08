@@ -4,6 +4,7 @@ from math import ceil
 from datetime import datetime, timezone
 # DRIVERS IMPORTATION
 from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
+from peewee import OperationalError, DatabaseError, InterfaceError
 # from peewee_migrations import Router
 from .dbmodels.users import Roles, Users
 from .dbmodels.machines import Machines
@@ -877,11 +878,95 @@ class PyAutomation(Singleton):
         ```
         """
         # Check Token on Database
-        if self.is_db_connected():
-
-            return self.db_manager.login(password=password, username=username, email=email)
-        
-        return users.login(password=password, username=username, email=email)
+        try:
+            # Verificar si se debe usar la base de datos
+            if self.is_db_connected():
+                # Intentar verificar la conexión real antes de hacer login
+                try:
+                    # Verificar que la conexión realmente funciona haciendo una consulta simple
+                    db = self.db_manager.get_db()
+                    if db is None:
+                        # Intentar obtener el error real de conexión
+                        conn_error = self._try_get_database_connection_error()
+                        if conn_error:
+                            return None, self._format_database_error(conn_error, "during login")
+                        return None, "Database is not configured correctly. Please configure the database connection first."
+                    
+                    # Intentar una consulta simple para verificar la conexión real
+                    try:
+                        db.execute_sql('SELECT 1;')
+                    except (OperationalError, InterfaceError, DatabaseError) as db_conn_error:
+                        # Error de conexión real (conexión perdida, servidor caído, etc.)
+                        return None, self._format_database_error(db_conn_error, "during login")
+                    except Exception as db_conn_error:
+                        # Otro tipo de error de base de datos
+                        return None, self._format_database_error(db_conn_error, "during login")
+                    
+                    # Si llegamos aquí, la conexión funciona, intentar hacer login
+                    result = self.db_manager.login(password=password, username=username, email=email)
+                    
+                    # Verificar el resultado
+                    if result is None:
+                        # Si result es None, puede ser porque BaseEngine.query() retornó None (error interno)
+                        # Esto indica que hubo un error durante la consulta a la base de datos
+                        # Puede ser que la conexión se haya perdido o que haya un problema con la base de datos
+                        return None, "Could not process authentication in the database. The connection may have been lost during the query or there is a problem with the database configuration."
+                    
+                    # Verificar que sea una tupla válida
+                    if isinstance(result, tuple) and len(result) == 2:
+                        user, message = result
+                        # Si el usuario es None pero hay un mensaje, puede ser error de credenciales
+                        if user is None and message:
+                            # Distinguir entre error de autenticación y otros errores
+                            if "Invalid" in message or "invalid" in message.lower() or "credentials" in message.lower() or "password" in message.lower():
+                                # Error de autenticación (credenciales incorrectas)
+                                return None, f"Authentication error: {message}"
+                            else:
+                                # Otro tipo de error
+                                return None, f"Authentication error: {message}"
+                        return result
+                    else:
+                        return None, "Error: Invalid response from database server."
+                        
+                except (OperationalError, InterfaceError, DatabaseError) as db_error:
+                    # Error específico de base de datos al intentar acceder
+                    return None, self._format_database_error(db_error, "during login")
+                except Exception as db_error:
+                    # Otro tipo de error inesperado
+                    return None, self._format_database_error(db_error, "during login")
+            else:
+                # No hay base de datos configurada, intentar obtener el error real de conexión
+                conn_error = self._try_get_database_connection_error()
+                if conn_error:
+                    return None, self._format_database_error(conn_error, "during login")
+                # Si no hay configuración, retornar mensaje genérico
+                db_config = self.get_db_config()
+                if not db_config:
+                    return None, "Database is not configured correctly. Please configure the database connection first."
+                else:
+                    # Hay configuración pero no se puede conectar y no se pudo obtener el error específico
+                    # Intentar formatear un mensaje con la información de configuración disponible
+                    dbtype = db_config.get("dbtype", "").lower()
+                    if dbtype == "sqlite":
+                        config_info = f"SQLite database file: {db_config.get('dbfile', 'unknown')}"
+                    else:
+                        host = db_config.get("host", "unknown")
+                        port = db_config.get("port", "unknown")
+                        user = db_config.get("user", "unknown")
+                        config_info = f'connection to server at "{host}", port {port} failed for user "{user}"'
+                    return None, f'CONNECTING DATABASE ERROR: {config_info}: Unable to establish connection. Please verify the database server is running and the configuration is correct.'
+                    
+        except Exception as e:
+            # En caso de cualquier excepción no prevista, retornar una tupla válida con mensaje descriptivo
+            if isinstance(e, (OperationalError, InterfaceError, DatabaseError)):
+                return None, self._format_database_error(e, "during login")
+            else:
+                error_msg = str(e) if e else "Unknown error while attempting to authenticate"
+                error_lower = error_msg.lower()
+                if "connection" in error_lower or "connect" in error_lower:
+                    return None, self._format_database_error(e, "during login") if hasattr(e, '__class__') else f"Database connection error: {error_msg}"
+                else:
+                    return None, f"Unexpected error during authentication: {error_msg}"
 
     @logging_error_handler
     @validate_types(
@@ -937,26 +1022,78 @@ class PyAutomation(Singleton):
 
         ```
         """
-        user, message = users.signup(
-            username=username,
-            role_name=role_name,
-            email=email,
-            password=password,
-            name=name,
-            lastname=lastname,
-            identifier=identifier,
-            encode_password=encode_password
-        )
-        if user:
-
-            # Persist Tag on Database
+        try:
+            
+            # Persist user on Database if connected
             if self.is_db_connected():
-                
-                _, message = self.db_manager.set_user(user=user)
 
-            return user, message
+                try:
+                    user, message = users.signup(
+                        username=username,
+                        role_name=role_name,
+                        email=email,
+                        password=password,
+                        name=name,
+                        lastname=lastname,
+                        identifier=identifier,
+                        encode_password=encode_password
+                    )
+                    # Verificar que la conexión realmente funciona antes de intentar guardar
+                    db = self.db_manager.get_db()
+                    if db is None:
+                        return None, "Database is not configured correctly. User created in memory but cannot be persisted. Please configure the database connection."
+                    
+                    # Intentar una consulta simple para verificar la conexión real
+                    try:
+                        db.execute_sql('SELECT 1;')
+                    except (OperationalError, InterfaceError, DatabaseError) as db_conn_error:
+                        # Error de conexión real
+                        error_msg = self._format_database_error(db_conn_error, "while persisting user")
+                        return None, f"User created in memory but cannot be persisted. {error_msg}"
+                    except Exception as db_conn_error:
+                        error_msg = self._format_database_error(db_conn_error, "while persisting user")
+                        return None, f"User created in memory but cannot be persisted. {error_msg}"
+                    
+                    # Si llegamos aquí, la conexión funciona, intentar guardar el usuario
+                    try:
+                        result = self.db_manager.set_user(user=user)
+                        # Verificar que el resultado sea válido
+                        if result is None:
+                            return None, "Could not persist user to database. The connection may have been lost during the operation or there is a problem with the database configuration."
+                        # Si result es una tupla, usar el mensaje
+                        if isinstance(result, tuple) and len(result) == 2:
+                            _, db_message = result
+                            message = db_message if db_message else message
+                    except (OperationalError, InterfaceError, DatabaseError) as db_error:
+                        # Error específico de base de datos al intentar guardar
+                        error_msg = self._format_database_error(db_error, "while persisting user")
+                        return None, f"User created in memory but cannot be persisted. {error_msg}"
+                    except Exception as db_error:
+                        # Otro tipo de error inesperado
+                        error_msg = self._format_database_error(db_error, "while persisting user")
+                        return None, f"User created in memory but cannot be persisted. {error_msg}"
+                except Exception as db_error:
+                    # Error al intentar acceder a la base de datos
+                    error_msg = self._format_database_error(db_error, "while persisting user")
+                    return None, f"User created in memory but cannot be persisted. {error_msg}"
 
-        return None, message
+            else:
+                # No hay base de datos configurada, usar autenticación en memoria
+                return None, "Database is not configured correctly. Please configure the database connection first."
+
+            return None, message
+            
+        except Exception as e:
+            # En caso de cualquier excepción no prevista
+            if isinstance(e, (OperationalError, InterfaceError, DatabaseError)):
+                return None, self._format_database_error(e, "during signup")
+            else:
+                error_msg = str(e) if e else "Unknown error while attempting to signup"
+                error_lower = error_msg.lower()
+                if "connection" in error_lower or "connect" in error_lower:
+                    return None, self._format_database_error(e, "during signup") if hasattr(e, '__class__') else f"Database connection error during signup: {error_msg}"
+                else:
+                    return None, f"Unexpected error during signup: {error_msg}"
 
     @logging_error_handler
     @validate_types(role_name=str, output=str)
@@ -2283,6 +2420,113 @@ class PyAutomation(Singleton):
             logging.error(f"Failed to read app config: {e}")
             return {"logger_period": 10.0, "log_level": 20}
 
+    def _format_database_error(self, error: Exception, context: str = "") -> str:
+        """
+        Formatea un mensaje de error de base de datos de manera descriptiva,
+        incluyendo información de configuración (IP, puerto, usuario) cuando esté disponible.
+        
+        Args:
+            error: La excepción de base de datos
+            context: Contexto adicional (ej: "during login", "while persisting user")
+        
+        Returns:
+            Mensaje de error formateado con detalles descriptivos
+        """
+        error_str = str(error)
+        error_lower = error_str.lower()
+        
+        # Intentar obtener la configuración de la base de datos
+        db_config = self.get_db_config()
+        config_info = ""
+        if db_config:
+            if db_config.get("dbtype", "").lower() == "sqlite":
+                config_info = f"SQLite database file: {db_config.get('dbfile', 'unknown')}"
+            else:
+                host = db_config.get("host", "unknown")
+                port = db_config.get("port", "unknown")
+                user = db_config.get("user", "unknown")
+                config_info = f'connection to server at "{host}", port {port} failed for user "{user}"'
+        
+        # Determinar el tipo de error y formatear el mensaje
+        if "password authentication failed" in error_lower or "access denied" in error_lower:
+            if config_info:
+                return f'CONNECTING DATABASE ERROR: {config_info}: FATAL: {error_str}'
+            else:
+                return f'CONNECTING DATABASE ERROR: FATAL: {error_str}'
+        elif "could not connect" in error_lower or "connection refused" in error_lower or "timeout" in error_lower:
+            if config_info:
+                return f'CONNECTING DATABASE ERROR: {config_info}: {error_str}'
+            else:
+                return f'CONNECTING DATABASE ERROR: {error_str}'
+        elif "connection" in error_lower or "connect" in error_lower:
+            if config_info:
+                return f'CONNECTING DATABASE ERROR: {config_info}: {error_str}'
+            else:
+                return f'CONNECTING DATABASE ERROR: {error_str}'
+        elif "authentication" in error_lower or "auth" in error_lower:
+            if config_info:
+                return f'CONNECTING DATABASE ERROR: {config_info}: FATAL: {error_str}'
+            else:
+                return f'CONNECTING DATABASE ERROR: FATAL: {error_str}'
+        else:
+            if config_info:
+                return f'CONNECTING DATABASE ERROR: {config_info}: {error_str}'
+            else:
+                return f'CONNECTING DATABASE ERROR: {error_str}'
+    
+    def _try_get_database_connection_error(self) -> Exception | None:
+        """
+        Intenta obtener el error real de conexión a la base de datos.
+        Útil cuando is_db_connected() retorna False o db es None.
+        
+        Returns:
+            Excepción de base de datos si se puede obtener, None en caso contrario
+        """
+        try:
+            db_config = self.get_db_config()
+            if not db_config:
+                return None
+            
+            # Intentar conectar para obtener el error real
+            dbtype = db_config.get("dbtype", "").lower()
+            if dbtype == "sqlite":
+                dbfile = db_config.get("dbfile", "app.db")
+                if not dbfile.endswith(".db"):
+                    dbfile = f"{dbfile}.db"
+                test_db = SqliteDatabase(os.path.join(".", "db", dbfile))
+            elif dbtype == "mysql":
+                test_db = MySQLDatabase(
+                    db_config.get("name", "app_db"),
+                    host=db_config.get("host", "127.0.0.1"),
+                    port=db_config.get("port", 3306),
+                    user=db_config.get("user", "admin"),
+                    password=db_config.get("password", "admin")
+                )
+            elif dbtype == "postgresql":
+                test_db = PostgresqlDatabase(
+                    db_config.get("name", "app_db"),
+                    host=db_config.get("host", "127.0.0.1"),
+                    port=db_config.get("port", 5432),
+                    user=db_config.get("user", "admin"),
+                    password=db_config.get("password", "admin")
+                )
+            else:
+                return None
+            
+            # Intentar conectar para capturar el error
+            test_db.connect()
+            test_db.close()
+            return None  # Si llegamos aquí, la conexión fue exitosa
+        except (OperationalError, InterfaceError, DatabaseError) as e:
+            return e
+        except Exception as e:
+            # Capturar cualquier otra excepción que pueda estar relacionada con la conexión
+            error_str = str(e).lower()
+            if any(keyword in error_str for keyword in ["connection", "connect", "database", "server", "authentication", "password", "timeout", "refused"]):
+                # Crear una excepción genérica de base de datos para formatear
+                return DatabaseError(str(e))
+            return None
+    
     @logging_error_handler
     @validate_types(output=bool)
     def is_db_connected(self):

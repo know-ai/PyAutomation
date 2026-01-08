@@ -166,11 +166,19 @@ class Users(Singleton):
                 
                 user = self.get_by_email(email=email)
 
+            # Verificar que el usuario existe antes de intentar autenticar
+            if user is None:
+                return None, f"User not found"
+            
+            # Intentar autenticar
             if self.__auth.login(user=user, password=password, token=token):
                 
                 self.active_users[user.token] = user
 
                 return user, f"Login successful"
+            else:
+                # Si la autenticación falla, retornar una tupla con error
+                return None, f"Invalid password"
 
         else:
 

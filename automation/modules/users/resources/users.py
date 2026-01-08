@@ -70,12 +70,15 @@ class SignUpResource(Resource):
     @api.doc(security=None, description="Registers a new user.")
     @api.response(200, "User created successfully")
     @api.response(400, "User creation failed")
+    @api.response(503, "Database connection error")
+    @api.response(500, "Server error")
     @ns.expect(signup_parser)
     def post(self):
         """
         User signup.
 
         Registers a new user with the provided credentials and role.
+        Distinguishes between signup errors and database connection errors.
         """
         args = signup_parser.parse_args()
         user, message = app.signup(**args)
@@ -84,7 +87,63 @@ class SignUpResource(Resource):
 
             return user.serialize(), 200
         
-        return message, 400
+        # Analizar el mensaje de error para determinar el tipo de error
+        if message:
+            message_lower = message.lower()
+            
+            # Detectar errores de conexión/configuración de base de datos
+            if any(keyword in message_lower for keyword in [
+                "database is not configured",
+                "cannot connect to the database",
+                "database connection problem",
+                "database connection error",
+                "error accessing database",
+                "error verifying database connection",
+                "cannot establish connection",
+                "database server",
+                "database credentials are incorrect",
+                "database authentication failed",
+                "error persisting user to database",
+                "connection may have been lost",
+                "cannot be persisted"
+            ]):
+                # Errores de conexión/configuración de base de datos -> 503 Service Unavailable
+                return {
+                    "message": message,
+                    "error_type": "database_connection_error",
+                    "details": "The system cannot connect to the database. The user may have been created in memory but cannot be persisted. Please verify the database configuration and connection settings."
+                }, 503
+            
+            # Detectar errores de validación o duplicados (username/email ya existe, etc.)
+            elif any(keyword in message_lower for keyword in [
+                "already exists",
+                "username",
+                "email",
+                "duplicate",
+                "unique",
+                "constraint"
+            ]):
+                # Errores de validación/duplicados -> 400 Bad Request
+                return {
+                    "message": message,
+                    "error_type": "validation_error",
+                    "details": "The provided user information is invalid or the user already exists."
+                }, 400
+            
+            else:
+                # Otros errores -> 500 Internal Server Error
+                return {
+                    "message": message,
+                    "error_type": "server_error",
+                    "details": "An unexpected error occurred during user registration."
+                }, 500
+        else:
+            # Mensaje vacío o None -> Error genérico
+            return {
+                "message": "An unknown error occurred during signup",
+                "error_type": "unknown_error",
+                "details": "Please try again or contact the administrator."
+            }, 500
 
 
 @ns.route('/login')
@@ -94,15 +153,19 @@ class LoginResource(Resource):
     @api.doc(security=None, description="Authenticates a user and returns an API token.")
     @api.response(200, "Login successful")
     @api.response(403, "Invalid credentials")
+    @api.response(503, "Database connection error")
+    @api.response(500, "Server error")
     @ns.expect(login_parser)
     def post(self):
         """
         User login.
 
         Authenticates a user using username/email and password. Returns an API key/token.
+        Distinguishes between authentication errors and database connection errors.
         """
         args = login_parser.parse_args()
         user, message = app.login(**args)
+        print(user, message)
 
         if user:
 
@@ -114,7 +177,64 @@ class LoginResource(Resource):
                 "timezone": _TIMEZONE
                 }, 200
 
-        return message, 403
+        # Analizar el mensaje de error para determinar el tipo de error
+        if message:
+            message_lower = message.lower()
+            
+            # Detectar errores de conexión/configuración de base de datos
+            if any(keyword in message_lower for keyword in [
+                "database is not configured",
+                "cannot connect to the database",
+                "database connection problem",
+                "database connection error",
+                "error accessing database",
+                "error verifying database connection",
+                "cannot establish connection",
+                "database server",
+                "database credentials are incorrect",
+                "database authentication failed",
+                "error processing authentication in the database",
+                "connection may have been lost",
+                "invalid response from database server"
+            ]):
+                # Errores de conexión/configuración de base de datos -> 503 Service Unavailable
+                return {
+                    "message": message,
+                    "error_type": "database_connection_error",
+                    "details": "The system cannot connect to the database. Please verify the database configuration and connection settings."
+                }, 503
+            
+            # Detectar errores de autenticación (credenciales incorrectas del usuario)
+            elif any(keyword in message_lower for keyword in [
+                "authentication error",
+                "invalid credentials",
+                "invalid username or email",
+                "invalid password",
+                "user not found",
+                "credentials"
+            ]):
+                # Errores de autenticación -> 403 Forbidden
+                return {
+                    "message": message,
+                    "error_type": "authentication_error",
+                    "details": "The provided username/email or password is incorrect."
+                }, 403
+                
+            
+            else:
+                # Otros errores -> 500 Internal Server Error
+                return {
+                    "message": message,
+                    "error_type": "server_error",
+                    "details": "An unexpected error occurred during authentication."
+                }, 500
+        else:
+            # Mensaje vacío o None -> Error genérico
+            return {
+                "message": "An unknown error occurred during login",
+                "error_type": "unknown_error",
+                "details": "Please try again or contact the administrator."
+            }, 500
     
 
 @ns.route('/credentials_are_valid')

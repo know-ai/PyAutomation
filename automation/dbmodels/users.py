@@ -214,7 +214,7 @@ class Users(BaseModel):
                 
                 users.login(password=password, token=user.token, username=username, email=email)
 
-                return user, f"Login successfull"
+                return user, f"Login successful"
 
             return None, f"Invalid credentials" 
 

@@ -4,6 +4,7 @@ import { AuthLayout } from "../layouts/AuthLayout";
 import { Card } from "../components/Card";
 import { Input } from "../components/Input";
 import { Button } from "../components/Button";
+import { DatabaseConfigForm } from "../components/DatabaseConfigForm";
 import { login } from "../services/auth";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { loginFailure, loginStart, loginSuccess } from "../store/slices/authSlice";
@@ -19,6 +20,7 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(false);
+  const [showDatabaseConfig, setShowDatabaseConfig] = useState(false);
 
   // Verificar si hay un toast pendiente al cargar la página
   useEffect(() => {
@@ -48,8 +50,7 @@ export function Login() {
     });
   }, [t]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const attemptLogin = async () => {
     setError(null);
     setLoading(true);
     dispatch(loginStart());
@@ -70,104 +71,140 @@ export function Login() {
         data?.error ??
         err?.message;
 
-      let message: string;
-      if (status === 401) {
-        // Credenciales inválidas u otro error de autenticación
-        message = backendMessage || t("auth.invalidCredentials");
-      } else {
-        // Cualquier otro error: mostrar mensaje del backend si existe
-        message = backendMessage || t("auth.loginError");
-      }
+      // Detectar errores de conexión a la base de datos
+      const isDatabaseError = backendMessage && (
+        backendMessage.includes("CONNECTING DATABASE ERROR") ||
+        backendMessage.includes("Database is not configured") ||
+        backendMessage.includes("Cannot connect to the database") ||
+        backendMessage.includes("Database connection") ||
+        backendMessage.includes("connection to server")
+      );
 
-      setError(message);
-      dispatch(loginFailure(message));
+      if (isDatabaseError) {
+        // Mostrar formulario de configuración de base de datos
+        setShowDatabaseConfig(true);
+        setError(backendMessage);
+      } else {
+        let message: string;
+        if (status === 401) {
+          // Credenciales inválidas u otro error de autenticación
+          message = backendMessage || t("auth.invalidCredentials");
+        } else {
+          // Cualquier otro error: mostrar mensaje del backend si existe
+          message = backendMessage || t("auth.loginError");
+        }
+        setError(message);
+        dispatch(loginFailure(message));
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await attemptLogin();
+  };
+
+  const handleDatabaseConnectionSuccess = () => {
+    // Cuando la conexión a la base de datos sea exitosa, intentar login nuevamente
+    setShowDatabaseConfig(false);
+    setError(null);
+    // Esperar un momento para que la conexión se establezca completamente
+    setTimeout(() => {
+      attemptLogin();
+    }, 500);
+  };
+
   return (
     <AuthLayout>
-      <div className="card card-outline card-primary">
-        <div className="card-header text-center">
-          <h1 className="m-0">
-            <b>Py</b>Automation
-          </h1>
-          <p className="mb-0 text-muted">{t("auth.loginToContinue")}</p>
-        </div>
-        <div className="card-body login-card-body">
-          <form onSubmit={handleSubmit} className="mb-3">
-            <div className="input-group mb-3">
-              <div className="form-floating flex-grow-1">
-                <input
-                  id="loginUsername"
-                  type="text"
-                  className="form-control"
-                  placeholder={t("auth.username")}
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                />
-                <label htmlFor="loginUsername">{t("auth.username")}</label>
-              </div>
-              <div className="input-group-text">
-                <span className="fas fa-user" aria-hidden="true" />
-              </div>
-            </div>
-
-            <div className="input-group mb-3">
-              <div className="form-floating flex-grow-1">
-                <input
-                  id="loginPassword"
-                  type="password"
-                  className="form-control"
-                  placeholder={t("auth.password")}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                <label htmlFor="loginPassword">{t("auth.password")}</label>
-              </div>
-              <div className="input-group-text">
-                <span className="fas fa-lock" aria-hidden="true" />
-              </div>
-            </div>
-
-            <div className="row align-items-center mb-3">
-              <div className="col-7">
-                <div className="form-check">
+      {showDatabaseConfig ? (
+        <DatabaseConfigForm
+          onConnectionSuccess={handleDatabaseConnectionSuccess}
+          onCancel={() => setShowDatabaseConfig(false)}
+        />
+      ) : (
+        <div className="card card-outline card-primary">
+          <div className="card-header text-center">
+            <h1 className="m-0">
+              <b>Py</b>Automation
+            </h1>
+            <p className="mb-0 text-muted">{t("auth.loginToContinue")}</p>
+          </div>
+          <div className="card-body login-card-body">
+            <form onSubmit={handleSubmit} className="mb-3">
+              <div className="input-group mb-3">
+                <div className="form-floating flex-grow-1">
                   <input
-                    id="rememberMe"
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={remember}
-                    onChange={(e) => setRemember(e.target.checked)}
+                    id="loginUsername"
+                    type="text"
+                    className="form-control"
+                    placeholder={t("auth.username")}
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
                   />
-                  <label className="form-check-label" htmlFor="rememberMe">
-                    {t("auth.rememberMe")}
-                  </label>
+                  <label htmlFor="loginUsername">{t("auth.username")}</label>
+                </div>
+                <div className="input-group-text">
+                  <span className="fas fa-user" aria-hidden="true" />
                 </div>
               </div>
-              <div className="col-5 text-end">
-                <Button type="submit" loading={loading} className="w-100">
-                  {t("auth.login")}
-                </Button>
+
+              <div className="input-group mb-3">
+                <div className="form-floating flex-grow-1">
+                  <input
+                    id="loginPassword"
+                    type="password"
+                    className="form-control"
+                    placeholder={t("auth.password")}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <label htmlFor="loginPassword">{t("auth.password")}</label>
+                </div>
+                <div className="input-group-text">
+                  <span className="fas fa-lock" aria-hidden="true" />
+                </div>
               </div>
+
+              <div className="row align-items-center mb-3">
+                <div className="col-7">
+                  <div className="form-check">
+                    <input
+                      id="rememberMe"
+                      type="checkbox"
+                      className="form-check-input"
+                      checked={remember}
+                      onChange={(e) => setRemember(e.target.checked)}
+                    />
+                    <label className="form-check-label" htmlFor="rememberMe">
+                      {t("auth.rememberMe")}
+                    </label>
+                  </div>
+                </div>
+                <div className="col-5 text-end">
+                  <Button type="submit" loading={loading} className="w-100">
+                    {t("auth.login")}
+                  </Button>
+                </div>
+              </div>
+
+              {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
+            </form>
+
+            <div className="d-grid gap-2 mb-2">
+              {/* <Link className="text-center d-block" to="/forgot-password">
+                {t("auth.forgotPassword")}
+              </Link> */}
+              <Link className="text-center d-block" to="/signup">
+                {t("auth.createNewAccount")}
+              </Link>
             </div>
-
-            {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
-          </form>
-
-          <div className="d-grid gap-2 mb-2">
-            {/* <Link className="text-center d-block" to="/forgot-password">
-              {t("auth.forgotPassword")}
-            </Link> */}
-            <Link className="text-center d-block" to="/signup">
-              {t("auth.createNewAccount")}
-            </Link>
           </div>
         </div>
-      </div>
+      )}
     </AuthLayout>
   );
 }

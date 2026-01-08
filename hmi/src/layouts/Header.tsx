@@ -10,6 +10,7 @@ import { useTheme } from "../hooks/useTheme";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { setLocale } from "../store/slices/localeSlice";
+import { showToast } from "../utils/toast";
 
 export function Header() {
   const { mode, toggle } = useTheme();
@@ -40,7 +41,8 @@ export function Header() {
   const [dbConnected, setDbConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasCheckedInitialState = useRef(false);
 
   const toggleSidebar = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -130,16 +132,58 @@ export function Header() {
     loadDatabaseConfig();
   }, []);
 
-  // Verificar estado de conexión periódicamente
+  // Verificación inicial del estado de conexión al montar
   useEffect(() => {
+    if (hasCheckedInitialState.current) return;
+    
+    const checkInitialConnection = async () => {
+      try {
+        const response = await isDatabaseConnected();
+        if (response != null && typeof response === "object" && typeof response.connected === "boolean") {
+          setDbConnected(response.connected);
+          setConnectionError(null);
+        } else {
+          setDbConnected(false);
+          setConnectionError(null);
+        }
+      } catch (error: any) {
+        console.error("Error checking initial database connection:", error);
+        setDbConnected(false);
+        setConnectionError(null);
+      }
+      hasCheckedInitialState.current = true;
+    };
+
+    checkInitialConnection();
+  }, []);
+
+  // Verificar estado de conexión periódicamente solo cuando está conectado
+  useEffect(() => {
+    // Si no está conectado, no hacer verificación periódica
+    if (!dbConnected) {
+      // Limpiar intervalo si existe
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+
     const checkConnection = async () => {
       try {
         const response = await isDatabaseConnected();
-        setDbConnected(response.connected);
-        setConnectionError(null);
+        if (response != null && typeof response === "object" && typeof response.connected === "boolean") {
+          setDbConnected(response.connected);
+          setConnectionError(null);
+        } else {
+          // Si la respuesta no es válida, asumimos desconectado
+          setDbConnected(false);
+          setConnectionError(null);
+        }
       } catch (error: any) {
         console.error("Error checking database connection:", error);
         setDbConnected(false);
+        setConnectionError(null);
       }
     };
 
@@ -152,9 +196,10 @@ export function Header() {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, []);
+  }, [dbConnected]);
 
   const handleConnectDisconnect = useCallback(async () => {
     setIsConnecting(true);
@@ -162,9 +207,20 @@ export function Header() {
 
     try {
       if (dbConnected) {
-        // Desconectar
-        await disconnectDatabase();
+        // Desconectar manualmente - detener verificación periódica inmediatamente
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        
+        const response = await disconnectDatabase();
         setDbConnected(false);
+        // Mostrar toast de éxito con el mensaje del backend
+        if (response != null && typeof response === "object" && response.message) {
+          showToast(response.message, "success");
+        } else {
+          showToast(t("database.disconnected"), "success");
+        }
       } else {
         // Conectar
         const dbtype = dbType === "postgres" ? "postgresql" : dbType;
@@ -184,20 +240,60 @@ export function Header() {
         }
 
         const response = await connectDatabase(payload);
-        if (response.connected) {
+        // Solo considerar la conexión exitosa si response.connected es explícitamente true
+        const isConnectionSuccessful = response != null && 
+                                      typeof response === "object" && 
+                                      response.connected === true;
+        
+        if (isConnectionSuccessful) {
+          // Solo establecer como conectado si la conexión fue realmente exitosa
+          // Esto activará automáticamente la verificación periódica por el useEffect
           setDbConnected(true);
+          setConnectionError(null);
+          // Mostrar toast de éxito con el mensaje del backend
+          showToast(
+            response.message || t("database.connected"),
+            "success"
+          );
         } else {
-          setConnectionError(response.message || t("database.connect"));
+          // Si la conexión no fue exitosa, asegurarse de que esté desconectado
+          // y que la verificación periódica NO se active
+          setDbConnected(false);
+          const errorMsg = (response != null && typeof response === "object" && response.message) 
+            ? response.message 
+            : t("database.connect");
+          setConnectionError(errorMsg);
+          // Asegurarse de que la verificación periódica esté detenida
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          // Mostrar toast de warning con la razón del fallo
+          showToast(
+            errorMsg,
+            "warning"
+          );
         }
       }
     } catch (error: any) {
       const errorMsg = error?.response?.data?.message || error?.message || t("database.connect");
       setConnectionError(errorMsg);
+      // Asegurarse de que esté desconectado y la verificación periódica NO se active
       setDbConnected(false);
+      // Asegurarse de que la verificación periódica esté detenida
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      // Mostrar toast de warning con la razón del fallo
+      showToast(
+        errorMsg,
+        "warning"
+      );
     } finally {
       setIsConnecting(false);
     }
-  }, [dbConnected, dbType, dbName, dbHost, dbPort, dbUser, dbPassword]);
+  }, [dbConnected, dbType, dbName, dbHost, dbPort, dbUser, dbPassword, t]);
 
   return (
     <nav className="app-header navbar navbar-expand bg-body">
