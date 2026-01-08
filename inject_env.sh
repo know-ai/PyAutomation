@@ -11,8 +11,23 @@ elif [ -f "/app/hmi/dist/index.html" ]; then
 elif [ -f "./hmi/dist/index.html" ]; then
     HMI_INDEX="./hmi/dist/index.html"
 else
-    # Buscar en la ubicación del paquete instalado
-    HMI_INDEX=$(python3 -c "import pkg_resources; print(pkg_resources.resource_filename('automation', 'hmi/index.html'))" 2>/dev/null || echo "")
+    # Buscar en la ubicación del paquete instalado usando importlib.resources (Python 3.9+)
+    HMI_INDEX=$(python3 << 'PYTHON_SCRIPT'
+import importlib.resources
+import sys
+try:
+    files = importlib.resources.files('automation')
+    hmi_file = files / 'hmi' / 'index.html'
+    # Convertir Traversable a Path del sistema de archivos
+    with importlib.resources.as_file(hmi_file) as path:
+        if path.exists():
+            print(str(path))
+            sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+PYTHON_SCRIPT
+    2>/dev/null || echo "")
 fi
 
 TEMP_INDEX="/tmp/index.html.$$"

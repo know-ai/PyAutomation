@@ -1,5 +1,6 @@
 import unittest, os
 from datetime import datetime
+from flask import Flask
 from .. import PyAutomation
 from ..alarms import Alarm, AlarmState
 
@@ -11,7 +12,8 @@ class TestCore(unittest.TestCase):
         if os.path.exists(file_path):
             os.remove(file_path)
         self.app = PyAutomation()
-        self.app.run(debug=True, test=True, create_tables=True)
+        self.server = Flask(__name__)
+        self.app.run(server=self.server, debug=True, test=True, create_tables=True)
         return super().setUp()
 
     def tearDown(self) -> None:

@@ -27,28 +27,18 @@ AUTOMATION_SUPERUSER_PASSWORD = os.environ.get('AUTOMATION_SUPERUSER_PASSWORD') 
 # Buscar en múltiples ubicaciones: primero en el paquete instalado, luego en desarrollo local
 def _find_hmi_dist_path():
     """Busca el directorio HMI dist en múltiples ubicaciones."""
-    # 1. Intentar en la ubicación del paquete instalado (automation/hmi/)
+    # 1. Intentar usando importlib.resources (Python 3.9+, preferido sobre pkg_resources)
     try:
-        import pkg_resources
-        # Buscar el directorio hmi dentro del paquete automation
-        hmi_dir = pkg_resources.resource_filename('automation', 'hmi')
-        if os.path.exists(hmi_dir) and os.path.exists(os.path.join(hmi_dir, 'index.html')):
-            return hmi_dir
-    except (ImportError, Exception):
-        pass
-    
-    # 2. Intentar usando importlib.resources (Python 3.9+)
-    try:
-        import importlib.resources as pkg_resources
+        import importlib.resources
         try:
             # Intentar acceder al directorio hmi como recurso
-            hmi_files = pkg_resources.files('automation') / 'hmi'
+            hmi_files = importlib.resources.files('automation') / 'hmi'
             if hmi_files.is_dir() and (hmi_files / 'index.html').exists():
                 # Para obtener la ruta del sistema de archivos
-                with pkg_resources.path('automation', 'hmi') as hmi_path:
+                with importlib.resources.as_file(hmi_files) as hmi_path:
                     if hmi_path.exists() and (hmi_path / 'index.html').exists():
                         return str(hmi_path)
-        except (ModuleNotFoundError, FileNotFoundError, AttributeError):
+        except (ModuleNotFoundError, FileNotFoundError, AttributeError, TypeError):
             pass
     except ImportError:
         pass

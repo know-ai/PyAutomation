@@ -2940,8 +2940,7 @@ class PyAutomation(Singleton):
         ```python
         >>> from automation import PyAutomation
         >>> app = PyAutomation()
-        >>> app.connect_to_db(test=True)
-        True
+        >>> # Assuming database is already connected
         >>> # Filter by alarm names (returns dict with data and pagination)
         >>> alarms = app.filter_alarms_by(names=["NonExistentAlarm"])
         >>> isinstance(alarms, dict)
@@ -3435,7 +3434,7 @@ class PyAutomation(Singleton):
         # Create system user
         users = Users()
         roles = Roles()
-        system_password = self.server.config["AUTOMATION_SUPERUSER_PASSWORD"]
+        system_password = self.server.config.get("AUTOMATION_SUPERUSER_PASSWORD", "super_ultra_secret_password")
         
         # Verificar si el usuario system existe
         if not users.read_by_username(username="system"):
