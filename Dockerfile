@@ -37,6 +37,19 @@ COPY hmi/ .
 # Configurar base path para servir en puerto independiente (sin prefijo)
 ARG VITE_BASE_PATH=/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+
+# Variables de entorno de Vite para configuración de API
+ARG VITE_API_BASE_URL=
+ARG VITE_USE_HTTPS=
+ARG VITE_API_HOST=
+ARG VITE_SOCKET_IO_URL=
+
+# Establecer variables de entorno para el build
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_USE_HTTPS=${VITE_USE_HTTPS}
+ENV VITE_API_HOST=${VITE_API_HOST}
+ENV VITE_SOCKET_IO_URL=${VITE_SOCKET_IO_URL}
+
 RUN npm run build
 
 # ============================================================================
@@ -60,6 +73,10 @@ COPY . .
 
 # Copiar el frontend construido desde la etapa de construcción
 COPY --from=frontend-builder /app/hmi/dist /var/www/hmi
+
+# Copiar script de inyección de variables de entorno
+COPY inject_env.sh /app/inject_env.sh
+RUN chmod +x /app/inject_env.sh
 
 # Configurar nginx para servir el frontend
 RUN cat > /etc/nginx/sites-available/hmi << 'EOF'
@@ -114,11 +131,25 @@ user=root
 logfile=/var/log/supervisor/supervisord.log
 pidfile=/var/run/supervisord.pid
 
+[program:inject-env]
+command=/app/inject_env.sh
+autostart=true
+autorestart=false
+priority=5
+startsecs=0
+# Esperar a que el script termine antes de considerar que el proceso terminó
+startretries=1
+stderr_logfile=/var/log/supervisor/inject-env.err.log
+stdout_logfile=/var/log/supervisor/inject-env.out.log
+
 [program:nginx]
 command=/usr/sbin/nginx -g "daemon off;"
 autostart=true
 autorestart=true
 priority=10
+startsecs=2
+# Esperar un poco para que inject-env termine
+startretries=1
 stderr_logfile=/var/log/supervisor/nginx.err.log
 stdout_logfile=/var/log/supervisor/nginx.out.log
 

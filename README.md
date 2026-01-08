@@ -171,6 +171,15 @@ AUTOMATION_VERSION=latest
 AUTOMATION_OPCUA_SERVER_PORT=53530
 AUTOMATION_APP_SECRET_KEY="CHANGE_ME_TO_A_SECURE_RANDOM_VALUE"
 AUTOMATION_SUPERUSER_PASSWORD="CHANGE_ME_SUPERUSER_PASSWORD"
+
+# Configuración del HMI (opcional)
+# Si usas HTTPS con certificados autofirmados:
+VITE_USE_HTTPS=true
+VITE_API_HOST=localhost:8050
+
+# O especifica la URL completa:
+# VITE_API_BASE_URL=https://localhost:8050/api
+# VITE_SOCKET_IO_URL=https://localhost:8050
 ```
 
 3. **Create a `docker-compose.yml`:**
@@ -191,6 +200,11 @@ services:
       AUTOMATION_OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT:-53530}
       AUTOMATION_APP_SECRET_KEY: ${AUTOMATION_APP_SECRET_KEY}
       AUTOMATION_SUPERUSER_PASSWORD: ${AUTOMATION_SUPERUSER_PASSWORD}
+      # Variables de entorno para configuración del HMI (HTTP/HTTPS)
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+      VITE_USE_HTTPS: ${VITE_USE_HTTPS:-}
+      VITE_API_HOST: ${VITE_API_HOST:-localhost:8050}
+      VITE_SOCKET_IO_URL: ${VITE_SOCKET_IO_URL:-}
     healthcheck:
       test: ["CMD", "python", "/app/healthcheck.py"]
       interval: 15s
@@ -211,6 +225,82 @@ docker-compose --env-file .env up -d
 5. **Access the HMI:**
 
 Open your browser and navigate to `http://localhost:3000` (or your configured HMI port).
+
+### 🔒 Production Configuration: HTTP/HTTPS Setup
+
+For production deployments, you need to configure the HMI to use the correct protocol (HTTP or HTTPS) based on your backend configuration.
+
+#### Configuration Options
+
+**Option 1: Force HTTPS (Recommended for Production with SSL Certificates)**
+
+```ini
+# .env file
+VITE_USE_HTTPS=true
+VITE_API_HOST=your-domain.com:8050
+```
+
+**Option 2: Specify Complete URLs**
+
+```ini
+# .env file
+VITE_API_BASE_URL=https://your-domain.com:8050/api
+VITE_SOCKET_IO_URL=https://your-domain.com:8050
+```
+
+**Option 3: Automatic Detection (Default)**
+
+If no variables are set, the HMI will automatically detect the protocol:
+- If you access the HMI via HTTPS, it will use HTTPS for API calls
+- If you access the HMI via HTTP, it will use HTTP for API calls
+
+#### Example Production `.env` File
+
+```ini
+# Backend Configuration
+AUTOMATION_PORT=8050
+AUTOMATION_HMI_PORT=3000
+AUTOMATION_VERSION=2.0.5
+AUTOMATION_OPCUA_SERVER_PORT=53530
+AUTOMATION_APP_SECRET_KEY="your-secure-secret-key-here"
+AUTOMATION_SUPERUSER_PASSWORD="your-secure-password-here"
+
+# Database Configuration
+AUTOMATION_DB_TYPE=postgresql
+AUTOMATION_DB_HOST=db.example.com
+AUTOMATION_DB_PORT=5432
+AUTOMATION_DB_NAME=automation_db
+AUTOMATION_DB_USER=automation_user
+AUTOMATION_DB_PASSWORD=secure_db_password
+
+# HMI Configuration (HTTPS with Self-Signed Certificates)
+VITE_USE_HTTPS=true
+VITE_API_HOST=your-domain.com:8050
+
+# Or use complete URLs:
+# VITE_API_BASE_URL=https://your-domain.com:8050/api
+# VITE_SOCKET_IO_URL=https://your-domain.com:8050
+```
+
+#### Important Notes for HTTPS with Self-Signed Certificates
+
+1. **First Access**: When using HTTPS with self-signed certificates, the browser will show a security warning on first access. Users must accept the certificate manually.
+
+2. **Subsequent Access**: After accepting the certificate, the browser will remember the exception and all API calls will work normally.
+
+3. **Development**: For local development with self-signed certificates, use:
+   ```ini
+   VITE_USE_HTTPS=true
+   VITE_API_HOST=localhost:8050
+   ```
+
+4. **Production**: For production with valid SSL certificates, the HMI will automatically use HTTPS when accessed via HTTPS.
+
+#### How It Works
+
+- **Runtime Injection**: Variables are injected into the HMI HTML at container startup
+- **Automatic Detection**: If variables are not set, the HMI detects the protocol from the current page URL
+- **No Rebuild Required**: You can change these variables and restart the container without rebuilding the image
 
 ### Option 2: Local Development Setup
 

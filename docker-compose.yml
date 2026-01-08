@@ -1,6 +1,17 @@
 services:
   automation:
     container_name: "Automation"
+    # Si quieres construir la imagen localmente, descomenta las siguientes líneas
+    # y comenta la línea de 'image'
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
+    #     VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    #     VITE_USE_HTTPS: ${VITE_USE_HTTPS:-}
+    #     VITE_API_HOST: ${VITE_API_HOST:-localhost:8050}
+    #     VITE_SOCKET_IO_URL: ${VITE_SOCKET_IO_URL:-}
     image: "knowai/automation:${AUTOMATION_VERSION:-latest}"
     restart: always
     ports:
@@ -26,6 +37,11 @@ services:
       AUTOMATION_DB_NAME: ${AUTOMATION_DB_NAME:-app_db}
       AUTOMATION_DB_USER: ${AUTOMATION_DB_USER:-postgres}
       AUTOMATION_DB_PASSWORD: ${AUTOMATION_DB_PASSWORD:-postgres}
+      # Variables de entorno para el HMI (se inyectan en tiempo de ejecución)
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+      VITE_USE_HTTPS: ${VITE_USE_HTTPS:-}
+      VITE_API_HOST: ${VITE_API_HOST:-localhost:8050}
+      VITE_SOCKET_IO_URL: ${VITE_SOCKET_IO_URL:-}
     tmpfs:
       - /tmp:size=500k
     deploy:

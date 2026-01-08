@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PyAutomation HMI</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <script>
+      // Aplicar tema e idioma antes de que React se monte para evitar flash
+      (function() {
+        try {
+          // Aplicar tema
+          const savedTheme = localStorage.getItem('pyautomation.theme');
+          const theme = savedTheme === 'dark' ? 'dark' : 
+                       (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.setAttribute('data-bs-theme', 'dark');
+            document.body.classList.add('dark', 'dark-mode');
+          } else {
+            document.documentElement.classList.add('light');
+            document.documentElement.setAttribute('data-bs-theme', 'light');
+            document.body.classList.add('light');
+          }
+
+          // Aplicar idioma
+          const savedLocale = localStorage.getItem('pyautomation.locale');
+          const browserLang = navigator.language.split('-')[0];
+          const locale = savedLocale === 'en' || savedLocale === 'es' 
+            ? savedLocale 
+            : (browserLang === 'es' ? 'es' : 'en');
+          document.documentElement.setAttribute('lang', locale);
+        } catch (e) {
+          // ignore
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/hmi/assets/index-D-GDN25-.js"></script>
+    <link rel="stylesheet" crossorigin href="/hmi/assets/index-fe9Q2n8A.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+

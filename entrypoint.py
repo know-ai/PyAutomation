@@ -4,8 +4,29 @@ import subprocess
 
 def main():
     # Environment variables with defaults
-    cert_file = os.environ.get("CERT_FILE", "")
-    key_file = os.environ.get("KEY_FILE", "")
+    # Usar AUTOMATION_CERT_FILE y AUTOMATION_KEY_FILE para consistencia
+    # Si están vacíos, intentar con CERT_FILE y KEY_FILE para compatibilidad hacia atrás
+    cert_file_env = os.environ.get("AUTOMATION_CERT_FILE", "") or os.environ.get("CERT_FILE", "")
+    key_file_env = os.environ.get("AUTOMATION_KEY_FILE", "") or os.environ.get("KEY_FILE", "")
+    
+    # Si es una ruta completa (empieza con /), usarla directamente
+    # Si es solo un nombre de archivo, construir la ruta en /app/ssl/
+    if cert_file_env:
+        if cert_file_env.startswith("/"):
+            cert_file = cert_file_env
+        else:
+            cert_file = os.path.join("/app", "ssl", cert_file_env)
+    else:
+        cert_file = ""
+    
+    if key_file_env:
+        if key_file_env.startswith("/"):
+            key_file = key_file_env
+        else:
+            key_file = os.path.join("/app", "ssl", key_file_env)
+    else:
+        key_file = ""
+    
     worker_connections = os.environ.get("WORKER_CONNECTIONS", "100")
     workers = os.environ.get("WORKERS", "1")
     threads = os.environ.get("THREADS", "10")

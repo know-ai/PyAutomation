@@ -1,4 +1,6 @@
-import os, pytz
+import os
+import pytz
+from pathlib import Path
 from flask import Flask, send_from_directory, send_file
 from .core import PyAutomation
 from .state_machine import OPCUAServer
@@ -22,7 +24,49 @@ AUTOMATION_APP_SECRET_KEY = os.environ.get('AUTOMATION_APP_SECRET_KEY') or "0738
 AUTOMATION_SUPERUSER_PASSWORD = os.environ.get('AUTOMATION_SUPERUSER_PASSWORD') or "super_ultra_secret_password"
 
 # Ruta del frontend React construido
-HMI_DIST_PATH = os.path.join(".", "hmi", "dist")
+# Buscar en múltiples ubicaciones: primero en el paquete instalado, luego en desarrollo local
+def _find_hmi_dist_path():
+    """Busca el directorio HMI dist en múltiples ubicaciones."""
+    # 1. Intentar en la ubicación del paquete instalado (automation/hmi/)
+    try:
+        import pkg_resources
+        # Buscar el directorio hmi dentro del paquete automation
+        hmi_dir = pkg_resources.resource_filename('automation', 'hmi')
+        if os.path.exists(hmi_dir) and os.path.exists(os.path.join(hmi_dir, 'index.html')):
+            return hmi_dir
+    except (ImportError, Exception):
+        pass
+    
+    # 2. Intentar usando importlib.resources (Python 3.9+)
+    try:
+        import importlib.resources as pkg_resources
+        try:
+            # Intentar acceder al directorio hmi como recurso
+            hmi_files = pkg_resources.files('automation') / 'hmi'
+            if hmi_files.is_dir() and (hmi_files / 'index.html').exists():
+                # Para obtener la ruta del sistema de archivos
+                with pkg_resources.path('automation', 'hmi') as hmi_path:
+                    if hmi_path.exists() and (hmi_path / 'index.html').exists():
+                        return str(hmi_path)
+        except (ModuleNotFoundError, FileNotFoundError, AttributeError):
+            pass
+    except ImportError:
+        pass
+    
+    # 3. Intentar en la ubicación relativa al archivo actual (paquete instalado)
+    current_file = Path(__file__).parent
+    package_hmi_path = current_file / "hmi"
+    if package_hmi_path.exists() and (package_hmi_path / "index.html").exists():
+        return str(package_hmi_path)
+    
+    # 4. Intentar en la ubicación local (desarrollo)
+    local_path = os.path.join(".", "hmi", "dist")
+    if os.path.exists(local_path) and os.path.exists(os.path.join(local_path, "index.html")):
+        return local_path
+    
+    return None
+
+HMI_DIST_PATH = _find_hmi_dist_path()
 
 
 class CreateApp():
@@ -55,7 +99,7 @@ class CreateApp():
         Estas rutas se registran con baja prioridad para no interferir con Dash y la API.
         """
         # Verificar si existe el directorio del frontend construido
-        if not os.path.exists(HMI_DIST_PATH):
+        if not HMI_DIST_PATH or not os.path.exists(HMI_DIST_PATH):
             return  # Si no existe, no configuramos las rutas (modo desarrollo o sin frontend)
         
         # Servir archivos estáticos del frontend (JS, CSS, assets, etc.) bajo /hmi

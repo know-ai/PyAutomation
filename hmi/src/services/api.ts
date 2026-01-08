@@ -1,9 +1,13 @@
-import axios, { AxiosError } from "axios";
-import { API_BASE_URL } from "../config/constants";
+import axios, { AxiosError, AxiosRequestConfig } from "axios";
+import { API_BASE_URL, DETECTED_PROTOCOL } from "../config/constants";
 import { store } from "../store/store";
 import { AUTH_STORAGE_KEY, logout } from "../store/slices/authSlice";
 import { showToast } from "../utils/toast";
 
+// Configuración de axios
+// Nota: Para certificados autofirmados en el navegador, el usuario debe
+// aceptar el certificado manualmente la primera vez. El navegador manejará
+// esto automáticamente después de la aceptación inicial.
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
