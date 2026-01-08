@@ -14,6 +14,8 @@ class SocketService {
   private tagCallbacks: Array<(tag: Tag) => void> = [];
   private alarmCallbacks: Array<(alarm: Alarm) => void> = [];
   private machineCallbacks: Array<(machine: Machine) => void> = [];
+  private opcuaDisconnectedCallbacks: Array<(data: { message: string; server_url?: string }) => void> = [];
+  private opcuaConnectedCallbacks: Array<(data: { message: string; server_url?: string }) => void> = [];
 
   private getToken(): string | null {
     const state = store.getState();
@@ -196,6 +198,78 @@ class SocketService {
 
   getIsConnected(): boolean {
     return this.isConnected;
+  }
+
+  onOpcUaDisconnected(callback: (data: { message: string; server_url?: string }) => void): () => void {
+    // Store callback for reconnection
+    if (!this.opcuaDisconnectedCallbacks.includes(callback)) {
+      this.opcuaDisconnectedCallbacks.push(callback);
+    }
+
+    const handler = (data: { message: string; server_url?: string }) => {
+      callback(data);
+    };
+
+    // Ensure socket is connected
+    if (!this.socket || !this.socket.connected) {
+      this.connect();
+      // Wait for connection before adding listener
+      if (this.socket) {
+        this.socket.once("connect", () => {
+          this.socket?.on("on.opcua.disconnected", handler);
+        });
+      }
+    } else {
+      // Socket is already connected, add listener immediately
+      this.socket.on("on.opcua.disconnected", handler);
+    }
+
+    // Return cleanup function
+    return () => {
+      // Remove from callbacks array
+      const index = this.opcuaDisconnectedCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.opcuaDisconnectedCallbacks.splice(index, 1);
+      }
+      // Remove listener
+      this.socket?.off("on.opcua.disconnected", handler);
+    };
+  }
+
+  onOpcUaConnected(callback: (data: { message: string; server_url?: string }) => void): () => void {
+    // Store callback for reconnection
+    if (!this.opcuaConnectedCallbacks.includes(callback)) {
+      this.opcuaConnectedCallbacks.push(callback);
+    }
+
+    const handler = (data: { message: string; server_url?: string }) => {
+      callback(data);
+    };
+
+    // Ensure socket is connected
+    if (!this.socket || !this.socket.connected) {
+      this.connect();
+      // Wait for connection before adding listener
+      if (this.socket) {
+        this.socket.once("connect", () => {
+          this.socket?.on("on.opcua.connected", handler);
+        });
+      }
+    } else {
+      // Socket is already connected, add listener immediately
+      this.socket.on("on.opcua.connected", handler);
+    }
+
+    // Return cleanup function
+    return () => {
+      // Remove from callbacks array
+      const index = this.opcuaConnectedCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.opcuaConnectedCallbacks.splice(index, 1);
+      }
+      // Remove listener
+      this.socket?.off("on.opcua.connected", handler);
+    };
   }
 }
 

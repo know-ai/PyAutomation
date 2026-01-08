@@ -165,7 +165,6 @@ class LoginResource(Resource):
         """
         args = login_parser.parse_args()
         user, message = app.login(**args)
-        print(user, message)
 
         if user:
 

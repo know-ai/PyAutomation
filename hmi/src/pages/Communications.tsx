@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import {
@@ -10,8 +10,10 @@ import {
   removeClient,
   type OpcUaTreeNode,
   type OpcUaNodeValue,
+  type OpcUaClient,
 } from "../services/opcua";
 import { useTranslation } from "../hooks/useTranslation";
+import { socketService } from "../services/socket";
 
 type SelectedNode = {
   client: string;
@@ -254,7 +256,8 @@ const loadSelectedNodes = (): SelectedNode[] => {
 
 export function Communications() {
   const { t } = useTranslation();
-  const [clients, setClients] = useState<string[]>([]);
+  const [clients, setClients] = useState<OpcUaClient[]>([]);
+  const [clientConnectionStatus, setClientConnectionStatus] = useState<Record<string, boolean>>({});
   const [selectedClient, setSelectedClient] = useState<string>(() => {
     // Cargar cliente seleccionado previamente desde localStorage
     try {
@@ -281,6 +284,15 @@ export function Communications() {
     [selectedNodes]
   );
 
+  // Calcular estado de conexión del cliente seleccionado
+  const selectedClientConnectionStatus = useMemo(() => {
+    if (!selectedClient) return false;
+    const selectedClientObj = clients.find(c => c.name === selectedClient);
+    return selectedClientObj 
+      ? (clientConnectionStatus[selectedClient] ?? selectedClientObj.is_opened ?? false)
+      : false;
+  }, [selectedClient, clients, clientConnectionStatus]);
+
   // Verificar si el formulario está completo para habilitar el botón Crear
   const isFormComplete = useMemo(() => {
     return (
@@ -290,30 +302,158 @@ export function Communications() {
     );
   }, [form.name, form.host, form.port]);
 
+  // Función para extraer server_url del mensaje del evento
+  const extractServerUrlFromMessage = useCallback((message: string): string | null => {
+    if (!message) return null;
+    // El mensaje tiene formato "Disconneted from opc.tcp://host:port" o "Conneted to opc.tcp://host:port"
+    // (nota: hay typos en el backend - "Disconneted" y "Conneted")
+    // También puede venir como "Disconnected from" o "Connected to"
+    const match = message.match(/(?:Disconnected?|Conneted?)\s+from\s+(opc\.tcp:\/\/[^\s]+)/i) || 
+                  message.match(/(?:Connected?|Conneted?)\s+to\s+(opc\.tcp:\/\/[^\s]+)/i) ||
+                  message.match(/(opc\.tcp:\/\/[^\s]+)/i);
+    return match ? match[1] : null;
+  }, []);
+
+  // Verificar estado de conexión de un cliente específico
+  const checkClientConnection = useCallback((clientName: string, clientList?: OpcUaClient[]) => {
+    const clientListToUse = clientList || clients;
+    const client = clientListToUse.find((c) => c.name === clientName);
+    if (client) {
+      // Usar is_opened del cliente si está disponible
+      setClientConnectionStatus((prev) => ({
+        ...prev,
+        [clientName]: client.is_opened ?? prev[clientName] ?? false,
+      }));
+    }
+  }, [clients]);
+
+  // Escuchar eventos de conexión/desconexión OPC UA
+  useEffect(() => {
+    const handleOpcUaDisconnected = (data: { message: string; server_url?: string }) => {
+      console.log("OPC UA disconnected event received:", data);
+      const serverUrl = data.server_url || extractServerUrlFromMessage(data.message || "");
+      console.log("Extracted server_url:", serverUrl);
+      
+      if (serverUrl) {
+        setClientConnectionStatus((prev) => {
+          const updated = { ...prev };
+          let updatedCount = 0;
+          
+          // Buscar todos los clientes que coincidan con este server_url
+          clients.forEach((client) => {
+            if (client.server_url === serverUrl) {
+              updated[client.name] = false;
+              updatedCount++;
+              console.log(`Client ${client.name} marked as disconnected`);
+            }
+          });
+          
+          // Si no encontramos ningún cliente, intentar buscar por el server_url extraído del mensaje
+          if (updatedCount === 0) {
+            console.warn(`OPC UA disconnected event received for unknown server: ${serverUrl}`);
+            console.log("Available clients:", clients.map(c => ({ name: c.name, server_url: c.server_url })));
+          }
+          
+          return updated;
+        });
+      } else {
+        console.warn("Could not extract server_url from disconnected event:", data);
+      }
+    };
+
+    const handleOpcUaConnected = (data: { message: string; server_url?: string }) => {
+      console.log("OPC UA connected event received:", data);
+      const serverUrl = data.server_url || extractServerUrlFromMessage(data.message || "");
+      console.log("Extracted server_url:", serverUrl);
+      
+      if (serverUrl) {
+        setClientConnectionStatus((prev) => {
+          const updated = { ...prev };
+          let updatedCount = 0;
+          
+          // Buscar todos los clientes que coincidan con este server_url
+          clients.forEach((client) => {
+            if (client.server_url === serverUrl) {
+              updated[client.name] = true;
+              updatedCount++;
+              console.log(`Client ${client.name} marked as connected`);
+            }
+          });
+          
+          // Si no encontramos ningún cliente, intentar buscar por el server_url extraído del mensaje
+          if (updatedCount === 0) {
+            console.warn(`OPC UA connected event received for unknown server: ${serverUrl}`);
+            console.log("Available clients:", clients.map(c => ({ name: c.name, server_url: c.server_url })));
+          }
+          
+          return updated;
+        });
+      } else {
+        console.warn("Could not extract server_url from connected event:", data);
+      }
+    };
+
+    // Suscribirse a los eventos
+    const cleanupDisconnected = socketService.onOpcUaDisconnected(handleOpcUaDisconnected);
+    const cleanupConnected = socketService.onOpcUaConnected(handleOpcUaConnected);
+
+    return () => {
+      cleanupDisconnected();
+      cleanupConnected();
+    };
+  }, [clients, extractServerUrlFromMessage]);
+
   const loadClients = async () => {
     setLoadingClients(true);
     try {
       setError(null);
       const list = await listClients();
-      const names: string[] = list.map((c) => (typeof c === "string" ? c : c.name || "")).filter(Boolean);
-      setClients(names);
+      // Normalizar la lista de clientes
+      const clientsList: OpcUaClient[] = list.map((c) => {
+        if (typeof c === "string") {
+          return { name: c, is_opened: false };
+        }
+        return {
+          name: c.name || "",
+          host: c.host,
+          port: c.port,
+          server_url: c.server_url,
+          is_opened: c.is_opened ?? false,
+          client_id: c.client_id,
+        };
+      }).filter((c) => c.name);
+      
+      setClients(clientsList);
+      
+      // Actualizar estado de conexión basado en is_opened
+      const connectionStatus: Record<string, boolean> = {};
+      clientsList.forEach((client) => {
+        connectionStatus[client.name] = client.is_opened ?? false;
+      });
+      setClientConnectionStatus(connectionStatus);
       
       // Si hay clientes disponibles
-      if (names.length > 0) {
+      if (clientsList.length > 0) {
+        const names = clientsList.map((c) => c.name);
         // Si hay un cliente guardado y está en la lista, usarlo
         const savedClient = localStorage.getItem(SELECTED_CLIENT_STORAGE_KEY);
         if (savedClient && names.includes(savedClient)) {
           setSelectedClient(savedClient);
+          // Verificar estado de conexión del cliente seleccionado
+          checkClientConnection(savedClient, clientsList);
         } else if (!selectedClient) {
           // Si no hay cliente seleccionado, usar el primero
           const firstClient = names[0];
           setSelectedClient(firstClient);
           localStorage.setItem(SELECTED_CLIENT_STORAGE_KEY, firstClient);
+          // Verificar estado de conexión del primer cliente
+          checkClientConnection(firstClient, clientsList);
         }
       } else {
         // Si no hay clientes, limpiar selección
         setSelectedClient("");
         localStorage.removeItem(SELECTED_CLIENT_STORAGE_KEY);
+        setClientConnectionStatus({});
       }
     } catch (e: any) {
       const errorMsg = e?.response?.data?.message || e?.message || t("communications.title");
@@ -321,6 +461,7 @@ export function Communications() {
       setClients([]);
       setSelectedClient("");
       localStorage.removeItem(SELECTED_CLIENT_STORAGE_KEY);
+      setClientConnectionStatus({});
     } finally {
       setLoadingClients(false);
     }
@@ -351,6 +492,17 @@ export function Communications() {
   useEffect(() => {
     loadClients();
   }, []);
+
+  // Verificar estado de conexión cuando cambian los clientes
+  useEffect(() => {
+    clients.forEach((client) => {
+      // Inicializar estado de conexión basado en is_opened
+      setClientConnectionStatus((prev) => ({
+        ...prev,
+        [client.name]: client.is_opened ?? prev[client.name] ?? false,
+      }));
+    });
+  }, [clients]);
 
   // Cargar atributos de los nodos seleccionados cuando se monta el componente o cambia el cliente
   useEffect(() => {
@@ -407,6 +559,8 @@ export function Communications() {
       } catch (e) {
         console.warn("No se pudo guardar el cliente seleccionado:", e);
       }
+      // Verificar estado de conexión del cliente seleccionado
+      checkClientConnection(selectedClient);
       // Cargar el árbol del cliente seleccionado
       loadTree(selectedClient);
       
@@ -423,7 +577,7 @@ export function Communications() {
       // Si no hay cliente seleccionado, limpiar el árbol
       setTree([]);
     }
-  }, [selectedClient]);
+  }, [selectedClient, checkClientConnection]);
 
   // Polling de atributos cada segundo (usando /attrs para obtener timestamp y status)
   useEffect(() => {
@@ -673,19 +827,48 @@ export function Communications() {
         >
           <div className="mb-2">
             <label className="form-label mb-1">{t("communications.selectedClient")}</label>
-            <select
-              className="form-select"
-              value={selectedClient}
-              onChange={(e) => setSelectedClient(e.target.value)}
-              disabled={loadingClients}
-            >
-              <option value="">{loadingClients ? t("communications.loading") : t("communications.selectClient")}</option>
-              {clients.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+            <div className="d-flex align-items-center gap-2">
+              <select
+                className="form-select flex-grow-1"
+                value={selectedClient}
+                onChange={(e) => setSelectedClient(e.target.value)}
+                disabled={loadingClients}
+              >
+                <option value="">{loadingClients ? t("communications.loading") : t("communications.selectClient")}</option>
+                {clients.map((client) => {
+                  const isConnected = clientConnectionStatus[client.name] ?? client.is_opened ?? false;
+                  return (
+                    <option key={client.name} value={client.name}>
+                      {client.name} {isConnected ? "●" : "○"}
+                    </option>
+                  );
+                })}
+              </select>
+              {selectedClient && (
+                <span
+                  className="d-inline-block"
+                  style={{
+                    width: "20px",
+                    height: "20px",
+                    minWidth: "20px",
+                    borderRadius: "50%",
+                    backgroundColor: selectedClientConnectionStatus ? "#28a745" : "#dc3545",
+                    boxShadow: selectedClientConnectionStatus
+                      ? "0 0 12px rgba(40, 167, 69, 0.9), 0 0 6px rgba(40, 167, 69, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -2px 4px rgba(0, 0, 0, 0.3)"
+                      : "0 0 12px rgba(220, 53, 69, 0.9), 0 0 6px rgba(220, 53, 69, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -2px 4px rgba(0, 0, 0, 0.3)",
+                    border: "2px solid rgba(255, 255, 255, 0.6)",
+                    flexShrink: 0,
+                    cursor: "default",
+                    transition: "all 0.3s ease",
+                  }}
+                  title={
+                    selectedClientConnectionStatus
+                      ? (t("communications.clientConnected") || "Client Connected")
+                      : (t("communications.clientDisconnected") || "Client Disconnected")
+                  }
+                />
+              )}
+            </div>
           </div>
           <div className="row g-2">
             <div className="col-12 col-md-4">
