@@ -1299,7 +1299,7 @@ class OPCUAServer(StateMachineCore):
         r"""
         Executed in Reset state. Transitions back to Starting to restart the server.
         """
-        self.send('reset_to_starting')
+        self.send("reset_to_start")
 
     def __set_engines(self):
         r"""

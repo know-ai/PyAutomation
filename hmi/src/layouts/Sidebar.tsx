@@ -19,17 +19,20 @@ export function Sidebar() {
   const [alarmsExpanded, setAlarmsExpanded] = useState(
     location.pathname.startsWith("/alarms")
   );
+  const [machinesExpanded, setMachinesExpanded] = useState(
+    location.pathname.startsWith("/machines")
+  );
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const isCommunicationsActive = location.pathname.startsWith("/communications");
   const isTagsActive = location.pathname.startsWith("/tags");
   const isAlarmsActive = location.pathname.startsWith("/alarms");
+  const isMachinesActive = location.pathname.startsWith("/machines");
 
   const navItems = [
     { to: "/real-time-trends", icon: "bi bi-graph-up-arrow", labelKey: "navigation.realTimeTrends" },
     // { to: "/scada", icon: "bi bi-diagram-3", labelKey: "navigation.scada" },
-    { to: "/machines", icon: "bi bi-cpu", labelKey: "navigation.machines" },
     { to: "/events", icon: "bi bi-calendar-event", labelKey: "navigation.events" },
     { to: "/operational-logs", icon: "bi bi-journal-text", labelKey: "navigation.operationalLogs" },
     { to: "/user-management", icon: "bi bi-people", labelKey: "navigation.userManagement" },
@@ -52,6 +55,11 @@ export function Sidebar() {
     { to: "/alarms/summary", labelKey: "sidebar.alarms.summary", icon: "bi bi-clipboard-data" },
   ];
 
+  const machinesSubItems = [
+    { to: "/machines/summary", labelKey: "sidebar.machines.summary", icon: "bi bi-list-ul" },
+    { to: "/machines/detailed", labelKey: "sidebar.machines.detailed", icon: "bi bi-diagram-3" },
+  ];
+
   // Expandir automáticamente el menú de Communications cuando se navega a una ruta de communications
   useEffect(() => {
     if (location.pathname.startsWith("/communications")) {
@@ -70,6 +78,13 @@ export function Sidebar() {
   useEffect(() => {
     if (location.pathname.startsWith("/alarms")) {
       setAlarmsExpanded(true);
+    }
+  }, [location.pathname]);
+
+  // Expandir automáticamente el menú de Machines cuando se navega a una ruta de machines
+  useEffect(() => {
+    if (location.pathname.startsWith("/machines")) {
+      setMachinesExpanded(true);
     }
   }, [location.pathname]);
 
@@ -234,6 +249,46 @@ export function Sidebar() {
               </a>
               <ul className="nav nav-treeview" style={{ display: alarmsExpanded ? "block" : "none" }}>
                 {alarmsSubItems.map((subItem) => (
+                  <li className="nav-item" key={subItem.to}>
+                    <NavLink
+                      to={subItem.to}
+                      className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                      style={{ paddingLeft: "2rem" }}
+                    >
+                      <i className={`nav-icon ${subItem.icon}`} />
+                      <p>{t(subItem.labelKey)}</p>
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </li>
+            
+            {/* Machines con submenu desplegable */}
+            <li className={`nav-item ${machinesExpanded ? "menu-open" : ""}`}>
+              <a
+                href="#"
+                className={`nav-link ${isMachinesActive ? "active" : ""} d-flex align-items-center justify-content-between`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setMachinesExpanded(!machinesExpanded);
+                }}
+                style={{ paddingRight: "1rem" }}
+              >
+                <div className="d-flex align-items-center">
+                  <i className="nav-icon bi bi-cpu" />
+                  <p className="mb-0">{t("sidebar.machines.title")}</p>
+                </div>
+                <i 
+                  className={`bi ${machinesExpanded ? "bi-chevron-down" : "bi-chevron-right"}`}
+                  style={{ 
+                    fontSize: "0.875rem",
+                    transition: "transform 0.2s ease",
+                    marginLeft: "auto"
+                  }}
+                />
+              </a>
+              <ul className="nav nav-treeview" style={{ display: machinesExpanded ? "block" : "none" }}>
+                {machinesSubItems.map((subItem) => (
                   <li className="nav-item" key={subItem.to}>
                     <NavLink
                       to={subItem.to}

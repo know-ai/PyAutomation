@@ -13,6 +13,7 @@ import { RealTimeTrends } from "../pages/RealTimeTrends";
 import { Alarms } from "../pages/Alarms";
 import { AlarmsSummary } from "../pages/AlarmsSummary";
 import { Machines } from "../pages/Machines";
+import { MachinesDetailed } from "../pages/MachinesDetailed";
 import { UserManagement } from "../pages/UserManagement";
 import { Settings } from "../pages/Settings";
 import { Events } from "../pages/Events";
@@ -51,7 +52,9 @@ export function AppRoutes() {
         <Route path="/alarms" element={<Navigate to="/alarms/definitions" replace />} />
         <Route path="/alarms/definitions" element={<Alarms />} />
         <Route path="/alarms/summary" element={<AlarmsSummary />} />
-        <Route path="/machines" element={<Machines />} />
+        <Route path="/machines" element={<Navigate to="/machines/summary" replace />} />
+        <Route path="/machines/summary" element={<Machines />} />
+        <Route path="/machines/detailed" element={<MachinesDetailed />} />
         <Route path="/events" element={<Events />} />
         <Route path="/operational-logs" element={<OperationalLogs />} />
         {/* <Route path="/scada" element={<SCADA />} /> */}

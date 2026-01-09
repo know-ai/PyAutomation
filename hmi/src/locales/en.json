@@ -185,6 +185,7 @@
     "alarms": "Alarms",
     "alarmsSummary": "Alarms Summary",
     "machines": "Machines",
+    "machinesDetailed": "Machines Detailed",
     "events": "Events",
     "operationalLogs": "Operational Logs",
     "userManagement": "User Management",
@@ -263,6 +264,11 @@
       "title": "Alarms",
       "definitions": "Definitions",
       "summary": "Summary"
+    },
+    "machines": {
+      "title": "Machines",
+      "summary": "Summary",
+      "detailed": "Detailed"
     }
   },
   "header": {
@@ -489,13 +495,16 @@
     "intervalUpdated": "Interval updated successfully",
     "updateIntervalError": "Error updating interval",
     "transitionSuccess": "Transition executed successfully",
+    "transitionSuccessDetail": "Machine '{{machineName}}' successfully transitioned from '{{oldState}}' to '{{newState}}'",
     "transitionError": "Error executing transition",
+    "transitionErrorDetail": "Failed to transition machine '{{machineName}}' to state '{{newState}}'. {{error}}",
     "noDataToExport": "No data to export",
     "exportSuccess": "Data exported successfully",
     "exportError": "Error exporting data",
     "exportToCSV": "Export to CSV",
     "noMachinesAvailable": "No machines available",
     "editConfigComingSoon": "Configuration editing functionality coming soon",
+    "comingSoon": "This page is under development. Coming soon...",
     "editConfiguration": "Edit configuration",
     "confirmIntervalChange": "Confirm interval change",
     "confirmIntervalChangeMessage": "Are you sure you want to change the machine execution interval?",
@@ -508,7 +517,11 @@
     "confirmStateTransitionMessage": "Are you sure you want to change the machine state?",
     "currentState": "Current state",
     "newState": "New state",
-    "executing": "Executing..."
+    "executing": "Executing...",
+    "actions": "Actions",
+    "loadingActions": "Loading actions...",
+    "noActionsAvailable": "No actions available",
+    "loadActionsError": "Error loading actions"
   },
   "alarms": {
     "editAlarm": "Edit alarm",

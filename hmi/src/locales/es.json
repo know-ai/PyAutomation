@@ -185,6 +185,7 @@
     "alarms": "Alarmas",
     "alarmsSummary": "Resumen de Alarmas",
     "machines": "Máquinas",
+    "machinesDetailed": "Máquinas Detallado",
     "events": "Eventos",
     "operationalLogs": "Registros operacionales",
     "userManagement": "Gestión de usuarios",
@@ -263,6 +264,11 @@
       "title": "Alarmas",
       "definitions": "Definiciones",
       "summary": "Resumen"
+    },
+    "machines": {
+      "title": "Máquinas",
+      "summary": "Resumen",
+      "detailed": "Detallado"
     }
   },
   "header": {
@@ -489,13 +495,16 @@
     "intervalUpdated": "Intervalo actualizado correctamente",
     "updateIntervalError": "Error al actualizar el intervalo",
     "transitionSuccess": "Transición ejecutada correctamente",
+    "transitionSuccessDetail": "La máquina '{{machineName}}' ha transitado exitosamente de '{{oldState}}' a '{{newState}}'",
     "transitionError": "Error al ejecutar la transición",
+    "transitionErrorDetail": "Error al transitar la máquina '{{machineName}}' al estado '{{newState}}'. {{error}}",
     "noDataToExport": "No hay datos para exportar",
     "exportSuccess": "Datos exportados correctamente",
     "exportError": "Error al exportar los datos",
     "exportToCSV": "Exportar a CSV",
     "noMachinesAvailable": "No hay máquinas disponibles",
     "editConfigComingSoon": "Funcionalidad de edición de configuración próximamente",
+    "comingSoon": "Esta página está en desarrollo. Próximamente...",
     "editConfiguration": "Editar configuración",
     "confirmIntervalChange": "Confirmar cambio de intervalo",
     "confirmIntervalChangeMessage": "¿Está seguro de que desea cambiar el intervalo de ejecución de la máquina?",
@@ -508,7 +517,11 @@
     "confirmStateTransitionMessage": "¿Está seguro de que desea cambiar el estado de la máquina?",
     "currentState": "Estado actual",
     "newState": "Estado nuevo",
-    "executing": "Ejecutando..."
+    "executing": "Ejecutando...",
+    "actions": "Acciones",
+    "loadingActions": "Cargando acciones...",
+    "noActionsAvailable": "No hay acciones disponibles",
+    "loadActionsError": "Error al cargar acciones"
   },
   "alarms": {
     "editAlarm": "Editar alarma",
