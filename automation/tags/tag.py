@@ -266,8 +266,9 @@ class Tag:
         r"""
         Sets the OPC UA server address associated with this tag.
         
-        Si opcua_address es una URL (contiene "opc.tcp://"), se almacena temporalmente.
-        Si opcua_address es un nombre de cliente, se guarda en opcua_client_name.
+        Si opcua_address es una URL (contiene "opc.tcp://"), se almacena en _opcua_address.
+        Si opcua_address es un nombre de cliente, se guarda en opcua_client_name y se intenta
+        resolver la URL desde el cliente (requiere acceso al manager).
 
         **Parameters:**
 
@@ -275,26 +276,33 @@ class Tag:
         """
         if opcua_address:
             if "opc.tcp://" in opcua_address:
+                # Es una URL, almacenarla directamente
                 self._opcua_address = opcua_address
-                self.opcua_client_name = None
+                # No limpiar opcua_client_name aquí, puede estar establecido por separado
             else:
-                # Asumir que es un nombre de cliente
+                # No es una URL, asumir que es un nombre de cliente
+                # La URL se resolverá cuando se establezca el nombre del cliente
                 self.opcua_client_name = opcua_address
-                self._opcua_address = None
+                # No limpiar _opcua_address aquí, mantener la URL actual si existe
         else:
             self._opcua_address = None
             self.opcua_client_name = None
     
-    def set_opcua_client_name(self, client_name:str):
+    def set_opcua_client_name(self, client_name:str, opcua_address:str=None):
         r"""
         Sets the OPC UA client name associated with this tag.
 
         **Parameters:**
 
         * **client_name** (str): Nombre del cliente OPC UA.
+        * **opcua_address** (str, optional): URL del cliente OPC UA. Si se proporciona, se almacena.
         """
         self.opcua_client_name = client_name
-        self._opcua_address = None  # Limpiar URL cuando se establece nombre
+        # Si se proporciona la URL, almacenarla para mantener compatibilidad con suscripciones
+        if opcua_address:
+            self._opcua_address = opcua_address
+        # Si no se proporciona URL pero hay nombre, mantener _opcua_address si ya existe
+        # (se actualizará cuando se resuelva desde el manager)
     
     def get_opcua_client_name(self):
         r"""
@@ -494,19 +502,14 @@ class Tag:
         r"""
         Gets the OPC UA server address.
         
-        Si opcua_client_name está definido, intenta resolver la URL desde el cliente.
-        Si no, retorna la URL almacenada temporalmente.
+        Retorna la URL almacenada en _opcua_address. Esta URL debe mantenerse
+        actualizada cuando cambia la configuración del cliente OPC UA.
 
         **Returns:**
 
         * **str**: OPC UA address (URL) o None.
         """
-        # Si tenemos un nombre de cliente, intentar resolver la URL
-        if self.opcua_client_name:
-            # Intentar obtener la URL desde el cliente OPC UA
-            # Esto requiere acceso al opcua_client_manager, que se manejará desde CVT
-            return None  # Se resolverá dinámicamente desde CVT/PyAutomation
-        # Si no tenemos nombre de cliente, retornar la URL almacenada
+        # Retornar la URL almacenada (debe estar actualizada cuando hay opcua_client_name)
         return self._opcua_address
     
     @property

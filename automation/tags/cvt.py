@@ -197,6 +197,12 @@ class CVT:
             tag.set_display_unit(unit=kwargs["display_unit"])
         if "opcua_address" in kwargs:
             tag.set_opcua_address(opcua_address=kwargs["opcua_address"])
+        if "opcua_client_name" in kwargs:
+            # Si se actualiza opcua_client_name, también actualizar opcua_address si se proporciona
+            opcua_client_name = kwargs["opcua_client_name"]
+            opcua_address = kwargs.get("opcua_address")  # Puede venir junto con opcua_client_name
+            if hasattr(tag, 'set_opcua_client_name'):
+                tag.set_opcua_client_name(opcua_client_name, opcua_address=opcua_address)
         if "node_namespace" in kwargs:
             tag.set_node_namespace(node_namespace=kwargs["node_namespace"])
         if "scan_time" in kwargs:

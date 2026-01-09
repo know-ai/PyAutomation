@@ -96,7 +96,7 @@ class OPCUAClientManager:
                         should_reconnect = True
                         # Si el tag tenía URL pero no nombre, actualizar para usar el nombre del cliente
                         if hasattr(tag_obj, 'set_opcua_client_name'):
-                            tag_obj.set_opcua_client_name(client_name)
+                            tag_obj.set_opcua_client_name(client_name, opcua_address=endpoint_url)
                 
                 if should_reconnect:
                     if not tag.get("scan_time"):
@@ -222,14 +222,18 @@ class OPCUAClientManager:
                 if tag_obj and hasattr(tag_obj, 'opcua_client_name') and tag_obj.opcua_client_name:
                     # Comparación case-insensitive para detectar el cliente
                     if tag_obj.opcua_client_name.lower() == old_client_name.lower():
-                        # Actualizar el nombre del cliente en el tag
-                        tag_obj.set_opcua_client_name(new_client_name)
+                        # Actualizar el nombre del cliente en el tag (mantener la URL actual)
+                        current_url = tag_obj.get_opcua_address() or old_endpoint_url
+                        tag_obj.set_opcua_client_name(new_client_name, opcua_address=current_url)
                         # También actualizar en la base de datos si está conectada
                         if self.logger.get_db():
                             from ..dbmodels import Tags
                             db_tag = Tags.get_or_none(identifier=tag_id)
                             if db_tag:
                                 db_tag.opcua_client_name = new_client_name
+                                # Mantener opcua_address actualizado con la URL del cliente
+                                if current_url:
+                                    db_tag.opcua_address = current_url
                                 db_tag.save()
             
             str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -309,7 +313,7 @@ class OPCUAClientManager:
                         should_update = True
                         # Si el tag tenía URL pero no nombre, actualizar para usar el nombre del cliente
                         if hasattr(tag_obj, 'set_opcua_client_name'):
-                            tag_obj.set_opcua_client_name(new_client_name)
+                            tag_obj.set_opcua_client_name(new_client_name, opcua_address=new_endpoint_url)
                 
                 if should_update:
                     # Actualizar opcua_address en el tag (mantener compatibilidad)
@@ -317,7 +321,7 @@ class OPCUAClientManager:
                     # También actualizar opcua_client_name si el método existe
                     tag_obj = self.cvt.get_tag(id=tag_id)
                     if tag_obj and hasattr(tag_obj, 'set_opcua_client_name'):
-                        tag_obj.set_opcua_client_name(new_client_name)
+                        tag_obj.set_opcua_client_name(new_client_name, opcua_address=new_endpoint_url)
                     
                     # Actualizar en la base de datos si está conectada
                     if self.logger.get_db():

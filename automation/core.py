@@ -477,10 +477,10 @@ class PyAutomation(Singleton):
             user=user
         )
         
-        # Si se resolvió el nombre del cliente, establecerlo en el tag
+        # Si se resolvió el nombre del cliente, establecerlo en el tag junto con la URL
         if tag and opcua_client_name:
             if hasattr(tag, 'set_opcua_client_name'):
-                tag.set_opcua_client_name(opcua_client_name)
+                tag.set_opcua_client_name(opcua_client_name, opcua_address=resolved_opcua_address)
 
         # CREATE OPCUA SUBSCRIPTION
         if tag:
@@ -818,11 +818,11 @@ class PyAutomation(Singleton):
             **kwargs
         )
         
-        # Si se resolvió el nombre del cliente, establecerlo en el tag actualizado
+        # Si se resolvió el nombre del cliente, establecerlo en el tag actualizado junto con la URL
         if result and "opcua_address" in kwargs and opcua_client_name:
             updated_tag = self.cvt.get_tag(id=id)
             if updated_tag and hasattr(updated_tag, 'set_opcua_client_name'):
-                updated_tag.set_opcua_client_name(opcua_client_name)
+                updated_tag.set_opcua_client_name(opcua_client_name, opcua_address=resolved_opcua_address)
         if self.is_db_connected():
 
             if 'variable' in kwargs:
@@ -2919,6 +2919,13 @@ class PyAutomation(Singleton):
                 active = tag.pop("active")
 
                 if active:
+                    # Si el tag tiene opcua_client_name pero no opcua_address, resolver la URL
+                    if tag.get("opcua_client_name") and not tag.get("opcua_address"):
+                        client_name = tag.get("opcua_client_name")
+                        client = self.opcua_client_manager.get(client_name)
+                        if client:
+                            tag["opcua_address"] = client.serialize().get("server_url")
+                    
                     logging.info(f"Loading tag {tag['name']} from database")
                     print(_colorize_message(f"[{str_date}] [INFO] Loading tag {tag['name']} from database", "INFO"))
                     self.create_tag(reload=True, **tag)

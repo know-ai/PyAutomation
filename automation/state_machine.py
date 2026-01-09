@@ -892,7 +892,10 @@ class StateMachineCore(StateMachine):
             transition_name = f'{_from}_to_{to}'
             allowed_transitions = self._get_active_transitions()
             for _transition in allowed_transitions:
-                if f"{_transition.source.name}_to_{_transition.target.name}"==transition_name:
+                # Compare using state names (e.g., "run", "restart") - .name is the state identifier
+                source_name = _transition.source.name.lower()
+                target_name = _transition.target.name.lower()
+                if f"{source_name}_to_{target_name}"==transition_name:
                     self.send(transition_name)
                     return self, f"[{self.name.value}] from: {_from} to: {to}"
                 
@@ -935,18 +938,27 @@ class StateMachineCore(StateMachine):
 
         current_state = self.current_state
         transitions = self.transitions
+        # Get list of valid state names for this machine instance
+        # state.name is the identifier passed to State() constructor (e.g., "restart", "reset")
+        valid_state_names = {state.name for state in self.states}
 
         for transition in transitions:
 
             if transition.source == current_state:
+                # Get the target state name (e.g., "restart", "reset") - this is the value passed to State()
+                # transition.target.name gives us the state identifier (e.g., "restart"), not the attribute name
+                target_state_name = transition.target.name
+                
+                # Only include transitions to states that exist in this machine
+                if target_state_name in valid_state_names:
 
-                if transition.target.name not in ("run", "switch", "wait", "start", "pre_alarm"):
+                    if target_state_name not in ("run", "switch", "wait", "start", "pre_alarm"):
+                        # Use the state name directly (e.g., "restart", "reset")
+                        result.add(target_state_name)
 
-                    result.add(transition.target.name)
+                        if "confirm" in target_state_name:
 
-                    if "confirm" in transition.target.name:
-
-                        result.add(transition.target.name.replace("confirm", "deny"))
+                            result.add(target_state_name.replace("confirm", "deny"))
 
                 if current_state.value.lower() in ("con_restart", "con_reset"):
 
@@ -1299,6 +1311,7 @@ class OPCUAServer(StateMachineCore):
         r"""
         Executed in Reset state. Transitions back to Starting to restart the server.
         """
+        self.server.stop()
         self.send("reset_to_start")
 
     def __set_engines(self):
