@@ -8,6 +8,7 @@ import {
   getNodeAttributes,
   listClients,
   removeClient,
+  updateClient,
   type OpcUaTreeNode,
   type OpcUaNodeValue,
   type OpcUaClient,
@@ -271,6 +272,7 @@ export function Communications() {
   const [loadingTree, setLoadingTree] = useState(false);
   const [loadingClients, setLoadingClients] = useState(false);
   const [form, setForm] = useState({ name: "", host: "127.0.0.1", port: 4840 });
+  const [editingClient, setEditingClient] = useState<string | null>(null);
   const [selectedNodes, setSelectedNodes] = useState<SelectedNode[]>(() => {
     // Cargar nodos seleccionados previamente desde localStorage
     return loadSelectedNodes();
@@ -293,14 +295,23 @@ export function Communications() {
       : false;
   }, [selectedClient, clients, clientConnectionStatus]);
 
-  // Verificar si el formulario está completo para habilitar el botón Crear
+  // Verificar si el formulario está completo para habilitar el botón Crear/Update
   const isFormComplete = useMemo(() => {
+    if (editingClient) {
+      // En modo edición, al menos un campo debe estar presente (nombre, host o port)
+      return (
+        (form.name.trim() !== "" && form.name.trim() !== editingClient) ||
+        (form.host.trim() !== "" && form.host.trim() !== "") ||
+        (form.port > 0)
+      );
+    }
+    // En modo creación, todos los campos son requeridos
     return (
       form.name.trim() !== "" &&
       form.host.trim() !== "" &&
       form.port > 0
     );
-  }, [form.name, form.host, form.port]);
+  }, [form.name, form.host, form.port, editingClient]);
 
   // Función para extraer server_url del mensaje del evento
   const extractServerUrlFromMessage = useCallback((message: string): string | null => {
@@ -801,6 +812,89 @@ export function Communications() {
     }
   };
 
+  const handleEditClient = (clientName: string) => {
+    const client = clients.find((c) => c.name === clientName);
+    if (client) {
+      // Extraer host y port del server_url si no están disponibles directamente
+      let host = client.host;
+      let port = client.port;
+      
+      // Si no tenemos host/port directos, intentar extraerlos del server_url
+      if ((!host || !port) && client.server_url) {
+        try {
+          // Formato: opc.tcp://host:port
+          const urlMatch = client.server_url.match(/opc\.tcp:\/\/([^:]+):(\d+)/);
+          if (urlMatch) {
+            host = host || urlMatch[1];
+            port = port || parseInt(urlMatch[2], 10);
+          }
+        } catch (e) {
+          console.warn("Error parsing server_url:", e);
+        }
+      }
+      
+      // Valores por defecto si aún no tenemos host/port
+      setForm({
+        name: client.name || "",
+        host: host || "127.0.0.1",
+        port: port || 4840,
+      });
+      setEditingClient(clientName);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingClient(null);
+    setForm({ name: "", host: "127.0.0.1", port: 4840 });
+  };
+
+  const handleUpdateClient = async () => {
+    if (!editingClient) {
+      setError(t("common.error"));
+      return;
+    }
+    try {
+      setError(null);
+      // Solo enviar los campos que tienen valores
+      const newName = form.name && form.name.trim() !== "" ? form.name : undefined;
+      const newHost = form.host && form.host.trim() !== "" ? form.host : undefined;
+      const newPort = form.port && form.port > 0 ? Number(form.port) : undefined;
+      
+      await updateClient(editingClient, newName, newHost, newPort);
+      setEditingClient(null);
+      setForm({ name: "", host: "127.0.0.1", port: 4840 });
+      await loadClients();
+      // Si el nombre cambió, actualizar la selección
+      const finalName = newName || editingClient;
+      if (editingClient !== finalName) {
+        // Actualizar nodos seleccionados que usan el cliente antiguo
+        setSelectedNodes((prev) => {
+          const updated = prev.map((n) => {
+            if (n.client === editingClient) {
+              return { ...n, client: finalName };
+            }
+            return n;
+          });
+          saveSelectedNodes(updated);
+          return updated;
+        });
+        // Si era el cliente seleccionado, cambiar la selección
+        if (selectedClient === editingClient) {
+          setSelectedClient(finalName);
+          localStorage.setItem(SELECTED_CLIENT_STORAGE_KEY, finalName);
+        }
+      } else {
+        // Si solo cambió host/port o no cambió nada, recargar el árbol si estaba seleccionado
+        if (selectedClient === finalName) {
+          loadTree(finalName);
+        }
+      }
+    } catch (e: any) {
+      const errorMsg = e?.response?.data?.message || e?.message || t("communications.title");
+      setError(errorMsg);
+    }
+  };
+
   return (
     <div className="row">
       <div className="col-lg-4">
@@ -808,20 +902,48 @@ export function Communications() {
           title={t("communications.title")}
           footer={
             <div className="d-flex gap-2">
-              <Button 
-                variant="primary" 
-                onClick={handleAddClient}
-                disabled={!isFormComplete}
-              >
-                {t("communications.create")}
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => selectedClient && handleRemoveClient(selectedClient)}
-                disabled={!selectedClient}
-              >
-                {t("communications.remove")}
-              </Button>
+              {editingClient ? (
+                <>
+                  <Button 
+                    variant="primary" 
+                    onClick={handleUpdateClient}
+                    disabled={!isFormComplete}
+                  >
+                    {t("common.update")}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={handleCancelEdit}
+                  >
+                    {t("common.cancel")}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button 
+                    variant="primary" 
+                    onClick={handleAddClient}
+                    disabled={!isFormComplete}
+                  >
+                    {t("communications.create")}
+                  </Button>
+                  {selectedClient && (
+                    <Button
+                      variant="warning"
+                      onClick={() => handleEditClient(selectedClient)}
+                    >
+                      {t("common.edit")}
+                    </Button>
+                  )}
+                  <Button
+                    variant="danger"
+                    onClick={() => selectedClient && handleRemoveClient(selectedClient)}
+                    disabled={!selectedClient}
+                  >
+                    {t("communications.remove")}
+                  </Button>
+                </>
+              )}
             </div>
           }
         >
@@ -832,7 +954,7 @@ export function Communications() {
                 className="form-select flex-grow-1"
                 value={selectedClient}
                 onChange={(e) => setSelectedClient(e.target.value)}
-                disabled={loadingClients}
+                disabled={loadingClients || editingClient !== null}
               >
                 <option value="">{loadingClients ? t("communications.loading") : t("communications.selectClient")}</option>
                 {clients.map((client) => {
@@ -870,6 +992,11 @@ export function Communications() {
               )}
             </div>
           </div>
+          {editingClient && (
+            <div className="alert alert-info mb-2 py-2">
+              <small>{t("common.editing")}: <strong>{editingClient}</strong></small>
+            </div>
+          )}
           <div className="row g-2">
             <div className="col-12 col-md-4">
               <input

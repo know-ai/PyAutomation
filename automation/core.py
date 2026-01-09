@@ -1930,6 +1930,81 @@ class PyAutomation(Singleton):
         return self.opcua_client_manager.remove(client_name=client_name)
 
     @logging_error_handler
+    @validate_types(old_client_name=str, new_client_name=str|type(None), host=str|type(None), port=int|type(None), output=(bool, str|dict))
+    def update_opcua_client(self, old_client_name:str, new_client_name:str=None, host:str=None, port:int=None):
+        r"""
+        Updates the configuration of an existing OPC UA client.
+
+        **Parameters:**
+
+        * **old_client_name** (str): The current name of the client to update (required).
+        * **new_client_name** (str, optional): New name for the client. If None, keeps the current name.
+        * **host** (str, optional): New server IP or hostname. If None, keeps the current host.
+        * **port** (int, optional): New server port. If None, keeps the current port.
+
+        **Returns:**
+
+        * **tuple**: (Success boolean, Message or client data).
+
+        **Usage:**
+
+        ```python
+        >>> from automation import PyAutomation
+        >>> from unittest.mock import MagicMock
+        >>> app = PyAutomation()
+        >>> # Mock discovery to return a fake server (only needed if changing host/port)
+        >>> app.find_opcua_servers = MagicMock(return_value=[{'DiscoveryUrls': ['opc.tcp://localhost:4840']}])
+        >>> # Mock client manager update
+        >>> app.opcua_client_manager.update = MagicMock(return_value=(True, "Client updated"))
+        >>> # Update only the name
+        >>> success, msg = app.update_opcua_client("PLC1", new_client_name="PLC1_Updated")
+        >>> success
+        True
+        >>> # Update only host and port
+        >>> success, msg = app.update_opcua_client("PLC1", host="192.168.1.100", port=4841)
+        >>> success
+        True
+
+        ```
+        """
+        # Obtener valores actuales del cliente si no se proporcionan
+        current_host = None
+        current_port = None
+        if host is None or port is None:
+            client = self.opcua_client_manager.get(old_client_name)
+            if not client:
+                return False, f"Client '{old_client_name}' not found"
+            
+            # Obtener host y port actuales del cliente
+            serialized = client.serialize()
+            current_url = serialized.get("server_url", "")
+            try:
+                if current_url.startswith("opc.tcp://"):
+                    parts = current_url.replace("opc.tcp://", "").split(":")
+                    if len(parts) == 2:
+                        current_host = parts[0]
+                        current_port = int(parts[1])
+                        if host is None:
+                            host = current_host
+                        if port is None:
+                            port = current_port
+            except:
+                pass
+        
+        # Solo hacer discovery si se está cambiando el host/port
+        # Si solo se cambia el nombre, no necesitamos verificar el servidor
+        if host is not None and port is not None and current_host is not None and current_port is not None:
+            new_url = f"opc.tcp://{host}:{port}"
+            current_url = f"opc.tcp://{current_host}:{current_port}"
+            # Solo hacer discovery si el URL cambió
+            if current_url != new_url:
+                servers = self.find_opcua_servers(host=host, port=port)
+                if not servers:
+                    return False, f"Failed to discover OPC UA server at {host}:{port}"
+
+        return self.opcua_client_manager.update(old_client_name=old_client_name, new_client_name=new_client_name, host=host, port=port)
+
+    @logging_error_handler
     @validate_types(tag=Tag, opcua_address=str|type(None), node_namespace=str|type(None), scan_time=float|int|type(None), reload=bool, output=None)
     def subscribe_opcua(self, tag:Tag, opcua_address:str, node_namespace:str, scan_time:float, reload:bool=False):
         r"""

@@ -150,6 +150,34 @@ export const removeClient = async (clientName: string) => {
 };
 
 /**
+ * Actualiza la configuración de un cliente OPC UA
+ * Todos los parámetros excepto oldClientName son opcionales
+ */
+export const updateClient = async (
+  oldClientName: string,
+  newClientName?: string,
+  host?: string,
+  port?: number
+) => {
+  const payload: any = {};
+  if (newClientName !== undefined && newClientName !== null && newClientName !== "") {
+    payload.new_client_name = newClientName;
+  }
+  if (host !== undefined && host !== null && host !== "") {
+    payload.host = host;
+  }
+  if (port !== undefined && port !== null && port > 0) {
+    payload.port = port;
+  }
+  
+  const { data } = await api.put(
+    `/opcua/clients/update/${encodeURIComponent(oldClientName)}`,
+    payload
+  );
+  return data;
+};
+
+/**
  * Obtiene los valores de múltiples nodos OPC UA
  */
 export const getNodeValues = async (

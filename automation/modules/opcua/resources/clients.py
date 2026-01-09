@@ -17,6 +17,12 @@ add_client_model = api.model("add_client_model", {
     'port': fields.Integer(required=False, description='OPC UA server port', default=4840)
 })
 
+update_client_model = api.model("update_client_model", {
+    'new_client_name': fields.String(required=False, description='New name for the OPC UA client. If not provided, keeps the current name.'),
+    'host': fields.String(required=False, description='OPC UA server host/IP address. If not provided, keeps the current host.'),
+    'port': fields.Integer(required=False, description='OPC UA server port. If not provided, keeps the current port.')
+})
+
 namespaces_model = api.model("namespaces_model", {
     'namespaces': fields.List(fields.String, required=True, description='List of node namespaces/IDs to read')
 })
@@ -26,6 +32,11 @@ add_client_parser = reqparse.RequestParser()
 add_client_parser.add_argument('client_name', type=str, required=True, help='Unique name for the OPC UA client')
 add_client_parser.add_argument('host', type=str, required=False, help='OPC UA server host/IP address', default='127.0.0.1')
 add_client_parser.add_argument('port', type=int, required=False, help='OPC UA server port', default=4840)
+
+update_client_parser = reqparse.RequestParser()
+update_client_parser.add_argument('new_client_name', type=str, required=False, help='New name for the OPC UA client. If not provided, keeps the current name.')
+update_client_parser.add_argument('host', type=str, required=False, help='OPC UA server host/IP address. If not provided, keeps the current host.')
+update_client_parser.add_argument('port', type=int, required=False, help='OPC UA server port. If not provided, keeps the current port.')
 
 namespaces_parser = reqparse.RequestParser()
 namespaces_parser.add_argument('namespaces', type=list, location='args', required=True, help='List of node namespaces/IDs to read (comma-separated or as array)')
@@ -266,6 +277,47 @@ class AddOPCUAClientResource(Resource):
         
         return {
             'message': f"Failed to discover OPC UA server at {args.get('host', '127.0.0.1')}:{args.get('port', 4840)}"
+        }, 400
+
+
+@ns.route('/update/<client_name>')
+@api.param('client_name', 'The OPC UA client name to update')
+class UpdateOPCUAClientResource(Resource):
+
+    @api.doc(security='apikey', description="Updates the configuration of an existing OPC UA client.")
+    @api.response(200, "Client updated successfully")
+    @api.response(400, "Client update failed")
+    @Api.token_required(auth=True)
+    @ns.expect(update_client_model)
+    def put(self, client_name):
+        """
+        Update OPC UA client.
+
+        Updates the configuration (name, host, port) of an existing OPC UA client.
+        """
+        args = update_client_parser.parse_args()
+        result = app.update_opcua_client(
+            old_client_name=client_name,
+            new_client_name=args.get('new_client_name'),
+            host=args.get('host'),
+            port=args.get('port')
+        )
+        
+        if result:
+            success, message_or_data = result
+            if success:
+                new_name = args.get('new_client_name') or client_name
+                return {
+                    'message': f"OPC UA client '{client_name}' updated successfully" + (f" to '{new_name}'" if new_name != client_name else ""),
+                    'data': message_or_data if isinstance(message_or_data, dict) else {'message': message_or_data}
+                }, 200
+            else:
+                return {
+                    'message': f"Failed to update OPC UA client: {message_or_data}"
+                }, 400
+        
+        return {
+            'message': f"Failed to update OPC UA client: Unknown error"
         }, 400
 
 

@@ -124,6 +124,173 @@ class OPCUAClientManager:
         return False
 
     @logging_error_handler
+    def update(self, old_client_name:str, new_client_name:str=None, host:str=None, port:int=None):
+        r"""
+        Updates an existing OPC UA Client configuration.
+
+        **Parameters:**
+
+        * **old_client_name** (str): The current name of the client to update (required).
+        * **new_client_name** (str, optional): New name for the client. If None, keeps the current name.
+        * **host** (str, optional): New server host. If None, keeps the current host.
+        * **port** (int, optional): New server port. If None, keeps the current port.
+
+        **Returns:**
+
+        * **tuple**: (Success boolean, Message string).
+        """
+        if old_client_name not in self._clients:
+            return False, f"Client '{old_client_name}' not found"
+        
+        # Obtener el cliente actual
+        old_client = self._clients[old_client_name]
+        old_serialized = old_client.serialize()
+        old_endpoint_url = old_serialized["server_url"]
+        
+        # Extraer host y port actuales del endpoint URL
+        old_host = None
+        old_port = None
+        try:
+            if old_endpoint_url.startswith("opc.tcp://"):
+                parts = old_endpoint_url.replace("opc.tcp://", "").split(":")
+                if len(parts) == 2:
+                    old_host = parts[0]
+                    old_port = int(parts[1])
+        except:
+            pass
+        
+        # Si no se proporcionan nuevos valores, usar los actuales
+        if new_client_name is None:
+            new_client_name = old_client_name
+        if host is None:
+            host = old_host
+        if port is None:
+            port = old_port
+        
+        # Si no hay cambios, retornar éxito sin hacer nada
+        if new_client_name == old_client_name and host == old_host and port == old_port:
+            return True, f"Client '{old_client_name}' configuration unchanged"
+        
+        # Si el nuevo nombre es diferente, verificar que no exista
+        if new_client_name != old_client_name and new_client_name in self._clients:
+            return False, f"Client name '{new_client_name}' already exists"
+        
+        # Si solo cambió el nombre (host y port son iguales), actualizar solo en memoria y BD
+        if host == old_host and port == old_port and new_client_name != old_client_name:
+            # Solo cambiar el nombre sin desconectar/reconectar
+            self._clients[new_client_name] = self._clients.pop(old_client_name)
+            # Actualizar nombre del cliente interno si tiene ese atributo
+            if hasattr(old_client, 'name'):
+                old_client.name = new_client_name
+            
+            # Actualizar en la base de datos
+            if self.logger.get_db():
+                opcua = OPCUA.get_by_client_name(client_name=old_client_name)
+                if opcua:
+                    # Eliminar el registro viejo
+                    query = OPCUA.delete().where(OPCUA.client_name == old_client_name)
+                    query.execute()
+                    # Crear nuevo registro con el nuevo nombre
+                    OPCUA.create(client_name=new_client_name, host=old_host, port=old_port)
+            
+            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logging.info(f"OPC UA client '{old_client_name}' renamed to '{new_client_name}' successfully")
+            print(_colorize_message(f"[{str_date}] [INFO] OPC UA client '{old_client_name}' renamed to '{new_client_name}' successfully", "INFO"))
+            return True, f"Client '{old_client_name}' renamed to '{new_client_name}' successfully"
+        
+        # Si cambió host/port (con o sin cambio de nombre), necesitamos reconectar
+        # Guardar si estaba conectado
+        was_connected = old_client.is_connected()
+        
+        # Desconectar el cliente antiguo
+        try:
+            if was_connected:
+                old_client.disconnect()
+        except Exception as err:
+            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logging.warning(f"Error disconnecting old client {old_client_name}: {err}")
+            print(_colorize_message(f"[{str_date}] [WARNING] Error disconnecting old client {old_client_name}: {err}", "WARNING"))
+        
+        # Remover de memoria temporalmente (guardar referencia para restaurar si falla)
+        temp_client = self._clients.pop(old_client_name)
+        
+        # Actualizar en la base de datos
+        if self.logger.get_db():
+            opcua = OPCUA.get_by_client_name(client_name=old_client_name)
+            if opcua:
+                if new_client_name != old_client_name:
+                    # Si cambió el nombre, eliminar el registro viejo
+                    query = OPCUA.delete().where(OPCUA.client_name == old_client_name)
+                    query.execute()
+                    # Crear nuevo registro con nueva configuración
+                    OPCUA.create(client_name=new_client_name, host=host, port=port)
+                else:
+                    # Si solo cambió host/port, actualizar el registro
+                    opcua.host = host
+                    opcua.port = port
+                    opcua.save()
+        
+        # Crear nuevo cliente con la nueva configuración
+        endpoint_url = f"opc.tcp://{host}:{port}"
+        opcua_client = Client(endpoint_url, client_name=new_client_name)
+        
+        # Intentar conectar con la nueva configuración
+        message, status_connection = opcua_client.connect()
+        
+        if status_connection == 200:
+            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logging.info(f"OPC UA client {new_client_name} updated and connected successfully")
+            print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {new_client_name} updated and connected successfully", "INFO"))
+            self._clients[new_client_name] = opcua_client
+            
+            # Actualizar referencias en tags si cambió el host/port
+            new_endpoint_url = f"opc.tcp://{host}:{port}"
+            if old_endpoint_url != new_endpoint_url:
+                tags = self.cvt.get_tags()
+                for tag in tags:
+                    if tag.get("opcua_address") == old_endpoint_url:
+                        # Actualizar la dirección del tag usando el CVT
+                        tag_id = tag.get("id")
+                        if tag_id:
+                            # Actualizar opcua_address del tag
+                            self.cvt.update_tag(id=tag_id, opcua_address=new_endpoint_url)
+                            # Reconectar suscripciones si es necesario
+                            tag_obj = self.cvt.get_tag(id=tag_id)
+                            if tag_obj:
+                                if not tag.get("scan_time"):
+                                    subscription = opcua_client.create_subscription(1000, self.das)
+                                    node_id = opcua_client.get_node_id_by_namespace(tag.get("node_namespace", ""))
+                                    if node_id:
+                                        self.das.subscribe(subscription=subscription, client_name=new_client_name, node_id=node_id)
+                                self.das.restart_buffer(tag=tag_obj)
+            
+            return True, message
+        
+        # Si la conexión falló, restaurar el cliente anterior solo si el nombre no cambió
+        if new_client_name == old_client_name:
+            try:
+                # Restaurar cliente en memoria
+                self._clients[old_client_name] = temp_client
+                # Si estaba conectado, intentar reconectar
+                if was_connected:
+                    old_message, old_status = temp_client.connect()
+                    if old_status == 200:
+                        # Revertir cambios en la base de datos
+                        if self.logger.get_db():
+                            opcua = OPCUA.get_by_client_name(client_name=old_client_name)
+                            if opcua:
+                                opcua.host = old_host
+                                opcua.port = old_port
+                                opcua.save()
+                        return False, f"Failed to connect to new server. Client restored to previous configuration. Error: {message}"
+            except Exception as restore_err:
+                str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                logging.warning(f"Failed to restore old client {old_client_name}: {restore_err}")
+                print(_colorize_message(f"[{str_date}] [WARNING] Failed to restore old client {old_client_name}: {restore_err}", "WARNING"))
+        
+        return False, message
+
+    @logging_error_handler
     def connect(self, client_name:str)->dict:
         r"""
         Connects a specific client.
