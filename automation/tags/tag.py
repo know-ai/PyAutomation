@@ -129,7 +129,21 @@ class Tag:
 
         self.values = Buffer()
         self.timestamps = Buffer()
-        self.opcua_address = opcua_address
+        # opcua_client_name almacena el nombre del cliente OPC UA
+        # Si opcua_address es una URL, se intentará resolver el nombre del cliente
+        # Si opcua_address es un nombre de cliente, se usará directamente
+        self.opcua_client_name = None
+        self._opcua_address = opcua_address  # Mantener para compatibilidad temporal
+        # Resolver opcua_client_name si se proporciona opcua_address
+        if opcua_address:
+            # Si opcua_address parece ser una URL (contiene "opc.tcp://"), intentar resolver el cliente
+            if "opc.tcp://" in opcua_address:
+                # Se resolverá dinámicamente cuando se necesite
+                self._opcua_address = opcua_address
+            else:
+                # Si no es una URL, asumir que es un nombre de cliente
+                self.opcua_client_name = opcua_address
+                self._opcua_address = None
         self.node_namespace = node_namespace
         self.scan_time = scan_time
         self.dead_band = dead_band
@@ -251,12 +265,46 @@ class Tag:
     def set_opcua_address(self, opcua_address:str):
         r"""
         Sets the OPC UA server address associated with this tag.
+        
+        Si opcua_address es una URL (contiene "opc.tcp://"), se almacena temporalmente.
+        Si opcua_address es un nombre de cliente, se guarda en opcua_client_name.
 
         **Parameters:**
 
-        * **opcua_address** (str): Server URL.
+        * **opcua_address** (str): Server URL o nombre del cliente OPC UA.
         """
-        self.opcua_address = opcua_address
+        if opcua_address:
+            if "opc.tcp://" in opcua_address:
+                self._opcua_address = opcua_address
+                self.opcua_client_name = None
+            else:
+                # Asumir que es un nombre de cliente
+                self.opcua_client_name = opcua_address
+                self._opcua_address = None
+        else:
+            self._opcua_address = None
+            self.opcua_client_name = None
+    
+    def set_opcua_client_name(self, client_name:str):
+        r"""
+        Sets the OPC UA client name associated with this tag.
+
+        **Parameters:**
+
+        * **client_name** (str): Nombre del cliente OPC UA.
+        """
+        self.opcua_client_name = client_name
+        self._opcua_address = None  # Limpiar URL cuando se establece nombre
+    
+    def get_opcua_client_name(self):
+        r"""
+        Gets the OPC UA client name associated with this tag.
+
+        **Returns:**
+
+        * **str**: Nombre del cliente OPC UA o None.
+        """
+        return self.opcua_client_name
 
     def set_unit(self, unit:str):
         r"""
@@ -445,12 +493,32 @@ class Tag:
     def get_opcua_address(self):
         r"""
         Gets the OPC UA server address.
+        
+        Si opcua_client_name está definido, intenta resolver la URL desde el cliente.
+        Si no, retorna la URL almacenada temporalmente.
 
         **Returns:**
 
-        * **str**: OPC UA address.
+        * **str**: OPC UA address (URL) o None.
         """
-        return self.opcua_address
+        # Si tenemos un nombre de cliente, intentar resolver la URL
+        if self.opcua_client_name:
+            # Intentar obtener la URL desde el cliente OPC UA
+            # Esto requiere acceso al opcua_client_manager, que se manejará desde CVT
+            return None  # Se resolverá dinámicamente desde CVT/PyAutomation
+        # Si no tenemos nombre de cliente, retornar la URL almacenada
+        return self._opcua_address
+    
+    @property
+    def opcua_address(self):
+        r"""
+        Property para acceder a opcua_address de manera compatible.
+        
+        **Returns:**
+        
+        * **str**: OPC UA address (URL) o None.
+        """
+        return self.get_opcua_address()
 
     def get_node_namespace(self):
         r"""
@@ -520,6 +588,7 @@ class Tag:
             "description": self.get_description(),
             "display_name": self.get_display_name(),
             "opcua_address": self.get_opcua_address(),
+            "opcua_client_name": self.get_opcua_client_name(),
             "node_namespace": self.get_node_namespace(),
             "scan_time": self.get_scan_time(),
             "dead_band": self.get_dead_band(),

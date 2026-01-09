@@ -336,6 +336,7 @@ class PyAutomation(Singleton):
             description=str|type(None),
             display_name=str|type(None),
             opcua_address=str|type(None),
+            opcua_client_name=str|type(None),
             node_namespace=str|type(None),
             scan_time=int|float|type(None),
             dead_band=int|float|type(None),
@@ -362,6 +363,7 @@ class PyAutomation(Singleton):
             description:str=None,
             display_name:str=None,
             opcua_address:str=None,
+            opcua_client_name:str=None,
             node_namespace:str=None,
             scan_time:int=None,
             dead_band:float=None,
@@ -423,6 +425,33 @@ class PyAutomation(Singleton):
 
             display_name = name
 
+        # Si se proporciona opcua_client_name directamente, usarlo
+        # Si no, intentar resolverlo desde opcua_address
+        resolved_opcua_address = opcua_address
+        if opcua_client_name:
+            # Si se proporciona el nombre del cliente directamente, obtener su URL
+            client = self.opcua_client_manager.get(opcua_client_name)
+            if client:
+                resolved_opcua_address = client.serialize().get("server_url", opcua_address)
+        elif opcua_address:
+            # Si se proporciona opcua_address, intentar resolver el nombre del cliente
+            # Si opcua_address es una URL, buscar el nombre del cliente correspondiente
+            # Si opcua_address es un nombre de cliente, usarlo directamente
+            if "opc.tcp://" in opcua_address:
+                # Es una URL, intentar resolver el nombre del cliente
+                client_name = self.opcua_client_manager.get_client_name_by_address(opcua_address)
+                if client_name:
+                    opcua_client_name = client_name
+            else:
+                # No es una URL, asumir que es un nombre de cliente
+                opcua_client_name = opcua_address
+                # Intentar obtener la URL del cliente
+                client = self.opcua_client_manager.get(opcua_client_name)
+                if client:
+                    resolved_opcua_address = client.serialize().get("server_url", opcua_address)
+        else:
+            opcua_client_name = None
+
         tag, message = self.cvt.set_tag(
             name=name,
             unit=unit,
@@ -431,7 +460,7 @@ class PyAutomation(Singleton):
             data_type=data_type,
             description=description,
             display_name=display_name,
-            opcua_address=opcua_address,
+            opcua_address=resolved_opcua_address,
             node_namespace=node_namespace,
             scan_time=scan_time,
             dead_band=dead_band,
@@ -447,6 +476,11 @@ class PyAutomation(Singleton):
             id=id,
             user=user
         )
+        
+        # Si se resolvió el nombre del cliente, establecerlo en el tag
+        if tag and opcua_client_name:
+            if hasattr(tag, 'set_opcua_client_name'):
+                tag.set_opcua_client_name(opcua_client_name)
 
         # CREATE OPCUA SUBSCRIPTION
         if tag:
@@ -756,12 +790,39 @@ class PyAutomation(Singleton):
 
             kwargs['gaussian_filter_threshold'] = threshold
 
+        # Si se está actualizando opcua_address, intentar resolver el nombre del cliente
+        if "opcua_address" in kwargs:
+            opcua_address = kwargs["opcua_address"]
+            opcua_client_name = None
+            resolved_opcua_address = opcua_address
+            
+            if opcua_address:
+                if "opc.tcp://" in opcua_address:
+                    # Es una URL, intentar resolver el nombre del cliente
+                    client_name = self.opcua_client_manager.get_client_name_by_address(opcua_address)
+                    if client_name:
+                        opcua_client_name = client_name
+                else:
+                    # No es una URL, asumir que es un nombre de cliente
+                    opcua_client_name = opcua_address
+                    # Intentar obtener la URL del cliente
+                    client = self.opcua_client_manager.get(opcua_client_name)
+                    if client:
+                        resolved_opcua_address = client.serialize().get("server_url", opcua_address)
+                
+                kwargs["opcua_address"] = resolved_opcua_address
         
         result = self.cvt.update_tag(
             id=id,  
             user=user,
             **kwargs
         )
+        
+        # Si se resolvió el nombre del cliente, establecerlo en el tag actualizado
+        if result and "opcua_address" in kwargs and opcua_client_name:
+            updated_tag = self.cvt.get_tag(id=id)
+            if updated_tag and hasattr(updated_tag, 'set_opcua_client_name'):
+                updated_tag.set_opcua_client_name(opcua_client_name)
         if self.is_db_connected():
 
             if 'variable' in kwargs:
@@ -1081,7 +1142,7 @@ class PyAutomation(Singleton):
                 # No hay base de datos configurada, usar autenticación en memoria
                 return None, "Database is not configured correctly. Please configure the database connection first."
 
-            return None, message
+            return user, message
             
         except Exception as e:
             # En caso de cualquier excepción no prevista
@@ -2846,6 +2907,12 @@ class PyAutomation(Singleton):
 
             tags = self.db_manager.get_tags()
             str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # Asegurar que tags sea siempre una lista
+            if tags is None:
+                tags = []
+            elif not isinstance(tags, list):
+                tags = list(tags) if tags else []
 
             for tag in tags:
 

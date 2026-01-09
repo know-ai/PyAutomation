@@ -430,6 +430,7 @@ class Tags(BaseModel):
     display_name = CharField(unique=True)
     display_unit = ForeignKeyField(Units)
     opcua_address = CharField(null=True)
+    opcua_client_name = CharField(null=True)
     node_namespace = CharField(null=True)
     scan_time = IntegerField(null=True)
     dead_band = FloatField(null=True)
@@ -453,6 +454,7 @@ class Tags(BaseModel):
         display_name:str,
         display_unit:str,
         opcua_address:str="",
+        opcua_client_name:str=None,
         node_namespace:str="",
         segment:str="",
         manufacturer:str="",
@@ -529,6 +531,7 @@ class Tags(BaseModel):
                                 display_name=display_name,
                                 display_unit=_display_unit,
                                 opcua_address=opcua_address,
+                                opcua_client_name=opcua_client_name,
                                 node_namespace=node_namespace,
                                 scan_time=scan_time,
                                 dead_band=dead_band,
@@ -552,6 +555,7 @@ class Tags(BaseModel):
                                 display_name=display_name,
                                 display_unit=_display_unit,
                                 opcua_address=opcua_address,
+                                opcua_client_name=opcua_client_name,
                                 node_namespace=node_namespace,
                                 scan_time=scan_time,
                                 dead_band=dead_band,
@@ -609,6 +613,7 @@ class Tags(BaseModel):
                             "display_name":display_name,
                             "display_unit":_display_unit,
                             "opcua_address":opcua_address,
+                            "opcua_client_name":opcua_client_name,
                             "node_namespace":node_namespace,
                             "scan_time":scan_time,
                             "dead_band":dead_band,
@@ -766,6 +771,12 @@ class Tags(BaseModel):
 
             gaussian_filter_threshold = self.gaussian_filter_threshold
 
+        # Resolver opcua_address desde opcua_client_name si está disponible
+        # opcua_address es un campo de la base de datos, no una propiedad calculada
+        resolved_opcua_address = self.opcua_address if hasattr(self, 'opcua_address') else None
+        # Si tenemos opcua_client_name pero no opcua_address, se resolverá dinámicamente
+        # cuando se cree el tag en memoria desde PyAutomation
+        
         return {
             'id': self.identifier,
             'name': self.name,
@@ -774,7 +785,8 @@ class Tags(BaseModel):
             'description': self.description,
             'display_name': self.display_name,
             'display_unit': self.display_unit.unit,
-            'opcua_address': self.opcua_address,
+            'opcua_address': resolved_opcua_address,
+            'opcua_client_name': self.opcua_client_name,
             'node_namespace': self.node_namespace,
             'scan_time': self.scan_time,
             'dead_band': self.dead_band,

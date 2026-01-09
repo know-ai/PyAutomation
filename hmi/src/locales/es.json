@@ -330,6 +330,7 @@
     "displayUnit": "Display Unit",
     "dataType": "Tipo de Dato",
     "opcuaAddress": "Dirección OPC UA",
+    "opcuaClientName": "Nombre Cliente OPC UA",
     "nodeNamespace": "Node Namespace",
     "scanTime": "Tiempo de Escaneo (ms)",
     "deadBand": "Dead Band",

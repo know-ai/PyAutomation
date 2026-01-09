@@ -10,7 +10,8 @@ import { useAppSelector } from "../hooks/useAppSelector";
 const TagTableRow = memo(({ 
   tag, 
   tagValues, 
-  opcuaClientNamesByAddress, 
+  opcuaClientNamesByAddress,
+  opcuaClientAddresses,
   opcuaNodeDisplayNames,
   onEdit,
   onDelete 
@@ -18,6 +19,7 @@ const TagTableRow = memo(({
   tag: Tag;
   tagValues: Record<string, Tag>;
   opcuaClientNamesByAddress: Record<string, string>;
+  opcuaClientAddresses: Record<string, string>;
   opcuaNodeDisplayNames: Record<string, string>;
   onEdit: (tag: Tag) => void;
   onDelete: (tag: Tag) => void;
@@ -54,9 +56,17 @@ const TagTableRow = memo(({
         {tag.display_unit || "-"}
       </td>
       <td>
-        {tag.opcua_address
-          ? opcuaClientNamesByAddress[tag.opcua_address] || tag.opcua_address
-          : "-"}
+        {(() => {
+          // Priorizar opcua_client_name (más legible)
+          if (tag.opcua_client_name) {
+            return tag.opcua_client_name;
+          }
+          // Si tiene opcua_address pero no opcua_client_name, intentar obtener el nombre del cliente
+          if (tag.opcua_address) {
+            return opcuaClientNamesByAddress[tag.opcua_address] || tag.opcua_address;
+          }
+          return "-";
+        })()}
       </td>
       <td>
         {tag.node_namespace
@@ -108,9 +118,11 @@ const TagTableRow = memo(({
     prevProps.tag.unit === nextProps.tag.unit &&
     prevProps.tag.display_unit === nextProps.tag.display_unit &&
     prevProps.tag.opcua_address === nextProps.tag.opcua_address &&
+    prevProps.tag.opcua_client_name === nextProps.tag.opcua_client_name &&
     prevProps.tag.node_namespace === nextProps.tag.node_namespace &&
     prevProps.tag.scan_time === nextProps.tag.scan_time &&
-    prevProps.tag.dead_band === nextProps.tag.dead_band
+    prevProps.tag.dead_band === nextProps.tag.dead_band &&
+    prevProps.opcuaClientAddresses === nextProps.opcuaClientAddresses
   );
 });
 
@@ -187,18 +199,25 @@ export function Tags() {
       });
       
       // Cargar display names de los nodos OPC UA que están en los tags
-      // Recopilar namespaces únicos y sus direcciones asociadas
-      const namespaceToAddress: Record<string, string> = {};
+      // Recopilar namespaces únicos y sus clientes asociados
+      const namespaceToClientName: Record<string, string> = {};
       loadedTags.forEach((tag) => {
-        if (tag.node_namespace && tag.opcua_address) {
-          namespaceToAddress[tag.node_namespace] = tag.opcua_address;
+        if (tag.node_namespace) {
+          // Priorizar opcua_client_name sobre opcua_address
+          if (tag.opcua_client_name) {
+            namespaceToClientName[tag.node_namespace] = tag.opcua_client_name;
+          } else if (tag.opcua_address) {
+            const clientName = opcuaClientNamesByAddress[tag.opcua_address];
+            if (clientName) {
+              namespaceToClientName[tag.node_namespace] = clientName;
+            }
+          }
         }
       });
       
       // Cargar árboles de clientes únicos para obtener display names
       const uniqueClientNames = new Set<string>();
-      Object.values(namespaceToAddress).forEach((address) => {
-        const clientName = opcuaClientNamesByAddress[address];
+      Object.values(namespaceToClientName).forEach((clientName) => {
         if (clientName) {
           uniqueClientNames.add(clientName);
         }
@@ -449,7 +468,9 @@ export function Tags() {
       data_type: tag.data_type || "float",
       description: tag.description || "",
       display_name: tag.display_name || "",
-      opcua_address: tag.opcua_address || "",
+      opcua_address: tag.opcua_client_name 
+        ? opcuaClientAddresses[tag.opcua_client_name] || ""
+        : tag.opcua_address || "",
       node_namespace: tag.node_namespace || "",
       scan_time: tag.scan_time ? String(tag.scan_time) : "",
       dead_band: tag.dead_band !== undefined ? String(tag.dead_band) : "",
@@ -474,7 +495,10 @@ export function Tags() {
     }
     
     // Cargar nodos si hay cliente OPC UA
-    if (tag.opcua_address) {
+    // Priorizar opcua_client_name sobre opcua_address
+    if (tag.opcua_client_name) {
+      loadOpcuaNodes(tag.opcua_client_name);
+    } else if (tag.opcua_address) {
       const clientName = opcuaClientNamesByAddress[tag.opcua_address];
       if (clientName) {
         loadOpcuaNodes(clientName);
@@ -539,7 +563,18 @@ export function Tags() {
           tag.unit || "",
           tag.display_unit || "",
           tag.data_type || "",
-          tag.opcua_address ? (opcuaClientNamesByAddress[tag.opcua_address] || tag.opcua_address) : "",
+          (() => {
+            // Si tiene opcua_client_name, usar ese para buscar la dirección
+            if (tag.opcua_client_name) {
+              const address = opcuaClientAddresses[tag.opcua_client_name];
+              return address || tag.opcua_client_name;
+            }
+            // Si tiene opcua_address, usar ese (compatibilidad hacia atrás)
+            if (tag.opcua_address) {
+              return opcuaClientNamesByAddress[tag.opcua_address] || tag.opcua_address;
+            }
+            return "";
+          })(),
           tag.node_namespace ? (opcuaNodeDisplayNames[tag.node_namespace] || tag.node_namespace) : "",
           tag.scan_time || "",
           tag.dead_band !== undefined ? tag.dead_band : "",
@@ -1019,7 +1054,7 @@ export function Tags() {
                     <th>{t("tables.variable")}</th>
                     <th>{t("tables.value")}</th>
                     <th>{t("tables.displayUnit")}</th>
-                    <th>{t("tables.opcuaAddress")}</th>
+                    <th>{t("tables.opcuaClientName")}</th>
                     <th>{t("tables.nodeNamespace")}</th>
                     <th>{t("tables.scanTime")}</th>
                     <th>{t("tables.deadBand")}</th>
@@ -1040,6 +1075,7 @@ export function Tags() {
                         tag={tag}
                         tagValues={tagValues}
                         opcuaClientNamesByAddress={opcuaClientNamesByAddress}
+                        opcuaClientAddresses={opcuaClientAddresses}
                         opcuaNodeDisplayNames={opcuaNodeDisplayNames}
                         onEdit={handleEditTag}
                         onDelete={handleDeleteTag}

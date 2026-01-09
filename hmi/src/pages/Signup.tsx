@@ -7,6 +7,7 @@ import { Button } from "../components/Button";
 import { DatabaseConfigForm } from "../components/DatabaseConfigForm";
 import { signup } from "../services/auth";
 import { useTranslation } from "../hooks/useTranslation";
+import { showToast } from "../utils/toast";
 
 export function Signup() {
   const { t } = useTranslation();
@@ -37,14 +38,23 @@ export function Signup() {
         name: form.name,
         lastname: form.lastname,
       });
+      
       // Guardar toast de éxito en sessionStorage para que persista al navegar
       const toastData = {
-        messageKey: "auth.signupSuccess",
+        message: t("auth.signupSuccess"),
         type: "success",
-        duration: 5000, // 5 segundos
+        duration: 5000,
       };
       sessionStorage.setItem("pendingToast", JSON.stringify(toastData));
-      navigate("/login");
+      
+      // Asegurar que el estado se actualice antes de navegar
+      setLoading(false);
+      
+      // Navegar a login - el toast se mostrará automáticamente en Login.tsx
+      // Usar setTimeout para asegurar que el estado se actualice completamente
+      setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 0);
     } catch (err: any) {
       const status = err?.response?.status;
       const data = err?.response?.data;

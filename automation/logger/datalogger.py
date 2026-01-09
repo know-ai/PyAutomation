@@ -42,7 +42,8 @@ class DataLogger(BaseLogger):
         description:str="", 
         display_name:str="",
         display_unit:str=None,
-        opcua_address:str=None, 
+        opcua_address:str=None,
+        opcua_client_name:str=None,
         node_namespace:str=None,
         scan_time:int=None,
         dead_band:float=None,
@@ -62,6 +63,7 @@ class DataLogger(BaseLogger):
         * **display_name** (str, optional): Friendly name for display.
         * **display_unit** (str, optional): Unit for display purposes.
         * **opcua_address** (str, optional): Source OPC UA server address.
+        * **opcua_client_name** (str, optional): OPC UA client name.
         * **node_namespace** (str, optional): Source OPC UA node ID.
         * **scan_time** (int, optional): Scan interval in ms.
         * **dead_band** (float, optional): Deadband for logging.
@@ -81,6 +83,7 @@ class DataLogger(BaseLogger):
             display_name=display_name,
             display_unit=display_unit,
             opcua_address=opcua_address,
+            opcua_client_name=opcua_client_name,
             node_namespace=node_namespace,
             scan_time=scan_time,
             dead_band=dead_band,
@@ -748,6 +751,7 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"]["display_name"] = tag.display_name
         _query["parameters"]["display_unit"] = tag.display_unit
         _query["parameters"]["opcua_address"] = tag.opcua_address
+        _query["parameters"]["opcua_client_name"] = tag.get_opcua_client_name() if hasattr(tag, 'get_opcua_client_name') else None
         _query["parameters"]["node_namespace"] = tag.node_namespace
         _query["parameters"]["scan_time"] = tag.scan_time
         _query["parameters"]["dead_band"] = tag.dead_band

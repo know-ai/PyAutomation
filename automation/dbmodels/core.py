@@ -43,7 +43,21 @@ class BaseModel(Model):
 
         * **list**: A list of serialized dictionaries representing all records.
         """
-        data = [query.serialize() for query in cls.select()]
+        data = []
+        try:
+            for query in cls.select():
+                try:
+                    data.append(query.serialize())
+                except Exception as e:
+                    # Si hay un error al serializar un registro, registrar y continuar
+                    import logging
+                    logging.warning(f"Error serializing {cls.__name__} record (id={query.id if hasattr(query, 'id') else 'unknown'}): {e}")
+                    continue
+        except Exception as e:
+            # Si hay un error general, registrar y devolver lista vacía
+            import logging
+            logging.error(f"Error reading all {cls.__name__} records: {e}")
+            return []
 
         return data
 

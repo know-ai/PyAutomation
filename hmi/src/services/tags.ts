@@ -10,6 +10,7 @@ export type Tag = {
   description?: string;
   display_name?: string;
   opcua_address?: string;
+  opcua_client_name?: string;
   node_namespace?: string;
   scan_time?: number;
   dead_band?: number;

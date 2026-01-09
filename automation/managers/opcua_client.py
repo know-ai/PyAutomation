@@ -76,17 +76,34 @@ class OPCUAClientManager:
                 OPCUA.create(client_name=client_name, host=host, port=port)
 
             # RECONNECT TO SUBSCRIPTION 
+            # Buscar tags que usan este cliente (por nombre o por URL)
             for tag in self.cvt.get_tags():
+                tag_id = tag.get("id")
+                if not tag_id:
+                    continue
                 
-                if tag["opcua_address"]==endpoint_url:
-
-                    if not tag["scan_time"]:
-
+                tag_obj = self.cvt.get_tag(id=tag_id)
+                should_reconnect = False
+                
+                if tag_obj:
+                    # Verificar si el tag usa este cliente
+                    # Opción 1: Si el tag tiene opcua_client_name que coincida (case-insensitive)
+                    if hasattr(tag_obj, 'opcua_client_name') and tag_obj.opcua_client_name:
+                        if tag_obj.opcua_client_name.lower() == client_name.lower():
+                            should_reconnect = True
+                    # Opción 2: Compatibilidad hacia atrás - si usa la URL
+                    elif tag.get("opcua_address") == endpoint_url:
+                        should_reconnect = True
+                        # Si el tag tenía URL pero no nombre, actualizar para usar el nombre del cliente
+                        if hasattr(tag_obj, 'set_opcua_client_name'):
+                            tag_obj.set_opcua_client_name(client_name)
+                
+                if should_reconnect:
+                    if not tag.get("scan_time"):
                         subscription = opcua_client.create_subscription(1000, self.das)
                         node_id = opcua_client.get_node_id_by_namespace(tag["node_namespace"])
                         self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
-
-                    self.das.restart_buffer(tag=self.cvt.get_tag(id=tag["id"]))
+                    self.das.restart_buffer(tag=tag_obj)
         
             return True, message
         
@@ -193,6 +210,28 @@ class OPCUAClientManager:
                     # Crear nuevo registro con el nuevo nombre
                     OPCUA.create(client_name=new_client_name, host=old_host, port=old_port)
             
+            # IMPORTANTE: Actualizar todos los tags que referencian este cliente por nombre
+            # Buscar tags que usan el nombre antiguo del cliente (case-insensitive)
+            tags = self.cvt.get_tags()
+            for tag in tags:
+                tag_id = tag.get("id")
+                if not tag_id:
+                    continue
+                
+                tag_obj = self.cvt.get_tag(id=tag_id)
+                if tag_obj and hasattr(tag_obj, 'opcua_client_name') and tag_obj.opcua_client_name:
+                    # Comparación case-insensitive para detectar el cliente
+                    if tag_obj.opcua_client_name.lower() == old_client_name.lower():
+                        # Actualizar el nombre del cliente en el tag
+                        tag_obj.set_opcua_client_name(new_client_name)
+                        # También actualizar en la base de datos si está conectada
+                        if self.logger.get_db():
+                            from ..dbmodels import Tags
+                            db_tag = Tags.get_or_none(identifier=tag_id)
+                            if db_tag:
+                                db_tag.opcua_client_name = new_client_name
+                                db_tag.save()
+            
             str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             logging.info(f"OPC UA client '{old_client_name}' renamed to '{new_client_name}' successfully")
             print(_colorize_message(f"[{str_date}] [INFO] OPC UA client '{old_client_name}' renamed to '{new_client_name}' successfully", "INFO"))
@@ -243,26 +282,60 @@ class OPCUAClientManager:
             print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {new_client_name} updated and connected successfully", "INFO"))
             self._clients[new_client_name] = opcua_client
             
-            # Actualizar referencias en tags si cambió el host/port
+            # Actualizar referencias en tags cuando cambia la configuración del cliente
+            # Buscar tags que usan este cliente (por nombre o por URL antigua)
+            tags = self.cvt.get_tags()
             new_endpoint_url = f"opc.tcp://{host}:{port}"
-            if old_endpoint_url != new_endpoint_url:
-                tags = self.cvt.get_tags()
-                for tag in tags:
-                    if tag.get("opcua_address") == old_endpoint_url:
-                        # Actualizar la dirección del tag usando el CVT
-                        tag_id = tag.get("id")
-                        if tag_id:
-                            # Actualizar opcua_address del tag
-                            self.cvt.update_tag(id=tag_id, opcua_address=new_endpoint_url)
-                            # Reconectar suscripciones si es necesario
-                            tag_obj = self.cvt.get_tag(id=tag_id)
-                            if tag_obj:
-                                if not tag.get("scan_time"):
-                                    subscription = opcua_client.create_subscription(1000, self.das)
-                                    node_id = opcua_client.get_node_id_by_namespace(tag.get("node_namespace", ""))
-                                    if node_id:
-                                        self.das.subscribe(subscription=subscription, client_name=new_client_name, node_id=node_id)
-                                self.das.restart_buffer(tag=tag_obj)
+            
+            for tag in tags:
+                tag_id = tag.get("id")
+                if not tag_id:
+                    continue
+                
+                # Verificar si el tag usa este cliente
+                # Opción 1: Si el tag tiene opcua_client_name que coincida
+                tag_obj = self.cvt.get_tag(id=tag_id)
+                should_update = False
+                
+                if tag_obj:
+                    # Si el tag tiene opcua_client_name, verificar si coincide con el cliente actualizado
+                    # Usar comparación case-insensitive para ser más robusto
+                    if hasattr(tag_obj, 'opcua_client_name') and tag_obj.opcua_client_name:
+                        tag_client_name_lower = tag_obj.opcua_client_name.lower()
+                        if tag_client_name_lower == old_client_name.lower() or tag_client_name_lower == new_client_name.lower():
+                            should_update = True
+                    # Opción 2: Compatibilidad hacia atrás - si usa la URL antigua
+                    elif tag.get("opcua_address") == old_endpoint_url:
+                        should_update = True
+                        # Si el tag tenía URL pero no nombre, actualizar para usar el nombre del cliente
+                        if hasattr(tag_obj, 'set_opcua_client_name'):
+                            tag_obj.set_opcua_client_name(new_client_name)
+                
+                if should_update:
+                    # Actualizar opcua_address en el tag (mantener compatibilidad)
+                    self.cvt.update_tag(id=tag_id, opcua_address=new_endpoint_url)
+                    # También actualizar opcua_client_name si el método existe
+                    tag_obj = self.cvt.get_tag(id=tag_id)
+                    if tag_obj and hasattr(tag_obj, 'set_opcua_client_name'):
+                        tag_obj.set_opcua_client_name(new_client_name)
+                    
+                    # Actualizar en la base de datos si está conectada
+                    if self.logger.get_db():
+                        from ..dbmodels import Tags
+                        db_tag = Tags.get_or_none(identifier=tag_id)
+                        if db_tag:
+                            db_tag.opcua_address = new_endpoint_url
+                            db_tag.opcua_client_name = new_client_name
+                            db_tag.save()
+                    
+                    # Reconectar suscripciones si es necesario
+                    if tag_obj:
+                        if not tag.get("scan_time"):
+                            subscription = opcua_client.create_subscription(1000, self.das)
+                            node_id = opcua_client.get_node_id_by_namespace(tag.get("node_namespace", ""))
+                            if node_id:
+                                self.das.subscribe(subscription=subscription, client_name=new_client_name, node_id=node_id)
+                        self.das.restart_buffer(tag=tag_obj)
             
             return True, message
         
@@ -398,6 +471,44 @@ class OPCUAClientManager:
             if opcua_address == client.serialize()["server_url"]:
                 if client.is_connected():
                     return client
+        return None
+    
+    @logging_error_handler
+    def get_client_name_by_address(self, opcua_address:str)->str|None:
+        r"""
+        Obtiene el nombre del cliente OPC UA basándose en su URL de servidor.
+        
+        **Parameters:**
+
+        * **opcua_address** (str): OPC UA Server URL (e.g., "opc.tcp://localhost:4840").
+        
+        **Returns:**
+
+        * **str|None**: Nombre del cliente si se encuentra, None en caso contrario.
+        """
+        # Buscar en clientes conectados
+        for client_name, client in self._clients.items():
+            if opcua_address == client.serialize()["server_url"]:
+                return client_name
+        
+        # Si no está en memoria, buscar en la base de datos
+        if self.logger.get_db():
+            # Extraer host y port de la URL
+            try:
+                # Formato: opc.tcp://host:port
+                url_parts = opcua_address.replace("opc.tcp://", "").split(":")
+                if len(url_parts) == 2:
+                    host = url_parts[0]
+                    port = int(url_parts[1])
+                    # Buscar en la base de datos
+                    opcua_record = OPCUA.select().where(
+                        (OPCUA.host == host) & (OPCUA.port == port)
+                    ).first()
+                    if opcua_record:
+                        return opcua_record.client_name
+            except Exception as e:
+                logging.warning(f"Error resolving client name from address {opcua_address}: {e}")
+        
         return None
     
     @logging_error_handler
