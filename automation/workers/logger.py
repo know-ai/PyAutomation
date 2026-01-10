@@ -104,11 +104,24 @@ class LoggerWorker(BaseWorker):
         from automation import PyAutomation
         app = PyAutomation()
         if app.opcua_client_manager._clients:
-            for _, opcua_client in app.opcua_client_manager._clients.items():
+            # Crear una copia de los items para evitar RuntimeError si el diccionario cambia durante la iteración
+            # Esto puede ocurrir si reconnect() o alguna otra operación modifica _clients
+            clients_snapshot = list(app.opcua_client_manager._clients.items())
+            for client_name, opcua_client in clients_snapshot:
+                # Verificar que el cliente aún existe en el diccionario (puede haber sido removido)
+                if client_name not in app.opcua_client_manager._clients:
+                    continue
+                    
+                # Verificar que el cliente en el diccionario es el mismo que tenemos en la snapshot
+                if app.opcua_client_manager._clients[client_name] is not opcua_client:
+                    continue
 
                 if isinstance(opcua_client, Client):
-                    
-                    opcua_client.reconnect()
+                    try:
+                        opcua_client.reconnect()
+                    except Exception as e:
+                        # Si hay un error durante la reconexión, registrar pero continuar con otros clientes
+                        logging.error(f"Error reconnecting OPC UA client '{client_name}': {e}")
         else:
             
             app.load_opcua_clients_from_db()

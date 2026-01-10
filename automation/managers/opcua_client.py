@@ -64,16 +64,21 @@ class OPCUAClientManager:
         opcua_client = Client(endpoint_url, client_name=client_name)
         
         message, status_connection = opcua_client.connect()
+        
+        # Agregar el cliente a memoria incluso si la conexión falla
+        # Esto permite actualizar su configuración aunque no esté conectado
+        self._clients[client_name] = opcua_client
+        
         if status_connection==200:
             str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             logging.info(f"OPC UA client {client_name} connected successfully")
             print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {client_name} connected successfully", "INFO"))
-            self._clients[client_name] = opcua_client
             
             # DATABASE PERSISTENCY
             if self.logger.get_db():
-                
-                OPCUA.create(client_name=client_name, host=host, port=port)
+                # Verificar si ya existe en BD para evitar duplicados
+                if not OPCUA.client_name_exist(client_name):
+                    OPCUA.create(client_name=client_name, host=host, port=port)
 
             # RECONNECT TO SUBSCRIPTION 
             # Buscar tags que usan este cliente (por nombre o por URL)
@@ -102,12 +107,25 @@ class OPCUAClientManager:
                     if not tag.get("scan_time"):
                         subscription = opcua_client.create_subscription(1000, self.das)
                         node_id = opcua_client.get_node_id_by_namespace(tag["node_namespace"])
-                        self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
+                        if node_id:
+                            self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
                     self.das.restart_buffer(tag=tag_obj)
         
             return True, message
-        
-        return False, message
+        else:
+            # Si la conexión falló, aún así agregamos el cliente para poder actualizarlo
+            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logging.warning(f"OPC UA client {client_name} added to memory but connection failed: {message}")
+            print(_colorize_message(f"[{str_date}] [WARNING] OPC UA client {client_name} added to memory but connection failed: {message}", "WARNING"))
+            
+            # DATABASE PERSISTENCY - asegurar que esté en BD aunque no se conecte
+            if self.logger.get_db():
+                # Verificar si ya existe en BD para evitar duplicados
+                if not OPCUA.client_name_exist(client_name):
+                    OPCUA.create(client_name=client_name, host=host, port=port)
+            
+            # Retornar False para indicar que la conexión falló, pero el cliente está en memoria
+            return False, message
 
     @logging_error_handler
     def remove(self, client_name:str):
@@ -156,8 +174,25 @@ class OPCUAClientManager:
 
         * **tuple**: (Success boolean, Message string).
         """
+        # Si el cliente no está en memoria, intentar cargarlo desde la base de datos
         if old_client_name not in self._clients:
-            return False, f"Client '{old_client_name}' not found"
+            if self.logger.get_db():
+                db_client = OPCUA.get_by_client_name(client_name=old_client_name)
+                if db_client:
+                    # Cargar el cliente desde la BD a memoria (aunque no se conecte)
+                    # Esto permite actualizar su configuración
+                    db_host = db_client.host
+                    db_port = db_client.port
+                    # Agregar el cliente a memoria (aunque falle la conexión)
+                    # El método add() siempre agrega a memoria, incluso si falla la conexión
+                    self.add(client_name=old_client_name, host=db_host, port=db_port)
+                    # Verificar que el cliente se haya agregado a memoria
+                    if old_client_name not in self._clients:
+                        return False, f"Failed to load client '{old_client_name}' from database into memory"
+                else:
+                    return False, f"Client '{old_client_name}' not found in database or memory"
+            else:
+                return False, f"Client '{old_client_name}' not found in memory and database not connected"
         
         # Obtener el cliente actual
         old_client = self._clients[old_client_name]

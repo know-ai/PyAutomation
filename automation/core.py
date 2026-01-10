@@ -505,7 +505,12 @@ class PyAutomation(Singleton):
                     "unit": display_unit
                 }
             
-            self.subscribe_opcua(tag=self.cvt.get_tag_by_name(name=name), opcua_address=opcua_address, node_namespace=node_namespace, scan_time=scan_time, reload=reload)
+            # Solo intentar suscribirse si hay opcua_address y node_namespace
+            # Si el cliente no está conectado, subscribe_opcua lo manejará gracefully
+            if resolved_opcua_address and node_namespace:
+                tag_obj = self.cvt.get_tag_by_name(name=name)
+                if tag_obj:
+                    self.subscribe_opcua(tag=tag_obj, opcua_address=resolved_opcua_address, node_namespace=node_namespace, scan_time=scan_time, reload=reload)
 
             return tag, message
         
@@ -1439,16 +1444,76 @@ class PyAutomation(Singleton):
     @validate_types(output=dict)
     def get_opcua_clients(self):
         r"""
-        Retrieves all configured OPC UA clients.
+        Retrieves all configured OPC UA clients from both memory and database.
+
+        Returns all clients that are in the database, regardless of their connection status.
+        This allows viewing and editing clients even if they are not currently connected
+        (e.g., due to host IP changes).
 
         **Returns:**
 
-        * **dict**: A dictionary of configured clients.
+        * **dict**: A dictionary of configured clients with their connection status.
+                  Format: {client_name: {client_name, host, port, server_url, is_opened, ...}}
         """
-        return self.opcua_client_manager.serialize()
+        # Obtener clientes conectados en memoria
+        connected_clients = self.opcua_client_manager.serialize()
+        
+        # Obtener todos los clientes de la base de datos
+        all_clients = {}
+        
+        if self.is_db_connected():
+            db_clients = self.db_manager.get_opcua_clients()
+            for db_client in db_clients:
+                client_name = db_client.get("client_name")
+                host = db_client.get("host")
+                port = db_client.get("port")
+                server_url = f"opc.tcp://{host}:{port}"
+                
+                # Si el cliente está en memoria (conectado), usar esos datos y agregar campos adicionales
+                if client_name in connected_clients:
+                    client_data = connected_clients[client_name].copy() if isinstance(connected_clients[client_name], dict) else {}
+                    # Agregar campos que pueden faltar para consistencia
+                    client_data['client_name'] = client_name
+                    client_data['name'] = client_name  # Alias para compatibilidad con frontend
+                    client_data['host'] = host
+                    client_data['port'] = port
+                    all_clients[client_name] = client_data
+                else:
+                    # Si no está en memoria, crear entrada con datos de BD pero desconectado
+                    all_clients[client_name] = {
+                        'client_name': client_name,
+                        'name': client_name,  # Alias para compatibilidad con frontend
+                        'host': host,
+                        'port': port,
+                        'server_url': server_url,
+                        'is_opened': False,
+                        'connected': False
+                    }
+        else:
+            # Si no hay BD conectada, retornar solo los clientes en memoria
+            # Pero intentar agregar client_name, host, port si están disponibles
+            for client_name, client_data in connected_clients.items():
+                # Crear una copia para no modificar el original
+                client_info = client_data.copy() if isinstance(client_data, dict) else {}
+                # Extraer host y port de server_url si está disponible
+                if 'server_url' in client_info:
+                    try:
+                        url = client_info['server_url']
+                        if url.startswith('opc.tcp://'):
+                            parts = url.replace('opc.tcp://', '').split(':')
+                            if len(parts) == 2:
+                                client_info['host'] = parts[0]
+                                client_info['port'] = int(parts[1])
+                    except:
+                        pass
+                client_info['client_name'] = client_name
+                client_info['name'] = client_name  # Alias para compatibilidad con frontend
+                all_clients[client_name] = client_info
+        
+        return all_clients
 
     @logging_error_handler
-    @validate_types(client_name=str, output=Client)
+    @validate_types(client_name=str, output=Client|type(None))
     def get_opcua_client(self, client_name:str):
         r"""
         Retrieves a specific OPC UA client instance by name.
@@ -1459,7 +1524,7 @@ class PyAutomation(Singleton):
 
         **Returns:**
 
-        * **Client**: The OPC UA Client object.
+        * **Client|None**: The OPC UA Client object if found and connected, else None.
         """
         return self.opcua_client_manager.get(client_name=client_name)
     
@@ -1958,9 +2023,19 @@ class PyAutomation(Singleton):
         """
         servers = self.find_opcua_servers(host=host, port=port)
 
-        if servers:
-
-            return self.opcua_client_manager.add(client_name=client_name, host=host, port=port)
+        # Intentar agregar el cliente al manager incluso si no encuentra servidores
+        # El manager manejará la conexión y agregará el cliente a memoria aunque falle
+        result = self.opcua_client_manager.add(client_name=client_name, host=host, port=port)
+        
+        if result:
+            return result
+        
+        # Si no hay servidores pero el cliente se agregó a memoria (aunque no conectado),
+        # retornar éxito parcial para permitir actualizaciones
+        if client_name in self.opcua_client_manager._clients:
+            return False, f"Client '{client_name}' added to memory but connection failed. Servers not found or connection error."
+        
+        return False, f"Failed to add client '{client_name}'. Servers not found."
         
     @logging_error_handler
     @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=bool)
@@ -2104,21 +2179,38 @@ class PyAutomation(Singleton):
                 
                 for client_name, info in self.get_opcua_clients().items():
 
-                    if opcua_address==info["server_url"]:
+                    if opcua_address==info.get("server_url"):
+                        # Verificar que el cliente esté conectado antes de intentar suscribirse
+                        is_connected = info.get("is_opened", False) or info.get("connected", False)
+                        if not is_connected:
+                            # Si el cliente no está conectado, saltar y continuar con el siguiente
+                            # Esto puede pasar cuando se carga un tag desde la BD y el cliente no está conectado
+                            continue
 
                         opcua_client = self.get_opcua_client(client_name=client_name)
+                        # Verificar que el cliente sea válido antes de usarlo
+                        if opcua_client is None:
+                            continue
+                            
+                        # Verificar que el cliente esté realmente conectado
+                        if not opcua_client.is_connected():
+                            continue
+                            
                         subscription = opcua_client.create_subscription(1000, self.das)
                         node_id = opcua_client.get_node_id_by_namespace(node_namespace)
-                        self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
+                        if node_id:
+                            self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
                         break
 
             else:                                                                       # SUBSCRIBE BY DAQ
                 
                 self.subscribe_tag(tag_name=tag.get_name(), scan_time=scan_time, reload=reload)
 
-        self.das.buffer[tag.get_name()].update({
-            "unit": tag.get_display_unit()
-        })
+        # Asegurar que el buffer existe antes de actualizarlo
+        if tag.get_name() in self.das.buffer:
+            self.das.buffer[tag.get_name()].update({
+                "unit": tag.get_display_unit()
+            })
 
     @logging_error_handler
     @validate_types(tag_name=str, scan_time=float|int, reload=bool, output=None)
@@ -3037,6 +3129,7 @@ class PyAutomation(Singleton):
             Users.fill_cvt_users()
             logging.info(f"Users loaded from database")
             print(_colorize_message(f"[{str_date}] [INFO] Users loaded from database", "INFO"))
+    
     @logging_error_handler
     @validate_types(output=None)
     def load_opcua_clients_from_db(self):
@@ -3057,9 +3150,29 @@ class PyAutomation(Singleton):
                 print(_colorize_message(f"[{str_date}] [WARNING] No OPC UA clients found in database", "WARNING"))
             
             for client in clients:
-                self.add_opcua_client(**client)
-                logging.info(f"OPC UA client {client['client_name']} loaded from database")
-                print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {client['client_name']} loaded from database", "INFO"))
+                client_name = client.get('client_name')
+                # Intentar agregar el cliente, incluso si falla la conexión
+                # Esto asegura que esté en memoria para poder actualizarlo
+                result = self.add_opcua_client(**client)
+                if result:
+                    success, message = result
+                    if success:
+                        logging.info(f"OPC UA client {client_name} loaded from database and connected")
+                        print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {client_name} loaded from database and connected", "INFO"))
+                    else:
+                        # Cliente agregado a memoria pero no conectado
+                        logging.warning(f"OPC UA client {client_name} loaded from database but not connected: {message}")
+                        print(_colorize_message(f"[{str_date}] [WARNING] OPC UA client {client_name} loaded from database but not connected: {message}", "WARNING"))
+                else:
+                    # Si add_opcua_client retorna None, intentar agregar directamente al manager
+                    # para asegurar que esté en memoria aunque no se conecte
+                    try:
+                        self.opcua_client_manager.add(client_name=client_name, host=client.get('host'), port=client.get('port'))
+                        logging.warning(f"OPC UA client {client_name} added to memory from database (connection may have failed)")
+                        print(_colorize_message(f"[{str_date}] [WARNING] OPC UA client {client_name} added to memory from database (connection may have failed)", "WARNING"))
+                    except Exception as e:
+                        logging.error(f"Failed to load OPC UA client {client_name} from database: {e}")
+                        print(_colorize_message(f"[{str_date}] [ERROR] Failed to load OPC UA client {client_name} from database: {e}", "ERROR"))
 
     @logging_error_handler
     def load_db_tags_to_machine(self):
@@ -3817,7 +3930,6 @@ class PyAutomation(Singleton):
         else:
             logging.critical("Database is not connected, skipping system user creation")
             print(_colorize_message(f"[{str_date}] [CRITICAL] Database is not connected, skipping system user creation", "CRITICAL"))
-
 
     @logging_error_handler
     def create_system_user(self):

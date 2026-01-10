@@ -889,13 +889,30 @@ class StateMachineCore(StateMachine):
         """
         try:
             _from = self.current_state.name.lower()
-            transition_name = f'{_from}_to_{to}'
+            current_state_value = self.current_state.value.lower() if hasattr(self.current_state, 'value') else _from
+            
+            # Manejar casos especiales de confirmación
+            # Si estamos en con_restart (según current_state.value) y se solicita confirm_restart, cambiar a "wait"
+            if current_state_value == "con_restart" and to.lower() == "confirm_restart":
+                to = "wait"
+            # Si estamos en con_reset (según current_state.value) y se solicita confirm_reset, cambiar a "start"
+            elif current_state_value == "con_reset" and to.lower() == "confirm_reset":
+                to = "start"
+
+            if current_state_value == "con_restart" and to.lower() == "deny_restart":
+                to = self.last_state
+            elif current_state_value == "con_reset" and to.lower() == "deny_reset":
+                to = self.last_state
+            
+            transition_name = f'{_from}_to_{to.lower()}'
             allowed_transitions = self._get_active_transitions()
             for _transition in allowed_transitions:
                 # Compare using state names (e.g., "run", "restart") - .name is the state identifier
                 source_name = _transition.source.name.lower()
                 target_name = _transition.target.name.lower()
-                if f"{source_name}_to_{target_name}"==transition_name:
+            
+                if f"{source_name}_to_{target_name}" == transition_name:
+                    # Usar el nombre de transición correcto para enviar
                     self.send(transition_name)
                     return self, f"[{self.name.value}] from: {_from} to: {to}"
                 
