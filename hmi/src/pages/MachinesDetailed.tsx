@@ -7,12 +7,15 @@ import {
   getMachineByName,
   subscribeMachineTag,
   unsubscribeMachineTag,
+  updateMachineAttributes,
   type Machine,
 } from "../services/machines";
 import { showToast } from "../utils/toast";
 import { socketService } from "../services/socket";
+import type { Tag } from "../services/tags";
 
 const ITEMS_PER_PAGE = 10;
+const ACTIVE_TAB_STORAGE_KEY = "machinesDetailed_activeTab";
 
 type MachineDetailedData = {
   process_variables: Record<string, any>;
@@ -39,10 +42,37 @@ export function MachinesDetailed() {
   const [selectedSubscribedTag, setSelectedSubscribedTag] = useState<Record<string, string>>({});
   const [selectedReadOnlyVariable, setSelectedReadOnlyVariable] = useState<Record<string, string>>({});
   const [selectedInternalVariable, setSelectedInternalVariable] = useState<Record<string, string>>({});
+  
+  // Estados para los inputs de atributos de máquina (por máquina)
+  const [thresholdValue, setThresholdValue] = useState<Record<string, string>>({});
+  const [bufferSizeValue, setBufferSizeValue] = useState<Record<string, string>>({});
+  const [onDelayValue, setOnDelayValue] = useState<Record<string, string>>({});
+  const [updatingAttribute, setUpdatingAttribute] = useState<Record<string, string | null>>({});
+  // Valores originales para comparar si cambió
+  const [originalThresholdValue, setOriginalThresholdValue] = useState<Record<string, number | null>>({});
+  const [originalBufferSizeValue, setOriginalBufferSizeValue] = useState<Record<string, number | null>>({});
+  const [originalOnDelayValue, setOriginalOnDelayValue] = useState<Record<string, number | null>>({});
+  // Estado para el modal de confirmación
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<{
+    machineName: string;
+    attribute: "threshold" | "buffer_size" | "on_delay";
+    newValue: number;
+    oldValue: number | null;
+    attributeLabel: string;
+  } | null>(null);
 
   // Buffer para actualizaciones de propiedades de máquinas (patrón de 1 segundo)
   const pendingPropertyUpdatesRef = useRef<Map<string, Record<string, any>>>(new Map());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // Buffer para actualizaciones completas de máquinas (patrón de 1 segundo)
+  const pendingMachineUpdatesRef = useRef<Map<string, Machine>>(new Map());
+  const machineUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // Buffer para actualizaciones de tags (patrón de 1 segundo)
+  const pendingTagUpdatesRef = useRef<Map<string, any>>(new Map()); // Map<tagId, Tag>
+  const tagUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Cargar máquinas al montar el componente
   useEffect(() => {
@@ -52,8 +82,15 @@ export function MachinesDetailed() {
       try {
         const data = await getMachines();
         setMachines(data);
-        // Establecer el primer tab como activo si hay máquinas
-        if (data.length > 0 && data[0].name) {
+        
+        // Intentar cargar el tab activo guardado en localStorage
+        const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+        
+        // Verificar si el tab guardado existe en las máquinas disponibles
+        if (savedActiveTab && data.some((m) => m.name === savedActiveTab)) {
+          setActiveTab(savedActiveTab);
+        } else if (data.length > 0 && data[0].name) {
+          // Si no hay tab guardado válido, usar el primero
           setActiveTab(data[0].name);
         }
       } catch (err: any) {
@@ -75,6 +112,13 @@ export function MachinesDetailed() {
 
     loadMachines();
   }, [t]);
+
+  // Guardar el tab activo en localStorage cuando cambie
+  useEffect(() => {
+    if (activeTab) {
+      localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
+    }
+  }, [activeTab]);
 
   // Cargar detalles de la máquina cuando cambia el tab activo
   useEffect(() => {
@@ -122,8 +166,316 @@ export function MachinesDetailed() {
       setSelectedInternalVariable((prev) => ({ ...prev, [activeTab]: "" }));
       // Resetear página a 1 cuando cambia el tab
       setCurrentPage((prev) => ({ ...prev, [activeTab]: 1 }));
+      // Resetear valores de atributos cuando cambia el tab (se inicializarán cuando se carguen los detalles)
+      setThresholdValue((prev) => ({ ...prev, [activeTab]: "" }));
+      setBufferSizeValue((prev) => ({ ...prev, [activeTab]: "" }));
+      setOnDelayValue((prev) => ({ ...prev, [activeTab]: "" }));
+      setOriginalThresholdValue((prev) => ({ ...prev, [activeTab]: null }));
+      setOriginalBufferSizeValue((prev) => ({ ...prev, [activeTab]: null }));
+      setOriginalOnDelayValue((prev) => ({ ...prev, [activeTab]: null }));
     }
   }, [activeTab]);
+
+  // Función helper para mostrar modal de confirmación de threshold
+  const handleUpdateThreshold = (machineName: string) => {
+    const value = parseFloat(thresholdValue[machineName]);
+    if (isNaN(value)) {
+      showToast(t("machines.updateAttributeError"), "error");
+      return;
+    }
+
+    // Solo mostrar modal si el valor cambió
+    if (originalThresholdValue[machineName] !== null && value === originalThresholdValue[machineName]) {
+      return;
+    }
+
+    setPendingUpdate({
+      machineName,
+      attribute: "threshold",
+      newValue: value,
+      oldValue: originalThresholdValue[machineName],
+      attributeLabel: t("machines.threshold"),
+    });
+    setShowConfirmModal(true);
+  };
+
+  // Función para ejecutar la actualización de threshold después de confirmar
+  const executeUpdateThreshold = async (machineName: string, value: number) => {
+    setUpdatingAttribute((prev) => ({ ...prev, [machineName]: "threshold" }));
+    try {
+      const { message } = await updateMachineAttributes(machineName, {
+        threshold: value,
+      });
+      showToast(message || t("machines.updateAttribute"), "success");
+      // Refrescar detalles de la máquina
+      const data = await getMachineByName(machineName);
+      setMachineDetails((prev) => ({
+        ...prev,
+        [machineName]: data,
+      }));
+      // Actualizar el valor del input y el valor original
+      const updatedThreshold = data.serialization?.threshold;
+      const thresholdVal = typeof updatedThreshold === "object" && updatedThreshold !== null && "value" in updatedThreshold
+        ? updatedThreshold.value
+        : updatedThreshold;
+      if (thresholdVal !== null && thresholdVal !== undefined) {
+        const thresholdNum = typeof thresholdVal === "number" ? thresholdVal : parseFloat(String(thresholdVal));
+        if (!isNaN(thresholdNum)) {
+          setThresholdValue((prev) => ({ ...prev, [machineName]: String(thresholdNum) }));
+          setOriginalThresholdValue((prev) => ({ ...prev, [machineName]: thresholdNum }));
+        }
+      }
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMessage =
+        backendMessage || err?.message || t("machines.updateAttributeError");
+      showToast(errorMessage, "error");
+      console.error("Error updating threshold:", err);
+      // Restaurar valor original en caso de error
+      if (originalThresholdValue[machineName] !== null) {
+        setThresholdValue((prev) => ({ ...prev, [machineName]: String(originalThresholdValue[machineName]) }));
+      }
+    } finally {
+      setUpdatingAttribute((prev) => ({ ...prev, [machineName]: null }));
+    }
+  };
+
+  // Función helper para mostrar modal de confirmación de buffer_size
+  const handleUpdateBufferSize = (machineName: string) => {
+    const value = parseInt(bufferSizeValue[machineName], 10);
+    if (isNaN(value)) {
+      showToast(t("machines.updateAttributeError"), "error");
+      return;
+    }
+
+    // Solo mostrar modal si el valor cambió
+    if (originalBufferSizeValue[machineName] !== null && value === originalBufferSizeValue[machineName]) {
+      return;
+    }
+
+    setPendingUpdate({
+      machineName,
+      attribute: "buffer_size",
+      newValue: value,
+      oldValue: originalBufferSizeValue[machineName],
+      attributeLabel: t("machines.bufferSize"),
+    });
+    setShowConfirmModal(true);
+  };
+
+  // Función para ejecutar la actualización de buffer_size después de confirmar
+  const executeUpdateBufferSize = async (machineName: string, value: number) => {
+    setUpdatingAttribute((prev) => ({ ...prev, [machineName]: "buffer_size" }));
+    try {
+      const { message } = await updateMachineAttributes(machineName, {
+        buffer_size: value,
+      });
+      showToast(message || t("machines.updateAttribute"), "success");
+      // Refrescar detalles de la máquina
+      const data = await getMachineByName(machineName);
+      setMachineDetails((prev) => ({
+        ...prev,
+        [machineName]: data,
+      }));
+      // Actualizar el valor del input y el valor original
+      if (data.serialization?.buffer_size !== null && data.serialization?.buffer_size !== undefined) {
+        const bufferSizeNum = typeof data.serialization.buffer_size === "number" 
+          ? data.serialization.buffer_size 
+          : parseInt(String(data.serialization.buffer_size), 10);
+        if (!isNaN(bufferSizeNum)) {
+          setBufferSizeValue((prev) => ({ ...prev, [machineName]: String(bufferSizeNum) }));
+          setOriginalBufferSizeValue((prev) => ({ ...prev, [machineName]: bufferSizeNum }));
+        }
+      }
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMessage =
+        backendMessage || err?.message || t("machines.updateAttributeError");
+      showToast(errorMessage, "error");
+      console.error("Error updating buffer_size:", err);
+      // Restaurar valor original en caso de error
+      if (originalBufferSizeValue[machineName] !== null) {
+        setBufferSizeValue((prev) => ({ ...prev, [machineName]: String(originalBufferSizeValue[machineName]) }));
+      }
+    } finally {
+      setUpdatingAttribute((prev) => ({ ...prev, [machineName]: null }));
+    }
+  };
+
+  // Función helper para mostrar modal de confirmación de on_delay
+  const handleUpdateOnDelay = (machineName: string) => {
+    const value = parseInt(onDelayValue[machineName], 10);
+    if (isNaN(value)) {
+      showToast(t("machines.updateAttributeError"), "error");
+      return;
+    }
+
+    // Solo mostrar modal si el valor cambió
+    if (originalOnDelayValue[machineName] !== null && value === originalOnDelayValue[machineName]) {
+      return;
+    }
+
+    setPendingUpdate({
+      machineName,
+      attribute: "on_delay",
+      newValue: value,
+      oldValue: originalOnDelayValue[machineName],
+      attributeLabel: t("machines.onDelay"),
+    });
+    setShowConfirmModal(true);
+  };
+
+  // Función para ejecutar la actualización de on_delay después de confirmar
+  const executeUpdateOnDelay = async (machineName: string, value: number) => {
+    setUpdatingAttribute((prev) => ({ ...prev, [machineName]: "on_delay" }));
+    try {
+      const { message } = await updateMachineAttributes(machineName, {
+        on_delay: value,
+      });
+      showToast(message || t("machines.updateAttribute"), "success");
+      // Refrescar detalles de la máquina
+      const data = await getMachineByName(machineName);
+      setMachineDetails((prev) => ({
+        ...prev,
+        [machineName]: data,
+      }));
+      // Actualizar el valor del input y el valor original
+      if (data.serialization?.on_delay !== null && data.serialization?.on_delay !== undefined) {
+        const onDelayNum = typeof data.serialization.on_delay === "number" 
+          ? data.serialization.on_delay 
+          : parseInt(String(data.serialization.on_delay), 10);
+        if (!isNaN(onDelayNum)) {
+          setOnDelayValue((prev) => ({ ...prev, [machineName]: String(onDelayNum) }));
+          setOriginalOnDelayValue((prev) => ({ ...prev, [machineName]: onDelayNum }));
+        }
+      }
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMessage =
+        backendMessage || err?.message || t("machines.updateAttributeError");
+      showToast(errorMessage, "error");
+      console.error("Error updating on_delay:", err);
+      // Restaurar valor original en caso de error
+      if (originalOnDelayValue[machineName] !== null) {
+        setOnDelayValue((prev) => ({ ...prev, [machineName]: String(originalOnDelayValue[machineName]) }));
+      }
+    } finally {
+      setUpdatingAttribute((prev) => ({ ...prev, [machineName]: null }));
+    }
+  };
+
+  // Función para confirmar y ejecutar la actualización
+  const handleConfirmUpdate = async () => {
+    if (!pendingUpdate) return;
+
+    const { machineName, attribute, newValue } = pendingUpdate;
+
+    if (attribute === "threshold") {
+      await executeUpdateThreshold(machineName, newValue);
+    } else if (attribute === "buffer_size") {
+      await executeUpdateBufferSize(machineName, newValue);
+    } else if (attribute === "on_delay") {
+      await executeUpdateOnDelay(machineName, newValue);
+    }
+
+    setShowConfirmModal(false);
+    setPendingUpdate(null);
+  };
+
+  // Función para cancelar la actualización
+  const handleCancelUpdate = () => {
+    if (!pendingUpdate) return;
+
+    const { machineName, attribute, oldValue } = pendingUpdate;
+
+    // Restaurar el valor original en el input
+    if (attribute === "threshold" && oldValue !== null) {
+      setThresholdValue((prev) => ({ ...prev, [machineName]: String(oldValue) }));
+    } else if (attribute === "buffer_size" && oldValue !== null) {
+      setBufferSizeValue((prev) => ({ ...prev, [machineName]: String(oldValue) }));
+    } else if (attribute === "on_delay" && oldValue !== null) {
+      setOnDelayValue((prev) => ({ ...prev, [machineName]: String(oldValue) }));
+    }
+
+    setShowConfirmModal(false);
+    setPendingUpdate(null);
+  };
+
+  // Inicializar valores de atributos cuando se cargan los detalles de la máquina
+  useEffect(() => {
+    Object.entries(machineDetails).forEach(([machineName, details]) => {
+      if (details && details.serialization) {
+        const serialization = details.serialization;
+        
+        // Inicializar threshold
+        if (serialization.threshold) {
+          const threshold = serialization.threshold;
+          const thresholdVal = typeof threshold === "object" && threshold !== null && "value" in threshold
+            ? threshold.value
+            : threshold;
+          if (thresholdVal !== null && thresholdVal !== undefined) {
+            const thresholdNum = typeof thresholdVal === "number" ? thresholdVal : parseFloat(String(thresholdVal));
+            if (!isNaN(thresholdNum)) {
+              setThresholdValue((prev) => {
+                if (prev[machineName] === undefined || prev[machineName] === "") {
+                  return { ...prev, [machineName]: String(thresholdNum) };
+                }
+                return prev;
+              });
+              setOriginalThresholdValue((prev) => ({ ...prev, [machineName]: thresholdNum }));
+            }
+          }
+        }
+        
+        // Inicializar buffer_size
+        if (serialization.buffer_size !== null && serialization.buffer_size !== undefined) {
+          const bufferSizeNum = typeof serialization.buffer_size === "number" 
+            ? serialization.buffer_size 
+            : parseInt(String(serialization.buffer_size), 10);
+          if (!isNaN(bufferSizeNum)) {
+            setBufferSizeValue((prev) => {
+              if (prev[machineName] === undefined || prev[machineName] === "") {
+                return { ...prev, [machineName]: String(bufferSizeNum) };
+              }
+              return prev;
+            });
+            setOriginalBufferSizeValue((prev) => ({ ...prev, [machineName]: bufferSizeNum }));
+          }
+        }
+        
+        // Inicializar on_delay
+        if (serialization.on_delay !== null && serialization.on_delay !== undefined) {
+          const onDelayNum = typeof serialization.on_delay === "number" 
+            ? serialization.on_delay 
+            : parseInt(String(serialization.on_delay), 10);
+          if (!isNaN(onDelayNum)) {
+            setOnDelayValue((prev) => {
+              if (prev[machineName] === undefined || prev[machineName] === "") {
+                return { ...prev, [machineName]: String(onDelayNum) };
+              }
+              return prev;
+            });
+            setOriginalOnDelayValue((prev) => ({ ...prev, [machineName]: onDelayNum }));
+          }
+        }
+      }
+    });
+  }, [machineDetails]);
 
   // Suscripción a eventos de propiedades de máquinas con buffering
   useEffect(() => {
@@ -269,6 +621,260 @@ export function MachinesDetailed() {
       // Aplicar cualquier actualización pendiente antes de limpiar
       flushUpdates();
       pendingPropertyUpdatesRef.current.clear();
+    };
+  }, []); // Sin dependencias - se suscribe una sola vez
+
+  // Suscripción a eventos completos de máquinas con buffering (para actualizar state y otros atributos)
+  useEffect(() => {
+    // Función para aplicar las actualizaciones pendientes de máquinas
+    const flushMachineUpdates = () => {
+      if (pendingMachineUpdatesRef.current.size === 0) {
+        return;
+      }
+
+      console.log("Flushing machine updates:", Array.from(pendingMachineUpdatesRef.current.keys()));
+
+      // Aplicar todas las actualizaciones acumuladas
+      setMachineDetails((prev) => {
+        const updated = { ...prev };
+        let hasUpdates = false;
+
+        // Iterar sobre todas las actualizaciones pendientes
+        pendingMachineUpdatesRef.current.forEach((updatedMachine, machineName) => {
+          // Solo actualizar si tenemos datos de esta máquina
+          if (updated[machineName]) {
+            hasUpdates = true;
+            // Crear una copia profunda de los detalles actuales
+            const currentDetails = { ...updated[machineName] };
+            
+            // Actualizar el estado en serialization
+            if (currentDetails.serialization && typeof currentDetails.serialization === "object") {
+              currentDetails.serialization = {
+                ...currentDetails.serialization,
+                state: updatedMachine.state,
+                // Actualizar otros atributos que puedan cambiar
+                criticity: updatedMachine.criticity,
+                priority: updatedMachine.priority,
+                actions: updatedMachine.actions,
+                machine_interval: updatedMachine.machine_interval,
+                buffer_size: updatedMachine.buffer_size,
+                buffer_roll_type: updatedMachine.buffer_roll_type,
+              };
+              console.log(`Updated machine ${machineName} state to:`, updatedMachine.state);
+            }
+            
+            updated[machineName] = currentDetails;
+          }
+        });
+
+        // Limpiar el buffer después de aplicar
+        pendingMachineUpdatesRef.current.clear();
+
+        return hasUpdates ? updated : prev;
+      });
+    };
+
+    // Iniciar intervalo para hacer flush cada 1 segundo
+    machineUpdateIntervalRef.current = setInterval(() => {
+      flushMachineUpdates();
+    }, 1000);
+
+    // Suscribirse a actualizaciones completas de máquinas
+    const cleanup = socketService.onMachineUpdate((machine: Machine) => {
+      // machine es un objeto Machine completo con toda la información
+      console.log("On machine update received:", machine);
+      
+      if (machine.name) {
+        // Usar una función de actualización para acceder al estado actual sin depender de él
+        setMachineDetails((prev) => {
+          // Solo procesar si esta máquina está en nuestros detalles cargados
+          if (prev[machine.name]) {
+            // Guardar en el buffer (sobrescribe si ya existe)
+            pendingMachineUpdatesRef.current.set(machine.name, machine);
+          }
+          // No cambiar el estado aquí, solo actualizar el buffer
+          return prev;
+        });
+      }
+    });
+
+    // Cleanup al desmontar
+    return () => {
+      cleanup();
+      if (machineUpdateIntervalRef.current) {
+        clearInterval(machineUpdateIntervalRef.current);
+        machineUpdateIntervalRef.current = null;
+      }
+      // Aplicar cualquier actualización pendiente antes de limpiar
+      flushMachineUpdates();
+      pendingMachineUpdatesRef.current.clear();
+    };
+  }, []); // Sin dependencias - se suscribe una sola vez
+
+  // Suscripción a eventos de tags con buffering (para actualizar process_variables asociados)
+  useEffect(() => {
+    // Función para aplicar las actualizaciones pendientes de tags
+    const flushTagUpdates = () => {
+      if (pendingTagUpdatesRef.current.size === 0) {
+        return;
+      }
+
+      console.log("Flushing tag updates:", Array.from(pendingTagUpdatesRef.current.keys()));
+
+      // Aplicar todas las actualizaciones acumuladas
+      setMachineDetails((prev) => {
+        const updated = { ...prev };
+        let hasUpdates = false;
+
+        // Iterar sobre todas las actualizaciones pendientes de tags
+        pendingTagUpdatesRef.current.forEach((updatedTag, tagId) => {
+          // Buscar en todas las máquinas si algún process_variable tiene este tag asociado
+          Object.keys(updated).forEach((machineName) => {
+            const machineDetails = updated[machineName];
+            if (!machineDetails || !machineDetails.process_variables) {
+              return;
+            }
+
+            // Buscar en process_variables
+            Object.keys(machineDetails.process_variables).forEach((varKey) => {
+              const processVar = machineDetails.process_variables[varKey];
+              if (
+                processVar &&
+                typeof processVar === "object" &&
+                processVar.tag &&
+                typeof processVar.tag === "object"
+              ) {
+                // Verificar si el tag coincide por id o name
+                const tagMatches =
+                  (processVar.tag.id && String(processVar.tag.id) === String(tagId)) ||
+                  (processVar.tag.name && processVar.tag.name === updatedTag.name) ||
+                  (updatedTag.id && String(processVar.tag.id) === String(updatedTag.id));
+
+                if (tagMatches) {
+                  hasUpdates = true;
+                  // Actualizar el tag dentro del process_variable
+                  const updatedProcessVar = {
+                    ...processVar,
+                    tag: {
+                      ...processVar.tag,
+                      ...updatedTag,
+                      // Preservar el value actualizado del tag
+                      value: updatedTag.value !== undefined ? updatedTag.value : processVar.tag.value,
+                    },
+                  };
+
+                  // También actualizar el value del process_variable si el tag tiene value
+                  if (updatedTag.value !== undefined) {
+                    updatedProcessVar.value = updatedTag.value;
+                  }
+
+                  // Actualizar en la copia de los detalles
+                  updated[machineName] = {
+                    ...machineDetails,
+                    process_variables: {
+                      ...machineDetails.process_variables,
+                      [varKey]: updatedProcessVar,
+                    },
+                  };
+
+                  console.log(
+                    `Updated process_variable ${varKey} in machine ${machineName} with tag ${updatedTag.name || tagId}`
+                  );
+                }
+              }
+            });
+
+            // También buscar en subscribed_tags, not_subscribed_tags, etc.
+            const tagCollections = [
+              "subscribed_tags",
+              "not_subscribed_tags",
+              "read_only_process_type_variables",
+            ];
+
+            tagCollections.forEach((collectionKey) => {
+              const collection = machineDetails[collectionKey];
+              if (collection && typeof collection === "object") {
+                Object.keys(collection).forEach((varKey) => {
+                  const processVar = collection[varKey];
+                  if (
+                    processVar &&
+                    typeof processVar === "object" &&
+                    processVar.tag &&
+                    typeof processVar.tag === "object"
+                  ) {
+                    const tagMatches =
+                      (processVar.tag.id && String(processVar.tag.id) === String(tagId)) ||
+                      (processVar.tag.name && processVar.tag.name === updatedTag.name) ||
+                      (updatedTag.id && String(processVar.tag.id) === String(updatedTag.id));
+
+                    if (tagMatches) {
+                      hasUpdates = true;
+                      const updatedProcessVar = {
+                        ...processVar,
+                        tag: {
+                          ...processVar.tag,
+                          ...updatedTag,
+                          value: updatedTag.value !== undefined ? updatedTag.value : processVar.tag.value,
+                        },
+                      };
+
+                      if (updatedTag.value !== undefined) {
+                        updatedProcessVar.value = updatedTag.value;
+                      }
+
+                      updated[machineName] = {
+                        ...updated[machineName],
+                        [collectionKey]: {
+                          ...collection,
+                          [varKey]: updatedProcessVar,
+                        },
+                      };
+                    }
+                  }
+                });
+              }
+            });
+          });
+        });
+
+        // Limpiar el buffer después de aplicar
+        pendingTagUpdatesRef.current.clear();
+
+        return hasUpdates ? updated : prev;
+      });
+    };
+
+    // Iniciar intervalo para hacer flush cada 1 segundo
+    tagUpdateIntervalRef.current = setInterval(() => {
+      flushTagUpdates();
+    }, 1000);
+
+    // Suscribirse a actualizaciones de tags
+    const cleanup = socketService.onTagUpdate((tag: Tag) => {
+      // tag es un objeto Tag completo con toda la información
+      console.log("On tag update received:", tag);
+
+      if (tag.id || tag.name) {
+        // Usar id como clave principal, o name como fallback
+        const tagKey = tag.id ? String(tag.id) : (tag.name || "");
+        
+        if (tagKey) {
+          // Guardar en el buffer (sobrescribe si ya existe)
+          pendingTagUpdatesRef.current.set(tagKey, tag);
+        }
+      }
+    });
+
+    // Cleanup al desmontar
+    return () => {
+      cleanup();
+      if (tagUpdateIntervalRef.current) {
+        clearInterval(tagUpdateIntervalRef.current);
+        tagUpdateIntervalRef.current = null;
+      }
+      // Aplicar cualquier actualización pendiente antes de limpiar
+      flushTagUpdates();
+      pendingTagUpdatesRef.current.clear();
     };
   }, []); // Sin dependencias - se suscribe una sola vez
 
@@ -718,6 +1324,112 @@ export function MachinesDetailed() {
                               <p className="text-muted">{t("machines.loadingDetails")}</p>
                             )}
                           </Card>
+                          
+                          {/* Card de Atributos de Máquina (solo para máquinas de leak detection) */}
+                          {machineDetails[machineName] && 
+                           machineDetails[machineName].serialization &&
+                           machineDetails[machineName].serialization.classification &&
+                           machineDetails[machineName].serialization.classification.toLowerCase().includes("leak detection") && (
+                            <Card title={t("machines.machineAttributes")} className="mt-3">
+                              <div>
+                                {/* Input de Threshold */}
+                                <div className="mb-3 d-flex align-items-center gap-2">
+                                  <label className="form-label mb-0" style={{ minWidth: "120px" }}>
+                                    {t("machines.threshold")}:
+                                  </label>
+                                  <input
+                                    type="number"
+                                    className="form-control"
+                                    style={{ maxWidth: "150px" }}
+                                    placeholder={t("machines.thresholdPlaceholder")}
+                                    value={thresholdValue[machineName] || ""}
+                                    onChange={(e) => setThresholdValue((prev) => ({ ...prev, [machineName]: e.target.value }))}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleUpdateThreshold(machineName);
+                                      }
+                                    }}
+                                    onBlur={() => {
+                                      if (thresholdValue[machineName] && thresholdValue[machineName] !== "") {
+                                        handleUpdateThreshold(machineName);
+                                      }
+                                    }}
+                                    disabled={updatingAttribute[machineName] === "threshold"}
+                                  />
+                                  {updatingAttribute[machineName] === "threshold" && (
+                                    <div className="spinner-border spinner-border-sm text-primary" role="status">
+                                      <span className="visually-hidden">{t("common.loading")}</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Input de Buffer Size */}
+                                <div className="mb-3 d-flex align-items-center gap-2">
+                                  <label className="form-label mb-0" style={{ minWidth: "120px" }}>
+                                    {t("machines.bufferSize")}:
+                                  </label>
+                                  <input
+                                    type="number"
+                                    className="form-control"
+                                    style={{ maxWidth: "150px" }}
+                                    placeholder={t("machines.bufferSizePlaceholder")}
+                                    value={bufferSizeValue[machineName] || ""}
+                                    onChange={(e) => setBufferSizeValue((prev) => ({ ...prev, [machineName]: e.target.value }))}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleUpdateBufferSize(machineName);
+                                      }
+                                    }}
+                                    onBlur={() => {
+                                      if (bufferSizeValue[machineName] && bufferSizeValue[machineName] !== "") {
+                                        handleUpdateBufferSize(machineName);
+                                      }
+                                    }}
+                                    disabled={updatingAttribute[machineName] === "buffer_size"}
+                                  />
+                                  {updatingAttribute[machineName] === "buffer_size" && (
+                                    <div className="spinner-border spinner-border-sm text-primary" role="status">
+                                      <span className="visually-hidden">{t("common.loading")}</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Input de On Delay */}
+                                <div className="mb-3 d-flex align-items-center gap-2">
+                                  <label className="form-label mb-0" style={{ minWidth: "120px" }}>
+                                    {t("machines.onDelay")}:
+                                  </label>
+                                  <input
+                                    type="number"
+                                    className="form-control"
+                                    style={{ maxWidth: "150px" }}
+                                    placeholder={t("machines.onDelayPlaceholder")}
+                                    value={onDelayValue[machineName] || ""}
+                                    onChange={(e) => setOnDelayValue((prev) => ({ ...prev, [machineName]: e.target.value }))}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleUpdateOnDelay(machineName);
+                                      }
+                                    }}
+                                    onBlur={() => {
+                                      if (onDelayValue[machineName] && onDelayValue[machineName] !== "") {
+                                        handleUpdateOnDelay(machineName);
+                                      }
+                                    }}
+                                    disabled={updatingAttribute[machineName] === "on_delay"}
+                                  />
+                                  {updatingAttribute[machineName] === "on_delay" && (
+                                    <div className="spinner-border spinner-border-sm text-primary" role="status">
+                                      <span className="visually-hidden">{t("common.loading")}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </Card>
+                          )}
                         </div>
                       </div>
                     )}
@@ -726,6 +1438,73 @@ export function MachinesDetailed() {
               })}
             </div>
           </>
+        )}
+
+        {/* Modal de confirmación de actualización de atributo */}
+        {showConfirmModal && pendingUpdate && (
+          <div
+            className="modal fade show"
+            style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !updatingAttribute[pendingUpdate.machineName]) {
+                handleCancelUpdate();
+              }
+            }}
+          >
+            <div className="modal-dialog modal-dialog-centered" role="document">
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h5 className="modal-title">{t("machines.confirmAttributeUpdate")}</h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    onClick={handleCancelUpdate}
+                    aria-label="Close"
+                    disabled={!!updatingAttribute[pendingUpdate.machineName]}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <p>{t("machines.confirmAttributeUpdateMessage")}</p>
+                  <div className="mb-2">
+                    <strong>{t("machines.machine")}:</strong> {pendingUpdate.machineName}
+                  </div>
+                  <div className="mb-2">
+                    <strong>{t("machines.attribute")}:</strong> {pendingUpdate.attributeLabel}
+                  </div>
+                  <div className="mb-2">
+                    <strong>{t("machines.currentValue")}:</strong>{" "}
+                    <span className="badge bg-secondary">
+                      {pendingUpdate.oldValue !== null ? pendingUpdate.oldValue : "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <strong>{t("machines.newValue")}:</strong>{" "}
+                    <span className="badge bg-primary">{pendingUpdate.newValue}</span>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <Button
+                    variant="secondary"
+                    onClick={handleCancelUpdate}
+                    disabled={!!updatingAttribute[pendingUpdate.machineName]}
+                  >
+                    {t("common.cancel")}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleConfirmUpdate}
+                    disabled={!!updatingAttribute[pendingUpdate.machineName]}
+                    loading={!!updatingAttribute[pendingUpdate.machineName]}
+                  >
+                    {t("common.confirm")}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

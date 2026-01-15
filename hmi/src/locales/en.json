@@ -545,7 +545,21 @@
     "fieldTags": "Field Tags",
     "select": "Select",
     "subscribe": "Subscribe",
-    "unsubscribe": "Unsubscribe"
+    "unsubscribe": "Unsubscribe",
+    "machineAttributes": "Machine Attributes",
+    "threshold": "Threshold",
+    "bufferSize": "Buffer Size",
+    "onDelay": "On Delay",
+    "updateAttribute": "Update",
+    "updatingAttribute": "Updating...",
+    "updateAttributeError": "Error updating attribute",
+    "thresholdPlaceholder": "Enter threshold",
+    "bufferSizePlaceholder": "Enter buffer size",
+    "onDelayPlaceholder": "Enter on delay",
+    "confirmAttributeUpdate": "Confirm attribute update",
+    "confirmAttributeUpdateMessage": "Are you sure you want to update this attribute?",
+    "currentValue": "Current value",
+    "newValue": "New value"
   },
   "alarms": {
     "editAlarm": "Edit alarm",

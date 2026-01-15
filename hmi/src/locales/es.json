@@ -540,7 +540,21 @@
     "fieldTags": "Tags de Campo",
     "select": "Seleccionar",
     "subscribe": "Suscribir",
-    "unsubscribe": "Desuscribir"
+    "unsubscribe": "Desuscribir",
+    "machineAttributes": "Atributos de Máquina",
+    "threshold": "Umbral",
+    "bufferSize": "Tamaño de Buffer",
+    "onDelay": "Retraso de Inicio",
+    "updateAttribute": "Actualizar",
+    "updatingAttribute": "Actualizando...",
+    "updateAttributeError": "Error al actualizar el atributo",
+    "thresholdPlaceholder": "Ingrese el umbral",
+    "bufferSizePlaceholder": "Ingrese el tamaño del buffer",
+    "onDelayPlaceholder": "Ingrese el retraso de inicio",
+    "confirmAttributeUpdate": "Confirmar actualización de atributo",
+    "confirmAttributeUpdateMessage": "¿Está seguro de que desea actualizar este atributo?",
+    "currentValue": "Valor actual",
+    "newValue": "Valor nuevo"
   },
   "alarms": {
     "editAlarm": "Editar alarma",
