@@ -80,14 +80,14 @@ export function Signup() {
         setShowDatabaseConfig(true);
         setError(backendMessage);
       } else {
-        let message: string;
-        if (status === 400 && !backendMessage) {
-          // Errores típicos de validación en signup (usuario ya existe, email inválido, etc.)
-          message = t("auth.signupError");
-        } else {
-          message = backendMessage || t("auth.signupError");
-        }
-        setError(message);
+      let message: string;
+      if (status === 400 && !backendMessage) {
+        // Errores típicos de validación en signup (usuario ya existe, email inválido, etc.)
+        message = t("auth.signupError");
+      } else {
+        message = backendMessage || t("auth.signupError");
+      }
+      setError(message);
       }
     } finally {
       setLoading(false);
@@ -117,53 +117,53 @@ export function Signup() {
           onCancel={() => setShowDatabaseConfig(false)}
         />
       ) : (
-        <Card title={t("auth.createAccount")}>
-          <form onSubmit={handleSubmit}>
-            <Input
-              label={t("auth.username")}
-              value={form.username}
-              onChange={(e) => onChange("username", e.target.value)}
-              required
-            />
-            <Input
-              label={t("auth.email")}
-              type="email"
-              value={form.email}
-              onChange={(e) => onChange("email", e.target.value)}
-              required
-            />
-            <Input
-              label={t("auth.password")}
-              type="password"
-              value={form.password}
-              onChange={(e) => onChange("password", e.target.value)}
-              required
-            />
-            <div className="row">
-              <div className="col-6">
-                <Input
-                  label={t("auth.name")}
-                  value={form.name}
-                  onChange={(e) => onChange("name", e.target.value)}
-                />
-              </div>
-              <div className="col-6">
-                <Input
-                  label={t("auth.lastname")}
-                  value={form.lastname}
-                  onChange={(e) => onChange("lastname", e.target.value)}
-                />
-              </div>
+      <Card title={t("auth.createAccount")}>
+        <form onSubmit={handleSubmit}>
+          <Input
+            label={t("auth.username")}
+            value={form.username}
+            onChange={(e) => onChange("username", e.target.value)}
+            required
+          />
+          <Input
+            label={t("auth.email")}
+            type="email"
+            value={form.email}
+            onChange={(e) => onChange("email", e.target.value)}
+            required
+          />
+          <Input
+            label={t("auth.password")}
+            type="password"
+            value={form.password}
+            onChange={(e) => onChange("password", e.target.value)}
+            required
+          />
+          <div className="row">
+            <div className="col-6">
+              <Input
+                label={t("auth.name")}
+                value={form.name}
+                onChange={(e) => onChange("name", e.target.value)}
+              />
             </div>
-            {error && <div className="alert alert-danger py-2">{error}</div>}
-            <div className="d-flex justify-content-between align-items-center">
-              <Button type="submit" loading={loading}>
-                {t("auth.signup")}
-              </Button>
-              <Link to="/login">{t("auth.backToLogin")}</Link>
+            <div className="col-6">
+              <Input
+                label={t("auth.lastname")}
+                value={form.lastname}
+                onChange={(e) => onChange("lastname", e.target.value)}
+              />
             </div>
-          </form>
-        </Card>
+          </div>
+          {error && <div className="alert alert-danger py-2">{error}</div>}
+          <div className="d-flex justify-content-between align-items-center">
+            <Button type="submit" loading={loading}>
+              {t("auth.signup")}
+            </Button>
+            <Link to="/login">{t("auth.backToLogin")}</Link>
+          </div>
+        </form>
+      </Card>
       )}
     </AuthLayout>
   );

@@ -7,6 +7,7 @@ import { showToast } from "../utils/toast";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { loadAllMachines } from "../store/slices/machinesSlice";
+import { socketService } from "../services/socket";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -44,6 +45,10 @@ export function Machines() {
   const actionsDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const actionsButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  // Buffer para actualizaciones de máquinas en tiempo real (patrón de 1 segundo)
+  const pendingMachineUpdatesRef = useRef<Map<string, Machine>>(new Map());
+  const machineUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Cargar máquinas
   const loadMachines = async () => {
     setLoading(true);
@@ -72,6 +77,72 @@ export function Machines() {
   useEffect(() => {
     loadMachines();
   }, [dispatch]);
+
+  // Suscripción a eventos de máquinas en tiempo real con buffering
+  useEffect(() => {
+    // Función para aplicar las actualizaciones pendientes
+    const flushMachineUpdates = () => {
+      if (pendingMachineUpdatesRef.current.size === 0) {
+        return;
+      }
+
+      // Aplicar todas las actualizaciones acumuladas
+      setMachines((prev) => {
+        const updated = [...prev];
+        let hasUpdates = false;
+
+        // Iterar sobre todas las actualizaciones pendientes
+        pendingMachineUpdatesRef.current.forEach((updatedMachine, machineName) => {
+          // Buscar la máquina en el array actual
+          const index = updated.findIndex((m) => m.name === machineName);
+          
+          if (index !== -1) {
+            hasUpdates = true;
+            // Actualizar la máquina con los nuevos datos
+            updated[index] = updatedMachine;
+          }
+        });
+
+        // Limpiar el buffer después de aplicar
+        pendingMachineUpdatesRef.current.clear();
+
+        return hasUpdates ? updated : prev;
+      });
+    };
+
+    // Iniciar intervalo para hacer flush cada 1 segundo
+    machineUpdateIntervalRef.current = setInterval(() => {
+      flushMachineUpdates();
+    }, 1000);
+
+    // Suscribirse a actualizaciones de máquinas
+    const cleanup = socketService.onMachineUpdate((machine) => {
+      // Solo procesar si tenemos esta máquina en nuestro estado
+      setMachines((prev) => {
+        const exists = prev.some((m) => m.name === machine.name);
+        
+        if (exists && machine.name) {
+          // Guardar en el buffer (sobrescribe si ya existe)
+          pendingMachineUpdatesRef.current.set(machine.name, machine);
+        }
+        
+        // No cambiar el estado aquí, solo actualizar el buffer
+        return prev;
+      });
+    });
+
+    // Cleanup al desmontar
+    return () => {
+      cleanup();
+      if (machineUpdateIntervalRef.current) {
+        clearInterval(machineUpdateIntervalRef.current);
+        machineUpdateIntervalRef.current = null;
+      }
+      // Aplicar cualquier actualización pendiente antes de limpiar
+      flushMachineUpdates();
+      pendingMachineUpdatesRef.current.clear();
+    };
+  }, []); // Sin dependencias - se suscribe una sola vez
 
   // Combinar máquinas iniciales con actualizaciones en tiempo real
   const machinesWithRealTime = useMemo(() => {
@@ -567,13 +638,13 @@ export function Machines() {
                             style={{ position: "relative", display: "inline-block" }}
                           >
                             <Button
-                              variant="secondary"
-                              className="btn-sm"
+                            variant="secondary"
+                            className="btn-sm"
                               onClick={() => toggleActionsDropdown(machine.name)}
                               title={t("machines.actions")}
-                            >
-                              <i className="bi bi-gear"></i>
-                            </Button>
+                          >
+                            <i className="bi bi-gear"></i>
+                          </Button>
                             {actionsDropdownOpen === machine.name && dropdownPosition && (
                               <div
                                 ref={(el) => {

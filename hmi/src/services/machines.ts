@@ -63,3 +63,37 @@ export const transitionMachine = async (
   return data;
 };
 
+/**
+ * Suscribe un tag de campo a una variable interna de la máquina
+ */
+export const subscribeMachineTag = async (
+  machineName: string,
+  fieldTag: string,
+  internalTag: string
+): Promise<{ message: string; data: Machine }> => {
+  const { data } = await api.post(
+    `/machines/${encodeURIComponent(machineName)}/subscribe`,
+    {
+      field_tag: fieldTag,
+      internal_tag: internalTag,
+    }
+  );
+  return data;
+};
+
+/**
+ * Desuscribe un tag previamente suscrito de la máquina
+ */
+export const unsubscribeMachineTag = async (
+  machineName: string,
+  tagName: string
+): Promise<{ message: string; data: Machine }> => {
+  const { data } = await api.post(
+    `/machines/${encodeURIComponent(machineName)}/unsubscribe`,
+    {
+      tag_name: tagName,
+    }
+  );
+  return data;
+};
+

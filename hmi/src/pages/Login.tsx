@@ -85,16 +85,16 @@ export function Login() {
         setShowDatabaseConfig(true);
         setError(backendMessage);
       } else {
-        let message: string;
-        if (status === 401) {
-          // Credenciales inválidas u otro error de autenticación
-          message = backendMessage || t("auth.invalidCredentials");
-        } else {
-          // Cualquier otro error: mostrar mensaje del backend si existe
-          message = backendMessage || t("auth.loginError");
-        }
-        setError(message);
-        dispatch(loginFailure(message));
+      let message: string;
+      if (status === 401) {
+        // Credenciales inválidas u otro error de autenticación
+        message = backendMessage || t("auth.invalidCredentials");
+      } else {
+        // Cualquier otro error: mostrar mensaje del backend si existe
+        message = backendMessage || t("auth.loginError");
+      }
+      setError(message);
+      dispatch(loginFailure(message));
       }
     } finally {
       setLoading(false);
@@ -124,86 +124,86 @@ export function Login() {
           onCancel={() => setShowDatabaseConfig(false)}
         />
       ) : (
-        <div className="card card-outline card-primary">
-          <div className="card-header text-center">
-            <h1 className="m-0">
-              <b>Py</b>Automation
-            </h1>
-            <p className="mb-0 text-muted">{t("auth.loginToContinue")}</p>
-          </div>
-          <div className="card-body login-card-body">
-            <form onSubmit={handleSubmit} className="mb-3">
-              <div className="input-group mb-3">
-                <div className="form-floating flex-grow-1">
-                  <input
-                    id="loginUsername"
-                    type="text"
-                    className="form-control"
-                    placeholder={t("auth.username")}
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                  />
-                  <label htmlFor="loginUsername">{t("auth.username")}</label>
-                </div>
-                <div className="input-group-text">
-                  <span className="fas fa-user" aria-hidden="true" />
-                </div>
+      <div className="card card-outline card-primary">
+        <div className="card-header text-center">
+          <h1 className="m-0">
+            <b>Py</b>Automation
+          </h1>
+          <p className="mb-0 text-muted">{t("auth.loginToContinue")}</p>
+        </div>
+        <div className="card-body login-card-body">
+          <form onSubmit={handleSubmit} className="mb-3">
+            <div className="input-group mb-3">
+              <div className="form-floating flex-grow-1">
+                <input
+                  id="loginUsername"
+                  type="text"
+                  className="form-control"
+                  placeholder={t("auth.username")}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                />
+                <label htmlFor="loginUsername">{t("auth.username")}</label>
               </div>
-
-              <div className="input-group mb-3">
-                <div className="form-floating flex-grow-1">
-                  <input
-                    id="loginPassword"
-                    type="password"
-                    className="form-control"
-                    placeholder={t("auth.password")}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  <label htmlFor="loginPassword">{t("auth.password")}</label>
-                </div>
-                <div className="input-group-text">
-                  <span className="fas fa-lock" aria-hidden="true" />
-                </div>
+              <div className="input-group-text">
+                <span className="fas fa-user" aria-hidden="true" />
               </div>
-
-              <div className="row align-items-center mb-3">
-                <div className="col-7">
-                  <div className="form-check">
-                    <input
-                      id="rememberMe"
-                      type="checkbox"
-                      className="form-check-input"
-                      checked={remember}
-                      onChange={(e) => setRemember(e.target.checked)}
-                    />
-                    <label className="form-check-label" htmlFor="rememberMe">
-                      {t("auth.rememberMe")}
-                    </label>
-                  </div>
-                </div>
-                <div className="col-5 text-end">
-                  <Button type="submit" loading={loading} className="w-100">
-                    {t("auth.login")}
-                  </Button>
-                </div>
-              </div>
-
-              {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
-            </form>
-
-            <div className="d-grid gap-2 mb-2">
-              {/* <Link className="text-center d-block" to="/forgot-password">
-                {t("auth.forgotPassword")}
-              </Link> */}
-              <Link className="text-center d-block" to="/signup">
-                {t("auth.createNewAccount")}
-              </Link>
             </div>
+
+            <div className="input-group mb-3">
+              <div className="form-floating flex-grow-1">
+                <input
+                  id="loginPassword"
+                  type="password"
+                  className="form-control"
+                  placeholder={t("auth.password")}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <label htmlFor="loginPassword">{t("auth.password")}</label>
+              </div>
+              <div className="input-group-text">
+                <span className="fas fa-lock" aria-hidden="true" />
+              </div>
+            </div>
+
+            <div className="row align-items-center mb-3">
+              <div className="col-7">
+                <div className="form-check">
+                  <input
+                    id="rememberMe"
+                    type="checkbox"
+                    className="form-check-input"
+                    checked={remember}
+                    onChange={(e) => setRemember(e.target.checked)}
+                  />
+                  <label className="form-check-label" htmlFor="rememberMe">
+                    {t("auth.rememberMe")}
+                  </label>
+                </div>
+              </div>
+              <div className="col-5 text-end">
+                <Button type="submit" loading={loading} className="w-100">
+                  {t("auth.login")}
+                </Button>
+              </div>
+            </div>
+
+            {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
+          </form>
+
+          <div className="d-grid gap-2 mb-2">
+            {/* <Link className="text-center d-block" to="/forgot-password">
+              {t("auth.forgotPassword")}
+            </Link> */}
+            <Link className="text-center d-block" to="/signup">
+              {t("auth.createNewAccount")}
+            </Link>
           </div>
         </div>
+      </div>
       )}
     </AuthLayout>
   );

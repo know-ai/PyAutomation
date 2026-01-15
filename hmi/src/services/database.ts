@@ -53,7 +53,7 @@ export const isDatabaseConnected = async (): Promise<DatabaseConnectedResponse> 
     if (data == null || typeof data !== "object" || typeof data.connected !== "boolean") {
       return { connected: false };
     }
-    return data;
+  return data;
   } catch (error: any) {
     // En caso de error, retornar desconectado
     console.error("Error in isDatabaseConnected:", error);

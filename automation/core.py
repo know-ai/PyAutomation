@@ -3206,14 +3206,14 @@ class PyAutomation(Singleton):
                 print(_colorize_message(f"[{str_date}] [INFO] {len(tags_machine)} tags found for state machine {machine.name.value} in database", "INFO"))
                 for tag_machine in tags_machine:
 
-                    logging.info(f"Loading tag {tag_machine.name} from database")
-                    print(_colorize_message(f"[{str_date}] [INFO] Loading tag {tag_machine.name} from database", "INFO"))
                     _tag = tag_machine.serialize()
                     tag_name = _tag["tag"]["name"]
+                    logging.info(f"Loading tag {tag_name} from database")
+                    print(_colorize_message(f"[{str_date}] [INFO] Loading tag {tag_name} from database", "INFO"))
                     tag = self.cvt.get_tag_by_name(name=tag_name)
                     machine.subscribe_to(tag=tag, default_tag_name=_tag["default_tag_name"])
-                    logging.info(f"Tag {tag_machine.name} loaded from database")
-                    print(_colorize_message(f"[{str_date}] [INFO] Tag {tag_machine.name} loaded from database", "INFO"))
+                    logging.info(f"Tag {tag_name} loaded from database")
+                    print(_colorize_message(f"[{str_date}] [INFO] Tag {tag_name} loaded from database", "INFO"))
             else:
                 logging.info(f"State machine {machine.name.value} is a data acquisition system, skipping tag subscriptions")
                 print(_colorize_message(f"[{str_date}] [INFO] State machine {machine.name.value} is a data acquisition system, skipping tag subscriptions", "INFO"))
@@ -3307,7 +3307,7 @@ class PyAutomation(Singleton):
             ack_timestamp=str|type(None),
             user=User|type(None),
             reload=bool,
-            output=(Alarm, str)
+            output=(Alarm|type(None), str)
     )
     def create_alarm(
             self,
@@ -3359,7 +3359,7 @@ class PyAutomation(Singleton):
         8.5
         ```
         """
-        alarm, message = self.alarm_manager.append_alarm(
+        result = self.alarm_manager.append_alarm(
             name=name,
             tag=tag,
             type=alarm_type,
@@ -3373,6 +3373,12 @@ class PyAutomation(Singleton):
             reload=reload,
             sio=self.sio
         )
+
+        # Verificar que result no sea None antes de desempaquetar
+        if result is None:
+            return None, f"Failed to create alarm '{name}': append_alarm returned None"
+
+        alarm, message = result
 
         if alarm:
 

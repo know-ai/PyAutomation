@@ -920,13 +920,13 @@ export function Communications() {
                 </>
               ) : (
                 <>
-                  <Button 
-                    variant="primary" 
-                    onClick={handleAddClient}
-                    disabled={!isFormComplete}
-                  >
-                    {t("communications.create")}
-                  </Button>
+              <Button 
+                variant="primary" 
+                onClick={handleAddClient}
+                disabled={!isFormComplete}
+              >
+                {t("communications.create")}
+              </Button>
                   {selectedClient && (
                     <Button
                       variant="warning"
@@ -935,13 +935,13 @@ export function Communications() {
                       {t("common.edit")}
                     </Button>
                   )}
-                  <Button
-                    variant="danger"
-                    onClick={() => selectedClient && handleRemoveClient(selectedClient)}
-                    disabled={!selectedClient}
-                  >
-                    {t("communications.remove")}
-                  </Button>
+              <Button
+                variant="danger"
+                onClick={() => selectedClient && handleRemoveClient(selectedClient)}
+                disabled={!selectedClient}
+              >
+                {t("communications.remove")}
+              </Button>
                 </>
               )}
             </div>
@@ -950,22 +950,22 @@ export function Communications() {
           <div className="mb-2">
             <label className="form-label mb-1">{t("communications.selectedClient")}</label>
             <div className="d-flex align-items-center gap-2">
-              <select
+            <select
                 className="form-select flex-grow-1"
-                value={selectedClient}
-                onChange={(e) => setSelectedClient(e.target.value)}
+              value={selectedClient}
+              onChange={(e) => setSelectedClient(e.target.value)}
                 disabled={loadingClients || editingClient !== null}
-              >
-                <option value="">{loadingClients ? t("communications.loading") : t("communications.selectClient")}</option>
+            >
+              <option value="">{loadingClients ? t("communications.loading") : t("communications.selectClient")}</option>
                 {clients.map((client) => {
                   const isConnected = clientConnectionStatus[client.name] ?? client.is_opened ?? false;
                   return (
                     <option key={client.name} value={client.name}>
                       {client.name} {isConnected ? "●" : "○"}
-                    </option>
+                </option>
                   );
                 })}
-              </select>
+            </select>
               {selectedClient && (
                 <span
                   className="d-inline-block"
@@ -990,7 +990,7 @@ export function Communications() {
                   }
                 />
               )}
-            </div>
+          </div>
           </div>
           {editingClient && (
             <div className="alert alert-info mb-2 py-2">

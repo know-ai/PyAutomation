@@ -14,6 +14,7 @@ class SocketService {
   private tagCallbacks: Array<(tag: Tag) => void> = [];
   private alarmCallbacks: Array<(alarm: Alarm) => void> = [];
   private machineCallbacks: Array<(machine: Machine) => void> = [];
+  private machinePropertyCallbacks: Array<(data: Record<string, Record<string, any>>) => void> = [];
   private opcuaDisconnectedCallbacks: Array<(data: { message: string; server_url?: string }) => void> = [];
   private opcuaConnectedCallbacks: Array<(data: { message: string; server_url?: string }) => void> = [];
 
@@ -198,6 +199,42 @@ class SocketService {
 
   getIsConnected(): boolean {
     return this.isConnected;
+  }
+
+  onMachinePropertyUpdate(callback: (data: Record<string, Record<string, any>>) => void): () => void {
+    // Store callback for reconnection
+    if (!this.machinePropertyCallbacks.includes(callback)) {
+      this.machinePropertyCallbacks.push(callback);
+    }
+
+    const handler = (data: Record<string, Record<string, any>>) => {
+      callback(data);
+    };
+
+    // Ensure socket is connected
+    if (!this.socket || !this.socket.connected) {
+      this.connect();
+      // Wait for connection before adding listener
+      if (this.socket) {
+        this.socket.once("connect", () => {
+          this.socket?.on("on.machine.property", handler);
+        });
+      }
+    } else {
+      // Socket is already connected, add listener immediately
+      this.socket.on("on.machine.property", handler);
+    }
+
+    // Return cleanup function
+    return () => {
+      // Remove from callbacks array
+      const index = this.machinePropertyCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.machinePropertyCallbacks.splice(index, 1);
+      }
+      // Remove listener
+      this.socket?.off("on.machine.property", handler);
+    };
   }
 
   onOpcUaDisconnected(callback: (data: { message: string; server_url?: string }) => void): () => void {

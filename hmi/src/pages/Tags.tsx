@@ -5,6 +5,7 @@ import { getTags, createTag, updateTag, deleteTag, getVariables, getUnitsByVaria
 import { listClients, getClientTree, type OpcUaClient, type OpcUaTreeNode } from "../services/opcua";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppSelector } from "../hooks/useAppSelector";
+import { showToast } from "../utils/toast";
 
 // Memoized row component to prevent unnecessary re-renders
 const TagTableRow = memo(({ 
@@ -158,6 +159,18 @@ export function Tags() {
     limit: 20,
     total: 0,
     pages: 0,
+  });
+  
+  // Filtros por columna
+  const [columnFilters, setColumnFilters] = useState({
+    name: "",
+    variable: "",
+    value: "",
+    displayUnit: "",
+    opcuaClientName: "",
+    nodeNamespace: "",
+    scanTime: "",
+    deadBand: "",
   });
   
   // Form state
@@ -797,12 +810,15 @@ export function Tags() {
       // Si no hay campos para actualizar, mostrar error
       const fieldsToUpdate = Object.keys(payload).filter(key => key !== 'id');
       if (fieldsToUpdate.length === 0) {
-        setError(t("tags.noChangesToUpdate"));
+        showToast(t("tags.noChangesToUpdate"), "error");
         setUpdating(false);
         return;
       }
 
       await updateTag(payload);
+      
+      // Mostrar toast de éxito
+      showToast(t("tags.updateSuccess"), "success");
       
       // Cerrar modal y resetear formulario
       setShowEditModal(false);
@@ -842,7 +858,7 @@ export function Tags() {
         data?.detail ??
         data?.error;
       const errorMsg = backendMessage || e?.message || t("tags.updateError");
-      setError(errorMsg);
+      showToast(errorMsg, "error");
     } finally {
       setUpdating(false);
     }
@@ -1049,6 +1065,99 @@ export function Tags() {
             <div className="table-responsive">
               <table className="table table-striped table-hover table-sm">
                 <thead>
+                  {/* Fila de filtros */}
+                  <tr>
+                    <th>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder={t("common.filter")}
+                        value={columnFilters.name}
+                        onChange={(e) =>
+                          setColumnFilters((prev) => ({ ...prev, name: e.target.value }))
+                        }
+                      />
+                    </th>
+                    <th>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder={t("common.filter")}
+                        value={columnFilters.variable}
+                        onChange={(e) =>
+                          setColumnFilters((prev) => ({ ...prev, variable: e.target.value }))
+                        }
+                      />
+                    </th>
+                    <th>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder={t("common.filter")}
+                        value={columnFilters.value}
+                        onChange={(e) =>
+                          setColumnFilters((prev) => ({ ...prev, value: e.target.value }))
+                        }
+                      />
+                    </th>
+                    <th>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder={t("common.filter")}
+                        value={columnFilters.displayUnit}
+                        onChange={(e) =>
+                          setColumnFilters((prev) => ({ ...prev, displayUnit: e.target.value }))
+                        }
+                      />
+                    </th>
+                    <th>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder={t("common.filter")}
+                        value={columnFilters.opcuaClientName}
+                        onChange={(e) =>
+                          setColumnFilters((prev) => ({ ...prev, opcuaClientName: e.target.value }))
+                        }
+                      />
+                    </th>
+                    <th>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder={t("common.filter")}
+                        value={columnFilters.nodeNamespace}
+                        onChange={(e) =>
+                          setColumnFilters((prev) => ({ ...prev, nodeNamespace: e.target.value }))
+                        }
+                      />
+                    </th>
+                    <th>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder={t("common.filter")}
+                        value={columnFilters.scanTime}
+                        onChange={(e) =>
+                          setColumnFilters((prev) => ({ ...prev, scanTime: e.target.value }))
+                        }
+                      />
+                    </th>
+                    <th>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder={t("common.filter")}
+                        value={columnFilters.deadBand}
+                        onChange={(e) =>
+                          setColumnFilters((prev) => ({ ...prev, deadBand: e.target.value }))
+                        }
+                      />
+                    </th>
+                    <th></th>
+                  </tr>
+                  {/* Fila de headers */}
                   <tr>
                     <th>{t("tables.name")}</th>
                     <th>{t("tables.variable")}</th>
@@ -1062,14 +1171,70 @@ export function Tags() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tags.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="text-center text-muted py-4">
-                        {t("tags.noTagsAvailable")}
-                      </td>
-                    </tr>
-                  ) : (
-                    tags.map((tag) => (
+                  {(() => {
+                    // Filtrar tags basándose en los filtros de columna
+                    const filteredTags = tags.filter((tag) => {
+                      // Obtener valor real-time si está disponible
+                      const realTimeTag = tag.name ? tagValues[tag.name] : null;
+                      const value = realTimeTag?.value !== undefined && realTimeTag?.value !== null
+                        ? realTimeTag.value 
+                        : (tag.value !== undefined && tag.value !== null ? tag.value : null);
+                      
+                      const displayValue = value !== undefined && value !== null
+                        ? typeof value === "boolean"
+                          ? value ? "true" : "false"
+                          : String(value)
+                        : "-";
+
+                      // Obtener OPC UA client name
+                      const opcuaClientName = (() => {
+                        if (tag.opcua_client_name) {
+                          return tag.opcua_client_name;
+                        }
+                        if (tag.opcua_address) {
+                          return opcuaClientNamesByAddress[tag.opcua_address] || tag.opcua_address;
+                        }
+                        return "-";
+                      })();
+
+                      // Obtener node namespace display name
+                      const nodeNamespaceDisplay = tag.node_namespace
+                        ? opcuaNodeDisplayNames[tag.node_namespace] || tag.node_namespace
+                        : "-";
+
+                      // Aplicar filtros (case-insensitive)
+                      const matchesName = !columnFilters.name || 
+                        (tag.name || "").toLowerCase().includes(columnFilters.name.toLowerCase());
+                      const matchesVariable = !columnFilters.variable || 
+                        (tag.variable || "").toLowerCase().includes(columnFilters.variable.toLowerCase());
+                      const matchesValue = !columnFilters.value || 
+                        displayValue.toLowerCase().includes(columnFilters.value.toLowerCase());
+                      const matchesDisplayUnit = !columnFilters.displayUnit || 
+                        (tag.display_unit || "-").toLowerCase().includes(columnFilters.displayUnit.toLowerCase());
+                      const matchesOpcuaClientName = !columnFilters.opcuaClientName || 
+                        opcuaClientName.toLowerCase().includes(columnFilters.opcuaClientName.toLowerCase());
+                      const matchesNodeNamespace = !columnFilters.nodeNamespace || 
+                        nodeNamespaceDisplay.toLowerCase().includes(columnFilters.nodeNamespace.toLowerCase());
+                      const matchesScanTime = !columnFilters.scanTime || 
+                        String(tag.scan_time || "-").toLowerCase().includes(columnFilters.scanTime.toLowerCase());
+                      const matchesDeadBand = !columnFilters.deadBand || 
+                        String(tag.dead_band !== undefined ? tag.dead_band : "-").toLowerCase().includes(columnFilters.deadBand.toLowerCase());
+
+                      return matchesName && matchesVariable && matchesValue && matchesDisplayUnit && 
+                             matchesOpcuaClientName && matchesNodeNamespace && matchesScanTime && matchesDeadBand;
+                    });
+
+                    if (filteredTags.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={9} className="text-center text-muted py-4">
+                            {t("tags.noTagsAvailable")}
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return filteredTags.map((tag) => (
                       <TagTableRow
                         key={tag.id || tag.name}
                         tag={tag}
@@ -1080,8 +1245,8 @@ export function Tags() {
                         onEdit={handleEditTag}
                         onDelete={handleDeleteTag}
                       />
-                    ))
-                  )}
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>

@@ -18,6 +18,15 @@ transition_model = api.model("transition_model", {
     'to': fields.String(required=True, description='Target state name for transition'),
 })
 
+subscribe_model = api.model("subscribe_model", {
+    'field_tag': fields.String(required=True, description='Nombre del tag de campo a suscribir'),
+    'internal_tag': fields.String(required=True, description='Nombre de la variable interna (default_tag_name) a asociar'),
+})
+
+unsubscribe_model = api.model("unsubscribe_model", {
+    'tag_name': fields.String(required=True, description='Nombre del tag suscrito a desuscribir'),
+})
+
 
 @ns.route('/')
 class MachinesResource(Resource):
@@ -127,6 +136,9 @@ class MachineByNameResource(Resource):
             
             # Get complete serialization
             serialization = machine.serialize()
+
+            # Field tags
+            field_tags = app.cvt._cvt.get_field_tags_names()
             
             return {
                 "data": {
@@ -134,6 +146,7 @@ class MachineByNameResource(Resource):
                     "subscribed_tags": subscribed_tags,
                     "not_subscribed_tags": not_subscribed_tags,
                     "internal_process_variables": internal_process_variables,
+                    "field_tags": field_tags,
                     "read_only_process_type_variables": read_only_process_type_variables,
                     "serialization": serialization
                 }
@@ -288,3 +301,134 @@ class MachineTransitionResource(Resource):
                 "message": f"Failed to execute transition: {str(e)}"
             }, 500
 
+
+@ns.route('/<machine_name>/subscribe')
+class MachineSubscribeResource(Resource):
+
+    @api.doc(
+        security='apikey',
+        description="Suscribe un tag de campo a una variable interna de una máquina de estado."
+    )
+    @api.response(200, "Tag suscrito correctamente")
+    @api.response(400, "Solicitud inválida o parámetros incorrectos")
+    @api.response(404, "Máquina o tag no encontrado")
+    @api.response(500, "Error interno del servidor")
+    @Api.token_required(auth=True)
+    @ns.expect(subscribe_model)
+    def post(self, machine_name: str):
+        r"""
+        Suscribir un tag de campo (`field_tag`) a una variable interna (`internal_tag`)
+        de una máquina de estado.
+
+        Equivalente a `machine.subscribe_to(tag=field_tag, default_tag_name=internal_tag)`.
+        """
+        if not request.is_json:
+            return {
+                "message": "Request must be JSON"
+            }, 400
+
+        data = request.json or {}
+        field_tag_name = data.get("field_tag")
+        internal_tag_name = data.get("internal_tag")
+
+        if not field_tag_name or not internal_tag_name:
+            return {
+                "message": "Both 'field_tag' and 'internal_tag' are required"
+            }, 400
+
+        try:
+            # Obtener máquina
+            machine = app.machine_manager.get_machine(name=StringType(machine_name))
+            if not machine:
+                return {
+                    "message": f"Machine '{machine_name}' not found"
+                }, 404
+
+            # Obtener tag de campo desde el CVT (mismo que en callbacks Dash)
+            field_tag = app.cvt._cvt.get_tag_by_name(name=field_tag_name)
+            if not field_tag:
+                return {
+                    "message": f"Field tag '{field_tag_name}' not found"
+                }, 404
+
+            subscribed, message = machine.subscribe_to(
+                tag=field_tag,
+                default_tag_name=internal_tag_name
+            )
+
+            if not subscribed:
+                return {
+                    "message": message or "Subscription failed"
+                }, 400
+
+            # Devolvemos la serialización actualizada de la máquina
+            return {
+                "message": message or "Tag subscribed successfully",
+                "data": machine.serialize()
+            }, 200
+        except Exception as e:
+            return {
+                "message": f"Failed to subscribe tag: {str(e)}"
+            }, 500
+
+
+@ns.route('/<machine_name>/unsubscribe')
+class MachineUnsubscribeResource(Resource):
+
+    @api.doc(
+        security='apikey',
+        description="Desuscribe un tag previamente suscrito de una máquina de estado."
+    )
+    @api.response(200, "Tag desuscrito correctamente")
+    @api.response(400, "Solicitud inválida o parámetros incorrectos")
+    @api.response(404, "Máquina o tag no encontrado")
+    @api.response(500, "Error interno del servidor")
+    @Api.token_required(auth=True)
+    @ns.expect(unsubscribe_model)
+    def post(self, machine_name: str):
+        r"""
+        Desuscribir un tag previamente suscrito de una máquina de estado.
+
+        Equivalente a `machine.unsubscribe_to(tag=tag)`.
+        """
+        if not request.is_json:
+            return {
+                "message": "Request must be JSON"
+            }, 400
+
+        data = request.json or {}
+        tag_name = data.get("tag_name")
+
+        if not tag_name:
+            return {
+                "message": "'tag_name' is required"
+            }, 400
+
+        try:
+            # Obtener máquina
+            machine = app.machine_manager.get_machine(name=StringType(machine_name))
+            if not machine:
+                return {
+                    "message": f"Machine '{machine_name}' not found"
+                }, 404
+
+            # Obtener tag por nombre usando PyAutomation (mismo que en callbacks Dash)
+            tag = app.get_tag_by_name(name=tag_name)
+            if not tag:
+                return {
+                    "message": f"Tag '{tag_name}' not found"
+                }, 404
+
+            if not machine.unsubscribe_to(tag=tag):
+                return {
+                    "message": "Unsubscription failed"
+                }, 400
+
+            return {
+                "message": "Tag unsubscribed successfully",
+                "data": machine.serialize()
+            }, 200
+        except Exception as e:
+            return {
+                "message": f"Failed to unsubscribe tag: {str(e)}"
+            }, 500

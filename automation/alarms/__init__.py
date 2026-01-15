@@ -101,8 +101,11 @@ class Alarm(StateMachine):
         self.tag_engine = CVTEngine()
         self.name = name
         self.tag = tag
-        self.segment = tag.segment
-        self.manufacturer = tag.manufacturer
+        # Verificar que tag no sea None antes de acceder a sus atributos
+        if tag is None:
+            raise ValueError(f"Cannot create alarm '{name}': tag is None")
+        self.segment = tag.segment if hasattr(tag, 'segment') else None
+        self.manufacturer = tag.manufacturer if hasattr(tag, 'manufacturer') else None
         self.attach(machine=self, tag=tag)
         self.description = description        
         self.alarm_setpoint = Trigger()

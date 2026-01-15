@@ -98,9 +98,14 @@ class AlarmManager(Singleton):
 
             ack_timestamp = datetime.strptime(ack_timestamp, self.tag_engine.DATETIME_FORMAT)
 
+        # Verificar que el tag existe antes de crear el alarm
+        tag_obj = self.tag_engine.get_tag_by_name(name=tag)
+        if tag_obj is None:
+            return None, f"Tag '{tag}' not found. Cannot create alarm '{name}'."
+
         alarm = Alarm(
             name=name,
-            tag=self.tag_engine.get_tag_by_name(name=tag),
+            tag=tag_obj,
             description=description,
             alarm_type=StringType(type),
             alarm_setpoint=FloatType(trigger_value),

@@ -173,8 +173,8 @@ export function Header() {
       try {
         const response = await isDatabaseConnected();
         if (response != null && typeof response === "object" && typeof response.connected === "boolean") {
-          setDbConnected(response.connected);
-          setConnectionError(null);
+        setDbConnected(response.connected);
+        setConnectionError(null);
         } else {
           // Si la respuesta no es válida, asumimos desconectado
           setDbConnected(false);
