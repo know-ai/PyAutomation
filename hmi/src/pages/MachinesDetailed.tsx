@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from "react";
+import type { JSX, CSSProperties } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { useTranslation } from "../hooks/useTranslation";
@@ -16,6 +17,7 @@ import type { Tag } from "../services/tags";
 
 const ITEMS_PER_PAGE = 10;
 const ACTIVE_TAB_STORAGE_KEY = "machinesDetailed_activeTab";
+const getPageStorageKey = (machineName: string) => `machinesDetailed_page_${machineName}`;
 
 type MachineDetailedData = {
   process_variables: Record<string, any>;
@@ -87,11 +89,24 @@ export function MachinesDetailed() {
         const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
         
         // Verificar si el tab guardado existe en las máquinas disponibles
+        let tabToActivate: string | null = null;
         if (savedActiveTab && data.some((m) => m.name === savedActiveTab)) {
-          setActiveTab(savedActiveTab);
+          tabToActivate = savedActiveTab;
         } else if (data.length > 0 && data[0].name) {
           // Si no hay tab guardado válido, usar el primero
-          setActiveTab(data[0].name);
+          tabToActivate = data[0].name;
+        }
+        
+        if (tabToActivate) {
+          setActiveTab(tabToActivate);
+          // Cargar la página guardada para el tab activo
+          const savedPage = localStorage.getItem(getPageStorageKey(tabToActivate));
+          if (savedPage) {
+            const page = parseInt(savedPage, 10);
+            if (!isNaN(page) && page > 0) {
+              setCurrentPage((prev) => ({ ...prev, [tabToActivate]: page }));
+            }
+          }
         }
       } catch (err: any) {
         const data = err?.response?.data;
@@ -132,10 +147,12 @@ export function MachinesDetailed() {
       try {
         const data = await getMachineByName(activeTab);
         setMachineDetails((prev) => ({ ...prev, [activeTab]: data }));
-        // Inicializar página a 1 si no existe para esta máquina
+        // Cargar la página guardada o inicializar a 1 si no existe
         setCurrentPage((prev) => {
           if (!prev[activeTab]) {
-            return { ...prev, [activeTab]: 1 };
+            const savedPage = localStorage.getItem(getPageStorageKey(activeTab));
+            const page = savedPage ? parseInt(savedPage, 10) : 1;
+            return { ...prev, [activeTab]: page };
           }
           return prev;
         });
@@ -158,14 +175,21 @@ export function MachinesDetailed() {
     loadMachineDetails();
   }, [activeTab, t]); // Removido machineDetails de las dependencias para evitar loop infinito
 
-  // Resetear dropdowns y página cuando cambia el tab
+  // Resetear dropdowns cuando cambia el tab (pero mantener la página guardada)
   useEffect(() => {
     if (activeTab) {
       setSelectedSubscribedTag((prev) => ({ ...prev, [activeTab]: "" }));
       setSelectedReadOnlyVariable((prev) => ({ ...prev, [activeTab]: "" }));
       setSelectedInternalVariable((prev) => ({ ...prev, [activeTab]: "" }));
-      // Resetear página a 1 cuando cambia el tab
-      setCurrentPage((prev) => ({ ...prev, [activeTab]: 1 }));
+      // Cargar la página guardada para este tab, o inicializar a 1 si no existe
+      setCurrentPage((prev) => {
+        if (!prev[activeTab]) {
+          const savedPage = localStorage.getItem(getPageStorageKey(activeTab));
+          const page = savedPage ? parseInt(savedPage, 10) : 1;
+          return { ...prev, [activeTab]: page };
+        }
+        return prev;
+      });
       // Resetear valores de atributos cuando cambia el tab (se inicializarán cuando se carguen los detalles)
       setThresholdValue((prev) => ({ ...prev, [activeTab]: "" }));
       setBufferSizeValue((prev) => ({ ...prev, [activeTab]: "" }));
@@ -175,6 +199,15 @@ export function MachinesDetailed() {
       setOriginalOnDelayValue((prev) => ({ ...prev, [activeTab]: null }));
     }
   }, [activeTab]);
+
+  // Guardar la página actual en localStorage cuando cambie
+  useEffect(() => {
+    Object.entries(currentPage).forEach(([machineName, page]) => {
+      if (machineName && page) {
+        localStorage.setItem(getPageStorageKey(machineName), String(page));
+      }
+    });
+  }, [currentPage]);
 
   // Función helper para mostrar modal de confirmación de threshold
   const handleUpdateThreshold = (machineName: string) => {
@@ -893,14 +926,20 @@ export function MachinesDetailed() {
       "internal_process_variables",
       "read_only_process_type_variables",
       "field_tags",
-      "name"
+      "name",
+      "auto_restart",
+      "identifier"
     ];
 
     const attributes: Array<[string, any]> = [];
-    const processedKeys = new Set<string>(); // Para evitar duplicados entre process_variables y serialization
+    const processedKeys = new Set<string>(); // Para evitar duplicados
+    const firstLevelAttributes = new Map<string, any>(); // Para almacenar atributos de primer nivel
+    const processVariables = new Map<string, any>(); // Para almacenar process_variables
     
-    // Primero procesar process_variables (tienen prioridad)
-    // Para process_variables, usar tag.value y tag.unit si existen, sino usar value y unit directamente
+    // Orden de prioridad para atributos de primer nivel
+    const priorityOrder = ["state", "description", "classification", "priority", "criticity"];
+    
+    // 1. Recopilar TODAS las process_variables primero (estas tienen prioridad porque se actualizan en tiempo real)
     if (data.process_variables && typeof data.process_variables === "object" && Object.keys(data.process_variables).length > 0) {
       Object.entries(data.process_variables).forEach(([varKey, varValue]) => {
         if (typeof varValue === "object" && varValue !== null) {
@@ -922,45 +961,175 @@ export function MachinesDetailed() {
           }
           
           const formattedValue = `${displayValue} ${displayUnit}`.trim();
-          attributes.push([varKey, formattedValue]);
-          processedKeys.add(varKey); // Marcar como procesado
+          processVariables.set(varKey, formattedValue);
         } else {
-          attributes.push([varKey, varValue]);
-          processedKeys.add(varKey);
+          processVariables.set(varKey, varValue);
         }
       });
     }
     
-    // Luego procesar serialization, omitiendo las claves ya procesadas en process_variables
+    // 2. Recopilar atributos de primer nivel de serialization (solo los que NO están en process_variables)
     if (data.serialization && typeof data.serialization === "object" && data.serialization !== null) {
       Object.entries(data.serialization).forEach(([subKey, subValue]) => {
-        // Omitir si ya fue procesado en process_variables, o si es "actions" o "name"
-        if (subKey !== "actions" && subKey !== "name" && !processedKeys.has(subKey)) {
+        // Omitir si está en excludedKeys, es "actions", o si ya está en process_variables
+        if (!excludedKeys.includes(subKey) && subKey !== "actions" && !processVariables.has(subKey)) {
           // Formatear si es un objeto con value y unit
           if (typeof subValue === "object" && subValue !== null && "value" in subValue && "unit" in subValue) {
             const formattedValue = `${subValue.value ?? "-"} ${subValue.unit ?? ""}`.trim();
-            attributes.push([subKey, formattedValue]);
+            firstLevelAttributes.set(subKey, formattedValue);
           } else {
-            attributes.push([subKey, subValue]);
+            firstLevelAttributes.set(subKey, subValue);
           }
-          processedKeys.add(subKey);
         }
       });
     }
     
-    // Finalmente, agregar otros atributos del nivel raíz (que no estén excluidos ni ya procesados)
+    // 3. Recopilar otros atributos del nivel raíz (solo los que NO están en process_variables)
     Object.entries(data).forEach(([key, value]) => {
-      if (!excludedKeys.includes(key) && !processedKeys.has(key) && key !== "process_variables" && key !== "serialization") {
-        attributes.push([key, value]);
+      if (!excludedKeys.includes(key) && !processVariables.has(key) && key !== "process_variables" && key !== "serialization") {
+        firstLevelAttributes.set(key, value);
       }
+    });
+    
+    // 4. Agregar atributos en el orden correcto:
+    // Primero los de prioridad que NO están en process_variables
+    priorityOrder.forEach((key) => {
+      if (firstLevelAttributes.has(key)) {
+        attributes.push([key, firstLevelAttributes.get(key)]);
+        firstLevelAttributes.delete(key);
+        processedKeys.add(key);
+      }
+    });
+    
+    // Luego TODAS las process_variables (estas se actualizan en tiempo real)
+    processVariables.forEach((value, key) => {
+      attributes.push([key, value]);
+      processedKeys.add(key);
+    });
+    
+    // Finalmente, el resto de atributos de primer nivel (ordenados alfabéticamente)
+    const remainingFirstLevel = Array.from(firstLevelAttributes.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    remainingFirstLevel.forEach(([key, value]) => {
+      attributes.push([key, value]);
+      processedKeys.add(key);
     });
 
     return attributes;
   };
 
+  // Función para obtener la clase del badge según el estado
+  const getStateBadgeClass = (state: string): string => {
+    const stateLower = String(state).toLowerCase().trim();
+    
+    if (stateLower === "starting" || stateLower === "restarting" || stateLower === "resetting") {
+      return "badge bg-secondary"; // gray
+    } else if (stateLower === "waiting" || stateLower === "test") {
+      return "badge bg-info"; // azul claro
+    } else if (stateLower === "running") {
+      return "badge bg-success"; // verde
+    } else if (stateLower === "pre_alarming") {
+      return "badge bg-warning"; // amarillo
+    } else if (stateLower === "leaking" || stateLower === "sleep") {
+      return "badge bg-danger"; // rojo
+    } else if (
+      stateLower === "con_restart" ||
+      stateLower === "confirm_restart" ||
+      stateLower === "confirm_restarting" ||
+      stateLower === "con_reset" ||
+      stateLower === "confirm_reset" ||
+      stateLower === "confirm_resetting"
+    ) {
+      return "badge bg-warning"; // amarillo
+    }
+    
+    // Default
+    return "badge bg-secondary";
+  };
+
+  // Función para verificar si un estado debe tener efecto blinking
+  const shouldBlink = (state: string): boolean => {
+    const stateLower = String(state).toLowerCase().trim();
+    return (
+      stateLower === "leaking" ||
+      stateLower === "con_restart" ||
+      stateLower === "confirm_restart" ||
+      stateLower === "confirm_restarting" ||
+      stateLower === "con_reset" ||
+      stateLower === "confirm_reset" ||
+      stateLower === "confirm_resetting"
+    );
+  };
+
+  // Función para obtener el estilo del badge según el valor numérico (1-5)
+  const getNumericBadgeStyle = (value: number): { className: string; style?: CSSProperties } => {
+    if (value === 1) {
+      return { className: "badge bg-success" }; // verde
+    } else if (value === 2) {
+      // Intermedio entre verde y amarillo
+      return { 
+        className: "badge",
+        style: { backgroundColor: "#7cb342", color: "#fff" } // verde-amarillo
+      };
+    } else if (value === 3) {
+      return { className: "badge bg-warning" }; // amarillo
+    } else if (value === 4) {
+      // Intermedio entre amarillo y rojo
+      return { 
+        className: "badge",
+        style: { backgroundColor: "#ff9800", color: "#fff" } // amarillo-rojo (naranja)
+      };
+    } else if (value === 5) {
+      return { className: "badge bg-danger" }; // rojo
+    }
+    // Default
+    return { className: "badge bg-secondary" };
+  };
+
   // Función para formatear el valor de un atributo
-  const formatAttributeValue = (value: any): string => {
+  const formatAttributeValue = (value: any, attributeName?: string): string | JSX.Element => {
     if (value === null || value === undefined) return "-";
+    
+    // Si es el atributo "state", mostrar como badge
+    if (attributeName === "state") {
+      const stateValue = typeof value === "object" && value !== null && "value" in value 
+        ? value.value 
+        : value;
+      const stateStr = String(stateValue);
+      const badgeClass = getStateBadgeClass(stateStr);
+      const needsBlink = shouldBlink(stateStr);
+      
+      return (
+        <span 
+          className={badgeClass}
+          style={needsBlink ? { animation: "blink-alarm 1s infinite" } : undefined}
+        >
+          {stateStr}
+        </span>
+      );
+    }
+    
+    // Si es el atributo "priority" o "criticity", mostrar como badge numérico
+    if (attributeName === "priority" || attributeName === "criticity") {
+      const numericValue = typeof value === "object" && value !== null && "value" in value 
+        ? value.value 
+        : value;
+      const numValue = typeof numericValue === "number" ? numericValue : parseInt(String(numericValue), 10);
+      
+      if (!isNaN(numValue) && numValue >= 1 && numValue <= 5) {
+        const badgeStyle = getNumericBadgeStyle(numValue);
+        return (
+          <span 
+            className={badgeStyle.className}
+            style={badgeStyle.style}
+          >
+            {numValue}
+          </span>
+        );
+      }
+      // Si no es un número válido, mostrar como texto normal
+      return String(numericValue);
+    }
+    
     if (typeof value === "object" && value !== null) {
       if (value.value !== undefined && value.unit !== undefined) {
         return `${value.value} ${value.unit}`;
@@ -1046,11 +1215,11 @@ export function MachinesDetailed() {
                           {machineDetails[machineName] ? (
                             <>
                               <div className="table-responsive">
-                                <table className="table table-striped table-hover">
+                                <table className="table table-striped table-hover" style={{ tableLayout: "fixed", width: "100%" }}>
                                   <thead>
                                     <tr>
-                                      <th>{t("machines.attribute")}</th>
-                                      <th>{t("machines.value")}</th>
+                                      <th style={{ width: "40%" }}>{t("machines.attribute")}</th>
+                                      <th style={{ width: "60%" }}>{t("machines.value")}</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1067,8 +1236,8 @@ export function MachinesDetailed() {
                                       }
                                       return paginated.map(([key, value]) => (
                                         <tr key={key}>
-                                          <td><strong>{key}</strong></td>
-                                          <td>{formatAttributeValue(value)}</td>
+                                          <td style={{ width: "40%", wordBreak: "break-word" }}><strong>{key}</strong></td>
+                                          <td style={{ width: "60%", wordBreak: "break-word" }}>{formatAttributeValue(value, key)}</td>
                                         </tr>
                                       ));
                                     })()}
@@ -1140,18 +1309,70 @@ export function MachinesDetailed() {
                               <div>
                                 {/* Primera fila - Dropdown subscribed_tags */}
                                 <div className="mb-3">
-                                  <label className="form-label">{t("machines.subscribedTags")}</label>
                                   <select
                                     className="form-select"
                                     value={selectedSubscribedTag[machineName] || ""}
                                     onChange={(e) => setSelectedSubscribedTag((prev) => ({ ...prev, [machineName]: e.target.value }))}
                                   >
                                     <option value="">{t("machines.selectSubscribedTag")}</option>
-                                    {Object.keys(machineDetails[machineName].subscribed_tags || {}).map((key) => (
-                                      <option key={key} value={key}>
-                                        {key}
-                                      </option>
-                                    ))}
+                                    {Object.entries(machineDetails[machineName].subscribed_tags || {}).map(([fieldTag, processVar]) => {
+                                      // Buscar el nombre de la variable interna asociada a este field tag
+                                      // En subscribed_tags, la clave es el field tag (ej: "PI_02")
+                                      // Necesitamos encontrar qué variable interna tiene ese tag asociado
+                                      // En read_only_process_type_variables, la clave es el nombre de la variable interna
+                                      // y varData.tag.name es el field tag
+                                      let internalTagName = "";
+                                      
+                                      // Normalizar el fieldTag para comparación (sin espacios, en minúsculas)
+                                      const normalizedFieldTag = String(fieldTag).trim();
+                                      
+                                      // Buscar en read_only_process_type_variables (donde están las variables internas suscritas)
+                                      const readOnlyVars = machineDetails[machineName].read_only_process_type_variables || {};
+                                      for (const [varName, varData] of Object.entries(readOnlyVars)) {
+                                        if (varData && typeof varData === "object" && varData.tag && typeof varData.tag === "object" && varData.tag.name) {
+                                          // El tag.name puede ser "MACHINE.fieldTag" (ej: "PPA.PI_02") o solo "fieldTag" (ej: "PI_02")
+                                          const tagName = String(varData.tag.name).trim();
+                                          // Extraer solo la parte del field tag (después del punto si existe)
+                                          const tagNameParts = tagName.split(".");
+                                          const tagNameWithoutMachine = tagNameParts.length > 1 ? tagNameParts[tagNameParts.length - 1] : tagName;
+                                          
+                                          // Comparar: el fieldTag debe coincidir con el tagName (con o sin prefijo de máquina)
+                                          // varName es el nombre de la variable interna (ej: "outlet_pressure")
+                                          if (tagName === normalizedFieldTag || tagNameWithoutMachine === normalizedFieldTag) {
+                                            internalTagName = varName; // Usar varName, no tagName
+                                            break;
+                                          }
+                                        }
+                                      }
+                                      
+                                      // Si no se encontró en read_only, buscar en process_variables
+                                      if (!internalTagName) {
+                                        const processVars = machineDetails[machineName].process_variables || {};
+                                        for (const [varName, varData] of Object.entries(processVars)) {
+                                          if (varData && typeof varData === "object" && varData.tag && typeof varData.tag === "object" && varData.tag.name) {
+                                            const tagName = String(varData.tag.name).trim();
+                                            const tagNameParts = tagName.split(".");
+                                            const tagNameWithoutMachine = tagNameParts.length > 1 ? tagNameParts[tagNameParts.length - 1] : tagName;
+                                            
+                                            if (tagName === normalizedFieldTag || tagNameWithoutMachine === normalizedFieldTag) {
+                                              internalTagName = varName; // Usar varName, no tagName
+                                              break;
+                                            }
+                                          }
+                                        }
+                                      }
+                                      
+                                      // Mostrar "fieldTag -> internalTag" o solo "fieldTag" si no hay internalTag
+                                      const displayText = internalTagName 
+                                        ? `${fieldTag} → ${internalTagName}`
+                                        : fieldTag;
+                                      
+                                      return (
+                                        <option key={fieldTag} value={fieldTag}>
+                                          {displayText}
+                                        </option>
+                                      );
+                                    })}
                                   </select>
                                 </div>
 
