@@ -181,6 +181,10 @@ class ProcessType(FloatType):
             elif isinstance(self.value, (BooleanType, FloatType, IntegerType, StringType)):
 
                 value = self.value.value
+            
+            elif hasattr(self.value, "value"):
+                # Manejar objetos como EngUnit (Percentage, etc.) que tienen un atributo value
+                value = self.value.value
 
         return {
             "value": value,

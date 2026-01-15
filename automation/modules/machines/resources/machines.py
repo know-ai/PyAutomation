@@ -4,6 +4,7 @@ from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
 from ....models import StringType, FloatType, IntegerType
+from ....variables import Percentage
 
 
 ns = Namespace('Machines', description='State Machine Management Resources')
@@ -25,6 +26,13 @@ subscribe_model = api.model("subscribe_model", {
 
 unsubscribe_model = api.model("unsubscribe_model", {
     'tag_name': fields.String(required=True, description='Nombre del tag suscrito a desuscribir'),
+})
+
+update_attributes_model = api.model("update_attributes_model", {
+    'threshold': fields.Float(required=False, description='Threshold value to update'),
+    'interval': fields.Float(required=False, description='Machine execution interval in seconds'),
+    'buffer_size': fields.Integer(required=False, description='Buffer size for input variables'),
+    'on_delay': fields.Integer(required=False, description='Delay before starting the machine'),
 })
 
 
@@ -431,4 +439,217 @@ class MachineUnsubscribeResource(Resource):
         except Exception as e:
             return {
                 "message": f"Failed to unsubscribe tag: {str(e)}"
+            }, 500
+
+
+@ns.route('/<machine_name>/attributes')
+class MachineAttributesResource(Resource):
+
+    @api.doc(
+        security='apikey',
+        description="Actualiza atributos específicos de una máquina de estado (threshold, interval, buffer_size, on_delay)."
+    )
+    @api.response(200, "Atributos actualizados correctamente")
+    @api.response(400, "Solicitud inválida o parámetros incorrectos")
+    @api.response(404, "Máquina no encontrada")
+    @api.response(500, "Error interno del servidor")
+    @Api.token_required(auth=True)
+    @ns.expect(update_attributes_model)
+    def put(self, machine_name: str):
+        r"""
+        Actualizar atributos específicos de una máquina de estado.
+
+        Permite actualizar los siguientes atributos:
+        - threshold: Valor del umbral (float)
+        - interval: Intervalo de ejecución en segundos (float)
+        - buffer_size: Tamaño del buffer (int)
+        - on_delay: Retraso antes de iniciar (int)
+
+        **Parámetros:**
+
+        * **machine_name** (str): Nombre de la máquina de estado.
+
+        **Request body:**
+
+        * **threshold** (float, opcional): Nuevo valor del threshold.
+        * **interval** (float, opcional): Nuevo intervalo de ejecución.
+        * **buffer_size** (int, opcional): Nuevo tamaño del buffer.
+        * **on_delay** (int, opcional): Nuevo valor de on_delay.
+
+        **Notas:**
+
+        * Para máquinas de tipo "leak detection" con nombre "npw", el threshold se limita entre 0 y 100.
+        * Al actualizar buffer_size, la máquina se reinicia automáticamente.
+        * Los cambios se persisten en la base de datos si está conectada.
+
+        **Returns:**
+
+        * **dict**: Mensaje de éxito y datos actualizados de la máquina.
+        """
+        if not request.is_json:
+            return {
+                "message": "Request must be JSON"
+            }, 400
+
+        data = request.json or {}
+        threshold = data.get("threshold")
+        interval = data.get("interval")
+        buffer_size = data.get("buffer_size")
+        on_delay = data.get("on_delay")
+
+        # Validar que al menos un atributo esté presente
+        if threshold is None and interval is None and buffer_size is None and on_delay is None:
+            return {
+                "message": "At least one attribute (threshold, interval, buffer_size, on_delay) must be provided"
+            }, 400
+
+        try:
+            # Obtener máquina
+            machine = app.machine_manager.get_machine(name=StringType(machine_name))
+            if not machine:
+                return {
+                    "message": f"Machine '{machine_name}' not found"
+                }, 404
+
+            updated_attributes = []
+
+            # Actualizar threshold
+            if threshold is not None:
+                try:
+                    threshold_value = float(threshold)
+                    
+                    # Validación especial para máquinas de leak detection tipo NPW
+                    if "leak detection" in machine.classification.value.lower():
+                        if machine_name.lower() == "npw":
+                            if threshold_value > 100:
+                                threshold_value = 100
+                            elif threshold_value < 0:
+                                threshold_value = 0
+                            # Actualizar threshold_iqr si existe el atributo wavelet
+                            if hasattr(machine, "wavelet"):
+                                machine.wavelet.threshold_iqr = threshold_value
+                    
+                    # Actualizar el threshold de la máquina
+                    # Crear un nuevo objeto Percentage con el nuevo valor (similar a como se carga desde config)
+                    threshold_unit = machine.threshold.unit or "%"
+                    if machine.threshold.value and hasattr(machine.threshold.value, "__class__"):
+                        # Obtener la clase del objeto actual (Percentage, FloatType, etc.)
+                        class_name = machine.threshold.value.__class__.__name__
+                        if class_name == "Percentage":
+                            # Crear un nuevo objeto Percentage con el nuevo valor
+                            new_percentage = Percentage(threshold_value, unit=threshold_unit)
+                            # Usar set_value para actualizar tanto el ProcessType como el tag asociado
+                            machine.threshold.set_value(value=new_percentage, machine=machine, name="threshold")
+                        else:
+                            # Si no es Percentage, actualizar directamente el valor y usar set_value
+                            machine.threshold.value.value = threshold_value
+                            # Si tiene tag, actualizarlo también usando set_value
+                            if machine.threshold.tag:
+                                machine.threshold.set_value(value=machine.threshold.value, machine=machine, name="threshold")
+                    else:
+                        # Si no hay valor inicial, crear un nuevo Percentage y usar set_value
+                        new_percentage = Percentage(threshold_value, unit=threshold_unit)
+                        machine.threshold.set_value(value=new_percentage, machine=machine, name="threshold")
+                    
+                    # Actualizar en la base de datos si está conectada
+                    if app.is_db_connected():
+                        app.machines_engine.put(
+                            name=StringType(machine_name),
+                            threshold=FloatType(threshold_value)
+                        )
+                    
+                    updated_attributes.append(f"threshold to {threshold_value}")
+                except (ValueError, TypeError) as e:
+                    return {
+                        "message": f"Invalid threshold value: {str(e)}"
+                    }, 400
+
+            # Actualizar interval
+            if interval is not None:
+                try:
+                    interval_value = float(interval)
+                    if interval_value <= 0:
+                        return {
+                            "message": "interval must be greater than 0"
+                        }, 400
+                    
+                    machine.set_interval(interval=FloatType(interval_value))
+                    
+                    # Actualizar en la base de datos si está conectada
+                    if app.is_db_connected():
+                        app.machines_engine.put(
+                            name=StringType(machine_name),
+                            machine_interval=IntegerType(int(interval_value))
+                        )
+                    
+                    updated_attributes.append(f"interval to {interval_value}")
+                except (ValueError, TypeError) as e:
+                    return {
+                        "message": f"Invalid interval value: {str(e)}"
+                    }, 400
+
+            # Actualizar buffer_size
+            if buffer_size is not None:
+                try:
+                    buffer_size_value = int(buffer_size)
+                    if buffer_size_value <= 0:
+                        return {
+                            "message": "buffer_size must be greater than 0"
+                        }, 400
+                    
+                    # Actualizar buffer_size y reiniciar la máquina
+                    machine.set_buffer_size(size=buffer_size_value)
+                    machine.transition(to="restart")
+                    
+                    # Actualizar en la base de datos si está conectada
+                    if app.is_db_connected():
+                        app.machines_engine.put(
+                            name=StringType(machine_name),
+                            buffer_size=IntegerType(buffer_size_value)
+                        )
+                    
+                    # Volver al estado wait
+                    machine.transition(to="wait")
+                    
+                    updated_attributes.append(f"buffer_size to {buffer_size_value}")
+                except (ValueError, TypeError) as e:
+                    return {
+                        "message": f"Invalid buffer_size value: {str(e)}"
+                    }, 400
+
+            # Actualizar on_delay
+            if on_delay is not None:
+                try:
+                    on_delay_value = int(on_delay)
+                    if on_delay_value < 0:
+                        return {
+                            "message": "on_delay must be greater than or equal to 0"
+                        }, 400
+                    
+                    machine.on_delay.value = on_delay_value
+                    
+                    # Actualizar en la base de datos si está conectada
+                    if app.is_db_connected():
+                        app.machines_engine.put(
+                            name=StringType(machine_name),
+                            on_delay=IntegerType(on_delay_value)
+                        )
+                    
+                    updated_attributes.append(f"on_delay to {on_delay_value}")
+                except (ValueError, TypeError) as e:
+                    return {
+                        "message": f"Invalid on_delay value: {str(e)}"
+                    }, 400
+
+            # Construir mensaje de éxito
+            message = f"Successfully updated: {', '.join(updated_attributes)}"
+
+            return {
+                "message": message,
+                "data": machine.serialize()
+            }, 200
+
+        except Exception as e:
+            return {
+                "message": f"Failed to update machine attributes: {str(e)}"
             }, 500
