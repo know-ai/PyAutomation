@@ -928,7 +928,9 @@ export function MachinesDetailed() {
       "field_tags",
       "name",
       "auto_restart",
-      "identifier"
+      "identifier",
+      "threshold",
+      "on_wait_time"
     ];
 
     const attributes: Array<[string, any]> = [];
