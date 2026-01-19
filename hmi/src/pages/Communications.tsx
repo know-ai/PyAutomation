@@ -4,6 +4,8 @@ import { Button } from "../components/Button";
 import {
   addClient,
   getClientTree,
+  getClientTreeWithOptions,
+  getClientTreeChildrenWithOptions,
   getNodeValues,
   getNodeAttributes,
   listClients,
@@ -47,6 +49,7 @@ function TreeNode({
   node,
   client,
   onSelect,
+  onLoadChildren,
   level = 0,
   selectedNodes = [],
   onToggleSelect,
@@ -55,12 +58,14 @@ function TreeNode({
   node: OpcUaTreeNode;
   client: string;
   onSelect: (client: string, node: OpcUaTreeNode) => void;
+  onLoadChildren?: (client: string, nodeId: string) => Promise<void>;
   level?: number;
   selectedNodes?: string[];
   onToggleSelect?: (namespace: string) => void;
   allTreeNodes?: OpcUaTreeNode[];
 }) {
   const [isExpanded, setIsExpanded] = useState(level < 2); // Expandir los primeros 2 niveles por defecto
+  const [isLoadingChildren, setIsLoadingChildren] = useState(false);
   
   // Extraer nombre - priorizar name, luego title, evitar strings vacíos
   const { t } = useTranslation();
@@ -74,7 +79,7 @@ function TreeNode({
   if (nodeName === unnamedText && level === 0) {
     console.warn("Root node is Unnamed, raw node:", node);
   }
-  const hasChildren = node.children && node.children.length > 0;
+  const canExpand = Boolean((node.children && node.children.length > 0) || node.has_children);
   const isVariable = nodeClass === "Variable";
   const isObject = nodeClass === "Object" || nodeClass === "ObjectType";
   const isFolder = nodeClass === "Object" && !isVariable;
@@ -147,30 +152,63 @@ function TreeNode({
           }
           
           // Click normal: expandir/colapsar o seleccionar
-          if (hasChildren) {
-            setIsExpanded(!isExpanded);
+          if (canExpand) {
+            const nextExpanded = !isExpanded;
+            setIsExpanded(nextExpanded);
+            if (
+              nextExpanded &&
+              nodeNamespace &&
+              node.has_children &&
+              (!node.children || node.children.length === 0) &&
+              onLoadChildren
+            ) {
+              setIsLoadingChildren(true);
+              onLoadChildren(client, nodeNamespace).finally(() => setIsLoadingChildren(false));
+            }
           }
-          if (isVariable && !hasChildren) {
+          if (isVariable && !canExpand) {
             onSelect(client, node);
           }
         }}
         onDoubleClick={() => {
-          if (hasChildren) {
-            setIsExpanded(!isExpanded);
+          if (canExpand) {
+            const nextExpanded = !isExpanded;
+            setIsExpanded(nextExpanded);
+            if (
+              nextExpanded &&
+              nodeNamespace &&
+              node.has_children &&
+              (!node.children || node.children.length === 0) &&
+              onLoadChildren
+            ) {
+              setIsLoadingChildren(true);
+              onLoadChildren(client, nodeNamespace).finally(() => setIsLoadingChildren(false));
+            }
           }
         }}
       >
-        {hasChildren && (
+        {canExpand && (
           <i
             className={`bi ${isExpanded ? "bi-chevron-down" : "bi-chevron-right"} text-muted`}
             style={{ fontSize: "0.75rem", width: "16px", cursor: "pointer" }}
             onClick={(e) => {
               e.stopPropagation();
-              setIsExpanded(!isExpanded);
+              const nextExpanded = !isExpanded;
+              setIsExpanded(nextExpanded);
+              if (
+                nextExpanded &&
+                nodeNamespace &&
+                node.has_children &&
+                (!node.children || node.children.length === 0) &&
+                onLoadChildren
+              ) {
+                setIsLoadingChildren(true);
+                onLoadChildren(client, nodeNamespace).finally(() => setIsLoadingChildren(false));
+              }
             }}
           />
         )}
-        {!hasChildren && <span style={{ width: "16px", display: "inline-block" }} />}
+        {!canExpand && <span style={{ width: "16px", display: "inline-block" }} />}
         {isVariable && (
           <input
             type="checkbox"
@@ -210,20 +248,37 @@ function TreeNode({
           </small>
         )}
       </div>
-      {hasChildren && isExpanded && (
+      {canExpand && isExpanded && (
         <ul className="nav flex-column" style={{ listStyle: "none", marginLeft: "8px" }}>
-          {node.children!.map((child, idx) => (
-            <TreeNode
-              key={`${nodeNamespace || nodeName}-${idx}`}
-              node={child}
-              client={client}
-              onSelect={onSelect}
-              level={level + 1}
-              selectedNodes={selectedNodes}
-              onToggleSelect={onToggleSelect}
-              allTreeNodes={allTreeNodes}
-            />
-          ))}
+          {isLoadingChildren && (
+            <li className="nav-item" style={{ listStyle: "none" }}>
+              <div className="px-2 py-1 text-muted" style={{ paddingLeft: `${(level + 1) * 16}px` }}>
+                Cargando...
+              </div>
+            </li>
+          )}
+          {!isLoadingChildren &&
+            (node.children && node.children.length > 0 ? (
+              node.children.map((child, idx) => (
+                <TreeNode
+                  key={`${nodeNamespace || nodeName}-${idx}`}
+                  node={child}
+                  client={client}
+                  onSelect={onSelect}
+                  onLoadChildren={onLoadChildren}
+                  level={level + 1}
+                  selectedNodes={selectedNodes}
+                  onToggleSelect={onToggleSelect}
+                  allTreeNodes={allTreeNodes}
+                />
+              ))
+            ) : (
+              <li className="nav-item" style={{ listStyle: "none" }}>
+                <div className="px-2 py-1 text-muted" style={{ paddingLeft: `${(level + 1) * 16}px` }}>
+                  (sin hijos)
+                </div>
+              </li>
+            ))}
         </ul>
       )}
     </li>
@@ -486,9 +541,21 @@ export function Communications() {
     setLoadingTree(true);
     setError(null);
     try {
-      const t = await getClientTree(clientName);
+      // Para evitar congelar la UI en servidores con árboles muy grandes,
+      // pedimos un árbol acotado y dejamos fallback automático a legacy si es necesario.
+      const treeNodes = await getClientTreeWithOptions(clientName, {
+        mode: "generic",
+        // Defaults conservadores para que el HMI renderice rápido incluso en servers muy grandes.
+        // Si necesitas más, lo haremos “on-demand” (carga al expandir).
+        max_depth: 6,
+        max_nodes: 12000,
+        include_properties: true,
+        include_property_values: false,
+        timeout_ms: 60_000,
+        fallback_to_legacy: true,
+      });
       // Asegurarnos de que sea un array
-      const treeArray = Array.isArray(t) ? t : t ? [t] : [];
+      const treeArray = Array.isArray(treeNodes) ? treeNodes : treeNodes ? [treeNodes] : [];
       setTree(treeArray);
     } catch (e: any) {
       const errorMsg = e?.response?.data?.message || e?.message || t("communications.explorer");
@@ -498,6 +565,41 @@ export function Communications() {
       setLoadingTree(false);
     }
   };
+
+  // Lazy-loading: cargar hijos de un nodo al expandir, para soportar árboles profundos sin timeouts.
+  const setChildrenForNode = useCallback(
+    (targetNamespace: string, children: OpcUaTreeNode[]) => {
+      const update = (nodes: OpcUaTreeNode[]): OpcUaTreeNode[] =>
+        nodes.map((n) => {
+          const ns = (n.namespace && n.namespace.trim()) || (n.key && n.key.trim()) || "";
+          if (ns === targetNamespace) {
+            return { ...n, children, has_children: children.length > 0 };
+          }
+          if (n.children && n.children.length > 0) {
+            return { ...n, children: update(n.children) };
+          }
+          return n;
+        });
+      setTree((prev) => update(prev));
+    },
+    [setTree]
+  );
+
+  const loadChildren = useCallback(
+    async (clientName: string, nodeId: string) => {
+      if (!clientName || !nodeId) return;
+      const children = await getClientTreeChildrenWithOptions(clientName, nodeId, {
+        mode: "generic",
+        max_nodes: 5000,
+        include_properties: true,
+        include_property_values: false,
+        timeout_ms: 60_000,
+        fallback_to_legacy: true,
+      });
+      setChildrenForNode(nodeId, children);
+    },
+    [setChildrenForNode]
+  );
 
   // Cargar clientes al montar el componente
   useEffect(() => {
@@ -1079,6 +1181,7 @@ export function Communications() {
                       node={node}
                       client={selectedClient}
                       onSelect={() => {}}
+                      onLoadChildren={loadChildren}
                       level={0}
                       selectedNodes={selectedTreeNodes}
                       onToggleSelect={handleToggleTreeNodeSelect}

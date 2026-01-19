@@ -2,6 +2,8 @@ from datetime import datetime
 import logging
 from ..utils import _colorize_message
 from ..opcua.models import Client
+from opcua import ua
+from opcua.ua.uatypes import NodeId
 from ..dbmodels import OPCUA
 from ..logger.datalogger import DataLoggerEngine
 from ..tags import CVTEngine
@@ -446,7 +448,16 @@ class OPCUAClientManager:
             return self._clients[client_name]
         
     @logging_error_handler
-    def get_opcua_tree(self, client_name):
+    def get_opcua_tree(
+        self,
+        client_name: str,
+        *,
+        mode: str = "generic",
+        max_depth: int = 10,
+        max_nodes: int = 50_000,
+        include_properties: bool = True,
+        include_property_values: bool = False,
+    ):
         r"""
         Browses the OPC UA address space tree starting from the root folder.
 
@@ -462,14 +473,165 @@ class OPCUAClientManager:
         if not client:
             return {}, 404
         if client.is_connected():
-            root_node = client.get_root_node()
-            _tree = client.browse_tree(root_node)
-            result = {
-                "Objects": _tree[0]["children"]
-            }
-            return result, 200
+            try:
+                mode_l = (mode or "generic").strip().lower()
+                # "legacy": usa el método viejo (ObjectsFolder -> children descriptions)
+                if mode_l == "legacy":
+                    tree, status = client.get_opc_ua_tree()
+                    if status != 200 or not isinstance(tree, dict):
+                        return tree or {}, status
+                    # Normalizar a {Objects:[...]} cuando sea posible
+                    if "Objects" in tree and isinstance(tree["Objects"], list):
+                        return {"Objects": tree["Objects"]}, 200
+                    # si el root del dict es "Objects" u otro, tomar primer nivel como children
+                    if len(tree.keys()) == 1:
+                        root_key = next(iter(tree.keys()))
+                        if isinstance(tree[root_key], list):
+                            return {"Objects": tree[root_key]}, 200
+                    return tree, 200
+
+                # "generic" (default): browse robusto desde Objects folder
+                objects_nodeid = client.get_objects_node()
+                objects_node = client.get_node(objects_nodeid)
+                children = client.browse_tree_generic(
+                    objects_node,
+                    max_depth=int(max_depth),
+                    max_nodes=int(max_nodes),
+                    include_properties=bool(include_properties),
+                    include_property_values=bool(include_property_values),
+                )
+                return {"Objects": children}, 200
+            except Exception:
+                # Fallback a la implementación anterior (browse_tree sobre root)
+                root_node = client.get_root_node()
+                _tree = client.browse_tree(root_node)
+                try:
+                    result = {"Objects": _tree[0]["children"]}
+                except Exception:
+                    result = {"Objects": _tree}
+                return result, 200
     
         
+    @logging_error_handler
+    def get_opcua_tree_children(
+        self,
+        client_name: str,
+        node_id: str,
+        *,
+        mode: str = "generic",
+        max_nodes: int = 5_000,
+        include_properties: bool = True,
+        include_property_values: bool = False,
+        fallback_to_legacy: bool = True,
+    ):
+        """
+        Devuelve los hijos directos de un NodeId (lazy-loading).
+
+        Retorna una lista con el mismo formato de nodos que consume el frontend:
+        title/key/NodeClass/children/has_children
+        """
+        client = self.get(client_name=client_name)
+        if not client:
+            return {"children": []}, 404
+        if not client.is_connected():
+            return {"children": []}, 400
+
+        mode_l = (mode or "generic").strip().lower()
+
+        def _browse_children_generic():
+            node = client.get_node(NodeId.from_string(node_id))
+            children = client.browse_children_generic(
+                node,
+                max_nodes=int(max_nodes),
+                include_properties=bool(include_properties),
+                include_property_values=bool(include_property_values),
+            )
+            return {"children": children}, 200
+
+        # generic (default)
+        if mode_l == "generic":
+            try:
+                return _browse_children_generic()
+            except Exception:
+                if not fallback_to_legacy:
+                    return {"children": []}, 500
+                mode_l = "legacy"
+
+        # legacy (fallback): intentar browse simple, y si falla, reusar generic
+        try:
+            node = client.get_node(NodeId.from_string(node_id))
+            children = []
+            try:
+                for child_id in node.get_children():
+                    child_node = client.get_node(child_id)
+                    nid = child_node.nodeid.to_string()
+                    try:
+                        display_name = child_node.get_display_name().Text or child_node.get_browse_name().Name or "Unnamed Node"
+                    except Exception:
+                        display_name = "Unnamed Node"
+                    try:
+                        node_class = child_node.get_node_class().name
+                    except Exception:
+                        node_class = "Unknown"
+                    has_children = False
+                    try:
+                        has_children = bool(child_node.get_children())
+                    except Exception:
+                        has_children = False
+                    if include_properties:
+                        try:
+                            if child_node.get_node_class() == ua.NodeClass.Variable:
+                                has_children = has_children or bool(child_node.get_properties())
+                        except Exception:
+                            pass
+                    children.append(
+                        {
+                            "title": display_name,
+                            "key": nid,
+                            "NodeClass": node_class,
+                            "children": [],
+                            "has_children": bool(has_children),
+                        }
+                    )
+                    if len(children) >= int(max_nodes):
+                        break
+            except Exception:
+                pass
+
+            # Adjuntar properties del nodo si es Variable
+            if include_properties:
+                try:
+                    if node.get_node_class() == ua.NodeClass.Variable:
+                        for prop_id in node.get_properties():
+                            if len(children) >= int(max_nodes):
+                                break
+                            prop_node = client.get_node(prop_id)
+                            prop_nid = prop_node.nodeid.to_string()
+                            prop_name = prop_node.get_display_name().Text or prop_node.get_browse_name().Name or "Unnamed Property"
+                            prop_dict = {
+                                "title": prop_name,
+                                "key": prop_nid,
+                                "NodeClass": prop_node.get_node_class().name,
+                                "children": [],
+                                "has_children": False,
+                            }
+                            if include_property_values:
+                                try:
+                                    prop_dict["value"] = client._to_jsonable(prop_node.get_value())
+                                except Exception:
+                                    prop_dict["value"] = None
+                            children.append(prop_dict)
+                except Exception:
+                    pass
+
+            return {"children": children}, 200
+        except Exception:
+            # último recurso
+            try:
+                return _browse_children_generic()
+            except Exception:
+                return {"children": []}, 500
+
     @logging_error_handler
     def get_node_values(self, client_name:str, namespaces:list)->list:
         r"""

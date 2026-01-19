@@ -5,6 +5,8 @@ from datetime import datetime
 from opcua.ua.uatypes import NodeId, datatype_to_varianttype
 import re, uuid, logging, time
 from ..utils import _colorize_message
+import json
+from enum import Enum
 
 
 class Client(OPCClient):
@@ -532,7 +534,7 @@ class Client(OPCClient):
                                         "title": prop_display_name,
                                         "key": prop_node.nodeid.to_string(),
                                         "NodeClass": prop_node.get_node_class().name,
-                                        "value": prop_node.get_value(),
+                                        "value": self._to_jsonable(prop_node.get_value()),
                                         "children": []
                                     }
                                     variable_info["children"].append(prop_dict)
@@ -547,6 +549,353 @@ class Client(OPCClient):
                             child_dict = variable_info
                         children_list.append(child_dict)
         return children_list
+
+    @staticmethod
+    def _to_jsonable(value, _visited=None):
+        """
+        Convierte tipos OPC UA (y objetos complejos) a estructuras JSON-serializables.
+
+        Se usa para evitar errores como:
+        TypeError: Object of type Range is not JSON serializable
+        """
+        if _visited is None:
+            _visited = set()
+
+        # evitar ciclos
+        obj_id = id(value)
+        if obj_id in _visited:
+            return None
+        _visited.add(obj_id)
+
+        try:
+            json.dumps(value)
+            _visited.remove(obj_id)
+            return value
+        except Exception:
+            pass
+
+        if value is None:
+            _visited.remove(obj_id)
+            return None
+
+        # datetime
+        if isinstance(value, datetime):
+            _visited.remove(obj_id)
+            return value.isoformat()
+
+        # bytes
+        if isinstance(value, (bytes, bytearray)):
+            _visited.remove(obj_id)
+            return value.hex()
+
+        # enums
+        if isinstance(value, Enum):
+            _visited.remove(obj_id)
+            return value.name
+
+        # NodeId / ua types comunes
+        if isinstance(value, NodeId):
+            _visited.remove(obj_id)
+            return value.to_string()
+
+        # python-opcua: Range (EngineeringUnitsRange)
+        # suele tener atributos Low/High
+        if hasattr(value, "Low") and hasattr(value, "High"):
+            try:
+                out = {"Low": Client._to_jsonable(value.Low, _visited), "High": Client._to_jsonable(value.High, _visited)}
+                _visited.remove(obj_id)
+                return out
+            except Exception:
+                pass
+
+        # LocalizedText
+        if hasattr(value, "Text") and hasattr(value, "Locale"):
+            try:
+                out = {"Text": value.Text, "Locale": value.Locale}
+                _visited.remove(obj_id)
+                return out
+            except Exception:
+                pass
+
+        # QualifiedName
+        if hasattr(value, "Name") and hasattr(value, "NamespaceIndex"):
+            try:
+                out = {"Name": value.Name, "NamespaceIndex": int(value.NamespaceIndex)}
+                _visited.remove(obj_id)
+                return out
+            except Exception:
+                pass
+
+        # list / tuple
+        if isinstance(value, (list, tuple)):
+            out = [Client._to_jsonable(v, _visited) for v in value]
+            _visited.remove(obj_id)
+            return out
+
+        # dict
+        if isinstance(value, dict):
+            out = {str(k): Client._to_jsonable(v, _visited) for k, v in value.items()}
+            _visited.remove(obj_id)
+            return out
+
+        # objetos con atributos públicos
+        if hasattr(value, "__dict__"):
+            try:
+                out = {}
+                for k, v in value.__dict__.items():
+                    if str(k).startswith("_"):
+                        continue
+                    out[str(k)] = Client._to_jsonable(v, _visited)
+                _visited.remove(obj_id)
+                return out
+            except Exception:
+                pass
+
+        # fallback
+        _visited.remove(obj_id)
+        return str(value)
+
+    def browse_tree_generic(
+        self,
+        node,
+        *,
+        max_depth: int = 10,
+        max_nodes: int = 50_000,
+        include_properties: bool = True,
+        include_property_values: bool = False,
+        _depth: int = 0,
+        _visited_nodeids=None,
+        _count=None,
+    ):
+        """
+        Browse genérico del address space, robusto para cualquier servidor OPC UA.
+
+        - Evita ciclos (visited por NodeId)
+        - Limita profundidad y cantidad total de nodos (protección performance)
+        - Mantiene compatibilidad con el formato que consume el frontend: title/key/NodeClass/children
+        """
+        if _visited_nodeids is None:
+            _visited_nodeids = set()
+        if _count is None:
+            _count = {"n": 0}
+
+        if not self.is_connected():
+            return []
+        if _depth > max_depth:
+            return []
+        if _count["n"] >= max_nodes:
+            return []
+
+        children_list = []
+        try:
+            children = node.get_children()
+        except Exception:
+            return []
+
+        for child_id in children:
+            if _count["n"] >= max_nodes:
+                break
+
+            try:
+                child_node = self.get_node(child_id)
+                nid = child_node.nodeid.to_string()
+            except Exception:
+                continue
+
+            if nid in _visited_nodeids:
+                continue
+            _visited_nodeids.add(nid)
+            _count["n"] += 1
+
+            try:
+                display_name = child_node.get_display_name().Text or child_node.get_browse_name().Name or "Unnamed Node"
+            except Exception:
+                display_name = "Unnamed Node"
+
+            try:
+                node_class = child_node.get_node_class().name
+            except Exception:
+                node_class = "Unknown"
+
+            # determinar si tiene hijos (sin depender de si estamos por debajo del max_depth)
+            has_children = False
+            try:
+                child_children = child_node.get_children()
+                has_children = bool(child_children)
+            except Exception:
+                child_children = []
+
+            # Variables pueden exponer properties (EURange/EngineeringUnits/etc.) aunque no tengan children "normales"
+            if include_properties:
+                try:
+                    if child_node.get_node_class() == ua.NodeClass.Variable:
+                        has_children = has_children or bool(child_node.get_properties())
+                except Exception:
+                    pass
+
+            node_dict = {
+                "title": display_name,
+                "key": nid,
+                "NodeClass": node_class,
+                "children": [],
+                "has_children": bool(has_children),
+            }
+
+            # Recursión: Objects (y algunos servers exponen estructuras bajo Variable/ObjectType)
+            try:
+                if _depth < max_depth and child_children:
+                    node_dict["children"] = self.browse_tree_generic(
+                        child_node,
+                        max_depth=max_depth,
+                        max_nodes=max_nodes,
+                        include_properties=include_properties,
+                        include_property_values=include_property_values,
+                        _depth=_depth + 1,
+                        _visited_nodeids=_visited_nodeids,
+                        _count=_count,
+                    )
+            except Exception:
+                node_dict["children"] = []
+
+            # Propiedades para variables (EURange, EngineeringUnits, etc.)
+            if include_properties:
+                try:
+                    if child_node.get_node_class() == ua.NodeClass.Variable:
+                        for prop_id in child_node.get_properties():
+                            if _count["n"] >= max_nodes:
+                                break
+                            prop_node = self.get_node(prop_id)
+                            prop_nid = prop_node.nodeid.to_string()
+                            if prop_nid in _visited_nodeids:
+                                continue
+                            _visited_nodeids.add(prop_nid)
+                            _count["n"] += 1
+
+                            prop_name = prop_node.get_display_name().Text or prop_node.get_browse_name().Name or "Unnamed Property"
+                            prop_dict = {
+                                "title": prop_name,
+                                "key": prop_nid,
+                                "NodeClass": prop_node.get_node_class().name,
+                                "children": [],
+                            }
+                            if include_property_values:
+                                try:
+                                    prop_dict["value"] = self._to_jsonable(prop_node.get_value())
+                                except Exception:
+                                    prop_dict["value"] = None
+                            node_dict["children"].append(prop_dict)
+                except Exception:
+                    pass
+
+            children_list.append(node_dict)
+
+        return children_list
+
+    def browse_children_generic(
+        self,
+        node,
+        *,
+        max_nodes: int = 5_000,
+        include_properties: bool = True,
+        include_property_values: bool = False,
+    ):
+        """
+        Devuelve SOLO los hijos directos de un nodo (sin recursión).
+
+        Útil para lazy-loading desde el HMI al expandir carpetas profundas.
+        """
+        if not self.is_connected():
+            return []
+
+        out = []
+        visited = set()
+        count = 0
+
+        try:
+            children = node.get_children()
+        except Exception:
+            children = []
+
+        for child_id in children:
+            if count >= max_nodes:
+                break
+            try:
+                child_node = self.get_node(child_id)
+                nid = child_node.nodeid.to_string()
+            except Exception:
+                continue
+
+            if nid in visited:
+                continue
+            visited.add(nid)
+            count += 1
+
+            try:
+                display_name = child_node.get_display_name().Text or child_node.get_browse_name().Name or "Unnamed Node"
+            except Exception:
+                display_name = "Unnamed Node"
+
+            try:
+                node_class = child_node.get_node_class().name
+            except Exception:
+                node_class = "Unknown"
+
+            # ¿tiene hijos?
+            has_children = False
+            try:
+                has_children = bool(child_node.get_children())
+            except Exception:
+                has_children = False
+
+            # properties en variables
+            if include_properties:
+                try:
+                    if child_node.get_node_class() == ua.NodeClass.Variable:
+                        has_children = has_children or bool(child_node.get_properties())
+                except Exception:
+                    pass
+
+            node_dict = {
+                "title": display_name,
+                "key": nid,
+                "NodeClass": node_class,
+                "children": [],
+                "has_children": bool(has_children),
+            }
+            out.append(node_dict)
+
+        # Adjuntar properties del nodo si es Variable (como hijos directos)
+        if include_properties:
+            try:
+                if node.get_node_class() == ua.NodeClass.Variable:
+                    for prop_id in node.get_properties():
+                        if count >= max_nodes:
+                            break
+                        prop_node = self.get_node(prop_id)
+                        prop_nid = prop_node.nodeid.to_string()
+                        if prop_nid in visited:
+                            continue
+                        visited.add(prop_nid)
+                        count += 1
+
+                        prop_name = prop_node.get_display_name().Text or prop_node.get_browse_name().Name or "Unnamed Property"
+                        prop_dict = {
+                            "title": prop_name,
+                            "key": prop_nid,
+                            "NodeClass": prop_node.get_node_class().name,
+                            "children": [],
+                            "has_children": False,
+                        }
+                        if include_property_values:
+                            try:
+                                prop_dict["value"] = self._to_jsonable(prop_node.get_value())
+                            except Exception:
+                                prop_dict["value"] = None
+                        out.append(prop_dict)
+            except Exception:
+                pass
+
+        return out
 
     def serialize(self):
         r"""

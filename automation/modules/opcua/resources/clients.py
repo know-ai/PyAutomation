@@ -362,11 +362,72 @@ class OPCUAClientTreeResource(Resource):
         Retrieves the hierarchical node tree structure from a connected OPC UA server.
         """
         try:
-            tree = app.get_opcua_tree(client_name=client_name)
-            return tree, 200
+            # Query params opcionales para soportar diferentes servidores y controlar performance
+            mode = request.args.get("mode", "generic")  # generic | legacy
+            max_depth = int(request.args.get("max_depth", "10"))
+            max_nodes = int(request.args.get("max_nodes", "50000"))
+            include_properties = request.args.get("include_properties", "true").lower() in ("1", "true", "yes")
+            include_property_values = request.args.get("include_property_values", "false").lower() in ("1", "true", "yes")
+
+            tree, status = app.get_opcua_tree(
+                client_name=client_name,
+                mode=mode,
+                max_depth=max_depth,
+                max_nodes=max_nodes,
+                include_properties=include_properties,
+                include_property_values=include_property_values,
+            )
+            return tree, status
         except Exception as e:
             return {
                 'message': f"Failed to retrieve node tree for client '{client_name}': {str(e)}"
+            }, 400
+
+
+@ns.route('/tree_children/<client_name>')
+@api.param('client_name', 'The OPC UA client name')
+class OPCUAClientTreeChildrenResource(Resource):
+
+    @api.doc(security='apikey', description="Retrieves direct children of a given OPC UA node (lazy-loading for the HMI).")
+    @api.response(200, "Success")
+    @api.response(400, "Client not found / invalid request")
+    @Api.token_required(auth=True)
+    def get(self, client_name):
+        """
+        Get OPC UA node children.
+
+        Query params:
+        - node_id (required): NodeId string (e.g. 'ns=2;i=1234')
+        - mode: generic|legacy
+        - max_nodes
+        - include_properties
+        - include_property_values
+        - fallback_to_legacy
+        """
+        try:
+            node_id = request.args.get("node_id")
+            if not node_id:
+                return {"message": "node_id query param is required"}, 400
+
+            mode = request.args.get("mode", "generic")  # generic | legacy
+            max_nodes = int(request.args.get("max_nodes", "5000"))
+            include_properties = request.args.get("include_properties", "true").lower() in ("1", "true", "yes")
+            include_property_values = request.args.get("include_property_values", "false").lower() in ("1", "true", "yes")
+            fallback_to_legacy = request.args.get("fallback_to_legacy", "true").lower() in ("1", "true", "yes")
+
+            children, status = app.get_opcua_tree_children(
+                client_name=client_name,
+                node_id=node_id,
+                mode=mode,
+                max_nodes=max_nodes,
+                include_properties=include_properties,
+                include_property_values=include_property_values,
+                fallback_to_legacy=fallback_to_legacy,
+            )
+            return children, status
+        except Exception as e:
+            return {
+                "message": f"Failed to retrieve node children for client '{client_name}': {str(e)}"
             }, 400
 
 

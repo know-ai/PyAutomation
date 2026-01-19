@@ -16,6 +16,24 @@ export type OpcUaTreeNode = {
   key?: string;
   NodeClass?: string;
   children?: OpcUaTreeNode[];
+  has_children?: boolean;
+  value?: any;
+};
+
+export type OpcUaTreeFetchOptions = {
+  mode?: "generic" | "legacy";
+  max_depth?: number;
+  max_nodes?: number;
+  include_properties?: boolean;
+  include_property_values?: boolean;
+  /**
+   * Timeout por request (ms). Por defecto, el árbol puede tardar más que el timeout global del API (15s).
+   */
+  timeout_ms?: number;
+  /**
+   * Si true, y el modo generic retorna vacío o falla, intenta automáticamente legacy.
+   */
+  fallback_to_legacy?: boolean;
 };
 
 export type OpcUaNodeValue = {
@@ -78,6 +96,8 @@ const normalizeTreeNode = (node: any): OpcUaTreeNode => {
     name: node.name || node.title || "Unnamed",
     namespace: node.namespace || node.key || "",
     NodeClass: node.NodeClass || node.nodeClass || "",
+    has_children: typeof node.has_children === "boolean" ? node.has_children : undefined,
+    value: node.value,
     children: node.children && Array.isArray(node.children) && node.children.length > 0
       ? node.children.map((child: any) => normalizeTreeNode(child))
       : undefined,
@@ -90,8 +110,30 @@ const normalizeTreeNode = (node: any): OpcUaTreeNode => {
  * Obtiene el árbol de nodos de un cliente OPC UA
  */
 export const getClientTree = async (clientName: string): Promise<OpcUaTreeNode[]> => {
+  return getClientTreeWithOptions(clientName);
+};
+
+/**
+ * Obtiene el árbol de nodos de un cliente OPC UA con opciones de browse.
+ * Importante: para servidores grandes, usar max_depth/max_nodes para evitar congelar la UI.
+ */
+export const getClientTreeWithOptions = async (
+  clientName: string,
+  options: OpcUaTreeFetchOptions = {}
+): Promise<OpcUaTreeNode[]> => {
   try {
-    const { data } = await api.get(`/opcua/clients/tree/${encodeURIComponent(clientName)}`);
+    const mode = options.mode ?? "generic";
+    const params = new URLSearchParams();
+    params.set("mode", mode);
+    if (typeof options.max_depth === "number") params.set("max_depth", String(options.max_depth));
+    if (typeof options.max_nodes === "number") params.set("max_nodes", String(options.max_nodes));
+    if (typeof options.include_properties === "boolean") params.set("include_properties", String(options.include_properties));
+    if (typeof options.include_property_values === "boolean") params.set("include_property_values", String(options.include_property_values));
+
+    const qs = params.toString();
+    const url = `/opcua/clients/tree/${encodeURIComponent(clientName)}${qs ? `?${qs}` : ""}`;
+
+    const { data } = await api.get(url, { timeout: options.timeout_ms ?? 60_000 });
     
     // El backend retorna una tupla [objeto, 200] que axios recibe como array
     // Necesitamos extraer el primer elemento si es una tupla
@@ -119,12 +161,59 @@ export const getClientTree = async (clientName: string): Promise<OpcUaTreeNode[]
       return [normalizeTreeNode(treeData)];
     }
     
+    // Si generic no devolvió nada útil, intentar legacy como fallback (si está habilitado)
+    const shouldFallback = options.fallback_to_legacy !== false && mode === "generic";
+    if (shouldFallback) {
+      console.warn("No valid tree structure found (generic). Falling back to legacy. Data:", treeData);
+      return await getClientTreeWithOptions(clientName, { ...options, mode: "legacy", fallback_to_legacy: false });
+    }
+
     console.warn("No valid tree structure found in data:", treeData);
     return [];
   } catch (error) {
+    // fallback a legacy si falla el modo generic
+    const mode = options.mode ?? "generic";
+    const shouldFallback = options.fallback_to_legacy !== false && mode === "generic";
+    if (shouldFallback) {
+      console.warn("Error fetching tree (generic). Falling back to legacy.", error);
+      return await getClientTreeWithOptions(clientName, { ...options, mode: "legacy", fallback_to_legacy: false });
+    }
     console.error("Error fetching tree:", error);
     throw error;
   }
+};
+
+/**
+ * Obtiene los hijos directos de un nodo (lazy-loading) para expandir ramas profundas.
+ */
+export const getClientTreeChildrenWithOptions = async (
+  clientName: string,
+  nodeId: string,
+  options: OpcUaTreeFetchOptions & { max_nodes?: number } = {}
+): Promise<OpcUaTreeNode[]> => {
+  const mode = options.mode ?? "generic";
+  const params = new URLSearchParams();
+  params.set("mode", mode);
+  params.set("node_id", nodeId);
+  if (typeof options.max_nodes === "number") params.set("max_nodes", String(options.max_nodes));
+  if (typeof options.include_properties === "boolean") params.set("include_properties", String(options.include_properties));
+  if (typeof options.include_property_values === "boolean") params.set("include_property_values", String(options.include_property_values));
+  if (typeof options.fallback_to_legacy === "boolean") params.set("fallback_to_legacy", String(options.fallback_to_legacy));
+
+  const qs = params.toString();
+  const url = `/opcua/clients/tree_children/${encodeURIComponent(clientName)}?${qs}`;
+  const { data } = await api.get(url, { timeout: options.timeout_ms ?? 60_000 });
+
+  let payload = data;
+  if (Array.isArray(data) && data.length === 2 && typeof data[1] === "number") {
+    payload = data[0];
+  }
+
+  const children = payload?.children;
+  if (Array.isArray(children)) {
+    return children.map(normalizeTreeNode);
+  }
+  return [];
 };
 
 /**

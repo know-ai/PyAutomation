@@ -1963,7 +1963,16 @@ class PyAutomation(Singleton):
         return self.opcua_client_manager.get_node_attributes(client_name=client_name, namespaces=namespaces)
 
     @logging_error_handler
-    def get_opcua_tree(self, client_name:str):
+    def get_opcua_tree(
+        self,
+        client_name: str,
+        *,
+        mode: str = "generic",
+        max_depth: int = 10,
+        max_nodes: int = 50_000,
+        include_properties: bool = True,
+        include_property_values: bool = False,
+    ):
         r"""
         Retrieves the hierarchical node tree structure from a connected OPC UA server.
 
@@ -1987,7 +1996,40 @@ class PyAutomation(Singleton):
 
         ```
         """
-        return self.opcua_client_manager.get_opcua_tree(client_name=client_name)
+        return self.opcua_client_manager.get_opcua_tree(
+            client_name=client_name,
+            mode=mode,
+            max_depth=max_depth,
+            max_nodes=max_nodes,
+            include_properties=include_properties,
+            include_property_values=include_property_values,
+        )
+
+    @logging_error_handler
+    def get_opcua_tree_children(
+        self,
+        client_name: str,
+        node_id: str,
+        *,
+        mode: str = "generic",
+        max_nodes: int = 5_000,
+        include_properties: bool = True,
+        include_property_values: bool = False,
+        fallback_to_legacy: bool = True,
+    ):
+        """
+        Devuelve los hijos directos de un NodeId (lazy-loading), para expandir carpetas profundas
+        desde el HMI sin pedir todo el árbol.
+        """
+        return self.opcua_client_manager.get_opcua_tree_children(
+            client_name=client_name,
+            node_id=node_id,
+            mode=mode,
+            max_nodes=max_nodes,
+            include_properties=include_properties,
+            include_property_values=include_property_values,
+            fallback_to_legacy=fallback_to_legacy,
+        )
 
     @logging_error_handler
     @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=(bool, str|dict))
