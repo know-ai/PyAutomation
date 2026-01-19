@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, memo } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getTags, createTag, updateTag, deleteTag, getVariables, getUnitsByVariable, type Tag, type TagsResponse } from "../services/tags";
-import { listClients, getClientVariablesWithOptions, type OpcUaClient } from "../services/opcua";
+import { listClients, getClientVariablesWithOptions, getNodeAttributes, type OpcUaClient } from "../services/opcua";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { showToast } from "../utils/toast";
@@ -151,6 +151,8 @@ export function Tags() {
   const [opcuaClientAddresses, setOpcuaClientAddresses] = useState<Record<string, string>>({});
   const [opcuaClientNamesByAddress, setOpcuaClientNamesByAddress] = useState<Record<string, string>>({});
   const [opcuaNodes, setOpcuaNodes] = useState<Array<{ namespace: string; displayName: string }>>([]);
+  const [opcuaNodesByClient, setOpcuaNodesByClient] = useState<Record<string, Array<{ namespace: string; displayName: string }>>>({});
+  const [opcuaNodeFilter, setOpcuaNodeFilter] = useState<string>("");
   const [opcuaNodeDisplayNames, setOpcuaNodeDisplayNames] = useState<Record<string, string>>({});
   const [loadingClients, setLoadingClients] = useState(false);
   const [loadingNodes, setLoadingNodes] = useState(false);
@@ -240,20 +242,20 @@ export function Tags() {
       const displayNamesMap: Record<string, string> = {};
       for (const clientName of uniqueClientNames) {
         try {
-          const nodes = await getClientVariablesWithOptions(clientName, {
-            mode: "generic",
-            max_depth: 25,
-            max_nodes: 50_000,
-            timeout_ms: 60_000,
-            fallback_to_legacy: true,
-          });
-          nodes.forEach((node) => {
-            if (node.namespace && node.displayName) {
-              displayNamesMap[node.namespace] = node.displayName;
-            }
+          // Mucho más rápido que browse: leer atributos SOLO de los namespaces usados.
+          const namespaces = Object.entries(namespaceToClientName)
+            .filter(([_ns, c]) => c === clientName)
+            .map(([ns]) => ns);
+          if (namespaces.length === 0) continue;
+
+          const attrs = await getNodeAttributes(clientName, namespaces);
+          attrs.forEach((a: any) => {
+            const ns = a?.Namespace ?? a?.namespace;
+            const dn = a?.DisplayName ?? a?.displayName ?? a?.display_name;
+            if (ns && dn) displayNamesMap[String(ns)] = String(dn);
           });
         } catch (e) {
-          console.error(`Error loading nodes for client ${clientName}:`, e);
+          console.error(`Error loading node attributes for client ${clientName}:`, e);
         }
       }
       setOpcuaNodeDisplayNames((prev) => ({ ...prev, ...displayNamesMap }));
@@ -403,14 +405,22 @@ export function Tags() {
     }
     setLoadingNodes(true);
     try {
-      const nodes = await getClientVariablesWithOptions(clientName, {
-        mode: "generic",
-        max_depth: 25,
-        max_nodes: 50_000,
-        timeout_ms: 60_000,
-        fallback_to_legacy: true,
-      });
+      // Cache local por cliente para no reconsultar cada vez que abres el modal.
+      const cached = opcuaNodesByClient[clientName];
+      const nodes = cached
+        ? cached
+        : await getClientVariablesWithOptions(clientName, {
+            mode: "generic",
+            max_depth: 25,
+            max_nodes: 50_000,
+            timeout_ms: 60_000,
+            fallback_to_legacy: true,
+          });
+      if (!cached) {
+        setOpcuaNodesByClient((prev) => ({ ...prev, [clientName]: nodes }));
+      }
       setOpcuaNodes(nodes);
+      setOpcuaNodeFilter(""); // reset filtro al cambiar cliente
       // Crear un mapa de namespace -> displayName para búsqueda rápida
       const displayNamesMap: Record<string, string> = {};
       nodes.forEach((node) => {
@@ -421,7 +431,21 @@ export function Tags() {
       setOpcuaNodeDisplayNames((prev) => ({ ...prev, ...displayNamesMap }));
       // Si el namespace actual no está en los disponibles, limpiarlo
       if (formData.node_namespace && !nodes.some((n) => n.namespace === formData.node_namespace)) {
-        setFormData((prev) => ({ ...prev, node_namespace: "" }));
+        // En vez de borrar inmediatamente, intentamos resolver displayName del enlazado (por si quedó fuera del max_nodes)
+        try {
+          const attrs = await getNodeAttributes(clientName, [formData.node_namespace]);
+          const a: any = attrs?.[0];
+          const dn = a?.DisplayName ?? a?.displayName ?? a?.display_name;
+          if (dn) {
+            const single = { namespace: formData.node_namespace, displayName: String(dn) };
+            setOpcuaNodes((prev) => (prev.some((p) => p.namespace === single.namespace) ? prev : [single, ...prev]));
+            setOpcuaNodeDisplayNames((prev) => ({ ...prev, [single.namespace]: single.displayName }));
+          } else {
+            setFormData((prev) => ({ ...prev, node_namespace: "" }));
+          }
+        } catch {
+          setFormData((prev) => ({ ...prev, node_namespace: "" }));
+        }
       }
     } catch (e: any) {
       console.error("Error loading OPC UA nodes:", e);
@@ -430,6 +454,14 @@ export function Tags() {
       setLoadingNodes(false);
     }
   };
+
+  const filteredOpcuaNodes = useMemo(() => {
+    if (!opcuaNodeFilter.trim()) return opcuaNodes.slice(0, 5000);
+    const q = opcuaNodeFilter.trim().toLowerCase();
+    return opcuaNodes
+      .filter((n) => (n.displayName || "").toLowerCase().includes(q) || (n.namespace || "").toLowerCase().includes(q))
+      .slice(0, 5000);
+  }, [opcuaNodes, opcuaNodeFilter]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.pages) {
@@ -1433,6 +1465,14 @@ export function Tags() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">{t("tables.nodeNamespace")}</label>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm mb-1"
+                          placeholder={t("common.filter")}
+                          value={opcuaNodeFilter}
+                          onChange={(e) => setOpcuaNodeFilter(e.target.value)}
+                          disabled={!formData.opcua_address || loadingNodes || opcuaNodes.length === 0}
+                        />
                         <select
                           className="form-select"
                           value={formData.node_namespace}
@@ -1452,7 +1492,7 @@ export function Tags() {
                               ? t("tags.noNodesAvailable")
                               : t("tags.selectNode")}
                           </option>
-                          {opcuaNodes.map((node) => (
+                          {filteredOpcuaNodes.map((node) => (
                             <option key={node.namespace} value={node.namespace}>
                               {node.displayName || node.namespace}
                             </option>
@@ -1869,6 +1909,14 @@ export function Tags() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">{t("tables.nodeNamespace")}</label>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm mb-1"
+                          placeholder={t("common.filter")}
+                          value={opcuaNodeFilter}
+                          onChange={(e) => setOpcuaNodeFilter(e.target.value)}
+                          disabled={!formData.opcua_address || loadingNodes || opcuaNodes.length === 0}
+                        />
                         <select
                           className="form-select"
                           value={formData.node_namespace}
@@ -1888,7 +1936,7 @@ export function Tags() {
                               ? t("tags.noNodesAvailable")
                               : t("tags.selectNode")}
                           </option>
-                          {opcuaNodes.map((node) => (
+                          {filteredOpcuaNodes.map((node) => (
                             <option key={node.namespace} value={node.namespace}>
                               {node.displayName || node.namespace}
                             </option>

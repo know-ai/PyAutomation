@@ -1,5 +1,6 @@
 from datetime import datetime
 import logging
+import time
 from ..utils import _colorize_message
 from ..opcua.models import Client
 from opcua import ua
@@ -26,6 +27,10 @@ class OPCUAClientManager:
         self.logger = DataLoggerEngine()
         self.cvt = CVTEngine()
         self.das = DAS()
+        # Cache in-memory para evitar re-browse costoso al abrir repetidamente dropdowns de Tags
+        # key: (client_name, mode, max_depth, max_nodes) -> {"ts": float, "data": list}
+        self._opcua_variables_cache = {}
+        self._opcua_variables_cache_ttl_s = 300
 
     @logging_error_handler
     def discovery(self, host:str='127.0.0.1', port:int=4840)->list[dict]:
@@ -657,6 +662,12 @@ class OPCUAClientManager:
         mode_l = (mode or "generic").strip().lower()
 
         def _generic():
+            cache_key = (client_name, mode_l, int(max_depth), int(max_nodes))
+            now = time.time()
+            cached = self._opcua_variables_cache.get(cache_key)
+            if cached and (now - cached.get("ts", 0)) < self._opcua_variables_cache_ttl_s:
+                return {"data": cached.get("data", [])}, 200
+
             objects_nodeid = client.get_objects_node()
             objects_node = client.get_node(objects_nodeid)
             variables = client.browse_variables_generic(
@@ -664,6 +675,19 @@ class OPCUAClientManager:
                 max_depth=int(max_depth),
                 max_nodes=int(max_nodes),
             )
+            # guardar cache (evitar crecimiento infinito)
+            self._opcua_variables_cache[cache_key] = {"ts": now, "data": variables}
+            if len(self._opcua_variables_cache) > 12:
+                # remover el más viejo
+                oldest_key = None
+                oldest_ts = None
+                for k, v in self._opcua_variables_cache.items():
+                    ts = v.get("ts", 0)
+                    if oldest_ts is None or ts < oldest_ts:
+                        oldest_ts = ts
+                        oldest_key = k
+                if oldest_key is not None:
+                    self._opcua_variables_cache.pop(oldest_key, None)
             return {"data": variables}, 200
 
         if mode_l == "generic":

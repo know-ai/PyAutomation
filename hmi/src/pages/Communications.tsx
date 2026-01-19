@@ -64,7 +64,9 @@ function TreeNode({
   onToggleSelect?: (namespace: string) => void;
   allTreeNodes?: OpcUaTreeNode[];
 }) {
-  const [isExpanded, setIsExpanded] = useState(level < 2); // Expandir los primeros 2 niveles por defecto
+  // Para máxima fluidez: no auto-expandir (evita disparar múltiples cargas de hijos).
+  // El usuario expande manualmente y ahí hacemos lazy-loading.
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isLoadingChildren, setIsLoadingChildren] = useState(false);
   
   // Extraer nombre - priorizar name, luego title, evitar strings vacíos
@@ -545,11 +547,11 @@ export function Communications() {
       // pedimos un árbol acotado y dejamos fallback automático a legacy si es necesario.
       const treeNodes = await getClientTreeWithOptions(clientName, {
         mode: "generic",
-        // Defaults conservadores para que el HMI renderice rápido incluso en servers muy grandes.
-        // Si necesitas más, lo haremos “on-demand” (carga al expandir).
-        max_depth: 6,
-        max_nodes: 12000,
-        include_properties: true,
+        // Para máxima fluidez: cargar SOLO la primera profundidad, y luego lazy-load al expandir.
+        max_depth: 1,
+        max_nodes: 5000,
+        // Para el explorer no necesitamos properties (EURange/etc.) porque no se enlazan como tags.
+        include_properties: false,
         include_property_values: false,
         timeout_ms: 60_000,
         fallback_to_legacy: true,
