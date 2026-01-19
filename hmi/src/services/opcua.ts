@@ -69,6 +69,11 @@ export type OpcUaNodeAttribute = {
   [key: string]: any; // Permitir propiedades adicionales
 };
 
+export type OpcUaVariableRef = {
+  namespace: string;
+  displayName: string;
+};
+
 /**
  * Lista todos los clientes OPC UA configurados
  */
@@ -214,6 +219,47 @@ export const getClientTreeChildrenWithOptions = async (
     return children.map(normalizeTreeNode);
   }
   return [];
+};
+
+/**
+ * Obtiene SOLO variables (NodeClass=Variable) del servidor OPC UA en forma plana,
+ * para dropdowns (Tags) sin traer todo el árbol.
+ */
+export const getClientVariablesWithOptions = async (
+  clientName: string,
+  options: {
+    mode?: "generic" | "legacy";
+    max_depth?: number;
+    max_nodes?: number;
+    timeout_ms?: number;
+    fallback_to_legacy?: boolean;
+  } = {}
+): Promise<OpcUaVariableRef[]> => {
+  const mode = options.mode ?? "generic";
+  const params = new URLSearchParams();
+  params.set("mode", mode);
+  if (typeof options.max_depth === "number") params.set("max_depth", String(options.max_depth));
+  if (typeof options.max_nodes === "number") params.set("max_nodes", String(options.max_nodes));
+  if (typeof options.fallback_to_legacy === "boolean") params.set("fallback_to_legacy", String(options.fallback_to_legacy));
+
+  const qs = params.toString();
+  const url = `/opcua/clients/variables/${encodeURIComponent(clientName)}${qs ? `?${qs}` : ""}`;
+  const { data } = await api.get(url, { timeout: options.timeout_ms ?? 60_000 });
+
+  let payload = data;
+  if (Array.isArray(data) && data.length === 2 && typeof data[1] === "number") {
+    payload = data[0];
+  }
+
+  const items = payload?.data;
+  if (!Array.isArray(items)) return [];
+
+  return items
+    .map((it: any) => ({
+      namespace: String(it?.namespace ?? ""),
+      displayName: String(it?.displayName ?? it?.display_name ?? ""),
+    }))
+    .filter((v: OpcUaVariableRef) => v.namespace && v.displayName);
 };
 
 /**

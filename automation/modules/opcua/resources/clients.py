@@ -431,6 +431,44 @@ class OPCUAClientTreeChildrenResource(Resource):
             }, 400
 
 
+@ns.route('/variables/<client_name>')
+@api.param('client_name', 'The OPC UA client name')
+class OPCUAClientVariablesResource(Resource):
+
+    @api.doc(security='apikey', description="Retrieves ONLY Variable nodes (flat list) for dropdowns/tags.")
+    @api.response(200, "Success")
+    @api.response(400, "Client not found / invalid request")
+    @Api.token_required(auth=True)
+    def get(self, client_name):
+        """
+        Get OPC UA variables (flat list).
+
+        Query params:
+        - mode: generic|legacy
+        - max_depth
+        - max_nodes
+        - fallback_to_legacy
+        """
+        try:
+            mode = request.args.get("mode", "generic")
+            max_depth = int(request.args.get("max_depth", "20"))
+            max_nodes = int(request.args.get("max_nodes", "50000"))
+            fallback_to_legacy = request.args.get("fallback_to_legacy", "true").lower() in ("1", "true", "yes")
+
+            data, status = app.get_opcua_variables(
+                client_name=client_name,
+                mode=mode,
+                max_depth=max_depth,
+                max_nodes=max_nodes,
+                fallback_to_legacy=fallback_to_legacy,
+            )
+            return data, status
+        except Exception as e:
+            return {
+                "message": f"Failed to retrieve variables for client '{client_name}': {str(e)}"
+            }, 400
+
+
 @ns.route('/attrs/<client_name>')
 @api.param('client_name', 'The OPC UA client name')
 class OPCUAClientAttributesResource(Resource):

@@ -633,6 +633,54 @@ class OPCUAClientManager:
                 return {"children": []}, 500
 
     @logging_error_handler
+    def get_opcua_variables(
+        self,
+        client_name: str,
+        *,
+        mode: str = "generic",
+        max_depth: int = 20,
+        max_nodes: int = 50_000,
+        fallback_to_legacy: bool = True,
+    ):
+        """
+        Devuelve SOLO Variables del servidor OPC UA para ser enlazadas a Tags.
+
+        Retorna:
+        - {"data": [{"namespace": "...", "displayName": "..."}, ...]}, status_code
+        """
+        client = self.get(client_name=client_name)
+        if not client:
+            return {"data": []}, 404
+        if not client.is_connected():
+            return {"data": []}, 400
+
+        mode_l = (mode or "generic").strip().lower()
+
+        def _generic():
+            objects_nodeid = client.get_objects_node()
+            objects_node = client.get_node(objects_nodeid)
+            variables = client.browse_variables_generic(
+                objects_node,
+                max_depth=int(max_depth),
+                max_nodes=int(max_nodes),
+            )
+            return {"data": variables}, 200
+
+        if mode_l == "generic":
+            try:
+                return _generic()
+            except Exception:
+                if not fallback_to_legacy:
+                    return {"data": []}, 500
+                mode_l = "legacy"
+
+        # Legacy: mejor esfuerzo. Si falla, reusar generic.
+        try:
+            return _generic()
+        except Exception:
+            return {"data": []}, 500
+
+    @logging_error_handler
     def get_node_values(self, client_name:str, namespaces:list)->list:
         r"""
         Reads values from multiple nodes.

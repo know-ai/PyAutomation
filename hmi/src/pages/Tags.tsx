@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, memo } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getTags, createTag, updateTag, deleteTag, getVariables, getUnitsByVariable, type Tag, type TagsResponse } from "../services/tags";
-import { listClients, getClientTree, type OpcUaClient, type OpcUaTreeNode } from "../services/opcua";
+import { listClients, getClientVariablesWithOptions, type OpcUaClient } from "../services/opcua";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { showToast } from "../utils/toast";
@@ -240,23 +240,13 @@ export function Tags() {
       const displayNamesMap: Record<string, string> = {};
       for (const clientName of uniqueClientNames) {
         try {
-          const tree = await getClientTree(clientName);
-          const extractNodes = (nodes: OpcUaTreeNode[]): Array<{ namespace: string; displayName: string }> => {
-            const result: Array<{ namespace: string; displayName: string }> = [];
-            for (const node of nodes) {
-              if (node.namespace && node.name && node.NodeClass === "Variable") {
-                result.push({
-                  namespace: node.namespace,
-                  displayName: node.name,
-                });
-              }
-              if (node.children && node.children.length > 0) {
-                result.push(...extractNodes(node.children));
-              }
-            }
-            return result;
-          };
-          const nodes = extractNodes(tree);
+          const nodes = await getClientVariablesWithOptions(clientName, {
+            mode: "generic",
+            max_depth: 25,
+            max_nodes: 50_000,
+            timeout_ms: 60_000,
+            fallback_to_legacy: true,
+          });
           nodes.forEach((node) => {
             if (node.namespace && node.displayName) {
               displayNamesMap[node.namespace] = node.displayName;
@@ -413,26 +403,13 @@ export function Tags() {
     }
     setLoadingNodes(true);
     try {
-      const tree = await getClientTree(clientName);
-      // Extraer solo los nodos de tipo Variable del árbol recursivamente
-      const extractNodes = (nodes: OpcUaTreeNode[]): Array<{ namespace: string; displayName: string }> => {
-        const result: Array<{ namespace: string; displayName: string }> = [];
-        for (const node of nodes) {
-          // Solo incluir nodos de tipo Variable
-          if (node.namespace && node.name && node.NodeClass === "Variable") {
-            result.push({
-              namespace: node.namespace,
-              displayName: node.name,
-            });
-          }
-          // Continuar buscando en los hijos recursivamente
-          if (node.children && node.children.length > 0) {
-            result.push(...extractNodes(node.children));
-          }
-        }
-        return result;
-      };
-      const nodes = extractNodes(tree);
+      const nodes = await getClientVariablesWithOptions(clientName, {
+        mode: "generic",
+        max_depth: 25,
+        max_nodes: 50_000,
+        timeout_ms: 60_000,
+        fallback_to_legacy: true,
+      });
       setOpcuaNodes(nodes);
       // Crear un mapa de namespace -> displayName para búsqueda rápida
       const displayNamesMap: Record<string, string> = {};

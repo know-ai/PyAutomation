@@ -2032,6 +2032,27 @@ class PyAutomation(Singleton):
         )
 
     @logging_error_handler
+    def get_opcua_variables(
+        self,
+        client_name: str,
+        *,
+        mode: str = "generic",
+        max_depth: int = 20,
+        max_nodes: int = 50_000,
+        fallback_to_legacy: bool = True,
+    ):
+        """
+        Devuelve SOLO Variables del servidor OPC UA (para dropdowns de Tags).
+        """
+        return self.opcua_client_manager.get_opcua_variables(
+            client_name=client_name,
+            mode=mode,
+            max_depth=max_depth,
+            max_nodes=max_nodes,
+            fallback_to_legacy=fallback_to_legacy,
+        )
+
+    @logging_error_handler
     @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=(bool, str|dict))
     def add_opcua_client(self, client_name:str, host:str="127.0.0.1", port:int=4840):
         r"""

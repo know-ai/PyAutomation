@@ -897,6 +897,99 @@ class Client(OPCClient):
 
         return out
 
+    def browse_variables_generic(
+        self,
+        node,
+        *,
+        max_depth: int = 20,
+        max_nodes: int = 50_000,
+        _depth: int = 0,
+        _visited_nodeids=None,
+        _count=None,
+    ):
+        """
+        Recorre el address space y devuelve SOLO nodos de tipo Variable en forma plana:
+        [{ "namespace": "ns=2;i=1234", "displayName": "TagName" }, ...]
+
+        Importante:
+        - No retorna objetos/carpetas.
+        - Evita incluir "properties" (EURange/EngineeringUnits/etc.) porque NO son tags a enlazar:
+          cuando encuentra una Variable, la agrega y NO sigue bajando por debajo de ella.
+        - Protecciones: max_depth y max_nodes.
+        """
+        if _visited_nodeids is None:
+            _visited_nodeids = set()
+        if _count is None:
+            _count = {"n": 0}
+
+        if not self.is_connected():
+            return []
+        if _depth > max_depth:
+            return []
+        if _count["n"] >= max_nodes:
+            return []
+
+        results = []
+
+        try:
+            children = node.get_children()
+        except Exception:
+            return []
+
+        for child_id in children:
+            if _count["n"] >= max_nodes:
+                break
+
+            try:
+                child_node = self.get_node(child_id)
+                nid = child_node.nodeid.to_string()
+            except Exception:
+                continue
+
+            if nid in _visited_nodeids:
+                continue
+            _visited_nodeids.add(nid)
+            _count["n"] += 1
+
+            try:
+                node_class = child_node.get_node_class()
+            except Exception:
+                node_class = None
+
+            # Capturar solo variables
+            if node_class == ua.NodeClass.Variable:
+                try:
+                    display_name = (
+                        child_node.get_display_name().Text
+                        or child_node.get_browse_name().Name
+                        or "Unnamed"
+                    )
+                except Exception:
+                    display_name = "Unnamed"
+
+                results.append({"namespace": nid, "displayName": display_name})
+                # NO bajar debajo de variables para evitar properties/metadata
+                continue
+
+            # Para objetos/carpetas, seguir recorriendo
+            if _depth < max_depth:
+                try:
+                    if child_node.get_children():
+                        results.extend(
+                            self.browse_variables_generic(
+                                child_node,
+                                max_depth=max_depth,
+                                max_nodes=max_nodes,
+                                _depth=_depth + 1,
+                                _visited_nodeids=_visited_nodeids,
+                                _count=_count,
+                            )
+                        )
+                except Exception:
+                    continue
+
+        return results
+
     def serialize(self):
         r"""
         Documentation here
