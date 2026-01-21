@@ -280,6 +280,10 @@ export function MachinesDetailed() {
 
   // Función helper para mostrar modal de confirmación de buffer_size
   const handleUpdateBufferSize = (machineName: string) => {
+    // Para PFM/Observer el Buffer Size no debe ser editable
+    const isBufferSizeLocked = ["pfm", "observer"].includes(String(machineName).toLowerCase());
+    if (isBufferSizeLocked) return;
+
     const value = parseInt(bufferSizeValue[machineName], 10);
     if (isNaN(value)) {
       showToast(t("machines.updateAttributeError"), "error");
@@ -1196,6 +1200,9 @@ export function MachinesDetailed() {
             <div className="tab-content">
               {machineNames.map((machineName) => {
                 const machine = machines.find((m) => m.name === machineName);
+                const isBufferSizeLocked = ["pfm", "observer"].includes(
+                  String(machineName).toLowerCase()
+                );
                 return (
                   <div
                     key={machineName}
@@ -1600,17 +1607,19 @@ export function MachinesDetailed() {
                                     value={bufferSizeValue[machineName] || ""}
                                     onChange={(e) => setBufferSizeValue((prev) => ({ ...prev, [machineName]: e.target.value }))}
                                     onKeyDown={(e) => {
+                                      if (isBufferSizeLocked) return;
                                       if (e.key === "Enter") {
                                         e.preventDefault();
                                         handleUpdateBufferSize(machineName);
                                       }
                                     }}
                                     onBlur={() => {
+                                      if (isBufferSizeLocked) return;
                                       if (bufferSizeValue[machineName] && bufferSizeValue[machineName] !== "") {
                                         handleUpdateBufferSize(machineName);
                                       }
                                     }}
-                                    disabled={updatingAttribute[machineName] === "buffer_size"}
+                                    disabled={updatingAttribute[machineName] === "buffer_size" || isBufferSizeLocked}
                                   />
                                   {updatingAttribute[machineName] === "buffer_size" && (
                                     <div className="spinner-border spinner-border-sm text-primary" role="status">

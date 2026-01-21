@@ -849,8 +849,8 @@ class StateMachineCore(StateMachine):
                 value.change_unit(unit=process_type.tag.display_unit)
             process_type.value = value
             self.data_timestamp = timestamp
-            if hasattr(self, "verify_inputs"):
-                self.verify_inputs()
+            # if hasattr(self, "verify_inputs"):
+            #     self.verify_inputs()
 
     @logging_error_handler
     def attach(self, machine, tag:Tag):
