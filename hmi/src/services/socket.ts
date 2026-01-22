@@ -11,6 +11,8 @@ class SocketService {
   private isConnected: boolean = false;
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = Infinity;
+  private isConnecting: boolean = false;
+  private lastToken: string | null = null;
   private tagCallbacks: Array<(tag: Tag) => void> = [];
   private alarmCallbacks: Array<(alarm: Alarm) => void> = [];
   private machineCallbacks: Array<(machine: Machine) => void> = [];
@@ -39,16 +41,39 @@ class SocketService {
   }
 
   connect(): void {
-    if (this.socket?.connected) {
-      return;
-    }
-
     const token = this.getToken();
     if (!token) {
       return;
     }
 
+    // Si ya tenemos un socket (aunque esté conectando), no crear otro.
+    // Si el token cambió, reconectar con credenciales nuevas.
+    if (this.socket) {
+      if (this.lastToken !== token) {
+        try {
+          // socket.io-client (browser) usa `auth` para el handshake
+          (this.socket as any).auth = { token };
+        } catch (_e) {
+          // ignore
+        }
+        this.lastToken = token;
+        this.socket.disconnect();
+        this.isConnecting = true;
+        this.socket.connect();
+      }
+      // Si existe pero quedó desconectado (p.ej. "io server disconnect"), intentar reconectar.
+      if (!this.socket.connected && !this.isConnecting) {
+        this.isConnecting = true;
+        this.socket.connect();
+      }
+      return;
+    }
+
+    this.lastToken = token;
+    this.isConnecting = true;
+
     this.socket = io(SOCKET_IO_URL, {
+      autoConnect: false,
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
@@ -58,23 +83,26 @@ class SocketService {
       auth: {
         token: token,
       },
-      extraHeaders: {
-        Authorization: `Bearer ${token}`,
-      },
     });
 
     this.socket.on("connect", () => {
       this.isConnected = true;
+      this.isConnecting = false;
       this.reconnectAttempts = 0;
     });
 
     this.socket.on("disconnect", () => {
       this.isConnected = false;
+      this.isConnecting = false;
     });
 
     this.socket.on("connect_error", () => {
       this.reconnectAttempts++;
+      this.isConnecting = false;
     });
+
+    // Conectar explícitamente (evita que se creen conexiones en momentos de reload/navegación)
+    this.socket.connect();
   }
 
   disconnect(): void {
@@ -82,6 +110,7 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
       this.isConnected = false;
+      this.isConnecting = false;
     }
   }
 

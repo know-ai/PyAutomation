@@ -1,5 +1,11 @@
 import doctest
+import os
 from unittest import TestLoader, TestSuite, TextTestRunner
+
+# En tests/doctests evitamos output a stdout desde automation/core.py (prints coloreados),
+# porque rompe las aserciones de doctest ("Expected nothing").
+os.environ.setdefault("AUTOMATION_CONSOLE_LOGS", "0")
+
 from automation.tests.test_user import TestUsers
 from automation.tests.test_core import TestCore
 from automation.tests.test_unit import TestConversions
@@ -61,6 +67,10 @@ if __name__=='__main__':
 
     try:
         result = runner.run(unittests)
+        # Importante: algunos tests/unit tests pueden dejar threads/tareas en background
+        # que siguen imprimiendo logs a stdout. Eso rompe los doctests (capturan stdout).
+        # Detenemos la app antes de ejecutar doctests para evitar "ruido" no determinista.
+        app.safe_stop()
         
         doctest_failures = 0
         for _doctest in doctests:

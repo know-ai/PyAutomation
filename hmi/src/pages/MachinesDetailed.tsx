@@ -190,13 +190,8 @@ export function MachinesDetailed() {
         }
         return prev;
       });
-      // Resetear valores de atributos cuando cambia el tab (se inicializarán cuando se carguen los detalles)
-      setThresholdValue((prev) => ({ ...prev, [activeTab]: "" }));
-      setBufferSizeValue((prev) => ({ ...prev, [activeTab]: "" }));
-      setOnDelayValue((prev) => ({ ...prev, [activeTab]: "" }));
-      setOriginalThresholdValue((prev) => ({ ...prev, [activeTab]: null }));
-      setOriginalBufferSizeValue((prev) => ({ ...prev, [activeTab]: null }));
-      setOriginalOnDelayValue((prev) => ({ ...prev, [activeTab]: null }));
+      // Nota: NO reseteamos valores de atributos aquí.
+      // Mantener los valores por máquina evita el "flash" de placeholders al cambiar de tab.
     }
   }, [activeTab]);
 
@@ -522,8 +517,6 @@ export function MachinesDetailed() {
         return;
       }
 
-      console.log("Flushing property updates:", Array.from(pendingPropertyUpdatesRef.current.entries()));
-
       // Aplicar todas las actualizaciones acumuladas
       setMachineDetails((prev) => {
         const updated = { ...prev };
@@ -539,8 +532,6 @@ export function MachinesDetailed() {
             
             // Aplicar cada actualización de propiedad
             Object.entries(propertyUpdates).forEach(([propertyName, propertyValue]) => {
-              console.log(`Updating property ${propertyName} with value:`, propertyValue);
-              
               // 1. Actualizar en process_variables si existe (para variables de proceso como leak, leak_likelihood, etc.)
               // Actualizar tag.value dentro de process_variables ya que ese es el valor que se muestra
               if (currentDetails.process_variables && typeof currentDetails.process_variables === "object") {
@@ -566,7 +557,6 @@ export function MachinesDetailed() {
                       ...currentDetails.process_variables,
                       [propertyName]: updatedProcessVar,
                     };
-                    console.log(`Updated process_variables[${propertyName}].value and tag.value to:`, propertyValue);
                   }
                 }
               }
@@ -584,21 +574,18 @@ export function MachinesDetailed() {
                       value: propertyValue,
                     },
                   };
-                  console.log(`Updated serialization[${propertyName}].value to:`, propertyValue);
                 } else {
                   // Es un valor simple, actualizar directamente
                   currentDetails.serialization = {
                     ...currentDetails.serialization,
                     [propertyName]: propertyValue,
                   };
-                  console.log(`Updated serialization[${propertyName}] to:`, propertyValue);
                 }
               }
               
               // 3. Actualizar en el nivel raíz si existe
               if (propertyName in currentDetails) {
                 currentDetails[propertyName] = propertyValue;
-                console.log(`Updated root level[${propertyName}] to:`, propertyValue);
               }
             });
 
@@ -622,10 +609,8 @@ export function MachinesDetailed() {
     const cleanup = socketService.onMachinePropertyUpdate((data) => {
       // data tiene el formato: { machineName: { propertyName: propertyValue } }
       // Por ejemplo: { "LDS": { "leak": 0.5 } } o { "NPW": { "state": "running" } }
-      console.log("On machine property update received:", data);
       
       Object.entries(data).forEach(([machineName, propertyUpdates]) => {
-        console.log(`Processing updates for machine ${machineName}:`, propertyUpdates);
         // Usar una función de actualización para acceder al estado actual sin depender de él
         setMachineDetails((prev) => {
           // Solo procesar si esta máquina está en nuestros detalles cargados
@@ -669,8 +654,6 @@ export function MachinesDetailed() {
         return;
       }
 
-      console.log("Flushing machine updates:", Array.from(pendingMachineUpdatesRef.current.keys()));
-
       // Aplicar todas las actualizaciones acumuladas
       setMachineDetails((prev) => {
         const updated = { ...prev };
@@ -697,7 +680,6 @@ export function MachinesDetailed() {
                 buffer_size: updatedMachine.buffer_size,
                 buffer_roll_type: updatedMachine.buffer_roll_type,
               };
-              console.log(`Updated machine ${machineName} state to:`, updatedMachine.state);
             }
             
             updated[machineName] = currentDetails;
@@ -719,7 +701,6 @@ export function MachinesDetailed() {
     // Suscribirse a actualizaciones completas de máquinas
     const cleanup = socketService.onMachineUpdate((machine: Machine) => {
       // machine es un objeto Machine completo con toda la información
-      console.log("On machine update received:", machine);
       
       if (machine.name) {
         // Usar una función de actualización para acceder al estado actual sin depender de él
@@ -755,8 +736,6 @@ export function MachinesDetailed() {
       if (pendingTagUpdatesRef.current.size === 0) {
         return;
       }
-
-      console.log("Flushing tag updates:", Array.from(pendingTagUpdatesRef.current.keys()));
 
       // Aplicar todas las actualizaciones acumuladas
       setMachineDetails((prev) => {
@@ -813,10 +792,6 @@ export function MachinesDetailed() {
                       [varKey]: updatedProcessVar,
                     },
                   };
-
-                  console.log(
-                    `Updated process_variable ${varKey} in machine ${machineName} with tag ${updatedTag.name || tagId}`
-                  );
                 }
               }
             });
@@ -889,7 +864,6 @@ export function MachinesDetailed() {
     // Suscribirse a actualizaciones de tags
     const cleanup = socketService.onTagUpdate((tag: Tag) => {
       // tag es un objeto Tag completo con toda la información
-      console.log("On tag update received:", tag);
 
       if (tag.id || tag.name) {
         // Usar id como clave principal, o name como fallback

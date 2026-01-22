@@ -183,18 +183,28 @@ class Machine(Singleton):
                         machine.criticity.value = config[machine.name.value]["criticity"]
                         machine.priority.value = config[machine.name.value]["priority"]
                         machine.identifier.value = config[machine.name.value]['identifier']
-                        if config[machine.name.value]['on_delay']:
-                            machine.on_delay.value = config[machine.name.value]['on_delay']
-                        if config[machine.name.value]['threshold']:
-                            threshold_value = config[machine.name.value]['threshold']
+                        # Flags para que módulos (p.ej. NPW/Observer) puedan evitar sobreescribir
+                        # parámetros que vienen de BD con defaults del modelo/config.
+                        on_delay_db = config[machine.name.value].get('on_delay')
+                        if on_delay_db is not None:
+                            machine.on_delay.value = on_delay_db
+                            machine._on_delay_from_db = True
+                        else:
+                            machine._on_delay_from_db = False
+
+                        threshold_value = config[machine.name.value].get('threshold')
+                        if threshold_value is not None:
                             threshold_unit = machine.threshold.unit
                             class_name = machine.threshold.value.__class__.__name__
                             machine.threshold.value = eval(f"{class_name}({threshold_value}, unit='{threshold_unit}')")
+                            machine._threshold_from_db = True
                             if "leak detection" in machine.classification.value.lower():
 
                                 if machine.name.value.lower() == "npw":
 
                                     machine.wavelet.threshold_iqr = threshold_value
+                        else:
+                            machine._threshold_from_db = False
                                     
                         self.append_machine(machine=machine, interval=FloatType(config[machine.name.value]["interval"]))
                     

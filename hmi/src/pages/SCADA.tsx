@@ -390,21 +390,16 @@ export function SCADA() {
   // Manejar drop en el canvas
   const handleCanvasDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      console.log("🔵 handleCanvasDrop called", { isEditMode, hasCanvasRef: !!canvasRef.current });
-      
       if (!isEditMode) {
-        console.log("❌ Drop rejected: not in edit mode");
         return;
       }
       
       if (!canvasRef.current) {
-        console.log("❌ Drop rejected: no canvas ref");
         return;
       }
 
       // Evitar dobles drops si ya estamos procesando uno
       if (isAddingObjectRef.current || isProcessingLayoutRef.current) {
-        console.log("⏭️ Drop ignored - already processing another drop");
         return;
       }
 
@@ -412,20 +407,16 @@ export function SCADA() {
       e.stopPropagation();
 
       const data = e.dataTransfer.getData("application/scada-object");
-      console.log("📦 Drop data:", data);
       
       if (!data) {
-        console.log("❌ Drop rejected: no data in dataTransfer");
         return;
       }
 
       try {
         const { type, defaultSize } = JSON.parse(data);
-        console.log("✅ Parsed drop data:", { type, defaultSize });
         
         // Obtener el contenedor del grid layout para calcular coordenadas correctas
         const gridContainer = canvasRef.current.querySelector('.react-grid-layout') as HTMLElement;
-        console.log("📐 Grid container found:", !!gridContainer);
         
         if (!gridContainer) {
           console.error("❌ Grid container not found");
@@ -447,24 +438,6 @@ export function SCADA() {
         const relativeX = e.clientX - gridRect.left + canvasScrollLeft;
         const relativeY = e.clientY - gridRect.top + canvasScrollTop;
         
-        console.log("📍 Drop coordinates:", { 
-          clientX: e.clientX, 
-          clientY: e.clientY,
-          gridRect: { 
-            left: gridRect.left, 
-            top: gridRect.top, 
-            width: gridRect.width, 
-            height: gridRect.height 
-          },
-          canvasScroll: { scrollTop: canvasScrollTop, scrollLeft: canvasScrollLeft },
-          relativeX,
-          relativeY,
-          calculation: {
-            clientY_minus_top: e.clientY - gridRect.top,
-            plus_scroll: (e.clientY - gridRect.top) + canvasScrollTop
-          }
-        });
-        
         // Convertir coordenadas de píxeles a grid
         // Usar containerPadding del ResponsiveGridLayout (que es [2, 2])
         const paddingX = 2;
@@ -482,17 +455,6 @@ export function SCADA() {
         // Usar directamente relativeY dividido por rowHeight
         const gridY = Math.max(0, Math.floor((relativeY - paddingY) / GRID_ROW_HEIGHT));
 
-        console.log("🎯 Calculated grid position:", { 
-          gridX, 
-          gridY, 
-          availableWidth, 
-          rowHeight: GRID_ROW_HEIGHT,
-          relativeY,
-          relativeY_minus_padding: relativeY - paddingY,
-          division: (relativeY - paddingY) / GRID_ROW_HEIGHT,
-          floor: Math.floor((relativeY - paddingY) / GRID_ROW_HEIGHT)
-        });
-
         const newObject: ScadaObject = {
           id: `scada-obj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           type,
@@ -502,20 +464,6 @@ export function SCADA() {
           h: defaultSize.h,
           properties: {},
         };
-
-        console.log("🆕 Creating new object:", newObject);
-        console.log("🔍 Object position details:", {
-          x: newObject.x,
-          y: newObject.y,
-          w: newObject.w,
-          h: newObject.h,
-          gridY_calculation: {
-            relativeY,
-            paddingY,
-            rowHeight: GRID_ROW_HEIGHT,
-            result: gridY
-          }
-        });
         
         // Marcar que estamos agregando un objeto para evitar cascadas durante el drop
         isAddingObjectRef.current = true;
@@ -532,7 +480,6 @@ export function SCADA() {
         
         setScadaObjects((prev) => {
           const updated = [...prev, newObject];
-          console.log("💾 Updated objects array, new length:", updated.length);
           
           // Liberar flags inmediatamente tras el render siguiente
           requestAnimationFrame(() => {
@@ -568,8 +515,6 @@ export function SCADA() {
         return;
       }
       
-      console.log("🔄 handleLayoutChange called with layout:", layout.map(item => `${item.i}:(${item.x},${item.y})`));
-      
       // Crear un hash del layout para comparar
       const layoutHash = JSON.stringify(
         layout
@@ -580,7 +525,6 @@ export function SCADA() {
       
       // Si el layout no cambió, no hacer nada
       if (lastLayoutHashRef.current === layoutHash) {
-        console.log("⏭️ Layout hash unchanged, skipping update");
         return;
       }
       
@@ -601,15 +545,6 @@ export function SCADA() {
             ) {
               return obj;
             }
-            console.log("🔄 Updating object position from handleLayoutChange:", {
-              objId: obj.id,
-              oldPos: `(${obj.x},${obj.y})`,
-              newPos: `(${layoutItem.x},${layoutItem.y})`,
-              oldSize: `${obj.w}x${obj.h}`,
-              newSize: `${layoutItem.w}x${layoutItem.h}`,
-              layoutItem: layoutItem
-            });
-            
             // IMPORTANTE: Si el layoutItem tiene y=0 pero el objeto tenía una posición Y mayor,
             // y estamos en modo edición, NO actualizar la posición Y a menos que sea un cambio real del usuario
             // Esto previene que react-grid-layout resetee la posición Y a 0
@@ -806,11 +741,6 @@ export function SCADA() {
                 allowOverlap={true} // Permitir superposición de objetos
                 onDrag={undefined} // Deshabilitar onDrag para evitar loops - solo usar onDragStop
                 onDragStop={(layout, oldItem, newItem, placeholder, e, element) => {
-                  console.log("🖱️ onDragStop called:", { 
-                    oldItem: oldItem ? `${oldItem.i}:(${oldItem.x},${oldItem.y})` : null, 
-                    newItem: newItem ? `${newItem.i}:(${newItem.x},${newItem.y})` : null,
-                    layout: layout.map(item => `${item.i}:(${item.x},${item.y})`) 
-                  });
                   // Actualizar solo cuando el usuario termina de arrastrar
                   if (isEditMode && !isProcessingLayoutRef.current && !isAddingObjectRef.current && newItem) {
                     // Actualizar directamente el estado sin pasar por handleLayoutChange

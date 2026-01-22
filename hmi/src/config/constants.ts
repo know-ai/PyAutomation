@@ -7,15 +7,11 @@ function getEnvVar(key: string): string | undefined {
   if (typeof window !== "undefined" && (window as any).__ENV__) {
     const runtimeValue = (window as any).__ENV__[key];
     if (runtimeValue !== undefined && runtimeValue !== null && runtimeValue !== "") {
-      console.log(`[DEBUG] ${key} encontrado en window.__ENV__:`, runtimeValue);
       return runtimeValue;
     }
   }
   // Fallback a import.meta.env (build time)
   const buildTimeValue = import.meta.env[key];
-  if (buildTimeValue !== undefined) {
-    console.log(`[DEBUG] ${key} encontrado en import.meta.env:`, buildTimeValue);
-  }
   return buildTimeValue;
 }
 
@@ -45,24 +41,20 @@ function detectProtocol(): "http" | "https" {
   if (useHttps !== undefined && useHttps !== null && useHttps !== "") {
     const useHttpsStr = String(useHttps).toLowerCase().trim();
     if (useHttpsStr === "true" || useHttps === true) {
-      console.log("[DEBUG] VITE_USE_HTTPS=true detectado, usando HTTPS");
       return "https";
     }
     // Si es "false" o cualquier otro valor, usar HTTP
-    console.log("[DEBUG] VITE_USE_HTTPS=false o no válido, usando HTTP");
     return "http";
   }
 
   // Detectar desde window.location si estamos en HTTPS
   if (typeof window !== "undefined") {
     if (window.location.protocol === "https:") {
-      console.log("[DEBUG] Protocolo HTTPS detectado desde window.location");
       return "https";
     }
   }
 
   // Fallback a HTTP
-  console.log("[DEBUG] Usando HTTP por defecto");
   return "http";
 }
 

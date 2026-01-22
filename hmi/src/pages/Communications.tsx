@@ -398,9 +398,7 @@ export function Communications() {
   // Escuchar eventos de conexión/desconexión OPC UA
   useEffect(() => {
     const handleOpcUaDisconnected = (data: { message: string; server_url?: string }) => {
-      console.log("OPC UA disconnected event received:", data);
       const serverUrl = data.server_url || extractServerUrlFromMessage(data.message || "");
-      console.log("Extracted server_url:", serverUrl);
       
       if (serverUrl) {
         setClientConnectionStatus((prev) => {
@@ -412,14 +410,12 @@ export function Communications() {
             if (client.server_url === serverUrl) {
               updated[client.name] = false;
               updatedCount++;
-              console.log(`Client ${client.name} marked as disconnected`);
             }
           });
           
           // Si no encontramos ningún cliente, intentar buscar por el server_url extraído del mensaje
           if (updatedCount === 0) {
             console.warn(`OPC UA disconnected event received for unknown server: ${serverUrl}`);
-            console.log("Available clients:", clients.map(c => ({ name: c.name, server_url: c.server_url })));
           }
           
           return updated;
@@ -430,9 +426,7 @@ export function Communications() {
     };
 
     const handleOpcUaConnected = (data: { message: string; server_url?: string }) => {
-      console.log("OPC UA connected event received:", data);
       const serverUrl = data.server_url || extractServerUrlFromMessage(data.message || "");
-      console.log("Extracted server_url:", serverUrl);
       
       if (serverUrl) {
         setClientConnectionStatus((prev) => {
@@ -444,14 +438,12 @@ export function Communications() {
             if (client.server_url === serverUrl) {
               updated[client.name] = true;
               updatedCount++;
-              console.log(`Client ${client.name} marked as connected`);
             }
           });
           
           // Si no encontramos ningún cliente, intentar buscar por el server_url extraído del mensaje
           if (updatedCount === 0) {
             console.warn(`OPC UA connected event received for unknown server: ${serverUrl}`);
-            console.log("Available clients:", clients.map(c => ({ name: c.name, server_url: c.server_url })));
           }
           
           return updated;
@@ -655,7 +647,7 @@ export function Communications() {
             );
           })
           .catch((err) => {
-            console.debug("Error cargando atributos iniciales:", err);
+            // silencioso en producción
           });
       } else {
         // Si no hay nodos para este cliente, limpiar los que no corresponden
@@ -742,7 +734,7 @@ export function Communications() {
         });
       } catch (_e) {
         // Silencioso: evitamos spam en la consola, pero podríamos mostrar un indicador visual
-        console.debug("Error en polling de atributos:", _e);
+        // silencioso en producción
       }
     }, 1000);
     return () => clearInterval(id);
@@ -842,7 +834,7 @@ export function Communications() {
             });
           })
           .catch((err) => {
-            console.debug("Error obteniendo atributos iniciales:", err);
+            // silencioso en producción
           });
         
         return newList;

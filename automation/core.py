@@ -1,4 +1,5 @@
 import sys, logging, json, os, jwt, requests, urllib3, secrets
+import builtins as _builtins
 from logging.handlers import RotatingFileHandler
 from math import ceil
 from datetime import datetime, timezone
@@ -38,6 +39,22 @@ from flask import Flask
 # from .pages.main import ConfigView
 # from .pages.callbacks import init_callbacks
 # import dash_bootstrap_components as dbc
+
+# ---------------------------------------------------------------------------
+# NOTE (tests/doctests):
+# Este módulo imprime mensajes coloreados con `print(...)` en varios métodos
+# (p.ej. connect_to_db/safe_start/load_opcua_clients_from_db). Eso es útil
+# en ejecución interactiva, pero rompe doctests porque el output no es
+# determinista (timestamps) y muchos ejemplos "Expected nothing".
+#
+# Para poder silenciar el output en tests, se permite deshabilitar TODO print
+# de este módulo con:
+#   AUTOMATION_CONSOLE_LOGS=0
+# ---------------------------------------------------------------------------
+def print(*args, **kwargs):  # type: ignore[override]
+    if str(os.environ.get("AUTOMATION_CONSOLE_LOGS", "1")).lower() in ("0", "false", "no", "off"):
+        return None
+    return _builtins.print(*args, **kwargs)
 
 
 class PyAutomation(Singleton):
