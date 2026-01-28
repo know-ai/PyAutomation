@@ -206,6 +206,10 @@ export function MachinesDetailed() {
 
   // Función helper para mostrar modal de confirmación de threshold
   const handleUpdateThreshold = (machineName: string) => {
+    // Para PFM/Observer el Threshold no debe ser editable
+    const isThresholdLocked = ["pfm", "observer"].includes(String(machineName).toLowerCase());
+    if (isThresholdLocked) return;
+
     const value = parseFloat(thresholdValue[machineName]);
     if (isNaN(value)) {
       showToast(t("machines.updateAttributeError"), "error");
@@ -346,6 +350,10 @@ export function MachinesDetailed() {
 
   // Función helper para mostrar modal de confirmación de on_delay
   const handleUpdateOnDelay = (machineName: string) => {
+    // Para PFM/Observer el On Delay no debe ser editable
+    const isOnDelayLocked = ["pfm", "observer"].includes(String(machineName).toLowerCase());
+    if (isOnDelayLocked) return;
+
     const value = parseInt(onDelayValue[machineName], 10);
     if (isNaN(value)) {
       showToast(t("machines.updateAttributeError"), "error");
@@ -1177,6 +1185,9 @@ export function MachinesDetailed() {
                 const isBufferSizeLocked = ["pfm", "observer"].includes(
                   String(machineName).toLowerCase()
                 );
+                const isLeakDetectionCoreLocked = ["pfm", "observer"].includes(
+                  String(machineName).toLowerCase()
+                );
                 return (
                   <div
                     key={machineName}
@@ -1549,17 +1560,19 @@ export function MachinesDetailed() {
                                     value={thresholdValue[machineName] || ""}
                                     onChange={(e) => setThresholdValue((prev) => ({ ...prev, [machineName]: e.target.value }))}
                                     onKeyDown={(e) => {
+                                      if (isLeakDetectionCoreLocked) return;
                                       if (e.key === "Enter") {
                                         e.preventDefault();
                                         handleUpdateThreshold(machineName);
                                       }
                                     }}
                                     onBlur={() => {
+                                      if (isLeakDetectionCoreLocked) return;
                                       if (thresholdValue[machineName] && thresholdValue[machineName] !== "") {
                                         handleUpdateThreshold(machineName);
                                       }
                                     }}
-                                    disabled={updatingAttribute[machineName] === "threshold"}
+                                    disabled={updatingAttribute[machineName] === "threshold" || isLeakDetectionCoreLocked}
                                   />
                                   {updatingAttribute[machineName] === "threshold" && (
                                     <div className="spinner-border spinner-border-sm text-primary" role="status">
@@ -1615,17 +1628,19 @@ export function MachinesDetailed() {
                                     value={onDelayValue[machineName] || ""}
                                     onChange={(e) => setOnDelayValue((prev) => ({ ...prev, [machineName]: e.target.value }))}
                                     onKeyDown={(e) => {
+                                      if (isLeakDetectionCoreLocked) return;
                                       if (e.key === "Enter") {
                                         e.preventDefault();
                                         handleUpdateOnDelay(machineName);
                                       }
                                     }}
                                     onBlur={() => {
+                                      if (isLeakDetectionCoreLocked) return;
                                       if (onDelayValue[machineName] && onDelayValue[machineName] !== "") {
                                         handleUpdateOnDelay(machineName);
                                       }
                                     }}
-                                    disabled={updatingAttribute[machineName] === "on_delay"}
+                                    disabled={updatingAttribute[machineName] === "on_delay" || isLeakDetectionCoreLocked}
                                   />
                                   {updatingAttribute[machineName] === "on_delay" && (
                                     <div className="spinner-border spinner-border-sm text-primary" role="status">
