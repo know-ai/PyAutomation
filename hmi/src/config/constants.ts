@@ -59,13 +59,27 @@ function detectProtocol(): "http" | "https" {
 }
 
 /**
- * Obtiene la URL base de la API con detección automática de protocolo
+ * Detecta automáticamente el host y puerto del backend desde la URL actual del navegador
+ * cuando no hay variables de entorno configuradas
+ */
+function detectHostFromLocation(): string {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const port = window.location.port;
+    // Si hay puerto en la URL, usarlo; si no, usar el puerto por defecto 8050
+    return port ? `${host}:${port}` : `${host}:8050`;
+  }
+  return "localhost:8050";
+}
+
+/**
+ * Obtiene la URL base de la API con detección automática de protocolo y host
  */
 function getApiBaseUrl(): string {
   const envUrl = getEnvVar("VITE_API_BASE_URL") || import.meta.env.VITE_API_BASE_URL;
   const protocol = detectProtocol();
-  const defaultHost = getEnvVar("VITE_API_HOST") || import.meta.env.VITE_API_HOST || "localhost:8050";
-
+  const envHost = getEnvVar("VITE_API_HOST") || import.meta.env.VITE_API_HOST;
+  
   // Si VITE_API_BASE_URL está completa, usarla directamente
   if (envUrl && (envUrl.startsWith("http://") || envUrl.startsWith("https://"))) {
     return envUrl.endsWith("/api") ? envUrl : `${envUrl}/api`;
@@ -76,17 +90,23 @@ function getApiBaseUrl(): string {
     return `${protocol}://${envUrl}`;
   }
 
-  // Construir URL con protocolo detectado
-  return `${protocol}://${defaultHost}/api`;
+  // Si hay VITE_API_HOST configurado, usarlo
+  if (envHost) {
+    return `${protocol}://${envHost}/api`;
+  }
+
+  // Si no hay variables de entorno, detectar automáticamente desde window.location
+  const detectedHost = detectHostFromLocation();
+  return `${protocol}://${detectedHost}/api`;
 }
 
 /**
- * Obtiene la URL de Socket.IO con detección automática de protocolo
+ * Obtiene la URL de Socket.IO con detección automática de protocolo y host
  */
 function getSocketIoUrl(): string {
   const envUrl = getEnvVar("VITE_SOCKET_IO_URL") || import.meta.env.VITE_SOCKET_IO_URL;
   const protocol = detectProtocol();
-  const defaultHost = getEnvVar("VITE_API_HOST") || import.meta.env.VITE_API_HOST || "localhost:8050";
+  const envHost = getEnvVar("VITE_API_HOST") || import.meta.env.VITE_API_HOST;
 
   // Si VITE_SOCKET_IO_URL está completa, usarla directamente
   if (envUrl && (envUrl.startsWith("http://") || envUrl.startsWith("https://"))) {
@@ -98,8 +118,14 @@ function getSocketIoUrl(): string {
     return `${protocol}://${envUrl}`;
   }
 
-  // Construir URL con protocolo detectado
-  return `${protocol}://${defaultHost}`;
+  // Si hay VITE_API_HOST configurado, usarlo
+  if (envHost) {
+    return `${protocol}://${envHost}`;
+  }
+
+  // Si no hay variables de entorno, detectar automáticamente desde window.location
+  const detectedHost = detectHostFromLocation();
+  return `${protocol}://${detectedHost}`;
 }
 
 export const API_BASE_URL = getApiBaseUrl();

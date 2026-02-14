@@ -70,7 +70,13 @@ El HMI detecta automáticamente si debe usar HTTP o HTTPS basándose en las sigu
 Si no se especifican variables de entorno, el sistema detecta automáticamente:
 
 1. **Protocolo de la página actual**: Si la página se carga con HTTPS, usa HTTPS para las peticiones
-2. **Fallback**: HTTP por defecto (`http://localhost:8050`)
+2. **Host y puerto desde la URL del navegador**: Detecta automáticamente el host y puerto desde `window.location`
+   - Si accedes a `http://192.168.1.100:8050/hmi/`, el backend será `http://192.168.1.100:8050`
+   - Si accedes a `https://mi-dominio.com/hmi/`, el backend será `https://mi-dominio.com:8050` (puerto 8050 por defecto)
+   - Si accedes a `https://mi-dominio.com:443/hmi/`, el backend será `https://mi-dominio.com:443`
+3. **Fallback**: Si no se puede detectar (SSR o entorno sin window), usa `http://localhost:8050`
+
+**Nota**: Esta detección automática permite que el HMI funcione correctamente tanto en localhost como cuando se accede remotamente por IP o dominio, sin necesidad de configurar variables de entorno.
 
 ### Certificados Autofirmados
 
