@@ -349,7 +349,38 @@ class CVT:
             return [tag.serialize() for _, tag in self._tags.items() if tag.name in names]
         
         return list()
-    
+
+    @logging_error_handler
+    def get_tags_filtered(self, manufacturer:str=None, segment:str=None)->list:
+        r"""
+        Returns a list of tags with only name, display_unit, variable, display_name,
+        optionally filtered by manufacturer and/or segment.
+
+        **Parameters:**
+
+        * **manufacturer** (str, optional): Filter by manufacturer.
+        * **segment** (str, optional): Filter by segment.
+
+        **Returns:**
+
+        * **list**: List of tag dicts with keys: name, display_unit, variable, display_name.
+        """
+        if not self._tags:
+            return list()
+        result = []
+        for _, tag in self._tags.items():
+            if manufacturer is not None and manufacturer != "" and tag.manufacturer != manufacturer:
+                continue
+            if segment is not None and segment != "" and tag.segment != segment:
+                continue
+            result.append({
+                "name": tag.name,
+                "display_unit": tag.get_display_unit(),
+                "variable": tag.get_variable(),
+                "display_name": tag.get_display_name(),
+            })
+        return result
+
     @logging_error_handler
     def get_field_tags_names(self)->list:
         r"""
@@ -864,7 +895,20 @@ class CVTEngine(Singleton):
         _query["parameters"] = dict()
         _query["parameters"]["names"] = names
         return self.__query(_query)
-    
+
+    @logging_error_handler
+    def get_tags_filtered(self, manufacturer:str=None, segment:str=None):
+        r"""
+        Thread-safe method to get tags filtered by manufacturer and/or segment.
+        Returns list of dicts with name, display_unit, variable, display_name.
+        """
+        _query = dict()
+        _query["action"] = "get_tags_filtered"
+        _query["parameters"] = dict()
+        _query["parameters"]["manufacturer"] = manufacturer
+        _query["parameters"]["segment"] = segment
+        return self.__query(_query)
+
     @logging_error_handler
     def get_tag_by_name(self, name:str)->Tag|None:
         r"""

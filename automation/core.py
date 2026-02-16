@@ -564,6 +564,24 @@ class PyAutomation(Singleton):
         return self.cvt.get_tags()
 
     @logging_error_handler
+    @validate_types(output=list)
+    def get_tags_list(self, manufacturer:str=None, segment:str=None)->list:
+        r"""
+        Retrieves a non-paginated list of tags with only name, display_unit, variable, display_name.
+        Optionally filtered by manufacturer and/or segment.
+
+        **Parameters:**
+
+        * **manufacturer** (str, optional): Filter by manufacturer.
+        * **segment** (str, optional): Filter by segment.
+
+        **Returns:**
+
+        * **list**: List of tag dicts with keys: name, display_unit, variable, display_name.
+        """
+        return self.cvt.get_tags_filtered(manufacturer=manufacturer, segment=segment)
+
+    @logging_error_handler
     @validate_types(names=list, output=list)
     def get_tags_by_names(self, names:list)->list[Tag|None]:
         r"""

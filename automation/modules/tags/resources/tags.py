@@ -88,6 +88,11 @@ update_tag_model = api.model("update_tag_model", {
     'manufacturer': fields.String(required=False, description='Device manufacturer')
 })
 
+tags_list_filter_model = api.model("tags_list_filter_model", {
+    'manufacturer': fields.String(required=False, description='Filter by manufacturer'),
+    'segment': fields.String(required=False, description='Filter by segment')
+})
+
 
 @ns.route('/')
 class TagsCollection(Resource):
@@ -135,6 +140,26 @@ class TagsCollection(Resource):
                 'pages': (total + limit - 1) // limit if total > 0 else 0
             }
         }, 200
+
+@ns.route('/list')
+class TagsListCollection(Resource):
+
+    @api.doc(security='apikey', description="Retrieves a non-paginated list of tags with name, display_unit, variable, display_name. Optional filter by manufacturer and/or segment.")
+    @api.response(200, "Success")
+    @Api.token_required(auth=True)
+    @ns.expect(tags_list_filter_model)
+    def post(self):
+        """
+        Get tags list (slim).
+
+        Returns a list of tags with only name, display_unit, variable, display_name.
+        Accepts optional body with manufacturer and/or segment to filter.
+        """
+        payload = api.payload or {}
+        manufacturer = payload.get('manufacturer')
+        segment = payload.get('segment')
+        data = app.get_tags_list(manufacturer=manufacturer, segment=segment)
+        return {'data': data}, 200
 
 @ns.route('/names')
 class TagsNamesCollection(Resource):
