@@ -564,7 +564,7 @@ class PyAutomation(Singleton):
         return self.cvt.get_tags()
 
     @logging_error_handler
-    @validate_types(output=list)
+    @validate_types(manufacturer=str|None, segment=str|None, output=list)
     def get_tags_list(self, manufacturer:str=None, segment:str=None)->list:
         r"""
         Retrieves a non-paginated list of tags with only name, display_unit, variable, display_name.
