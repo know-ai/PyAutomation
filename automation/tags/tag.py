@@ -54,6 +54,7 @@ class Tag:
             frozen_data_detection:bool=False,
             manufacturer:str="",
             segment:str="",
+            kp:float=None,
             id:str=None
     ):
         r"""
@@ -157,6 +158,7 @@ class Tag:
         self.frozen_data_detection = frozen_data_detection
         self.manufacturer = manufacturer
         self.segment = segment
+        self.kp = kp
         self.filter = GaussianFilter()
         self._observers = set()
 
@@ -497,6 +499,26 @@ class Tag:
         """
 
         return self.name
+    
+    def set_kp(self, kp:float|None):
+        r"""
+        Sets the KP (Kilometer Post) associated with the tag.
+
+        **Parameters:**
+
+        * **kp** (float|None): Kilometer post value.
+        """
+        self.kp = kp
+
+    def get_kp(self)->float|None:
+        r"""
+        Gets the KP (Kilometer Post) associated with the tag.
+
+        **Returns:**
+
+        * **float|None**: Kilometer post value.
+        """
+        return self.kp
 
     def get_opcua_address(self):
         r"""
@@ -596,6 +618,7 @@ class Tag:
             "scan_time": self.get_scan_time(),
             "dead_band": self.get_dead_band(),
             "segment": self.segment,
+            "kp": self.get_kp(),
             "manufacturer": self.manufacturer,
             "process_filter": self.process_filter,
             "gaussian_filter": self.gaussian_filter,

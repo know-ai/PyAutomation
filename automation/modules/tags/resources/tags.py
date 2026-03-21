@@ -61,7 +61,8 @@ create_tag_model = api.model("create_tag_model", {
     'out_of_range_detection': fields.Boolean(required=False, description='Enable out of range detection', default=False),
     'frozen_data_detection': fields.Boolean(required=False, description='Enable frozen data detection', default=False),
     'segment': fields.String(required=False, description='Network segment', default=''),
-    'manufacturer': fields.String(required=False, description='Device manufacturer', default='')
+    'manufacturer': fields.String(required=False, description='Device manufacturer', default=''),
+    'kp': fields.Float(required=False, description='Kilometer Post (KP) value')
 })
 
 update_tag_model = api.model("update_tag_model", {
@@ -85,12 +86,18 @@ update_tag_model = api.model("update_tag_model", {
     'out_of_range_detection': fields.Boolean(required=False, description='Enable out of range detection'),
     'frozen_data_detection': fields.Boolean(required=False, description='Enable frozen data detection'),
     'segment': fields.String(required=False, description='Network segment'),
-    'manufacturer': fields.String(required=False, description='Device manufacturer')
+    'manufacturer': fields.String(required=False, description='Device manufacturer'),
+    'kp': fields.Float(required=False, description='Kilometer Post (KP) value')
 })
 
 tags_list_filter_model = api.model("tags_list_filter_model", {
     'manufacturer': fields.String(required=False, description='Filter by manufacturer'),
     'segment': fields.String(required=False, description='Filter by segment')
+})
+
+tags_kp_range_model = api.model("tags_kp_range_model", {
+    'kp_min': fields.Float(required=True, description='Lower bound KP (inclusive)'),
+    'kp_max': fields.Float(required=True, description='Upper bound KP (inclusive)')
 })
 
 
@@ -159,6 +166,30 @@ class TagsListCollection(Resource):
         manufacturer = payload.get('manufacturer')
         segment = payload.get('segment')
         data = app.get_tags_list(manufacturer=manufacturer, segment=segment)
+        return {'data': data}, 200
+
+@ns.route('/kp_range')
+class TagsByKpRangeCollection(Resource):
+
+    @api.doc(security='apikey', description="Retrieves tags whose KP is between two bounds (inclusive).")
+    @api.response(200, "Success")
+    @api.response(400, "Invalid payload")
+    @Api.token_required(auth=True)
+    @ns.expect(tags_kp_range_model)
+    def post(self):
+        """
+        Get tags by KP range.
+
+        Returns tags that have `kp` between `kp_min` and `kp_max` (inclusive).
+        """
+        payload = api.payload or {}
+        kp_min = payload.get('kp_min')
+        kp_max = payload.get('kp_max')
+
+        if kp_min is None or kp_max is None:
+            return {'message': 'kp_min and kp_max are required'}, 400
+
+        data = app.get_tags_by_kp_range(kp_min=kp_min, kp_max=kp_max)
         return {'data': data}, 200
 
 @ns.route('/names')
@@ -428,7 +459,8 @@ class AddTagResource(Resource):
                 out_of_range_detection=payload.get('out_of_range_detection', False),
                 frozen_data_detection=payload.get('frozen_data_detection', False),
                 segment=payload.get('segment', ''),
-                manufacturer=payload.get('manufacturer', '')
+                manufacturer=payload.get('manufacturer', ''),
+                kp=payload.get('kp')
             )
             
             if tag:

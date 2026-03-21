@@ -48,7 +48,8 @@ class DataLogger(BaseLogger):
         scan_time:int=None,
         dead_band:float=None,
         manufacturer:str="",
-        segment:str=""
+        segment:str="",
+        kp:float=None
         ):
         r"""
         Creates a new tag definition in the database.
@@ -88,7 +89,8 @@ class DataLogger(BaseLogger):
             scan_time=scan_time,
             dead_band=dead_band,
             manufacturer=manufacturer,
-            segment=segment
+            segment=segment,
+            kp=kp
             )
             
     @db_rollback
@@ -757,6 +759,7 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"]["dead_band"] = tag.dead_band
         _query["parameters"]["manufacturer"] = tag.manufacturer
         _query["parameters"]["segment"] = tag.segment
+        _query["parameters"]["kp"] = tag.kp
         
         return self.query(_query)
 

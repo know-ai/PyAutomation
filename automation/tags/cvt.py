@@ -65,6 +65,7 @@ class CVT:
         frozen_data_detection:bool=False,
         manufacturer:str="",
         segment:str="",
+        kp:float=None,
         id:str=None,
         user:User=None
         )->tuple[Tag, str]:
@@ -140,6 +141,7 @@ class CVT:
             frozen_data_detection=frozen_data_detection,
             manufacturer=manufacturer,
             segment=segment,
+            kp=kp,
             id=id
         )
         self._tags[tag.id] = tag
@@ -214,6 +216,8 @@ class CVT:
             tag.segment = kwargs["segment"]
         if "manufacturer" in kwargs:
             tag.manufacturer = kwargs["manufacturer"]
+        if "kp" in kwargs:
+            tag.set_kp(kp=kwargs["kp"])
         if "gaussian_filter" in kwargs:
             
             if kwargs['gaussian_filter'].lower() in ('1', 'true'):
@@ -380,6 +384,30 @@ class CVT:
                 "display_name": tag.get_display_name(),
             })
         return result
+
+    @logging_error_handler
+    def get_tags_by_kp_range(self, kp_min:float, kp_max:float)->list:
+        r"""
+        Returns a list of serialized tags whose KP is between kp_min and kp_max (inclusive).
+
+        **Parameters:**
+
+        * **kp_min** (float): Lower bound for KP.
+        * **kp_max** (float): Upper bound for KP.
+
+        **Returns:**
+
+        * **list**: List of tag dictionaries.
+        """
+        if not self._tags:
+            return list()
+        lower = min(kp_min, kp_max)
+        upper = max(kp_min, kp_max)
+        return [
+            tag.serialize()
+            for _, tag in self._tags.items()
+            if tag.get_kp() is not None and lower <= tag.get_kp() <= upper
+        ]
 
     @logging_error_handler
     def get_field_tags_names(self)->list:
@@ -791,6 +819,7 @@ class CVTEngine(Singleton):
         frozen_data_detection:bool=False,
         manufacturer:str="",
         segment:str="",
+        kp:float=None,
         id:str="",
         user:User|None=None
         )->tuple[Tag, str]:
@@ -822,6 +851,7 @@ class CVTEngine(Singleton):
         _query["parameters"]["frozen_data_detection"] = frozen_data_detection
         _query["parameters"]["manufacturer"] = manufacturer
         _query["parameters"]["segment"] = segment
+        _query["parameters"]["kp"] = kp
         _query["parameters"]["id"] = id
         _query["parameters"]["user"] = user
         return self.__query(_query)
@@ -907,6 +937,18 @@ class CVTEngine(Singleton):
         _query["parameters"] = dict()
         _query["parameters"]["manufacturer"] = manufacturer
         _query["parameters"]["segment"] = segment
+        return self.__query(_query)
+
+    @logging_error_handler
+    def get_tags_by_kp_range(self, kp_min:float, kp_max:float):
+        r"""
+        Thread-safe method to get tags whose KP is within a given range.
+        """
+        _query = dict()
+        _query["action"] = "get_tags_by_kp_range"
+        _query["parameters"] = dict()
+        _query["parameters"]["kp_min"] = kp_min
+        _query["parameters"]["kp_max"] = kp_max
         return self.__query(_query)
 
     @logging_error_handler

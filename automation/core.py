@@ -357,6 +357,7 @@ class PyAutomation(Singleton):
             node_namespace=str|type(None),
             scan_time=int|float|type(None),
             dead_band=int|float|type(None),
+            kp=int|float|type(None),
             process_filter=bool,
             gaussian_filter=bool,
             gaussian_filter_threshold=float|int,
@@ -393,6 +394,7 @@ class PyAutomation(Singleton):
             frozen_data_detection:bool=False,
             segment:str|None="",
             manufacturer:str|None="",
+            kp:float|None=None,
             id:str=None,
             user:User|None=None,
             reload:bool=False,
@@ -490,6 +492,7 @@ class PyAutomation(Singleton):
             frozen_data_detection=frozen_data_detection,
             segment=segment,
             manufacturer=manufacturer,
+            kp=kp,
             id=id,
             user=user
         )
@@ -580,6 +583,23 @@ class PyAutomation(Singleton):
         * **list**: List of tag dicts with keys: name, display_unit, variable, display_name.
         """
         return self.cvt.get_tags_filtered(manufacturer=manufacturer, segment=segment)
+
+    @logging_error_handler
+    @validate_types(kp_min=int|float, kp_max=int|float, output=list)
+    def get_tags_by_kp_range(self, kp_min:float, kp_max:float)->list:
+        r"""
+        Retrieves tags whose KP is between kp_min and kp_max (inclusive).
+
+        **Parameters:**
+
+        * **kp_min** (float): Lower KP bound.
+        * **kp_max** (float): Upper KP bound.
+
+        **Returns:**
+
+        * **list**: Serialized tags in the requested KP range.
+        """
+        return self.cvt.get_tags_by_kp_range(kp_min=kp_min, kp_max=kp_max)
 
     @logging_error_handler
     @validate_types(names=list, output=list)
@@ -4503,6 +4523,7 @@ class PyAutomation(Singleton):
                                 manufacturer=manufacturer_name or "",
                                 scan_time=item.get("scan_time"),
                                 dead_band=item.get("dead_band"),
+                                kp=item.get("kp"),
                                 active=item.get("active", True),
                                 process_filter=item.get("process_filter", False),
                                 gaussian_filter=item.get("gaussian_filter", False),

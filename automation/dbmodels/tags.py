@@ -434,6 +434,7 @@ class Tags(BaseModel):
     node_namespace = CharField(null=True)
     scan_time = IntegerField(null=True)
     dead_band = FloatField(null=True)
+    kp = FloatField(null=True)
     active = BooleanField(default=True)
     process_filter = BooleanField(default=False)
     gaussian_filter = BooleanField(default=False)
@@ -460,6 +461,7 @@ class Tags(BaseModel):
         manufacturer:str="",
         scan_time:int=0,
         dead_band:float=0.0,
+        kp:float=None,
         active:bool=True,
         process_filter:bool=False,
         gaussian_filter:bool=False,
@@ -535,6 +537,7 @@ class Tags(BaseModel):
                                 node_namespace=node_namespace,
                                 scan_time=scan_time,
                                 dead_band=dead_band,
+                                kp=kp,
                                 active=active,
                                 process_filter=process_filter,
                                 gaussian_filter=gaussian_filter,
@@ -559,6 +562,7 @@ class Tags(BaseModel):
                                 node_namespace=node_namespace,
                                 scan_time=scan_time,
                                 dead_band=dead_band,
+                                kp=kp,
                                 active=active,
                                 process_filter=process_filter,
                                 gaussian_filter=gaussian_filter,
@@ -617,6 +621,7 @@ class Tags(BaseModel):
                             "node_namespace":node_namespace,
                             "scan_time":scan_time,
                             "dead_band":dead_band,
+                            "kp":kp,
                             "active": True
                         }
                         cls.put(id=tag.id, **payload)
@@ -790,6 +795,7 @@ class Tags(BaseModel):
             'node_namespace': self.node_namespace,
             'scan_time': self.scan_time,
             'dead_band': self.dead_band,
+            'kp': self.kp,
             'variable': self.unit.variable_id.name,
             'active': self.active,
             'process_filter': self.process_filter,
