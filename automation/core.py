@@ -602,6 +602,224 @@ class PyAutomation(Singleton):
         return self.cvt.get_tags_by_kp_range(kp_min=kp_min, kp_max=kp_max)
 
     @logging_error_handler
+    @validate_types(segment_name=str, kp=int|float, latitude=int|float, longitude=int|float, elevation=int|float|type(None), output=tuple)
+    def create_linear_referencing_geospatial(
+        self,
+        segment_name:str,
+        kp:float,
+        latitude:float,
+        longitude:float,
+        elevation:float|None=None
+    )->tuple[dict|None, str]:
+        r"""
+        Creates a new linear-referencing geospatial point for a segment.
+        """
+        if not self.is_db_connected():
+            return None, "Database not connected"
+
+        from .dbmodels import LinearReferencingGeospatial
+        point, message = LinearReferencingGeospatial.create(
+            segment_name=segment_name,
+            kp=kp,
+            latitude=latitude,
+            longitude=longitude,
+            elevation=elevation
+        )
+        if point is None:
+            return None, message
+        return point.serialize(), message
+
+    @logging_error_handler
+    @validate_types(output=list)
+    def get_linear_referencing_geospatial_points(self)->list:
+        r"""
+        Retrieves all linear-referencing geospatial points.
+        """
+        if not self.is_db_connected():
+            return []
+
+        from .dbmodels import LinearReferencingGeospatial
+        return LinearReferencingGeospatial.read_all()
+
+    @logging_error_handler
+    @validate_types(segment_name=str, output=list)
+    def get_linear_referencing_geospatial_points_by_segment(self, segment_name:str)->list:
+        r"""
+        Retrieves linear-referencing points for a segment ordered by KP.
+        """
+        if not self.is_db_connected():
+            return []
+
+        from .dbmodels import LinearReferencingGeospatial
+        query = LinearReferencingGeospatial.read_by_segment_name(segment_name=segment_name)
+        return [point.serialize() for point in query]
+
+    @logging_error_handler
+    @validate_types(id=int, output=dict|None)
+    def get_linear_referencing_geospatial_point(self, id:int)->dict|None:
+        r"""
+        Retrieves one linear-referencing geospatial point by ID.
+        """
+        if not self.is_db_connected():
+            return None
+
+        from .dbmodels import LinearReferencingGeospatial
+        point = LinearReferencingGeospatial.read(id=id)
+        if point is None:
+            return None
+        return point.serialize()
+
+    @logging_error_handler
+    @validate_types(id=int, output=tuple)
+    def update_linear_referencing_geospatial_point(self, id:int, **kwargs)->tuple[dict|None, str]:
+        r"""
+        Updates a linear-referencing geospatial point by ID.
+        """
+        if not self.is_db_connected():
+            return None, "Database not connected"
+
+        from .dbmodels import LinearReferencingGeospatial, Segment
+        point = LinearReferencingGeospatial.read(id=id)
+        if point is None:
+            return None, f"Linear referencing geospatial point {id} not found"
+
+        fields = kwargs.copy()
+        if "segment_name" in fields:
+            segment_name = fields.pop("segment_name")
+            segment_obj = Segment.read_by_name(name=segment_name)
+            if segment_obj is None:
+                return None, f"Segment {segment_name} does not exist into database"
+            fields["segment"] = segment_obj
+
+        if not fields:
+            return point.serialize(), "No fields to update"
+
+        LinearReferencingGeospatial.put(id=id, **fields)
+        updated = LinearReferencingGeospatial.read(id=id)
+        return updated.serialize(), "Linear referencing geospatial point updated successfully"
+
+    @logging_error_handler
+    @validate_types(id=int, output=tuple)
+    def delete_linear_referencing_geospatial_point(self, id:int)->tuple[bool, str]:
+        r"""
+        Deletes a linear-referencing geospatial point by ID.
+        """
+        if not self.is_db_connected():
+            return False, "Database not connected"
+
+        from .dbmodels import LinearReferencingGeospatial
+        rows = LinearReferencingGeospatial.delete_by_id(id=id)
+        if rows == 0:
+            return False, f"Linear referencing geospatial point {id} not found"
+        return True, "Linear referencing geospatial point deleted successfully"
+
+    @logging_error_handler
+    @validate_types(segment_name=str, kp=int|float, output=tuple)
+    def get_geospatial_by_segment_and_kp(self, segment_name:str, kp:float)->tuple[dict|None, str]:
+        r"""
+        Retrieves geospatial coordinates by segment and KP with interpolation support.
+        """
+        if not self.is_db_connected():
+            return None, "Database not connected"
+
+        from .dbmodels import LinearReferencingGeospatial
+        return LinearReferencingGeospatial.interpolate_by_segment_and_kp(
+            segment_name=segment_name,
+            kp=kp
+        )
+
+    @logging_error_handler
+    @validate_types(rows=list, default_segment_name=str|type(None), update_existing=bool, output=dict)
+    def import_linear_referencing_profile(
+        self,
+        rows:list[dict],
+        default_segment_name:str|None=None,
+        update_existing:bool=True
+    )->dict:
+        r"""
+        Imports a complete linear-referencing profile from parsed rows (CSV/XLSX).
+        """
+        result = {
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": []
+        }
+
+        if not self.is_db_connected():
+            result["errors"].append("Database not connected")
+            return result
+
+        from .dbmodels import LinearReferencingGeospatial, Segment
+
+        for idx, row in enumerate(rows, start=1):
+            try:
+                segment_name = row.get("segment_name") or default_segment_name
+                if not segment_name:
+                    result["errors"].append(f"Row {idx}: missing segment_name")
+                    continue
+
+                segment_obj = Segment.read_by_name(name=segment_name)
+                if segment_obj is None:
+                    result["errors"].append(f"Row {idx}: segment {segment_name} does not exist")
+                    continue
+
+                if row.get("kp") is None:
+                    result["errors"].append(f"Row {idx}: missing kp")
+                    continue
+                if row.get("latitude") is None:
+                    result["errors"].append(f"Row {idx}: missing latitude")
+                    continue
+                if row.get("longitude") is None:
+                    result["errors"].append(f"Row {idx}: missing longitude")
+                    continue
+
+                kp = float(row.get("kp"))
+                latitude = float(row.get("latitude"))
+                longitude = float(row.get("longitude"))
+                elevation = row.get("elevation")
+                if elevation in ("", None):
+                    elevation = None
+                else:
+                    elevation = float(elevation)
+
+                current = LinearReferencingGeospatial.get_or_none(
+                    (LinearReferencingGeospatial.segment == segment_obj)
+                    & (LinearReferencingGeospatial.kp == kp)
+                )
+
+                if current is None:
+                    point, message = LinearReferencingGeospatial.create(
+                        segment_name=segment_name,
+                        kp=kp,
+                        latitude=latitude,
+                        longitude=longitude,
+                        elevation=elevation
+                    )
+                    if point is None:
+                        result["errors"].append(f"Row {idx}: {message}")
+                    else:
+                        result["created"] += 1
+                else:
+                    if not update_existing:
+                        result["skipped"] += 1
+                        continue
+                    LinearReferencingGeospatial.put(
+                        id=current.id,
+                        latitude=latitude,
+                        longitude=longitude,
+                        elevation=elevation
+                    )
+                    result["updated"] += 1
+
+            except Exception as err:
+                result["errors"].append(f"Row {idx}: {str(err)}")
+
+        result["processed"] = len(rows)
+        result["success"] = len(result["errors"]) == 0
+        return result
+
+    @logging_error_handler
     @validate_types(names=list, output=list)
     def get_tags_by_names(self, names:list)->list[Tag|None]:
         r"""
@@ -4294,7 +4512,7 @@ class PyAutomation(Singleton):
 
         Exports configuration tables: Manufacturer, Segment, Variables, Units, DataTypes,
         Tags, AlarmTypes, AlarmStates, Alarms, Roles, Users, OPCUA, AccessType,
-        OPCUAServer, Machines, TagsMachines.
+        OPCUAServer, Machines, TagsMachines, LinearReferencingGeospatial.
 
         Excludes historical tables: TagValue, Events, Logs, AlarmSummary.
 
@@ -4321,7 +4539,7 @@ class PyAutomation(Singleton):
             Manufacturer, Segment, Variables, Units, DataTypes,
             Tags, AlarmTypes, AlarmStates, Alarms,
             Roles, Users, OPCUA, AccessType, OPCUAServer,
-            Machines, TagsMachines
+            Machines, TagsMachines, LinearReferencingGeospatial
         )
 
         config = {
@@ -4348,7 +4566,8 @@ class PyAutomation(Singleton):
                 "AccessType": [at.serialize() for at in AccessType.select()],
                 "OPCUAServer": [os_obj.serialize() for os_obj in OPCUAServer.select()],
                 "Machines": [m.serialize() for m in Machines.select()],
-                "TagsMachines": [tm.serialize() for tm in TagsMachines.select()]
+                "TagsMachines": [tm.serialize() for tm in TagsMachines.select()],
+                "LinearReferencingGeospatial": [lr.serialize() for lr in LinearReferencingGeospatial.select()]
             }
         }
 
@@ -4393,7 +4612,7 @@ class PyAutomation(Singleton):
             Manufacturer, Segment, Variables, Units, DataTypes,
             Tags, AlarmTypes, AlarmStates, Alarms,
             Roles, Users, OPCUA, AccessType, OPCUAServer,
-            Machines, TagsMachines
+            Machines, TagsMachines, LinearReferencingGeospatial
         )
 
         results = {
@@ -4541,7 +4760,44 @@ class PyAutomation(Singleton):
                     except Exception as e:
                         results["errors"].setdefault("Tags", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
 
-            # 7. AlarmTypes (no dependencies)
+            # 7. LinearReferencingGeospatial (depends on Segment)
+            if "LinearReferencingGeospatial" in data:
+                for item in data["LinearReferencingGeospatial"]:
+                    try:
+                        segment_name = item.get("segment_name")
+                        if not segment_name:
+                            results["errors"].setdefault("LinearReferencingGeospatial", []).append(f"{item.get('id', 'unknown')}: Missing segment_name")
+                            continue
+
+                        segment_obj = Segment.read_by_name(segment_name)
+                        if segment_obj is None:
+                            results["errors"].setdefault("LinearReferencingGeospatial", []).append(f"{item.get('id', 'unknown')}: Segment {segment_name} not found")
+                            continue
+
+                        exists = LinearReferencingGeospatial.get_or_none(
+                            (LinearReferencingGeospatial.segment == segment_obj)
+                            & (LinearReferencingGeospatial.kp == item.get("kp"))
+                        )
+                        if exists is None:
+                            point, message = LinearReferencingGeospatial.create(
+                                segment_name=segment_name,
+                                kp=item.get("kp"),
+                                latitude=item.get("latitude"),
+                                longitude=item.get("longitude"),
+                                elevation=item.get("elevation")
+                            )
+                            if point is None:
+                                results["errors"].setdefault("LinearReferencingGeospatial", []).append(f"{item.get('id', 'unknown')}: {message}")
+                            else:
+                                results["imported"].setdefault("LinearReferencingGeospatial", 0)
+                                results["imported"]["LinearReferencingGeospatial"] += 1
+                        else:
+                            results["skipped"].setdefault("LinearReferencingGeospatial", 0)
+                            results["skipped"]["LinearReferencingGeospatial"] += 1
+                    except Exception as e:
+                        results["errors"].setdefault("LinearReferencingGeospatial", []).append(f"{item.get('id', 'unknown')}: {str(e)}")
+
+            # 8. AlarmTypes (no dependencies)
             if "AlarmTypes" in data:
                 for item in data["AlarmTypes"]:
                     try:

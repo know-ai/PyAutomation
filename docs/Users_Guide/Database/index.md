@@ -545,3 +545,11 @@ Historical data will be available for reporting, analysis, and visualization thr
 </p>
 
 </div>
+
+---
+
+## Linear Referencing Geospatial
+
+For geospatial linear-referencing profile management (CRUD, interpolation, and bulk import from `CSV/XLSX`), see:
+
+- [LinearReferencingGeospatial.md](./LinearReferencingGeospatial.md)

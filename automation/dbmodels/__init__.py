@@ -21,3 +21,4 @@ from .events import Events
 from .logs import Logs
 from .machines import Machines, TagsMachines
 from .opcua_server import AccessType, OPCUAServer
+from .linear_referencing_geospatial import LinearReferencingGeospatial

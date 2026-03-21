@@ -38,6 +38,7 @@ from ..dbmodels import (
     TagsMachines,
     AccessType,
     OPCUAServer,
+    LinearReferencingGeospatial,
     BaseModel
 )
 
@@ -84,6 +85,7 @@ class DBManager(Singleton):
             Logs,
             Machines,
             TagsMachines,
+            LinearReferencingGeospatial,
             AccessType,
             OPCUAServer
         ]
