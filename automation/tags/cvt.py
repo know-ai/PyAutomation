@@ -219,14 +219,11 @@ class CVT:
         if "kp" in kwargs:
             tag.set_kp(kp=kwargs["kp"])
         if "gaussian_filter" in kwargs:
-            
-            if kwargs['gaussian_filter'].lower() in ('1', 'true'):
-
-                tag.gaussian_filter = True
-
+            gaussian_filter_value = kwargs["gaussian_filter"]
+            if isinstance(gaussian_filter_value, str):
+                tag.gaussian_filter = gaussian_filter_value.strip().lower() in ("1", "true", "yes", "on")
             else:
-
-                tag.gaussian_filter = False
+                tag.gaussian_filter = bool(gaussian_filter_value)
 
         if "gaussian_filter_r_value" in kwargs:
 

@@ -145,14 +145,11 @@ class DataLogger(BaseLogger):
         tag = Tags.get(identifier=id)
 
         if "gaussian_filter" in kwargs:
-            
-            if kwargs['gaussian_filter'].lower() in ('1', 'true'):
-
-                kwargs['gaussian_filter'] = True
-
+            gaussian_filter_value = kwargs["gaussian_filter"]
+            if isinstance(gaussian_filter_value, str):
+                kwargs["gaussian_filter"] = gaussian_filter_value.strip().lower() in ("1", "true", "yes", "on")
             else:
-
-                kwargs['gaussian_filter'] = False
+                kwargs["gaussian_filter"] = bool(gaussian_filter_value)
         
         return Tags.put(id=tag.id, **kwargs)
 
