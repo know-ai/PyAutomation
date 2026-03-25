@@ -670,7 +670,6 @@ class PyAutomation(Singleton):
         return point.serialize()
 
     @logging_error_handler
-    @validate_types(id=int, output=tuple)
     def update_linear_referencing_geospatial_point(self, id:int, **kwargs)->tuple[dict|None, str]:
         r"""
         Updates a linear-referencing geospatial point by ID.

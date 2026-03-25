@@ -188,6 +188,7 @@ export function Tags() {
     node_namespace: "",
     scan_time: "",
     dead_band: "",
+    kp: "",
     process_filter: false,
     gaussian_filter: false,
     gaussian_filter_threshold: "1.0",
@@ -496,6 +497,7 @@ export function Tags() {
       node_namespace: tag.node_namespace || "",
       scan_time: tag.scan_time ? String(tag.scan_time) : "",
       dead_band: tag.dead_band !== undefined ? String(tag.dead_band) : "",
+      kp: tag.kp !== undefined && tag.kp !== null ? String(tag.kp) : "",
       process_filter: tag.process_filter || false,
       gaussian_filter: tag.gaussian_filter || false,
       gaussian_filter_threshold: tag.gaussian_filter_threshold !== undefined ? String(tag.gaussian_filter_threshold) : "1.0",
@@ -572,6 +574,7 @@ export function Tags() {
         t("tags.outOfRangeDetection"),
         t("tags.frozenDataDetection"),
         t("tags.segment"),
+        t("tags.kp"),
         t("tags.manufacturer"),
         t("tables.description")
       ];
@@ -608,6 +611,7 @@ export function Tags() {
           tag.out_of_range_detection ? t("common.yes") : t("common.no"),
           tag.frozen_data_detection ? t("common.yes") : t("common.no"),
           tag.segment || "",
+          tag.kp !== undefined && tag.kp !== null ? tag.kp : "",
           tag.manufacturer || "",
           tag.description || ""
         ];
@@ -769,6 +773,16 @@ export function Tags() {
           payload.dead_band = null;
         }
       }
+
+      // Comparar KP
+      const originalKp = original.kp !== undefined && original.kp !== null ? String(original.kp) : "";
+      if (formData.kp !== originalKp) {
+        if (formData.kp) {
+          payload.kp = parseFloat(formData.kp);
+        } else {
+          payload.kp = null;
+        }
+      }
       
       // Comparar segment
       if (formData.segment !== (original.segment || "")) {
@@ -844,6 +858,7 @@ export function Tags() {
         node_namespace: "",
         scan_time: "",
         dead_band: "",
+        kp: "",
         process_filter: false,
         gaussian_filter: false,
         gaussian_filter_threshold: "1.0",
@@ -902,6 +917,7 @@ export function Tags() {
       if (formData.node_namespace) payload.node_namespace = formData.node_namespace;
       if (formData.scan_time) payload.scan_time = parseInt(formData.scan_time);
       if (formData.dead_band) payload.dead_band = parseFloat(formData.dead_band);
+      if (formData.kp) payload.kp = parseFloat(formData.kp);
       if (formData.segment) payload.segment = formData.segment;
       if (formData.manufacturer) payload.manufacturer = formData.manufacturer;
 
@@ -936,6 +952,7 @@ export function Tags() {
         node_namespace: "",
         scan_time: "",
         dead_band: "",
+        kp: "",
         process_filter: false,
         gaussian_filter: false,
         gaussian_filter_threshold: "1.0",
@@ -1657,7 +1674,7 @@ export function Tags() {
                       <div className="col-12">
                         <h6 className="border-bottom pb-2">{t("tags.additionalInformation")}</h6>
                       </div>
-                      <div className="col-md-6">
+                      <div className="col-md-4">
                         <label className="form-label">{t("tags.segment")}</label>
                         <input
                           type="text"
@@ -1668,7 +1685,17 @@ export function Tags() {
                           }
                         />
                       </div>
-                      <div className="col-md-6">
+                      <div className="col-md-4">
+                        <label className="form-label">{t("tags.kp")}</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          step="0.01"
+                          value={formData.kp}
+                          onChange={(e) => setFormData({ ...formData, kp: e.target.value })}
+                        />
+                      </div>
+                      <div className="col-md-4">
                         <label className="form-label">{t("tags.manufacturer")}</label>
                         <input
                           type="text"
@@ -2101,7 +2128,7 @@ export function Tags() {
                       <div className="col-12">
                         <h6 className="border-bottom pb-2">{t("tags.additionalInformation")}</h6>
                       </div>
-                      <div className="col-md-6">
+                      <div className="col-md-4">
                         <label className="form-label">{t("tags.segment")}</label>
                         <input
                           type="text"
@@ -2112,7 +2139,17 @@ export function Tags() {
                           }
                         />
                       </div>
-                      <div className="col-md-6">
+                      <div className="col-md-4">
+                        <label className="form-label">{t("tags.kp")}</label>
+                        <input
+                          type="number"
+                          className="form-control"
+                          step="0.01"
+                          value={formData.kp}
+                          onChange={(e) => setFormData({ ...formData, kp: e.target.value })}
+                        />
+                      </div>
+                      <div className="col-md-4">
                         <label className="form-label">{t("tags.manufacturer")}</label>
                         <input
                           type="text"

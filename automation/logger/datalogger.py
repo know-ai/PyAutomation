@@ -5,9 +5,9 @@ This module implements the Data Logger, responsible for persisting tag values (t
 and managing tag configurations in the database.
 """
 import pytz, logging, math
-from peewee import fn
+from peewee import fn, SQL
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from ..tags.tag import Tag
 from ..dbmodels import Tags, TagValue, Units, Segment, Variables
 from ..modules.users.users import User
@@ -276,50 +276,132 @@ class DataLogger(BaseLogger):
             return dict()
 
         _timezone = pytz.timezone(timezone)
-        start = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
-        stop = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()  
+        start_dt = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC)
+        stop_dt = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC)
+
+        # Guardrail: limitar el rango máximo a 3 meses (≈ 90 días).
+        # Si se solicita más, devolvemos SOLO el tramo más reciente de 3 meses.
+        max_span = timedelta(days=90)
+        if stop_dt - start_dt > max_span:
+            start_dt = stop_dt - max_span
+
+        start_ts = float(start_dt.timestamp())
+        stop_ts = float(stop_dt.timestamp())
               
-        query = (TagValue
-                .select(Tags.name, TagValue.value, TagValue.timestamp,
-                        Units.unit.alias('tag_value_unit'), Variables.name.alias('variable_name'))
+        # Base query: para trending, preferimos agregación en SQL (mucho más eficiente)
+        # y solo caemos a "raw" para spans pequeños.
+         
+        # Structure the data
+        # Guardrail: limitar cantidad de puntos devueltos (por tag) para no saturar el front.
+        # Nota: el gráfico suele verse bien con 1k–3k puntos.
+        max_points = 2000
+
+        span_seconds = max(0.0, stop_ts - start_ts)
+        time_span_minutes = span_seconds / 60.0
+        result = defaultdict(lambda: {"values": []})
+
+        # Elegir bucket dinámico para devolver <= max_points por tag.
+        # Para buckets exactos de minuto/hora/día usamos date_trunc (más eficiente).
+        bucket_seconds = 0
+        if span_seconds > 0 and max_points > 0:
+            bucket_seconds = int(math.ceil(span_seconds / float(max_points)))
+
+        # Nunca bajar de 1s cuando hay span.
+        if span_seconds > 0:
+            bucket_seconds = max(1, bucket_seconds)
+
+        # Para spans muy cortos, devolvemos raw (sin agregación).
+        # Umbral conservador: si el bucket calculado es <= 1s, raw.
+        use_raw = (span_seconds <= 0) or (bucket_seconds <= 1 and time_span_minutes <= 120)
+
+        # En esta implementación, TagValue.timestamp en DB puede estar como epoch (bigint/float).
+        # Para bucketing y formateo convertimos a timestamptz con to_timestamp().
+        ts_epoch = TagValue.timestamp
+        ts_tz = fn.to_timestamp(ts_epoch)
+
+        if not use_raw:
+            # Postgres 17 (vanilla) soporta date_bin(interval, ts, origin) para bucketing arbitrario.
+            # Esto evita armar SQL manual con format() (no soportado por peewee.SQL).
+            if bucket_seconds >= 86400 and bucket_seconds % 86400 == 0:
+                bucket_base = fn.date_trunc("day", ts_tz)
+            elif bucket_seconds >= 3600 and bucket_seconds % 3600 == 0:
+                bucket_base = fn.date_trunc("hour", ts_tz)
+            elif bucket_seconds >= 60 and bucket_seconds % 60 == 0:
+                bucket_base = fn.date_trunc("minute", ts_tz)
+            else:
+                origin = fn.to_timestamp(0)
+                bucket_base = fn.date_bin(
+                    SQL(f"make_interval(secs => {int(bucket_seconds)})"),
+                    ts_tz,
+                    origin,
+                )
+            bucket_expr = bucket_base.alias("bucket")
+
+            query = (
+                TagValue.select(
+                    Tags.name.alias("name"),
+                    bucket_expr,
+                    fn.AVG(TagValue.value).alias("value"),
+                    Units.unit.alias("tag_value_unit"),
+                    Variables.name.alias("variable_name"),
+                )
                 .join(Tags)
                 .join(Units, on=(Tags.unit == Units.id))
                 .join(Variables, on=(Units.variable_id == Variables.id))
-                .where((TagValue.timestamp.between(start, stop)) & (Tags.name.in_(tags)))
-                .order_by(TagValue.timestamp)
-                .dicts()) 
-         
-        # Structure the data
-        time_span = (stop - start ) / 60 # span in minutes
-        result = defaultdict(lambda: {"values": []})
-        if time_span > 60 * 24 * 7:  # 1 week
-            # Aggregate data every 1 day
-            result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600 * 24, timezone=timezone)
+                # Filtrar en epoch (mucho más eficiente si la columna es bigint/numérica).
+                .where((ts_epoch.between(start_ts, stop_ts)) & (Tags.name.in_(tags)))
+                .group_by(Tags.name, bucket_expr, Units.unit, Variables.name)
+                .order_by(bucket_expr)
+                .dicts()
+            )
 
-        elif time_span > 60 * 24 * 2:  # 2 days
-            # Aggregate data every 1 hora
-            result = self._agregate_data_every_seconds(query=query, result=result, seconds=3600, timezone=timezone)
-
-        elif time_span > 60 * 2:  # 2 horas
-            # Aggregate data every 1 minute
-            result = self._agregate_data_every_seconds(query=query, result=result, seconds=60, timezone=timezone)
-
-        else:
-            # Use original data
-            
+            # Optimización: formatear timestamp en SQL (menos overhead en Python).
+            # Postgres: timezone(tz, timestamptz) -> timestamp en esa zona.
+            # to_char(..., 'MM/DD/YYYY, HH24:MI:SS.US') alinea con el parser de Trends.tsx.
+            ts_fmt = "MM/DD/YYYY, HH24:MI:SS.US"
+            query = query.select_extend(
+                fn.to_char(fn.timezone(timezone, bucket_base), ts_fmt).alias("x")
+            )
             for entry in query:
-                
-                from_timezone = pytz.timezone('UTC')
-                timestamp = entry['timestamp']
-                timestamp = from_timezone.localize(timestamp)
-                result[entry['name']]["values"].append({
-                    "x": timestamp.astimezone(_timezone).strftime(self.tag_engine.DATETIME_FORMAT),
-                    "y": entry['value']
-                })
+                tag_name = entry["name"]
+                result[tag_name]["values"].append({"x": entry["x"], "y": entry["value"]})
+                # Guardar unit/variable si están disponibles (evita consultas extra por tag)
+                if "unit" not in result[tag_name]:
+                    result[tag_name]["unit"] = entry.get("tag_value_unit")
+                if "variable" not in result[tag_name]:
+                    result[tag_name]["variable"] = entry.get("variable_name")
+        else:
+            # Use original data (sin agregación)
+            query = (
+                TagValue.select(
+                    Tags.name.alias("name"),
+                    TagValue.value,
+                    TagValue.timestamp,
+                    Units.unit.alias("tag_value_unit"),
+                    Variables.name.alias("variable_name"),
+                )
+                .join(Tags)
+                .join(Units, on=(Tags.unit == Units.id))
+                .join(Variables, on=(Units.variable_id == Variables.id))
+                .where((ts_epoch.between(start_ts, stop_ts)) & (Tags.name.in_(tags)))
+                .order_by(ts_epoch)
+                .dicts()
+            )
+            ts_fmt = "MM/DD/YYYY, HH24:MI:SS.US"
+            query = query.select_extend(
+                fn.to_char(fn.timezone(timezone, ts_tz), ts_fmt).alias("x")
+            )
+            for entry in query:
+                tag_name = entry["name"]
+                result[tag_name]["values"].append({"x": entry["x"], "y": entry["value"]})
+                if "unit" not in result[tag_name]:
+                    result[tag_name]["unit"] = entry.get("tag_value_unit")
+                if "variable" not in result[tag_name]:
+                    result[tag_name]["variable"] = entry.get("variable_name")
         
+        # Asegurar que todos los tags solicitados existan en el resultado (aunque no haya data).
         for tag in tags:
-
-            result[tag]['unit'] = self.tag_engine.get_display_unit_by_tag(tag)
+            _ = result[tag]  # materializa entry
         
         return result
 

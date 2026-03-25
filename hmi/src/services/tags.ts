@@ -14,6 +14,7 @@ export type Tag = {
   node_namespace?: string;
   scan_time?: number;
   dead_band?: number;
+  kp?: number;
   process_filter?: boolean;
   gaussian_filter?: boolean;
   gaussian_filter_threshold?: number;

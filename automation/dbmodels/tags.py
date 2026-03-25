@@ -823,6 +823,8 @@ class TagValue(BaseModel):
     class Meta:
         indexes = (
             (('timestamp',), False),
+            # Consultas típicas de tendencias: por tag + rango de tiempo
+            (('tag', 'timestamp'), False),
         )
 
     @classmethod

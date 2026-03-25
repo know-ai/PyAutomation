@@ -57,6 +57,7 @@ nav:
       - Quick Start: "Users_Guide/QuickStart.md"
       - Database:
           - Summary: "Users_Guide/Database/index.md"
+          - Linear Referencing Geospatial: "Users_Guide/Database/LinearReferencingGeospatial.md"
       - Communications:
           - Summary: "Users_Guide/Communications/index.md"
       - OPC UA Server:

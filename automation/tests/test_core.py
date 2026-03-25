@@ -3,6 +3,7 @@ from datetime import datetime
 from flask import Flask
 from .. import PyAutomation
 from ..alarms import Alarm, AlarmState
+from ..dbmodels.tags import Segment
 
 
 class TestCore(unittest.TestCase):
@@ -257,3 +258,95 @@ class TestCore(unittest.TestCase):
         self.app.delete_alarm(id=alarm_H.identifier)
         self.app.delete_alarm(id=alarm_HH.identifier)
         self.app.delete_tag(id=tag.id)
+
+    def test_linear_referencing_geospatial(self):
+        # Precondition: segment must exist in DB
+        segment = Segment.create(name="SEG-A", manufacturer="MANU-A")
+        self.assertIsNotNone(segment)
+
+        # CREATE point
+        point, message = self.app.create_linear_referencing_geospatial(
+            segment_name="SEG-A",
+            kp=0.0,
+            latitude=10.0,
+            longitude=-72.0,
+            elevation=100.0
+        )
+        with self.subTest("Create geospatial point"):
+            self.assertIsNotNone(point)
+            self.assertEqual(point["segment_name"], "SEG-A")
+            self.assertEqual(point["kp"], 0.0)
+
+        # CREATE second point for interpolation
+        point2, _ = self.app.create_linear_referencing_geospatial(
+            segment_name="SEG-A",
+            kp=10.0,
+            latitude=20.0,
+            longitude=-62.0,
+            elevation=200.0
+        )
+        self.assertIsNotNone(point2)
+
+        # READ all/by-segment/by-id
+        all_points = self.app.get_linear_referencing_geospatial_points()
+        with self.subTest("Read all points"):
+            self.assertGreaterEqual(len(all_points), 2)
+
+        segment_points = self.app.get_linear_referencing_geospatial_points_by_segment(segment_name="SEG-A")
+        with self.subTest("Read points by segment"):
+            self.assertEqual(len(segment_points), 2)
+            self.assertLessEqual(segment_points[0]["kp"], segment_points[1]["kp"])
+
+        point_by_id = self.app.get_linear_referencing_geospatial_point(id=point["id"])
+        with self.subTest("Read point by id"):
+            self.assertIsNotNone(point_by_id)
+            self.assertEqual(point_by_id["kp"], 0.0)
+
+        # UPDATE
+        updated, _ = self.app.update_linear_referencing_geospatial_point(
+            id=point["id"],
+            latitude=11.0,
+            longitude=-71.0
+        )
+        with self.subTest("Update point"):
+            self.assertEqual(updated["latitude"], 11.0)
+            self.assertEqual(updated["longitude"], -71.0)
+
+        # INTERPOLATION (midpoint between KP 0 and 10)
+        interpolated, _ = self.app.get_geospatial_by_segment_and_kp(segment_name="SEG-A", kp=5.0)
+        with self.subTest("Interpolate by segment and KP"):
+            self.assertIsNotNone(interpolated)
+            self.assertTrue(interpolated["interpolated"])
+            self.assertAlmostEqual(interpolated["latitude"], 15.5, places=6)
+            self.assertAlmostEqual(interpolated["longitude"], -66.5, places=6)
+            self.assertAlmostEqual(interpolated["elevation"], 150.0, places=6)
+
+        # BULK IMPORT from normalized rows (create/update/skip)
+        import_result = self.app.import_linear_referencing_profile(
+            rows=[
+                {"segment_name": "SEG-A", "kp": 20.0, "latitude": 30.0, "longitude": -52.0, "elevation": 300.0},
+                {"segment_name": "SEG-A", "kp": 10.0, "latitude": 21.0, "longitude": -61.0, "elevation": 201.0},
+            ],
+            update_existing=True
+        )
+        with self.subTest("Bulk import with update_existing=True"):
+            self.assertEqual(import_result["created"], 1)
+            self.assertEqual(import_result["updated"], 1)
+            self.assertTrue(import_result["success"])
+
+        import_result_skip = self.app.import_linear_referencing_profile(
+            rows=[
+                {"segment_name": "SEG-A", "kp": 20.0, "latitude": 99.0, "longitude": -99.0}
+            ],
+            update_existing=False
+        )
+        with self.subTest("Bulk import with update_existing=False"):
+            self.assertEqual(import_result_skip["skipped"], 1)
+            self.assertTrue(import_result_skip["success"])
+
+        # DELETE
+        success, _ = self.app.delete_linear_referencing_geospatial_point(id=point2["id"])
+        with self.subTest("Delete point by id"):
+            self.assertTrue(success)
+            deleted = self.app.get_linear_referencing_geospatial_point(id=point2["id"])
+            self.assertIsNone(deleted)

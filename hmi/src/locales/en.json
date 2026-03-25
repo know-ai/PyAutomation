@@ -171,6 +171,7 @@
     "frozenDataDetection": "Frozen Data Detection",
     "additionalInformation": "Additional Information",
     "segment": "Segment",
+    "kp": "KP",
     "manufacturer": "Manufacturer",
     "editTagTitle": "Edit Tag: {{name}}",
     "updateTag": "Update Tag",
