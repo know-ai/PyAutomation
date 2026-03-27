@@ -586,7 +586,7 @@ class PyAutomation(Singleton):
 
     @logging_error_handler
     @validate_types(kp_min=int|float, kp_max=int|float, output=list)
-    def get_tags_by_kp_range(self, kp_min:float, kp_max:float)->list:
+    def get_tags_by_kp_range(self, kp_min:float, kp_max:float, segment:str=None)->list:
         r"""
         Retrieves tags whose KP is between kp_min and kp_max (inclusive).
 
@@ -594,12 +594,13 @@ class PyAutomation(Singleton):
 
         * **kp_min** (float): Lower KP bound.
         * **kp_max** (float): Upper KP bound.
+        * **segment** (str): Optional segment name to filter by.
 
         **Returns:**
 
         * **list**: Serialized tags in the requested KP range.
         """
-        return self.cvt.get_tags_by_kp_range(kp_min=kp_min, kp_max=kp_max)
+        return self.cvt.get_tags_by_kp_range(kp_min=kp_min, kp_max=kp_max, segment=segment)
 
     @logging_error_handler
     @validate_types(segment_name=str, kp=int|float, latitude=int|float, longitude=int|float, elevation=int|float|type(None), output=tuple)
@@ -3980,6 +3981,24 @@ class PyAutomation(Singleton):
         * **list**: List of Alarm objects.
         """
         return self.alarm_manager.get_alarms_by_tag(tag=tag)
+
+    @logging_error_handler
+    @validate_types(kp_min=int|float, kp_max=int|float, output=list)
+    def get_alarms_by_kp_range(self, kp_min:float, kp_max:float, segment:str=None)->list:
+        r"""
+        Retrieves alarms whose associated tag KP is within [kp_min, kp_max].
+
+        **Parameters:**
+
+        * **kp_min** (float): Lower KP bound.
+        * **kp_max** (float): Upper KP bound.
+        * **segment** (str, optional): If provided, only alarms whose tag belongs to this segment are returned.
+
+        **Returns:**
+
+        * **list**: List of serialized alarm dictionaries.
+        """
+        return self.alarm_manager.get_alarms_by_kp_range(kp_min=kp_min, kp_max=kp_max, segment=segment)
 
     @logging_error_handler
     @validate_types(id=str, user=User|type(None), output=None)

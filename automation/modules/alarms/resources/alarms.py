@@ -33,6 +33,12 @@ create_alarm_model = api.model("create_alarm_model", {
     'description': fields.String(required=False, description='Alarm description', default='')
 })
 
+alarms_kp_range_model = api.model("alarms_kp_range_model", {
+    'kp_min': fields.Float(required=True, description='Lower bound KP (inclusive)'),
+    'kp_max': fields.Float(required=True, description='Upper bound KP (inclusive)'),
+    'segment': fields.String(required=False, description='Filter by segment (optional)')
+})
+
 update_alarm_model = api.model("update_alarm_model", {
     'id': fields.String(required=True, description='Alarm ID'),
     'name': fields.String(required=False, description='Alarm name'),
@@ -124,6 +130,34 @@ class ActiveAlarmsCollection(Resource):
         return False, 200
 
     
+@ns.route('/kp_range')
+class AlarmsByKpRangeCollection(Resource):
+
+    @api.doc(security='apikey', description="Retrieves alarms whose associated tag KP is between two bounds (inclusive). Optionally filter by segment.")
+    @api.response(200, "Success")
+    @api.response(400, "Invalid payload")
+    @Api.token_required(auth=True)
+    @ns.expect(alarms_kp_range_model)
+    def post(self):
+        """
+        Get alarms by KP range.
+
+        Returns alarms whose associated tag has a `kp` value between `kp_min` and
+        `kp_max` (inclusive). An optional `segment` filter can be applied to further
+        restrict the results.
+        """
+        payload = api.payload or {}
+        kp_min = payload.get('kp_min')
+        kp_max = payload.get('kp_max')
+        segment = payload.get('segment')
+
+        if kp_min is None or kp_max is None:
+            return {'message': 'kp_min and kp_max are required'}, 400
+
+        data = app.get_alarms_by_kp_range(kp_min=kp_min, kp_max=kp_max, segment=segment)
+        return {'data': data}, 200
+
+
 @ns.route('/<id>')
 @api.param('id', 'The alarm identifier')
 class AlarmResource(Resource):

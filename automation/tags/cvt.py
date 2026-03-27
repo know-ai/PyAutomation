@@ -383,7 +383,7 @@ class CVT:
         return result
 
     @logging_error_handler
-    def get_tags_by_kp_range(self, kp_min:float, kp_max:float)->list:
+    def get_tags_by_kp_range(self, kp_min:float, kp_max:float, segment:str=None)->list:
         r"""
         Returns a list of serialized tags whose KP is between kp_min and kp_max (inclusive).
 
@@ -391,6 +391,7 @@ class CVT:
 
         * **kp_min** (float): Lower bound for KP.
         * **kp_max** (float): Upper bound for KP.
+        * **segment** (str): Optional segment name to filter by.
 
         **Returns:**
 
@@ -404,6 +405,7 @@ class CVT:
             tag.serialize()
             for _, tag in self._tags.items()
             if tag.get_kp() is not None and lower <= tag.get_kp() <= upper
+            and (segment is None or tag.segment == segment)
         ]
 
     @logging_error_handler
@@ -937,7 +939,7 @@ class CVTEngine(Singleton):
         return self.__query(_query)
 
     @logging_error_handler
-    def get_tags_by_kp_range(self, kp_min:float, kp_max:float):
+    def get_tags_by_kp_range(self, kp_min:float, kp_max:float, segment:str=None):
         r"""
         Thread-safe method to get tags whose KP is within a given range.
         """
@@ -946,6 +948,7 @@ class CVTEngine(Singleton):
         _query["parameters"] = dict()
         _query["parameters"]["kp_min"] = kp_min
         _query["parameters"]["kp_max"] = kp_max
+        _query["parameters"]["segment"] = segment
         return self.__query(_query)
 
     @logging_error_handler

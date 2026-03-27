@@ -279,6 +279,38 @@ class AlarmManager(Singleton):
     #     return alarms
 
     @logging_error_handler
+    def get_alarms_by_kp_range(self, kp_min:float, kp_max:float, segment:str=None)->list:
+        r"""
+        Returns serialized alarms whose associated tag KP is within [kp_min, kp_max].
+
+        **Parameters:**
+
+        * **kp_min** (float): Lower bound for KP.
+        * **kp_max** (float): Upper bound for KP.
+        * **segment** (str, optional): If provided, only alarms whose tag belongs to this segment are returned.
+
+        **Returns:**
+
+        * **list**: List of serialized alarm dictionaries.
+        """
+        lower = min(kp_min, kp_max)
+        upper = max(kp_min, kp_max)
+        result = []
+        for _, alarm in self._alarms.items():
+            tag = alarm.tag
+            if not hasattr(tag, 'get_kp'):
+                continue
+            kp = tag.get_kp()
+            if kp is None:
+                continue
+            if not (lower <= kp <= upper):
+                continue
+            if segment is not None and alarm.segment != segment:
+                continue
+            result.append(alarm.serialize())
+        return result
+
+    @logging_error_handler
     def get_alarm_by_tag(self, tag:str)->list[Alarm]:
         r"""
         Retrieves a list of alarms associated with a specific tag.

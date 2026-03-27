@@ -97,7 +97,8 @@ tags_list_filter_model = api.model("tags_list_filter_model", {
 
 tags_kp_range_model = api.model("tags_kp_range_model", {
     'kp_min': fields.Float(required=True, description='Lower bound KP (inclusive)'),
-    'kp_max': fields.Float(required=True, description='Upper bound KP (inclusive)')
+    'kp_max': fields.Float(required=True, description='Upper bound KP (inclusive)'),
+    'segment': fields.String(required=False, description='Filter by segment (optional)')
 })
 
 
@@ -185,11 +186,12 @@ class TagsByKpRangeCollection(Resource):
         payload = api.payload or {}
         kp_min = payload.get('kp_min')
         kp_max = payload.get('kp_max')
+        segment = payload.get('segment')
 
         if kp_min is None or kp_max is None:
             return {'message': 'kp_min and kp_max are required'}, 400
 
-        data = app.get_tags_by_kp_range(kp_min=kp_min, kp_max=kp_max)
+        data = app.get_tags_by_kp_range(kp_min=kp_min, kp_max=kp_max, segment=segment)
         return {'data': data}, 200
 
 @ns.route('/names')
