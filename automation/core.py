@@ -585,7 +585,7 @@ class PyAutomation(Singleton):
         return self.cvt.get_tags_filtered(manufacturer=manufacturer, segment=segment)
 
     @logging_error_handler
-    @validate_types(kp_min=int|float, kp_max=int|float, output=list)
+    @validate_types(kp_min=int|float, kp_max=int|float, segment=str|type(None), output=list)
     def get_tags_by_kp_range(self, kp_min:float, kp_max:float, segment:str=None)->list:
         r"""
         Retrieves tags whose KP is between kp_min and kp_max (inclusive).
@@ -3983,7 +3983,7 @@ class PyAutomation(Singleton):
         return self.alarm_manager.get_alarms_by_tag(tag=tag)
 
     @logging_error_handler
-    @validate_types(kp_min=int|float, kp_max=int|float, output=list)
+    @validate_types(kp_min=int|float, kp_max=int|float, segment=str|type(None), output=list)
     def get_alarms_by_kp_range(self, kp_min:float, kp_max:float, segment:str=None)->list:
         r"""
         Retrieves alarms whose associated tag KP is within [kp_min, kp_max].
