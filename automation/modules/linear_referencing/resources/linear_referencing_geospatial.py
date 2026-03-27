@@ -2,6 +2,7 @@ import csv
 from io import StringIO, BytesIO
 from flask import request
 from flask_restx import Namespace, Resource, fields, reqparse
+from werkzeug.datastructures import FileStorage
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
@@ -136,6 +137,31 @@ class LinearReferencingInterpolateResource(Resource):
         return {"message": message, "data": data}, 200
 
 
+bulk_import_parser = reqparse.RequestParser()
+bulk_import_parser.add_argument(
+    'file',
+    type=FileStorage,
+    location='files',
+    required=True,
+    help='CSV or XLSX file to import'
+)
+bulk_import_parser.add_argument(
+    'segment_name',
+    type=str,
+    location='form',
+    required=False,
+    help='Default segment name (used when the file does not include a segment_name column)'
+)
+bulk_import_parser.add_argument(
+    'update_existing',
+    type=str,
+    location='form',
+    required=False,
+    default='true',
+    help='Update existing points if they already exist (true/false, default: true)'
+)
+
+
 @ns.route('/bulk_import')
 class LinearReferencingBulkImportResource(Resource):
 
@@ -147,6 +173,7 @@ class LinearReferencingBulkImportResource(Resource):
     @api.response(200, "Import processed")
     @api.response(400, "Invalid file or payload")
     @Api.token_required(auth=True)
+    @ns.expect(bulk_import_parser)
     def post(self):
         if "file" not in request.files:
             return {"message": "file is required (CSV or XLSX)"}, 400
