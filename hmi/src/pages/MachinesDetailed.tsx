@@ -30,6 +30,35 @@ type MachineDetailedData = {
   [key: string]: any;
 };
 
+/** Nombres de tags de campo ya suscritos (clave API + tag.name anidado). */
+function collectSubscribedFieldTagNames(details: MachineDetailedData): Set<string> {
+  const names = new Set<string>();
+  for (const [key, val] of Object.entries(details.subscribed_tags || {})) {
+    if (key) names.add(key);
+    const nested = val && typeof val === "object" ? (val as { tag?: { name?: string } }).tag?.name : undefined;
+    if (typeof nested === "string" && nested) names.add(nested);
+  }
+  for (const val of Object.values(details.read_only_process_type_variables || {})) {
+    const nested =
+      val && typeof val === "object"
+        ? (val as { tag?: { name?: string } }).tag?.name
+        : undefined;
+    if (typeof nested === "string" && nested) names.add(nested);
+  }
+  return names;
+}
+
+/** Tags de campo aún libres para suscribir (no están en Tags Suscritos). */
+function getAvailableFieldTags(details: MachineDetailedData): string[] {
+  const subscribed = collectSubscribedFieldTagNames(details);
+  return (details.field_tags || []).filter((name) => !subscribed.has(name));
+}
+
+/** Variables internas sin tag asignado (Tags No Suscritos). */
+function getNotSubscribedTagKeys(details: MachineDetailedData): string[] {
+  return Object.keys(details.not_subscribed_tags || {});
+}
+
 export function MachinesDetailed() {
   const { t } = useTranslation();
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -1380,7 +1409,7 @@ export function MachinesDetailed() {
                                       onChange={(e) => setSelectedReadOnlyVariable((prev) => ({ ...prev, [machineName]: e.target.value }))}
                                     >
                                       <option value="">{t("machines.select")}</option>
-                                      {(machineDetails[machineName].field_tags || []).map((tagName) => (
+                                      {getAvailableFieldTags(machineDetails[machineName]).map((tagName) => (
                                         <option key={tagName} value={tagName}>
                                           {tagName}
                                         </option>
@@ -1395,7 +1424,7 @@ export function MachinesDetailed() {
                                       onChange={(e) => setSelectedInternalVariable((prev) => ({ ...prev, [machineName]: e.target.value }))}
                                     >
                                       <option value="">{t("machines.select")}</option>
-                                      {Object.keys(machineDetails[machineName].not_subscribed_tags || {}).map((key) => (
+                                      {getNotSubscribedTagKeys(machineDetails[machineName]).map((key) => (
                                         <option key={key} value={key}>
                                           {key}
                                         </option>
@@ -1496,7 +1525,8 @@ export function MachinesDetailed() {
                                             message || t("machines.unsubscribe"),
                                             "success"
                                           );
-                                          // Refrescar detalles de la máquina
+                                          // Refrescar: el field tag vuelve a "Tags de Campo"
+                                          // y la variable interna a "Tags No Suscritos".
                                           const data = await getMachineByName(
                                             machineName
                                           );
@@ -1504,8 +1534,15 @@ export function MachinesDetailed() {
                                             ...prev,
                                             [machineName]: data,
                                           }));
-                                          // Resetear selección
                                           setSelectedSubscribedTag((prev) => ({
+                                            ...prev,
+                                            [machineName]: "",
+                                          }));
+                                          setSelectedReadOnlyVariable((prev) => ({
+                                            ...prev,
+                                            [machineName]: "",
+                                          }));
+                                          setSelectedInternalVariable((prev) => ({
                                             ...prev,
                                             [machineName]: "",
                                           }));

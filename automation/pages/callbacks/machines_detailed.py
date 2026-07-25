@@ -91,14 +91,13 @@ def init_callback(app:dash.Dash):
         not_subscribed = [{"label": "", "value": ""}]
         available_tags = [{"label": "", "value": ""}]
         tags = app.automation.cvt._cvt.get_cuasi_field_tags_names()
+        available = machine.get_available_field_tags(tags)
         for _tag_name, value in internal_variables.items():
             
             if value.tag:
                 subscribed_tags_machine.append({
                     "label": f"{value.tag.name}->{_tag_name}", "value": value.tag.name
                     })
-                if value.tag.name in tags:
-                    tags.remove(value.tag.name)
                 
             else:
 
@@ -106,7 +105,7 @@ def init_callback(app:dash.Dash):
                     "label": _tag_name, "value": _tag_name
                 })
 
-        for tag in tags:
+        for tag in available:
 
             available_tags.append({
                 "label": tag, "value": tag

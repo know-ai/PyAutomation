@@ -678,6 +678,59 @@ class StateMachineCore(StateMachine):
 
         return result
     
+    def get_subscribed_field_tag_names(self) -> set:
+        r"""
+        Names of field tags currently bound to read-only ProcessType inputs.
+
+        **Returns:**
+
+        * **set**: Set of tag names (``Tag.name``).
+        """
+        names = set()
+        for _, value in self.get_read_only_process_type_variables().items():
+            if value.tag is None:
+                continue
+            tag_name = getattr(value.tag, "name", None)
+            if tag_name:
+                names.add(tag_name)
+            get_name = getattr(value.tag, "get_name", None)
+            if callable(get_name):
+                try:
+                    n = get_name()
+                    if n:
+                        names.add(n)
+                except Exception:
+                    pass
+        return names
+
+    def get_available_field_tags(self, field_tags: list | None = None) -> list:
+        r"""
+        Field tags still available to subscribe on this machine.
+
+        Same UX as the legacy Dash HMI: once a field tag is bound to an
+        internal ProcessType, it disappears from the "Tags de Campo" list;
+        after unsubscribe it reappears.
+
+        **Parameters:**
+
+        * **field_tags** (list, optional): Candidate field-tag names. If omitted,
+          uses CVT quasi-field tags (OPC UA address present).
+
+        **Returns:**
+
+        * **list**: Field tag names not yet subscribed by this machine.
+        """
+        if field_tags is None:
+            from .tags.cvt import CVTEngine
+            field_tags = list(CVTEngine()._cvt.get_cuasi_field_tags_names() or [])
+        else:
+            field_tags = list(field_tags)
+
+        subscribed = self.get_subscribed_field_tag_names()
+        if not subscribed:
+            return field_tags
+        return [name for name in field_tags if name not in subscribed]
+
     def subscribe_to(self, tag:Tag, default_tag_name:str=None):
         r"""
         Subscribes the machine to a tag.

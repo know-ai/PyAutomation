@@ -149,12 +149,12 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
 
     const layout: Partial<Layout> = {
       autosize: true,
-      margin: { l: 60, r: unitOrder.length > 1 ? 60 : 20, t: 40, b: 40 },
+      margin: { l: 60, r: unitOrder.length > 1 ? 60 : 20, t: 40, b: 28 },
       paper_bgcolor: mode === "dark" ? "#212529" : "#ffffff",
       plot_bgcolor: mode === "dark" ? "#2c3034" : "#f8f9fa",
       font: { color: mode === "dark" ? "#ffffff" : "#212529" },
       xaxis: {
-        title: t("common.time"),
+        // Sin título "Tiempo": el datetime del eje ya lo indica y libera espacio.
         color: mode === "dark" ? "#ffffff" : "#212529",
         gridcolor: mode === "dark" ? "#495057" : "#dee2e6",
       },
@@ -183,7 +183,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     }
 
     return { data: traces, layout };
-  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, tagHistory, t]);
+  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, tagHistory]);
 
   // Máximo 2 unidades distintas; número de tags ilimitado mientras no se supere ese tope de unidades
   const handleTagToggle = (tagName: string) => {

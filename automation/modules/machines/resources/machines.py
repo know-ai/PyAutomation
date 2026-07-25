@@ -145,8 +145,10 @@ class MachineByNameResource(Resource):
             # Get complete serialization
             serialization = machine.serialize()
 
-            # Field tags
-            field_tags = app.cvt._cvt.get_field_tags_names()
+            # Tags de Campo: solo los aún libres en ESTA máquina
+            # (misma regla que el HMI Dash: quitar los ya suscritos).
+            all_field_tags = app.cvt._cvt.get_field_tags_names()
+            field_tags = machine.get_available_field_tags(all_field_tags)
             
             return {
                 "data": {

@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="PyAutomation — Plus comercial: datos de planta (CVT + histórico) hacia aplicativos web con Socket.IO por eventos, suscripción lógica, polling y API RESTful." />
+  <title>PyAutomation — Histórico + tiempo real hacia la web (Socket.IO · REST · polling)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #0f1419;
+      --muted: #5c6975;
+      --line: rgba(15, 20, 25, 0.09);
+      --surface: #ffffff;
+      --surface-soft: #f6f8fb;
+      --accent: #1e6bff;
+      --accent-soft: rgba(30, 107, 255, 0.12);
+      --teal: #0d9488;
+      --amber: #d97706;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --shadow: 0 24px 60px rgba(15, 20, 25, 0.08), 0 4px 16px rgba(15, 20, 25, 0.04);
+      --shadow-sm: 0 8px 24px rgba(15, 20, 25, 0.06);
+      --max: 980px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Instrument Sans", system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, #eef2ff 0%, var(--surface-soft) 32%, var(--surface) 56%);
+      line-height: 1.62;
+      font-size: 1.05rem;
+    }
+
+    .wrap {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 2.75rem 1.5rem 4rem;
+    }
+
+    header.hero {
+      position: relative;
+      padding: 2.5rem 2.25rem 2.75rem;
+      border-radius: calc(var(--radius) + 4px);
+      background: radial-gradient(1200px 500px at 10% -20%, rgba(30, 107, 255, 0.22), transparent 55%),
+                  radial-gradient(900px 400px at 100% 0%, rgba(13, 148, 136, 0.14), transparent 50%),
+                  linear-gradient(145deg, #0b1220 0%, #141b2e 42%, #0f172a 100%);
+      color: #e8eef8;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    header.hero::after {
+      content: "";
+      position: absolute;
+      inset: -40% -20% auto auto;
+      width: min(560px, 90vw);
+      height: min(560px, 90vw);
+      background: radial-gradient(circle, rgba(30, 107, 255, 0.35) 0%, transparent 70%);
+      opacity: 0.45;
+      pointer-events: none;
+    }
+    .hero-inner { position: relative; z-index: 1; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(232, 238, 248, 0.85);
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      margin-bottom: 1rem;
+    }
+    .badge-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #34d399;
+      box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.2);
+    }
+    h1 {
+      margin: 0 0 0.75rem;
+      font-size: clamp(1.65rem, 4vw, 2.35rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+    .hero-lede {
+      margin: 0;
+      font-size: 1.125rem;
+      color: rgba(232, 238, 248, 0.82);
+      max-width: 52ch;
+      font-weight: 400;
+    }
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-top: 1.75rem;
+    }
+    .chip {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      padding: 0.4rem 0.85rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.09);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(232, 238, 248, 0.92);
+    }
+
+    nav.toc {
+      margin-top: 2rem;
+      padding: 1.25rem 1.35rem;
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
+    }
+    nav.toc h2 {
+      margin: 0 0 0.75rem;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    nav.toc ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 0.45rem;
+    }
+    nav.toc a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    nav.toc a:hover { text-decoration: underline; }
+
+    section.card {
+      margin-top: 2.25rem;
+      padding: 2rem 2rem 2.15rem;
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
+    }
+    section.card h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.45rem;
+      letter-spacing: -0.015em;
+    }
+    .kicker {
+      margin: 0 0 1.15rem;
+      color: var(--muted);
+      font-size: 0.98rem;
+    }
+    section.card h3 {
+      margin: 1.5rem 0 0.65rem;
+      font-size: 1.06rem;
+      font-weight: 600;
+      color: #1a2530;
+    }
+    p { margin: 0 0 1rem; color: #2d3748; }
+    ul.bullets { margin: 0 0 1rem; padding-left: 1.2rem; color: #2d3748; }
+    ul.bullets li { margin-bottom: 0.45rem; }
+
+    .callout {
+      border-radius: var(--radius-sm);
+      padding: 1rem 1.15rem;
+      margin: 1.25rem 0 0;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+    }
+    .callout p { margin: 0; color: #243044; font-size: 0.97rem; }
+    .callout.teal { border-color: var(--teal); background: rgba(13, 148, 136, 0.1); }
+
+    .grid-2 {
+      display: grid;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    @media (min-width: 720px) {
+      .grid-2 { grid-template-columns: 1fr 1fr; }
+    }
+    .tile {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 1.1rem 1.15rem;
+      background: var(--surface-soft);
+    }
+    .tile strong { display: block; margin-bottom: 0.35rem; color: var(--ink); }
+    .tile span { font-size: 0.95rem; color: var(--muted); }
+
+    .diagram {
+      margin-top: 1.35rem;
+      padding: 1.25rem 1rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #fafbfd 0%, #fff 100%);
+      overflow-x: auto;
+    }
+    .diagram .mermaid { display: flex; justify-content: center; }
+
+    footer.doc-foot {
+      margin-top: 2.75rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.88rem;
+      color: var(--muted);
+      text-align: center;
+    }
+    footer.doc-foot a { color: var(--accent); }
+
+    code {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 0.86em;
+      background: var(--surface-soft);
+      padding: 0.12em 0.35em;
+      border-radius: 5px;
+      border: 1px solid var(--line);
+    }
+
+    .plus-banner {
+      padding: 1.2rem 1.35rem;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(120deg, rgba(30, 107, 255, 0.1) 0%, rgba(13, 148, 136, 0.08) 100%);
+      border: 1px solid var(--line);
+      margin: 0 0 1.35rem;
+      font-size: 1.03rem;
+      color: #1a2d42;
+      font-weight: 500;
+      line-height: 1.55;
+    }
+
+    .grid-3 {
+      display: grid;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    @media (min-width: 720px) {
+      .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .accent-list {
+      margin: 0;
+      padding-left: 1.2rem;
+      color: #2d3748;
+    }
+    .accent-list li { margin-bottom: 0.55rem; }
+    .accent-list li strong { color: var(--ink); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="hero-inner">
+        <div class="badge"><span class="badge-dot"></span> Documento orientado a decisión ejecutiva · PyAutomation</div>
+        <h1>De la planta al ecosistema digital: histórico + tiempo real, listos para la web moderna</h1>
+        <p class="hero-lede">
+          El diferencial de <strong>PyAutomation</strong> no termina en “conectar el PLC”: une <strong>valores actuales en vivo</strong> (CVT) con <strong>series históricas</strong> persistidas y los expone donde hoy trabajan los equipos digitales: aplicaciones web, portales y microservicios mediante <strong>Socket.IO</strong> (eventos y suscripciones lógicas), <strong>consultas on-demand</strong> y <strong>API RESTful</strong> —incluyendo modelos híbridos con <em>polling</em> cuando conviene simplicidad frente a streams permanentes.
+        </p>
+        <div class="meta-row">
+          <span class="chip">CVT + histórico · una sola historia de dato</span>
+          <span class="chip">Socket.IO · eventos sin refrescar pantalla</span>
+          <span class="chip">REST · integración estándar IT</span>
+          <span class="chip">Polling o push · arquitectura a la medida</span>
+          <span class="chip">OPC UA Ethernet · planta</span>
+          <span class="chip">MIT · Open Source</span>
+        </div>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="Contenidos">
+      <h2>Contenidos</h2>
+      <ul>
+        <li><a href="#vision">El valor estratégico</a></li>
+        <li><a href="#campo">Conectividad con controladores industriales</a></li>
+        <li><a href="#plataforma">La plataforma como concentrador OT/IT</a></li>
+        <li><a href="#plus-web">El plus: web moderna, Socket.IO, REST y polling</a></li>
+        <li><a href="#exposicion">Exposición a servicios web: REST y tiempo real</a></li>
+        <li><a href="#diagramas">Diagramas de comunicación</a></li>
+        <li><a href="#resumen">Beneficios para gerencia</a></li>
+      </ul>
+    </nav>
+
+    <section id="vision" class="card">
+      <h2>Visión ejecutiva</h2>
+      <p class="kicker">Un único modelo de datos en planta que alimenta operación y negocio, sin reinventar cada integración punto a punto.</p>
+      <p class="plus-banner">
+        <strong>Central del mensaje comercial:</strong> PyAutomation permite que el mismo “activo de datos” industrial alimente tanto la <em>mirada del instante</em> (lo que ocurre ahora en la CVT) como la <em>memoria del proceso</em> (históricos muestreados y trazas), y canalizar ambos hacia <strong>aplicativos web actuales</strong> —React, SPAs, backends Node/Java/.NET, PWAs— mediante <strong>eventos Socket.IO</strong> y <strong>contratos REST</strong>, con libertad de elegir <strong>push por suscripción</strong> o <strong>pull por polling</strong> según SLA, coste de conexión y cultura del equipo IT.
+      </p>
+      <p>
+        Las organizaciones industriales necesitan cerrar la brecha entre <strong>Tecnología Operacional</strong> (OT) —controladores, sensores y procesos— e <strong>Tecnología Informática</strong> (IT) —analytics, portales, aplicaciones SaaS y squads digitales—. PyAutomation se posiciona como <strong>cápsula de integración</strong>: recolecta señales de proceso de forma continuada, las consolida en un núcleo único y las expone con el mismo lenguaje que ya dominan los desarrolladores front y back office: <strong>HTTP/JSON</strong>, <strong>streams de eventos</strong> y políticas de identidad reconocibles por negocio.</p>
+      <div class="callout">
+        <p><strong>Lectura clave:</strong> el “plus” tangible es <em>velocidad de producto digital</em>: menos puentes ad-hoc PLC→web, menos duplicidad de modelos de datos y una vía directa desde la planta hasta experiencias de usuario que exigen actualización fluida (monitoreo, KPIs, alarmas en bandeja web, integración con sistemas de tickets o MES ligeros).</p>
+      </div>
+    </section>
+
+    <section id="campo" class="card">
+      <h2>Conectividad Ethernet con automatización de planta (incluye CompactLogix)</h2>
+      <p class="kicker">El cable físico es Ethernet; la semántica de intercambio en entornos modernos converge hacia OPC UA sobre red IP.</p>
+      <p>
+        Los sistemas PLC de la serie <strong>CompactLogix</strong> participan habitualmente del ecosistema Rockwell mediante módulos de comunicación Ethernet y gateways de software/harware que publican información accesible a clientes externos. Sin entrar en detalle de marca, el patrón empresarial es siempre el mismo:
+      </p>
+      <div class="grid-2">
+        <div class="tile">
+          <strong>Activos en campo</strong>
+          <span>Controladores PLC, racks de E/S, drives y bloques de proceso conectados a la red industrial.</span>
+        </div>
+        <div class="tile">
+          <strong>Servidor de datos en planta</strong>
+          <span>Típicamente OPC UA sobre TCP/IP (<code>p. ej.</code> puerto <strong>4840</strong>). PyAutomation opera como cliente: IP o hostname del servidor OPC UA disponible desde la zona de automatización.</span>
+        </div>
+      </div>
+      <h3>¿Qué se obtiene de la planta?</h3>
+      <ul class="bullets">
+        <li><strong>Telemetría de proceso</strong>: niveles, presiones, contadores de producción, estados de máquinas.</li>
+        <li><strong>Coherencia semántica</strong>: nomenclatura y jerarquía de variables según la dirección de OT.</li>
+        <li><strong>Modos de adquisición</strong>: puede operarse lectura por intervalos configurables (<em>polling</em>) o mediante suscripciones reactivas a cambios, según volumen de señales y objetivos de latencia/red.</li>
+      </ul>
+      <div class="callout teal">
+        <p><strong>Nota práctica:</strong> la documentación oficial del proyecto enfatiza al integrador crear clientes OPC UA declarando servidor, dirección IP y puerto. El mismo enfoque escala cuando el origen detrás es un CompactLogix con servidor OPC UA de planta disponible para clientes externos autorizados.</p>
+      </div>
+    </section>
+
+    <section id="plataforma" class="card">
+      <h2>PyAutomation como núcleo: valores actuales + histórico, misma fuente de verdad</h2>
+      <p class="kicker">La <strong>Tabla de Valores Actuales, CVT</strong> refleja el “ahora”; el logger y la base de datos conservan el “ayer y el antes de ayer” para analítica y cumplimiento.</p>
+      <p>
+        Tras conectar al mundo OPC UA, el backend ordena dos capas complementarias para el mundo web:</p>
+      <div class="grid-2">
+        <div class="tile">
+          <strong>Tiempo real (CVT)</strong>
+          <span>Vista única en memoria de tags vigentes para alarmas instantáneas, tendencias vivas del HMI y empuje inmediato a clientes Socket.IO cuando cambia una señal relevante.</span>
+        </div>
+        <div class="tile">
+          <strong>Histórico (logging)</strong>
+          <span>Muestreo parametrizable hacia SQLite, PostgreSQL o MySQL —base para curvas largas, informes, comparativas turno a turno y consultas REST que no dependen de mantener un socket abierto.</span>
+        </div>
+      </div>
+      <p>
+        Esa dualidad es lo que habilita experiencias web “de consumo”: el operador ve el pulso en vivo; dirección y calidad pueden profundizar en series temporales con las mismas variables, sin silos ni exportaciones manuales eternas.</p>
+      <div class="grid-2">
+        <div class="tile">
+          <strong>Beneficio operativo</strong>
+          <span>Alarmas ISA-18.2, tendencias y máquinas de estado reaccionan al mismo conjunto de señales que verá el portal corporativo.</span>
+        </div>
+        <div class="tile">
+          <strong>Beneficio IT</strong>
+          <span>Protocolos industriales quedan encapsulados; lo que sale hacia fuera son patrones web estándar y documentables.</span>
+        </div>
+      </div>
+      <p>
+        Opcionalmente, el servidor OPC UA embebido re-publica vistas hacia MES/SCADA externos. El foco de esta propuesta, sin embargo, es el <strong>canal web directo</strong>: donde PyAutomation acelera el time-to-market de productos digitales.</p>
+    </section>
+
+    <section id="plus-web" class="card">
+      <h2>El plus PyAutomation: llevar planta a aplicativos web modernos</h2>
+      <p class="kicker">No es solo un HMI clásico: es una <strong>plataforma de exposición</strong> que habla el idioma de los equipos que construyen producto software hoy.</p>
+      <p>
+        Tradicionalmente, acercar datos de PLC a una web implicaba gateways propietarios, colas intermedias o duplicar lecturas. PyAutomation concentra adquisición OT y ofrece <strong>tres modos de consumo IT</strong> que se pueden combinar en el mismo proyecto:</p>
+      <div class="grid-3">
+        <div class="tile">
+          <strong>1 · Eventos en vivo (Socket.IO)</strong>
+          <span>El servidor notifica cambios a clientes conectados: ideal para dashboards que no deben parpadear con recargas, sinforías de alarmas en barra lateral, o microfrontends que reaccionan al instante.</span>
+        </div>
+        <div class="tile">
+          <strong>2 · Suscripción lógica + modelo push</strong>
+          <span>Desde la perspectiva de negocio, el cliente se “suscribe” al flujo de actualizaciones de la CVT (patrón tipo Pub/Sub sobre canal persistente). Reduce tráfico frente a sondear en bucle todo el tagmap.</span>
+        </div>
+        <div class="tile">
+          <strong>3 · Polling deliberado</strong>
+          <span>Tanto en la capa industrial (lecturas OPC UA por intervalo) como en la capa web: <strong>REST periódico</strong> desde el front o un BFF para inventarios ligeros, cuadros de mando que actualizan cada N segundos, o entornos donde políticas de red favorecen HTTP corto sobre websockets largos.</span>
+        </div>
+      </div>
+      <h3>Utilidad de alto nivel que esto desbloquea</h3>
+      <ul class="accent-list">
+        <li><strong>Operación 360° en el navegador:</strong> mimic, tendencias y tablas alimentadas por la misma CVT que dispara eventos Socket.IO —coherencia entre sala de control y “visor web” para jefaturas o turno noche remoto.</li>
+        <li><strong>Productos digitales mixtos:</strong> combinar <em>push</em> para lo crítico (seguridad, paradas) y <em>polling REST</em> para KPIs agregados o pantallas de baja frecuencia, optimizando coste y complejidad.</li>
+        <li><strong>Integración con el stack corporativo:</strong> ERP, CMMS, data lakes o bus de integración consumen JSON vía REST; sistemas de notificación o paneles NOC pueden colgarse del stream de eventos sin tocar el PLC.</li>
+        <li><strong>Analytics y benchmarking:</strong> el histórico persistente permite enriquecer modelos internos de eficiencia, correlacionar alarmas con producción y alimentar informes regulatorios desde consultas aisladas, sin cargar OPC UA desde cada herramienta BI.</li>
+        <li><strong>Escalabilidad organizacional:</strong> nuevos desarrolladores aportan valor con conocimiento HTTP estándar; no se fuerza a cada equipo a dominar stacks SCADA cerrados solo para mostrar una curva en un portal.</li>
+        <li><strong>Experiencias móviles y multitenant-ready:</strong> el mismo backend sirve SPA/PWA responsive (como la interfaz React del proyecto) y futuras líneas de producto cliente-proveedor con autenticación y roles ya conceptualizados (RBAC, JWT).</li>
+      </ul>
+      <div class="callout teal">
+        <p><strong>Resumen para oferta:</strong> PyAutomation transforma datos de campo en un <em>servicio web industrial</em>: tiempo real mediante <strong>Socket.IO por eventos</strong>, conocimiento retrógrado mediante <strong>REST + bases SQL</strong>, y flexibilidad operativa mediante <strong>polling</strong> donde el proyecto o la política de red lo recomienden —todo ello sobre una base abierta MIT que reduce barreras en pilotos y multiplica opciones en despliegue.</p>
+      </div>
+    </section>
+
+    <section id="exposicion" class="card">
+      <h2>RESTful API y Socket.IO en detalle · cómo se complementan</h2>
+      <p class="kicker">Dos carriles paralelos sobre el mismo origen de datos; la elección es de arquitectura, no de “reemplazo” uno del otro.</p>
+
+      <h3>API RESTful: histórico, configuración y consultas puntuales</h3>
+      <p>
+        El API REST expone recursos típicamente alineados con el dominio industrial del proyecto (<em>p. ej.</em> gestión de tags, alarmas, eventos del sistema y máquinas de estado según catálogo documentado). En la práctica ofrece tres familias de utilidad ejecutiva:</p>
+      <ul class="bullets">
+        <li><strong>Obtener valores o metadatos en el instante solicitado</strong> sin mantener canal permanente abierto desde el navegador o el integrador.</li>
+        <li><strong>Explorar y administrar configuración</strong> (provisionamiento de vistas, seguridad aplicada desde IT) usando flujos request/response familiares a pipelines CI/CD.</li>
+        <li><strong>Extraer datos históricos o listados paginados</strong> para reportes, auditors y cargas diferidas frente al streaming.</li>
+      </ul>
+      <p>
+        Autenticación por token (<em>p. ej.</em> JWT) y modelo de roles permite alinear exposición REST con políticas corporativas de acceso sin reescribir el controlador de planta.</p>
+
+      <h3>Socket.IO: modelo cliente-servidor con semántica de eventos continuos</h3>
+      <p>
+        <strong>Socket.IO</strong> prolonga una sesión cliente-servidor donde el backend <strong>promueve</strong> deltas cuando la CVT o los subsistemas (alarmas, tendencias) cambian. Para el usuario final es la diferencia entre “refresco manual” y <strong>sensación de aplicación moderna</strong>: la interfaz respira con la planta.</p>
+      <p>
+        A nivel patrones:</p>
+      <ul class="bullets">
+        <li><strong>Push / subscribe:</strong> el cliente establece canal; el servidor emite solo cuando hay novedades relevantes (menor latencia perceptual que encadenar timers de REST).</li>
+        <li><strong>Cohabitación con REST:</strong> el HMI oficial del proyecto ya combina llamadas REST con cliente Socket.IO; el mismo modelo sirve como referencia para integradores externos.</li>
+        <li><strong>Resiliencia operativa:</strong> reconexiones y negociación de transporte mejoran comportamiento ante redes corporativas estrictas frente a un WebSocket minimalista —ángulo válido ante comités de infraestructura.</li>
+      </ul>
+
+      <h3>Cuándo favorecer polling frente al stream event-driven</h3>
+      <p>
+        El <strong>polling OPC UA configurable</strong> en planta permite acomodar PLC o servidores que no exponen bien suscripciones. En la capa web, <strong>polling REST</strong> puede ser opción válida cuando: el cliente es batch nocturno, la tabla mostrada tolera segundos de retraso, hay restricciones de proxies o cuando se prefieren cargas cortas autosuficientes a conexiones largas. PyAutomation permite articular <strong>ambos filosofías</strong> según SLA por pantalla o por integrador.</p>
+
+      <h3>WebSockets en el mapa ejecutivo</h3>
+      <p>
+        Socket.IO se apoya habitualmente sobre la familia WebSocket para el tiempo real bidireccional; la distinción importa menos al negocio que el resultado: <strong>canal persistente, baja sobrecarga de cabeceras repetidas y eventos discretos</strong> alineados con la CVT.</p>
+
+      <div class="diagram" aria-labelledby="diagrama-flujo">
+        <div class="mermaid">
+flowchart LR
+  subgraph PLANTA["Zona OT · Red industrial"]
+    PLC["PLC / CompactLogix y E/S Ethernet"]
+    SRV["Servidor OPC UA sobre IP"]
+    PLC -->|"Tags de proceso"| SRV
+  end
+  subgraph PA["PyAutomation"]
+    UA["Cliente OPC UA"]
+    CVT[["Tabla Valores Actuales<br/>(CVT)"]]
+    ALM["Alarmas · logging<br/>histórico SQL"]
+    SRV -->|Ethernet / TCP| UA
+    UA --> CVT
+    CVT --> ALM
+  end
+  subgraph IT["Consumidores IT"]
+    HMI["HMI React (operación)"]
+    API["REST: tags, histórico,<br/>configuración"]
+    RT["Socket.IO:<br/>eventos / subscribe"]
+    CVT -.->|"push deltas CVT"| RT
+    RT --> HMI
+    API -.->|"polling REST<br/>opcional"| HMI
+    ALM -->|"series / reportes"| API
+    CVT -->|"consulta instantánea"| API
+  end
+        </div>
+      </div>
+    </section>
+
+    <section id="diagramas" class="card">
+      <h2>Diagramas Mermaid para comités técnicos y comercial</h2>
+      <p class="kicker">Visual rápido de la cadena de valor de datos cuando se proyecta ante dirección técnica o evaluadores de seguridad corporativa.</p>
+
+      <h3>Capas y responsabilidades</h3>
+      <div class="diagram">
+        <div class="mermaid">
+graph TB
+  subgraph capa_campo["Capa física"]
+    PLC2["Control CompactLogix + periféricos"]
+  end
+  subgraph capa_enlace["Enlace datos · Ethernet IP"]
+    OPC["Servicios OPC UA (TCP)"]
+    PLC2 --- OPC
+  end
+  subgraph pa_core["Motor PyAutomation"]
+    cli["Gestión multiples clientes OPC UA"]
+    cvt(["Tabla de Valores Actuales, CVT"])
+    log["Persistencia SQLite / PostgreSQL / MySQL"]
+    cli -->|"lecturas/subscripciones"| cvt
+    cvt --> log
+  end
+  subgraph capa_expo["Servicios web"]
+    Rest["REST / JSON<br/>JWT & RBAC · valores + histórico"]
+    Sock["Socket.IO · eventos CVT en vivo"]
+    FE["Interfaces web modernas<br/>(React / integradores)"]
+    cvt --> Sock
+    cvt --> Rest
+    log --> Rest
+    Rest --> FE
+    Sock --> FE
+  end
+  OPC <-->| VLAN / routing seguro OT-IT| cli
+        </div>
+      </div>
+
+      <h3>Secuencia simplificada: de la planta al dashboard ejecutivo</h3>
+      <div class="diagram">
+        <div class="mermaid">
+sequenceDiagram
+    participant PLC as PLC / proceso
+    participant OPC as OPC UA Server
+    participant PA as PyAutomation Core
+    participant WS as Canal tiempo real<br/>(Socket.IO)
+    participant APP as Consumidor web/rest
+
+    PLC->>OPC: cambio físico<br/>de variable relevante
+    OPC->>PA: actualización cliente/subscripción
+    PA->>PA: consolida CVT,<br/>alarma/registra si corresponde
+    par Consulta punto en el tiempo
+        APP->>PA: llamada HTTPS REST (recursos /api...)
+        PA->>APP: respuesta valores / histórico / config
+    and Mantener UI viva sin refrescos
+        PA-->>WS: difunde delta de interés
+        WS-->>APP: evento asíncrono
+    end
+        </div>
+      </div>
+
+      <div class="callout">
+        <p><strong>Seguridad y gobernanza:</strong> proyectos industriales saneados separan redes OT/IT, aplican zonas DMZ cuando corresponden y revisan políticas de autenticación (JWT, HTTPS, roles Administrador / Operador / Invitado en el proyecto). Estas decisiones se tratan contractualmente antes de exponer información sensible.</p>
+      </div>
+    </section>
+
+    <section id="resumen" class="card">
+      <h2>Síntesis para la mesa gerencial</h2>
+      <ul class="bullets">
+        <li><strong>Histórico + tiempo real para la web:</strong> una misma cadena datos OT alimenta CVT (<em>ahora</em>) y registros persistentes (<em>ayer</em>) consumibles desde aplicativos estándar.</li>
+        <li><strong>Triple vía IT:</strong> <strong>Socket.IO</strong> para experiencias vivas por eventos, <strong>REST</strong> para consultas, informes y orquestaciones batch, <strong>polling</strong> (OPC o HTTP) cuando el contexto técnico o de red lo exija.</li>
+        <li><strong>Utilidad de negocio directa:</strong> portales operativos, extensiones MES/ERP, monitorización remota, analítica y gobernanza sin multiplicar conectores frágiles al PLC.</li>
+        <li><strong>Adopción por estándar de planta:</strong> OPC UA sobre Ethernet con patrones de arquitectura ya descritos en la documentación del proyecto.</li>
+        <li><strong>CAPEX y lock-in:</strong> licencia MIT y fuente abierta reducen coste de entrada y dependencia de un único proveedor de SCADA para la capa web.</li>
+      </ul>
+      <div class="callout teal">
+        <p>
+          Este documento se basó en la estructura oficial del proyecto (README, User Guide sobre OPC UA Clients, architecture.md y componentes desarrolladores). Para detalle operativo véase la documentación en <a href="https://pyautomation.readthedocs.io/" target="_blank" rel="noopener">Read the Docs</a> y los contenedores descritos para despliegue.</p>
+      </div>
+    </section>
+
+    <footer class="doc-foot">
+      PyAutomation · Oferta ejecutiva OT &rarr; IT · Mayo 2026 · Redacción de alto nivel; la implementación concreta se acota en el statement of work.
+    </footer>
+  </div>
+
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: "neutral",
+      securityLevel: "strict",
+      fontFamily: "Instrument Sans",
+      themeVariables: {
+        primaryColor: "#e9efff",
+        primaryTextColor: "#0f172a",
+        primaryBorderColor: "#1e6bff",
+        clusterBkg: "#f8fafc",
+        lineColor: "#64748b"
+      }
+    });
+    requestAnimationFrame(() => {
+      mermaid.run({ querySelector: ".mermaid" });
+    });
+  </script>
+</body>
+</html>
