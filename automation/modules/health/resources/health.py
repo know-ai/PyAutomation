@@ -25,6 +25,52 @@ class HealthPingResource(Resource):
         }, 200
 
 
+def _system_rss_mb() -> float:
+    try:
+        import psutil
+        return psutil.Process().memory_info().rss / (1024 * 1024)
+    except Exception:
+        pass
+    try:
+        import resource
+        # Linux reports ru_maxrss in kilobytes.
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    except Exception:
+        return 0.0
+
+
+@ns.route("/system")
+class HealthSystemResource(Resource):
+    @api.doc(description="Process RSS, thread count, OPC monitored items and CVT tag count.")
+    @api.response(200, "System snapshot")
+    def get(self):
+        """Continuous health snapshot for soak / leak detection."""
+        import threading
+
+        rss_mb = _system_rss_mb()
+        opc_monitored = 0
+        opc_subscriptions = 0
+        cvt_tag_count = 0
+        try:
+            opc_monitored = app.das.monitored_count()
+            opc_subscriptions = len(getattr(app.das, "client_subscriptions", {}) or {})
+        except Exception:
+            pass
+        try:
+            cvt_tag_count = app.cvt.tag_count()
+        except Exception:
+            pass
+        return {
+            "status": "ok",
+            "service": "pyautomation",
+            "RSS_MB": round(rss_mb, 2),
+            "THREAD_COUNT": threading.active_count(),
+            "OPC_MONITORED_COUNT": opc_monitored,
+            "CVT_TAG_COUNT": cvt_tag_count,
+            "OPC_SUBSCRIPTION_COUNT": opc_subscriptions,
+        }, 200
+
+
 @ns.route("/db")
 class HealthDatabaseResource(Resource):
     @api.doc(description="Remote historian reachability (SELECT 1, short timeout). Unauthenticated so the HMI can poll while PostgreSQL is down.")

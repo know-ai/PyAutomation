@@ -733,6 +733,9 @@ export function MachinesDetailed() {
 
     // Iniciar intervalo para hacer flush cada 1 segundo
     intervalRef.current = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
       flushUpdates();
     }, 1000);
 
@@ -826,6 +829,9 @@ export function MachinesDetailed() {
 
     // Iniciar intervalo para hacer flush cada 1 segundo
     machineUpdateIntervalRef.current = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
       flushMachineUpdates();
     }, 1000);
 
@@ -989,6 +995,9 @@ export function MachinesDetailed() {
 
     // Iniciar intervalo para hacer flush cada 1 segundo
     tagUpdateIntervalRef.current = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
       flushTagUpdates();
     }, 1000);
 

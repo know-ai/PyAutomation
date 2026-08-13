@@ -5,9 +5,12 @@ import Plot from "react-plotly.js";
 import type { Data, Layout } from "plotly.js";
 import { useTheme } from "../hooks/useTheme";
 import { useAppSelector } from "../hooks/useAppSelector";
+import { useAppDispatch } from "../hooks/useAppDispatch";
 import { useTranslation } from "../hooks/useTranslation";
 import { getTagsList, type Tag } from "../services/tags";
 import { showToast } from "../utils/toast";
+import { subscribeTagHistory, unsubscribeTagHistory } from "../store/slices/tagsSlice";
+import { usePageHidden } from "../hooks/usePageHidden";
 
 export const BUFFER_SIZE_MIN = 120;
 export const BUFFER_SIZE_MAX = 360;
@@ -33,7 +36,14 @@ interface StripChartProps {
 export function StripChart({ config, isEditMode, onConfigChange, onDelete }: StripChartProps) {
   const { mode } = useTheme();
   const { t } = useTranslation();
-  const tagHistory = useAppSelector((state) => state.tags.tagHistory);
+  const dispatch = useAppDispatch();
+  const pageHidden = usePageHidden();
+  const tagNamesKey = config.tagNames.join("|");
+  const histories = useAppSelector(
+    (state) => config.tagNames.map((name) => state.tags.tagHistory[name]),
+    (left, right) =>
+      left.length === right.length && left.every((item, index) => item === right[index])
+  );
   const [showTagConfig, setShowTagConfig] = useState(false);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [tagSearch, setTagSearch] = useState("");
@@ -80,6 +90,14 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     setBufferDraft(String(config.bufferSize));
   }, [config.bufferSize, showTagConfig]);
 
+  useEffect(() => {
+    const names = config.tagNames.filter(Boolean);
+    names.forEach((name) => dispatch(subscribeTagHistory(name)));
+    return () => {
+      names.forEach((name) => dispatch(unsubscribeTagHistory(name)));
+    };
+  }, [dispatch, tagNamesKey]);
+
   // Filtrar tags por búsqueda
   const filteredTags = useMemo(() => {
     if (!tagSearch.trim()) {
@@ -107,10 +125,16 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     [availableTags]
   );
 
-  // Preparar datos para Plotly (soporta hasta 2 unidades distintas -> dos ejes Y)
+  const lastPlotRef = useRef<{ data: Data[]; layout: Partial<Layout> }>({ data: [], layout: {} });
+
   const plotData = useMemo(() => {
+    if (pageHidden && lastPlotRef.current.data.length > 0) {
+      return lastPlotRef.current;
+    }
     if (config.tagNames.length === 0) {
-      return { data: [], layout: {} };
+      const empty = { data: [] as Data[], layout: {} as Partial<Layout> };
+      lastPlotRef.current = empty;
+      return empty;
     }
 
     const colorPalette = [
@@ -131,7 +155,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     });
 
     const traces: Data[] = config.tagNames.map((tagName, index) => {
-      const history = tagHistory[tagName] || [];
+      const history = histories[index] || [];
       const bufferSlice = history.slice(
         -Math.min(
           BUFFER_SIZE_MAX,
@@ -195,8 +219,10 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
       };
     }
 
-    return { data: traces, layout };
-  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, tagHistory]);
+    const next = { data: traces, layout };
+    lastPlotRef.current = next;
+    return next;
+  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, histories, pageHidden]);
 
   // Máximo 2 unidades distintas; número de tags ilimitado mientras no se supere ese tope de unidades
   const handleTagToggle = (tagName: string) => {

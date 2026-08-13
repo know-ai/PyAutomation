@@ -1,4 +1,5 @@
 import pytz
+import threading
 from datetime import datetime
 from math import ceil
 from ..singleton import Singleton
@@ -27,34 +28,20 @@ class SubHandler(Singleton):
         """
         
         if client_name not in self.monitored_items:
-            
-            monitored_item = subscription.subscribe_data_change(
-                node_id
-            )
-
-            self.monitored_items[client_name] = {
-                node_id: {
-                    "subscription": subscription,
-                    "monitored_item": monitored_item,
-                    "server": client_name
-                }
-            }
-
-        else:
-
-            if node_id not in self.monitored_items[client_name]:
-            
-                monitored_item = subscription.subscribe_data_change(
-                    node_id
-                )
-
-                self.monitored_items[client_name].update({
-                    node_id: {
-                        "subscription": subscription,
-                        "monitored_item": monitored_item,
-                        "server": client_name
-                    }
-                })
+            self.monitored_items[client_name] = {}
+        key = node_id.nodeid.to_string() if hasattr(node_id, "nodeid") else str(node_id)
+        existing = self.monitored_items[client_name].get(key)
+        if existing:
+            try:
+                existing["subscription"].unsubscribe(existing["monitored_item"])
+            except Exception:
+                pass
+        monitored_item = subscription.subscribe_data_change(node_id)
+        self.monitored_items[client_name][key] = {
+            "subscription": subscription,
+            "monitored_item": monitored_item,
+            "server": client_name
+        }
 
     def unsubscribe_all(self):
         r"""
@@ -118,9 +105,9 @@ class SubHandlerServer(Singleton):
 
                 val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
                 if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
-                    self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                    self.app.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
                 elif not MANUFACTURER and not SEGMENT:
-                    self.app.cvt.set_value(id=tag.id, value=val, timestamp=timestamp) 
+                    self.app.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp) 
         else:
             
             parent = node.get_parent()
@@ -142,9 +129,42 @@ class DAS(Singleton):
     def __init__(self):
   
         self.monitored_items = dict()
+        self.client_subscriptions = dict()
         self.cvt = CVTEngine()
         self.logger = DataLoggerEngine()
         self.buffer = dict()
+        self._subscribe_lock = threading.Lock()
+
+    def _node_key(self, node_id) -> str:
+        try:
+            return node_id.nodeid.to_string()
+        except Exception:
+            return str(node_id)
+
+    def monitored_count(self) -> int:
+        return sum(len(items) for items in self.monitored_items.values())
+
+    def get_or_create_subscription(self, client, client_name: str, period: int = 1000):
+        existing = self.client_subscriptions.get(client_name)
+        if existing is not None:
+            return existing
+        subscription = client.create_subscription(period, self)
+        self.client_subscriptions[client_name] = subscription
+        return subscription
+
+    def reset_client(self, client_name: str) -> None:
+        items = self.monitored_items.pop(client_name, {})
+        for record in items.values():
+            try:
+                record["subscription"].unsubscribe(record["monitored_item"])
+            except Exception:
+                pass
+        subscription = self.client_subscriptions.pop(client_name, None)
+        if subscription is not None:
+            try:
+                subscription.delete()
+            except Exception:
+                pass
 
     def restart_buffer(self, tag:Tag):
         r"""
@@ -165,38 +185,26 @@ class DAS(Singleton):
 
     def subscribe(self, subscription, client_name, node_id):
         r"""
-        Documentation here
+        Adds ``node_id`` to the single subscription owned by ``client_name``.
+        Keys are OPC UA namespace strings; an existing monitored item is
+        unsubscribed before a replacement is created.
         """
-        if client_name not in self.monitored_items:
-            
-            monitored_item = subscription.subscribe_data_change(
-                node_id
-            )
-            self.monitored_items[client_name] = {
-                node_id.get_display_name().Text: {
-                    "subscription": subscription,
-                    "monitored_item": monitored_item,
-                    "server": client_name,
-                    "namespace": node_id.nodeid.to_string()
-                }
+        key = self._node_key(node_id)
+        with self._subscribe_lock:
+            bucket = self.monitored_items.setdefault(client_name, {})
+            existing = bucket.get(key)
+            if existing:
+                try:
+                    existing["subscription"].unsubscribe(existing["monitored_item"])
+                except Exception:
+                    pass
+            monitored_item = subscription.subscribe_data_change(node_id)
+            bucket[key] = {
+                "subscription": subscription,
+                "monitored_item": monitored_item,
+                "server": client_name,
+                "namespace": key,
             }
-
-        else:
-
-            if node_id not in self.monitored_items[client_name]:
-                
-                monitored_item = subscription.subscribe_data_change(
-                    node_id
-                )
-
-                self.monitored_items[client_name].update({
-                    node_id.get_display_name().Text: {
-                        "subscription": subscription,
-                        "monitored_item": monitored_item,
-                        "server": client_name,
-                        "namespace": node_id.nodeid.to_string()
-                    }
-                })
         
         ## Trying to get the value of the tag into OPCUA Client
         try:
@@ -209,14 +217,25 @@ class DAS(Singleton):
         r"""
         Documentation here
         """
-        if client_name in self.monitored_items:
-            
-            if node_id.get_display_name().Text in self.monitored_items[client_name]:
-                
-                node = self.monitored_items[client_name].pop(node_id.get_display_name().Text)
-                item = node["monitored_item"]
-                subscription = node["subscription"]
-                subscription.unsubscribe(item)
+        if client_name not in self.monitored_items:
+            return
+        key = self._node_key(node_id)
+        bucket = self.monitored_items[client_name]
+        record = bucket.pop(key, None)
+        if record is None:
+            display_name = None
+            try:
+                display_name = node_id.get_display_name().Text
+            except Exception:
+                display_name = None
+            if display_name:
+                record = bucket.pop(display_name, None)
+        if record is None:
+            return
+        try:
+            record["subscription"].unsubscribe(record["monitored_item"])
+        except Exception:
+            pass
 
     def resubscribe_all(self, client): 
         for client_name, monitored_items in self.monitored_items.items(): 
@@ -241,9 +260,9 @@ class DAS(Singleton):
             tag_name = tag.get_name()
             val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
             if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
-                val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                val = self.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
             elif not MANUFACTURER and not SEGMENT:
-                val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                val = self.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
             timestamp = timestamp.astimezone(TIMEZONE)
             if tag_name in self.buffer:
                 self.buffer[tag_name]["timestamp"](timestamp)

@@ -93,6 +93,9 @@ export function DatabaseStatusProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     void refresh();
     const id = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
       void refresh();
     }, DB_HEALTH_POLL_MS);
     return () => window.clearInterval(id);

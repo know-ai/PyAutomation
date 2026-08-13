@@ -10,7 +10,7 @@ def filter(func, args, kwargs):
     tag_id = kwargs["id"]
     value = kwargs["value"]
     tag = cvt.get_tag(id=tag_id)
-    if tag.gaussian_filter:
+    if tag and tag.gaussian_filter:
         
         kwargs["value"] = tag.filter(value, threshold=tag.gaussian_filter_threshold, r_value=tag.gaussian_filter_r_value)
 

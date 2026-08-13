@@ -28,8 +28,27 @@ class CVT:
     def __init__(self):
         
         self._tags = dict()
+        self._name_index = dict()
+        self._namespace_index = dict()
         self.data_types = ["float", "int", "bool", "str"]
         self.sio:SocketIO|None = None
+
+    def _index_tag(self, tag: Tag) -> None:
+        if tag is None:
+            return
+        self._name_index[tag.name] = tag.id
+        namespace = getattr(tag, "node_namespace", None)
+        if namespace:
+            self._namespace_index[namespace] = tag.id
+
+    def _unindex_tag(self, tag: Tag) -> None:
+        if tag is None:
+            return
+        if self._name_index.get(tag.name) == tag.id:
+            self._name_index.pop(tag.name, None)
+        namespace = getattr(tag, "node_namespace", None)
+        if namespace and self._namespace_index.get(namespace) == tag.id:
+            self._namespace_index.pop(namespace, None)
 
     @logging_error_handler
     def set_socketio(self, sio:SocketIO):
@@ -145,6 +164,7 @@ class CVT:
             id=id
         )
         self._tags[tag.id] = tag
+        self._index_tag(tag)
 
         return tag, message
 
@@ -183,6 +203,7 @@ class CVT:
             return None, message
         
         tag = self._tags[id]
+        self._unindex_tag(tag)
         if "name" in kwargs:
             tag.set_name(name=kwargs["name"])
         if "unit" in kwargs:
@@ -234,6 +255,7 @@ class CVT:
             tag.gaussian_filter_threshold = kwargs['gaussian_filter_threshold']
         
         self._tags[id] = tag
+        self._index_tag(tag)
 
         return tag, f"Tag: {tag.name}"
 
@@ -252,6 +274,7 @@ class CVT:
         * **tuple**: (Deleted Tag object, Status message).
         """
         tag = self._tags.pop(id)
+        self._unindex_tag(tag)
         return tag, f"Tag: {tag.name}"
 
     @logging_error_handler
@@ -267,13 +290,7 @@ class CVT:
 
         * **Tag**: The Tag object if found, else None.
         """
-        for _id, tag in self._tags.items():
-
-            if _id==id:
-                
-                return tag
-
-        return None
+        return self._tags.get(id)
     
     @logging_error_handler
     def get_unit_by_tag(self, tag:str)->Tag|None:
@@ -288,13 +305,10 @@ class CVT:
 
         * **str**: Unit symbol or None.
         """
-        for _id, _tag in self._tags.items():
-
-            if _tag.name==tag:
-                
-                return _tag.unit
-
-        return None
+        tag = self.get_tag_by_name(tag)
+        if tag is None:
+            return None
+        return tag.unit
     
     @logging_error_handler
     def get_display_unit_by_tag(self, tag:str)->Tag|None:
@@ -451,13 +465,10 @@ class CVT:
 
         * **Tag**: Tag object or None.
         """
-        for _, tag in self._tags.items():
-            
-            if tag.get_name()==name:
-                
-                return tag
-
-        return None
+        tag_id = self._name_index.get(name)
+        if tag_id is None:
+            return None
+        return self._tags.get(tag_id)
     
     @logging_error_handler
     def get_tag_by_display_name(self, display_name:str)->Tag|None:
@@ -493,13 +504,10 @@ class CVT:
 
         * **Tag**: Tag object or None.
         """
-        for _, tag in self._tags.items():
-
-            if tag.get_node_namespace()==node_namespace:
-                
-                return tag
-
-        return None
+        tag_id = self._namespace_index.get(node_namespace)
+        if tag_id is None:
+            return None
+        return self._tags.get(tag_id)
     
     @logging_error_handler
     def get_value(self, id:str)->str|float|int|bool:
@@ -605,24 +613,28 @@ class CVT:
         * **value**: The value that was set (or filtered).
         """
         from .. import TIMEZONE
-        tag = self._tags[id]
-        
-        # Deadband Logic Wrapper for CVT
-        
+        tag = self._tags.get(id)
+        if tag is None:
+            return None
 
-        if tag.dead_band and isinstance(value, (int, float)):
-            try:
-                current_value = tag.value.value
-                if abs(value - current_value) < tag.dead_band:
-                    return value
-            except Exception as e:
-                logging.error(f"Error in deadband logic: {e}")
+        payload = None
+        with tag._lock:
+            if tag.dead_band and isinstance(value, (int, float)):
+                try:
+                    current_value = tag.value.value
+                    if abs(value - current_value) < tag.dead_band:
+                        return value
+                except Exception as e:
+                    logging.error(f"Error in deadband logic: {e}")
 
-        tag.set_value(value=value, timestamp=timestamp)
-        if self.sio:
-            timestamp = timestamp.astimezone(TIMEZONE)
-            self._tags[id].timestamp = timestamp
-            self.sio.emit("on.tag", data=self._tags[id].serialize())
+            tag.set_value(value=value, timestamp=timestamp)
+            if self.sio:
+                ts = timestamp.astimezone(TIMEZONE)
+                tag.timestamp = ts
+                payload = tag.serialize()
+
+        if payload is not None and self.sio:
+            self.sio.emit("on.tag", data=payload)
 
         return value
 
@@ -652,7 +664,7 @@ class CVT:
         * **bool**: True if defined, False otherwise.
         """
 
-        return name in self._tags
+        return name in self._name_index
     
     @logging_error_handler
     def attach_observer(self, name, observer):
@@ -897,13 +909,34 @@ class CVTEngine(Singleton):
         id:str=None
         )->Tag:
         r"""
-        Thread-safe method to get a tag object.
+        O(1) lookup by tag id. Bypasses the administrative request/response queue.
         """
-        _query = dict()
-        _query["action"] = "get_tag"
-        _query["parameters"] = dict()
-        _query["parameters"]["id"] = id
-        return self.__query(_query)
+        return self._cvt.get_tag(id)
+
+    @logging_error_handler
+    def tag_count(self)->int:
+        return len(self._cvt._tags)
+
+    @logging_error_handler
+    def iter_tags(self)->list:
+        return list(self._cvt._tags.values())
+
+    @logging_error_handler
+    def iter_tags_for_opcua_client(self, client_name:str, server_url:str|None=None)->list:
+        matched = []
+        client_key = (client_name or "").lower()
+        for tag in self._cvt._tags.values():
+            tag_client = (getattr(tag, "opcua_client_name", None) or "").lower()
+            if tag_client and tag_client == client_key:
+                matched.append(tag)
+                continue
+            try:
+                address = tag.get_opcua_address()
+            except Exception:
+                address = None
+            if server_url and address == server_url:
+                matched.append(tag)
+        return matched
 
     @logging_error_handler
     def get_tags(self):
@@ -954,13 +987,9 @@ class CVTEngine(Singleton):
     @logging_error_handler
     def get_tag_by_name(self, name:str)->Tag|None:
         r"""
-        Thread-safe method to get a tag by name.
+        O(1) lookup by name. Bypasses the administrative request/response queue.
         """
-        _query = dict()
-        _query["action"] = "get_tag_by_name"
-        _query["parameters"] = dict()
-        _query["parameters"]["name"] = name
-        return self.__query(_query)
+        return self._cvt.get_tag_by_name(name)
     
     @logging_error_handler
     def get_tag_by_display_name(self, display_name:str)->Tag|None:
@@ -976,24 +1005,16 @@ class CVTEngine(Singleton):
     @logging_error_handler
     def get_tag_by_node_namespace(self, node_namespace:str)->Tag|None:
         r"""
-        Thread-safe method to get a tag by node namespace.
+        O(1) lookup by OPC UA namespace. Bypasses the administrative request/response queue.
         """
-        _query = dict()
-        _query["action"] = "get_tag_by_node_namespace"
-        _query["parameters"] = dict()
-        _query["parameters"]["node_namespace"] = node_namespace
-        return self.__query(_query)
+        return self._cvt.get_tag_by_node_namespace(node_namespace)
     
     @logging_error_handler
     def get_value(self, id:str)->str|float|int|bool:
         r"""
-        Thread-safe method to get a tag value by ID.
+        O(1) value read. Bypasses the administrative request/response queue.
         """
-        _query = dict()
-        _query["action"] = "get_value"
-        _query["parameters"] = dict()
-        _query["parameters"]["id"] = id
-        return self.__query(_query)
+        return self._cvt.get_value(id)
     
     @logging_error_handler
     def get_value_by_name(self, tag_name:str)->dict:
@@ -1051,19 +1072,21 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     @logging_error_handler
-    def set_value(self, id:str, value, timestamp:datetime):
+    def set_value_fast(self, id:str, value, timestamp:datetime):
         r"""
-        Thread-safe method to set a tag value.
+        Hot-path write: dict lookup O(1) + per-tag lock. Does not use the
+        administrative request/response queue.
         """
         if not timestamp:
             timestamp = datetime.now()
-        _query = dict()
-        _query["action"] = "set_value"
-        _query["parameters"] = dict()
-        _query["parameters"]["id"] = id
-        _query["parameters"]["value"] = value
-        _query["parameters"]["timestamp"] = timestamp
-        return self.__query(_query)
+        return self._cvt.set_value(id=id, value=value, timestamp=timestamp)
+
+    @logging_error_handler
+    def set_value(self, id:str, value, timestamp:datetime):
+        r"""
+        Tag value write. Acquisition uses the fast path; CRUD stays on __query.
+        """
+        return self.set_value_fast(id, value, timestamp)
     
     @logging_error_handler
     def set_data_type(self, data_type):
@@ -1079,13 +1102,9 @@ class CVTEngine(Singleton):
     @logging_error_handler
     def is_tag_defined(self, name:str)->bool:
         r"""
-        Thread-safe method to check if tag is defined.
+        O(1) name check. Bypasses the administrative request/response queue.
         """
-        _query = dict()
-        _query["action"] = "is_tag_defined"
-        _query["parameters"] = dict()
-        _query["parameters"]["name"] = name
-        return self.__query(_query)
+        return self._cvt.is_tag_defined(name)
 
     @logging_error_handler
     def attach(self, name:str, observer):

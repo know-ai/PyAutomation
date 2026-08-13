@@ -7,6 +7,7 @@ import { Footer } from "./Footer";
 import { useTheme } from "../hooks/useTheme";
 import { useSocket } from "../hooks/useSocket";
 import { useTranslation } from "../hooks/useTranslation";
+import { useMemoryWatchdog } from "../hooks/useMemoryWatchdog";
 import { DatabaseStatusProvider } from "../hooks/useDatabaseStatus";
 import { DatabaseUnavailableOverlay } from "../components/DatabaseUnavailableOverlay";
 import {
@@ -18,6 +19,7 @@ import {
 export function MainLayout({ children }: PropsWithChildren) {
   useTheme();
   useSocket();
+  useMemoryWatchdog(512);
   const location = useLocation();
   const { t } = useTranslation();
 

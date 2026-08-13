@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import type { Alarm } from "../../services/alarms";
+import { logout } from "./authSlice";
 
 interface AlarmsState {
   // Map of alarm identifier/id -> latest alarm data
@@ -42,6 +43,11 @@ const alarmsSlice = createSlice({
         }
       });
     },
+  },
+  extraReducers: (builder) => {
+    builder.addCase(logout, (state) => {
+      state.alarms = {};
+    });
   },
 });
 

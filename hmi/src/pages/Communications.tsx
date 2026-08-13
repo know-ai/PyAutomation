@@ -690,6 +690,9 @@ export function Communications() {
   useEffect(() => {
     if (!polling || !selectedClient || namespacesToPoll.length === 0) return;
     const id = setInterval(async () => {
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
       try {
         // Usar /attrs en lugar de /values para obtener información completa (timestamp, status)
         const attributes = await getNodeAttributes(selectedClient, namespacesToPoll);

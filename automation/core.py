@@ -2533,7 +2533,7 @@ class PyAutomation(Singleton):
                         if not opcua_client.is_connected():
                             continue
                             
-                        subscription = opcua_client.create_subscription(1000, self.das)
+                        subscription = self.das.get_or_create_subscription(opcua_client, client_name)
                         node_id = opcua_client.get_node_id_by_namespace(node_namespace)
                         if node_id:
                             self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)

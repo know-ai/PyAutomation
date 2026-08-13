@@ -1,4 +1,4 @@
-import secrets, logging
+import secrets, logging, threading
 from datetime import datetime
 from ..utils import Observer
 from ..utils.decorators import logging_error_handler
@@ -161,6 +161,7 @@ class Tag:
         self.kp = kp
         self.filter = GaussianFilter()
         self._observers = set()
+        self._lock = threading.RLock()
 
     def set_name(self, name:str):
         r"""
@@ -187,21 +188,22 @@ class Tag:
         * **value** (float|str|int|bool): New value.
         * **timestamp** (datetime, optional): Time of the value change. Defaults to now.
         """
-        if self.dead_band and isinstance(value, (int, float)):
-            try:
-                current_value = self.value.value
-                if abs(value - current_value) < self.dead_band:
-                    
-                    return
-            except Exception as e:
-                logging.error(f"Error in deadband logic: {e}")
+        with self._lock:
+            if self.dead_band and isinstance(value, (int, float)):
+                try:
+                    current_value = self.value.value
+                    if abs(value - current_value) < self.dead_band:
+                        
+                        return
+                except Exception as e:
+                    logging.error(f"Error in deadband logic: {e}")
 
-        if not timestamp:
-            timestamp = datetime.now()
-        self.value.set_value(value=value, unit=self.display_unit)
-        self.timestamp = timestamp
-        self.values(self.get_value())
-        self.timestamps(timestamp.strftime(DATETIME_FORMAT))
+            if not timestamp:
+                timestamp = datetime.now()
+            self.value.set_value(value=value, unit=self.display_unit)
+            self.timestamp = timestamp
+            self.values(self.get_value())
+            self.timestamps(timestamp.strftime(DATETIME_FORMAT))
         self.notify()
 
     def set_display_name(self, name:str):

@@ -112,6 +112,9 @@ export function Machines() {
 
     // Iniciar intervalo para hacer flush cada 1 segundo
     machineUpdateIntervalRef.current = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
       flushMachineUpdates();
     }, 1000);
 

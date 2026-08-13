@@ -1,7 +1,8 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import type { Tag } from "../../services/tags";
+import { logout } from "./authSlice";
 
-const MAX_HISTORY_POINTS = 10000;
+const MAX_HISTORY_POINTS = 720;
 
 export interface TagHistoryPoint {
   timestamp: string;
@@ -9,19 +10,20 @@ export interface TagHistoryPoint {
 }
 
 interface TagsState {
-  // Map of tag name -> latest tag data with value
   tagValues: Record<string, Tag>;
-  // Histórico por tag para tendencias en tiempo real
   tagHistory: Record<string, TagHistoryPoint[]>;
+  historySubscribers: Record<string, number>;
 }
 
 const initialState: TagsState = {
   tagValues: {},
   tagHistory: {},
+  historySubscribers: {},
 };
 
 const pushHistoryPoint = (state: TagsState, tag: Tag) => {
   if (!tag.name || tag.value === undefined || tag.value === null) return;
+  if (!state.historySubscribers[tag.name]) return;
   const numericValue =
     typeof tag.value === "boolean" ? (tag.value ? 1 : 0) : Number(tag.value);
   if (Number.isNaN(numericValue)) return;
@@ -32,12 +34,11 @@ const pushHistoryPoint = (state: TagsState, tag: Tag) => {
       ? tag.timestamp
       : new Date().toISOString();
 
-  const newHistory: TagHistoryPoint[] = [
-    ...history,
-    { timestamp, value: numericValue },
-  ].slice(-MAX_HISTORY_POINTS);
-
-  state.tagHistory[tag.name] = newHistory;
+  history.push({ timestamp, value: numericValue });
+  if (history.length > MAX_HISTORY_POINTS) {
+    history.splice(0, history.length - MAX_HISTORY_POINTS);
+  }
+  state.tagHistory[tag.name] = history;
 };
 
 const tagsSlice = createSlice({
@@ -59,13 +60,43 @@ const tagsSlice = createSlice({
         }
       });
     },
+    subscribeTagHistory: (state, action: PayloadAction<string>) => {
+      const name = action.payload;
+      if (!name) return;
+      state.historySubscribers[name] = (state.historySubscribers[name] || 0) + 1;
+    },
+    unsubscribeTagHistory: (state, action: PayloadAction<string>) => {
+      const name = action.payload;
+      if (!name) return;
+      const next = (state.historySubscribers[name] || 1) - 1;
+      if (next <= 0) {
+        delete state.historySubscribers[name];
+        delete state.tagHistory[name];
+      } else {
+        state.historySubscribers[name] = next;
+      }
+    },
     clearTagValues: (state) => {
       state.tagValues = {};
       state.tagHistory = {};
+      state.historySubscribers = {};
     },
+  },
+  extraReducers: (builder) => {
+    builder.addCase(logout, (state) => {
+      state.tagValues = {};
+      state.tagHistory = {};
+      state.historySubscribers = {};
+    });
   },
 });
 
-export const { updateTagValue, updateTagValuesBatch, clearTagValues } = tagsSlice.actions;
+export const {
+  updateTagValue,
+  updateTagValuesBatch,
+  subscribeTagHistory,
+  unsubscribeTagHistory,
+  clearTagValues,
+} = tagsSlice.actions;
 export default tagsSlice.reducer;
-
+export { MAX_HISTORY_POINTS };

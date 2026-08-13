@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import type { Machine } from "../../services/machines";
+import { logout } from "./authSlice";
 
 interface MachinesState {
   // Map of machine name -> latest machine data
@@ -39,6 +40,11 @@ const machinesSlice = createSlice({
         }
       });
     },
+  },
+  extraReducers: (builder) => {
+    builder.addCase(logout, (state) => {
+      state.machines = {};
+    });
   },
 });
 

@@ -120,7 +120,7 @@ class OPCUAClientManager:
                 
                 if should_reconnect:
                     if not tag.get("scan_time"):
-                        subscription = opcua_client.create_subscription(1000, self.das)
+                        subscription = self.das.get_or_create_subscription(opcua_client, client_name)
                         node_id = opcua_client.get_node_id_by_namespace(tag["node_namespace"])
                         if node_id:
                             self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
@@ -399,7 +399,7 @@ class OPCUAClientManager:
                     # Reconectar suscripciones si es necesario
                     if tag_obj:
                         if not tag.get("scan_time"):
-                            subscription = opcua_client.create_subscription(1000, self.das)
+                            subscription = self.das.get_or_create_subscription(opcua_client, new_client_name)
                             node_id = opcua_client.get_node_id_by_namespace(tag.get("node_namespace", ""))
                             if node_id:
                                 self.das.subscribe(subscription=subscription, client_name=new_client_name, node_id=node_id)

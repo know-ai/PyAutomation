@@ -190,10 +190,15 @@ class Client(OPCClient):
             result, status = self.connect()
 
             if status == 200:
-                tags = app.get_tags()
-                for tag in tags:
-                    _tag = app.cvt.get_tag(id=tag["id"])
-                    app.subscribe_opcua(tag=_tag, opcua_address=tag['opcua_address'], node_namespace=tag['node_namespace'], scan_time=tag['scan_time'], reload=True)
+                app.das.reset_client(self.name)
+                for _tag in app.cvt.iter_tags_for_opcua_client(self.name, self._server_url):
+                    app.subscribe_opcua(
+                        tag=_tag,
+                        opcua_address=_tag.get_opcua_address(),
+                        node_namespace=_tag.get_node_namespace(),
+                        scan_time=_tag.get_scan_time(),
+                        reload=True,
+                    )
 
                 self._emit_opcua_socket("on.opcua.connected", f"Connected to {self._server_url}")
                 logging.critical(f"Reconnected to {self._server_url}")

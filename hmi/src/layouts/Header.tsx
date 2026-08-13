@@ -157,7 +157,12 @@ export function Header() {
     checkConnection();
 
     // Verificar cada 30 segundos
-    intervalRef.current = setInterval(checkConnection, 30000);
+    intervalRef.current = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
+      checkConnection();
+    }, 30000);
 
     return () => {
       if (intervalRef.current) {
