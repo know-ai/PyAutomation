@@ -873,4 +873,284 @@ a {
   border: 2px dashed rgba(0, 128, 255, 0.5);
 }
 
+/* Multi-select searchable dropdown (compact industrial selector) */
+.multi-select-search {
+  position: relative;
+  min-width: 220px;
+}
+
+.multi-select-search__trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 31px;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.375rem;
+  background-color: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, #212529);
+  font-size: 0.875rem;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+}
+
+.multi-select-search__trigger:hover:not(:disabled) {
+  border-color: var(--bs-primary, #0d6efd);
+}
+
+.multi-select-search__trigger:focus-visible {
+  outline: 2px solid var(--bs-primary, #0d6efd);
+  outline-offset: 1px;
+}
+
+.multi-select-search__trigger:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.multi-select-search__placeholder {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.multi-select-search__summary-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-select-search__badge {
+  flex: 0 0 auto;
+  min-width: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background-color: var(--bs-primary, #0d6efd);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.35rem;
+  text-align: center;
+}
+
+.multi-select-search__chevron {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.multi-select-search__panel {
+  position: fixed;
+  z-index: 1080;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.5rem;
+  background-color: var(--bs-body-bg, #fff);
+  color: var(--bs-body-color, #212529);
+}
+
+.multi-select-search__search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+}
+
+.multi-select-search__search > i {
+  opacity: 0.55;
+  font-size: 0.85rem;
+}
+
+.multi-select-search__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.multi-select-search__clear-query {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.multi-select-search__clear-query:hover {
+  opacity: 1;
+  background-color: var(--bs-tertiary-bg, #f8f9fa);
+}
+
+.multi-select-search__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+  background-color: var(--bs-tertiary-bg, #f8f9fa);
+}
+
+.multi-select-search__count {
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color, #6c757d);
+  font-variant-numeric: tabular-nums;
+}
+
+.multi-select-search__actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.multi-select-search__actions button {
+  border: 0;
+  background: transparent;
+  color: var(--bs-primary, #0d6efd);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+}
+
+.multi-select-search__actions button:hover:not(:disabled) {
+  background-color: var(--bs-body-bg, #fff);
+}
+
+.multi-select-search__actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.multi-select-search__list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.multi-select-search__empty {
+  padding: 1.25rem 0.75rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color, #6c757d);
+}
+
+.multi-select-search__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.multi-select-search__option.is-highlighted {
+  background-color: var(--bs-tertiary-bg, #f8f9fa);
+}
+
+.multi-select-search__option.is-selected {
+  background-color: rgba(13, 110, 253, 0.12);
+}
+
+.multi-select-search__check {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.2rem;
+  background-color: var(--bs-body-bg, #fff);
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.multi-select-search__check.is-on {
+  border-color: var(--bs-primary, #0d6efd);
+  background-color: var(--bs-primary, #0d6efd);
+  color: #fff;
+}
+
+.multi-select-search__option-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.multi-select-search__option-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-select-search__option-value,
+.multi-select-search__option-desc {
+  font-size: 0.7rem;
+  color: var(--bs-secondary-color, #6c757d);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-bs-theme="dark"] .multi-select-search__trigger,
+.dark .multi-select-search__trigger,
+.dark-mode .multi-select-search__trigger,
+[data-bs-theme="dark"] .multi-select-search__panel,
+.dark .multi-select-search__panel,
+.dark-mode .multi-select-search__panel {
+  background-color: #2d323f;
+  border-color: #3d4455;
+  color: #e9ecef;
+}
+
+[data-bs-theme="dark"] .multi-select-search__toolbar,
+.dark .multi-select-search__toolbar,
+.dark-mode .multi-select-search__toolbar {
+  background-color: #252936;
+  border-color: #3d4455;
+}
+
+[data-bs-theme="dark"] .multi-select-search__search,
+.dark .multi-select-search__search,
+.dark-mode .multi-select-search__search {
+  border-color: #3d4455;
+}
+
+[data-bs-theme="dark"] .multi-select-search__option.is-highlighted,
+.dark .multi-select-search__option.is-highlighted,
+.dark-mode .multi-select-search__option.is-highlighted {
+  background-color: #252936;
+}
+
+[data-bs-theme="dark"] .multi-select-search__check,
+.dark .multi-select-search__check,
+.dark-mode .multi-select-search__check {
+  background-color: #252936;
+  border-color: #3d4455;
+}
+
 

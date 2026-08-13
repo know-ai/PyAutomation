@@ -51,6 +51,20 @@ export const getTags = async (
 };
 
 /**
+ * Lista compacta de tags (sin paginar) para selectores de configuración.
+ */
+export const getTagsList = async (
+  manufacturer?: string,
+  segment?: string
+): Promise<Tag[]> => {
+  const payload: { manufacturer?: string; segment?: string } = {};
+  if (manufacturer) payload.manufacturer = manufacturer;
+  if (segment) payload.segment = segment;
+  const { data } = await api.post("/tags/list", payload);
+  return data?.data || [];
+};
+
+/**
  * Obtiene tags por nombres específicos
  */
 export const getTagsByNames = async (names: string[]): Promise<Tag[]> => {

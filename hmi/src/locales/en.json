@@ -650,7 +650,12 @@
     "start": "Start",
     "end": "End",
     "sample": "Sample",
-    "tagNames": "Tag Names",
+    "tagNames": "Tags",
+    "selectTagsPlaceholder": "Select tags...",
+    "searchTags": "Search by name...",
+    "noTagsFound": "No tags found",
+    "selectAll": "Select filtered",
+    "selectedCount": "{{count}} selected",
     "noDataAvailable": "No data available",
     "preset": {
       "LastMinute": "Last Minute",

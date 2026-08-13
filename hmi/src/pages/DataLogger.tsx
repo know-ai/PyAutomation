@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { MultiSelectSearch } from "../components/MultiSelectSearch";
 import {
   getTags,
+  getTagsList,
   getTabularData,
+  getTimezones,
   type Tag,
   type TagsResponse,
   type TabularDataFilter,
   type TabularDataResponse,
 } from "../services/tags";
-import { getTimezones } from "../services/tags";
 import { useTranslation } from "../hooks/useTranslation";
 
 type PresetDate = 
@@ -198,9 +200,14 @@ export function DataLogger() {
       // Detectar zona horaria del navegador
       const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       
-      // Cargar tags (necesitamos varios para tener opciones por defecto)
-      const tagsResponse: TagsResponse = await getTags(1, 100);
-      const allTags = tagsResponse.data || [];
+      // Catálogo completo (lista slim) para el selector; fallback paginado si falla.
+      let allTags: Tag[] = [];
+      try {
+        allTags = await getTagsList();
+      } catch (_e) {
+        const tagsResponse: TagsResponse = await getTags(1, 5000);
+        allTags = tagsResponse.data || [];
+      }
       setAvailableTags(allTags);
 
       // Seleccionar 3-4 tags por defecto solo si no hay tags guardados
@@ -374,6 +381,21 @@ export function DataLogger() {
     }
   };
 
+  const handleSelectedTagsChange = (next: string[]) => {
+    setSelectedTags(next);
+    localStorage.setItem("datalogger_selectedTags", JSON.stringify(next));
+  };
+
+  const tagOptions = useMemo(
+    () =>
+      availableTags.map((tag) => ({
+        value: tag.name,
+        label: tag.display_name || tag.name,
+        description: tag.variable,
+      })),
+    [availableTags]
+  );
+
   const handleLimitChange = (newLimit: number) => {
     if (newLimit > 0) {
       setFilters({ ...filters, page: 1, limit: newLimit });
@@ -477,6 +499,24 @@ export function DataLogger() {
             <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
               <span className="me-auto">{t("navigation.dataLogger")}</span>
               <div className="d-flex align-items-center gap-2">
+                <div className="d-flex align-items-center gap-1">
+                  <label className="form-label small mb-0 me-1">{t("dataLogger.tagNames")}:</label>
+                  <MultiSelectSearch
+                    options={tagOptions}
+                    selected={selectedTags}
+                    onChange={handleSelectedTagsChange}
+                    placeholder={t("dataLogger.selectTagsPlaceholder")}
+                    searchPlaceholder={t("dataLogger.searchTags")}
+                    emptyText={t("dataLogger.noTagsFound")}
+                    selectAllLabel={t("dataLogger.selectAll")}
+                    clearLabel={t("common.clear")}
+                    selectedCountLabel={(count) =>
+                      t("dataLogger.selectedCount", { count })
+                    }
+                    disabled={loading}
+                    style={{ width: "260px" }}
+                  />
+                </div>
                 <div className="d-flex align-items-center gap-1">
                   <label className="form-label small mb-0 me-1">{t("dataLogger.range")}:</label>
                   <select
@@ -625,34 +665,6 @@ export function DataLogger() {
               {error}
             </div>
           )}
-
-          {/* Filtro de tags */}
-          <div className="mb-3">
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="form-label mb-0 me-2">{t("dataLogger.tagNames")}:</label>
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                {availableTags.map((tag) => {
-                  const isSelected = selectedTags.includes(tag.name);
-                  return (
-                    <button
-                      key={tag.name}
-                      type="button"
-                      className={`btn btn-sm ${isSelected ? "btn-primary" : "btn-outline-secondary"}`}
-                      onClick={() => {
-                        const newSelectedTags = isSelected
-                          ? selectedTags.filter((t) => t !== tag.name)
-                          : [...selectedTags, tag.name];
-                        setSelectedTags(newSelectedTags);
-                        localStorage.setItem("datalogger_selectedTags", JSON.stringify(newSelectedTags));
-                      }}
-                    >
-                      {tag.display_name || tag.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
 
           {loading && (
             <div className="text-center py-4">

@@ -645,7 +645,12 @@
     "start": "Inicio",
     "end": "Fin",
     "sample": "Sample",
-    "tagNames": "Tag Names",
+    "tagNames": "Tags",
+    "selectTagsPlaceholder": "Seleccionar tags...",
+    "searchTags": "Buscar por nombre...",
+    "noTagsFound": "No se encontraron tags",
+    "selectAll": "Seleccionar filtrados",
+    "selectedCount": "{{count}} seleccionados",
     "noDataAvailable": "No hay datos disponibles",
     "preset": {
       "LastMinute": "Last Minute",
