@@ -166,14 +166,16 @@ class LoggerWorker(BaseWorker):
         Attempts to reconnect to the database if the connection is lost.
         """
         from automation import PyAutomation
+        from ..utils.db_audit import database_connection_auditor
+
         app = PyAutomation()
         
         if self.db_reconnection:
-            
             logging.critical("Trying reconnect to DB...")
+            database_connection_auditor.notify_link_lost(source="watchdog")
         
         self.db_reconnection = False
-        db_connected = app.reconnect_to_db()
+        db_connected = app.reconnect_to_db(source="watchdog")
                 
         if db_connected:
             

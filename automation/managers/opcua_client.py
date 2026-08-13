@@ -49,7 +49,7 @@ class OPCUAClientManager:
         return Client.find_servers(host, port)
 
     @logging_error_handler
-    def add(self, client_name:str, host:str, port:int):
+    def add(self, client_name:str, host:str, port:int, source:str="client-add"):
         r"""
         Adds and connects a new OPC UA Client.
 
@@ -64,11 +64,17 @@ class OPCUAClientManager:
         * **tuple**: (Success boolean, Message string).
         """
         endpoint_url = f"opc.tcp://{host}:{port}"
+        pending_source = getattr(self, "_pending_audit_source", None)
+        if pending_source:
+            source = pending_source
+            self._pending_audit_source = None
+
         if client_name in self._clients:
 
             return True, f"Client Name {client_name} duplicated"
 
         opcua_client = Client(endpoint_url, client_name=client_name)
+        opcua_client._audit_source = source or "client-add"
         
         message, status_connection = opcua_client.connect()
         
@@ -150,6 +156,7 @@ class OPCUAClientManager:
         if client_name in self._clients:
             try:
                 opcua_client = self._clients.pop(client_name)
+                opcua_client._audit_source = "client-remove"
                 opcua_client.disconnect()
                 # DATABASE PERSISTENCY
                 opcua = OPCUA.get_by_client_name(client_name=client_name)
@@ -290,6 +297,7 @@ class OPCUAClientManager:
         # Desconectar el cliente antiguo
         try:
             if was_connected:
+                old_client._audit_source = "client-update"
                 old_client.disconnect()
         except Exception as err:
             str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -318,6 +326,7 @@ class OPCUAClientManager:
         # Crear nuevo cliente con la nueva configuración
         endpoint_url = f"opc.tcp://{host}:{port}"
         opcua_client = Client(endpoint_url, client_name=new_client_name)
+        opcua_client._audit_source = "client-update"
         
         # Intentar conectar con la nueva configuración
         message, status_connection = opcua_client.connect()
@@ -392,6 +401,7 @@ class OPCUAClientManager:
                 self._clients[old_client_name] = temp_client
                 # Si estaba conectado, intentar reconectar
                 if was_connected:
+                    temp_client._audit_source = "client-update"
                     old_message, old_status = temp_client.connect()
                     if old_status == 200:
                         # Revertir cambios en la base de datos
@@ -419,7 +429,7 @@ class OPCUAClientManager:
         * **client_name** (str): Client name.
         """
         if client_name in self._clients:
-
+            self._clients[client_name]._audit_source = "client-connect"
             self._clients[client_name].connect()
 
     @logging_error_handler
@@ -432,7 +442,7 @@ class OPCUAClientManager:
         * **client_name** (str): Client name.
         """
         if client_name in self._clients:
-
+            self._clients[client_name]._audit_source = "client-disconnect"
             self._clients[client_name].disconnect()
 
     @logging_error_handler

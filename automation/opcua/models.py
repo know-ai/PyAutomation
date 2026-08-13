@@ -5,6 +5,10 @@ from datetime import datetime
 from opcua.ua.uatypes import NodeId, datatype_to_varianttype
 import re, uuid, logging, time
 from ..utils import _colorize_message
+from ..utils.opcua_audit import (
+    failure_cooldown_seconds,
+    record_opcua_connection_event,
+)
 import json
 from enum import Enum
 
@@ -24,6 +28,11 @@ class Client(OPCClient):
         self._client = None
         self._is_open = False
         self._opc_ua_tree = dict()
+        self._connection_state = "unknown"
+        self._reconnect_attempts = 0
+        self._reconnect_in_progress = False
+        self._last_failure_event_monotonic = 0.0
+        self._audit_source = "client-connect"
         # self.scheduler = sched.scheduler(time.time, time.sleep) 
         # self.token_renewal_interval = 30 # Cada 10 minutos
         super(Client, self).__init__(url, timeout)
@@ -49,6 +58,33 @@ class Client(OPCClient):
             logging.error(f"Failed to check security token: {e}") 
             return False
 
+    def _should_log_failure_event(self) -> bool:
+        now = time.monotonic()
+        if (now - self._last_failure_event_monotonic) >= failure_cooldown_seconds():
+            self._last_failure_event_monotonic = now
+            return True
+        return False
+
+    def _audit_connection(self, action: str, reason: str = "", error: str = "") -> None:
+        record_opcua_connection_event(
+            action=action,
+            client_name=getattr(self, "name", "") or "",
+            server_url=self._server_url or "",
+            source=self._audit_source or "",
+            reason=reason,
+            error=error,
+            attempts=self._reconnect_attempts if self._reconnect_in_progress or action.endswith("FAILED") else 0,
+        )
+
+    def _emit_opcua_socket(self, event_name: str, message: str) -> None:
+        try:
+            from automation import PyAutomation
+            app = PyAutomation()
+            if app.sio:
+                app.sio.emit(event_name, data={"message": message, "client_name": self.name, "url": self._server_url})
+        except Exception:
+            logging.debug("OPC UA socket emit skipped", exc_info=True)
+
     def connect(self):
         r"""
         Documentation here
@@ -60,6 +96,14 @@ class Client(OPCClient):
             # Now you're connected again!
             self._is_open = True
             self._id = str(uuid.uuid4())
+            previous_state = self._connection_state
+            self._connection_state = "connected"
+            if self._reconnect_in_progress or previous_state == "disconnected":
+                self._audit_connection("RECONNECTED", reason="session-restored")
+            else:
+                self._audit_connection("CONNECTED", reason="session-established")
+            self._reconnect_attempts = 0
+            self._last_failure_event_monotonic = 0.0
             result = {
                 'message': 'Successful connection',
                 'url': self._server_url,
@@ -71,14 +115,26 @@ class Client(OPCClient):
         except Exception as _err:
             str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             logger = logging.getLogger("pyautomation")
-            logger.error(f"Error during OPCUA server {self._server_url} connection")
+            error_text = f"{type(_err).__name__}: {_err}"
+            logger.error(f"Error during OPCUA server {self._server_url} connection: {error_text}")
             print(_colorize_message(f"[{str_date}] [ERROR] Error during OPCUA server {self._server_url} connection", "ERROR"))
             self._is_open = False
+            self._connection_state = "disconnected"
+            if self._reconnect_in_progress:
+                if self._should_log_failure_event():
+                    self._audit_connection(
+                        "RECONNECT_FAILED",
+                        reason="watchdog-retry",
+                        error=error_text,
+                    )
+            else:
+                self._audit_connection("CONNECTION_FAILED", reason="initial-connect", error=error_text)
             result = {
                 'message': 'Connection could not be established',
                 'url': self._server_url,
                 'is_connected': self._is_open,
-                'id': self.get_id()
+                'id': self.get_id(),
+                'error': error_text,
                 }
             return result, 404
         
@@ -93,32 +149,53 @@ class Client(OPCClient):
     def reconnect(self):
 
         # if not self.is_connected() or not self.is_token_valid(): 
-        if not self.is_connected(): 
-            
-            from automation import PyAutomation
-            app = PyAutomation()
-            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            app.sio.emit("on.opcua.disconnected", data={"message": f"Disconneted from {self._server_url}"})
-            logging.critical(f"Attempting to reconnect to OPCUA server {self._server_url}")  
-            print(_colorize_message(f"[{str_date}] [CRITICAL] Attempting to reconnect to OPCUA server {self._server_url}", "CRITICAL"))
-            try:
+        if self.is_connected():
+            return
 
-                result, status = self.connect()
-                
-                if status == 200:
-                    # Revolver tokens de seguridad para asegurar la validez 
-                    # self.revolve_security_tokens()
-                    app.sio.emit("on.opcua.connected", data={"message": f"Conneted to {self._server_url}"})
-                    tags = app.get_tags()
-                    for tag in tags:
-                        _tag = app.cvt.get_tag(id=tag["id"])
-                        app.subscribe_opcua(tag=_tag, opcua_address=tag['opcua_address'], node_namespace=tag['node_namespace'], scan_time=tag['scan_time'], reload=True)
-                        
-                    logging.critical(f"Reconnected to {self._server_url}") 
-                    print(_colorize_message(f"[{str_date}] [INFO] Reconnected to OPCUA server {self._server_url}", "INFO"))
-            except: 
-                logging.critical(f"Reconnection to OPCUA server {self._server_url} failed...")
-                print(_colorize_message(f"[{str_date}] [CRITICAL] Reconnection to OPCUA server {self._server_url} failed...", "CRITICAL"))
+        from automation import PyAutomation
+        app = PyAutomation()
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        lost_link = self._connection_state == "connected"
+        if lost_link:
+            self._emit_opcua_socket("on.opcua.disconnected", f"Disconnected from {self._server_url}")
+            self._audit_source = "watchdog-reconnect"
+            self._audit_connection("DISCONNECTED", reason="connection-lost")
+            self._connection_state = "disconnected"
+            self._reconnect_attempts = 0
+
+        if self._connection_state == "unknown":
+            self._connection_state = "disconnected"
+
+        self._reconnect_in_progress = True
+        self._audit_source = "watchdog-reconnect"
+        self._reconnect_attempts += 1
+        if self._reconnect_attempts == 1:
+            logging.critical(f"Attempting to reconnect to OPCUA server {self._server_url}")
+            print(_colorize_message(f"[{str_date}] [CRITICAL] Attempting to reconnect to OPCUA server {self._server_url}", "CRITICAL"))
+            self._audit_connection("RECONNECTING", reason="watchdog")
+        try:
+            result, status = self.connect()
+
+            if status == 200:
+                tags = app.get_tags()
+                for tag in tags:
+                    _tag = app.cvt.get_tag(id=tag["id"])
+                    app.subscribe_opcua(tag=_tag, opcua_address=tag['opcua_address'], node_namespace=tag['node_namespace'], scan_time=tag['scan_time'], reload=True)
+
+                self._emit_opcua_socket("on.opcua.connected", f"Connected to {self._server_url}")
+                logging.critical(f"Reconnected to {self._server_url}")
+                print(_colorize_message(f"[{str_date}] [INFO] Reconnected to OPCUA server {self._server_url}", "INFO"))
+        except Exception as err:
+            logging.critical(f"Reconnection to OPCUA server {self._server_url} failed: {err}")
+            print(_colorize_message(f"[{str_date}] [CRITICAL] Reconnection to OPCUA server {self._server_url} failed...", "CRITICAL"))
+            if self._should_log_failure_event():
+                self._audit_connection(
+                    "RECONNECT_FAILED",
+                    reason="watchdog-exception",
+                    error=f"{type(err).__name__}: {err}",
+                )
+        finally:
+            self._reconnect_in_progress = False
 
     def __reset_object_attributes(self):
         r"""
@@ -132,17 +209,29 @@ class Client(OPCClient):
         r"""
         Documentation here
         """
+        server_url = self._server_url
+        was_open = bool(self._is_open or self._connection_state == "connected")
         try:
             super(Client, self).disconnect()
+            if was_open or self._connection_state != "disconnected":
+                self._audit_connection("DISCONNECTED", reason="requested")
+            self._connection_state = "disconnected"
+            self._reconnect_attempts = 0
+            self._is_open = False
             self.__reset_object_attributes()
             result = {
                 'message': 'Successful disconnection',
+                'url': server_url,
                 'is_connected': False
                 }
             return result, 200
 
         except Exception as _err:
-            result = {'message': 'Disconnect could not be performed'}
+            error_text = f"{type(_err).__name__}: {_err}"
+            if was_open and self._should_log_failure_event():
+                self._audit_connection("DISCONNECTED", reason="disconnect-error", error=error_text)
+            self._connection_state = "disconnected"
+            result = {'message': 'Disconnect could not be performed', 'error': error_text}
             return result, 404
 
     def get_opc_ua_tree(self):

@@ -31,6 +31,7 @@ from .modules.users.roles import roles, Role
 from .dbmodels.core import BaseModel
 from .utils.decorators import validate_types, logging_error_handler
 from .utils import _colorize_message
+from .utils.db_audit import database_connection_auditor, summarize_db_config
 from flask_socketio import SocketIO
 from geventwebsocket.handler import WebSocketHandler
 from .variables import VARIABLES
@@ -3126,8 +3127,8 @@ class PyAutomation(Singleton):
         """
         return bool(self.db_manager.get_db())
 
-    @validate_types(test=bool|type(None), reload=bool|type(None), output=None|bool)
-    def connect_to_db(self, test:bool=False, reload:bool=False):
+    @validate_types(test=bool|type(None), reload=bool|type(None), source=str|type(None), output=None|bool)
+    def connect_to_db(self, test:bool=False, reload:bool=False, source:str="connect"):
         r"""
         Establishes a connection to the database based on the stored configuration.
 
@@ -3156,12 +3157,12 @@ class PyAutomation(Singleton):
         ```
         """
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        audit_source = source or "connect"
+        target = "target=unknown"
         
         try:
             db_config = self.get_db_config()
 
-            logging.info(f"Connecting to database {db_config['dbtype']} with config: {db_config}")
-            print(_colorize_message(f"[{str_date}] [INFO] Connecting to database {db_config['dbtype']} with config: {db_config}", "INFO"))
             # Para tests forzamos siempre una DB SQLite temporal.
             if test:
                 db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
@@ -3184,7 +3185,16 @@ class PyAutomation(Singleton):
                     "and no valid AUTOMATION_DB_* env vars). Skipping DB connection."
                 )
                 print(_colorize_message(f"[{str_date}] [WARNING] No database configuration available (db_config.json not found and no valid AUTOMATION_DB_* env vars). Skipping DB connection.", "WARNING"))
+                database_connection_auditor.notify_connect_failure(
+                    source=audit_source,
+                    target=target,
+                    error="missing-config",
+                )
                 return False
+
+            target = summarize_db_config(db_config)
+            logging.info(f"Connecting to database {target}")
+            print(_colorize_message(f"[{str_date}] [INFO] Connecting to database {target}", "INFO"))
 
             # Normalizar tipos (especialmente el puerto) antes de set_db
             dbtype = db_config.pop("dbtype")
@@ -3213,15 +3223,24 @@ class PyAutomation(Singleton):
                 self.load_db_tags_to_machine()
             logging.info(f"Database connected successfully")
             print(_colorize_message(f"[{str_date}] [INFO] Database connected successfully", "INFO"))
+            database_connection_auditor.notify_connect_success(
+                source=audit_source,
+                target=target,
+            )
             return True
 
         except Exception as err:
             logging.critical(f"CONNECTING DATABASE ERROR: {err}")
             print(_colorize_message(f"[{str_date}] [CRITICAL] CONNECTING DATABASE ERROR: {err}", "CRITICAL"))
+            database_connection_auditor.notify_connect_failure(
+                source=audit_source,
+                target=target,
+                error=str(err),
+            )
             return False
         
-    @validate_types(test=bool|type(None), reload=bool|type(None), output=None|bool)
-    def reconnect_to_db(self, test:bool=False):
+    @validate_types(test=bool|type(None), reload=bool|type(None), source=str|type(None), output=None|bool)
+    def reconnect_to_db(self, test:bool=False, source:str="reconnect"):
         r"""
         Re-establishes the database connection and reloads all data.
 
@@ -3245,11 +3264,19 @@ class PyAutomation(Singleton):
 
         ```
         """
+        audit_source = source or "reconnect"
+        target = "target=unknown"
         try:
             db_config = self.get_db_config()
 
             if test:
                 db_config = {"dbtype": "sqlite", "dbfile": "test.db"}
+
+            target = summarize_db_config(db_config)
+            database_connection_auditor.notify_reconnect_attempt(
+                source=audit_source,
+                target=target,
+            )
 
             if db_config:
 
@@ -3273,14 +3300,29 @@ class PyAutomation(Singleton):
                 self.load_db_to_alarm_manager()
                 self.load_db_to_roles()
                 self.load_db_to_users()
-                self.load_db_tags_to_machine()            
+                self.load_db_tags_to_machine()
+                database_connection_auditor.notify_reconnect_success(
+                    source=audit_source,
+                    target=target,
+                )
 
                 return True
-            else:
-                return False
+
+            database_connection_auditor.notify_reconnect_failure(
+                source=audit_source,
+                target=target,
+                error="missing-config",
+            )
+            return False
         
         except Exception as err:
+            logging.critical(f"RECONNECTING DATABASE ERROR: {err}")
             self.db_manager._logger.logger._db = None
+            database_connection_auditor.notify_reconnect_failure(
+                source=audit_source,
+                target=target,
+                error=str(err),
+            )
             return False
 
     @logging_error_handler
@@ -3302,6 +3344,11 @@ class PyAutomation(Singleton):
 
         ```
         """
+        target = summarize_db_config(self.get_db_config())
+        database_connection_auditor.notify_disconnect_requested(
+            source="disconnect",
+            target=target,
+        )
         self.__log_histories = False
         self.db_manager._logger.logger.stop_db()
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -3487,6 +3534,7 @@ class PyAutomation(Singleton):
             
             for client in clients:
                 client_name = client.get('client_name')
+                self.opcua_client_manager._pending_audit_source = "core-startup"
                 # Intentar agregar el cliente, incluso si falla la conexión
                 # Esto asegura que esté en memoria para poder actualizarlo
                 result = self.add_opcua_client(**client)
@@ -3503,12 +3551,18 @@ class PyAutomation(Singleton):
                     # Si add_opcua_client retorna None, intentar agregar directamente al manager
                     # para asegurar que esté en memoria aunque no se conecte
                     try:
-                        self.opcua_client_manager.add(client_name=client_name, host=client.get('host'), port=client.get('port'))
+                        self.opcua_client_manager.add(
+                            client_name=client_name,
+                            host=client.get('host'),
+                            port=client.get('port'),
+                            source="core-startup",
+                        )
                         logging.warning(f"OPC UA client {client_name} added to memory from database (connection may have failed)")
                         print(_colorize_message(f"[{str_date}] [WARNING] OPC UA client {client_name} added to memory from database (connection may have failed)", "WARNING"))
                     except Exception as e:
                         logging.error(f"Failed to load OPC UA client {client_name} from database: {e}")
                         print(_colorize_message(f"[{str_date}] [ERROR] Failed to load OPC UA client {client_name} from database: {e}", "ERROR"))
+            self.opcua_client_manager._pending_audit_source = None
 
     @logging_error_handler
     def load_db_tags_to_machine(self):
@@ -4283,10 +4337,11 @@ class PyAutomation(Singleton):
             # Bootstrap from env if needed (no-op if db_config.json already exists)
             self.ensure_db_config_from_env()
             # Attempt to connect using the current configuration
-            self.connect_to_db(test=test)
+            self.connect_to_db(test=test, source="core-startup")
 
         if self.is_db_connected():
             self.create_system_user()
+            database_connection_auditor.flush()
         else:
             logging.critical("Database is not connected, skipping system user creation")
             print(_colorize_message(f"[{str_date}] [CRITICAL] Database is not connected, skipping system user creation", "CRITICAL"))
@@ -4390,7 +4445,7 @@ class PyAutomation(Singleton):
             # but once db_config.json exists, it will override any env changes.
             self.ensure_db_config_from_env()
 
-            self.connect_to_db(test=test)
+            self.connect_to_db(test=test, source="core-startup")
             self.db_worker.start()
 
         if machines:
