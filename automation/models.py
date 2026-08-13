@@ -8,6 +8,26 @@ from .modules.users.users import User
 from .tags.tag import Tag
 from .utils.decorators import set_event, logging_error_handler
 from datetime import datetime, timezone
+from .timebase import quantize_datetime_ms
+
+
+def resolve_machine_cycle_timestamp(machine=None, timestamp=None) -> datetime:
+    """Pick the CVT timestamp for a ProcessType write.
+
+    Priority: explicit ``timestamp`` → ``machine.cycle_timestamp`` (atomic
+    scheduler stamp) → ``machine.data_timestamp`` (field sample) → UTC now.
+    Always quantized to milliseconds for the TagValue historian.
+    """
+    if isinstance(timestamp, datetime):
+        return quantize_datetime_ms(timestamp)
+    if machine is not None:
+        cycle_ts = getattr(machine, "cycle_timestamp", None)
+        if isinstance(cycle_ts, datetime):
+            return quantize_datetime_ms(cycle_ts)
+        data_ts = getattr(machine, "data_timestamp", None)
+        if isinstance(data_ts, datetime):
+            return quantize_datetime_ms(data_ts)
+    return quantize_datetime_ms(datetime.now(timezone.utc))
 
 
 FLOAT = "float"
@@ -66,10 +86,7 @@ class PropertyType:
 
                     if self.tag:
 
-                        if hasattr(machine, "data_timestamp"):
-                            timestamp = machine.data_timestamp
-                        else:
-                            timestamp = datetime.now(timezone.utc)
+                        timestamp = resolve_machine_cycle_timestamp(machine)
                         val = self.tag.value.convert_value(value=value.value, from_unit=self.tag.get_unit(), to_unit=self.tag.get_display_unit())
                         self.tag.value.set_value(value=val, unit=self.tag.get_display_unit()) 
                         self.cvt.set_value(id=self.tag.id, value=val, timestamp=timestamp)

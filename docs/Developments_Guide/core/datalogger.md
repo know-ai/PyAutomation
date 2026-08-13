@@ -12,9 +12,10 @@ The DataLogger persistently records tag values from the CVT into the configured 
 ## How It Works
 
 1. CVT updates enqueue tag changes through `TagObserver`.
-2. `LoggerWorker` runs on a fixed period (defaults to the `LOGGER_PERIOD` environment variable, 10s if unset).
-3. The worker filters tags by `segment`/`manufacturer` (if configured) and bulk-inserts records via `TagValue.insert_many`.
-4. When SQLite grows beyond 1 GB, the worker triggers a backup, vacuums the DB, and resumes logging.
+2. The persistence gateway normalizes CVT writes: samples that repeat the same tag, value, and cycle timestamp are dropped in memory (`CycleSampleCache`) and never enter the journal. Tag timestamps are stored at **millisecond** resolution (`TAGVALUE_TIMESTAMP_RESOLUTION = 3`) so UNIQUE `(tag_id, timestamp)` collapses accidental sub-ms rewrites. The historian therefore records **one sample per tag per machine cycle** when the value does not change, even if a state machine calls `set_value` more than once.
+3. `LoggerWorker` runs on a fixed period (defaults to the `LOGGER_PERIOD` environment variable, 10s if unset) and replicates the journal to the remote historian.
+4. The worker filters tags by `segment`/`manufacturer` (if configured) and bulk-inserts records via `TagValue.insert_many`.
+5. When SQLite grows beyond 1 GB, the worker triggers a backup, vacuums the DB, and resumes logging.
 
 ### Data Logger Workflow
 

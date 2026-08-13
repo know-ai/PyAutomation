@@ -6,6 +6,7 @@ SQLite) is the distribution plane. Acquisition never waits on the network.
 """
 from .config import SafConfig
 from .contracts import IHealthProbe, IPayloadMapper, IPersistable, IPersistenceGateway, IRemoteDB, IReplicationWorker
+from .cycle_dedupe import CycleSampleCache
 from .exceptions import JournalBackpressureError, JournalDiskFullError, JournalError
 from .health import SafHealthProbe
 from .idempotent_insert import IdempotentBatchInserter
@@ -14,6 +15,7 @@ from .records import DOMAIN, PersistableRecord
 from .remote import TagValuePayloadMapper
 
 __all__ = [
+    "CycleSampleCache",
     "DOMAIN",
     "IHealthProbe",
     "IPayloadMapper",

@@ -278,7 +278,7 @@ Payload journal (dominio `tag`, **no** `TagValue`):
 4. `IdempotentBatchInserter.insert_tag_values` → Peewee `insert_many(...).on_conflict_ignore()`.
 5. Éxito → `mark_sent`; fallo → filas de ese dominio vuelven a `PENDING` (aislamiento por dominio).
 
-Columnas remotas: `tag_id`, `unit_id`, `value`, `timestamp` (bigint µs, `TimestampField(resolution=6)`), `sample_uuid`.
+Columnas remotas: `tag_id`, `unit_id`, `value`, `timestamp` (bigint **ms**, `TimestampField(resolution=3)`), `sample_uuid`.
 
 ---
 
@@ -327,11 +327,12 @@ Esto explica registros “sin mapear OPC UA”: el attach ya ocurrió al cargar/
 
 ## 8. Puntos de atención operativos (implementación activa)
 
-1. **Doble observer**: `DBManager.attach` + `AlarmManager.attach` pueden poner dos `TagObserver` en el mismo tag → dos enqueues por `notify` (posible duplicado de intento; exact-once remoto mitiga por UNIQUE).
+1. **Doble observer**: `DBManager.attach` + `AlarmManager.attach` pueden poner dos `TagObserver` en el mismo tag → dos notificaciones. El `CycleSampleCache` descarta la segunda si tag, valor y timestamp de ciclo coinciden; UNIQUE remoto es la red de seguridad.
 2. **`_tag_queue` residual**: confunde auditorías; no participa en el write path SAF.
 3. **Resolución remota por nombre**: si el nombre del payload no existe en `Tags` de Postgres, el mapper omite la fila (`written=0` → dominio queda PENDING).
-4. **Lectura HMI**: `DataLogger` debe filtrar en ticks de microsegundos (`_tagvalue_db_ts`); filtrar en unix-segundos deja el API “vacío” aunque la tabla crezca.
-5. **Health**: `GET /api/health/saf` — profundidad de cola, lag, drops.
+4. **Lectura HMI**: `DataLogger` debe filtrar en ticks de milisegundos (`_tagvalue_db_ts`); filtrar en unix-segundos deja el API “vacío” aunque la tabla crezca. Lectores toleran ticks legacy µs vía `epoch_seconds_from_db_tick`.
+5. **Health**: `GET /api/health/saf` — profundidad de cola, lag, drops de ring y `SAF_CYCLE_DUPES_DROPPED`.
+6. **Ciclo atómico**: el scheduler estampa `cycle_timestamp` antes de `loop()`. `ProcessType.set_value` lo usa si no hay timestamp explícito. El gateway no encola un segundo sample idéntico del mismo ciclo. Resultado operativo: **1 muestra histórica por tag por ciclo de máquina** cuando el valor no cambia, aunque el algoritmo llame `set_value` varias veces.
 
 ---
 
@@ -346,6 +347,9 @@ Esto explica registros “sin mapear OPC UA”: el attach ya ocurrió al cargar/
 | OPC → CVT | `automation/opcua/subscription.py` → `datachange_notification` |
 | API write | `automation/modules/tags/resources/tags.py` → `/write_value` |
 | Gateway / journal / replicator | `automation/persistence/{orchestrator,journal,replicator,remote,outbox}.py` |
+| Cycle stamp | `automation/workers/state_machine.py` → `stamp_machine_cycle` |
+| Timestamp de ciclo | `automation/models.py` → `resolve_machine_cycle_timestamp` |
+| Deduplicación de ciclo | `automation/persistence/cycle_dedupe.py` |
 | Worker | `automation/workers/logger.py` |
 | Lectura tendencias | `automation/logger/datalogger.py` |
 

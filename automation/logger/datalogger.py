@@ -18,16 +18,20 @@ from ..utils.decorators import db_rollback
 
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
-SECONDS_CEILING = 10_000_000_000
 
 
-def _tagvalue_db_ts(dt: datetime) -> int:
-    """Integer ticks stored in TagValue.timestamp (microseconds when resolution=6)."""
+def _tagvalue_bound(dt: datetime) -> datetime:
+    """UTC datetime for ``TagValue.timestamp`` comparisons.
+
+    Do **not** pre-scale to integer ticks. Peewee ``TimestampField.db_value``
+    treats a raw ``int`` as unix **seconds** and multiplies by ``resolution``
+    (1000 for milliseconds). Passing already-scaled ms ticks therefore becomes
+    a 16-digit bound that never matches stored 13-digit rows, so trends return
+    empty series.
+    """
     if dt.tzinfo is None:
-        dt = pytz.UTC.localize(dt)
-    else:
-        dt = dt.astimezone(pytz.UTC)
-    return int(TagValue.timestamp.db_value(dt))
+        return pytz.UTC.localize(dt)
+    return dt.astimezone(pytz.UTC)
 
 
 def _as_epoch_seconds(value):
@@ -37,10 +41,9 @@ def _as_epoch_seconds(value):
         if value.tzinfo is None:
             value = pytz.UTC.localize(value)
         return value.timestamp()
-    numeric = float(value)
-    if numeric > SECONDS_CEILING:
-        return numeric / 1_000_000.0
-    return numeric
+    from ..timebase import epoch_seconds_from_db_tick
+
+    return epoch_seconds_from_db_tick(value)
 
 
 def _as_utc_datetime(value):
@@ -317,8 +320,8 @@ class DataLogger(BaseLogger):
 
         start_ts = float(start_dt.timestamp())
         stop_ts = float(stop_dt.timestamp())
-        start_db = _tagvalue_db_ts(start_dt)
-        stop_db = _tagvalue_db_ts(stop_dt)
+        start_db = _tagvalue_bound(start_dt)
+        stop_db = _tagvalue_bound(stop_dt)
               
         # Base query: para trending, preferimos agregación en SQL (mucho más eficiente)
         # y solo caemos a "raw" para spans pequeños.
@@ -346,7 +349,7 @@ class DataLogger(BaseLogger):
         # Umbral conservador: si el bucket calculado es <= 1s, raw.
         use_raw = (span_seconds <= 0) or (bucket_seconds <= 1 and time_span_minutes <= 120)
 
-        # TagValue.timestamp is bigint microseconds (TimestampField resolution=6).
+        # TagValue.timestamp is bigint milliseconds (TimestampField resolution=3).
         # to_timestamp() expects seconds, so divide via from_timestamp().
         ts_epoch = TagValue.timestamp
         ts_tz = TagValue.timestamp.from_timestamp()
@@ -468,13 +471,13 @@ class DataLogger(BaseLogger):
         except ValueError:
             return dict()
 
-        # Base query — compare against stored microsecond ticks, not unix seconds.
+        # Base query — compare against stored millisecond ticks, not unix seconds.
         query = (TagValue
                 .select(Tags.name, TagValue.value, TagValue.timestamp,
                         Units.unit.alias('tag_value_unit'))
                 .join(Tags)
                 .join(Units, on=(Tags.unit == Units.id))
-                .where((TagValue.timestamp.between(_tagvalue_db_ts(start_dt), _tagvalue_db_ts(stop_dt))) & (Tags.name.in_(tags)))
+                .where((TagValue.timestamp.between(_tagvalue_bound(start_dt), _tagvalue_bound(stop_dt))) & (Tags.name.in_(tags)))
                 .order_by(TagValue.timestamp.desc()))
 
         total_records = query.count()
@@ -600,7 +603,7 @@ class DataLogger(BaseLogger):
             .join(Tags)
             .where(
                 (Tags.name.in_(tags)) & 
-                (TagValue.timestamp <= _tagvalue_db_ts(start_dt))
+                (TagValue.timestamp <= _tagvalue_bound(start_dt))
             )
             .limit(1)
             .count() > 0)
@@ -612,8 +615,8 @@ class DataLogger(BaseLogger):
                 .join(Tags)
                 .where(
                     (Tags.name.in_(tags)) & 
-                    (TagValue.timestamp >= _tagvalue_db_ts(start_dt)) & 
-                    (TagValue.timestamp <= _tagvalue_db_ts(stop_dt)) &
+                    (TagValue.timestamp >= _tagvalue_bound(start_dt)) & 
+                    (TagValue.timestamp <= _tagvalue_bound(stop_dt)) &
                     (TagValue.value.is_null(False))
                 )
                 .scalar())
@@ -666,8 +669,8 @@ class DataLogger(BaseLogger):
             .join(Tags)
             .where(
                 (Tags.name.in_(tags)) & 
-                (TagValue.timestamp >= _tagvalue_db_ts(page_start_dt)) & 
-                (TagValue.timestamp <= _tagvalue_db_ts(page_end_dt)) &
+                (TagValue.timestamp >= _tagvalue_bound(page_start_dt)) & 
+                (TagValue.timestamp <= _tagvalue_bound(page_end_dt)) &
                 (TagValue.value.is_null(False))
             )
             .order_by(TagValue.timestamp.asc())
@@ -707,7 +710,7 @@ class DataLogger(BaseLogger):
                 last_val_query = (TagValue
                     .select(TagValue.value)
                     .join(Tags)
-                    .where((Tags.name == tag_name) & (TagValue.timestamp <= _tagvalue_db_ts(step_dt)))
+                    .where((Tags.name == tag_name) & (TagValue.timestamp <= _tagvalue_bound(step_dt)))
                     .order_by(TagValue.timestamp.desc())
                     .limit(1)
                     .dicts())

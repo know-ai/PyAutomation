@@ -12,10 +12,10 @@ from typing import Any, Callable, Mapping, Sequence
 
 from .idempotent_insert import IdempotentBatchInserter, IIdempotentInserter
 from .records import DOMAIN, canonical_sample_uuid
+from ..timebase import epoch_seconds_from_db_tick, quantize_datetime_ms
 
 VALUE_KEYS = ("value", "val", "v", "magnitude", "value_str")
 TIMESTAMP_KEYS = ("timestamp", "ts", "time")
-SECONDS_CEILING = 10_000_000_000
 
 
 def coerce_tag_value(raw: Any) -> float | None:
@@ -41,20 +41,20 @@ def coerce_tag_timestamp(raw: Any) -> datetime | None:
         return None
     if isinstance(raw, datetime):
         if raw.tzinfo is None:
-            return raw.replace(tzinfo=timezone.utc)
-        return raw.astimezone(timezone.utc)
+            raw = raw.replace(tzinfo=timezone.utc)
+        else:
+            raw = raw.astimezone(timezone.utc)
+        return quantize_datetime_ms(raw)
     if isinstance(raw, (int, float)):
-        numeric = float(raw)
-        if numeric > SECONDS_CEILING:
-            numeric /= 1_000_000.0
-        return datetime.fromtimestamp(numeric, tz=timezone.utc)
+        seconds = epoch_seconds_from_db_tick(raw)
+        return quantize_datetime_ms(datetime.fromtimestamp(seconds, tz=timezone.utc))
     try:
         parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
     except ValueError:
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    return quantize_datetime_ms(parsed.astimezone(timezone.utc))
 
 
 def extract_tag_timestamp(payload: Mapping[str, Any]) -> datetime | None:

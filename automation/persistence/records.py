@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
+from ..timebase import iso_millis, quantize_datetime_ms
+
 SAMPLE_UUID_MAX_LEN = 64
 
 
@@ -40,6 +42,7 @@ def utc_now() -> datetime:
 
 
 def iso(value: datetime | str | None) -> str | None:
+    """Full-precision ISO for alarms/events/logs (and generic payloads)."""
     if value is None:
         return None
     if isinstance(value, str):
@@ -47,6 +50,11 @@ def iso(value: datetime | str | None) -> str | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc).isoformat()
+
+
+def iso_tag(value: datetime | str | None) -> str | None:
+    """Tag historian ISO — millisecond resolution (Operación Milisegundo Exacto)."""
+    return iso_millis(value)
 
 
 @dataclass(frozen=True)
@@ -83,7 +91,9 @@ class PersistableRecord:
 
     @classmethod
     def tag_sample(cls, tag: str, value: Any, timestamp: datetime) -> "PersistableRecord":
-        ts = iso(timestamp)
+        if isinstance(timestamp, datetime):
+            timestamp = quantize_datetime_ms(timestamp)
+        ts = iso_tag(timestamp)
         key = f"tag:{tag}:{ts}"
         return cls(
             domain_name=DOMAIN.TAG,

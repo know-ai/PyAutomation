@@ -1,4 +1,5 @@
 from peewee import CharField, BooleanField, FloatField, ForeignKeyField, IntegerField, TimestampField, BooleanField
+from ..timebase import TAGVALUE_TIMESTAMP_RESOLUTION
 from .core import BaseModel
 from datetime import datetime
 
@@ -818,13 +819,13 @@ class TagValue(BaseModel):
     tag = ForeignKeyField(Tags, backref='values')
     unit = ForeignKeyField(Units, backref='values')
     value = FloatField()
-    timestamp = TimestampField(utc=True, resolution=6)
+    timestamp = TimestampField(utc=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
     sample_uuid = CharField(max_length=255, unique=True, null=True)
 
     class Meta:
         indexes = (
             (('timestamp',), False),
-            # Exact-once: one sample per tag per microsecond instant
+            # Exact-once: one sample per tag per millisecond instant
             (('tag', 'timestamp'), True),
         )
 

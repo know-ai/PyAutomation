@@ -11,6 +11,7 @@ from typing import Sequence
 
 from .config import SafConfig
 from .contracts import IPersistable, IRemoteDB
+from .cycle_dedupe import CycleSampleCache
 from .health import SafHealthProbe
 from .idempotent_insert import IdempotentBatchInserter
 from .journal import JournalWriter
@@ -34,9 +35,12 @@ class PersistenceOrchestrator:
         self.remote = remote if remote is not None else PeeweeRemoteDB(tag_inserter=inserter)
         self.replicator = RemoteReplicator(self.journal, self.remote, self.config)
         self.health = SafHealthProbe(self.journal, self.replicator)
+        self.cycle_cache = CycleSampleCache()
         self.journal.start()
 
     def enqueue(self, persistable: IPersistable) -> int:
+        if self.cycle_cache.should_drop(persistable):
+            return 0
         return self.journal.append(persistable)
 
     def mark_sent(self, journal_ids: Sequence[int]) -> None:
@@ -58,7 +62,9 @@ class PersistenceOrchestrator:
         return self.replicator.flush()
 
     def snapshot(self) -> dict:
-        return dict(self.health.snapshot())
+        snap = dict(self.health.snapshot())
+        snap["SAF_CYCLE_DUPES_DROPPED"] = self.cycle_cache.dropped
+        return snap
 
     def close(self) -> None:
         self.journal.stop()

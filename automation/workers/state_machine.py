@@ -7,8 +7,24 @@ import heapq
 import logging
 import time
 from collections import deque
+from datetime import datetime, timezone
 from threading import Thread
 from .worker import BaseWorker
+
+
+def stamp_machine_cycle(machine):
+    """Stamp one UTC millisecond instant onto the machine before ``loop()``.
+
+    All ``ProcessType.set_value`` calls in that cycle share this timestamp
+    unless an explicit timestamp is supplied by the caller. Sub-ms noise is
+    discarded so UNIQUE ``(tag_id, timestamp)`` collapses same-cycle rewrites.
+    """
+    from ..timebase import quantize_datetime_ms
+
+    ts = quantize_datetime_ms(datetime.now(timezone.utc))
+    if machine is not None:
+        machine.cycle_timestamp = ts
+    return ts
 
 
 class MachineScheduler():
@@ -139,6 +155,7 @@ class SchedThread(Thread):
         * **callable**: The loop function.
         """
         def loop():
+            stamp_machine_cycle(machine)
             machine.loop()
             interval = machine.get_interval()
             scheduler.call_later(interval, loop, machine)
@@ -253,6 +270,7 @@ class StateMachineWorker(BaseWorker):
         self._machine = machine
 
         def loop():
+            stamp_machine_cycle(machine)
             machine.loop()
             interval = machine.get_interval()
             self._sync_scheduler.call_later(interval, loop, machine)

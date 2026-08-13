@@ -1296,6 +1296,10 @@ html.light .app-sidebar .brand-text {
   min-width: 0;
 }
 
+.card > .card-header.overflow-visible {
+  overflow: visible;
+}
+
 .card-header-stack {
   display: flex;
   flex-direction: column;

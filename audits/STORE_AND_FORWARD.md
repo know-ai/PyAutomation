@@ -55,7 +55,7 @@ Principios SOLID aplicados:
 | C-03 | DELETE masivo TagValue/Events/Logs | `VACUUM INTO` + SHA-256; **nunca** se truncan históricos en vivo |
 | H-01 | Alarmas/eventos/logs drop | Mismo outbox (`DOMAIN.ALARM_SUMMARY`, `EVENT`, `LOG`) |
 | H-02 | OPC UA audit fail-open | Pasa por `EventsLogger.create` → journal |
-| M-01 | Sin métricas | `GET /api/health/saf` → `SAF_QUEUE_DEPTH`, `SAF_REPLICATION_LAG`, `SAF_DROPPED_FULL` |
+| M-01 | Sin métricas | `GET /api/health/saf` → `SAF_QUEUE_DEPTH`, `SAF_REPLICATION_LAG`, `SAF_DROPPED_FULL`, `SAF_CYCLE_DUPES_DROPPED` |
 | M-04 | Flush sin throttle | `RateLimiter` 10k rec/s + `CircuitBreaker` |
 
 ### Código de referencia
@@ -66,8 +66,12 @@ Principios SOLID aplicados:
 | Journal WAL | `automation/persistence/journal.py` |
 | Replicador | `automation/persistence/replicator.py` |
 | Gateway | `automation/persistence/orchestrator.py` |
+| Cycle stamp | `automation/workers/state_machine.py` → `stamp_machine_cycle` |
+| Cycle timestamp resolver | `automation/models.py` → `resolve_machine_cycle_timestamp` |
+| Cycle dedupe cache | `automation/persistence/cycle_dedupe.py` |
 | Remote adapter | `automation/persistence/remote.py` |
 | Exact-once insert | `automation/persistence/idempotent_insert.py` |
+| Timebase (ms) | `automation/timebase.py` |
 | T-01 producer | `automation/persistence/soak_producer.py` |
 | T-01 last run | `audits/T01_SOAK_LAST_RUN.md` |
 | TagObserver | `automation/tags/tag.py` |
@@ -96,7 +100,7 @@ Residual (no bloquea A+ de durabilidad): particionado temporal del historiador r
 
 ### Operación Exact-Once (cierre A+)
 
-- `TagValue.timestamp` pasa a resolución de **microsegundos** (`resolution=6`) para que UNIQUE `(tag_id, timestamp)` sea viable a 100 Hz.
+- `TagValue.timestamp` usa resolución de **milisegundos** (`TimestampField(resolution=3)` / `TAGVALUE_TIMESTAMP_RESOLUTION`). Los ticks legacy en µs se normalizan a ms en `IdempotentBatchInserter.ensure_schema` (colapsa pares del mismo ms y luego ÷1000).
 - Firma atómica adicional: `sample_uuid` (idempotency_key del journal).
 - `IdempotentBatchInserter` es la única clase que habla de conflictos SQL. `RemoteReplicator.flush()` solo llama `IRemoteDB.batch_insert_with_dedupe`.
 - T-01 (última corrida certificada): 1000 tags, target 100 Hz, SIGKILL a mitad, replay, **exact_once=True**, `remote_rows == journal_durable`. El ring lag (1 tick / 1000 muestras en la corrida) es la única pérdida aceptable — nunca llegó al WAL.
@@ -104,6 +108,21 @@ Residual (no bloquea A+ de durabilidad): particionado temporal del historiador r
 ### Criterio de aceptación
 
 > Tras SIGKILL y reconexión, el historiador remoto contiene exactamente las muestras durable del journal; un segundo flush no crea duplicados.
+
+### Operación Ciclo Atómico (normalización CVT)
+
+El framework inyecta un **timestamp de ciclo** (`machine.cycle_timestamp`) justo antes de `machine.loop()` y un **filtro de deduplicación** en el gateway. Las máquinas de estado no se modifican.
+
+| Fase | Capa | Efecto |
+|---|---|---|
+| 1 | `stamp_machine_cycle` + `ProcessType.set_value` | Todas las escrituras del mismo `loop()` comparten un UTC. UNIQUE `(tag_id, timestamp)` remoto colapsa micro-duplicados si llegaran. |
+| 2 | `CycleSampleCache` en `PersistenceOrchestrator.enqueue` | Segunda (o N-ésima) muestra del mismo tag/valor/ciclo **no entra al journal**. Cero I/O de disco/red para ese duplicado. |
+
+El histórico refleja el valor por ciclo de procesamiento, no cada llamada a `set_value`. Métrica: `SAF_CYCLE_DUPES_DROPPED` en `/api/health/saf`. TTL de caché: 2 s.
+
+### Operación Milisegundo Exacto
+
+`TagValue.timestamp` y el payload journal de tags usan **milisegundos** (`automation/timebase.py` → `TAGVALUE_TIMESTAMP_RESOLUTION = 3`). Residuos de arranque con Δ 73–403 µs caen en el mismo tick y el UNIQUE `(tag_id, timestamp)` los colapsa. Events / AlarmSummary / Logs siguen en resolución por defecto de Peewee (segundos): más gruesa, no más fina. Lecturas HMI (`DataLogger._as_epoch_seconds`) aceptan ticks legacy en s / ms / µs.
 
 ---
 

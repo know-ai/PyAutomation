@@ -6,7 +6,7 @@ import type { Data, Layout } from "plotly.js";
 import { useTheme } from "../hooks/useTheme";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { useTranslation } from "../hooks/useTranslation";
-import { getTags, type Tag } from "../services/tags";
+import { getTagsList, type Tag } from "../services/tags";
 import { showToast } from "../utils/toast";
 
 export const BUFFER_SIZE_MIN = 120;
@@ -47,8 +47,8 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     const loadTags = async () => {
       setLoadingTags(true);
       try {
-        const response = await getTags(1, 1000);
-        setAvailableTags(response.data || []);
+        const tags = await getTagsList();
+        setAvailableTags(tags || []);
       } catch (err: any) {
         console.error("Error loading tags:", err);
         showToast(t("stripChart.errorLoadingTags"), "error");
@@ -254,8 +254,9 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
   return (
     <div style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}>
       <Card
-        style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}
-        headerClassName="py-1 px-2"
+        className="overflow-visible"
+        style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", overflow: "visible" }}
+        headerClassName="py-1 px-2 overflow-visible"
         bodyClassName="p-0"
         title={
           <div className="d-flex justify-content-between align-items-center w-100 drag-handle" style={{ cursor: isEditMode ? "move" : "default" }}>
@@ -281,7 +282,16 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
                   <Button
                     variant="primary"
                     className="btn-sm"
-                    onClick={() => setShowTagConfig(!showTagConfig)}
+                    onClick={() => {
+                      setShowTagConfig((open) => {
+                        const next = !open;
+                        if (next) {
+                          setShowSearchDropdown(true);
+                          setTagSearch("");
+                        }
+                        return next;
+                      });
+                    }}
                     title={t("stripChart.configureTags")}
                   >
                     <i className="bi bi-tags me-1"></i>
