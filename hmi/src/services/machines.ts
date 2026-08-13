@@ -98,7 +98,7 @@ export const unsubscribeMachineTag = async (
 };
 
 /**
- * Actualiza atributos específicos de una máquina (threshold, buffer_size, on_delay)
+ * Actualiza atributos específicos de una máquina (threshold, buffer_size, on_delay, detection_threshold_mode)
  */
 export const updateMachineAttributes = async (
   machineName: string,
@@ -106,6 +106,7 @@ export const updateMachineAttributes = async (
     threshold?: number;
     buffer_size?: number;
     on_delay?: number;
+    detection_threshold_mode?: "probability" | "statistic" | string;
   }
 ): Promise<{ message: string; data: Machine }> => {
   const { data } = await api.put(

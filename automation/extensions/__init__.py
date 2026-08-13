@@ -8,7 +8,8 @@ def init_app(app):
     """
     Application extensions initialization.
     """
-    extensions = ( _api, _cors)
+    # CORS first so preflight OPTIONS is handled before API/auth layers.
+    extensions = (_cors, _api)
 
     for extension in extensions:
         

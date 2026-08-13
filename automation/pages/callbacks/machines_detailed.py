@@ -531,24 +531,33 @@ def init_callback(app:dash.Dash):
             
             if threshold:
                 
-                if "leak detection" in machine.classification.value.lower():
+                if hasattr(machine, "set_active_detection_threshold_from_ui"):
+                    threshold = machine.set_active_detection_threshold_from_ui(float(threshold))
+                else:
+                    if "leak detection" in machine.classification.value.lower():
 
-                    if machine_name.lower()=="npw":
+                        if machine_name.lower()=="npw":
 
-                        if threshold > 100:
+                            if threshold > 100:
 
-                            threshold = 100
+                                threshold = 100
 
-                        elif threshold < 0:
+                            elif threshold < 0:
 
-                            threshold = 0
+                                threshold = 0
 
-                        machine.wavelet.threshold_iqr = threshold
+                            machine.wavelet.threshold_iqr = threshold
 
-                machine.threshold.value.value = threshold
+                    machine.threshold.value.value = threshold
+                    if hasattr(machine, "persist_ui_config_attributes"):
+                        machine.persist_ui_config_attributes(threshold=float(threshold))
                 # UPDATE DB
                 if app.automation.is_db_connected():
-                    app.automation.machines_engine.put(name=StringType(machine_name), threshold=FloatType(threshold))
+                    try:
+                        db_thr = float(machine.threshold.value.value)
+                    except Exception:
+                        db_thr = float(threshold)
+                    app.automation.machines_engine.put(name=StringType(machine_name), threshold=FloatType(db_thr))
                 dash.set_props("machine_threshold_input", {"placeholder": f"Current threshold {machine.threshold.value.value}"})
 
             elif interval:
@@ -561,6 +570,8 @@ def init_callback(app:dash.Dash):
                 
             elif buffer_size:
 
+                if hasattr(machine, "persist_ui_config_attributes"):
+                    machine.persist_ui_config_attributes(buffer_size=int(buffer_size))
                 machine.set_buffer_size(size=buffer_size)
                 machine.transition(to="restart")
                 if app.automation.is_db_connected():
@@ -572,6 +583,10 @@ def init_callback(app:dash.Dash):
             elif on_delay:
 
                 machine.on_delay.value = on_delay
+                if hasattr(machine, "_on_delay_from_plant_config"):
+                    machine._on_delay_from_plant_config = True
+                if hasattr(machine, "persist_ui_config_attributes"):
+                    machine.persist_ui_config_attributes(on_delay=int(on_delay))
                 if app.automation.is_db_connected():
                     app.automation.machines_engine.put(name=StringType(machine_name), on_delay=IntegerType(on_delay))
                 # UPDATE DB

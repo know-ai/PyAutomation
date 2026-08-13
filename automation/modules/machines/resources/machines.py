@@ -33,6 +33,10 @@ update_attributes_model = api.model("update_attributes_model", {
     'interval': fields.Float(required=False, description='Machine execution interval in seconds'),
     'buffer_size': fields.Integer(required=False, description='Buffer size for input variables'),
     'on_delay': fields.Integer(required=False, description='Delay before starting the machine'),
+    'detection_threshold_mode': fields.String(
+        required=False,
+        description='PPA/NPW only: probability | statistic',
+    ),
 })
 
 
@@ -466,6 +470,7 @@ class MachineAttributesResource(Resource):
         - interval: Intervalo de ejecución en segundos (float)
         - buffer_size: Tamaño del buffer (int)
         - on_delay: Retraso antes de iniciar (int)
+        - detection_threshold_mode: Solo PPA/NPW — ``probability`` o ``statistic``
 
         **Parámetros:**
 
@@ -477,10 +482,12 @@ class MachineAttributesResource(Resource):
         * **interval** (float, opcional): Nuevo intervalo de ejecución.
         * **buffer_size** (int, opcional): Nuevo tamaño del buffer.
         * **on_delay** (int, opcional): Nuevo valor de on_delay.
+        * **detection_threshold_mode** (str, opcional): Solo PPA/NPW.
 
         **Notas:**
 
-        * Para máquinas de tipo "leak detection" con nombre "npw", el threshold se limita entre 0 y 100.
+        * Para PPA/NPW el umbral activo depende del modo (%% o estadístico t/g) y se persiste en YAML.
+        * Para otras máquinas NPW legacy, el threshold se limita entre 0 y 100.
         * Al actualizar buffer_size, la máquina se reinicia automáticamente.
         * Los cambios se persisten en la base de datos si está conectada.
 
@@ -498,11 +505,21 @@ class MachineAttributesResource(Resource):
         interval = data.get("interval")
         buffer_size = data.get("buffer_size")
         on_delay = data.get("on_delay")
+        detection_threshold_mode = data.get("detection_threshold_mode")
 
         # Validar que al menos un atributo esté presente
-        if threshold is None and interval is None and buffer_size is None and on_delay is None:
+        if (
+            threshold is None
+            and interval is None
+            and buffer_size is None
+            and on_delay is None
+            and detection_threshold_mode is None
+        ):
             return {
-                "message": "At least one attribute (threshold, interval, buffer_size, on_delay) must be provided"
+                "message": (
+                    "At least one attribute (threshold, interval, buffer_size, "
+                    "on_delay, detection_threshold_mode) must be provided"
+                )
             }, 400
 
         try:
@@ -514,53 +531,96 @@ class MachineAttributesResource(Resource):
                 }, 404
 
             updated_attributes = []
+            yaml_persist = {}
+
+            # PPA / NPW: modo de umbral (probabilidad vs estadístico)
+            if detection_threshold_mode is not None:
+                if not hasattr(machine, "set_detection_threshold_mode_from_ui"):
+                    return {
+                        "message": (
+                            "detection_threshold_mode is only supported for PPA/NPW engines"
+                        )
+                    }, 400
+                try:
+                    mode_value = machine.set_detection_threshold_mode_from_ui(
+                        detection_threshold_mode
+                    )
+                    updated_attributes.append(
+                        f"detection_threshold_mode to {mode_value}"
+                    )
+                except (ValueError, TypeError) as e:
+                    return {
+                        "message": f"Invalid detection_threshold_mode: {str(e)}"
+                    }, 400
+                except Exception as e:
+                    return {
+                        "message": f"Failed to update detection_threshold_mode: {str(e)}"
+                    }, 500
 
             # Actualizar threshold
             if threshold is not None:
                 try:
                     threshold_value = float(threshold)
-                    
-                    # Validación especial para máquinas de leak detection tipo NPW
-                    if "leak detection" in machine.classification.value.lower():
-                        if machine_name.lower() == "npw":
-                            if threshold_value > 100:
-                                threshold_value = 100
-                            elif threshold_value < 0:
-                                threshold_value = 0
-                            # Actualizar threshold_iqr si existe el atributo wavelet
-                            if hasattr(machine, "wavelet"):
-                                machine.wavelet.threshold_iqr = threshold_value
-                    
-                    # Actualizar el threshold de la máquina
-                    # Crear un nuevo objeto Percentage con el nuevo valor (similar a como se carga desde config)
-                    threshold_unit = machine.threshold.unit or "%"
-                    if machine.threshold.value and hasattr(machine.threshold.value, "__class__"):
-                        # Obtener la clase del objeto actual (Percentage, FloatType, etc.)
-                        class_name = machine.threshold.value.__class__.__name__
-                        if class_name == "Percentage":
-                            # Crear un nuevo objeto Percentage con el nuevo valor
-                            new_percentage = Percentage(threshold_value, unit=threshold_unit)
-                            # Usar set_value para actualizar tanto el ProcessType como el tag asociado
-                            machine.threshold.set_value(value=new_percentage, machine=machine, name="threshold")
-                        else:
-                            # Si no es Percentage, actualizar directamente el valor y usar set_value
-                            machine.threshold.value.value = threshold_value
-                            # Si tiene tag, actualizarlo también usando set_value
-                            if machine.threshold.tag:
-                                machine.threshold.set_value(value=machine.threshold.value, machine=machine, name="threshold")
-                    else:
-                        # Si no hay valor inicial, crear un nuevo Percentage y usar set_value
-                        new_percentage = Percentage(threshold_value, unit=threshold_unit)
-                        machine.threshold.set_value(value=new_percentage, machine=machine, name="threshold")
-                    
-                    # Actualizar en la base de datos si está conectada
-                    if app.is_db_connected():
-                        app.machines_engine.put(
-                            name=StringType(machine_name),
-                            threshold=FloatType(threshold_value)
+
+                    # PPA/NPW: umbral activo según modo + persistencia YAML
+                    if hasattr(machine, "set_active_detection_threshold_from_ui"):
+                        threshold_value = machine.set_active_detection_threshold_from_ui(
+                            threshold_value
                         )
-                    
-                    updated_attributes.append(f"threshold to {threshold_value}")
+                        if app.is_db_connected():
+                            # Columna legacy `threshold` = probabilidad %%; el estadístico vive en YAML.
+                            try:
+                                db_thr = float(machine.threshold.value.value)
+                            except Exception:
+                                db_thr = float(threshold_value)
+                            app.machines_engine.put(
+                                name=StringType(machine_name),
+                                threshold=FloatType(db_thr)
+                            )
+                        updated_attributes.append(f"threshold to {threshold_value}")
+                    else:
+                        # Validación especial para máquinas de leak detection tipo NPW
+                        if "leak detection" in machine.classification.value.lower():
+                            if machine_name.lower() == "npw":
+                                if threshold_value > 100:
+                                    threshold_value = 100
+                                elif threshold_value < 0:
+                                    threshold_value = 0
+                                # Actualizar threshold_iqr si existe el atributo wavelet
+                                if hasattr(machine, "wavelet"):
+                                    machine.wavelet.threshold_iqr = threshold_value
+
+                        # Actualizar el threshold de la máquina
+                        # Crear un nuevo objeto Percentage con el nuevo valor (similar a como se carga desde config)
+                        threshold_unit = machine.threshold.unit or "%"
+                        if machine.threshold.value and hasattr(machine.threshold.value, "__class__"):
+                            # Obtener la clase del objeto actual (Percentage, FloatType, etc.)
+                            class_name = machine.threshold.value.__class__.__name__
+                            if class_name == "Percentage":
+                                # Crear un nuevo objeto Percentage con el nuevo valor
+                                new_percentage = Percentage(threshold_value, unit=threshold_unit)
+                                # Usar set_value para actualizar tanto el ProcessType como el tag asociado
+                                machine.threshold.set_value(value=new_percentage, machine=machine, name="threshold")
+                            else:
+                                # Si no es Percentage, actualizar directamente el valor y usar set_value
+                                machine.threshold.value.value = threshold_value
+                                # Si tiene tag, actualizarlo también usando set_value
+                                if machine.threshold.tag:
+                                    machine.threshold.set_value(value=machine.threshold.value, machine=machine, name="threshold")
+                        else:
+                            # Si no hay valor inicial, crear un nuevo Percentage y usar set_value
+                            new_percentage = Percentage(threshold_value, unit=threshold_unit)
+                            machine.threshold.set_value(value=new_percentage, machine=machine, name="threshold")
+
+                        # Actualizar en la base de datos si está conectada
+                        if app.is_db_connected():
+                            app.machines_engine.put(
+                                name=StringType(machine_name),
+                                threshold=FloatType(threshold_value)
+                            )
+
+                        yaml_persist["threshold"] = threshold_value
+                        updated_attributes.append(f"threshold to {threshold_value}")
                 except (ValueError, TypeError) as e:
                     return {
                         "message": f"Invalid threshold value: {str(e)}"
@@ -598,7 +658,22 @@ class MachineAttributesResource(Resource):
                         return {
                             "message": "buffer_size must be greater than 0"
                         }, 400
-                    
+
+                    # Persistir YAML ANTES del restart (while_starting relee configs).
+                    yaml_persist["buffer_size"] = buffer_size_value
+                    if hasattr(machine, "persist_ui_config_attributes"):
+                        try:
+                            machine.persist_ui_config_attributes(
+                                buffer_size=buffer_size_value
+                            )
+                        except Exception as persist_err:
+                            return {
+                                "message": (
+                                    f"Failed to persist buffer_size to config: {persist_err}"
+                                )
+                            }, 500
+                        yaml_persist.pop("buffer_size", None)
+
                     # Actualizar buffer_size y reiniciar la máquina
                     machine.set_buffer_size(size=buffer_size_value)
                     machine.transition(to="restart")
@@ -629,6 +704,9 @@ class MachineAttributesResource(Resource):
                         }, 400
                     
                     machine.on_delay.value = on_delay_value
+                    if hasattr(machine, "_on_delay_from_plant_config"):
+                        machine._on_delay_from_plant_config = True
+                    yaml_persist["on_delay"] = on_delay_value
                     
                     # Actualizar en la base de datos si está conectada
                     if app.is_db_connected():
@@ -642,6 +720,19 @@ class MachineAttributesResource(Resource):
                     return {
                         "message": f"Invalid on_delay value: {str(e)}"
                     }, 400
+
+            # Persistencia YAML restante (threshold no-PPA/NPW, on_delay, etc.)
+            if yaml_persist and hasattr(machine, "persist_ui_config_attributes"):
+                try:
+                    machine.persist_ui_config_attributes(**yaml_persist)
+                    if hasattr(machine, "_load_bayesian_motor_thresholds"):
+                        machine._load_bayesian_motor_thresholds()
+                    if hasattr(machine, "_sync_bayesian_detection_threshold"):
+                        machine._sync_bayesian_detection_threshold()
+                except Exception as persist_err:
+                    return {
+                        "message": f"Failed to persist attributes to config: {persist_err}"
+                    }, 500
 
             # Construir mensaje de éxito
             message = f"Successfully updated: {', '.join(updated_attributes)}"

@@ -78,6 +78,9 @@ export function MachinesDetailed() {
   const [thresholdValue, setThresholdValue] = useState<Record<string, string>>({});
   const [bufferSizeValue, setBufferSizeValue] = useState<Record<string, string>>({});
   const [onDelayValue, setOnDelayValue] = useState<Record<string, string>>({});
+  const [detectionThresholdMode, setDetectionThresholdMode] = useState<
+    Record<string, "probability" | "statistic">
+  >({});
   const [updatingAttribute, setUpdatingAttribute] = useState<Record<string, string | null>>({});
   // Valores originales para comparar si cambió
   const [originalThresholdValue, setOriginalThresholdValue] = useState<Record<string, number | null>>({});
@@ -87,11 +90,37 @@ export function MachinesDetailed() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<{
     machineName: string;
-    attribute: "threshold" | "buffer_size" | "on_delay";
-    newValue: number;
-    oldValue: number | null;
+    attribute: "threshold" | "buffer_size" | "on_delay" | "detection_threshold_mode";
+    newValue: number | string;
+    oldValue: number | string | null;
     attributeLabel: string;
   } | null>(null);
+
+  const supportsDetectionThresholdMode = (machineName: string, details?: MachineDetailedData) => {
+    const name = String(machineName).toLowerCase();
+    if (name === "ppa" || name === "npw") return true;
+    const ser = details?.serialization ?? machineDetails[machineName]?.serialization;
+    return Boolean(ser?.supports_detection_threshold_mode);
+  };
+
+  const extractActiveThreshold = (serialization: any): number | null => {
+    if (!serialization) return null;
+    const active = serialization.active_detection_threshold;
+    if (active !== null && active !== undefined) {
+      const n = typeof active === "number" ? active : parseFloat(String(active));
+      if (!isNaN(n)) return n;
+    }
+    const threshold = serialization.threshold;
+    const thresholdVal =
+      typeof threshold === "object" && threshold !== null && "value" in threshold
+        ? threshold.value
+        : threshold;
+    if (thresholdVal !== null && thresholdVal !== undefined) {
+      const n = typeof thresholdVal === "number" ? thresholdVal : parseFloat(String(thresholdVal));
+      if (!isNaN(n)) return n;
+    }
+    return null;
+  };
 
   // Buffer para actualizaciones de propiedades de máquinas (patrón de 1 segundo)
   const pendingPropertyUpdatesRef = useRef<Map<string, Record<string, any>>>(new Map());
@@ -275,16 +304,14 @@ export function MachinesDetailed() {
         [machineName]: data,
       }));
       // Actualizar el valor del input y el valor original
-      const updatedThreshold = data.serialization?.threshold;
-      const thresholdVal = typeof updatedThreshold === "object" && updatedThreshold !== null && "value" in updatedThreshold
-        ? updatedThreshold.value
-        : updatedThreshold;
-      if (thresholdVal !== null && thresholdVal !== undefined) {
-        const thresholdNum = typeof thresholdVal === "number" ? thresholdVal : parseFloat(String(thresholdVal));
-        if (!isNaN(thresholdNum)) {
-          setThresholdValue((prev) => ({ ...prev, [machineName]: String(thresholdNum) }));
-          setOriginalThresholdValue((prev) => ({ ...prev, [machineName]: thresholdNum }));
-        }
+      const thresholdNum = extractActiveThreshold(data.serialization);
+      if (thresholdNum !== null) {
+        setThresholdValue((prev) => ({ ...prev, [machineName]: String(thresholdNum) }));
+        setOriginalThresholdValue((prev) => ({ ...prev, [machineName]: thresholdNum }));
+      }
+      const modeRaw = String(data.serialization?.detection_threshold_mode || "").toLowerCase();
+      if (modeRaw === "statistic" || modeRaw === "probability") {
+        setDetectionThresholdMode((prev) => ({ ...prev, [machineName]: modeRaw }));
       }
     } catch (err: any) {
       const data = err?.response?.data;
@@ -301,6 +328,70 @@ export function MachinesDetailed() {
       if (originalThresholdValue[machineName] !== null) {
         setThresholdValue((prev) => ({ ...prev, [machineName]: String(originalThresholdValue[machineName]) }));
       }
+    } finally {
+      setUpdatingAttribute((prev) => ({ ...prev, [machineName]: null }));
+    }
+  };
+
+  const handleUpdateDetectionThresholdMode = (
+    machineName: string,
+    useStatistic: boolean
+  ) => {
+    if (!supportsDetectionThresholdMode(machineName)) return;
+    const nextMode = useStatistic ? "statistic" : "probability";
+    const currentMode = detectionThresholdMode[machineName] || "probability";
+    if (nextMode === currentMode) return;
+
+    setPendingUpdate({
+      machineName,
+      attribute: "detection_threshold_mode",
+      newValue: nextMode,
+      oldValue: currentMode,
+      attributeLabel: useStatistic
+        ? t("machines.detectionThresholdModeStatistic")
+        : t("machines.detectionThresholdModeProbability"),
+    });
+    setShowConfirmModal(true);
+  };
+
+  const executeUpdateDetectionThresholdMode = async (
+    machineName: string,
+    mode: string
+  ) => {
+    setUpdatingAttribute((prev) => ({
+      ...prev,
+      [machineName]: "detection_threshold_mode",
+    }));
+    try {
+      const { message } = await updateMachineAttributes(machineName, {
+        detection_threshold_mode: mode,
+      });
+      showToast(message || t("machines.updateAttribute"), "success");
+      const data = await getMachineByName(machineName);
+      setMachineDetails((prev) => ({
+        ...prev,
+        [machineName]: data,
+      }));
+      const modeRaw = String(data.serialization?.detection_threshold_mode || mode).toLowerCase();
+      const normalized =
+        modeRaw === "statistic" ? "statistic" : "probability";
+      setDetectionThresholdMode((prev) => ({ ...prev, [machineName]: normalized }));
+      const thresholdNum = extractActiveThreshold(data.serialization);
+      if (thresholdNum !== null) {
+        setThresholdValue((prev) => ({ ...prev, [machineName]: String(thresholdNum) }));
+        setOriginalThresholdValue((prev) => ({ ...prev, [machineName]: thresholdNum }));
+      }
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      const errorMessage =
+        backendMessage || err?.message || t("machines.updateAttributeError");
+      showToast(errorMessage, "error");
+      console.error("Error updating detection_threshold_mode:", err);
     } finally {
       setUpdatingAttribute((prev) => ({ ...prev, [machineName]: null }));
     }
@@ -455,11 +546,13 @@ export function MachinesDetailed() {
     const { machineName, attribute, newValue } = pendingUpdate;
 
     if (attribute === "threshold") {
-      await executeUpdateThreshold(machineName, newValue);
+      await executeUpdateThreshold(machineName, Number(newValue));
     } else if (attribute === "buffer_size") {
-      await executeUpdateBufferSize(machineName, newValue);
+      await executeUpdateBufferSize(machineName, Number(newValue));
     } else if (attribute === "on_delay") {
-      await executeUpdateOnDelay(machineName, newValue);
+      await executeUpdateOnDelay(machineName, Number(newValue));
+    } else if (attribute === "detection_threshold_mode") {
+      await executeUpdateDetectionThresholdMode(machineName, String(newValue));
     }
 
     setShowConfirmModal(false);
@@ -491,24 +584,25 @@ export function MachinesDetailed() {
       if (details && details.serialization) {
         const serialization = details.serialization;
         
-        // Inicializar threshold
-        if (serialization.threshold) {
-          const threshold = serialization.threshold;
-          const thresholdVal = typeof threshold === "object" && threshold !== null && "value" in threshold
-            ? threshold.value
-            : threshold;
-          if (thresholdVal !== null && thresholdVal !== undefined) {
-            const thresholdNum = typeof thresholdVal === "number" ? thresholdVal : parseFloat(String(thresholdVal));
-            if (!isNaN(thresholdNum)) {
-              setThresholdValue((prev) => {
-                if (prev[machineName] === undefined || prev[machineName] === "") {
-                  return { ...prev, [machineName]: String(thresholdNum) };
-                }
-                return prev;
-              });
-              setOriginalThresholdValue((prev) => ({ ...prev, [machineName]: thresholdNum }));
+        // Inicializar threshold (para PPA/NPW usa el umbral activo según modo)
+        const thresholdNum = extractActiveThreshold(serialization);
+        if (thresholdNum !== null) {
+          setThresholdValue((prev) => {
+            if (prev[machineName] === undefined || prev[machineName] === "") {
+              return { ...prev, [machineName]: String(thresholdNum) };
             }
-          }
+            return prev;
+          });
+          setOriginalThresholdValue((prev) => ({ ...prev, [machineName]: thresholdNum }));
+        }
+
+        if (supportsDetectionThresholdMode(machineName, details)) {
+          const modeRaw = String(serialization.detection_threshold_mode || "probability").toLowerCase();
+          const normalized = modeRaw === "statistic" ? "statistic" : "probability";
+          setDetectionThresholdMode((prev) => {
+            if (prev[machineName]) return prev;
+            return { ...prev, [machineName]: normalized };
+          });
         }
         
         // Inicializar buffer_size
@@ -1585,7 +1679,7 @@ export function MachinesDetailed() {
                             <Card title={t("machines.machineAttributes")} className="mt-3">
                               <div>
                                 {/* Input de Threshold */}
-                                <div className="mb-3 d-flex align-items-center gap-2">
+                                <div className="mb-3 d-flex align-items-center gap-2 flex-wrap">
                                   <label className="form-label mb-0" style={{ minWidth: "120px" }}>
                                     {t("machines.threshold")}:
                                   </label>
@@ -1611,7 +1705,41 @@ export function MachinesDetailed() {
                                     }}
                                     disabled={updatingAttribute[machineName] === "threshold" || isLeakDetectionCoreLocked}
                                   />
-                                  {updatingAttribute[machineName] === "threshold" && (
+                                  {supportsDetectionThresholdMode(machineName) && (
+                                    <>
+                                      <span className="text-muted small">
+                                        {(detectionThresholdMode[machineName] || "probability") === "statistic"
+                                          ? t("machines.detectionThresholdUnitAdim")
+                                          : t("machines.detectionThresholdUnitPercent")}
+                                      </span>
+                                      <div className="form-check mb-0 ms-1">
+                                        <input
+                                          className="form-check-input"
+                                          type="checkbox"
+                                          id={`detection-threshold-mode-${machineName}`}
+                                          checked={(detectionThresholdMode[machineName] || "probability") === "statistic"}
+                                          onChange={(e) =>
+                                            handleUpdateDetectionThresholdMode(
+                                              machineName,
+                                              e.target.checked
+                                            )
+                                          }
+                                          disabled={
+                                            updatingAttribute[machineName] === "detection_threshold_mode" ||
+                                            isLeakDetectionCoreLocked
+                                          }
+                                        />
+                                        <label
+                                          className="form-check-label"
+                                          htmlFor={`detection-threshold-mode-${machineName}`}
+                                        >
+                                          {t("machines.detectionThresholdModeStatistic")}
+                                        </label>
+                                      </div>
+                                    </>
+                                  )}
+                                  {(updatingAttribute[machineName] === "threshold" ||
+                                    updatingAttribute[machineName] === "detection_threshold_mode") && (
                                     <div className="spinner-border spinner-border-sm text-primary" role="status">
                                       <span className="visually-hidden">{t("common.loading")}</span>
                                     </div>
