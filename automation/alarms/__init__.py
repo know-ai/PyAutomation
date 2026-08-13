@@ -421,20 +421,33 @@ class Alarm(StateMachine):
 
     @logging_error_handler
     def attach(self, machine, tag:Tag):
-        
-        def attach_observer(machine, tag:Tag):
+        observer = MachineObserver(machine)
+        self._machine_observer = observer
+        query = dict()
+        query["action"] = "attach_observer"
+        query["parameters"] = {
+            "name": tag.name,
+            "observer": observer,
+        }
+        self.tag_engine.request(query)
+        self.tag_engine.response()
 
-            observer = MachineObserver(machine)
-            query = dict()
-            query["action"] = "attach_observer"
-            query["parameters"] = {
-                "name": tag.name,
-                "observer": observer,
-            }
-            self.tag_engine.request(query)
-            self.tag_engine.response()
-
-        attach_observer(machine, tag)
+    @logging_error_handler
+    def detach_from_tag(self):
+        observer = getattr(self, "_machine_observer", None)
+        tag = getattr(self, "tag", None)
+        if observer is None or tag is None:
+            return
+        tag_name = tag.name if hasattr(tag, "name") else None
+        if tag_name:
+            try:
+                self.tag_engine.detach(name=tag_name, observer=observer)
+            except Exception:
+                try:
+                    tag.detach(observer)
+                except Exception:
+                    pass
+        self._machine_observer = None
 
     @set_event(message=f"Updated", classification="Alarm", priority=2, criticity=3)
     def put(

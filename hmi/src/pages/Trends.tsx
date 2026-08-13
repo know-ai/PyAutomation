@@ -172,6 +172,7 @@ export function Trends() {
   const fetchIdRef = useRef(0);
   const ignoreRelayoutRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const relayoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queriedRangeRef = useRef<{ startMs: number; endMs: number } | null>(null);
   const baseCacheRef = useRef<TrendsRangeCache | null>(null);
   const zoomCacheRef = useRef<TrendsRangeCache[]>([]);
@@ -290,6 +291,10 @@ export function Trends() {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    if (relayoutTimeoutRef.current) {
+      clearTimeout(relayoutTimeoutRef.current);
+      relayoutTimeoutRef.current = null;
+    }
     abortRef.current?.abort();
     fetchIdRef.current += 1;
     setZoomLoading(false);
@@ -302,8 +307,12 @@ export function Trends() {
       setTrendsData(data);
       setDataRevision((n) => n + 1);
       setAxisRange(isBase ? null : [new Date(range.startMs), new Date(range.endMs)]);
-      window.setTimeout(() => {
+      if (relayoutTimeoutRef.current) {
+        clearTimeout(relayoutTimeoutRef.current);
+      }
+      relayoutTimeoutRef.current = window.setTimeout(() => {
         ignoreRelayoutRef.current = false;
+        relayoutTimeoutRef.current = null;
       }, 200);
     },
     []

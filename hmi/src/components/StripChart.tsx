@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from "react";
 import { Card } from "./Card";
 import { Button } from "./Button";
 import Plot from "react-plotly.js";
@@ -11,6 +11,7 @@ import { getTagsList, type Tag } from "../services/tags";
 import { showToast } from "../utils/toast";
 import { subscribeTagHistory, unsubscribeTagHistory } from "../store/slices/tagsSlice";
 import { usePageHidden } from "../hooks/usePageHidden";
+import { VirtualList } from "./VirtualList";
 
 export const BUFFER_SIZE_MIN = 120;
 export const BUFFER_SIZE_MAX = 360;
@@ -33,7 +34,7 @@ interface StripChartProps {
   onDelete: () => void;
 }
 
-export function StripChart({ config, isEditMode, onConfigChange, onDelete }: StripChartProps) {
+function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: StripChartProps) {
   const { mode } = useTheme();
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
@@ -44,6 +45,15 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     (left, right) =>
       left.length === right.length && left.every((item, index) => item === right[index])
   );
+  const historiesRef = useRef(histories);
+  historiesRef.current = histories;
+  const [throttledHistories, setThrottledHistories] = useState(histories);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setThrottledHistories(historiesRef.current);
+    }, 300);
+    return () => window.clearInterval(id);
+  }, []);
   const [showTagConfig, setShowTagConfig] = useState(false);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [tagSearch, setTagSearch] = useState("");
@@ -155,7 +165,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     });
 
     const traces: Data[] = config.tagNames.map((tagName, index) => {
-      const history = histories[index] || [];
+      const history = throttledHistories[index] || [];
       const bufferSlice = history.slice(
         -Math.min(
           BUFFER_SIZE_MAX,
@@ -222,7 +232,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     const next = { data: traces, layout };
     lastPlotRef.current = next;
     return next;
-  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, histories, pageHidden]);
+  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, throttledHistories, pageHidden]);
 
   // Máximo 2 unidades distintas; número de tags ilimitado mientras no se supere ese tope de unidades
   const handleTagToggle = (tagName: string) => {
@@ -366,29 +376,34 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
                             {unselectedFilteredTags.length === 0 ? (
                               <div className="text-muted small p-2">{t("stripChart.noTagsAvailable")}</div>
                             ) : (
-                              unselectedFilteredTags.map((tag) => (
-                                <div
-                                  key={tag.name}
-                                  className="p-2 border-bottom cursor-pointer"
-                                  onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() => {
-                                    handleTagToggle(tag.name);
-                                    setShowSearchDropdown(false);
-                                    setTagSearch("");
-                                  }}
-                                >
-                                  <div className="d-flex justify-content-between align-items-center">
-                                    <div>
-                                      <strong className="small">{tag.display_name || tag.name}</strong>
-                                      <br />
-                                      <span className="text-muted small">
-                                        {tag.name} · {getTagUnit(tag.name)}
-                                      </span>
+                              <VirtualList
+                                items={unselectedFilteredTags}
+                                height={200}
+                                itemHeight={52}
+                                getKey={(tag) => tag.name}
+                                renderItem={(tag) => (
+                                  <div
+                                    className="p-2 border-bottom cursor-pointer"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      handleTagToggle(tag.name);
+                                      setShowSearchDropdown(false);
+                                      setTagSearch("");
+                                    }}
+                                  >
+                                    <div className="d-flex justify-content-between align-items-center">
+                                      <div>
+                                        <strong className="small">{tag.display_name || tag.name}</strong>
+                                        <br />
+                                        <span className="text-muted small">
+                                          {tag.name} · {getTagUnit(tag.name)}
+                                        </span>
+                                      </div>
+                                      <i className="bi bi-plus-circle text-primary"></i>
                                     </div>
-                                    <i className="bi bi-plus-circle text-primary"></i>
                                   </div>
-                                </div>
-                              ))
+                                )}
+                              />
                             )}
                           </div>
                         )}
@@ -484,4 +499,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     </div>
   );
 }
+
+export const StripChart = memo(StripChartInner);
+StripChart.displayName = "StripChart";
 

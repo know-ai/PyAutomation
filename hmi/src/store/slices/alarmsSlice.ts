@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { createSlice, PayloadAction, createSelector } from "@reduxjs/toolkit";
 import type { Alarm } from "../../services/alarms";
 import { logout } from "./authSlice";
 
@@ -53,4 +53,29 @@ const alarmsSlice = createSlice({
 
 export const { updateAlarm, updateAlarmsBatch, clearAlarms, loadAllAlarms } = alarmsSlice.actions;
 export default alarmsSlice.reducer;
+
+const PREVIEW_SIZE = 3;
+
+function isActiveAlarm(alarm: Alarm): boolean {
+  const state = alarm.state;
+  if (typeof state === "object") {
+    const stateStr = state.mnemonic || state.state || "";
+    return stateStr.includes("UNACK") || stateStr.includes("ACK");
+  }
+  const stateStr = String(state);
+  return stateStr.includes("Unacknowledged") || stateStr.includes("Acknowledged");
+}
+
+export const selectActiveAlarmsPreview = createSelector(
+  [(state: { alarms: AlarmsState }) => state.alarms.alarms],
+  (alarms): Alarm[] =>
+    Object.values(alarms)
+      .filter(isActiveAlarm)
+      .sort((a, b) => {
+        const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return bTime - aTime;
+      })
+      .slice(0, PREVIEW_SIZE)
+);
 

@@ -629,6 +629,17 @@ class Tag:
             "outlier_detection": self.outlier_detection
         }
 
+    def serialize_socket(self):
+        timestamp = self.get_timestamp()
+        if timestamp:
+            timestamp = timestamp.strftime(DATETIME_FORMAT)
+        return {
+            "name": self.name,
+            "value": self.get_value(),
+            "timestamp": timestamp,
+            "unit": self.get_display_unit(),
+        }
+
 
 class TagObserver(Observer):
     """

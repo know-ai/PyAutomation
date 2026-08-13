@@ -2706,6 +2706,23 @@ class PyAutomation(Singleton):
         self._log_file = file
         
     # DATABASES
+    def _close_existing_db(self):
+        db = getattr(self, "_db", None)
+        if db is None:
+            return
+        try:
+            closer = getattr(db, "close_all", None)
+            if callable(closer):
+                closer()
+            elif hasattr(db, "is_closed") and not db.is_closed():
+                db.close()
+            elif hasattr(db, "close"):
+                db.close()
+        except Exception:
+            logging.debug("previous database handle close failed", exc_info=True)
+        self._db = None
+
+    @logging_error_handler
     @validate_types(
             dbtype=str, 
             drop_table=bool, 
@@ -2756,6 +2773,8 @@ class PyAutomation(Singleton):
 
             self.db_manager.clear_default_tables()
 
+        self._close_existing_db()
+
         if dbtype.lower()=='sqlite':
 
             dbfile = kwargs.get("dbfile", ":memory:")
@@ -2784,6 +2803,11 @@ class PyAutomation(Singleton):
 
             db_name = kwargs['name']
             del kwargs['name']
+            # Not PooledPostgresqlDatabase: gevent/worker threads never return
+            # connections, so a small pool stalls signup/login for `timeout` s.
+            kwargs.pop("max_connections", None)
+            kwargs.pop("stale_timeout", None)
+            kwargs.pop("timeout", None)
             self._db = PostgresqlDatabase(db_name, **kwargs)
 
         proxy.initialize(self._db)

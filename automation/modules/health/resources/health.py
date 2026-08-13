@@ -51,6 +51,11 @@ class HealthSystemResource(Resource):
         opc_monitored = 0
         opc_subscriptions = 0
         cvt_tag_count = 0
+        pending_rows = 0
+        alarm_count = 0
+        pool_used = 0
+        pending_cap_hits = 0
+        lock_contention = 0
         try:
             opc_monitored = app.das.monitored_count()
             opc_subscriptions = len(getattr(app.das, "client_subscriptions", {}) or {})
@@ -58,6 +63,25 @@ class HealthSystemResource(Resource):
             pass
         try:
             cvt_tag_count = app.cvt.tag_count()
+            lock_contention = app.cvt.lock_contention()
+        except Exception:
+            pass
+        try:
+            from ....persistence import get_persistence_gateway
+            snapshot = get_persistence_gateway().snapshot()
+            pending_rows = int(snapshot.get("SAF_QUEUE_DEPTH") or 0)
+            pending_cap_hits = int(snapshot.get("SAF_PENDING_CAP_HITS") or 0)
+        except Exception:
+            pass
+        try:
+            alarm_count = app.alarm_manager.alarm_count()
+        except Exception:
+            pass
+        try:
+            db = getattr(app, "_db", None)
+            in_use = getattr(db, "_in_use", None)
+            if in_use is not None:
+                pool_used = len(in_use)
         except Exception:
             pass
         return {
@@ -68,6 +92,11 @@ class HealthSystemResource(Resource):
             "OPC_MONITORED_COUNT": opc_monitored,
             "CVT_TAG_COUNT": cvt_tag_count,
             "OPC_SUBSCRIPTION_COUNT": opc_subscriptions,
+            "PENDING_ROWS": pending_rows,
+            "ALARM_COUNT": alarm_count,
+            "POOL_CONNECTIONS_USED": pool_used,
+            "SAF_PENDING_CAP_HITS": pending_cap_hits,
+            "CVT_LOCK_CONTENTION": lock_contention,
         }, 200
 
 

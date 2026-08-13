@@ -78,8 +78,10 @@ class TagValuePayloadMapper:
     def to_rows(self, payloads: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         logger = logging.getLogger("pyautomation")
         rows: list[dict[str, Any]] = []
+        tag_cache: dict[Any, Any] = {}
+        unit_cache: dict[Any, Any] = {}
         for item in payloads:
-            row = self._map_one(item, logger)
+            row = self._map_one(item, logger, tag_cache, unit_cache)
             if row is not None:
                 rows.append(row)
         if rows:
@@ -92,13 +94,13 @@ class TagValuePayloadMapper:
             logger.debug("SAF TagValuePayloadMapper mapped_row=%s count=%s", sample, len(rows))
         return rows
 
-    def _map_one(self, item: Mapping[str, Any], logger) -> dict[str, Any] | None:
+    def _map_one(self, item: Mapping[str, Any], logger, tag_cache=None, unit_cache=None) -> dict[str, Any] | None:
         tag_name = item.get("tag") or item.get("tag_name")
-        tag = self._lookup_tag(tag_name)
+        tag = self._lookup_tag(tag_name, tag_cache)
         if not tag:
             logger.warning("SAF skip tag payload: tag %s not in remote Tags", tag_name)
             return None
-        unit = self._lookup_unit(tag)
+        unit = self._lookup_unit(tag, unit_cache)
         if unit is None:
             logger.warning("SAF skip tag %s: missing unit/display_unit", tag_name)
             return None
@@ -128,21 +130,33 @@ class TagValuePayloadMapper:
             ),
         }
 
-    def _lookup_tag(self, name):
+    def _lookup_tag(self, name, cache=None):
+        if name is None:
+            return None
+        if cache is not None and name in cache:
+            return cache[name]
         if self._resolve_tag is not None:
-            return self._resolve_tag(name)
-        from ..dbmodels.tags import Tags
+            tag = self._resolve_tag(name)
+        else:
+            from ..dbmodels.tags import Tags
+            tag = Tags.read_by_name(name)
+        if cache is not None:
+            cache[name] = tag
+        return tag
 
-        return Tags.read_by_name(name)
-
-    def _lookup_unit(self, tag):
+    def _lookup_unit(self, tag, cache=None):
+        cache_key = getattr(tag, "id", None) or id(tag)
+        if cache is not None and cache_key in cache:
+            return cache[cache_key]
         if self._resolve_unit is not None:
-            return self._resolve_unit(tag)
-        from ..dbmodels.tags import Units
-
-        unit = Units.get_or_none(id=tag.display_unit.id) if getattr(tag, "display_unit", None) else None
-        if unit is None and getattr(tag, "unit", None) is not None:
-            unit = tag.unit
+            unit = self._resolve_unit(tag)
+        else:
+            from ..dbmodels.tags import Units
+            unit = Units.get_or_none(id=tag.display_unit.id) if getattr(tag, "display_unit", None) else None
+            if unit is None and getattr(tag, "unit", None) is not None:
+                unit = tag.unit
+        if cache is not None:
+            cache[cache_key] = unit
         return unit
 
 

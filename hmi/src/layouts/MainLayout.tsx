@@ -8,6 +8,7 @@ import { useTheme } from "../hooks/useTheme";
 import { useSocket } from "../hooks/useSocket";
 import { useTranslation } from "../hooks/useTranslation";
 import { useMemoryWatchdog } from "../hooks/useMemoryWatchdog";
+import { socketService } from "../services/socket";
 import { DatabaseStatusProvider } from "../hooks/useDatabaseStatus";
 import { DatabaseUnavailableOverlay } from "../components/DatabaseUnavailableOverlay";
 import {
@@ -20,6 +21,17 @@ export function MainLayout({ children }: PropsWithChildren) {
   useTheme();
   useSocket();
   useMemoryWatchdog(512);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+    const expose = () => socketService.listenerCount();
+    (window as unknown as { __pyaSocketListeners?: typeof expose }).__pyaSocketListeners = expose;
+    return () => {
+      delete (window as unknown as { __pyaSocketListeners?: typeof expose }).__pyaSocketListeners;
+    };
+  }, []);
   const location = useLocation();
   const { t } = useTranslation();
 

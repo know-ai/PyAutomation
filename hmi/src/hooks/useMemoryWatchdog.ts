@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { showToast } from "../utils/toast";
+import { createLog } from "../services/logs";
 
 const DEFAULT_THRESHOLD_MB = 512;
 const POLL_MS = 60_000;
@@ -23,6 +24,10 @@ export function useMemoryWatchdog(thresholdMb: number = DEFAULT_THRESHOLD_MB): v
         if (!warned) {
           warned = true;
           showToast(message, "warning");
+          void createLog({
+            message,
+            description: "memory-watchdog",
+          }).catch(() => undefined);
         }
       } else {
         warned = false;

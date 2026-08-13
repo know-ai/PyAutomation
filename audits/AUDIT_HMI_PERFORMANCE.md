@@ -5,10 +5,10 @@
 | **Producto** | PyAutomation HMI (`hmi/src`) |
 | **Alcance** | Interfaz web 24/7/365: memoria estable, sin fugas, fluidez constante |
 | **Clasificación** | Auditoría de rendimiento frontend · Confidencialidad interna |
-| **Fecha** | 2026-08-13 (actualizado tras Operación «Rendimiento Eterno») |
+| **Fecha** | 2026-08-13 (actualizado tras Operación «Engranaje Perfecto») |
 | **Metodología** | Revisión estática de hooks, Redux, Socket.IO, listas, ciclos de vida |
 | **Principios guía** | SOLID (S/O/L/I/D) aplicados a render, estado y suscripciones |
-| **Veredicto** | **A−** — P0 (historial acotado + EventBus) y P1 visibilidad **implementados**. Pendiente P2: Footer 10k alarmas, `AlarmTableRow`, poll Communications |
+| **Veredicto** | **A** — P0/P1/P2 **implementados**. P3: watchdog envía logs, `listenerCount` en DEV, long tasks en Trends RT; soak 24 h en planta. |
 
 ---
 
@@ -34,10 +34,20 @@ Los riesgos dominantes a 3–12 meses de sesión abierta son:
 |---|---|---|
 | **HMI-C1** | Hecho | `MAX_HISTORY_POINTS = 720`; historial solo si hay `historySubscribers`; StripChart hace `subscribeTagHistory` / `unsubscribeTagHistory`; logout limpia tags/alarms/machines (`extraReducers` de `logout`). |
 | **HMI-C2** | Hecho | EventBus en `socketService`: un `socket.on` nativo por evento, fan-out con `Set`, **sin** `once("connect")`. `disconnect()` hace `removeAllListeners` y vacía Sets. |
-| **HMI-H1** | Parcial | Selector por `config.tagNames` con igualdad referencial de arrays; Plotly se congela si `document.hidden`. |
+| **HMI-H1** | Hecho | Selector por `config.tagNames`; `React.memo(StripChart)`; throttle Plotly 300 ms; se congela si `document.hidden`. |
+| **HMI-H2** | Hecho | Footer usa `selectActiveAlarmsPreview` (top 3); no hidrata 10k. |
 | **HMI-H3** | Hecho | `visibilitychange` / `document.hidden`: flush socket 1 s → 5 s en background; health, machines, communications y Plotly pausan. El socket sigue recibiendo. |
-| **Watchdog** | Hecho | `useMemoryWatchdog(512)` en `MainLayout` (Chromium `performance.memory`). |
+| **HMI-H4** | Hecho | `AlarmTableRow` en módulo propio con `React.memo` + comparador. |
+| **HMI-H5** | Hecho | Communications persiste selección con debounce 500 ms en onChange; el ticker 1 s solo actualiza UI. |
+| **HMI-H6** | Hecho | Cubierto por EventBus (HMI-C2): re-bind nativo en `connect`. |
+| **HMI-M1/M2** | Hecho | Un solo poll en `DatabaseStatusProvider`; contextos `connected` vs `latencyMs`. |
+| **HMI-M3/M4** | Hecho | Machines: ref de nombres (sin setState en handler); MachinesDetailed: un ticker 1 s. |
+| **HMI-M5** | Hecho | `relayoutTimeoutRef` + clear en cleanup de Trends. |
+| **HMI-M6** | Hecho | Export CSV usa `limit: 10000` en variable local, no en React state. |
+| **HMI-M7** | Hecho | `VirtualList` en `MultiSelectSearch` y dropdown StripChart si >200 opciones. |
 | **HMI-M8** | Hecho | Clears en la acción `logout`. |
+| **Watchdog** | Hecho | `useMemoryWatchdog(512)` + `POST /logs/add` al cruzar umbral. |
+| **P3 UI** | Hecho | `socketService.listenerCount()` en DEV (`window.__pyaSocketListeners`); `useLongTaskObserver(50)` en RealTimeTrends. |
 
 ---
 
@@ -150,22 +160,12 @@ En `disconnect()`: `removeAllListeners()`, vaciar Sets, reset flags.
 
 | | |
 |---|---|
-| **Severidad** | Alto |
+| **Severidad** | Alto — **remediado 2026-08-13** |
 | **Componente** | `components/StripChart.tsx`, `pages/RealTimeTrends.tsx` |
 | **Evidencia** | Selector global de historial; sin `React.memo` en StripChart; `onDelete={() => ...}` inline. Buffer visible sí está acotado (120–360). |
 | **Impacto** | Un update de un tag no mostrado provoca redraw Plotly de todos los charts abiertos. |
 
-**Recomendación:**
-
-```tsx
-const historySlice = useAppSelector(
-  (s) => config.tagNames.map((n) => s.tags.tagHistory[n]),
-  shallowEqual
-);
-export default React.memo(StripChart);
-```
-
-Throttle de redraw 250–500 ms; pausar si `document.hidden`.
+**Hecho:** selector por `config.tagNames` + igualdad referencial; `memo(StripChartInner)`; throttle 300 ms; `useLongTaskObserver` en RealTimeTrends.
 
 ---
 
@@ -173,12 +173,12 @@ Throttle de redraw 250–500 ms; pausar si `document.hidden`.
 
 | | |
 |---|---|
-| **Severidad** | Alto |
+| **Severidad** | Alto — **remediado 2026-08-13** |
 | **Componente** | `layouts/Footer.tsx`, `store/slices/alarmsSlice.ts` |
 | **Evidencia** | `getAlarms(1, 10000)` + selector de todo el mapa; Footer siempre montado en `MainLayout`. Alarmas Redux sin poda. |
 | **Impacto** | Re-render del chrome global en cada batch de socket de alarmas. |
 
-**Recomendación:** endpoint o selector `activeAlarmsPreview` (top 3); no hidratar el catálogo completo para el footer.
+**Hecho:** `selectActiveAlarmsPreview` (top 3 por timestamp); Footer no hidrata el catálogo.
 
 ---
 
@@ -210,12 +210,12 @@ useEffect(() => {
 
 | | |
 |---|---|
-| **Severidad** | Alto |
+| **Severidad** | Alto — **remediado 2026-08-13** |
 | **Componente** | `pages/Alarms.tsx` |
 | **Evidencia** | `const AlarmTableRow = memo(...)` dentro del cuerpo del padre → nueva identidad de componente cada render → memo no evita remount/reconcile costoso. |
 | **Contraste positivo** | `Tags.tsx` define el row fuera con comparador custom. |
 
-**Recomendación:** mover `AlarmTableRow` a módulo o scope de archivo; copiar el patrón de `Tags`.
+**Hecho:** `hmi/src/components/AlarmTableRow.tsx` con `React.memo`.
 
 ---
 
@@ -223,12 +223,12 @@ useEffect(() => {
 
 | | |
 |---|---|
-| **Severidad** | Alto |
+| **Severidad** | Alto — **remediado 2026-08-13** |
 | **Componente** | `pages/Communications.tsx` |
 | **Evidencia** | Intervalo 1 s llama persistencia de nodos seleccionados. |
 | **Impacto** | I/O síncrono en main thread; amplifica re-suscripciones OPC UA cuando cambia `clients`. |
 
-**Recomendación:** persistir solo en `onChange` de selección con debounce 500 ms; no en el ticker.
+**Hecho:** persistencia con debounce 500 ms en onChange; el ticker no escribe `localStorage`.
 
 ---
 
@@ -236,7 +236,7 @@ useEffect(() => {
 
 | | |
 |---|---|
-| **Severidad** | Alto |
+| **Severidad** | Alto — **remediado 2026-08-13** (EventBus HMI-C2) |
 | **Componente** | `services/socket.ts` |
 | **Evidencia** | `tagCallbacks.push` sin re-registro en `connect` tras `disconnect()` + nuevo `io()`. |
 | **Impacto** | Tras reconexión profunda, actualizaciones RT pueden morir en silencio o depender de remount. |
@@ -247,16 +247,16 @@ useEffect(() => {
 
 ### 3.3 Medio
 
-| ID | Componente | Hallazgo | Recomendación |
-|---|---|---|---|
-| HMI-M1 | `Header.tsx` + `useDatabaseStatus` | Doble poll health (30 s y 8 s) | Una sola fuente de verdad |
-| HMI-M2 | `DatabaseStatusContext` | Value cambia cada poll (`latencyMs`) → re-render Overlay + LED | Separar `connected` estable de métricas |
-| HMI-M3 | `Machines` / `MachinesDetailed` | `setState(prev => { sideEffect; return prev })` fuerza reconcile | Usar `ref` para leer estado en handlers |
-| HMI-M4 | `MachinesDetailed` | 3× `setInterval(1000)` | Un ticker compartido |
-| HMI-M5 | `Trends.tsx` | `setTimeout(200)` en apply sin clear en unmount | Guardar id + clear en cleanup |
-| HMI-M6 | Events / AlarmsSummary / DataLogger | Export `limit: 10000` mete pico en state | Stream/chunk; no guardar 10k en React state |
-| HMI-M7 | Dropdowns de tags | Sin virtualización | `react-window` / Virtuoso si catálogo > ~200 |
-| HMI-M8 | Logout | No limpia slices tags/alarms/machines | Clears en `logout` |
+| ID | Componente | Hallazgo | Recomendación | Estado |
+|---|---|---|---|---|
+| HMI-M1 | `Header.tsx` + `useDatabaseStatus` | Doble poll health (30 s y 8 s) | Una sola fuente de verdad | **Hecho** |
+| HMI-M2 | `DatabaseStatusContext` | Value cambia cada poll (`latencyMs`) → re-render Overlay + LED | Separar `connected` estable de métricas | **Hecho** |
+| HMI-M3 | `Machines` / `MachinesDetailed` | `setState(prev => { sideEffect; return prev })` fuerza reconcile | Usar `ref` para leer estado en handlers | **Hecho** |
+| HMI-M4 | `MachinesDetailed` | 3× `setInterval(1000)` | Un ticker compartido | **Hecho** |
+| HMI-M5 | `Trends.tsx` | `setTimeout(200)` en apply sin clear en unmount | Guardar id + clear en cleanup | **Hecho** |
+| HMI-M6 | Events / AlarmsSummary / DataLogger | Export `limit: 10000` mete pico en state | Stream/chunk; no guardar 10k en React state | **Hecho** (local, no state) |
+| HMI-M7 | Dropdowns de tags | Sin virtualización | `react-window` / Virtuoso si catálogo > ~200 | **Hecho** (`VirtualList`) |
+| HMI-M8 | Logout | No limpia slices tags/alarms/machines | Clears en `logout` | **Hecho** |
 
 ### 3.4 Bajo
 
@@ -322,9 +322,9 @@ export const makeSelectTagHistories = (names: string[]) =>
 | Prioridad | Plazo sugerido | Ítems | Criterio de hecho |
 |---|---|---|---|
 | **P0** | Hecho 2026-08-13 | HMI-C1, HMI-C2 | Historial 720 + suscripción visual; un listener nativo por evento |
-| **P1** | Parcial 2026-08-13 | HMI-H3 hecho; HMI-H1 parcial; HMI-H2/H4/H5/H6 abiertos | Pausa en pestaña oculta; selector StripChart granular |
-| **P2** | 2–4 semanas | HMI-M1…M7 (M8 hecho) | Un solo health poll; virtualización si catálogo grande |
-| **P3** | Continuo | Health check heap + soak 7d | Dashboard interno / alertas |
+| **P1** | Hecho 2026-08-13 | HMI-H1, HMI-H3 | Selector StripChart + pausa pestaña oculta |
+| **P2** | Hecho 2026-08-13 | HMI-H2/H4/H5, HMI-M1…M7 | Footer preview; row memo; localStorage onChange; un health poll; virtualización |
+| **P3** | Continuo (planta) | Heap + soak 7d | Watchdog → `/logs/add`; `PERFORMANCE_RUNBOOK.md` |
 
 ### Pruebas de envejecimiento sugeridas
 
@@ -348,4 +348,4 @@ export const makeSelectTagHistories = (names: string[]) =>
 
 ## 8. Conclusión
 
-La HMI ya no acumula 10k puntos por tag ni listeners `once("connect")` huérfanos, y deja de renderizar a pleno cuando la pestaña está oculta. El heap debe volver a baseline en logout. Quedan P2 (Footer, filas de alarmas, persistencia 1 s en Communications) y el soak de navegación ×500 en staging.
+La HMI ya no acumula 10k puntos por tag ni listeners `once("connect")` huérfanos, y deja de renderizar a pleno cuando la pestaña está oculta. El Footer no hidrata el catálogo, las filas de alarmas tienen memo efectivo y Communications no escribe `localStorage` en el ticker. El heap debe volver a baseline en logout. La certificación (P3) es el soak 24 h / navegación ×500 en staging (`audits/PERFORMANCE_RUNBOOK.md`).

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "../components/Button";
 import { StripChart, BUFFER_SIZE_MIN, type StripChartConfig } from "../components/StripChart";
 import { useTranslation } from "../hooks/useTranslation";
+import { useLongTaskObserver } from "../hooks/useLongTaskObserver";
 import { ResponsiveGridLayout, Layout as GridLayoutType } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -19,6 +20,7 @@ const SAVE_DEBOUNCE_MS = 300;
 
 export function RealTimeTrends() {
   const { t } = useTranslation();
+  useLongTaskObserver(50, "real-time-trends");
   const [isEditMode, setIsEditMode] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1200);

@@ -5,10 +5,10 @@
 | **Producto** | PyAutomationIO (`automation/`) |
 | **Alcance** | Núcleo 24/7: CPU/RAM estables, colas acotadas, complejidad O(1)/O(log n) en hot paths |
 | **Clasificación** | Auditoría de rendimiento backend · Confidencialidad interna |
-| **Fecha** | 2026-08-13 (actualizado tras Operación «Rendimiento Eterno») |
+| **Fecha** | 2026-08-13 (actualizado tras Engranaje Perfecto + **reversión BE-H4**) |
 | **Metodología** | Revisión estática CVT, SAF, Buffer, OPC UA, workers, índices DB, health |
 | **Principios guía** | SOLID + complejidad algorítmica garantizada en path caliente |
-| **Veredicto** | **A−** en hot path de adquisición (P0/P1 de esta auditoría **implementados**); **A+** SAF sin cambios. Pendiente P2: mapas de alarmas (BE-H3), pool PG (BE-H4) |
+| **Veredicto** | **A−** — P0/P1/P2 cerrados salvo **BE-H4** (pool PG revertido tras incidente signup/login). P3 (soak 24h/7d en planta) pendiente. Ver §3.2 BE-H4 y `PERFORMANCE_RUNBOOK.md` §5.1. |
 | **Dependencias** | `audits/STORE_AND_FORWARD.md`, `audits/PERSISTENCE_FLOW.md` |
 
 ---
@@ -38,7 +38,7 @@ OPC UA datachange → DAS → CVTEngine.set_value [LOCK GLOBAL]
 
 ## 1.1 Estado de implementación (2026-08-13)
 
-Cirugía P0/P1 aplicada en `automation/`. Los hallazgos BE-C1, BE-C2, BE-H1, BE-H2 y BE-H5 quedan **cerrados en código**. BE-H3/H4 y medios quedan en P2.
+Cirugía P0/P1/P2 aplicada en `automation/`. BE-C1, BE-C2, BE-H1–H3, BE-H5 y BE-M1–M7 **cerrados**. **BE-H4 revertido** (incidente de pool; ver detalle abajo).
 
 | ID | Estado | Qué se hizo |
 |---|---|---|
@@ -46,11 +46,21 @@ Cirugía P0/P1 aplicada en `automation/`. Los hallazgos BE-C1, BE-C2, BE-H1, BE-
 | **BE-C2** | Hecho | Clave `nodeid.to_string()`; unsubscribe del handle previo; **una** `create_subscription` por `client_name` (`DAS.get_or_create_subscription`); `reset_client` en reconnect. |
 | **BE-H1** | Hecho | `_name_index` / `_namespace_index`; `get_tag` / `get_tag_by_name` / `get_tag_by_node_namespace` / `is_tag_defined` en O(1) sin cola global. |
 | **BE-H2** | Hecho | `Buffer` con `collections.deque(maxlen)` + `appendleft` + lock local. |
+| **BE-H3** | Hecho | `_by_name` / `_by_tag_name`; `get_alarm_by_tag` compara `alarm.tag.name`; `delete_alarm` hace `detach_from_tag` + detach del observer de cola. |
+| **BE-H4** | **Revertido** 2026-08-13 | Intento `PooledPostgresqlDatabase(max_connections=8, timeout=30)` → incidente signup/login. Código actual: `PostgresqlDatabase` (sin pool). Reintento solo con connect/close por request. |
 | **BE-H5** | Hecho | Reconnect itera `iter_tags_for_opcua_client` (sin `get_tags()` serialize). |
-| **Health** | Hecho | `GET /api/health/system` → `RSS_MB`, `THREAD_COUNT`, `OPC_MONITORED_COUNT`, `CVT_TAG_COUNT`, `OPC_SUBSCRIPTION_COUNT`. |
-| Tests | Hecho | `automation/tests/test_performance_hotpath.py` |
+| **BE-M1** | Hecho | `max_pending_rows=5_000_000`; alerta + `JournalBackpressureError` (no borra PENDING). |
+| **BE-M2** | Hecho | Cache name→tag / unit por batch en `TagValuePayloadMapper.to_rows`. |
+| **BE-M3** | Hecho | Prune de `CycleSampleCache` cada 0.5 s, no en cada `should_drop`. |
+| **BE-M4** | Hecho | `_tag_queue = Queue(maxsize=1)` en DBManager y AlarmManager (código residual acotado). |
+| **BE-M5** | Hecho | `DBManager.attach` idempotente (no duplica `TagObserver`). |
+| **BE-M6** | Hecho | `require_producer_timestamp` en `ProcessType.set_value`; `set_value_fast` no usa `datetime.now()`. |
+| **BE-M7** | Hecho | `Tag.serialize_socket()` → `{name,value,timestamp,unit}`. |
+| **Health** | Hecho | `GET /api/health/system` → RSS, threads, OPC, CVT, `PENDING_ROWS`, `ALARM_COUNT`, `POOL_CONNECTIONS_USED` (N/A sin pool), `SAF_PENDING_CAP_HITS`, `CVT_LOCK_CONTENTION`. |
+| Tests | Hecho | `test_performance_hotpath.py`, `test_performance_soak.py` (`PERF_SOAK_SECONDS`) |
+| Runbook | Hecho | `audits/PERFORMANCE_RUNBOOK.md` |
 
-**Soak operativo (aún a ejecutar en planta, no en CI):** 24 h × 100 tags @ 10 Hz; reconnect OPC cada 5 min; RSS y `OPC_MONITORED_COUNT` planos.
+**Soak operativo (aún a ejecutar en planta, no en CI):** 24 h / 7 d × 100 tags @ 10 Hz; reconnect OPC cada 5 min; RSS y `OPC_MONITORED_COUNT` planos.
 
 ---
 
@@ -207,13 +217,13 @@ class Buffer:
 
 | | |
 |---|---|
-| **Severidad** | Alto |
+| **Severidad** | Alto — **remediado 2026-08-13** |
 | **Módulo** | `managers/alarms.py` |
 | **Evidencia** | `get_alarm_by_name` / `execute` escanean todas las alarmas. `get_alarm_by_tag` compara `tag == alarm.tag` (str vs `Tag`) → casi siempre falso. `delete_alarm` no hace `detach` del `MachineObserver`. |
 | **Complejidad** | O(n_alarms) por evaluación / lookup. |
 | **Impacto** | CPU en cambios de tag; observers huérfanos tras delete/reload. |
 
-**Recomendación:** mapas `name→id`, `tag_name→[ids]`; `detach` en delete; comparar `alarm.tag.name`.
+**Hecho:** mapas `_by_name` y `_by_tag_name`; comparación por `alarm.tag.name`; `detach_from_tag` en `delete_alarm`.
 
 ---
 
@@ -221,12 +231,26 @@ class Buffer:
 
 | | |
 |---|---|
-| **Severidad** | Alto |
+| **Severidad** | Alto — **intento fallido; revertido 2026-08-13** |
 | **Módulo** | `core.py` `set_db` |
-| **Evidencia** | `PostgresqlDatabase(...)` directo; no `PooledPostgresqlDatabase`. Health `SELECT 1` y replicación SAF comparten el mismo estilo de handle. |
-| **Impacto** | Bajo concurrencia actual (1 worker) el riesgo es moderado; al escalar workers/hilos, agotamiento o reconnect costoso. |
+| **Estado código** | `PostgresqlDatabase(...)` (sin pool). `_close_existing_db()` sigue cerrando el handle previo en reconnect. |
+| **Hallazgo original** | Sin pool Peewee; al escalar workers/hilos, riesgo de muchas conexiones nativas o reconnect costoso. |
+| **Remedio propuesto (P2)** | `PooledPostgresqlDatabase(max_connections=8, timeout=30, stale_timeout=300)`. |
 
-**Recomendación:** pool Peewee acotado (`max_connections=4..8`), timeouts, invalidación en reconnect.
+##### Incidente de regresión (2026-08-13) — auditoría de reversión
+
+| Campo | Detalle |
+|---|---|
+| **Síntoma HMI** | Signup / login: `timeout of 15000ms exceeded` (axios `timeout: 15000` en `hmi/src/services/api.ts`). Sin error visible en UI más allá del timeout. |
+| **Síntoma backend** | `POST /api/users/signup` → **HTTP 503** tras **~30.2 s** (`app.log`: `503 … 30.196218`). Coincide con `timeout=30` del pool. |
+| **Falso negativo** | Arranque OK (tags/alarmas cargan); `is_db_connected()` True; PG vivo en `127.0.0.1:32800`. El problema **no** era BD caída ni credenciales. |
+| **Causa raíz** | Runtime = gunicorn `GeventWebSocketWorker` + greenlets + hilos de máquinas/logger/SAF. Peewee pool asigna **una conexión por greenlet/hilo** y este proceso **no hace `db.close()`** al final de cada request/query → conexiones retenidas en `_in_use` hasta `max_connections=8` → nuevas checkouts esperan `timeout` → `MaxConnectionsExceeded` / error de conexión → signup mapea a **503**. |
+| **Por qué no se vio en tests unitarios** | Suite usa SQLite / proceso corto sin gevent + carga concurrente de greenlets. |
+| **Acción** | Revertir a `PostgresqlDatabase` en `set_db`. Documentar en código: no reintroducir pool sin ciclo connect/close por request. |
+| **Criterio de reintento** | Middleware Flask `before_request`/`teardown_request` (o equivalente) que haga `db.connect(reuse_if_open=True)` / `db.close()`; soak con signup×N concurrente bajo gevent; métrica `_in_use` estable. |
+| **Lección** | Pool Peewee + gevent sin teardown = anti-patrón en este producto. Escalabilidad horizontal ≠ pool acotado a ciegas. |
+
+**Estado abierto:** BE-H4 permanece como **riesgo de escalado** (sin pool), no como bug activo. Prioridad baja mientras haya 1 worker gunicorn.
 
 ---
 
@@ -245,15 +269,15 @@ class Buffer:
 
 ### 3.3 Medio
 
-| ID | Módulo | Hallazgo | Complejidad | Recomendación |
-|---|---|---|---|---|
-| BE-M1 | `persistence/journal.py` | PENDING crece hasta `max_disk_bytes` (10 GB) si PG cae días | O(disk) | Alerta lag; cap de filas PENDING + runbook |
-| BE-M2 | `persistence/remote.py` | `_lookup_tag` por fila en batch | O(batch × DB) | Cache name→Tags por batch |
-| BE-M3 | `persistence/cycle_dedupe.py` | `_prune_locked` escanea todo `_last` en cada `should_drop` | O(n_tags)/muestra | Prune cada N ms o heap TTL |
-| BE-M4 | `managers/db.py`, `alarms.py` | `queue.Queue()` sin maxsize; **sin consumidor** en LoggerWorker | Residual | Eliminar o `maxsize` + documentar dead code |
-| BE-M5 | `managers/db.py` `attach` | Múltiples `TagObserver` si attach repetido | Leak suave | Attach idempotente |
-| BE-M6 | `tag.py` / `cvt.py` | Fallback `datetime.now()` si falta timestamp | Coste menor | Exigir timestamp del productor |
-| BE-M7 | SocketIO emit en `set_value` | `serialize()` puede incluir buffers | CPU/red | Payload mínimo `{name,value,timestamp,unit}` |
+| ID | Módulo | Hallazgo | Complejidad | Recomendación | Estado |
+|---|---|---|---|---|---|
+| BE-M1 | `persistence/journal.py` | PENDING crece hasta `max_disk_bytes` (10 GB) si PG cae días | O(disk) | Alerta lag; cap de filas PENDING + runbook | **Hecho** — cap 5e6, no borra |
+| BE-M2 | `persistence/remote.py` | `_lookup_tag` por fila en batch | O(batch × DB) | Cache name→Tags por batch | **Hecho** |
+| BE-M3 | `persistence/cycle_dedupe.py` | `_prune_locked` escanea todo `_last` en cada `should_drop` | O(n_tags)/muestra | Prune cada N ms o heap TTL | **Hecho** — 0.5 s |
+| BE-M4 | `managers/db.py`, `alarms.py` | `queue.Queue()` sin maxsize; **sin consumidor** en LoggerWorker | Residual | Eliminar o `maxsize` + documentar dead code | **Hecho** — maxsize=1 |
+| BE-M5 | `managers/db.py` `attach` | Múltiples `TagObserver` si attach repetido | Leak suave | Attach idempotente | **Hecho** |
+| BE-M6 | `tag.py` / `cvt.py` | Fallback `datetime.now()` si falta timestamp | Coste menor | Exigir timestamp del productor | **Hecho** |
+| BE-M7 | SocketIO emit en `set_value` | `serialize()` puede incluir buffers | CPU/red | Payload mínimo `{name,value,timestamp,unit}` | **Hecho** |
 
 ### 3.4 Bajo / OK
 
@@ -278,8 +302,8 @@ class Buffer:
 | `CVT.get_tag_by_node_namespace` | O(n) | **O(1)** |
 | `CVT.set_value` | O(1) + lock global | **O(1)** + lock por tag |
 | `Buffer.__call__` | O(size) | **O(1)** deque |
-| `AlarmManager.get_alarm_by_name` | O(n) | O(n) — P2 |
-| `AlarmManager` eval por tag | O(n_alarms) | O(n_alarms) — P2 |
+| `AlarmManager.get_alarm_by_name` | O(n) | **O(1)** |
+| `AlarmManager` eval por tag | O(n_alarms) | **O(k)** alarmas del tag |
 | `DAS.subscribe` dedupe | roto (siempre insert) | **O(1)** por namespace |
 | `JournalWriter.enqueue` | O(1) acotado | mantener |
 | `IdempotentBatchInserter` | O(batch) fijo | mantener |
@@ -343,8 +367,8 @@ max_pending_rows: int = 5_000_000
 |---|---|---|---|
 | **P0** | Hecho 2026-08-13 | BE-C2, BE-C1 fast-path | Código + `test_performance_hotpath` |
 | **P1** | Hecho 2026-08-13 | BE-H1 índices, BE-H2 deque, BE-H5 filtro reconnect | Lookups O(1); Buffer O(1); reconnect sin serialize |
-| **P2** | 2–4 semanas | BE-H3 alarmas+detach, BE-H4 pool PG, BE-M1…M7 | `/health/system` ya existe; falta cache replicator y queues residuales |
-| **P3** | Continuo | Soak 30d + alertas SAF/RSS | Runbook operativo |
+| **P2** | Parcial 2026-08-13 | BE-H3 + BE-M1…M7 **hechos**; **BE-H4 revertido** | Alarmas O(1); cap PENDING; payload SocketIO; **sin** pool PG hasta teardown por request |
+| **P3** | Continuo (planta) | Soak 24h/7d + alertas | `test_performance_soak.py` + `PERFORMANCE_RUNBOOK.md`; métricas en `/health/system` |
 
 ### Pruebas de envejecimiento sugeridas
 
@@ -369,6 +393,10 @@ SAF_SOAK_SECONDS=3600 ./venv/bin/python -m unittest automation.tests.test_store_
 | `SAF_REPLICATION_LAG` | health SAF | > 60 s |
 | `SAF_DROPPED_FULL` / backpressure | health SAF | cualquier incremento → alerta |
 | RSS worker | `/api/health/system` | +20 %/24 h |
+| `PENDING_ROWS` / `SAF_QUEUE_DEPTH` | `/api/health/system` + `/saf` | > 10k sostenido |
+| `ALARM_COUNT` | `/api/health/system` | salto sin cambio de config |
+| `POOL_CONNECTIONS_USED` | `/api/health/system` | **N/A** con `PostgresqlDatabase` (campo queda 0). Reactivar alerta solo si se reintroduce pool + teardown |
+| `CVT_LOCK_CONTENTION` | `/api/health/system` | crecimiento monotónico |
 | `opcua_monitored` count | `/api/health/system` `OPC_MONITORED_COUNT` | crecimiento sin cambio de config |
 | p99 `set_value` | histograma interno / logs sampleados | deriva > 2× baseline |
 
@@ -388,4 +416,4 @@ La durabilidad puede ser A+ y aun así el proceso degradarse por handles OPC y l
 
 ## 9. Conclusión
 
-El núcleo es **robusto en datos** y el hot path de adquisición ya no serializa el CVT ni re-suscribe OPC a ciegas. P0/P1 de esta auditoría están en código. Queda P2 (índices de alarmas, pool PG) y el soak 24/7 en planta contra `/api/health/system`.
+El núcleo es **robusto en datos** y el hot path de adquisición ya no serializa el CVT ni re-suscribe OPC a ciegas. P0/P1 y el grueso de P2 viven en código. **BE-H4 quedó abierto a propósito**: el pool Peewee bajo gevent sin teardown por request provocó timeouts de signup/login (503 @ 30 s / axios 15 s) y se revirtió a `PostgresqlDatabase`. La certificación eterna (P3) es el soak 24/7 en planta contra `/api/health/system` y el runbook `audits/PERFORMANCE_RUNBOOK.md` (§5.1 incidente BE-H4).

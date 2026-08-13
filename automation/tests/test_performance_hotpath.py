@@ -150,6 +150,130 @@ class TestCvtIndexes(unittest.TestCase):
         self.assertIsNone(cvt.set_value(id="missing", value=1, timestamp=now))
 
 
+class TestAlarmManagerIndexes(unittest.TestCase):
+    def setUp(self):
+        from ..managers.alarms import AlarmManager
+
+        self.mgr = AlarmManager()
+        self.mgr._alarms.clear()
+        self.mgr._by_name.clear()
+        self.mgr._by_tag_name.clear()
+
+    def test_lookup_by_name_and_tag_is_indexed(self):
+        alarm = MagicMock()
+        alarm.name = "HH_P1"
+        alarm.tag = type("Tag", (), {"name": "P1"})()
+        alarm.identifier = "id-1"
+        alarm.detach_from_tag = MagicMock()
+        alarm.remove_from_service = MagicMock()
+        alarm._queue_observer = None
+        self.mgr._alarms[alarm.identifier] = alarm
+        self.mgr._index_alarm(alarm)
+
+        self.assertIs(self.mgr.get_alarm_by_name("HH_P1"), alarm)
+        self.assertEqual(self.mgr.get_alarm_by_tag("P1"), [alarm])
+        self.assertEqual(self.mgr.get_alarm_by_tag(alarm.tag), [alarm])
+        self.assertEqual(self.mgr.alarm_count(), 1)
+
+        self.mgr._alarms.pop(alarm.identifier)
+        self.mgr._unindex_alarm(alarm)
+        self.assertIsNone(self.mgr.get_alarm_by_name("HH_P1"))
+        self.assertEqual(self.mgr.get_alarm_by_tag("P1"), [])
+
+
+class TestSocketPayloadAndTimestamp(unittest.TestCase):
+    def test_serialize_socket_is_minimal(self):
+        tag = Tag(name="F1", unit="C", variable="Temperature", data_type="float", id="f1f1f1f1")
+        now = datetime.now()
+        tag.set_value(value=21.5, timestamp=now)
+        payload = tag.serialize_socket()
+        self.assertEqual(set(payload.keys()), {"name", "value", "timestamp", "unit"})
+        self.assertEqual(payload["name"], "F1")
+        self.assertEqual(payload["value"], 21.5)
+
+    def test_producer_timestamp_required(self):
+        from ..models import require_producer_timestamp
+
+        with self.assertRaises(ValueError):
+            require_producer_timestamp(machine=None)
+        stamp = datetime(2026, 8, 13, 12, 0, 0, 123456)
+        machine = type("M", (), {"cycle_timestamp": stamp})()
+        resolved = require_producer_timestamp(machine)
+        self.assertEqual(resolved.microsecond % 1000, 0)
+
+
+class TestPendingCapAndReplicatorCache(unittest.TestCase):
+    def test_pending_cap_alerts_without_deleting(self):
+        import os
+        import tempfile
+        from datetime import timezone
+
+        from ..persistence.config import SafConfig
+        from ..persistence.exceptions import JournalBackpressureError
+        from ..persistence.journal import JournalWriter
+        from ..persistence.records import PersistableRecord
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = SafConfig(
+                journal_path=os.path.join(tmp, "journal.db"),
+                max_pending_rows=1,
+                ring_maxsize=50,
+            )
+            writer = JournalWriter(cfg)
+            try:
+                first = PersistableRecord.tag_sample("T1", 1.0, datetime.now(timezone.utc))
+                writer.append(first)
+                with self.assertRaises(JournalBackpressureError):
+                    writer.append(PersistableRecord.tag_sample("T2", 2.0, datetime.now(timezone.utc)))
+                self.assertGreaterEqual(writer.pending_cap_hits, 1)
+            finally:
+                writer.stop()
+
+    def test_payload_mapper_caches_tags_per_batch(self):
+        from datetime import timezone
+
+        from ..persistence.remote import TagValuePayloadMapper
+
+        class FakeTag:
+            def __init__(self, name):
+                self.name = name
+                self.id = name
+                self.display_unit = type("U", (), {"id": 1})()
+                self.unit = self.display_unit
+
+        lookups = []
+
+        def resolve_tag(name):
+            lookups.append(name)
+            return FakeTag(name)
+
+        mapper = TagValuePayloadMapper(
+            resolve_tag=resolve_tag,
+            resolve_unit=lambda tag: tag.unit,
+        )
+        ts = datetime(2026, 8, 13, 12, 0, 0, tzinfo=timezone.utc).isoformat()
+        rows = mapper.to_rows(
+            [
+                {"tag": "A", "value": 1, "timestamp": ts},
+                {"tag": "A", "value": 2, "timestamp": ts},
+                {"tag": "B", "value": 3, "timestamp": ts},
+            ]
+        )
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(lookups, ["A", "B"])
+
+    def test_cycle_cache_prunes_on_interval_not_every_call(self):
+        from ..persistence.cycle_dedupe import CycleSampleCache
+        from ..persistence.records import PersistableRecord
+
+        cache = CycleSampleCache(ttl_s=2.0)
+        cache._prune_every_s = 10.0
+        sample = PersistableRecord.tag_sample("T1", 1.0, datetime.now())
+        self.assertFalse(cache.should_drop(sample))
+        self.assertTrue(cache.should_drop(sample))
+        self.assertEqual(cache.dropped, 1)
+
+
 class TestDasSubscribeDedupe(unittest.TestCase):
     def setUp(self):
         self.das = DAS()

@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { VirtualList } from "./VirtualList";
 
 export type MultiSelectOption = {
   value: string;
@@ -313,51 +314,56 @@ export function MultiSelectSearch({
               </div>
             </div>
 
-            <div className="multi-select-search__list">
-              {filtered.length === 0 ? (
-                <div className="multi-select-search__empty">{emptyText}</div>
-              ) : (
-                filtered.map((option, index) => {
-                  const isSelected = selectedSet.has(option.value);
-                  const isHighlighted = index === highlightIndex;
-                  const showValue = option.label !== option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      ref={(el) => {
-                        optionRefs.current[index] = el;
-                      }}
-                      className={`multi-select-search__option${
-                        isSelected ? " is-selected" : ""
-                      }${isHighlighted ? " is-highlighted" : ""}`}
-                      onMouseEnter={() => setHighlightIndex(index)}
-                      onClick={() => toggleOption(option.value)}
+            {filtered.length === 0 ? (
+              <div className="multi-select-search__empty">{emptyText}</div>
+            ) : (
+            <VirtualList
+              className="multi-select-search__list"
+              items={filtered}
+              height={Math.max(160, position.maxHeight - 96)}
+              itemHeight={48}
+              highlightedIndex={highlightIndex}
+              getKey={(option) => option.value}
+              renderItem={(option, index) => {
+                const isSelected = selectedSet.has(option.value);
+                const isHighlighted = index === highlightIndex;
+                const showValue = option.label !== option.value;
+                return (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    ref={(el) => {
+                      optionRefs.current[index] = el;
+                    }}
+                    className={`multi-select-search__option${
+                      isSelected ? " is-selected" : ""
+                    }${isHighlighted ? " is-highlighted" : ""}`}
+                    onMouseEnter={() => setHighlightIndex(index)}
+                    onClick={() => toggleOption(option.value)}
+                  >
+                    <span
+                      className={`multi-select-search__check${isSelected ? " is-on" : ""}`}
+                      aria-hidden="true"
                     >
-                      <span
-                        className={`multi-select-search__check${isSelected ? " is-on" : ""}`}
-                        aria-hidden="true"
-                      >
-                        {isSelected ? <i className="bi bi-check-lg" /> : null}
-                      </span>
-                      <span className="multi-select-search__option-text">
-                        <span className="multi-select-search__option-label">{option.label}</span>
-                        {showValue && (
-                          <span className="multi-select-search__option-value">{option.value}</span>
-                        )}
-                        {option.description && (
-                          <span className="multi-select-search__option-desc">
-                            {option.description}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+                      {isSelected ? <i className="bi bi-check-lg" /> : null}
+                    </span>
+                    <span className="multi-select-search__option-text">
+                      <span className="multi-select-search__option-label">{option.label}</span>
+                      {showValue && (
+                        <span className="multi-select-search__option-value">{option.value}</span>
+                      )}
+                      {option.description && (
+                        <span className="multi-select-search__option-desc">
+                          {option.description}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              }}
+            />
+            )}
           </div>,
           document.body
         )

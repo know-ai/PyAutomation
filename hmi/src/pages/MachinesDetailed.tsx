@@ -124,15 +124,23 @@ export function MachinesDetailed() {
 
   // Buffer para actualizaciones de propiedades de máquinas (patrón de 1 segundo)
   const pendingPropertyUpdatesRef = useRef<Map<string, Record<string, any>>>(new Map());
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
-  // Buffer para actualizaciones completas de máquinas (patrón de 1 segundo)
   const pendingMachineUpdatesRef = useRef<Map<string, Machine>>(new Map());
-  const machineUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
-  // Buffer para actualizaciones de tags (patrón de 1 segundo)
-  const pendingTagUpdatesRef = useRef<Map<string, any>>(new Map()); // Map<tagId, Tag>
-  const tagUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pendingTagUpdatesRef = useRef<Map<string, any>>(new Map());
+  const flushPropertiesRef = useRef<() => void>(() => {});
+  const flushMachinesRef = useRef<() => void>(() => {});
+  const flushTagsRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
+      flushPropertiesRef.current();
+      flushMachinesRef.current();
+      flushTagsRef.current();
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   // Cargar máquinas al montar el componente
   useEffect(() => {
@@ -731,15 +739,8 @@ export function MachinesDetailed() {
       });
     };
 
-    // Iniciar intervalo para hacer flush cada 1 segundo
-    intervalRef.current = setInterval(() => {
-      if (typeof document !== "undefined" && document.hidden) {
-        return;
-      }
-      flushUpdates();
-    }, 1000);
+    flushPropertiesRef.current = flushUpdates;
 
-    // Suscribirse a actualizaciones de propiedades de máquinas
     const cleanup = socketService.onMachinePropertyUpdate((data) => {
       // data tiene el formato: { machineName: { propertyName: propertyValue } }
       // Por ejemplo: { "LDS": { "leak": 0.5 } } o { "NPW": { "state": "running" } }
@@ -770,11 +771,6 @@ export function MachinesDetailed() {
     // Cleanup al desmontar
     return () => {
       cleanup();
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      // Aplicar cualquier actualización pendiente antes de limpiar
       flushUpdates();
       pendingPropertyUpdatesRef.current.clear();
     };
@@ -827,15 +823,8 @@ export function MachinesDetailed() {
       });
     };
 
-    // Iniciar intervalo para hacer flush cada 1 segundo
-    machineUpdateIntervalRef.current = setInterval(() => {
-      if (typeof document !== "undefined" && document.hidden) {
-        return;
-      }
-      flushMachineUpdates();
-    }, 1000);
+    flushMachinesRef.current = flushMachineUpdates;
 
-    // Suscribirse a actualizaciones completas de máquinas
     const cleanup = socketService.onMachineUpdate((machine: Machine) => {
       // machine es un objeto Machine completo con toda la información
       
@@ -856,11 +845,6 @@ export function MachinesDetailed() {
     // Cleanup al desmontar
     return () => {
       cleanup();
-      if (machineUpdateIntervalRef.current) {
-        clearInterval(machineUpdateIntervalRef.current);
-        machineUpdateIntervalRef.current = null;
-      }
-      // Aplicar cualquier actualización pendiente antes de limpiar
       flushMachineUpdates();
       pendingMachineUpdatesRef.current.clear();
     };
@@ -993,15 +977,8 @@ export function MachinesDetailed() {
       });
     };
 
-    // Iniciar intervalo para hacer flush cada 1 segundo
-    tagUpdateIntervalRef.current = setInterval(() => {
-      if (typeof document !== "undefined" && document.hidden) {
-        return;
-      }
-      flushTagUpdates();
-    }, 1000);
+    flushTagsRef.current = flushTagUpdates;
 
-    // Suscribirse a actualizaciones de tags
     const cleanup = socketService.onTagUpdate((tag: Tag) => {
       // tag es un objeto Tag completo con toda la información
 
@@ -1019,11 +996,6 @@ export function MachinesDetailed() {
     // Cleanup al desmontar
     return () => {
       cleanup();
-      if (tagUpdateIntervalRef.current) {
-        clearInterval(tagUpdateIntervalRef.current);
-        tagUpdateIntervalRef.current = null;
-      }
-      // Aplicar cualquier actualización pendiente antes de limpiar
       flushTagUpdates();
       pendingTagUpdatesRef.current.clear();
     };

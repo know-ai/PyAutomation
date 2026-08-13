@@ -10,9 +10,12 @@ import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
 import { toggleSidebar } from "./sidebarDom";
 import { DatabaseStatus } from "../components/DatabaseStatus";
+import { useDatabaseConnected } from "../hooks/useDatabaseStatus";
+import { emitDatabaseHealth } from "../services/health";
 
 export function Header() {
   const { t } = useTranslation();
+  const { connected: healthConnected } = useDatabaseConnected();
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [dbType, setDbType] = useState<"postgres" | "mysql" | "sqlite">("postgres");
   const [dbName, setDbName] = useState("");
@@ -23,7 +26,6 @@ export function Header() {
   const [dbConnected, setDbConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasCheckedInitialState = useRef(false);
 
   const toggleSidebarMenu = useCallback((e: React.MouseEvent) => {
@@ -123,54 +125,11 @@ export function Header() {
     checkInitialConnection();
   }, []);
 
-  // Verificar estado de conexión periódicamente solo cuando está conectado
   useEffect(() => {
-    // Si no está conectado, no hacer verificación periódica
-    if (!dbConnected) {
-      // Limpiar intervalo si existe
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return;
+    if (healthConnected !== null) {
+      setDbConnected(healthConnected);
     }
-
-    const checkConnection = async () => {
-      try {
-        const response = await isDatabaseConnected();
-        if (response != null && typeof response === "object" && typeof response.connected === "boolean") {
-        setDbConnected(response.connected);
-        setConnectionError(null);
-        } else {
-          // Si la respuesta no es válida, asumimos desconectado
-          setDbConnected(false);
-          setConnectionError(null);
-        }
-      } catch (error: any) {
-        console.error("Error checking database connection:", error);
-        setDbConnected(false);
-        setConnectionError(null);
-      }
-    };
-
-    // Verificar inmediatamente
-    checkConnection();
-
-    // Verificar cada 30 segundos
-    intervalRef.current = setInterval(() => {
-      if (typeof document !== "undefined" && document.hidden) {
-        return;
-      }
-      checkConnection();
-    }, 30000);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [dbConnected]);
+  }, [healthConnected]);
 
   const handleConnectDisconnect = useCallback(async () => {
     setIsConnecting(true);
@@ -178,14 +137,9 @@ export function Header() {
 
     try {
       if (dbConnected) {
-        // Desconectar manualmente - detener verificación periódica inmediatamente
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        
         const response = await disconnectDatabase();
         setDbConnected(false);
+        emitDatabaseHealth(false);
         // Mostrar toast de éxito con el mensaje del backend
         if (response != null && typeof response === "object" && response.message) {
           showToast(response.message, "success");
@@ -220,6 +174,7 @@ export function Header() {
           // Solo establecer como conectado si la conexión fue realmente exitosa
           // Esto activará automáticamente la verificación periódica por el useEffect
           setDbConnected(true);
+          emitDatabaseHealth(true);
           setConnectionError(null);
           // Mostrar toast de éxito con el mensaje del backend
           showToast(
@@ -234,11 +189,6 @@ export function Header() {
             ? response.message 
             : t("database.connect");
           setConnectionError(errorMsg);
-          // Asegurarse de que la verificación periódica esté detenida
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
           // Mostrar toast de warning con la razón del fallo
           showToast(
             errorMsg,
@@ -251,12 +201,7 @@ export function Header() {
       setConnectionError(errorMsg);
       // Asegurarse de que esté desconectado y la verificación periódica NO se active
       setDbConnected(false);
-      // Asegurarse de que la verificación periódica esté detenida
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      // Mostrar toast de warning con la razón del fallo
+      emitDatabaseHealth(false);
       showToast(
         errorMsg,
         "warning"

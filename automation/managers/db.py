@@ -56,7 +56,7 @@ class DBManager(Singleton):
         self._period = period
         self._delay = delay
         self._drop_tables = drop_tables
-        self._tag_queue = queue.Queue()
+        self._tag_queue = queue.Queue(maxsize=1)
         self.engine = CVTEngine()
         self._logging_tags = LogTable()
         self._logger = DataLoggerEngine()
@@ -363,5 +363,11 @@ class DBManager(Singleton):
         r"""
         Attaches an observer to a tag for database logging purposes.
         """
+        tag = self.engine.get_tag_by_name(name=tag_name)
+        if tag is None:
+            return
+        for observer in tag._observers:
+            if isinstance(observer, TagObserver):
+                return
         observer = TagObserver(self._tag_queue)
         self.engine.attach(name=tag_name, observer=observer)

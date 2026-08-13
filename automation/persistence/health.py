@@ -38,4 +38,6 @@ class SafHealthProbe:
             "SAF_CIRCUIT": getattr(circuit, "state", "unknown"),
             "SAF_LAST_ERROR": getattr(self.replicator, "last_error", "") or self.journal.last_error,
             "SAF_MAX_DISK_BYTES": self.journal.config.max_disk_bytes,
+            "SAF_MAX_PENDING_ROWS": getattr(self.journal.config, "max_pending_rows", 0),
+            "SAF_PENDING_CAP_HITS": getattr(self.journal, "pending_cap_hits", 0),
         }

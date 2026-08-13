@@ -18,6 +18,14 @@ def resolve_machine_cycle_timestamp(machine=None, timestamp=None) -> datetime:
     scheduler stamp) → ``machine.data_timestamp`` (field sample) → UTC now.
     Always quantized to milliseconds for the TagValue historian.
     """
+    required = require_producer_timestamp(machine=machine, timestamp=timestamp, required=False)
+    if required is not None:
+        return required
+    return quantize_datetime_ms(datetime.now(timezone.utc))
+
+
+def require_producer_timestamp(machine=None, timestamp=None, required: bool = True) -> datetime | None:
+    """Return a producer timestamp, or raise if ``required`` and none is present."""
     if isinstance(timestamp, datetime):
         return quantize_datetime_ms(timestamp)
     if machine is not None:
@@ -27,7 +35,9 @@ def resolve_machine_cycle_timestamp(machine=None, timestamp=None) -> datetime:
         data_ts = getattr(machine, "data_timestamp", None)
         if isinstance(data_ts, datetime):
             return quantize_datetime_ms(data_ts)
-    return quantize_datetime_ms(datetime.now(timezone.utc))
+    if required:
+        raise ValueError("ProcessType.set_value requires a cycle timestamp from the producer")
+    return None
 
 
 FLOAT = "float"
@@ -86,7 +96,7 @@ class PropertyType:
 
                     if self.tag:
 
-                        timestamp = resolve_machine_cycle_timestamp(machine)
+                        timestamp = require_producer_timestamp(machine)
                         val = self.tag.value.convert_value(value=value.value, from_unit=self.tag.get_unit(), to_unit=self.tag.get_display_unit())
                         self.tag.value.set_value(value=val, unit=self.tag.get_display_unit()) 
                         self.cvt.set_value(id=self.tag.id, value=val, timestamp=timestamp)

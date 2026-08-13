@@ -1,15 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector } from "../hooks/useAppSelector";
-import { useAppDispatch } from "../hooks/useAppDispatch";
-import { getAlarms, acknowledgeAlarm, acknowledgeAllAlarms, type Alarm } from "../services/alarms";
-import { loadAllAlarms } from "../store/slices/alarmsSlice";
+import { acknowledgeAlarm, acknowledgeAllAlarms, type Alarm } from "../services/alarms";
+import { selectActiveAlarmsPreview } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
 
 export function Footer() {
   const navigate = useNavigate();
-  const dispatch = useAppDispatch();
-  const realTimeAlarms = useAppSelector((state) => state.alarms.alarms);
+  const preview = useAppSelector(selectActiveAlarmsPreview);
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
@@ -25,21 +23,10 @@ export function Footer() {
   const [acknowledgingAll, setAcknowledgingAll] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
-  // Load all alarms on mount
-  useEffect(() => {
-    const loadAlarms = async () => {
-      try {
-        // Get all alarms (use a large limit to get all)
-        const response = await getAlarms(1, 10000);
-        if (response.data) {
-          dispatch(loadAllAlarms(response.data));
-        }
-      } catch (error) {
-        // Silently fail - alarms will be updated via socket
-      }
-    };
-    loadAlarms();
-  }, [dispatch]);
+  const activeAlarms: (Alarm | null)[] = [...preview];
+  while (activeAlarms.length < 3) {
+    activeAlarms.push(null);
+  }
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -56,37 +43,6 @@ export function Footer() {
       };
     }
   }, [contextMenu.visible]);
-
-  // Get active alarms (Unacknowledged or Acknowledged)
-  const getActiveAlarms = (): (Alarm | null)[] => {
-    const alarms = Object.values(realTimeAlarms);
-    const active = alarms
-      .filter((alarm) => {
-        const state = alarm.state;
-        if (typeof state === "object") {
-          const stateStr = state.mnemonic || state.state || "";
-          return stateStr.includes("UNACK") || stateStr.includes("ACK");
-        }
-        const stateStr = String(state);
-        return stateStr.includes("Unacknowledged") || stateStr.includes("Acknowledged");
-      })
-      .sort((a, b) => {
-        // Sort by timestamp (most recent first)
-        const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-        const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-        return bTime - aTime;
-      })
-      .slice(0, 3); // Get only the last 3
-    
-    // Always return 3 items, fill with null if needed
-    const result: (Alarm | null)[] = [...active];
-    while (result.length < 3) {
-      result.push(null);
-    }
-    return result;
-  };
-
-  const activeAlarms = getActiveAlarms();
 
   const getStateLabel = (alarm: Alarm): string => {
     const state = alarm.state;

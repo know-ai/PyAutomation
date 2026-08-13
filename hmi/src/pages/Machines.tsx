@@ -48,6 +48,7 @@ export function Machines() {
   // Buffer para actualizaciones de máquinas en tiempo real (patrón de 1 segundo)
   const pendingMachineUpdatesRef = useRef<Map<string, Machine>>(new Map());
   const machineUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const machineNamesRef = useRef<Set<string>>(new Set());
 
   // Cargar máquinas
   const loadMachines = async () => {
@@ -56,6 +57,9 @@ export function Machines() {
     try {
       const data = await getMachines();
       setMachines(data);
+      machineNamesRef.current = new Set(
+        (data || []).map((machine) => machine.name).filter((name): name is string => Boolean(name))
+      );
       // Cargar máquinas iniciales en el store para sincronizar con tiempo real
       dispatch(loadAllMachines(data));
     } catch (err: any) {
@@ -120,18 +124,9 @@ export function Machines() {
 
     // Suscribirse a actualizaciones de máquinas
     const cleanup = socketService.onMachineUpdate((machine) => {
-      // Solo procesar si tenemos esta máquina en nuestro estado
-      setMachines((prev) => {
-        const exists = prev.some((m) => m.name === machine.name);
-        
-        if (exists && machine.name) {
-          // Guardar en el buffer (sobrescribe si ya existe)
-          pendingMachineUpdatesRef.current.set(machine.name, machine);
-        }
-        
-        // No cambiar el estado aquí, solo actualizar el buffer
-        return prev;
-      });
+      if (machine.name && machineNamesRef.current.has(machine.name)) {
+        pendingMachineUpdatesRef.current.set(machine.name, machine);
+      }
     });
 
     // Cleanup al desmontar

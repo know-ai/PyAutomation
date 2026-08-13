@@ -203,6 +203,23 @@ class SocketService {
   callbackCount(event: string): number {
     return this.listeners.get(event)?.size ?? 0;
   }
+
+  listenerCount(event?: string): Record<string, { native: number; callbacks: number }> | { native: number; callbacks: number } {
+    if (event) {
+      return {
+        native: this.nativeListenerCount(event),
+        callbacks: this.callbackCount(event),
+      };
+    }
+    const snapshot: Record<string, { native: number; callbacks: number }> = {};
+    for (const name of this.listeners.keys()) {
+      snapshot[name] = {
+        native: this.nativeListenerCount(name),
+        callbacks: this.callbackCount(name),
+      };
+    }
+    return snapshot;
+  }
 }
 
 export const socketService = new SocketService();

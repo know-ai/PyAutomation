@@ -30,6 +30,7 @@ class CVT:
         self._tags = dict()
         self._name_index = dict()
         self._namespace_index = dict()
+        self.lock_contention = 0
         self.data_types = ["float", "int", "bool", "str"]
         self.sio:SocketIO|None = None
 
@@ -618,6 +619,12 @@ class CVT:
             return None
 
         payload = None
+        try:
+            locked = getattr(tag._lock, "locked", None)
+            if callable(locked) and locked():
+                self.lock_contention += 1
+        except Exception:
+            pass
         with tag._lock:
             if tag.dead_band and isinstance(value, (int, float)):
                 try:
@@ -631,7 +638,7 @@ class CVT:
             if self.sio:
                 ts = timestamp.astimezone(TIMEZONE)
                 tag.timestamp = ts
-                payload = tag.serialize()
+                payload = tag.serialize_socket()
 
         if payload is not None and self.sio:
             self.sio.emit("on.tag", data=payload)
@@ -917,6 +924,9 @@ class CVTEngine(Singleton):
     def tag_count(self)->int:
         return len(self._cvt._tags)
 
+    def lock_contention(self)->int:
+        return int(getattr(self._cvt, "lock_contention", 0) or 0)
+
     @logging_error_handler
     def iter_tags(self)->list:
         return list(self._cvt._tags.values())
@@ -1077,8 +1087,8 @@ class CVTEngine(Singleton):
         Hot-path write: dict lookup O(1) + per-tag lock. Does not use the
         administrative request/response queue.
         """
-        if not timestamp:
-            timestamp = datetime.now()
+        if timestamp is None:
+            raise ValueError("set_value requires a timestamp from the producer")
         return self._cvt.set_value(id=id, value=value, timestamp=timestamp)
 
     @logging_error_handler

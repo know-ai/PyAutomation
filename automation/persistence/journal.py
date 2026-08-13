@@ -65,6 +65,7 @@ class JournalWriter:
         self._started = False
         self.dropped_full = 0
         self.enqueued = 0
+        self.pending_cap_hits = 0
         self.backpressure = False
         self.last_error = ""
 
@@ -110,6 +111,8 @@ class JournalWriter:
         if not items:
             return 0
         with self._lock:
+            self._ensure_open_locked()
+            self._guard_pending_locked()
             if len(self._ring) + len(items) > self.config.ring_maxsize:
                 self.backpressure = True
                 self.dropped_full += len(items)
@@ -253,8 +256,29 @@ class JournalWriter:
             )
             self._commit_locked()
 
+    def _pending_rows_locked(self) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM persistence_journal WHERE status IN (?, ?)",
+            (STATUS_PENDING, STATUS_REPLICATING),
+        ).fetchone()
+        return int(row[0]) + len(self._ring)
+
+    def _guard_pending_locked(self) -> None:
+        max_rows = int(getattr(self.config, "max_pending_rows", 0) or 0)
+        if max_rows <= 0:
+            return
+        if self._pending_rows_locked() < max_rows:
+            return
+        self.pending_cap_hits += 1
+        self.backpressure = True
+        raise JournalBackpressureError(
+            f"SAF pending rows reached cap max_pending_rows={max_rows}; history backpressure engaged"
+        )
+
     def _enqueue_ring(self, persistable: IPersistable) -> int:
         with self._lock:
+            self._ensure_open_locked()
+            self._guard_pending_locked()
             if len(self._ring) >= self.config.ring_maxsize:
                 self.backpressure = True
                 self.dropped_full += 1
@@ -300,6 +324,7 @@ class JournalWriter:
 
     def _insert_locked(self, persistable: IPersistable) -> int:
         self._guard_disk_locked()
+        self._guard_pending_locked()
         now = utc_now().isoformat()
         payload = json.dumps(dict(persistable.payload()), default=str)
         try:

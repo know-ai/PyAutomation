@@ -1,12 +1,13 @@
-import { useEffect, useState, useMemo, memo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { AlarmTableRow } from "../components/AlarmTableRow";
 import { getAlarms, createAlarm, updateAlarm, deleteAlarm, getAlarmByName, executeAlarmAction, shelveAlarm, acknowledgeAllAlarms, type Alarm, type AlarmsResponse } from "../services/alarms";
 import { getTags, type Tag } from "../services/tags";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { useAppDispatch } from "../hooks/useAppDispatch";
-import { loadAllAlarms } from "../store/slices/alarmsSlice";
+import { updateAlarmsBatch } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
 
 export function Alarms() {
@@ -59,216 +60,8 @@ export function Alarms() {
 
   const alarmTypes = ["BOOL", "HIGH", "LOW", "HIGH-HIGH", "LOW-LOW"];
 
-  // Get real-time data from Redux store
   const realTimeAlarms = useAppSelector((state) => state.alarms.alarms);
   const tagValues = useAppSelector((state) => state.tags.tagValues);
-
-  // Memoized row component to prevent unnecessary re-renders
-  const AlarmTableRow = memo(({ 
-    alarm, 
-    realTimeAlarms,
-    tagValues,
-    onEdit,
-    onDelete,
-    getStateBadgeClass,
-    getStateLabel,
-    actions,
-    loadingActions,
-    executingAction,
-    onLoadActions,
-    onExecuteAction,
-    isActionDropdownOpen,
-    onToggleActionDropdown,
-    actionDropdownRef
-  }: {
-    alarm: Alarm;
-    realTimeAlarms: Record<string, Alarm>;
-    tagValues: Record<string, Tag>;
-    onEdit: (alarm: Alarm) => void;
-    onDelete: (alarm: Alarm) => void;
-    getStateBadgeClass: (state: any) => string;
-    getStateLabel: (state: any) => string;
-    actions: { [key: string]: string } | undefined;
-    loadingActions: boolean;
-    executingAction: boolean;
-    onLoadActions: (alarmName: string) => void;
-    onExecuteAction: (actionValue: string, alarmName: string) => void;
-    isActionDropdownOpen: boolean;
-    onToggleActionDropdown: (alarmName: string) => void;
-    actionDropdownRef: (el: HTMLDivElement | null) => void;
-  }) => {
-    // Get real-time alarm data from store if available, otherwise use alarm prop
-    const alarmKey = alarm.identifier || alarm.id || alarm.name;
-    const realTimeAlarm = alarmKey ? realTimeAlarms[String(alarmKey)] : null;
-    const currentAlarm = realTimeAlarm || alarm;
-
-    // Get real-time tag value if available
-    const tagName = currentAlarm.tag;
-    const realTimeTag = tagName ? tagValues[tagName] : null;
-    const tagValue = realTimeTag?.value !== undefined && realTimeTag?.value !== null
-      ? realTimeTag.value 
-      : null;
-    
-    const displayTagValue = tagValue !== undefined && tagValue !== null
-      ? typeof tagValue === "boolean"
-        ? tagValue ? "true" : "false"
-        : String(tagValue)
-      : "-";
-
-    const alarmType = currentAlarm.alarm_type || (currentAlarm.alarm_setpoint?.type) || "-";
-    const triggerValue = currentAlarm.trigger_value !== undefined 
-      ? String(currentAlarm.trigger_value)
-      : (currentAlarm.alarm_setpoint?.value !== undefined ? String(currentAlarm.alarm_setpoint.value) : "-");
-
-    return (
-      <tr>
-        <td>
-          <strong
-            title={currentAlarm.tag || undefined}
-            style={{ cursor: currentAlarm.tag ? "help" : "default" }}
-          >
-            {currentAlarm.name || "-"}
-          </strong>
-        </td>
-        <td>
-          <span className="badge bg-primary">
-            {alarmType}
-          </span>
-        </td>
-        <td>{displayTagValue}</td>
-        <td>{triggerValue}</td>
-        <td>{currentAlarm.description || "-"}</td>
-        <td>
-          <span className={`badge ${getStateBadgeClass(currentAlarm.state)}`}>
-            {getStateLabel(currentAlarm.state)}
-          </span>
-        </td>
-        <td>
-          <div className="d-flex gap-2">
-            <Button
-              variant="secondary"
-              className="btn-sm"
-              onClick={() => onEdit(currentAlarm)}
-              title={t("alarms.editAlarm")}
-            >
-              <i className="bi bi-pencil"></i>
-            </Button>
-            <Button
-              variant="danger"
-              className="btn-sm"
-              onClick={() => onDelete(currentAlarm)}
-              title={t("alarms.deleteAlarm")}
-            >
-              <i className="bi bi-trash"></i>
-            </Button>
-            <div 
-              className="btn-group" 
-              ref={actionDropdownRef}
-              style={{ position: "relative" }}
-            >
-              <Button
-                variant="secondary"
-                className="btn-sm dropdown-toggle"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleActionDropdown(currentAlarm.name);
-                  if (!actions && !loadingActions) {
-                    onLoadActions(currentAlarm.name);
-                  }
-                }}
-                disabled={executingAction}
-                title={t("alarms.alarmActions")}
-              >
-                {loadingActions ? (
-                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                ) : (
-                  <i className="bi bi-gear"></i>
-                )}
-              </Button>
-              {isActionDropdownOpen && (
-                <div
-                  className="dropdown-menu show"
-                  style={{
-                    position: "absolute",
-                    right: 0,
-                    top: "100%",
-                    zIndex: 1000,
-                    minWidth: "200px",
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {loadingActions ? (
-                    <div className="dropdown-item-text">
-                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      {t("alarms.loadingActions")}
-                    </div>
-                  ) : actions && Object.keys(actions).length > 0 ? (
-                    Object.entries(actions).map(([actionLabel, actionValue]) => (
-                      <button
-                        key={actionValue}
-                        className="dropdown-item"
-                        onClick={() => {
-                          onExecuteAction(actionValue, currentAlarm.name);
-                          onToggleActionDropdown(currentAlarm.name);
-                        }}
-                        disabled={executingAction}
-                      >
-                        {actionLabel}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="dropdown-item-text text-muted">
-                      {t("alarms.noActionsAvailable")}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </td>
-      </tr>
-    );
-  }, (prevProps, nextProps) => {
-    // Custom comparison function for memo
-    const prevAlarmKey = prevProps.alarm.identifier || prevProps.alarm.id || prevProps.alarm.name;
-    const nextAlarmKey = nextProps.alarm.identifier || nextProps.alarm.id || nextProps.alarm.name;
-    
-    // Get real-time alarm data
-    const prevRealTimeAlarm = prevAlarmKey ? prevProps.realTimeAlarms[String(prevAlarmKey)] : null;
-    const nextRealTimeAlarm = nextAlarmKey ? nextProps.realTimeAlarms[String(nextAlarmKey)] : null;
-    const prevAlarm = prevRealTimeAlarm || prevProps.alarm;
-    const nextAlarm = nextRealTimeAlarm || nextProps.alarm;
-
-    // Get real-time tag values
-    const prevTagName = prevAlarm.tag;
-    const nextTagName = nextAlarm.tag;
-    const prevTagValue = prevTagName ? prevProps.tagValues[prevTagName]?.value : undefined;
-    const nextTagValue = nextTagName ? nextProps.tagValues[nextTagName]?.value : undefined;
-
-    // Re-render if:
-    // - Alarm ID/name changed
-    // - Alarm state changed
-    // - Tag value changed
-    // - Other alarm properties changed
-    // - Actions changed
-    // - Loading/executing state changed
-    return (
-      prevAlarmKey === nextAlarmKey &&
-      prevAlarm.name === nextAlarm.name &&
-      prevAlarm.tag === nextAlarm.tag &&
-      prevAlarm.alarm_type === nextAlarm.alarm_type &&
-      prevAlarm.trigger_value === nextAlarm.trigger_value &&
-      prevAlarm.description === nextAlarm.description &&
-      JSON.stringify(prevAlarm.state) === JSON.stringify(nextAlarm.state) &&
-      prevTagValue === nextTagValue &&
-      JSON.stringify(prevProps.actions) === JSON.stringify(nextProps.actions) &&
-      prevProps.loadingActions === nextProps.loadingActions &&
-      prevProps.executingAction === nextProps.executingAction &&
-      prevProps.isActionDropdownOpen === nextProps.isActionDropdownOpen
-    );
-  });
-
-  AlarmTableRow.displayName = "AlarmTableRow";
 
   const loadAlarms = async (page: number = pagination.page, limit: number = pagination.limit) => {
     setLoading(true);
@@ -284,15 +77,7 @@ export function Alarms() {
         pages: 0,
       });
       
-      // Update Redux buffer with all alarms (get all for buffer)
-      try {
-        const allAlarmsResponse = await getAlarms(1, 10000);
-        if (allAlarmsResponse.data) {
-          dispatch(loadAllAlarms(allAlarmsResponse.data));
-        }
-      } catch (_e) {
-        // Silently fail - buffer update is not critical
-      }
+      dispatch(updateAlarmsBatch(loadedAlarms));
     } catch (e: any) {
       const data = e?.response?.data;
       const backendMessage =
@@ -1058,8 +843,8 @@ export function Alarms() {
                         <AlarmTableRow
                           key={alarm.identifier || alarm.id || alarmName}
                           alarm={alarm}
-                          realTimeAlarms={realTimeAlarms}
-                          tagValues={tagValues}
+                          realTimeAlarm={realTimeAlarms[String(alarm.identifier || alarm.id || alarmName)]}
+                          tagValue={alarm.tag ? tagValues[alarm.tag]?.value : undefined}
                           onEdit={handleEditAlarm}
                           onDelete={handleDeleteAlarm}
                           getStateBadgeClass={getStateBadgeClass}

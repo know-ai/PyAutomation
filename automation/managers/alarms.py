@@ -16,6 +16,20 @@ from ..utils.decorators import set_event, logging_error_handler
 from flask_socketio import SocketIO
 
 
+def _normalize_tag_name(tag) -> str:
+    if tag is None:
+        return ""
+    if isinstance(tag, str):
+        return tag
+    name = getattr(tag, "name", None)
+    if name:
+        return name
+    getter = getattr(tag, "get_name", None)
+    if callable(getter):
+        return getter() or ""
+    return str(tag)
+
+
 class AlarmManager(Singleton):
     r"""
     Singleton class that manages all alarms in the system.
@@ -26,9 +40,40 @@ class AlarmManager(Singleton):
 
     def __init__(self):
 
-        self._alarms:dict[Alarm] = dict()
-        self._tag_queue = queue.Queue()
+        self._alarms:dict = dict()
+        self._by_name: dict = dict()
+        self._by_tag_name: dict = dict()
+        # Residual queue: TagObserver no longer consumes it (SAF gateway does).
+        # Kept with maxsize=1 so a future reactivation cannot grow unbounded.
+        self._tag_queue = queue.Queue(maxsize=1)
         self.tag_engine = CVTEngine()
+
+    def _index_alarm(self, alarm: Alarm) -> None:
+        if alarm is None:
+            return
+        self._by_name[alarm.name] = alarm
+        tag_name = _normalize_tag_name(alarm.tag)
+        if not tag_name:
+            return
+        bucket = self._by_tag_name.setdefault(tag_name, [])
+        if alarm not in bucket:
+            bucket.append(alarm)
+
+    def _unindex_alarm(self, alarm: Alarm) -> None:
+        if alarm is None:
+            return
+        if self._by_name.get(alarm.name) is alarm:
+            self._by_name.pop(alarm.name, None)
+        tag_name = _normalize_tag_name(alarm.tag)
+        bucket = self._by_tag_name.get(tag_name)
+        if not bucket:
+            return
+        self._by_tag_name[tag_name] = [item for item in bucket if item is not alarm]
+        if not self._by_tag_name[tag_name]:
+            self._by_tag_name.pop(tag_name, None)
+
+    def alarm_count(self) -> int:
+        return len(self._alarms)
 
     def get_queue(self)->queue.Queue:
         r"""
@@ -118,6 +163,7 @@ class AlarmManager(Singleton):
         )
         alarm.set_socketio(sio=sio)
         self._alarms[alarm.identifier] = alarm
+        self._index_alarm(alarm)
 
         return alarm, f"Alarm creation successful"
 
@@ -159,6 +205,7 @@ class AlarmManager(Singleton):
         # Check if alarm is associated to same tag with same alarm type
         if not tag:
             tag = alarm.tag
+        tag_name = _normalize_tag_name(tag)
         if not alarm_type:
             alarm_type = alarm.alarm_setpoint.type
         else:
@@ -183,7 +230,7 @@ class AlarmManager(Singleton):
         
         trigger_value_message = self.__check_trigger_values(
             name=alarm.name,
-            tag=tag,
+            tag=tag_name,
             type=alarm_type_str,
             trigger_value=trigger_value
             )
@@ -191,6 +238,7 @@ class AlarmManager(Singleton):
 
             return None, trigger_value_message
 
+        self._unindex_alarm(alarm)
         alarm, message = alarm.put(
             user=user,
             name=name,
@@ -200,6 +248,8 @@ class AlarmManager(Singleton):
             trigger_value=trigger_value
             )
         self._alarms[id] = alarm
+        self._index_alarm(alarm)
+        return alarm, message
 
     @logging_error_handler
     @set_event(message=f"Deleted", classification="Alarm", priority=3, criticity=5)
@@ -212,10 +262,24 @@ class AlarmManager(Singleton):
         * **id** (str): Alarm ID.
         * **user** (User, optional): User performing the deletion.
         """
-        if id in self._alarms:
+        alarm = self._alarms.pop(id, None)
+        if alarm is None:
+            return None, f"Alarm {id} not found"
 
-            alarm = self._alarms.pop(id)
-            alarm.remove_from_service(user=user)
+        self._unindex_alarm(alarm)
+        try:
+            alarm.detach_from_tag()
+        except Exception:
+            pass
+        queue_observer = getattr(alarm, "_queue_observer", None)
+        tag_name = _normalize_tag_name(alarm.tag)
+        if queue_observer is not None and tag_name:
+            try:
+                self.tag_engine.detach(name=tag_name, observer=queue_observer)
+            except Exception:
+                pass
+            alarm._queue_observer = None
+        alarm.remove_from_service(user=user)
 
         return alarm, f"Alarm: {alarm.name} - Tag: {alarm.tag}"
 
@@ -250,11 +314,7 @@ class AlarmManager(Singleton):
 
         * **Alarm**: The alarm object if found.
         """
-        for id, alarm in self._alarms.items():
-
-            if name == alarm.name:
-
-                return self._alarms[str(id)]
+        return self._by_name.get(name)
 
     # @logging_error_handler
     # def get_alarms_by_tag(self, tag:str)->dict:
@@ -323,14 +383,8 @@ class AlarmManager(Singleton):
 
         * **list[Alarm]**: List of Alarm objects.
         """
-        alarms = list()
-        for _, alarm in self._alarms.items():
-
-            if tag == alarm.tag:
-
-                alarms.append(alarm)
-
-        return alarms
+        tag_name = _normalize_tag_name(tag)
+        return list(self._by_tag_name.get(tag_name, []))
 
     @logging_error_handler
     def get_alarms(self)->dict:
@@ -401,7 +455,11 @@ class AlarmManager(Singleton):
 
         * **list**: List of Tag names.
         """
-        result = set([_alarm.tag for id, _alarm in self.get_alarms().items()])
+        result = set()
+        for _alarm in self.get_alarms().values():
+            tag_name = _normalize_tag_name(_alarm.tag)
+            if tag_name:
+                result.add(tag_name)
 
         return list(result)
 
@@ -532,15 +590,17 @@ class AlarmManager(Singleton):
 
         * **alarm_name** (str): Name of the alarm.
         """
-        def attach_observer(entity):
-
-            _tag = entity.tag
-
-            observer = TagObserver(self._tag_queue)
-            self.tag_engine.attach(name=_tag, observer=observer)
-
         alarm = self.get_alarm_by_name(name=alarm_name)
-        attach_observer(alarm)
+        if alarm is None:
+            return
+        tag_name = _normalize_tag_name(alarm.tag)
+        if not tag_name:
+            return
+        if getattr(alarm, "_queue_observer", None) is not None:
+            return
+        observer = TagObserver(self._tag_queue)
+        alarm._queue_observer = observer
+        self.tag_engine.attach(name=tag_name, observer=observer)
 
     @logging_error_handler
     def execute(self, tag_name:str):
@@ -554,10 +614,10 @@ class AlarmManager(Singleton):
         * **tag_name** (str): Name of the tag to evaluate.
         """
         value = self.tag_engine.get_value_by_name(tag_name=tag_name)['value']
-        # Get the tag object to pass the full value object to unshelve
         tag_obj = self.tag_engine.get_tag_by_name(name=tag_name)
+        alarms = self.get_alarm_by_tag(tag=tag_name)
 
-        for _, _alarm in self._alarms.items():
+        for _alarm in alarms:
 
             if _alarm.state == AlarmState.SHLVD:
 
@@ -567,7 +627,6 @@ class AlarmManager(Singleton):
 
                     if _now >= _alarm._shelved_until:
 
-                        # Pass the current tag value object for re-evaluation after unshelving
                         current_tag_value = tag_obj.value if tag_obj else None
                         _alarm.unshelve(current_value=current_tag_value)
                         continue
@@ -576,6 +635,4 @@ class AlarmManager(Singleton):
 
                 continue
 
-            if tag_name==_alarm.tag:
-
-                _alarm.update(value)
+            _alarm.update(value)

@@ -25,6 +25,8 @@ class CycleSampleCache:
         self._lock = threading.Lock()
         self._last: dict[str, tuple[str, Any, float]] = {}
         self.dropped = 0
+        self._last_prune = 0.0
+        self._prune_every_s = 0.5
 
     def should_drop(self, persistable: IPersistable) -> bool:
         """True when this tag already queued the same value for this cycle."""
@@ -38,7 +40,9 @@ class CycleSampleCache:
             return False
         now = time.monotonic()
         with self._lock:
-            self._prune_locked(now)
+            if now - self._last_prune >= self._prune_every_s:
+                self._prune_locked(now)
+                self._last_prune = now
             prev = self._last.get(tag)
             if prev is not None:
                 prev_ts, prev_value, _seen = prev

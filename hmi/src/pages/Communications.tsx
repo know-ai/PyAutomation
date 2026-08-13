@@ -299,6 +299,17 @@ const saveSelectedNodes = (nodes: SelectedNode[]) => {
   }
 };
 
+let persistNodesTimer: ReturnType<typeof setTimeout> | null = null;
+const persistSelectedNodesDebounced = (nodes: SelectedNode[]) => {
+  if (persistNodesTimer) {
+    clearTimeout(persistNodesTimer);
+  }
+  persistNodesTimer = setTimeout(() => {
+    saveSelectedNodes(nodes);
+    persistNodesTimer = null;
+  }, 500);
+};
+
 // Función helper para cargar nodos seleccionados
 const loadSelectedNodes = (): SelectedNode[] => {
   try {
@@ -652,7 +663,7 @@ export function Communications() {
       } else {
         // Si no hay nodos para este cliente, limpiar los que no corresponden
         setSelectedNodes([]);
-        saveSelectedNodes([]);
+        persistSelectedNodesDebounced([]);
       }
     }
   }, [selectedClient]);
@@ -676,7 +687,7 @@ export function Communications() {
         const filtered = prev.filter((n) => n.client === selectedClient);
         if (filtered.length !== prev.length) {
           // Si se filtraron algunos nodos, guardar la lista filtrada
-          saveSelectedNodes(filtered);
+          persistSelectedNodesDebounced(filtered);
         }
         return filtered;
       });
@@ -731,8 +742,7 @@ export function Communications() {
             };
           });
           
-          // Guardar en localStorage después de actualizar
-          saveSelectedNodes(updated);
+          // El ticker solo refresca UI; la persistencia es onChange con debounce.
           return updated;
         });
       } catch (_e) {
@@ -795,7 +805,7 @@ export function Communications() {
         const newList = [...prev, ...newSelectedNodes];
         
         // Guardar inmediatamente en localStorage
-        saveSelectedNodes(newList);
+        persistSelectedNodesDebounced(newList);
         
         // Obtener atributos de todos los nuevos nodos
         const namespaces = newNodes.map((n) => n.namespace);
@@ -832,7 +842,7 @@ export function Communications() {
                 };
               });
               // Guardar después de actualizar con atributos
-              saveSelectedNodes(updated);
+              persistSelectedNodesDebounced(updated);
               return updated;
             });
           })
@@ -893,14 +903,14 @@ export function Communications() {
         // Limpiar solo los nodos de este cliente
         setSelectedNodes((prev) => {
           const updated = prev.filter((n) => n.client !== clientName);
-          saveSelectedNodes(updated);
+          persistSelectedNodesDebounced(updated);
           return updated;
         });
       } else {
         // Si se eliminó otro cliente, solo remover sus nodos
         setSelectedNodes((prev) => {
           const updated = prev.filter((n) => n.client !== clientName);
-          saveSelectedNodes(updated);
+          persistSelectedNodesDebounced(updated);
           return updated;
         });
       }
@@ -974,7 +984,7 @@ export function Communications() {
             }
             return n;
           });
-          saveSelectedNodes(updated);
+          persistSelectedNodesDebounced(updated);
           return updated;
         });
         // Si era el cliente seleccionado, cambiar la selección
@@ -1213,7 +1223,7 @@ export function Communications() {
                 variant="danger"
                 onClick={() => {
                   setSelectedNodes([]);
-                  saveSelectedNodes([]);
+                  persistSelectedNodesDebounced([]);
                 }}
                 disabled={selectedNodes.length === 0}
               >
@@ -1284,7 +1294,7 @@ export function Communications() {
                             onClick={() => {
                               setSelectedNodes((prev) => {
                                 const updated = prev.filter((p) => p.namespace !== n.namespace);
-                                saveSelectedNodes(updated);
+                                persistSelectedNodesDebounced(updated);
                                 return updated;
                               });
                             }}

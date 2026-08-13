@@ -28,7 +28,15 @@ export type DatabaseStatusState = {
   reconnect: () => Promise<void>;
 };
 
-const DatabaseStatusContext = createContext<DatabaseStatusState | null>(null);
+const DatabaseConnectedContext = createContext<Pick<
+  DatabaseStatusState,
+  "connected" | "reconnecting" | "retryCount" | "reconnect"
+> | null>(null);
+
+const DatabaseMetricsContext = createContext<Pick<
+  DatabaseStatusState,
+  "latencyMs" | "message" | "lastCheckedAt"
+> | null>(null);
 
 function applySnapshot(
   data: DatabaseHealthResponse,
@@ -114,26 +122,50 @@ export function DatabaseStatusProvider({ children }: PropsWithChildren) {
     return () => window.removeEventListener(DB_HEALTH_EVENT, onHealth);
   }, []);
 
-  const value = useMemo<DatabaseStatusState>(
+  const connectedValue = useMemo(
     () => ({
       connected,
-      latencyMs,
-      message,
-      lastCheckedAt,
       reconnecting,
       retryCount,
       reconnect,
     }),
-    [connected, latencyMs, message, lastCheckedAt, reconnecting, retryCount, reconnect]
+    [connected, reconnecting, retryCount, reconnect]
   );
 
-  return <DatabaseStatusContext.Provider value={value}>{children}</DatabaseStatusContext.Provider>;
+  const metricsValue = useMemo(
+    () => ({
+      latencyMs,
+      message,
+      lastCheckedAt,
+    }),
+    [latencyMs, message, lastCheckedAt]
+  );
+
+  return (
+    <DatabaseConnectedContext.Provider value={connectedValue}>
+      <DatabaseMetricsContext.Provider value={metricsValue}>{children}</DatabaseMetricsContext.Provider>
+    </DatabaseConnectedContext.Provider>
+  );
+}
+
+export function useDatabaseConnected() {
+  const ctx = useContext(DatabaseConnectedContext);
+  if (!ctx) {
+    throw new Error("useDatabaseConnected must be used within DatabaseStatusProvider");
+  }
+  return ctx;
+}
+
+export function useDatabaseMetrics() {
+  const ctx = useContext(DatabaseMetricsContext);
+  if (!ctx) {
+    throw new Error("useDatabaseMetrics must be used within DatabaseStatusProvider");
+  }
+  return ctx;
 }
 
 export function useDatabaseStatus(): DatabaseStatusState {
-  const ctx = useContext(DatabaseStatusContext);
-  if (!ctx) {
-    throw new Error("useDatabaseStatus must be used within DatabaseStatusProvider");
-  }
-  return ctx;
+  const connected = useDatabaseConnected();
+  const metrics = useDatabaseMetrics();
+  return { ...connected, ...metrics };
 }

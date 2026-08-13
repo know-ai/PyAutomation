@@ -11,6 +11,7 @@ class SafConfig:
 
     journal_path: str = os.path.join(".", "db", "saf", "journal.db")
     max_disk_bytes: int = 10 * 1024 * 1024 * 1024
+    max_pending_rows: int = 5_000_000
     ring_maxsize: int = 50_000
     tag_batch_size: int = 256
     tag_flush_interval_s: float = 0.010
@@ -30,6 +31,7 @@ class SafConfig:
         return cls(
             journal_path=str(data.get("saf_journal_path", defaults.journal_path)),
             max_disk_bytes=int(data.get("saf_max_disk_bytes", defaults.max_disk_bytes)),
+            max_pending_rows=int(data.get("saf_max_pending_rows", defaults.max_pending_rows)),
             ring_maxsize=int(data.get("saf_ring_maxsize", defaults.ring_maxsize)),
             tag_batch_size=int(data.get("saf_tag_batch_size", defaults.tag_batch_size)),
             tag_flush_interval_s=float(data.get("saf_tag_flush_interval_s", defaults.tag_flush_interval_s)),
