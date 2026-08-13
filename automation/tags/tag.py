@@ -644,11 +644,31 @@ class TagObserver(Observer):
         """
         Puts the updated tag data (name, value, timestamp) into the queue.
         """
-        result = dict()
-        result["tag"] = self._subject.name
-        result["value"] = self._subject.value.convert(self._subject.get_display_unit())
-        result["timestamp"] = self._subject.timestamp
-        self._tag_queue.put(result, block=False)
+        try:
+            result = dict()
+            result["tag"] = self._subject.name
+            result["value"] = self._subject.value.convert(self._subject.get_display_unit())
+            result["timestamp"] = self._subject.timestamp
+            from ..persistence import get_persistence_gateway
+            from ..persistence.records import PersistableRecord
+
+            record = PersistableRecord.tag_sample(
+                tag=result["tag"],
+                value=result["value"],
+                timestamp=result["timestamp"],
+            )
+            import logging
+            logging.getLogger("pyautomation").debug(
+                "SAF TagObserver payload=%s", dict(record.payload())
+            )
+            get_persistence_gateway().enqueue(record)
+        except Exception:
+            import logging
+
+            logging.getLogger("pyautomation").critical(
+                "SAF journal rejected a tag sample; history backpressure",
+                exc_info=True,
+            )
 
 
 class MachineObserver(Observer):

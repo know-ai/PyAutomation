@@ -78,16 +78,10 @@ def persist_system_event(
 ) -> bool:
     """Persist a structured system event.
 
-    Returns True if the event was stored. Never raises.
+    Returns True if the event was stored (journal and/or remote). Never raises.
     """
     try:
         audit_user = user or get_system_user()
-        if audit_user is None:
-            logging.getLogger("pyautomation").warning(
-                "System audit event skipped: system user is not available"
-            )
-            return False
-
         created = _events_engine.create(
             message=clip(message, MESSAGE_MAX),
             user=audit_user,

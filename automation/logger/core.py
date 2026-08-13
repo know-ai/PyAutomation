@@ -98,6 +98,15 @@ class BaseLogger(Singleton):
             return
         
         self._db.create_tables(tables, safe=True)
+        try:
+            from ..persistence.idempotent_insert import IdempotentBatchInserter
+
+            IdempotentBatchInserter().ensure_schema()
+        except Exception:
+            logging.getLogger("pyautomation").warning(
+                "SAF exact-once schema ensure skipped",
+                exc_info=True,
+            )
         self.__init_default_variables_schema()
         self.__init_default_datatypes_schema()
         self.__init_default_roles_schema()

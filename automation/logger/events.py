@@ -48,19 +48,36 @@ class EventsLogger(BaseLogger):
 
             return None
         
-        if not self.check_connectivity():
-            
-            return None
-            
-        return Events.create(
-            message=message, 
-            user=user, 
-            description=description, 
+        from ..persistence.outbox import journal_then_remote
+        from ..persistence.records import JournaledEnvelope, PersistableRecord
+
+        username = getattr(user, "username", None) or "system"
+        record = PersistableRecord.event(
+            message=message,
+            username=username,
+            description=description,
             classification=classification,
             priority=priority,
             criticity=criticity,
-            timestamp=timestamp
+            timestamp=timestamp,
         )
+        connected = bool(user) and self.check_connectivity()
+
+        def _write():
+            return Events.create(
+                message=message,
+                user=user,
+                description=description,
+                classification=classification,
+                priority=priority,
+                criticity=criticity,
+                timestamp=timestamp,
+            )
+
+        result, _ = journal_then_remote(record, _write, connected)
+        if result is not None and not (isinstance(result, tuple) and result[0] is None):
+            return result
+        return JournaledEnvelope(record.payload()), "journaled"
 
     def get_lasts(self, lasts:int=1):
         r"""

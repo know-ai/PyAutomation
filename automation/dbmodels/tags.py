@@ -818,13 +818,14 @@ class TagValue(BaseModel):
     tag = ForeignKeyField(Tags, backref='values')
     unit = ForeignKeyField(Units, backref='values')
     value = FloatField()
-    timestamp = TimestampField(utc=True)
+    timestamp = TimestampField(utc=True, resolution=6)
+    sample_uuid = CharField(max_length=255, unique=True, null=True)
 
     class Meta:
         indexes = (
             (('timestamp',), False),
-            # Consultas típicas de tendencias: por tag + rango de tiempo
-            (('tag', 'timestamp'), False),
+            # Exact-once: one sample per tag per microsecond instant
+            (('tag', 'timestamp'), True),
         )
 
     @classmethod

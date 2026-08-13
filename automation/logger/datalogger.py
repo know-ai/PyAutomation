@@ -18,6 +18,39 @@ from ..utils.decorators import db_rollback
 
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
+SECONDS_CEILING = 10_000_000_000
+
+
+def _tagvalue_db_ts(dt: datetime) -> int:
+    """Integer ticks stored in TagValue.timestamp (microseconds when resolution=6)."""
+    if dt.tzinfo is None:
+        dt = pytz.UTC.localize(dt)
+    else:
+        dt = dt.astimezone(pytz.UTC)
+    return int(TagValue.timestamp.db_value(dt))
+
+
+def _as_epoch_seconds(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = pytz.UTC.localize(value)
+        return value.timestamp()
+    numeric = float(value)
+    if numeric > SECONDS_CEILING:
+        return numeric / 1_000_000.0
+    return numeric
+
+
+def _as_utc_datetime(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return pytz.UTC.localize(value)
+        return value.astimezone(pytz.UTC)
+    return datetime.fromtimestamp(_as_epoch_seconds(value), pytz.UTC)
 
 class DataLogger(BaseLogger):
     """
@@ -284,6 +317,8 @@ class DataLogger(BaseLogger):
 
         start_ts = float(start_dt.timestamp())
         stop_ts = float(stop_dt.timestamp())
+        start_db = _tagvalue_db_ts(start_dt)
+        stop_db = _tagvalue_db_ts(stop_dt)
               
         # Base query: para trending, preferimos agregación en SQL (mucho más eficiente)
         # y solo caemos a "raw" para spans pequeños.
@@ -311,10 +346,10 @@ class DataLogger(BaseLogger):
         # Umbral conservador: si el bucket calculado es <= 1s, raw.
         use_raw = (span_seconds <= 0) or (bucket_seconds <= 1 and time_span_minutes <= 120)
 
-        # En esta implementación, TagValue.timestamp en DB puede estar como epoch (bigint/float).
-        # Para bucketing y formateo convertimos a timestamptz con to_timestamp().
+        # TagValue.timestamp is bigint microseconds (TimestampField resolution=6).
+        # to_timestamp() expects seconds, so divide via from_timestamp().
         ts_epoch = TagValue.timestamp
-        ts_tz = fn.to_timestamp(ts_epoch)
+        ts_tz = TagValue.timestamp.from_timestamp()
 
         if not use_raw:
             # Postgres 17 (vanilla) soporta date_bin(interval, ts, origin) para bucketing arbitrario.
@@ -346,7 +381,7 @@ class DataLogger(BaseLogger):
                 .join(Units, on=(Tags.unit == Units.id))
                 .join(Variables, on=(Units.variable_id == Variables.id))
                 # Filtrar en epoch (mucho más eficiente si la columna es bigint/numérica).
-                .where((ts_epoch.between(start_ts, stop_ts)) & (Tags.name.in_(tags)))
+                .where((ts_epoch.between(start_db, stop_db)) & (Tags.name.in_(tags)))
                 .group_by(Tags.name, bucket_expr, Units.unit, Variables.name)
                 .order_by(bucket_expr)
                 .dicts()
@@ -380,7 +415,7 @@ class DataLogger(BaseLogger):
                 .join(Tags)
                 .join(Units, on=(Tags.unit == Units.id))
                 .join(Variables, on=(Units.variable_id == Variables.id))
-                .where((ts_epoch.between(start_ts, stop_ts)) & (Tags.name.in_(tags)))
+                .where((ts_epoch.between(start_db, stop_db)) & (Tags.name.in_(tags)))
                 .order_by(ts_epoch)
                 .dicts()
             )
@@ -428,18 +463,18 @@ class DataLogger(BaseLogger):
 
         _timezone = pytz.timezone(timezone)
         try:
-            start_dt = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
-            stop_dt = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC).timestamp()
+            start_dt = _timezone.localize(datetime.strptime(start, DATETIME_FORMAT)).astimezone(pytz.UTC)
+            stop_dt = _timezone.localize(datetime.strptime(stop, DATETIME_FORMAT)).astimezone(pytz.UTC)
         except ValueError:
             return dict()
 
-        # Base query
+        # Base query — compare against stored microsecond ticks, not unix seconds.
         query = (TagValue
                 .select(Tags.name, TagValue.value, TagValue.timestamp,
                         Units.unit.alias('tag_value_unit'))
                 .join(Tags)
                 .join(Units, on=(Tags.unit == Units.id))
-                .where((TagValue.timestamp.between(start_dt, stop_dt)) & (Tags.name.in_(tags)))
+                .where((TagValue.timestamp.between(_tagvalue_db_ts(start_dt), _tagvalue_db_ts(stop_dt))) & (Tags.name.in_(tags)))
                 .order_by(TagValue.timestamp.desc()))
 
         total_records = query.count()
@@ -457,15 +492,12 @@ class DataLogger(BaseLogger):
         paginated_query = query.paginate(page, limit).dicts()
         
         data = []
-        utc_timezone = pytz.timezone('UTC')
         
         for entry in paginated_query:
             ts_val = entry['timestamp']
-            if isinstance(ts_val, (int, float)):
-                dt_object = datetime.fromtimestamp(ts_val, pytz.UTC)
-            else:
-                # Assuming naive datetime in UTC (based on read_trends using 'UTC' timezone to localize)
-                dt_object = utc_timezone.localize(ts_val) if ts_val.tzinfo is None else ts_val
+            dt_object = _as_utc_datetime(ts_val)
+            if dt_object is None:
+                continue
                 
             formatted_ts = dt_object.astimezone(_timezone).strftime(DATETIME_FORMAT)
             
@@ -556,15 +588,8 @@ class DataLogger(BaseLogger):
             .scalar())
         
         if max_ts is not None:
-            if isinstance(max_ts, datetime):
-                if max_ts.tzinfo is None:
-                    max_ts = utc_timezone.localize(max_ts)
-                max_dt = max_ts
-            else:
-                max_dt = datetime.fromtimestamp(float(max_ts), pytz.UTC)
-            
-            # If stop_dt is in the future compared to the most recent data, adjust it
-            if stop_dt > max_dt:
+            max_dt = _as_utc_datetime(max_ts)
+            if max_dt is not None and stop_dt > max_dt:
                 stop_dt = max_dt
                 stop_ts = stop_dt.timestamp()
 
@@ -575,7 +600,7 @@ class DataLogger(BaseLogger):
             .join(Tags)
             .where(
                 (Tags.name.in_(tags)) & 
-                (TagValue.timestamp <= start_dt)
+                (TagValue.timestamp <= _tagvalue_db_ts(start_dt))
             )
             .limit(1)
             .count() > 0)
@@ -587,8 +612,8 @@ class DataLogger(BaseLogger):
                 .join(Tags)
                 .where(
                     (Tags.name.in_(tags)) & 
-                    (TagValue.timestamp >= start_dt) & 
-                    (TagValue.timestamp <= stop_dt) &
+                    (TagValue.timestamp >= _tagvalue_db_ts(start_dt)) & 
+                    (TagValue.timestamp <= _tagvalue_db_ts(stop_dt)) &
                     (TagValue.value.is_null(False))
                 )
                 .scalar())
@@ -597,15 +622,10 @@ class DataLogger(BaseLogger):
                 # No data in range and no history
                 return empty_result
             
-            # Adjust start to the first actual data point
-            if isinstance(min_ts, datetime):
-                 if min_ts.tzinfo is None:
-                     min_ts = utc_timezone.localize(min_ts)
-                 start_dt = min_ts
-                 start_ts = start_dt.timestamp()
-            elif isinstance(min_ts, (int, float)):
-                 start_ts = float(min_ts)
-                 start_dt = datetime.fromtimestamp(start_ts, pytz.UTC)
+            start_dt = _as_utc_datetime(min_ts)
+            if start_dt is None:
+                return empty_result
+            start_ts = start_dt.timestamp()
 
         # Calculate total records based on time range and sample time
         total_duration = stop_ts - start_ts
@@ -646,8 +666,8 @@ class DataLogger(BaseLogger):
             .join(Tags)
             .where(
                 (Tags.name.in_(tags)) & 
-                (TagValue.timestamp >= page_start_dt) & 
-                (TagValue.timestamp <= page_end_dt) &
+                (TagValue.timestamp >= _tagvalue_db_ts(page_start_dt)) & 
+                (TagValue.timestamp <= _tagvalue_db_ts(page_end_dt)) &
                 (TagValue.value.is_null(False))
             )
             .order_by(TagValue.timestamp.asc())
@@ -656,14 +676,9 @@ class DataLogger(BaseLogger):
         # Organize changes by timestamp
         changes_by_ts = defaultdict(dict)
         for change in changes_query:
-            ts_val = change['timestamp']
-            if isinstance(ts_val, datetime):
-                if ts_val.tzinfo is None:
-                    ts_val = utc_timezone.localize(ts_val)
-                ts = ts_val.timestamp()
-            else:
-                ts = float(ts_val)
-            
+            ts = _as_epoch_seconds(change['timestamp'])
+            if ts is None:
+                continue
             changes_by_ts[ts][change['name']] = change['value']
             
         # 3. Generate tabular data in DESC order (most recent first)
@@ -692,7 +707,7 @@ class DataLogger(BaseLogger):
                 last_val_query = (TagValue
                     .select(TagValue.value)
                     .join(Tags)
-                    .where((Tags.name == tag_name) & (TagValue.timestamp <= step_dt))
+                    .where((Tags.name == tag_name) & (TagValue.timestamp <= _tagvalue_db_ts(step_dt)))
                     .order_by(TagValue.timestamp.desc())
                     .limit(1)
                     .dicts())

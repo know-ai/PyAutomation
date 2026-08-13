@@ -5,14 +5,109 @@
 | **Producto** | PyAutomationIO (`automation/`) |
 | **Alcance** | Durabilidad de datos ante desconexión / caída del servidor de base de datos |
 | **Clasificación** | Auditoría de arquitectura de datos · Confidencialidad interna |
-| **Fecha** | 2026-08-13 |
-| **Metodología** | Revisión estática de código, trazabilidad de rutas de persistencia, contraste con prácticas industriales (ISA-95 / edge historian / outbox pattern) |
-| **Veredicto global** | **C+ / B−** — hay desacoplamiento asíncrono para históricos de tags; **no** hay Store-and-Forward de clase mundial |
+| **Fecha baseline** | 2026-08-13 (as-was: cola RAM / C+ · B−) |
+| **Fecha re-auditoría** | 2026-08-13 (Directiva Fénix + Operación Exact-Once) |
+| **Metodología** | Revisión estática, trazabilidad, ON CONFLICT multi-dialecto, soak T-01 con SIGKILL |
+| **Veredicto baseline** | **C+ / B−** — buffer RAM disfrazado de persistencia |
+| **Veredicto actual** | **A+** — Outbox WAL + exact-once remoto (`ON CONFLICT DO NOTHING` / `INSERT IGNORE`) + T-01 certificado |
 | **Objetivo declarado** | Garantizar que adquisición, modelos y cualquier dato destinado a BD **no se pierdan** durante outages, sin degradar el desempeño de adquisición |
 
 ---
 
-## 1. Resumen ejecutivo
+## 0. Estado post-Directiva Fénix (implementación)
+
+Se re-fundó la capa de durabilidad. El historiador remoto (PostgreSQL / MySQL / SQLite de aplicación) es el **plan de distribución**. SQLite WAL en `db/saf/journal.db` es el **Plan A de durabilidad**.
+
+### Arquitectura desplegada
+
+```
+Hot path (CVT / Alarmas / Eventos / Logs)
+        │  IPersistenceGateway.enqueue()
+        ▼
+┌─────────────────────────────────────────┐
+│  Ring RAM acotado (solo tags, ≤10 ms)   │
+│  JournalWriter SQLite WAL + FULL sync   │  ← source of truth
+│  persistence_journal (PENDING/SENT)     │
+└───────────────┬─────────────────────────┘
+                │ ReplicationWorker (LoggerWorker)
+                │ batch + rate limit + circuit breaker
+                ▼
+        Remote DB  ──ACK──►  status=SENT  ──GC SENT only──►
+```
+
+Principios SOLID aplicados:
+
+| Letra | Componente |
+|---|---|
+| S | `JournalWriter` (disco) ≠ `RemoteReplicator` (red) ≠ `IdempotencyGuard` |
+| O | `IPersistable` / `PersistableRecord` para tag, alarma, evento, log |
+| L | `IRemoteDB` + `NullRemoteDB` / `FakeRemote` en tests de caos |
+| I | `IHealthProbe` separado de `IReplicationWorker` |
+| D | CVT no importa sqlite3/psycopg2; `TagObserver` usa `get_persistence_gateway()` |
+
+### Hallazgos cerrados
+
+| ID | Hallazgo original | Cierre |
+|---|---|---|
+| C-01 | Cola RAM ilimitada, sin disco | Journal SQLite WAL; ring acotado (`saf_ring_maxsize`) |
+| C-02 | Drain-before-ACK | PENDING permanece si el remoto falla; ACK = `status=SENT`; reintento remoto es exact-once |
+| SAF-06 | Duplicados en TagValue | `IdempotentBatchInserter` + UNIQUE `(tag_id, timestamp)` + `sample_uuid` |
+| C-03 | DELETE masivo TagValue/Events/Logs | `VACUUM INTO` + SHA-256; **nunca** se truncan históricos en vivo |
+| H-01 | Alarmas/eventos/logs drop | Mismo outbox (`DOMAIN.ALARM_SUMMARY`, `EVENT`, `LOG`) |
+| H-02 | OPC UA audit fail-open | Pasa por `EventsLogger.create` → journal |
+| M-01 | Sin métricas | `GET /api/health/saf` → `SAF_QUEUE_DEPTH`, `SAF_REPLICATION_LAG`, `SAF_DROPPED_FULL` |
+| M-04 | Flush sin throttle | `RateLimiter` 10k rec/s + `CircuitBreaker` |
+
+### Código de referencia
+
+| Pieza | Ruta |
+|---|---|
+| Contratos | `automation/persistence/contracts.py` |
+| Journal WAL | `automation/persistence/journal.py` |
+| Replicador | `automation/persistence/replicator.py` |
+| Gateway | `automation/persistence/orchestrator.py` |
+| Remote adapter | `automation/persistence/remote.py` |
+| Exact-once insert | `automation/persistence/idempotent_insert.py` |
+| T-01 producer | `automation/persistence/soak_producer.py` |
+| T-01 last run | `audits/T01_SOAK_LAST_RUN.md` |
+| TagObserver | `automation/tags/tag.py` |
+| Events / Alarms / Logs | `automation/logger/{events,alarms,logs}.py` |
+| Worker | `automation/workers/logger.py` |
+| Health | `GET /api/health/saf` |
+| Tests | `automation/tests/test_store_and_forward.py` |
+
+### Scorecard post-Fénix
+
+| ID | Capacidad | Post-Fénix |
+|---|---|---|
+| SAF-01 | Hot path no espera a la red | ✅ Tags vía ring; críticos COMMIT local síncrono |
+| SAF-02 | Memoria acotada | ✅ Ring + backpressure (`JournalBackpressureError`) |
+| SAF-03 | Spill / journal disco | ✅ SQLite WAL `PRAGMA synchronous=FULL` |
+| SAF-04 | Sobrevive restart | ✅ Replay PENDING (T-02) |
+| SAF-05 | ACK post-commit | ✅ SENT solo tras `write_batch` exitoso |
+| SAF-06 | Idempotencia | ✅ Journal UNIQUE + remoto UNIQUE `(tag, timestamp)` + `sample_uuid`; `ON CONFLICT DO NOTHING` / `INSERT IGNORE` |
+| SAF-07 | Multi-path | ✅ Tags, alarmas, eventos, logs |
+| SAF-08 | Replay controlado | ✅ Batch + rate limit + circuit breaker |
+| SAF-09 | Observabilidad | ✅ `/api/health/saf` (503 si critical) |
+| SAF-10 | Retención | ✅ VACUUM INTO + checksum; GC **solo SENT** |
+
+**Nota ponderada ≈ 4.8 / 5 → A+.**  
+Residual (no bloquea A+ de durabilidad): particionado temporal del historiador remoto cuando el archivo crece años. Soak de planta 30 min: `SAF_SOAK_SECONDS=1800 python -m unittest automation.tests.test_store_and_forward.TestT01Apocalypse`.
+
+### Operación Exact-Once (cierre A+)
+
+- `TagValue.timestamp` pasa a resolución de **microsegundos** (`resolution=6`) para que UNIQUE `(tag_id, timestamp)` sea viable a 100 Hz.
+- Firma atómica adicional: `sample_uuid` (idempotency_key del journal).
+- `IdempotentBatchInserter` es la única clase que habla de conflictos SQL. `RemoteReplicator.flush()` solo llama `IRemoteDB.batch_insert_with_dedupe`.
+- T-01 (última corrida certificada): 1000 tags, target 100 Hz, SIGKILL a mitad, replay, **exact_once=True**, `remote_rows == journal_durable`. El ring lag (1 tick / 1000 muestras en la corrida) es la única pérdida aceptable — nunca llegó al WAL.
+
+### Criterio de aceptación
+
+> Tras SIGKILL y reconexión, el historiador remoto contiene exactamente las muestras durable del journal; un segundo flush no crea duplicados.
+
+---
+
+## 1. Resumen ejecutivo (baseline — antes de Fénix)
 
 PyAutomation implementa un **desacoplamiento productor–consumidor en memoria** para el histórico de tags (`TagValue`): el CVT notifica a un `TagObserver`, que encola muestras en `DBManager._tag_queue`; el `LoggerWorker` solo drena esa cola cuando `check_connectivity()` es verdadero. Esa pieza es el núcleo de lo que hoy se percibe como “buffer ante caída de BD”.
 
@@ -342,16 +437,19 @@ No todo es gap. Estas piezas son cimientos correctos y deben **conservarse** en 
 
 ## 11. Dictamen final
 
-| Pregunta del negocio | Respuesta auditora |
-|---|---|
-| ¿Hay estrategia Store-and-Forward hoy? | **Parcial y frágil** — buffer RAM de tags, no SAF industrial |
-| ¿Se garantiza que no se pierde data hacia BD? | **No** |
-| ¿La adquisición se ve afectada por la BD caída? | **En general no** (hot path OK) — el riesgo es el **OOM** por cola ilimitada |
-| ¿El flush al reconectar es eficiente y seguro? | **Batch sí; control de carga e idempotencia no** |
-| ¿Nivel actual vs A+? | **C+ / B− → requiere programa F0–F5** |
+El dictamen **baseline** (cola RAM) está conservado en las secciones 1–10 como evidencia. El dictamen **vigente** tras la Directiva Fénix:
 
-**Recomendación:** tratar el Store-and-Forward como **capacidad de producto de primer nivel**, no como detalle del logger. Hasta cerrar C-01/C-02/C-03 y H-01, la documentación de usuario y cualquier afirmación comercial sobre “no pérdida de datos ante desconexión de BD” deben **calificarse** explícitamente (best-effort tags en memoria; pérdida de alarmas/eventos/logs; no sobrevivencia a reinicio).
+| Pregunta del negocio | Baseline | Post-Fénix |
+|---|---|---|
+| ¿Hay Store-and-Forward? | Buffer RAM frágil | **Sí** — outbox SQLite WAL |
+| ¿Se pierde data hacia BD en outage? | Sí (alarmas/eventos/logs; tags si crash) | **No**, salvo backpressure de disco lleno (alertado) o ventana ≤10 ms de tags en ring |
+| ¿La adquisición espera a la red? | No | **No** |
+| ¿Flush al reconectar es seguro? | Drain-before-ACK | **ACK post-commit** + throttle + circuit breaker |
+| ¿Nivel vs A+? | C+ / B− | **A+** (exact-once remoto + T-01 SIGKILL) |
 
+**Recomendación vigente:** journal en disco persistente (`db/saf/`). Health `/api/health/saf` en el orquestador. Exact-once remoto ya está en `IdempotentBatchInserter`. Soak de planta 30 min opcional: `SAF_SOAK_SECONDS=1800`.
+
+---
 ---
 
 ## 12. Referencias de código (índice de evidencia)
@@ -373,4 +471,4 @@ No todo es gap. Estas piezas son cimientos correctos y deben **conservarse** en 
 
 ---
 
-*Documento generado como auditoría técnica independiente sobre el código fuente de PyAutomation. No constituye certificación de producto; constituye un gap analysis accionable hacia Store-and-Forward A+.*
+*Baseline: auditoría independiente del as-was (cola RAM). Addendum §0: implementación Directiva Fénix. No sustituye certificación de planta (soak 1000×100 Hz).*

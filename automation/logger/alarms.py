@@ -290,9 +290,21 @@ class AlarmsLogger(BaseLogger):
 
             return None
         
-        if self.check_connectivity():
-            
-            AlarmSummary.create(name=name, state=state, timestamp=timestamp, ack_timestamp=ack_timestamp)
+        from ..persistence.outbox import journal_then_remote
+        from ..persistence.records import PersistableRecord
+
+        record = PersistableRecord.alarm_create(
+            name=name,
+            state=state,
+            timestamp=timestamp,
+            ack_timestamp=ack_timestamp,
+        )
+
+        def _write():
+            return AlarmSummary.create(name=name, state=state, timestamp=timestamp, ack_timestamp=ack_timestamp)
+
+        result, _ = journal_then_remote(record, _write, self.check_connectivity())
+        return result
 
     @db_rollback
     def put_record_on_alarm_summary(self, name:str, state:str=None, ack_timestamp:datetime=None):
@@ -305,32 +317,35 @@ class AlarmsLogger(BaseLogger):
         * **state** (str, optional): New state.
         * **ack_timestamp** (datetime, optional): Acknowledgment timestamp.
         """
-        if not self.check_connectivity():
-            
-            return None
-        
         if not self.is_history_logged:
 
             return None
-        
-        fields = dict()
-        alarm = AlarmSummary.read_by_name(name=name)
 
-        if alarm:
+        from ..persistence.outbox import journal_then_remote
+        from ..persistence.records import PersistableRecord
 
+        record = PersistableRecord.alarm_update(
+            name=name,
+            state=state,
+            ack_timestamp=ack_timestamp,
+        )
+
+        def _write():
+            fields = dict()
+            alarm = AlarmSummary.read_by_name(name=name)
+            if not alarm:
+                return None
             if ack_timestamp:
                 fields["ack_time"] = ack_timestamp
             if state:
                 alarm_state = AlarmStates.get_or_none(name=state)
                 fields["state"] = alarm_state
+            if not fields:
+                return None
+            return AlarmSummary.put(id=alarm.id, **fields)
 
-            if fields:
-                query = AlarmSummary.put(
-                    id=alarm.id,
-                    **fields
-                )
-
-                return query
+        result, _ = journal_then_remote(record, _write, self.check_connectivity())
+        return result
 
     @db_rollback
     def get_alarm_summary(self, page:int=1, limit:int=20):

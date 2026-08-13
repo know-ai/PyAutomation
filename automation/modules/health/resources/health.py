@@ -25,3 +25,17 @@ class HealthPingResource(Resource):
         }, 200
 
 
+@ns.route("/saf")
+class HealthSafResource(Resource):
+    @api.doc(description="Store-and-Forward journal health (depth, lag, disk, circuit).")
+    @api.response(200, "SAF probe executed")
+    @api.response(503, "SAF backpressure or disk-full")
+    def get(self):
+        """Nuclear durability probe. Red if history cannot be journaled."""
+        from ....persistence import get_persistence_gateway
+
+        snapshot = dict(get_persistence_gateway().snapshot())
+        status_code = 503 if snapshot.get("status") == "critical" else 200
+        return snapshot, status_code
+
+

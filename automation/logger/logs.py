@@ -49,22 +49,36 @@ class LogsLogger(BaseLogger):
         if not self.is_history_logged:
 
             return None, "History logging is not enabled"
-        
-        if not self.check_connectivity():
 
-            return None, "Database is not connected"
-            
-        query, message = Logs.create(
-            message=message, 
-            user=user, 
-            description=description, 
+        from ..persistence.outbox import journal_then_remote
+        from ..persistence.records import JournaledEnvelope, PersistableRecord
+
+        username = getattr(user, "username", None) or "system"
+        record = PersistableRecord.log(
+            message=message,
+            username=username,
+            description=description,
             classification=classification,
             alarm_summary_id=alarm_summary_id,
             event_id=event_id,
-            timestamp=timestamp
+            timestamp=timestamp,
         )
 
-        return query, message
+        def _write():
+            return Logs.create(
+                message=message,
+                user=user,
+                description=description,
+                classification=classification,
+                alarm_summary_id=alarm_summary_id,
+                event_id=event_id,
+                timestamp=timestamp,
+            )
+
+        result, _ = journal_then_remote(record, _write, bool(user) and self.check_connectivity())
+        if result is not None and not (isinstance(result, tuple) and result[0] is None):
+            return result
+        return JournaledEnvelope(record.payload()), "journaled"
 
     @db_rollback
     def get_lasts(self, lasts:int=1):

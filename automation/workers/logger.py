@@ -3,7 +3,7 @@
 
 This module implements the Logger Worker, responsible for persisting data to the database.
 """
-import logging, time, datetime, os, shutil
+import logging, time, datetime, os
 from .worker import BaseWorker
 from ..managers import DBManager
 from ..opcua.models import Client
@@ -11,10 +11,6 @@ from ..logger.datalogger import DataLoggerEngine
 from ..tags.cvt import CVTEngine
 import sqlite3
 from peewee import SqliteDatabase
-from ..dbmodels.tags import TagValue
-from ..dbmodels.alarms import AlarmSummary
-from ..dbmodels.events import Events
-from ..dbmodels.logs import Logs
 
 
 class LoggerWorker(BaseWorker):
@@ -49,46 +45,40 @@ class LoggerWorker(BaseWorker):
 
     def sqlite_db_backup(self):
         r"""
-        Performs a backup of the SQLite database if it exceeds 1GB.
+        Archives a SQLite historian with VACUUM INTO.
 
-        It copies the database file to the `db/backups` directory, clears the
-        historical tables (TagValue, AlarmSummary, Events, Logs), and performs a VACUUM
-        command to reclaim disk space.
+        Never deletes TagValue / AlarmSummary / Events / Logs in-place.
+        Checksum of the archive is verified before considering the backup successful.
         """
+        import hashlib
+
         if self.sqlite_db:
-            file_size_mb = os.path.getsize(self.sqlite_db_name) / 1024 / 1024 
-            if file_size_mb > 1 * 1024: # 1 Gb: 
+            file_size_mb = os.path.getsize(self.sqlite_db_name) / 1024 / 1024
+            if file_size_mb > 1 * 1024:
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 name = self.sqlite_db_name.split(".db")[0]
                 name = name.split(os.path.sep)[-1]
-                backup_file = os.path.join(".", "db", "backups", f"{name}_{timestamp}.db")
-                shutil.copy2(os.path.join(".", "db", "app.db"), backup_file)
+                backup_dir = os.path.join(".", "db", "backups")
+                os.makedirs(backup_dir, exist_ok=True)
+                backup_file = os.path.join(backup_dir, f"{name}_{timestamp}.db")
                 logger = logging.getLogger("pyautomation")
-                logger.info(f"Backup creado: {backup_file}")
-                # Empty TagValue 
-                query = TagValue.delete()
-                query.execute()
-                # Empty Alarm Summary
-                query = AlarmSummary.delete()
-                query.execute()
-                # Empty Events
-                query = Events.delete()
-                query.execute()
-                # Empty Logs
-                query = Logs.delete()
-                query.execute()
-                # Execute Vacuum to compact DB
-                self.sqlite_db.close()
+                escaped = backup_file.replace("'", "''")
                 conn = sqlite3.connect(self.sqlite_db_name)
-                cur = conn.cursor()
-                cur.execute("VACUUM;")
-                conn.commit()
-                conn.close()
-                # Reopen DB connection
-                from ..dbmodels import proxy
-                self._db = self._manager.get_db()
-                proxy.initialize(self._db)
-                
+                try:
+                    conn.execute(f"VACUUM INTO '{escaped}'")
+                    conn.commit()
+                finally:
+                    conn.close()
+                digest = hashlib.sha256()
+                with open(backup_file, "rb") as handle:
+                    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                checksum_path = f"{backup_file}.sha256"
+                with open(checksum_path, "w", encoding="utf-8") as handle:
+                    handle.write(digest.hexdigest())
+                if os.path.getsize(backup_file) <= 0:
+                    raise RuntimeError(f"SQLite VACUUM INTO produced empty archive: {backup_file}")
+                logger.info(f"Backup verificado: {backup_file} sha256={digest.hexdigest()}")
         else:
             db = self.logger.logger.get_db()
             if db:
@@ -184,40 +174,35 @@ class LoggerWorker(BaseWorker):
 
     def run(self):
         r"""
-        Main worker loop.
+        Replication worker loop (Phoenix Directive).
 
-        Continuously:
-        1. Checks database connectivity.
-        2. Backs up SQLite DB if needed.
-        3. Writes queued tags to the database.
-        4. Reconnects to DB if connection lost.
-        5. Checks OPC UA connections.
-        6. Sleeps for the configured period.
-        """       
-        _queue = self._manager.get_queue()
+        The local SQLite journal is the source of truth. This loop:
+        1. Reconnects the remote historian if needed.
+        2. Archives oversized local SQLite historians without deleting live rows.
+        3. Replicates PENDING journal records with ACK-after-commit.
+        4. Maintains OPC UA client sessions.
+        """
         self.db_reconnection = True
 
         while True:
 
             if self.db_reconnection:
-
                 db_connection = self.logger.logger.check_connectivity()
-            
                 if db_connection:
                     self.sqlite_db_backup()
-                    tags = self.get_tags_from_queue(_queue=_queue)
-            
-                    if tags:
-                        
-                        self.logger.write_tags(tags=tags)
-                    
                 else:
-
                     self.reconnect_to_db()
-            
             else:
-
                 self.reconnect_to_db()
+
+            try:
+                from ..persistence import get_persistence_gateway
+                get_persistence_gateway().replicate_once()
+            except Exception:
+                logging.getLogger("pyautomation").error(
+                    "SAF replication cycle failed; journal preserved",
+                    exc_info=True,
+                )
 
             self.check_opcua_connection()
 

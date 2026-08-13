@@ -3227,6 +3227,17 @@ class PyAutomation(Singleton):
                 source=audit_source,
                 target=target,
             )
+            try:
+                from .persistence import get_persistence_gateway
+                from .persistence.config import SafConfig
+
+                app_cfg = self.get_app_config() if hasattr(self, "get_app_config") else {}
+                get_persistence_gateway(SafConfig.from_app_config(app_cfg))
+            except Exception:
+                logging.getLogger("pyautomation").error(
+                    "SAF journal failed to start after DB connect",
+                    exc_info=True,
+                )
             return True
 
         except Exception as err:
@@ -4440,6 +4451,11 @@ class PyAutomation(Singleton):
             logger_period = float(app_config.get("logger_period", 10.0))
 
             self.db_worker = LoggerWorker(self.db_manager, period=logger_period)
+
+            from .persistence import get_persistence_gateway
+            from .persistence.config import SafConfig
+
+            get_persistence_gateway(SafConfig.from_app_config(app_config))
 
             # Bootstrap DB configuration from environment variables on first run,
             # but once db_config.json exists, it will override any env changes.
