@@ -4,6 +4,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import { logout as logoutService } from "../services/auth";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { logout as logoutAction } from "../store/slices/authSlice";
+import { closeSidebarOnMobile } from "./sidebarDom";
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -134,9 +135,13 @@ export function Sidebar() {
   }, [dispatch, navigate]);
 
   return (
-    <aside className="app-sidebar bg-body-secondary shadow" data-bs-theme="dark">
+    <aside className="app-sidebar bg-body-secondary shadow">
       <div className="sidebar-brand">
-        <NavLink to="/dashboard" className="brand-link d-flex align-items-center justify-content-center">
+        <NavLink
+          to="/dashboard"
+          className="brand-link d-flex align-items-center justify-content-center"
+          onClick={closeSidebarOnMobile}
+        >
           <span className="brand-text fw-light">PyAutomation</span>
         </NavLink>
       </div>
@@ -174,6 +179,7 @@ export function Sidebar() {
                       to={subItem.to}
                       className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
                       style={{ paddingLeft: "2rem" }}
+                      onClick={closeSidebarOnMobile}
                     >
                       <i className={`nav-icon ${subItem.icon}`} />
                       <p>{t(subItem.labelKey)}</p>
@@ -214,6 +220,7 @@ export function Sidebar() {
                       to={subItem.to}
                       className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
                       style={{ paddingLeft: "2rem" }}
+                      onClick={closeSidebarOnMobile}
                     >
                       <i className={`nav-icon ${subItem.icon}`} />
                       <p>{t(subItem.labelKey)}</p>
@@ -254,6 +261,7 @@ export function Sidebar() {
                       to={subItem.to}
                       className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
                       style={{ paddingLeft: "2rem" }}
+                      onClick={closeSidebarOnMobile}
                     >
                       <i className={`nav-icon ${subItem.icon}`} />
                       <p>{t(subItem.labelKey)}</p>
@@ -294,6 +302,7 @@ export function Sidebar() {
                       to={subItem.to}
                       className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
                       style={{ paddingLeft: "2rem" }}
+                      onClick={closeSidebarOnMobile}
                     >
                       <i className={`nav-icon ${subItem.icon}`} />
                       <p>{t(subItem.labelKey)}</p>
@@ -306,7 +315,11 @@ export function Sidebar() {
             {/* Otros items del menú */}
             {navItems.map((item) => (
               <li className="nav-item" key={item.to}>
-                <NavLink to={item.to} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
+                <NavLink
+                  to={item.to}
+                  className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                  onClick={closeSidebarOnMobile}
+                >
                   <i className={`nav-icon ${item.icon}`} />
                   <p>{t(item.labelKey)}</p>
                 </NavLink>
@@ -316,7 +329,7 @@ export function Sidebar() {
         </nav>
         
         {/* Botón de Logout - Fuera del nav, fijo al final */}
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", padding: "0.5rem 0", marginTop: "auto" }}>
+        <div className="sidebar-logout">
           <ul className="nav sidebar-menu flex-column">
             <li className="nav-item">
               <a

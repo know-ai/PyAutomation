@@ -1,16 +1,20 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { MultiSelectSearch } from "../components/MultiSelectSearch";
 import {
   getTags,
+  getTagsList,
   getTrends,
   getTimezones,
   type Tag,
+  type TagsResponse,
   type TrendsFilter,
   type TrendsResponse,
 } from "../services/tags";
 import Plot from "react-plotly.js";
-import type { Data, Layout } from "plotly.js";
+import type { Data, Layout, PlotRelayoutEvent } from "plotly.js";
+import axios from "axios";
 import { useTheme } from "../hooks/useTheme";
 import { useTranslation } from "../hooks/useTranslation";
 
@@ -75,13 +79,62 @@ const formatToLocalDateTime = (date: Date): string => {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-// Formatear fecha para backend
-const formatDateTimeForBackend = (dateString: string): string => {
-  if (!dateString) return "";
-  // El input datetime-local devuelve formato: YYYY-MM-DDTHH:mm
-  // El backend espera: YYYY-MM-DD HH:mm:ss.00
-  return dateString.replace("T", " ") + ":00.00";
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+const formatDateForBackend = (date: Date): string =>
+  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}.00`;
+
+const localDateTimeInputToMs = (value: string): number => {
+  const [datePart, timePart = "00:00"] = value.split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hours, minutes, seconds] = timePart.split(":").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1, hours || 0, minutes || 0, seconds || 0).getTime();
 };
+
+/** Interpreta el rango de Plotly como hora civil local (igual que los Date del eje X). */
+const plotlyRangeValueToMs = (value: string | number): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const match = value.trim().match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?/
+  );
+  if (match) {
+    const ms = match[7] ? Number(match[7].padEnd(3, "0").slice(0, 3)) : 0;
+    return new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4]),
+      Number(match[5]),
+      Number(match[6] || 0),
+      ms
+    ).getTime();
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const rangesNearlyEqual = (
+  aStart: number,
+  aEnd: number,
+  bStart: number,
+  bEnd: number,
+  toleranceMs = 1000
+): boolean =>
+  Math.abs(aStart - bStart) <= toleranceMs && Math.abs(aEnd - bEnd) <= toleranceMs;
+
+type TrendsRangeCache = {
+  startMs: number;
+  endMs: number;
+  data: TrendsResponse;
+};
+
+const ZOOM_DEBOUNCE_MS = 220;
+const ZOOM_CACHE_LIMIT = 8;
 
 export function Trends() {
   const { t } = useTranslation();
@@ -100,20 +153,30 @@ export function Trends() {
     const saved = localStorage.getItem("trends_selectedTags");
     return saved ? JSON.parse(saved) : [];
   });
-  const [tagSearch, setTagSearch] = useState("");
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [selectedTimezone, setSelectedTimezone] = useState<string>(() => {
     return localStorage.getItem("trends_timezone") || "";
   });
   const [loading, setLoading] = useState(false);
+  const [zoomLoading, setZoomLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [trendsData, setTrendsData] = useState<TrendsResponse>({});
-  const [showTagDropdown, setShowTagDropdown] = useState(false);
-  const tagDropdownRef = useRef<HTMLDivElement>(null);
+  const [dataRevision, setDataRevision] = useState(0);
+  const [axisRange, setAxisRange] = useState<[Date, Date] | null>(null);
 
   // Estado para controlar si ya se cargaron las opciones
   const [optionsLoaded, setOptionsLoaded] = useState(false);
+
+  const abortRef = useRef<AbortController | null>(null);
+  const fetchIdRef = useRef(0);
+  const ignoreRelayoutRef = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queriedRangeRef = useRef<{ startMs: number; endMs: number } | null>(null);
+  const baseCacheRef = useRef<TrendsRangeCache | null>(null);
+  const zoomCacheRef = useRef<TrendsRangeCache[]>([]);
+  const loadedTagsRef = useRef<string[]>([]);
+  const loadedTimezoneRef = useRef<string>("");
+  const loadingRef = useRef(false);
 
   // Cargar opciones al montar
   useEffect(() => {
@@ -122,17 +185,19 @@ export function Trends() {
         // Detectar zona horaria del navegador
         const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-        // Cargar tags (cargar todas las páginas)
-        const allTagsList: Tag[] = [];
-        let page = 1;
-        let hasMore = true;
-        while (hasMore) {
-          const response = await getTags(page, 100);
-          allTagsList.push(...(response.data || []));
-          hasMore = page < response.pagination.pages;
-          page++;
+        let allTagsList: Tag[] = [];
+        try {
+          allTagsList = await getTagsList();
+        } catch (_e) {
+          let page = 1;
+          let hasMore = true;
+          while (hasMore) {
+            const response: TagsResponse = await getTags(page, 100);
+            allTagsList.push(...(response.data || []));
+            hasMore = page < response.pagination.pages;
+            page++;
+          }
         }
-        setAllTags(allTagsList);
         setAvailableTags(allTagsList);
 
         // Validar que los tags guardados aún existan
@@ -205,44 +270,155 @@ export function Trends() {
     loadOptions();
   }, []);
 
-  // Filtrar tags por búsqueda
-  const filteredTags = useMemo(() => {
-    if (!tagSearch.trim()) {
-      return availableTags;
-    }
-    const searchLower = tagSearch.toLowerCase();
-    return availableTags.filter(
-      (tag) =>
-        tag.name.toLowerCase().includes(searchLower) ||
-        tag.display_name?.toLowerCase().includes(searchLower) ||
-        tag.description?.toLowerCase().includes(searchLower)
-    );
-  }, [availableTags, tagSearch]);
+  const tagOptions = useMemo(
+    () =>
+      availableTags.map((tag) => ({
+        value: tag.name,
+        label: tag.display_name || tag.name,
+        description: tag.variable || tag.description,
+      })),
+    [availableTags]
+  );
 
-  // Cerrar dropdown al hacer click fuera
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (tagDropdownRef.current && !tagDropdownRef.current.contains(event.target as Node)) {
-        setShowTagDropdown(false);
-      }
-    };
-
-    if (showTagDropdown) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showTagDropdown]);
-
-  const handleTagToggle = (tagName: string) => {
-    setSelectedTags((prev) =>
-      prev.includes(tagName)
-        ? prev.filter((name) => name !== tagName)
-        : [...prev, tagName]
-    );
+  const handleSelectedTagsChange = (next: string[]) => {
+    setSelectedTags(next);
   };
+
+  const cancelInFlight = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    abortRef.current?.abort();
+    fetchIdRef.current += 1;
+    setZoomLoading(false);
+  }, []);
+
+  const applyTrendsData = useCallback(
+    (data: TrendsResponse, range: { startMs: number; endMs: number }, isBase = false) => {
+      ignoreRelayoutRef.current = true;
+      queriedRangeRef.current = range;
+      setTrendsData(data);
+      setDataRevision((n) => n + 1);
+      setAxisRange(isBase ? null : [new Date(range.startMs), new Date(range.endMs)]);
+      window.setTimeout(() => {
+        ignoreRelayoutRef.current = false;
+      }, 200);
+    },
+    []
+  );
+
+  const rememberZoomCache = useCallback((entry: TrendsRangeCache) => {
+    const cache = zoomCacheRef.current.filter(
+      (item) => !rangesNearlyEqual(item.startMs, item.endMs, entry.startMs, entry.endMs)
+    );
+    cache.unshift(entry);
+    zoomCacheRef.current = cache.slice(0, ZOOM_CACHE_LIMIT);
+  }, []);
+
+  const findCachedRange = useCallback(
+    (startMs: number, endMs: number): { data: TrendsResponse; isBase: boolean } | null => {
+      const base = baseCacheRef.current;
+      if (base && rangesNearlyEqual(startMs, endMs, base.startMs, base.endMs)) {
+        return { data: base.data, isBase: true };
+      }
+      const hit = zoomCacheRef.current.find((item) =>
+        rangesNearlyEqual(startMs, endMs, item.startMs, item.endMs)
+      );
+      return hit ? { data: hit.data, isBase: false } : null;
+    },
+    []
+  );
+
+  const fetchTrendsForRange = useCallback(
+    async (
+      startMs: number,
+      endMs: number,
+      options: { asBase?: boolean; silent?: boolean } = {}
+    ) => {
+      const tags = options.asBase ? selectedTags : loadedTagsRef.current;
+      const timezone = options.asBase ? selectedTimezone : loadedTimezoneRef.current;
+      if (tags.length === 0 || !timezone || endMs <= startMs) {
+        return;
+      }
+
+      const current = queriedRangeRef.current;
+      if (current && rangesNearlyEqual(startMs, endMs, current.startMs, current.endMs)) {
+        return;
+      }
+
+      const cached = findCachedRange(startMs, endMs);
+      if (cached) {
+        cancelInFlight();
+        applyTrendsData(cached.data, { startMs, endMs }, cached.isBase);
+        return;
+      }
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const fetchId = ++fetchIdRef.current;
+
+      if (options.silent) {
+        setZoomLoading(true);
+      } else {
+        setLoading(true);
+        loadingRef.current = true;
+        setError(null);
+      }
+
+      try {
+        const filters: TrendsFilter = {
+          tags,
+          greater_than_timestamp: formatDateForBackend(new Date(startMs)),
+          less_than_timestamp: formatDateForBackend(new Date(endMs)),
+          timezone,
+        };
+        const data = await getTrends(filters, { signal: controller.signal });
+        if (fetchId !== fetchIdRef.current) {
+          return;
+        }
+        const range = { startMs, endMs };
+        if (options.asBase) {
+          baseCacheRef.current = { ...range, data };
+          zoomCacheRef.current = [];
+          loadedTagsRef.current = tags;
+          loadedTimezoneRef.current = timezone;
+        } else {
+          rememberZoomCache({ ...range, data });
+        }
+        applyTrendsData(data, range, Boolean(options.asBase));
+      } catch (e: any) {
+        if (axios.isCancel(e) || e?.code === "ERR_CANCELED" || e?.name === "CanceledError") {
+          return;
+        }
+        if (fetchId !== fetchIdRef.current) {
+          return;
+        }
+        if (!options.silent) {
+          const data = e?.response?.data;
+          const backendMessage =
+            (typeof data === "string" ? data : undefined) ??
+            data?.message ??
+            data?.detail ??
+            data?.error;
+          setError(backendMessage || e?.message || t("trends.loadError"));
+          setTrendsData({});
+          queriedRangeRef.current = null;
+        }
+      } finally {
+        if (fetchId === fetchIdRef.current) {
+          if (options.silent) {
+            setZoomLoading(false);
+          } else {
+            setLoading(false);
+            loadingRef.current = false;
+          }
+        }
+      }
+    },
+    [applyTrendsData, cancelInFlight, findCachedRange, rememberZoomCache, selectedTags, selectedTimezone, t]
+  );
 
   const handleLoadTrends = useCallback(async () => {
     if (selectedTags.length === 0) {
@@ -255,43 +431,121 @@ export function Trends() {
       return;
     }
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    if (end > new Date()) {
+    const startMs = localDateTimeInputToMs(startDate);
+    const endMs = localDateTimeInputToMs(endDate);
+    if (endMs > Date.now()) {
       setError(t("trends.endDateCannotBeFuture"));
       return;
     }
 
-    if (start >= end) {
+    if (startMs >= endMs) {
       setError(t("trends.startDateMustBeBeforeEnd"));
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    try {
-      const filters: TrendsFilter = {
-        tags: selectedTags,
-        greater_than_timestamp: formatDateTimeForBackend(startDate),
-        less_than_timestamp: formatDateTimeForBackend(endDate),
-        timezone: selectedTimezone,
-      };
-      const data = await getTrends(filters);
-      setTrendsData(data);
-    } catch (e: any) {
-      const data = e?.response?.data;
-      const backendMessage =
-        (typeof data === "string" ? data : undefined) ??
-        data?.message ??
-        data?.detail ??
-        data?.error;
-      const errorMsg = backendMessage || e?.message || t("trends.loadError");
-      setError(errorMsg);
-      setTrendsData({});
-    } finally {
-      setLoading(false);
+    queriedRangeRef.current = null;
+    baseCacheRef.current = null;
+    zoomCacheRef.current = [];
+    cancelInFlight();
+    await fetchTrendsForRange(startMs, endMs, { asBase: true });
+  }, [selectedTags, startDate, endDate, fetchTrendsForRange, cancelInFlight, t]);
+
+  const restoreBaseRange = useCallback(() => {
+    const base = baseCacheRef.current;
+    if (!base) {
+      return;
     }
-  }, [selectedTags, startDate, endDate, selectedTimezone]);
+    const current = queriedRangeRef.current;
+    if (current && rangesNearlyEqual(current.startMs, current.endMs, base.startMs, base.endMs)) {
+      return;
+    }
+    cancelInFlight();
+    applyTrendsData(base.data, { startMs: base.startMs, endMs: base.endMs }, true);
+  }, [applyTrendsData, cancelInFlight]);
+
+  const scheduleZoomQuery = useCallback(
+    (startMs: number, endMs: number) => {
+      const base = baseCacheRef.current;
+      if (!base) {
+        return;
+      }
+
+      const clampedStart = Math.max(startMs, base.startMs);
+      const clampedEnd = Math.min(endMs, base.endMs);
+      if (clampedEnd - clampedStart < 1000) {
+        return;
+      }
+
+      if (rangesNearlyEqual(clampedStart, clampedEnd, base.startMs, base.endMs)) {
+        restoreBaseRange();
+        return;
+      }
+
+      const current = queriedRangeRef.current;
+      if (current) {
+        const currentSpan = current.endMs - current.startMs;
+        const nextSpan = clampedEnd - clampedStart;
+        const isTinyInset =
+          currentSpan > 0 &&
+          nextSpan / currentSpan > 0.95 &&
+          Math.abs(clampedStart - current.startMs) <= Math.max(1500, currentSpan * 0.03) &&
+          Math.abs(clampedEnd - current.endMs) <= Math.max(1500, currentSpan * 0.03);
+        if (isTinyInset) {
+          return;
+        }
+      }
+
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+      debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
+        void fetchTrendsForRange(clampedStart, clampedEnd, { silent: true });
+      }, ZOOM_DEBOUNCE_MS);
+    },
+    [fetchTrendsForRange, restoreBaseRange]
+  );
+
+  const handleRelayout = useCallback(
+    (event: PlotRelayoutEvent) => {
+      if (ignoreRelayoutRef.current || loadingRef.current) {
+        return;
+      }
+
+      const autoX = event["xaxis.autorange"] === true;
+      const rangeTuple = event["xaxis.range"];
+      const rangeFromArray = Array.isArray(rangeTuple) ? rangeTuple : null;
+      const startRaw = rangeFromArray ? rangeFromArray[0] : event["xaxis.range[0]"];
+      const endRaw = rangeFromArray ? rangeFromArray[1] : event["xaxis.range[1]"];
+
+      if (autoX) {
+        restoreBaseRange();
+        return;
+      }
+
+      if (startRaw === undefined || endRaw === undefined) {
+        return;
+      }
+
+      const startMs = plotlyRangeValueToMs(startRaw as string | number);
+      const endMs = plotlyRangeValueToMs(endRaw as string | number);
+      if (startMs === null || endMs === null || endMs <= startMs) {
+        return;
+      }
+
+      scheduleZoomQuery(startMs, endMs);
+    },
+    [restoreBaseRange, scheduleZoomQuery]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+      abortRef.current?.abort();
+    };
+  }, []);
 
   // Ref para evitar cargar múltiples veces
   const hasAutoLoadedRef = useRef(false);
@@ -380,47 +634,47 @@ export function Trends() {
       });
     });
 
-    // Paleta de colores para las diferentes unidades
-    const colorPalette = [
-      "#1f77b4", // azul
-      "#ff7f0e", // naranja
-      "#2ca02c", // verde
-      "#d62728", // rojo
-      "#9467bd", // morado
-      "#8c564b", // marrón
-      "#e377c2", // rosa
-      "#7f7f7f", // gris
-      "#bcbd22", // oliva
-      "#17becf", // cian
+    // Paleta cualitativa: un color distinto por traza, independiente del eje/unidad.
+    const TRACE_COLORS = [
+      "#1f77b4",
+      "#ff7f0e",
+      "#2ca02c",
+      "#d62728",
+      "#9467bd",
+      "#8c564b",
+      "#e377c2",
+      "#17becf",
+      "#bcbd22",
+      "#393b79",
+      "#e6550d",
+      "#31a354",
+      "#756bb1",
+      "#843c39",
+      "#3182bd",
+      "#637939",
+      "#7b4173",
+      "#636363",
     ];
 
-    // Función auxiliar para ajustar brillo de color
-    const adjustColorBrightness = (color: string, amount: number): string => {
-      // Convertir hex a RGB
-      const hex = color.replace("#", "");
-      const r = parseInt(hex.substr(0, 2), 16);
-      const g = parseInt(hex.substr(2, 2), 16);
-      const b = parseInt(hex.substr(4, 2), 16);
-      
-      // Ajustar brillo
-      const newR = Math.max(0, Math.min(255, r + amount * 50));
-      const newG = Math.max(0, Math.min(255, g + amount * 50));
-      const newB = Math.max(0, Math.min(255, b + amount * 50));
-      
-      return `rgb(${Math.round(newR)}, ${Math.round(newG)}, ${Math.round(newB)})`;
-    };
+    const AXIS_COLORS = [
+      "#4c78a8",
+      "#f58518",
+      "#54a24b",
+      "#e45756",
+      "#b279a2",
+      "#9d755d",
+    ];
 
     // Crear trazas y asignar ejes Y
     const data: Data[] = [];
     const unitArray = Array.from(tagsByUnit.keys());
+    let traceColorIndex = 0;
 
     unitArray.forEach((unit, unitIndex) => {
       const tags = tagsByUnit.get(unit)!;
       const yAxisKey = unitIndex === 0 ? "y" : `y${unitIndex + 1}`;
-      const unitColor = colorPalette[unitIndex % colorPalette.length];
 
-      // Crear traza para cada tag de esta unidad
-      tags.forEach((tag, tagIndex) => {
+      tags.forEach((tag) => {
         // Convertir timestamps a Date objects para Plotly
         // El formato del backend es: "%m/%d/%Y, %H:%M:%S.%f" (ej: "12/12/2025, 14:30:45.123456")
         const xValues = tag.values.map((v) => {
@@ -454,12 +708,8 @@ export function Trends() {
           }
         });
         const yValues = tag.values.map((v) => v.y);
-
-        // Variar ligeramente el color para tags diferentes de la misma unidad
-        const colorVariation = tagIndex * 0.15; // Variación de opacidad/brillo
-        const tagColor = tagIndex === 0 
-          ? unitColor 
-          : adjustColorBrightness(unitColor, colorVariation);
+        const tagColor = TRACE_COLORS[traceColorIndex % TRACE_COLORS.length];
+        traceColorIndex += 1;
 
         data.push({
           x: xValues,
@@ -468,7 +718,7 @@ export function Trends() {
           mode: "lines",
           name: `${tag.tagName} (${unit})`,
           yaxis: yAxisKey,
-          line: { 
+          line: {
             width: 2,
             color: tagColor,
           },
@@ -494,6 +744,9 @@ export function Trends() {
       xaxis: {
         title: t("trends.time"),
         type: "date",
+        ...(axisRange
+          ? { range: axisRange, autorange: false }
+          : { autorange: true }),
         gridcolor: gridColor,
         linecolor: lineColor,
         zerolinecolor: lineColor,
@@ -505,19 +758,21 @@ export function Trends() {
         },
       },
       hovermode: "x unified",
+      uirevision: "trends",
+      datarevision: dataRevision,
       legend: {
-        orientation: "v",
-        x: 1.01,
-        y: 1,
+        orientation: "h",
+        x: 0,
+        y: 1.02,
         xanchor: "left",
-        yanchor: "top",
+        yanchor: "bottom",
         font: {
           color: textColor,
         },
-        bgcolor: isDark ? "rgba(33, 37, 41, 0.8)" : "rgba(255, 255, 255, 0.8)",
-        bordercolor: lineColor,
+        bgcolor: "rgba(0,0,0,0)",
+        bordercolor: "rgba(0,0,0,0)",
       },
-      margin: { l: 60, r: 50, t: 20, b: 60 },
+      margin: { l: 56, r: 48, t: 36, b: 48 },
       autosize: true,
     };
 
@@ -527,7 +782,7 @@ export function Trends() {
     const axisSpacing = 0.25; // Separación entre ejes a la derecha
     
     unitArray.forEach((unit, index) => {
-      const unitColor = colorPalette[index % colorPalette.length];
+      const unitColor = AXIS_COLORS[index % AXIS_COLORS.length];
       
       if (index === 0) {
         // Primer eje Y siempre a la izquierda
@@ -569,253 +824,155 @@ export function Trends() {
     });
     
     // Ajustar márgenes según la cantidad de ejes para evitar que se corten
-    const leftMargin = 60;
-    const rightMargin = 50 + (totalAxes > 1 ? (totalAxes - 1) * 60 : 0);
-    
-    layout.margin = { 
-      l: leftMargin, 
-      r: rightMargin, 
-      t: 20, 
-      b: 60 
+    const leftMargin = 56;
+    const rightMargin = 48 + (totalAxes > 1 ? (totalAxes - 1) * 52 : 0);
+
+    layout.margin = {
+      l: leftMargin,
+      r: rightMargin,
+      t: 36,
+      b: 48,
     };
 
     return { data, layout };
-  }, [trendsData, mode]);
+  }, [trendsData, mode, dataRevision, axisRange, t]);
 
   return (
-    <div className="row">
-      <div className="col-12">
+    <div className="row g-0 trends-fit-viewport">
+      <div className="col-12 h-100">
         <Card
+          className="trends-fit-card"
+          style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}
+          bodyClassName="p-2 d-flex flex-column"
           title={
-            <div className="d-flex justify-content-between align-items-center w-100 flex-wrap gap-2">
-              <h3 className="card-title m-0">{t("navigation.trends")}</h3>
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                <select
-                  className="form-select form-select-sm"
-                  style={{ width: "auto", minWidth: "150px" }}
-                  value={presetDate}
-                  onChange={(e) => {
-                    const newPreset = e.target.value as PresetDate;
-                    setPresetDate(newPreset);
-                    localStorage.setItem("trends_presetDate", newPreset);
-                  }}
-                  disabled={loading}
-                >
-                  {PRESET_DATES.map((preset) => {
-                    const presetKey = preset === "Last Hour" ? "LastHour" : preset.replace(/\s+/g, "");
-                    return (
-                      <option key={preset} value={preset}>
-                        {t(`trends.preset.${presetKey}`)}
-                      </option>
-                    );
-                  })}
-                </select>
-                {presetDate === "Custom" && (
-                  <>
-                    <input
-                      type="datetime-local"
-                      className="form-control form-control-sm"
-                      style={{ width: "auto", minWidth: "160px" }}
-                      value={startDate}
-                      onChange={(e) => {
-                        const newStart = e.target.value;
-                        setStartDate(newStart);
-                        localStorage.setItem("trends_startDate", newStart);
-                      }}
-                      disabled={loading}
-                    />
-                    <input
-                      type="datetime-local"
-                      className="form-control form-control-sm"
-                      style={{ width: "auto", minWidth: "160px" }}
-                      value={endDate}
-                      onChange={(e) => {
-                        const newEnd = e.target.value;
-                        const endDateObj = new Date(newEnd);
-                        const now = new Date();
-                        const finalEnd = endDateObj > now ? formatToLocalDateTime(now) : newEnd;
-                        setEndDate(finalEnd);
-                        localStorage.setItem("trends_endDate", finalEnd);
-                      }}
-                      disabled={loading}
-                      max={formatToLocalDateTime(new Date())}
-                    />
-                  </>
-                )}
-                <Button
-                  variant="primary"
-                  className="btn-sm"
-                  onClick={handleLoadTrends}
-                  disabled={loading || selectedTags.length === 0}
-                  loading={loading}
-                >
-                  <i className="bi bi-graph-up me-1"></i>
-                  {t("trends.loadTrends")}
-                </Button>
+            <div className="card-header-stack w-100">
+              <div className="d-flex justify-content-between align-items-center w-100 flex-wrap gap-2">
+                <h3 className="card-title m-0">{t("navigation.trends")}</h3>
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <label className="form-label small mb-0">{t("trends.selectTags")}:</label>
+                  <MultiSelectSearch
+                    options={tagOptions}
+                    selected={selectedTags}
+                    onChange={handleSelectedTagsChange}
+                    placeholder={t("trends.selectTagsPlaceholder")}
+                    searchPlaceholder={t("trends.searchTags")}
+                    emptyText={t("trends.noTagsFound")}
+                    selectAllLabel={t("trends.selectAll")}
+                    clearLabel={t("common.clear")}
+                    selectedCountLabel={(count) => t("trends.selectedCount", { count })}
+                    disabled={loading}
+                    style={{ width: "220px", maxWidth: "100%" }}
+                  />
+                  <select
+                    className="form-select form-select-sm"
+                    style={{ width: "auto", minWidth: "140px", maxWidth: "100%" }}
+                    value={presetDate}
+                    onChange={(e) => {
+                      const newPreset = e.target.value as PresetDate;
+                      setPresetDate(newPreset);
+                      localStorage.setItem("trends_presetDate", newPreset);
+                    }}
+                    disabled={loading}
+                  >
+                    {PRESET_DATES.map((preset) => {
+                      const presetKey = preset === "Last Hour" ? "LastHour" : preset.replace(/\s+/g, "");
+                      return (
+                        <option key={preset} value={preset}>
+                          {t(`trends.preset.${presetKey}`)}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <Button
+                    variant="primary"
+                    className="btn-sm"
+                    onClick={handleLoadTrends}
+                    disabled={loading || selectedTags.length === 0}
+                    loading={loading}
+                  >
+                    <i className="bi bi-graph-up me-1"></i>
+                    {t("trends.loadTrends")}
+                  </Button>
+                </div>
               </div>
+              {presetDate === "Custom" && (
+                <div className="card-header-stack__row d-flex align-items-center gap-2 flex-wrap pt-2 mt-1 border-top">
+                  <label className="form-label small mb-0">{t("trends.time")}:</label>
+                  <input
+                    type="datetime-local"
+                    className="form-control form-control-sm"
+                    style={{ width: "180px", maxWidth: "100%" }}
+                    value={startDate}
+                    onChange={(e) => {
+                      const newStart = e.target.value;
+                      setStartDate(newStart);
+                      localStorage.setItem("trends_startDate", newStart);
+                    }}
+                    disabled={loading}
+                  />
+                  <input
+                    type="datetime-local"
+                    className="form-control form-control-sm"
+                    style={{ width: "180px", maxWidth: "100%" }}
+                    value={endDate}
+                    onChange={(e) => {
+                      const newEnd = e.target.value;
+                      const endDateObj = new Date(newEnd);
+                      const now = new Date();
+                      const finalEnd = endDateObj > now ? formatToLocalDateTime(now) : newEnd;
+                      setEndDate(finalEnd);
+                      localStorage.setItem("trends_endDate", finalEnd);
+                    }}
+                    disabled={loading}
+                    max={formatToLocalDateTime(new Date())}
+                  />
+                </div>
+              )}
             </div>
           }
         >
           {error && (
-            <div className="alert alert-danger mb-3" role="alert">
+            <div className="alert alert-danger py-2 mb-2" role="alert">
               {error}
             </div>
           )}
 
-          <div className="row">
-            {/* Selector de tags con búsqueda - 4 columnas */}
-            <div className="col-4">
-              <div className="card">
-                <div className="card-header">
-                  <h6 className="mb-0">{t("trends.selectTags")}</h6>
-                </div>
-                <div className="card-body">
-                  <div className="position-relative" ref={tagDropdownRef}>
-                    <div
-                      className="form-control d-flex align-items-center justify-content-between"
-                      style={{ cursor: "pointer", minHeight: "38px" }}
-                      onClick={() => setShowTagDropdown(!showTagDropdown)}
-                    >
-                      <div className="d-flex flex-wrap gap-1" style={{ flex: 1 }}>
-                        {selectedTags.length === 0 ? (
-                          <span className="text-muted">{t("trends.selectTagsPlaceholder")}</span>
-                        ) : (
-                          selectedTags.slice(0, 3).map((tagName) => {
-                            const tag = availableTags.find((t) => t.name === tagName);
-                            return (
-                              <span
-                                key={tagName}
-                                className="badge bg-primary"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTagToggle(tagName);
-                                }}
-                              >
-                                {tag?.display_name || tagName}
-                                <i className="bi bi-x ms-1"></i>
-                              </span>
-                            );
-                          })
-                        )}
-                        {selectedTags.length > 3 && (
-                          <span className="badge bg-secondary">
-                            +{selectedTags.length - 3} {t("trends.more")}
-                          </span>
-                        )}
-                      </div>
-                      <i
-                        className={`bi bi-chevron-${showTagDropdown ? "up" : "down"}`}
-                      ></i>
-                    </div>
-
-                    {showTagDropdown && (
-                      <div
-                        className="card position-absolute w-100 mt-1"
-                        style={{
-                          zIndex: 1000,
-                          maxHeight: "400px",
-                          display: "flex",
-                          flexDirection: "column",
-                        }}
-                      >
-                        <div className="card-body p-2" style={{ flex: "0 0 auto" }}>
-                          <input
-                            type="text"
-                            className="form-control form-control-sm"
-                            placeholder={t("trends.searchTags")}
-                            value={tagSearch}
-                            onChange={(e) => {
-                              setTagSearch(e.target.value);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            onFocus={(e) => e.stopPropagation()}
-                          />
-                        </div>
-                        <div
-                          className="border-top"
-                          style={{
-                            maxHeight: "300px",
-                            overflowY: "auto",
-                            flex: "1 1 auto",
-                          }}
-                        >
-                          {filteredTags.length === 0 ? (
-                            <div className="p-3 text-center text-muted">
-                              <small>{t("trends.noTagsFound")}</small>
-                            </div>
-                          ) : (
-                            <div className="list-group list-group-flush">
-                              {filteredTags.map((tag) => {
-                                const isSelected = selectedTags.includes(tag.name);
-                                return (
-                                  <button
-                                    key={tag.name}
-                                    type="button"
-                                    className={`list-group-item list-group-item-action d-flex align-items-center justify-content-between ${
-                                      isSelected ? "active" : ""
-                                    }`}
-                                    onClick={() => {
-                                      handleTagToggle(tag.name);
-                                    }}
-                                  >
-                                    <div>
-                                      <div className="fw-bold">
-                                        {tag.display_name || tag.name}
-                                      </div>
-                                      {tag.description && (
-                                        <small className="text-muted">
-                                          {tag.description}
-                                        </small>
-                                      )}
-                                    </div>
-                                    {isSelected && (
-                                      <i className="bi bi-check-circle-fill"></i>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Gráfico - 8 columnas */}
-            <div className="col-8">
-              {Object.keys(trendsData).length > 0 ? (
-                <div className="card h-100">
-                  <div className="card-body p-0">
-                    <div style={{ width: "100%", height: "600px" }}>
-                      <Plot
-                        data={plotData.data}
-                        layout={plotData.layout}
-                        style={{ width: "100%", height: "100%" }}
-                        config={{
-                          displayModeBar: true,
-                          modeBarButtonsToAdd: ["zoom2d", "pan2d", "select2d", "lasso2d", "autoScale2d", "resetScale2d"],
-                          displaylogo: false,
-                          responsive: true,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="card h-100">
-                  <div className="card-body">
-                    <div className="text-center py-5 text-muted">
-                      <i className="bi bi-graph-up" style={{ fontSize: "3rem" }}></i>
-                      <p className="mt-3">{t("trends.selectTagsAndDates")}</p>
-                    </div>
-                  </div>
+          {Object.keys(trendsData).length > 0 ? (
+            <div className="trends-plot-host">
+              <Plot
+                data={plotData.data}
+                layout={plotData.layout}
+                style={{ width: "100%", height: "100%" }}
+                config={{
+                  displayModeBar: true,
+                  modeBarButtonsToAdd: [
+                    "zoom2d",
+                    "pan2d",
+                    "select2d",
+                    "lasso2d",
+                    "autoScale2d",
+                    "resetScale2d",
+                  ],
+                  displaylogo: false,
+                  responsive: true,
+                }}
+                useResizeHandler={true}
+                revision={dataRevision}
+                onRelayout={handleRelayout}
+              />
+              {zoomLoading && (
+                <div className="trends-plot-overlay" role="status" aria-live="polite">
+                  <span className="spinner-border" aria-hidden="true"></span>
+                  <span>{t("trends.loadingDetail")}</span>
                 </div>
               )}
             </div>
-          </div>
+          ) : (
+            <div className="trends-plot-host d-flex flex-column justify-content-center text-center text-muted">
+              <i className="bi bi-graph-up" style={{ fontSize: "3rem" }}></i>
+              <p className="mt-3 mb-0">{t("trends.selectTagsAndDates")}</p>
+            </div>
+          )}
         </Card>
       </div>
     </div>

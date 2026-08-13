@@ -1,6 +1,7 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { MultiSelectSearch } from "../components/MultiSelectSearch";
 import {
   filterAlarmsSummary,
   getAlarmSummaryComments,
@@ -270,6 +271,20 @@ export function AlarmsSummary() {
     setFilters(newFilters);
     localStorage.setItem("alarms_summary_page", "1");
     localStorage.setItem("alarms_summary_limit", String(newFilters.limit || 20));
+  };
+
+  const stateOptions = useMemo(
+    () =>
+      availableStates.map((state) => ({
+        value: state,
+        label: t(`alarmsSummary.states.${state}`),
+      })),
+    [availableStates, t]
+  );
+
+  const handleStatesChange = (next: string[]) => {
+    setSelectedStates(next);
+    localStorage.setItem("alarms_summary_selectedStates", JSON.stringify(next));
   };
 
   const handlePresetDateChange = (preset: PresetDate) => {
@@ -605,65 +620,86 @@ export function AlarmsSummary() {
       <div className="col-12">
         <Card
           title={
-            <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
-              <span className="me-auto">{t("navigation.alarmsSummary")}</span>
-              <div className="d-flex align-items-center gap-2">
-                <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">{t("alarmsSummary.range")}:</label>
-                  <select
-                    className="form-select form-select-sm"
-                    style={{ width: "150px" }}
-                    value={presetDate}
-                    onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
+            <div className="card-header-stack w-100">
+              <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
+                <span className="me-auto">{t("navigation.alarmsSummary")}</span>
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">{t("alarmsSummary.state")}:</label>
+                    <MultiSelectSearch
+                      options={stateOptions}
+                      selected={selectedStates}
+                      onChange={handleStatesChange}
+                      placeholder={t("alarmsSummary.selectStatesPlaceholder")}
+                      searchPlaceholder={t("alarmsSummary.searchStates")}
+                      emptyText={t("alarmsSummary.noStatesFound")}
+                      selectAllLabel={t("alarmsSummary.selectAll")}
+                      clearLabel={t("common.clear")}
+                      selectedCountLabel={(count) => t("alarmsSummary.selectedCount", { count })}
+                      disabled={loading}
+                      style={{ width: "200px", maxWidth: "100%" }}
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">{t("alarmsSummary.range")}:</label>
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ width: "150px", maxWidth: "100%" }}
+                      value={presetDate}
+                      onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
+                    >
+                      {PRESET_DATES.map((preset) => (
+                        <option key={preset} value={preset}>
+                          {t(`alarmsSummary.preset.${preset}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
+                    {t("common.filter")}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="btn-sm"
+                    onClick={handleExportCSV}
+                    disabled={loading || alarmsSummary.length === 0}
                   >
-                    {PRESET_DATES.map((preset) => (
-                      <option key={preset} value={preset}>
-                        {preset}
-                      </option>
-                    ))}
-                  </select>
+                    <i className="bi bi-download me-1"></i>
+                    CSV
+                  </Button>
+                  <Button variant="secondary" className="btn-sm" onClick={handleClearFilters} disabled={loading}>
+                    {t("common.clear")}
+                  </Button>
                 </div>
-                {presetDate === "Custom" && (
-                  <>
-                    <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">{t("alarmsSummary.start")}:</label>
-                      <input
-                        type="datetime-local"
-                        className="form-control form-control-sm"
-                        style={{ width: "180px" }}
-                        value={startDate}
-                        onChange={(e) => {
-                          setStartDate(e.target.value);
-                          localStorage.setItem("alarms_summary_startDate", e.target.value);
-                        }}
-                      />
-                    </div>
-                    <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">{t("alarmsSummary.end")}:</label>
-                      <input
-                        type="datetime-local"
-                        className="form-control form-control-sm"
-                        style={{ width: "180px" }}
-                        value={endDate}
-                        onChange={(e) => handleEndDateChange(e.target.value)}
-                        max={new Date().toISOString().slice(0, 16)}
-                      />
-                    </div>
-                  </>
-                )}
-                <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
-                  {t("common.filter")}
-                </Button>
-                <Button
-                  variant="primary"
-                  className="btn-sm"
-                  onClick={handleExportCSV}
-                  disabled={loading || alarmsSummary.length === 0}
-                >
-                  <i className="bi bi-download me-1"></i>
-                  CSV
-                </Button>
               </div>
+              {presetDate === "Custom" && (
+                <div className="card-header-stack__row d-flex align-items-center gap-2 flex-wrap pt-2 mt-1 border-top">
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">{t("alarmsSummary.start")}:</label>
+                    <input
+                      type="datetime-local"
+                      className="form-control form-control-sm"
+                      style={{ width: "180px", maxWidth: "100%" }}
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        localStorage.setItem("alarms_summary_startDate", e.target.value);
+                      }}
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">{t("alarmsSummary.end")}:</label>
+                    <input
+                      type="datetime-local"
+                      className="form-control form-control-sm"
+                      style={{ width: "180px", maxWidth: "100%" }}
+                      value={endDate}
+                      onChange={(e) => handleEndDateChange(e.target.value)}
+                      max={new Date().toISOString().slice(0, 16)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           }
           footer={
@@ -734,37 +770,6 @@ export function AlarmsSummary() {
               {error}
             </div>
           )}
-
-          {/* Filtro de estados */}
-          <div className="mb-3">
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="form-label mb-0 me-2">{t("alarmsSummary.state")}:</label>
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                {availableStates.map((state) => {
-                  const isSelected = selectedStates.includes(state);
-                  return (
-                    <button
-                      key={state}
-                      type="button"
-                      className={`btn btn-sm ${isSelected ? "btn-primary" : "btn-outline-secondary"}`}
-                      onClick={() => {
-                        const newSelectedStates = isSelected
-                          ? selectedStates.filter((s) => s !== state)
-                          : [...selectedStates, state];
-                        setSelectedStates(newSelectedStates);
-                        localStorage.setItem("alarms_summary_selectedStates", JSON.stringify(newSelectedStates));
-                      }}
-                    >
-                      {state}
-                    </button>
-                  );
-                })}
-              </div>
-              <Button variant="secondary" className="btn-sm ms-auto" onClick={handleClearFilters} disabled={loading}>
-                {t("common.clear")}
-              </Button>
-            </div>
-          </div>
 
           {loading && (
             <div className="text-center py-4">

@@ -11,6 +11,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { setLocale } from "../store/slices/localeSlice";
 import { showToast } from "../utils/toast";
+import { toggleSidebar } from "./sidebarDom";
 
 export function Header() {
   const { mode, toggle } = useTheme();
@@ -44,25 +45,9 @@ export function Header() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasCheckedInitialState = useRef(false);
 
-  const toggleSidebar = useCallback((e: React.MouseEvent) => {
+  const toggleSidebarMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    const bodyCls = document.body.classList;
-    const wrapper = document.querySelector(".app-wrapper");
-    const wrapperCls = wrapper?.classList;
-
-    const isOpen = bodyCls.contains("sidebar-open") || wrapperCls?.contains("sidebar-open");
-
-    if (isOpen) {
-      bodyCls.remove("sidebar-open");
-      bodyCls.add("sidebar-collapse");
-      wrapperCls?.remove("sidebar-open");
-      wrapperCls?.add("sidebar-collapse");
-    } else {
-      bodyCls.add("sidebar-open");
-      bodyCls.remove("sidebar-collapse");
-      wrapperCls?.add("sidebar-open");
-      wrapperCls?.remove("sidebar-collapse");
-    }
+    toggleSidebar();
   }, []);
 
   const formatIp = (val: string) => {
@@ -300,7 +285,7 @@ export function Header() {
       <div className="container-fluid">
         <ul className="navbar-nav">
           <li className="nav-item">
-            <a className="nav-link" href="#" role="button" onClick={toggleSidebar}>
+            <a className="nav-link" href="#" role="button" onClick={toggleSidebarMenu} aria-label="Menu">
               <i className="bi bi-list" />
             </a>
           </li>

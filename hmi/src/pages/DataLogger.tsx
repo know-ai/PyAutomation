@@ -496,105 +496,107 @@ export function DataLogger() {
       <div className="col-12">
         <Card
           title={
-            <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
-              <span className="me-auto">{t("navigation.dataLogger")}</span>
-              <div className="d-flex align-items-center gap-2">
-                <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">{t("dataLogger.tagNames")}:</label>
-                  <MultiSelectSearch
-                    options={tagOptions}
-                    selected={selectedTags}
-                    onChange={handleSelectedTagsChange}
-                    placeholder={t("dataLogger.selectTagsPlaceholder")}
-                    searchPlaceholder={t("dataLogger.searchTags")}
-                    emptyText={t("dataLogger.noTagsFound")}
-                    selectAllLabel={t("dataLogger.selectAll")}
-                    clearLabel={t("common.clear")}
-                    selectedCountLabel={(count) =>
-                      t("dataLogger.selectedCount", { count })
-                    }
-                    disabled={loading}
-                    style={{ width: "260px" }}
-                  />
-                </div>
-                <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">{t("dataLogger.range")}:</label>
-                  <select
-                    className="form-select form-select-sm"
-                    style={{ width: "150px" }}
-                    value={presetDate}
-                    onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
-                  >
-                    {PRESET_DATES.map((preset) => {
-                      const presetKey = preset === "Last hour" ? "Lasthour" : preset.replace(/\s+/g, "");
-                      return (
-                        <option key={preset} value={preset}>
-                          {t(`dataLogger.preset.${presetKey}`)}
+            <div className="card-header-stack w-100">
+              <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
+                <span className="me-auto">{t("navigation.dataLogger")}</span>
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">{t("dataLogger.tagNames")}:</label>
+                    <MultiSelectSearch
+                      options={tagOptions}
+                      selected={selectedTags}
+                      onChange={handleSelectedTagsChange}
+                      placeholder={t("dataLogger.selectTagsPlaceholder")}
+                      searchPlaceholder={t("dataLogger.searchTags")}
+                      emptyText={t("dataLogger.noTagsFound")}
+                      selectAllLabel={t("dataLogger.selectAll")}
+                      clearLabel={t("common.clear")}
+                      selectedCountLabel={(count) =>
+                        t("dataLogger.selectedCount", { count })
+                      }
+                      disabled={loading}
+                      style={{ width: "220px", maxWidth: "100%" }}
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">{t("dataLogger.range")}:</label>
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ width: "150px", maxWidth: "100%" }}
+                      value={presetDate}
+                      onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
+                    >
+                      {PRESET_DATES.map((preset) => {
+                        const presetKey = preset === "Last hour" ? "Lasthour" : preset.replace(/\s+/g, "");
+                        return (
+                          <option key={preset} value={preset}>
+                            {t(`dataLogger.preset.${presetKey}`)}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">{t("dataLogger.sample")}:</label>
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ width: "120px", maxWidth: "100%" }}
+                      value={sampleTime}
+                      onChange={(e) => {
+                        const newSampleTime = e.target.value as SampleTimeOption;
+                        setSampleTime(newSampleTime);
+                        localStorage.setItem("datalogger_sampleTime", newSampleTime);
+                      }}
+                    >
+                      {SAMPLE_TIME_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {t(`dataLogger.sampleTime.${option.replace(/\s+/g, "")}`)}
                         </option>
-                      );
-                    })}
-                  </select>
+                      ))}
+                    </select>
+                  </div>
+                  <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
+                    {t("common.filter")}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="btn-sm"
+                    onClick={handleExportCSV}
+                    disabled={loading || !tabularData || !tabularData.values || tabularData.values.length === 0}
+                  >
+                    <i className="bi bi-download me-1"></i>
+                    {t("common.csv")}
+                  </Button>
                 </div>
-                {presetDate === "Custom" && (
-                  <>
-                    <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">{t("dataLogger.start")}:</label>
-                      <input
-                        type="datetime-local"
-                        className="form-control form-control-sm"
-                        style={{ width: "180px" }}
+              </div>
+              {presetDate === "Custom" && (
+                <div className="card-header-stack__row d-flex align-items-center gap-2 flex-wrap pt-2 mt-1 border-top">
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">{t("dataLogger.start")}:</label>
+                    <input
+                      type="datetime-local"
+                      className="form-control form-control-sm"
+                      style={{ width: "180px", maxWidth: "100%" }}
                       value={startDate}
                       onChange={(e) => {
                         setStartDate(e.target.value);
                         localStorage.setItem("datalogger_startDate", e.target.value);
                       }}
-                      />
-                    </div>
-                    <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">{t("dataLogger.end")}:</label>
-                      <input
-                        type="datetime-local"
-                        className="form-control form-control-sm"
-                        style={{ width: "180px" }}
-                        value={endDate}
-                        onChange={(e) => handleEndDateChange(e.target.value)}
-                        max={new Date().toISOString().slice(0, 16)}
-                      />
-                    </div>
-                  </>
-                )}
-                <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">{t("dataLogger.sample")}:</label>
-                  <select
-                    className="form-select form-select-sm"
-                    style={{ width: "120px" }}
-                    value={sampleTime}
-                    onChange={(e) => {
-                      const newSampleTime = e.target.value as SampleTimeOption;
-                      setSampleTime(newSampleTime);
-                      localStorage.setItem("datalogger_sampleTime", newSampleTime);
-                    }}
-                  >
-                    {SAMPLE_TIME_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {t(`dataLogger.sampleTime.${option.replace(/\s+/g, "")}`)}
-                      </option>
-                    ))}
-                  </select>
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">{t("dataLogger.end")}:</label>
+                    <input
+                      type="datetime-local"
+                      className="form-control form-control-sm"
+                      style={{ width: "180px", maxWidth: "100%" }}
+                      value={endDate}
+                      onChange={(e) => handleEndDateChange(e.target.value)}
+                      max={new Date().toISOString().slice(0, 16)}
+                    />
+                  </div>
                 </div>
-                <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
-                  {t("common.filter")}
-                </Button>
-                <Button
-                  variant="primary"
-                  className="btn-sm"
-                  onClick={handleExportCSV}
-                  disabled={loading || !tabularData || !tabularData.values || tabularData.values.length === 0}
-                >
-                  <i className="bi bi-download me-1"></i>
-                  {t("common.csv")}
-                </Button>
-              </div>
+              )}
             </div>
           }
           footer={

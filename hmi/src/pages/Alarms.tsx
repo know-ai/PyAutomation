@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, memo, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
-import { getAlarms, createAlarm, updateAlarm, deleteAlarm, getAlarmByName, executeAlarmAction, shelveAlarm, type Alarm, type AlarmsResponse } from "../services/alarms";
+import { getAlarms, createAlarm, updateAlarm, deleteAlarm, getAlarmByName, executeAlarmAction, shelveAlarm, acknowledgeAllAlarms, type Alarm, type AlarmsResponse } from "../services/alarms";
 import { getTags, type Tag } from "../services/tags";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppSelector } from "../hooks/useAppSelector";
@@ -46,6 +46,7 @@ export function Alarms() {
     weeks: 0,
   });
   const [shelving, setShelving] = useState(false);
+  const [acknowledgingAll, setAcknowledgingAll] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -858,6 +859,57 @@ export function Alarms() {
     return String(state);
   };
 
+  const isUnacknowledged = (alarm: Alarm): boolean => {
+    const state = alarm.state;
+    const stateStr =
+      typeof state === "object"
+        ? `${state.mnemonic || ""} ${state.state || ""} ${state.acknowledge_status || ""}`
+        : String(state || "");
+    return (
+      stateStr.includes("Unacknowledged") ||
+      stateStr.includes("UNACK") ||
+      stateStr.includes("RTNUN")
+    );
+  };
+
+  const hasUnacknowledgedAlarms = useMemo(() => {
+    const byKey = new Map<string, Alarm>();
+    for (const alarm of alarms) {
+      const key = String(alarm.identifier || alarm.id || alarm.name);
+      byKey.set(key, alarm);
+    }
+    for (const [key, alarm] of Object.entries(realTimeAlarms)) {
+      byKey.set(key, alarm);
+    }
+    return Array.from(byKey.values()).some(isUnacknowledged);
+  }, [alarms, realTimeAlarms]);
+
+  const handleAcknowledgeAll = async () => {
+    if (!hasUnacknowledgedAlarms || acknowledgingAll) {
+      return;
+    }
+    setAcknowledgingAll(true);
+    try {
+      const response = await acknowledgeAllAlarms();
+      const message =
+        response?.message ||
+        response?.data?.message ||
+        t("alarms.acknowledgeAllSuccess");
+      showToast(message, "success");
+      await loadAlarms(pagination.page, pagination.limit);
+    } catch (e: any) {
+      const data = e?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      showToast(backendMessage || e?.message || t("alarms.acknowledgeAllError"), "error");
+    } finally {
+      setAcknowledgingAll(false);
+    }
+  };
+
   return (
     <div className="row">
       <div className="col-12">
@@ -866,6 +918,21 @@ export function Alarms() {
             <div className="d-flex justify-content-between align-items-center w-100">
               <span>{t("navigation.alarms")}</span>
               <div className="d-flex gap-2">
+                <Button
+                  variant="warning"
+                  className="btn-sm"
+                  onClick={handleAcknowledgeAll}
+                  disabled={loading || acknowledgingAll || !hasUnacknowledgedAlarms}
+                  loading={acknowledgingAll}
+                  title={
+                    hasUnacknowledgedAlarms
+                      ? t("alarms.acknowledgeAll")
+                      : t("alarms.acknowledgeAllDisabled")
+                  }
+                >
+                  <i className="bi bi-check2-all me-1"></i>
+                  {t("alarms.acknowledgeAll")}
+                </Button>
                 <Button
                   variant="secondary"
                   className="btn-sm"

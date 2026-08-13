@@ -1,47 +1,75 @@
 import { useEffect } from "react";
 import type { PropsWithChildren } from "react";
+import { useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
 import { useTheme } from "../hooks/useTheme";
 import { useSocket } from "../hooks/useSocket";
+import { useTranslation } from "../hooks/useTranslation";
+import {
+  SIDEBAR_MOBILE_MQ,
+  closeSidebarOnMobile,
+  setSidebarOpen,
+} from "./sidebarDom";
 
 export function MainLayout({ children }: PropsWithChildren) {
-  // Aplicar el tema
   useTheme();
-  
-  // Conectar Socket.IO para actualizaciones en tiempo real
   useSocket();
+  const location = useLocation();
+  const { t } = useTranslation();
 
   useEffect(() => {
-    document.body.classList.add("layout-fixed", "sidebar-expand-lg", "sidebar-open", "bg-body-tertiary");
+    document.body.classList.add("layout-fixed", "sidebar-expand-lg", "bg-body-tertiary");
+    const mq = window.matchMedia(SIDEBAR_MOBILE_MQ);
+    const applyViewportSidebar = () => {
+      setSidebarOpen(!mq.matches);
+    };
+    applyViewportSidebar();
+    mq.addEventListener("change", applyViewportSidebar);
     return () => {
+      mq.removeEventListener("change", applyViewportSidebar);
       document.body.classList.remove(
         "layout-fixed",
         "sidebar-expand-lg",
         "sidebar-open",
+        "sidebar-collapse",
         "bg-body-tertiary"
       );
     };
   }, []);
 
+  useEffect(() => {
+    closeSidebarOnMobile();
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        closeSidebarOnMobile();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <div className="app-wrapper">
-      {/* Header */}
       <Header />
-
-      {/* Sidebar */}
       <Sidebar />
-
-      {/* Content */}
       <main className="app-main">
         <div className="app-content pt-3">
           <div className="container-fluid">{children}</div>
         </div>
       </main>
-
-      {/* Footer */}
       <Footer />
+      <div
+        className="sidebar-overlay"
+        role="button"
+        tabIndex={-1}
+        aria-label={t("common.close")}
+        onClick={() => closeSidebarOnMobile()}
+      />
     </div>
   );
 }

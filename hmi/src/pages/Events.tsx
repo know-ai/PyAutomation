@@ -1,6 +1,7 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { MultiSelectSearch } from "../components/MultiSelectSearch";
 import {
   filterEvents,
   getEventComments,
@@ -296,6 +297,51 @@ export function Events() {
     setFilters(newFilters);
     localStorage.setItem("events_page", "1");
     localStorage.setItem("events_limit", String(newFilters.limit || 20));
+  };
+
+  const userOptions = useMemo(
+    () =>
+      availableUsers.map((user) => ({
+        value: user.username,
+        label: user.username,
+        description: user.role?.name,
+      })),
+    [availableUsers]
+  );
+
+  const priorityOptions = useMemo(
+    () =>
+      PRIORITY_OPTIONS.map((priority) => ({
+        value: String(priority),
+        label: String(priority),
+      })),
+    []
+  );
+
+  const criticityOptions = useMemo(
+    () =>
+      CRITICITY_OPTIONS.map((criticity) => ({
+        value: String(criticity),
+        label: String(criticity),
+      })),
+    []
+  );
+
+  const handleUsernamesChange = (next: string[]) => {
+    setSelectedUsernames(next);
+    localStorage.setItem("events_selectedUsernames", JSON.stringify(next));
+  };
+
+  const handlePrioritiesChange = (next: string[]) => {
+    const values = next.map(Number).filter((n) => Number.isFinite(n));
+    setSelectedPriorities(values);
+    localStorage.setItem("events_selectedPriorities", JSON.stringify(values));
+  };
+
+  const handleCriticitiesChange = (next: string[]) => {
+    const values = next.map(Number).filter((n) => Number.isFinite(n));
+    setSelectedCriticities(values);
+    localStorage.setItem("events_selectedCriticities", JSON.stringify(values));
   };
 
   const handlePresetDateChange = (preset: PresetDate) => {
@@ -621,120 +667,132 @@ export function Events() {
       <div className="col-12">
         <Card
           title={
-            <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
-              <span className="me-auto">{t("navigation.events")}</span>
-              <div className="d-flex align-items-center gap-2">
-                <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">
-                    {t("events.range")}
-                  </label>
-                  <select
-                    className="form-select form-select-sm"
-                    style={{ width: "150px" }}
-                    value={presetDate}
-                    onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
+            <div className="card-header-stack w-100">
+              <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
+                <span className="me-auto">{t("navigation.events")}</span>
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("events.usernames")}
+                    </label>
+                    <MultiSelectSearch
+                      options={userOptions}
+                      selected={selectedUsernames}
+                      onChange={handleUsernamesChange}
+                      placeholder={t("events.selectUsersPlaceholder")}
+                      searchPlaceholder={t("events.searchUsers")}
+                      emptyText={t("events.noUsersFound")}
+                      selectAllLabel={t("events.selectAll")}
+                      clearLabel={t("common.clear")}
+                      selectedCountLabel={(count) => t("events.selectedCount", { count })}
+                      disabled={loading}
+                      style={{ width: "180px", maxWidth: "100%" }}
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("events.priority")}
+                    </label>
+                    <MultiSelectSearch
+                      options={priorityOptions}
+                      selected={selectedPriorities.map(String)}
+                      onChange={handlePrioritiesChange}
+                      placeholder={t("events.selectPriorityPlaceholder")}
+                      searchPlaceholder={t("events.searchPriority")}
+                      emptyText={t("events.noPriorityFound")}
+                      selectAllLabel={t("events.selectAll")}
+                      clearLabel={t("common.clear")}
+                      selectedCountLabel={(count) => t("events.selectedCount", { count })}
+                      disabled={loading}
+                      style={{ width: "150px", maxWidth: "100%" }}
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("events.criticity")}
+                    </label>
+                    <MultiSelectSearch
+                      options={criticityOptions}
+                      selected={selectedCriticities.map(String)}
+                      onChange={handleCriticitiesChange}
+                      placeholder={t("events.selectCriticityPlaceholder")}
+                      searchPlaceholder={t("events.searchCriticity")}
+                      emptyText={t("events.noCriticityFound")}
+                      selectAllLabel={t("events.selectAll")}
+                      clearLabel={t("common.clear")}
+                      selectedCountLabel={(count) => t("events.selectedCount", { count })}
+                      disabled={loading}
+                      style={{ width: "150px", maxWidth: "100%" }}
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("events.range")}
+                    </label>
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ width: "150px", maxWidth: "100%" }}
+                      value={presetDate}
+                      onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
+                    >
+                      {PRESET_DATES.map((preset) => (
+                        <option key={preset} value={preset}>
+                          {t(`events.preset.${preset}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button
+                    variant="primary"
+                    className="btn-sm"
+                    onClick={handleApplyFilters}
+                    disabled={loading}
                   >
-                    {PRESET_DATES.map((preset) => (
-                      <option key={preset} value={preset}>
-                        {t(`events.preset.${preset}`)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {presetDate === "Custom" && (
-                  <>
-                    <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">
-                        {t("events.start")}
-                      </label>
-                      <input
-                        type="datetime-local"
-                        className="form-control form-control-sm"
-                        style={{ width: "180px" }}
-                        value={startDate}
-                        onChange={(e) => {
-                          setStartDate(e.target.value);
-                          localStorage.setItem("events_startDate", e.target.value);
-                        }}
-                      />
-                    </div>
-                    <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">
-                        {t("events.end")}
-                      </label>
-                      <input
-                        type="datetime-local"
-                        className="form-control form-control-sm"
-                        style={{ width: "180px" }}
-                        value={endDate}
-                        onChange={(e) => handleEndDateChange(e.target.value)}
-                        max={new Date().toISOString().slice(0, 16)}
-                      />
-                    </div>
-                  </>
-                )}
-                <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">
-                    {t("events.priority")}
-                  </label>
-                  <select
-                    className="form-select form-select-sm"
-                    style={{ width: "100px" }}
-                    value={selectedPriorities.length > 0 ? String(selectedPriorities[0]) : ""}
-                    onChange={(e) => {
-                      const value = e.target.value === "" ? [] : [Number(e.target.value)];
-                      setSelectedPriorities(value);
-                      localStorage.setItem("events_selectedPriorities", JSON.stringify(value));
-                    }}
+                    {t("common.filter")}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="btn-sm"
+                    onClick={handleExportCSV}
+                    disabled={loading || events.length === 0}
                   >
-                    <option value="">{t("events.all")}</option>
-                    {PRIORITY_OPTIONS.map((priority) => (
-                      <option key={priority} value={String(priority)}>
-                        {priority}
-                      </option>
-                    ))}
-                  </select>
+                    <i className="bi bi-download me-1"></i>
+                    {t("common.csv")}
+                  </Button>
                 </div>
-                <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">
-                    {t("events.criticity")}
-                  </label>
-                  <select
-                    className="form-select form-select-sm"
-                    style={{ width: "100px" }}
-                    value={selectedCriticities.length > 0 ? String(selectedCriticities[0]) : ""}
-                    onChange={(e) => {
-                      const value = e.target.value === "" ? [] : [Number(e.target.value)];
-                      setSelectedCriticities(value);
-                      localStorage.setItem("events_selectedCriticities", JSON.stringify(value));
-                    }}
-                  >
-                    <option value="">{t("events.all")}</option>
-                    {CRITICITY_OPTIONS.map((criticity) => (
-                      <option key={criticity} value={String(criticity)}>
-                        {criticity}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <Button
-                  variant="primary"
-                  className="btn-sm"
-                  onClick={handleApplyFilters}
-                  disabled={loading}
-                >
-                  {t("common.filter")}
-                </Button>
-                <Button
-                  variant="primary"
-                  className="btn-sm"
-                  onClick={handleExportCSV}
-                  disabled={loading || events.length === 0}
-                >
-                  <i className="bi bi-download me-1"></i>
-                  {t("common.csv")}
-                </Button>
               </div>
+              {presetDate === "Custom" && (
+                <div className="card-header-stack__row d-flex align-items-center gap-2 flex-wrap pt-2 mt-1 border-top">
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("events.start")}
+                    </label>
+                    <input
+                      type="datetime-local"
+                      className="form-control form-control-sm"
+                      style={{ width: "180px", maxWidth: "100%" }}
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        localStorage.setItem("events_startDate", e.target.value);
+                      }}
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("events.end")}
+                    </label>
+                    <input
+                      type="datetime-local"
+                      className="form-control form-control-sm"
+                      style={{ width: "180px", maxWidth: "100%" }}
+                      value={endDate}
+                      onChange={(e) => handleEndDateChange(e.target.value)}
+                      max={new Date().toISOString().slice(0, 16)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           }
           footer={
@@ -805,34 +863,6 @@ export function Events() {
               {error}
             </div>
           )}
-
-          {/* Filtro de usuarios */}
-          <div className="mb-3">
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="form-label mb-0 me-2">{t("events.usernames")}</label>
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                {availableUsers.map((user) => {
-                  const isSelected = selectedUsernames.includes(user.username);
-                  return (
-                    <button
-                      key={user.username}
-                      type="button"
-                      className={`btn btn-sm ${isSelected ? "btn-primary" : "btn-outline-secondary"}`}
-                      onClick={() => {
-                        const newSelectedUsernames = isSelected
-                          ? selectedUsernames.filter((u) => u !== user.username)
-                          : [...selectedUsernames, user.username];
-                        setSelectedUsernames(newSelectedUsernames);
-                        localStorage.setItem("events_selectedUsernames", JSON.stringify(newSelectedUsernames));
-                      }}
-                    >
-                      {user.username}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
 
           {loading && (
             <div className="text-center py-4">

@@ -13,7 +13,7 @@
 
 **Empowering Industry 4.0 with Python, React, and Open Standards**
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Contributing](#-contributing)
+[Features](#-features) • [Quick Start](#-quick-start) • [Build HMI into Python Package](#-build-hmi-changes-into-the-python-package) • [Documentation](#-documentation) • [Contributing](#-contributing)
 
 </div>
 
@@ -336,6 +336,92 @@ pip install -r requirements.txt
 5. **Access the application:**
 
 Open your browser and navigate to `http://localhost:8050`.
+
+---
+
+## 🧩 Build HMI Changes into the Python Package
+
+The React HMI lives in `hmi/` (source). The Python package `PyAutomationIO` serves the **compiled** frontend from `automation/hmi/` (copied from `hmi/dist` at packaging time). After changing the HMI, you must rebuild the frontend and then rebuild the Python package so those UI changes are included in the distributable.
+
+### How the packaging flow works
+
+1. `npm run build` in `hmi/` generates production assets in `hmi/dist/`.
+2. `setup.py` copies `hmi/dist/` → `automation/hmi/` and registers those files as package data.
+3. `python setup.py sdist bdist_wheel` (or `./build_package.sh`) produces installable artifacts under `dist/`.
+4. Installing that wheel/sdist (or running from a tree that already includes `automation/hmi/`) exposes the updated UI at `/hmi/`.
+
+### Recommended sequence (after HMI changes)
+
+Run all commands from the **repository root** (`PyAutomation/`).
+
+#### Option A — One-shot script (recommended)
+
+Forces a fresh HMI build and then builds the Python package:
+
+```bash
+chmod +x build_package.sh
+./build_package.sh --rebuild-hmi
+```
+
+Artifacts appear in `dist/` (for example `PyAutomationIO-<version>-py3-none-any.whl` and the corresponding `.tar.gz`).
+
+#### Option B — Manual steps
+
+```bash
+# 1) Install / refresh frontend dependencies (first time or after package.json changes)
+cd hmi
+npm install
+
+# 2) Compile the HMI for production (base path defaults to /hmi/)
+npm run build
+cd ..
+
+# 3) Clean previous packaging leftovers
+rm -rf build/ dist/ *.egg-info/ automation/hmi/
+
+# 4) Build the Python package (setup.py copies hmi/dist -> automation/hmi)
+python3 setup.py sdist bdist_wheel
+```
+
+### Install / refresh the package so changes are visible
+
+**Editable / local install (development):**
+
+```bash
+# From the repository root, after building the HMI and packaging (or after npm run build)
+pip install -e .
+```
+
+If you already have an editable install, still run `npm run build` and ensure `automation/hmi/` was refreshed (via `setup.py` or `build_package.sh`). Restart the app process so Flask serves the new static files.
+
+**Install from the generated wheel:**
+
+```bash
+pip uninstall -y PyAutomationIO
+pip install dist/PyAutomationIO-*.whl
+```
+
+Then restart your application (Gunicorn/WSGI/Docker) and hard-refresh the browser (`Ctrl+Shift+R`) when opening `/hmi/`.
+
+### Useful notes
+
+| Topic | Detail |
+|-------|--------|
+| When to use `--rebuild-hmi` | Always after changing files under `hmi/src/` (or HMI styles/locales). Without it, `build_package.sh` reuses an existing `hmi/dist` if present. |
+| Vite base path | Package serving expects `VITE_BASE_PATH=/hmi/` (default in `hmi/vite.config.ts`). Do not change this for the Python package build unless you also change how Flask serves `/hmi`. |
+| Source of truth | Edit `hmi/src/…`. Do **not** hand-edit `automation/hmi/` or `hmi/dist/`; those are build outputs. |
+| Verify inclusion | After packaging, `automation/hmi/index.html` and `automation/hmi/assets/` should exist and match the latest `npm run build`. |
+| Docker image | Production Docker builds the HMI in a Node stage (`Dockerfile`) and copies it to `/var/www/hmi`. Rebuilding only the Python wheel does not update an already-built Docker image; rebuild the image if you deploy via Docker. |
+
+### Minimal checklist
+
+```text
+[ ] Changes committed in hmi/src
+[ ] npm run build  (or ./build_package.sh --rebuild-hmi)
+[ ] Python package rebuilt (sdist/wheel)
+[ ] Package reinstalled or app restarted
+[ ] Browser hard-refresh on /hmi/
+```
 
 ---
 

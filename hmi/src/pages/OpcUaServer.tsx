@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { PaginationNav } from "../components/PaginationNav";
 import { getOpcUaServerAttributes, updateOpcUaServerAccessType, type OpcUaServerAttribute } from "../services/opcua";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
@@ -252,46 +253,21 @@ export function OpcUaServer() {
 
               {/* Paginación */}
               {totalPages > 1 && (
-                <div className="d-flex justify-content-between align-items-center mt-3">
-                  <div>
-                    <span className="text-muted">
-                      {t("pagination.showing", {
-                        start: (currentPage - 1) * ITEMS_PER_PAGE + 1,
-                        end: Math.min(currentPage * ITEMS_PER_PAGE, attributes.length),
-                        total: attributes.length,
-                        item: t("pagination.items.attributes"),
-                      })}
-                    </span>
-                  </div>
-                  <nav>
-                    <ul className="pagination mb-0">
-                      <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
-                        <button
-                          className="page-link"
-                          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                          disabled={currentPage === 1}
-                        >
-                          {t("pagination.previous")}
-                        </button>
-                      </li>
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                        <li key={page} className={`page-item ${currentPage === page ? "active" : ""}`}>
-                          <button className="page-link" onClick={() => setCurrentPage(page)}>
-                            {page}
-                          </button>
-                        </li>
-                      ))}
-                      <li className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}>
-                        <button
-                          className="page-link"
-                          onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                          disabled={currentPage === totalPages}
-                        >
-                          {t("pagination.next")}
-                        </button>
-                      </li>
-                    </ul>
-                  </nav>
+                <div className="pagination-toolbar mt-3">
+                  <span className="text-muted">
+                    {t("pagination.showing", {
+                      start: (currentPage - 1) * ITEMS_PER_PAGE + 1,
+                      end: Math.min(currentPage * ITEMS_PER_PAGE, attributes.length),
+                      total: attributes.length,
+                      item: t("pagination.items.attributes"),
+                    })}
+                  </span>
+                  <PaginationNav
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={setCurrentPage}
+                    disabled={loading}
+                  />
                 </div>
               )}
             </>

@@ -4,7 +4,7 @@ import { useTranslation } from "../hooks/useTranslation";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean;
-  variant?: "primary" | "secondary" | "danger" | "success";
+  variant?: "primary" | "secondary" | "danger" | "success" | "warning";
 };
 
 export function Button({

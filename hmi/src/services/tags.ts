@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from "axios";
 import api from "./api";
 
 export type Tag = {
@@ -193,9 +194,10 @@ export type TrendsResponse = {
  * Obtiene datos de tendencias históricas para gráficos
  */
 export const getTrends = async (
-  filters: TrendsFilter
+  filters: TrendsFilter,
+  config?: AxiosRequestConfig
 ): Promise<TrendsResponse> => {
-  const { data } = await api.post("/tags/query_trends", filters);
+  const { data } = await api.post("/tags/query_trends", filters, config);
   return data;
 };
 

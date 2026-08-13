@@ -9,6 +9,9 @@ import { useTranslation } from "../hooks/useTranslation";
 import { getTags, type Tag } from "../services/tags";
 import { showToast } from "../utils/toast";
 
+export const BUFFER_SIZE_MIN = 120;
+export const BUFFER_SIZE_MAX = 360;
+
 export interface StripChartConfig {
   id: string;
   title: string;
@@ -36,6 +39,7 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
   const [tagSearch, setTagSearch] = useState("");
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [loadingTags, setLoadingTags] = useState(false);
+  const [bufferDraft, setBufferDraft] = useState(String(config.bufferSize));
   const tagConfigRef = useRef<HTMLDivElement>(null);
 
   // Cargar tags disponibles
@@ -71,6 +75,10 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showTagConfig]);
+
+  useEffect(() => {
+    setBufferDraft(String(config.bufferSize));
+  }, [config.bufferSize, showTagConfig]);
 
   // Filtrar tags por búsqueda
   const filteredTags = useMemo(() => {
@@ -124,7 +132,12 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
 
     const traces: Data[] = config.tagNames.map((tagName, index) => {
       const history = tagHistory[tagName] || [];
-      const bufferSlice = history.slice(-config.bufferSize);
+      const bufferSlice = history.slice(
+        -Math.min(
+          BUFFER_SIZE_MAX,
+          Math.max(BUFFER_SIZE_MIN, config.bufferSize || BUFFER_SIZE_MIN)
+        )
+      );
       const tag = availableTags.find((t) => t.name === tagName);
       const unit = getTagUnit(tagName);
       return {
@@ -209,14 +222,27 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
     });
   };
 
-  const handleBufferSizeChange = (newSize: number) => {
-    if (newSize >= 10 && newSize <= 10000) {
+  const handleBufferDraftChange = (raw: string) => {
+    setBufferDraft(raw);
+    const parsed = Number(raw);
+    if (
+      Number.isFinite(parsed) &&
+      parsed >= BUFFER_SIZE_MIN &&
+      parsed <= BUFFER_SIZE_MAX
+    ) {
       onConfigChange({
         ...config,
-        bufferSize: newSize,
+        bufferSize: Math.trunc(parsed),
       });
     }
   };
+
+  const parsedBuffer = Number(bufferDraft);
+  const isBufferOutOfRange =
+    bufferDraft.trim() === "" ||
+    !Number.isFinite(parsedBuffer) ||
+    parsedBuffer < BUFFER_SIZE_MIN ||
+    parsedBuffer > BUFFER_SIZE_MAX;
 
   const handleTitleChange = (newTitle: string) => {
     onConfigChange({
@@ -332,16 +358,34 @@ export function StripChart({ config, isEditMode, onConfigChange, onDelete }: Str
                         )}
                       </div>
                       <div className="mb-2">
-                        <label className="form-label small">{t("stripChart.bufferSizeLabel")}</label>
+                        <label className="form-label small" htmlFor={`buffer-size-${config.id}`}>
+                          {t("stripChart.bufferSizeLabel")}
+                        </label>
                         <input
+                          id={`buffer-size-${config.id}`}
                           type="number"
-                          className="form-control form-control-sm"
-                          value={config.bufferSize}
-                          onChange={(e) => handleBufferSizeChange(Number(e.target.value))}
-                          min={10}
-                          max={10000}
-                          step={10}
+                          className={`form-control form-control-sm${isBufferOutOfRange ? " is-invalid" : ""}`}
+                          value={bufferDraft}
+                          onChange={(e) => handleBufferDraftChange(e.target.value)}
+                          min={BUFFER_SIZE_MIN}
+                          max={BUFFER_SIZE_MAX}
+                          step={1}
+                          aria-invalid={isBufferOutOfRange}
+                          aria-describedby={
+                            isBufferOutOfRange ? `buffer-size-help-${config.id}` : undefined
+                          }
                         />
+                        {isBufferOutOfRange && (
+                          <div
+                            id={`buffer-size-help-${config.id}`}
+                            className="invalid-feedback d-block"
+                          >
+                            {t("stripChart.bufferSizeRangeHelp", {
+                              min: BUFFER_SIZE_MIN,
+                              max: BUFFER_SIZE_MAX,
+                            })}
+                          </div>
+                        )}
                       </div>
                       <div className="mb-2">
                         <label className="form-label small d-flex justify-content-between align-items-center">

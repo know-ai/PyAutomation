@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "../components/Button";
-import { StripChart, type StripChartConfig } from "../components/StripChart";
+import { StripChart, BUFFER_SIZE_MIN, BUFFER_SIZE_MAX, type StripChartConfig } from "../components/StripChart";
 import { useTranslation } from "../hooks/useTranslation";
 import { ResponsiveGridLayout, Layout as GridLayoutType } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
@@ -11,6 +11,19 @@ const GRID_COLS = 12;
 const GRID_ROW_HEIGHT = 40;
 const MIN_STRIPCHART_ROWS = 6; // Altura mínima pensada para permitir ~3 gráficos en vertical sin scroll
 
+function clampBufferSize(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return BUFFER_SIZE_MIN;
+  return Math.min(BUFFER_SIZE_MAX, Math.max(BUFFER_SIZE_MIN, Math.trunc(parsed)));
+}
+
+function normalizeCharts(charts: StripChartConfig[]): StripChartConfig[] {
+  return charts.map((chart) => ({
+    ...chart,
+    bufferSize: clampBufferSize(chart.bufferSize),
+  }));
+}
+
 export function RealTimeTrends() {
   const { t } = useTranslation();
   const [isEditMode, setIsEditMode] = useState(false);
@@ -20,7 +33,8 @@ export function RealTimeTrends() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? normalizeCharts(parsed) : [];
       } catch {
         return [];
       }
@@ -40,7 +54,7 @@ export function RealTimeTrends() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setStripCharts(parsed);
+          setStripCharts(normalizeCharts(parsed));
         }
       } catch (e) {
         console.error("Error loading saved layout:", e);
@@ -66,7 +80,7 @@ export function RealTimeTrends() {
       id: `stripchart-${Date.now()}`,
       title: t("realTimeTrends.newChartTitle", { index: stripCharts.length + 1 }),
       tagNames: [],
-      bufferSize: 100,
+      bufferSize: BUFFER_SIZE_MIN,
       x: 0,
       y: 0,
       w: 6,

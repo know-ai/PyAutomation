@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { MultiSelectSearch } from "../components/MultiSelectSearch";
 import {
   filterLogs,
   createLog,
@@ -155,7 +156,7 @@ export function OperationalLogs() {
 
       // Cargar nombres de alarmas
       try {
-        const alarmsResponse = await getAlarms(1, 1000);
+        const alarmsResponse = await getAlarms(1, 5000);
         const alarmNames = alarmsResponse.data?.map((alarm: Alarm) => alarm.name).filter(Boolean) || [];
         const uniqueAlarmNames = Array.from(new Set(alarmNames));
         setAvailableAlarmNames(uniqueAlarmNames);
@@ -335,6 +336,35 @@ export function OperationalLogs() {
     localStorage.setItem("operational_logs_limit", "20");
   };
 
+  const userOptions = useMemo(
+    () =>
+      availableUsers.map((user) => ({
+        value: user.username,
+        label: user.username,
+        description: user.role?.name,
+      })),
+    [availableUsers]
+  );
+
+  const alarmOptions = useMemo(
+    () =>
+      availableAlarmNames.map((name) => ({
+        value: name,
+        label: name,
+      })),
+    [availableAlarmNames]
+  );
+
+  const handleUsernamesChange = (next: string[]) => {
+    setSelectedUsernames(next);
+    localStorage.setItem("operational_logs_selectedUsernames", JSON.stringify(next));
+  };
+
+  const handleAlarmNamesChange = (next: string[]) => {
+    setSelectedAlarmNames(next);
+    localStorage.setItem("operational_logs_selectedAlarmNames", JSON.stringify(next));
+  };
+
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.pages) {
       setFilters({ ...filters, page: newPage });
@@ -453,85 +483,127 @@ export function OperationalLogs() {
       <div className="col-12">
         <Card
           title={
-            <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
-              <span className="me-auto">{t("navigation.operationalLogs")}</span>
-              <div className="d-flex align-items-center gap-2">
-                <div className="d-flex align-items-center gap-1">
-                  <label className="form-label small mb-0 me-1">
-                    {t("operationalLogs.range")}
-                  </label>
-                  <select
-                    className="form-select form-select-sm"
-                    style={{ width: "150px" }}
-                    value={presetDate}
-                    onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
+            <div className="card-header-stack w-100">
+              <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
+                <span className="me-auto">{t("navigation.operationalLogs")}</span>
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("operationalLogs.usernames")}
+                    </label>
+                    <MultiSelectSearch
+                      options={userOptions}
+                      selected={selectedUsernames}
+                      onChange={handleUsernamesChange}
+                      placeholder={t("operationalLogs.selectUsersPlaceholder")}
+                      searchPlaceholder={t("operationalLogs.searchUsers")}
+                      emptyText={t("operationalLogs.noUsersFound")}
+                      selectAllLabel={t("operationalLogs.selectAll")}
+                      clearLabel={t("common.clear")}
+                      selectedCountLabel={(count) =>
+                        t("operationalLogs.selectedCount", { count })
+                      }
+                      disabled={loading}
+                      style={{ width: "200px", maxWidth: "100%" }}
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("operationalLogs.alarmNames")}
+                    </label>
+                    <MultiSelectSearch
+                      options={alarmOptions}
+                      selected={selectedAlarmNames}
+                      onChange={handleAlarmNamesChange}
+                      placeholder={t("operationalLogs.selectAlarmsPlaceholder")}
+                      searchPlaceholder={t("operationalLogs.searchAlarms")}
+                      emptyText={t("operationalLogs.noAlarmsFound")}
+                      selectAllLabel={t("operationalLogs.selectAll")}
+                      clearLabel={t("common.clear")}
+                      selectedCountLabel={(count) =>
+                        t("operationalLogs.selectedCount", { count })
+                      }
+                      disabled={loading}
+                      style={{ width: "200px", maxWidth: "100%" }}
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("operationalLogs.range")}
+                    </label>
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ width: "150px", maxWidth: "100%" }}
+                      value={presetDate}
+                      onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
+                    >
+                      {PRESET_DATES.map((preset) => (
+                        <option key={preset} value={preset}>
+                          {t(`operationalLogs.preset.${preset}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button
+                    variant="primary"
+                    className="btn-sm"
+                    onClick={handleApplyFilters}
+                    disabled={loading}
                   >
-                    {PRESET_DATES.map((preset) => (
-                      <option key={preset} value={preset}>
-                        {t(`operationalLogs.preset.${preset}`)}
-                      </option>
-                    ))}
-                  </select>
+                    {t("common.filter")}
+                  </Button>
+                  <Button
+                    variant="success"
+                    className="btn-sm"
+                    onClick={() => setShowAddLogModal(true)}
+                    disabled={loading}
+                  >
+                    <i className="bi bi-plus-circle me-1"></i>
+                    {t("operationalLogs.add")}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="btn-sm"
+                    onClick={handleExportCSV}
+                    disabled={loading || logs.length === 0}
+                  >
+                    <i className="bi bi-download me-1"></i>
+                    CSV
+                  </Button>
                 </div>
-                {presetDate === "Custom" && (
-                  <>
-                    <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">
-                        {t("operationalLogs.start")}
-                      </label>
-                      <input
-                        type="datetime-local"
-                        className="form-control form-control-sm"
-                        style={{ width: "180px" }}
-                        value={startDate}
-                        onChange={(e) => {
-                          setStartDate(e.target.value);
-                          localStorage.setItem("operational_logs_startDate", e.target.value);
-                        }}
-                      />
-                    </div>
-                    <div className="d-flex align-items-center gap-1">
-                      <label className="form-label small mb-0 me-1">
-                        {t("operationalLogs.end")}
-                      </label>
-                      <input
-                        type="datetime-local"
-                        className="form-control form-control-sm"
-                        style={{ width: "180px" }}
-                        value={endDate}
-                        onChange={(e) => handleEndDateChange(e.target.value)}
-                        max={new Date().toISOString().slice(0, 16)}
-                      />
-                    </div>
-                  </>
-                )}
-                <Button
-                  variant="primary"
-                  className="btn-sm"
-                  onClick={handleApplyFilters}
-                  disabled={loading}
-                >
-                  {t("common.filter")}
-                </Button>
-                <Button
-                  variant="success"
-                  className="btn-sm"
-                  onClick={() => setShowAddLogModal(true)}
-                  disabled={loading}
-                >
-                  <i className="bi bi-plus-circle me-1"></i>
-                  {t("operationalLogs.add")}
-                </Button>
-                <Button
-                  variant="primary"
-                  className="btn-sm"
-                  onClick={handleExportCSV}
-                  disabled={loading || logs.length === 0}
-                >
-                  <i className="bi bi-download me-1"></i>
-                  CSV
-                </Button>
               </div>
+              {presetDate === "Custom" && (
+                <div className="card-header-stack__row d-flex align-items-center gap-2 flex-wrap pt-2 mt-1 border-top">
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("operationalLogs.start")}
+                    </label>
+                    <input
+                      type="datetime-local"
+                      className="form-control form-control-sm"
+                      style={{ width: "180px", maxWidth: "100%" }}
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        localStorage.setItem("operational_logs_startDate", e.target.value);
+                      }}
+                    />
+                  </div>
+                  <div className="d-flex align-items-center gap-1">
+                    <label className="form-label small mb-0 me-1">
+                      {t("operationalLogs.end")}
+                    </label>
+                    <input
+                      type="datetime-local"
+                      className="form-control form-control-sm"
+                      style={{ width: "180px", maxWidth: "100%" }}
+                      value={endDate}
+                      onChange={(e) => handleEndDateChange(e.target.value)}
+                      max={new Date().toISOString().slice(0, 16)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           }
           footer={
@@ -602,65 +674,6 @@ export function OperationalLogs() {
               {error}
             </div>
           )}
-
-          {/* Filtros */}
-          <div className="mb-3">
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="form-label mb-0 me-2">
-                {t("operationalLogs.usernames")}
-              </label>
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                {availableUsers.map((user) => {
-                  const isSelected = selectedUsernames.includes(user.username);
-                  return (
-                    <button
-                      key={user.username}
-                      type="button"
-                      className={`btn btn-sm ${isSelected ? "btn-primary" : "btn-outline-secondary"}`}
-                      onClick={() => {
-                        const newSelectedUsernames = isSelected
-                          ? selectedUsernames.filter((u) => u !== user.username)
-                          : [...selectedUsernames, user.username];
-                        setSelectedUsernames(newSelectedUsernames);
-                        localStorage.setItem("operational_logs_selectedUsernames", JSON.stringify(newSelectedUsernames));
-                      }}
-                    >
-                      {user.username}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-3">
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="form-label mb-0 me-2">
-                {t("operationalLogs.alarmNames")}
-              </label>
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                {availableAlarmNames.map((alarmName) => {
-                  const isSelected = selectedAlarmNames.includes(alarmName);
-                  return (
-                    <button
-                      key={alarmName}
-                      type="button"
-                      className={`btn btn-sm ${isSelected ? "btn-primary" : "btn-outline-secondary"}`}
-                      onClick={() => {
-                        const newSelectedAlarmNames = isSelected
-                          ? selectedAlarmNames.filter((a) => a !== alarmName)
-                          : [...selectedAlarmNames, alarmName];
-                        setSelectedAlarmNames(newSelectedAlarmNames);
-                        localStorage.setItem("operational_logs_selectedAlarmNames", JSON.stringify(newSelectedAlarmNames));
-                      }}
-                    >
-                      {alarmName}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
 
           {loading && (
             <div className="text-center py-4">
