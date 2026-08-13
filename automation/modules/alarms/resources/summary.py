@@ -4,6 +4,7 @@ from flask_restx import Namespace, Resource, fields
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ...health.require_db import require_remote_db
 from ....dbmodels.alarms import AlarmSummary
 from .... import _TIMEZONE, TIMEZONE
 
@@ -28,6 +29,8 @@ class AlarmsSummaryFilterByResource(Resource):
     @api.doc(security='apikey', description="Filters historical alarm data.")
     @api.response(200, "Success")
     @api.response(400, "Invalid parameters")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
     @Api.token_required(auth=True)
     @ns.expect(alarms_summary_filter_model)
     def post(self):
@@ -98,6 +101,8 @@ class LastsAlarmsResource(Resource):
 
     @api.doc(security='apikey', description="Retrieves the last N alarm events.")
     @api.response(200, "Success")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
     @Api.token_required(auth=True)
     def get(self, lasts:int=10):
         r"""
@@ -115,6 +120,8 @@ class AlarmsSummaryCommentsResource(Resource):
 
     @api.doc(security='apikey', description="Retrieves comments for a specific alarm event.")
     @api.response(200, "Success")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
     @Api.token_required(auth=True)
     def get(self, id:int):
         r"""

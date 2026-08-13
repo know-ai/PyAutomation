@@ -7,6 +7,8 @@ import { Footer } from "./Footer";
 import { useTheme } from "../hooks/useTheme";
 import { useSocket } from "../hooks/useSocket";
 import { useTranslation } from "../hooks/useTranslation";
+import { DatabaseStatusProvider } from "../hooks/useDatabaseStatus";
+import { DatabaseUnavailableOverlay } from "../components/DatabaseUnavailableOverlay";
 import {
   SIDEBAR_MOBILE_MQ,
   closeSidebarOnMobile,
@@ -54,12 +56,16 @@ export function MainLayout({ children }: PropsWithChildren) {
   }, []);
 
   return (
+    <DatabaseStatusProvider>
     <div className="app-wrapper">
       <Header />
       <Sidebar />
       <main className="app-main">
-        <div className="app-content pt-3">
-          <div className="container-fluid">{children}</div>
+        <div className="app-main-stage">
+          <DatabaseUnavailableOverlay />
+          <div className="app-content pt-3">
+            <div className="container-fluid">{children}</div>
+          </div>
         </div>
       </main>
       <Footer />
@@ -71,6 +77,7 @@ export function MainLayout({ children }: PropsWithChildren) {
         onClick={() => closeSidebarOnMobile()}
       />
     </div>
+    </DatabaseStatusProvider>
   );
 }
 

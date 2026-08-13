@@ -3214,9 +3214,13 @@ class PyAutomation(Singleton):
             self.set_db(dbtype=dbtype, **db_config)
             # init_database crea tablas y aplica migraciones si corresponde
             self.db_manager.init_database()
-            self.load_opcua_clients_from_db()
-            self.load_db_to_cvt()
-            self.load_db_to_alarm_manager()
+            self.opcua_client_manager._defer_connection_alarms = True
+            try:
+                self.load_opcua_clients_from_db()
+                self.load_db_to_cvt()
+                self.load_db_to_alarm_manager()
+            finally:
+                self.opcua_client_manager._defer_connection_alarms = False
             self.load_db_to_roles()
             self.load_db_to_users()
             if reload:
@@ -3227,6 +3231,9 @@ class PyAutomation(Singleton):
                 source=audit_source,
                 target=target,
             )
+            from .utils.connection_alarms import set_db_disconnected, sync_opcua_connection_alarms
+            set_db_disconnected(False)
+            sync_opcua_connection_alarms()
             try:
                 from .persistence import get_persistence_gateway
                 from .persistence.config import SafConfig
@@ -3248,6 +3255,8 @@ class PyAutomation(Singleton):
                 target=target,
                 error=str(err),
             )
+            from .utils.connection_alarms import set_db_disconnected
+            set_db_disconnected(True)
             return False
         
     @validate_types(test=bool|type(None), reload=bool|type(None), source=str|type(None), output=None|bool)
@@ -3305,10 +3314,14 @@ class PyAutomation(Singleton):
 
                 self.__log_histories = True
                 self.set_db(dbtype=dbtype, **db_config) 
-                self.db_manager.init_database()   
-                self.load_opcua_clients_from_db()
-                self.load_db_to_cvt()
-                self.load_db_to_alarm_manager()
+                self.db_manager.init_database()
+                self.opcua_client_manager._defer_connection_alarms = True
+                try:
+                    self.load_opcua_clients_from_db()
+                    self.load_db_to_cvt()
+                    self.load_db_to_alarm_manager()
+                finally:
+                    self.opcua_client_manager._defer_connection_alarms = False
                 self.load_db_to_roles()
                 self.load_db_to_users()
                 self.load_db_tags_to_machine()
@@ -3316,6 +3329,9 @@ class PyAutomation(Singleton):
                     source=audit_source,
                     target=target,
                 )
+                from .utils.connection_alarms import set_db_disconnected, sync_opcua_connection_alarms
+                set_db_disconnected(False)
+                sync_opcua_connection_alarms()
 
                 return True
 
@@ -3324,6 +3340,8 @@ class PyAutomation(Singleton):
                 target=target,
                 error="missing-config",
             )
+            from .utils.connection_alarms import set_db_disconnected
+            set_db_disconnected(True)
             return False
         
         except Exception as err:
@@ -3334,6 +3352,8 @@ class PyAutomation(Singleton):
                 target=target,
                 error=str(err),
             )
+            from .utils.connection_alarms import set_db_disconnected
+            set_db_disconnected(True)
             return False
 
     @logging_error_handler
@@ -3360,6 +3380,8 @@ class PyAutomation(Singleton):
             source="disconnect",
             target=target,
         )
+        from .utils.connection_alarms import set_db_disconnected
+        set_db_disconnected(True)
         self.__log_histories = False
         self.db_manager._logger.logger.stop_db()
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

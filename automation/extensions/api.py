@@ -91,39 +91,38 @@ class Api(Singleton):
             
             @wraps(f)
             def decorated(*args, **kwargs):
+                if not auth:
+                    return f(*args, **kwargs)
+
+                token = None
+                if 'X-API-KEY' in request.headers:
+                    token = request.headers['X-API-KEY']
+                elif 'Authorization' in request.headers:
+                    token = request.headers['Authorization'].split('Token ')[-1]
+
+                if not token:
+                    return {'message': 'Key is missing.'}, 401
+
+                # In-memory session first: CVT/OPC UA/real-time must keep working
+                # when the remote historian is down.
+                memory_user = users.get_active_user(token=token)
+                if memory_user:
+                    return f(*args, **kwargs)
+
                 try:
+                    db_user = Users.get_or_none(token=token)
+                    if db_user:
+                        return f(*args, **kwargs)
+                except Exception:
+                    logging.getLogger("pyautomation").debug(
+                        "Token DB lookup skipped; remote database unreachable",
+                        exc_info=True,
+                    )
 
-                    if auth:
+                if Api.verify_tpt(tpt=token):
+                    return f(*args, **kwargs)
 
-                        token = None
-
-                        if 'X-API-KEY' in request.headers:
-                            
-                            token = request.headers['X-API-KEY']
-
-                        elif 'Authorization' in request.headers:
-                            
-                            token = request.headers['Authorization'].split('Token ')[-1]
-
-                        if not token:
-                            
-                            return {'message' : 'Key is missing.'}, 401
-                        
-                        user = Users.get_or_none(token=token)
-
-                        if user:
-
-                            return f(*args, **kwargs)
-
-                        if Api.verify_tpt(tpt=token):
-                    
-                            return f(*args, **kwargs)
-
-                        return {'message' : 'Invalid token'}, 401                  
-                
-                except Exception as err:
-                    logger = logging.getLogger("pyautomation")
-                    logger.error(str(err))
+                return {'message': 'Invalid token'}, 401
 
             return decorated
 
@@ -166,8 +165,10 @@ class Api(Singleton):
                     current_user = users.get_active_user(token=token)
                     
                     if not current_user:
-                        # Try database user
-                        db_user = Users.get_or_none(token=token)
+                        try:
+                            db_user = Users.get_or_none(token=token)
+                        except Exception:
+                            db_user = None
                         if db_user:
                             # Get role from database
                             role_name = db_user.role.name.upper()
@@ -230,8 +231,10 @@ class Api(Singleton):
                     current_user = users.get_active_user(token=token)
                     
                     if not current_user:
-                        # Try database user
-                        db_user = Users.get_or_none(token=token)
+                        try:
+                            db_user = Users.get_or_none(token=token)
+                        except Exception:
+                            db_user = None
                         if db_user:
                             # Get role level from database
                             role_level = db_user.role.level

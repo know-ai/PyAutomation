@@ -11,6 +11,7 @@ import {
 } from "../services/alarms";
 import { getTimezones } from "../services/tags";
 import { createLog } from "../services/logs";
+import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 
 type PresetDate = 
@@ -248,6 +249,11 @@ export function AlarmsSummary() {
         pages: response.pagination?.total_pages || 0,
       });
     } catch (e: any) {
+      if (isDbUnavailableError(e)) {
+        setError(null);
+        setAlarmsSummary([]);
+        return;
+      }
       const data = e?.response?.data;
       const backendMessage =
         (typeof data === "string" ? data : undefined) ??

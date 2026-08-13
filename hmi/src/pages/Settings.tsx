@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
-import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { StationAppearance } from "../components/StationAppearance";
 import { getSettings, updateSettings, exportConfig, importConfig, type AppConfig } from "../services/settings";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
@@ -112,7 +112,6 @@ export function Settings() {
         }
         await loadSettings();
       }
-      // Reset file input
       fileInput.value = "";
     } catch (error: any) {
       showToast(
@@ -133,32 +132,25 @@ export function Settings() {
     { value: 50, label: t("settings.logLevels.50") },
   ];
 
-  const cardTitle = (
-    <div className="d-flex justify-content-between align-items-center w-100">
-      <h3 className="card-title m-0">{t("settings.title")}</h3>
-      <div className="d-flex gap-2 ms-auto">
-        <Button
-          variant="primary"
-          onClick={handleImportClick}
-          loading={importing}
-        >
-          {t("settings.importConfig")}
-        </Button>
-        <Button
-          variant="success"
-          onClick={handleExport}
-          loading={exporting}
-        >
-          {t("settings.exportConfig")}
-        </Button>
-      </div>
-    </div>
-  );
-
   return (
-    <div className="row">
-      <div className="col-12">
-        <Card title={cardTitle}>
+    <div className="settings-page">
+      <header className="settings-page__intro">
+        <h2 className="settings-page__title">{t("settings.title")}</h2>
+        <p className="settings-page__subtitle">{t("settings.pageLede")}</p>
+      </header>
+
+      <div className="settings-page__grid">
+        <StationAppearance />
+
+        <section className="settings-panel" aria-labelledby="settings-runtime-title">
+          <div className="settings-panel__head">
+            <p className="settings-kicker">{t("settings.serviceKicker")}</p>
+            <h3 id="settings-runtime-title" className="settings-panel__title">
+              {t("settings.applicationSettings")}
+            </h3>
+            <p className="settings-panel__lede">{t("settings.runtimeLede")}</p>
+          </div>
+
           {loading ? (
             <div className="text-center py-4">
               <div className="spinner-border text-primary" role="status">
@@ -167,125 +159,114 @@ export function Settings() {
             </div>
           ) : (
             <>
-              <div className="mb-4">
-                <h5 className="mb-3">{t("settings.applicationSettings")}</h5>
-                
-                <div className="row mb-3">
-                  <div className="col-md-6">
-                    <label htmlFor="logger_period" className="form-label">
-                      {t("settings.loggerPeriod")}
-                    </label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      id="logger_period"
-                      min="1.0"
-                      step="0.1"
-                      value={config.logger_period || ""}
-                      onChange={(e) =>
-                        handleInputChange(
-                          "logger_period",
-                          parseFloat(e.target.value) || 0
-                        )
-                      }
-                    />
-                    <small className="form-text text-muted">
-                      {t("settings.loggerPeriodHint")}
-                    </small>
-                  </div>
-
-                  <div className="col-md-6">
-                    <label htmlFor="log_level" className="form-label">
-                      {t("settings.logLevel")}
-                    </label>
-                    <select
-                      className="form-select"
-                      id="log_level"
-                      value={config.log_level ?? 20}
-                      onChange={(e) =>
-                        handleInputChange(
-                          "log_level",
-                          parseInt(e.target.value, 10)
-                        )
-                      }
-                    >
-                      {logLevelOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.value} - {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+              <div className="settings-form-grid">
+                <div className="settings-form-field">
+                  <label htmlFor="logger_period" className="form-label">
+                    {t("settings.loggerPeriod")}
+                  </label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    id="logger_period"
+                    min="1.0"
+                    step="0.1"
+                    value={config.logger_period || ""}
+                    onChange={(e) =>
+                      handleInputChange("logger_period", parseFloat(e.target.value) || 0)
+                    }
+                  />
+                  <small className="form-text text-muted">{t("settings.loggerPeriodHint")}</small>
                 </div>
 
-                <div className="row mb-3">
-                  <div className="col-md-6">
-                    <label htmlFor="log_max_bytes" className="form-label">
-                      {t("settings.logMaxBytes")}
-                    </label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      id="log_max_bytes"
-                      min="1024"
-                      step="1024"
-                      value={config.log_max_bytes || ""}
-                      onChange={(e) =>
-                        handleInputChange(
-                          "log_max_bytes",
-                          parseInt(e.target.value, 10) || 0
-                        )
-                      }
-                    />
-                    <small className="form-text text-muted">
-                      {t("settings.logMaxBytesHint")}
-                    </small>
-                  </div>
-
-                  <div className="col-md-6">
-                    <label htmlFor="log_backup_count" className="form-label">
-                      {t("settings.logBackupCount")}
-                    </label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      id="log_backup_count"
-                      min="1"
-                      value={config.log_backup_count || ""}
-                      onChange={(e) =>
-                        handleInputChange(
-                          "log_backup_count",
-                          parseInt(e.target.value, 10) || 0
-                        )
-                      }
-                    />
-                    <small className="form-text text-muted">
-                      {t("settings.logBackupCountHint")}
-                    </small>
-                  </div>
-                </div>
-
-                <div className="d-flex gap-2 mt-4">
-                  <Button
-                    variant="primary"
-                    onClick={handleSave}
-                    loading={saving}
+                <div className="settings-form-field">
+                  <label htmlFor="log_level" className="form-label">
+                    {t("settings.logLevel")}
+                  </label>
+                  <select
+                    className="form-select"
+                    id="log_level"
+                    value={config.log_level ?? 20}
+                    onChange={(e) => handleInputChange("log_level", parseInt(e.target.value, 10))}
                   >
-                    {t("settings.saveSettings")}
-                  </Button>
+                    {logLevelOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.value} — {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
+                <div className="settings-form-field">
+                  <label htmlFor="log_max_bytes" className="form-label">
+                    {t("settings.logMaxBytes")}
+                  </label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    id="log_max_bytes"
+                    min="1024"
+                    step="1024"
+                    value={config.log_max_bytes || ""}
+                    onChange={(e) =>
+                      handleInputChange("log_max_bytes", parseInt(e.target.value, 10) || 0)
+                    }
+                  />
+                  <small className="form-text text-muted">{t("settings.logMaxBytesHint")}</small>
+                </div>
+
+                <div className="settings-form-field">
+                  <label htmlFor="log_backup_count" className="form-label">
+                    {t("settings.logBackupCount")}
+                  </label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    id="log_backup_count"
+                    min="1"
+                    value={config.log_backup_count || ""}
+                    onChange={(e) =>
+                      handleInputChange("log_backup_count", parseInt(e.target.value, 10) || 0)
+                    }
+                  />
+                  <small className="form-text text-muted">{t("settings.logBackupCountHint")}</small>
+                </div>
+              </div>
+
+              <div className="settings-panel__actions">
+                <Button variant="primary" onClick={handleSave} loading={saving}>
+                  {t("settings.saveSettings")}
+                </Button>
               </div>
             </>
           )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="d-none"
-            accept=".json"
-            onChange={handleFileChange}
-          />
-        </Card>
+        </section>
       </div>
+
+      <section className="settings-panel settings-panel--quiet" aria-labelledby="settings-backup-title">
+        <div className="settings-panel__head">
+          <p className="settings-kicker">{t("settings.backupKicker")}</p>
+          <h3 id="settings-backup-title" className="settings-panel__title">
+            {t("settings.backupTitle")}
+          </h3>
+          <p className="settings-panel__lede">{t("settings.backupLede")}</p>
+        </div>
+        <div className="settings-panel__actions">
+          <Button variant="secondary" onClick={handleImportClick} loading={importing}>
+            {t("settings.importConfig")}
+          </Button>
+          <Button variant="secondary" onClick={handleExport} loading={exporting}>
+            {t("settings.exportConfig")}
+          </Button>
+        </div>
+      </section>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="d-none"
+        accept=".json"
+        onChange={handleFileChange}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getUsers, changePassword, resetPassword, updateUserRole, getRoles, getAllRoles, createRole, type User, type UsersResponse, type Role, type CreateRolePayload } from "../services/users";
+import { axiosErrorMessage, isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 
 export function UserManagement() {
@@ -44,23 +45,23 @@ export function UserManagement() {
     setError(null);
     try {
       const response: UsersResponse = await getUsers(pagination.page, pagination.limit);
-      setUsers(response.data || []);
+      const rows = Array.isArray(response?.data) ? response.data : [];
+      const paging = response?.pagination;
+      setUsers(rows);
       setPagination((prev) => ({
         ...prev,
-        page: response.pagination.page || 1,
-        limit: response.pagination.limit || 20,
-        total: response.pagination.total_records || 0,
-        pages: response.pagination.total_pages || 0,
+        page: paging?.page || prev.page,
+        limit: paging?.limit || prev.limit,
+        total: paging?.total_records || 0,
+        pages: paging?.total_pages || 0,
       }));
     } catch (e: any) {
-      const data = e?.response?.data;
-      const backendMessage =
-        (typeof data === "string" ? data : undefined) ??
-        data?.message ??
-        data?.detail ??
-        data?.error;
-      const errorMsg = backendMessage || e?.message || t("userManagement.loadUsersError");
-      setError(errorMsg);
+      if (isDbUnavailableError(e)) {
+        setError(null);
+        setUsers([]);
+        return;
+      }
+      setError(axiosErrorMessage(e, t("userManagement.loadUsersError")));
       setUsers([]);
     } finally {
       setLoading(false);
@@ -381,7 +382,7 @@ export function UserManagement() {
         >
           {error && !showChangePasswordModal && !showResetPasswordModal && !showUpdateRoleModal && (
             <div className="alert alert-danger mb-3" role="alert">
-              {error}
+              {typeof error === "string" ? error : t("userManagement.loadUsersError")}
             </div>
           )}
 

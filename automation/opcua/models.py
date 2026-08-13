@@ -33,6 +33,7 @@ class Client(OPCClient):
         self._reconnect_in_progress = False
         self._last_failure_event_monotonic = 0.0
         self._audit_source = "client-connect"
+        self._suppress_connection_alarm = False
         # self.scheduler = sched.scheduler(time.time, time.sleep) 
         # self.token_renewal_interval = 30 # Cada 10 minutos
         super(Client, self).__init__(url, timeout)
@@ -85,6 +86,15 @@ class Client(OPCClient):
         except Exception:
             logging.debug("OPC UA socket emit skipped", exc_info=True)
 
+    def _sync_connection_alarm(self, disconnected: bool) -> None:
+        if getattr(self, "_suppress_connection_alarm", False):
+            return
+        try:
+            from ..utils.connection_alarms import set_opcua_disconnected
+            set_opcua_disconnected(getattr(self, "name", "") or "", disconnected)
+        except Exception:
+            logging.debug("OPC UA connection alarm sync skipped", exc_info=True)
+
     def connect(self):
         r"""
         Documentation here
@@ -104,6 +114,7 @@ class Client(OPCClient):
                 self._audit_connection("CONNECTED", reason="session-established")
             self._reconnect_attempts = 0
             self._last_failure_event_monotonic = 0.0
+            self._sync_connection_alarm(disconnected=False)
             result = {
                 'message': 'Successful connection',
                 'url': self._server_url,
@@ -129,6 +140,7 @@ class Client(OPCClient):
                     )
             else:
                 self._audit_connection("CONNECTION_FAILED", reason="initial-connect", error=error_text)
+            self._sync_connection_alarm(disconnected=True)
             result = {
                 'message': 'Connection could not be established',
                 'url': self._server_url,
@@ -162,6 +174,7 @@ class Client(OPCClient):
             self._audit_connection("DISCONNECTED", reason="connection-lost")
             self._connection_state = "disconnected"
             self._reconnect_attempts = 0
+            self._sync_connection_alarm(disconnected=True)
 
         if self._connection_state == "unknown":
             self._connection_state = "disconnected"
@@ -218,6 +231,7 @@ class Client(OPCClient):
             self._connection_state = "disconnected"
             self._reconnect_attempts = 0
             self._is_open = False
+            self._sync_connection_alarm(disconnected=True)
             self.__reset_object_attributes()
             result = {
                 'message': 'Successful disconnection',
@@ -231,6 +245,7 @@ class Client(OPCClient):
             if was_open and self._should_log_failure_event():
                 self._audit_connection("DISCONNECTED", reason="disconnect-error", error=error_text)
             self._connection_state = "disconnected"
+            self._sync_connection_alarm(disconnected=True)
             result = {'message': 'Disconnect could not be performed', 'error': error_text}
             return result, 404
 

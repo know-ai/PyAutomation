@@ -4,6 +4,7 @@ from flask_restx import Namespace, Resource, fields
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ...health.require_db import require_remote_db
 from .... import _TIMEZONE, TIMEZONE
 
 ns = Namespace('Operation Logs', description='Application Operation Logs')
@@ -76,6 +77,8 @@ class LogsFilterByResource(Resource):
     @api.doc(security='apikey', description="Filters operation logs based on criteria.")
     @api.response(200, "Success")
     @api.response(400, "Invalid parameters")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
     @Api.token_required(auth=True)
     @ns.expect(logs_filter_model)
     def post(self):
@@ -176,6 +179,8 @@ class LastsEventsResource(Resource):
 
     @api.doc(security='apikey', description="Retrieves the last N operation logs.")
     @api.response(200, "Success")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
     @Api.token_required(auth=True)
     def get(self, lasts:int=10):
         r"""

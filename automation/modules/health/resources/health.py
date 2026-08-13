@@ -25,6 +25,22 @@ class HealthPingResource(Resource):
         }, 200
 
 
+@ns.route("/db")
+class HealthDatabaseResource(Resource):
+    @api.doc(description="Remote historian reachability (SELECT 1, short timeout). Unauthenticated so the HMI can poll while PostgreSQL is down.")
+    @api.response(200, "Probe executed")
+    def get(self):
+        """UI visibility probe. Always HTTP 200; ``connected`` carries the truth.
+
+        Returning 503 here would collide with historian 503 handling and with
+        orchestrator liveness (use ``/health/ping`` / ``/health/saf`` for that).
+        """
+        from ....health import get_database_health_service
+
+        snapshot = get_database_health_service().snapshot()
+        return snapshot.as_dict(), 200
+
+
 @ns.route("/saf")
 class HealthSafResource(Resource):
     @api.doc(description="Store-and-Forward journal health (depth, lag, disk, circuit).")

@@ -4,6 +4,7 @@ from flask_restx import Namespace, Resource, fields, reqparse
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ...health.require_db import require_remote_db
 from .... import _TIMEZONE, TIMEZONE
 from ....variables import VARIABLES
 
@@ -221,6 +222,8 @@ class QueryTrendsResource(Resource):
     @api.response(200, "Success")
     @api.response(400, "Invalid parameters or Timezone")
     @api.response(404, "Tag not found")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
     @Api.token_required(auth=True)
     @ns.expect(query_trends_model)
     def post(self):
@@ -263,6 +266,8 @@ class QueryTableResource(Resource):
     @api.response(200, "Success")
     @api.response(400, "Invalid parameters")
     @api.response(404, "Tag not found")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
     @Api.token_required(auth=True)
     @ns.expect(query_table_model)
     def post(self):
@@ -307,6 +312,8 @@ class GetTabularDataResource(Resource):
     @api.response(200, "Success")
     @api.response(400, "Invalid parameters")
     @api.response(404, "Tag not found")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
     @Api.token_required(auth=True)
     @ns.expect(query_tabular_data_model)
     def post(self):

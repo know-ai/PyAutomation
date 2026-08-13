@@ -2,6 +2,7 @@ from flask_restx import Namespace, Resource, fields
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ....health import get_database_health_service
 
 ns = Namespace('Database', description='Database Configuration and Connection Management')
 app = PyAutomation()
@@ -49,8 +50,8 @@ class DatabaseConnectedResource(Resource):
 
         Returns whether the database is currently connected.
         """
-        is_connected = app.is_db_connected()
-        return {"connected": is_connected}, 200
+        snapshot = get_database_health_service().snapshot()
+        return {"connected": snapshot.connected}, 200
 
 @ns.route('/connect')
 class DatabaseConnectResource(Resource):

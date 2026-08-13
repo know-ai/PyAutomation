@@ -12,6 +12,7 @@ def init_app(app):
     from ..modules.database.resources import init_app as init_database
     from ..modules.machines.resources import init_app as init_machines
     from ..modules.health.resources import init_app as init_health
+    from ..modules.system.resources import init_app as init_system
     from ..modules.linear_referencing.resources import init_app as init_linear_referencing
 
     init_tags()
@@ -23,4 +24,5 @@ def init_app(app):
     init_database()
     init_machines()
     init_health()
+    init_system()
     init_linear_referencing()

@@ -2,7 +2,7 @@ import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import { API_BASE_URL, DETECTED_PROTOCOL } from "../config/constants";
 import { store } from "../store/store";
 import { AUTH_STORAGE_KEY, logout } from "../store/slices/authSlice";
-import { showToast } from "../utils/toast";
+import { DB_UNAVAILABLE_CODE, emitDatabaseHealth } from "./health";
 
 // Configuración de axios
 // Nota: Para certificados autofirmados en el navegador, el usuario debe
@@ -43,9 +43,16 @@ api.interceptors.response.use(
     // Verificar si el error es por token inválido
     if (error.response) {
       const status = error.response.status;
-      const message = 
-        (error.response.data as any)?.message || 
-        (typeof error.response.data === "string" ? error.response.data : "");
+      const payload = error.response.data as { code?: string; message?: string } | string | undefined;
+      const message =
+        (typeof payload === "object" && payload?.message) ||
+        (typeof payload === "string" ? payload : "");
+
+      if (status === 503 && typeof payload === "object" && payload?.code === DB_UNAVAILABLE_CODE) {
+        (error as AxiosError & { isDbUnavailable?: boolean }).isDbUnavailable = true;
+        emitDatabaseHealth(false);
+        return Promise.reject(error);
+      }
 
       // Detectar token inválido (401 con mensaje "Invalid token" o similar)
       if (

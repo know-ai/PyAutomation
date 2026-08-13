@@ -48,6 +48,7 @@ class TestOpcuaClientConnectionAudit(unittest.TestCase):
             client._reconnect_in_progress = False
             client._last_failure_event_monotonic = 0.0
             client._audit_source = "client-connect"
+            client._suppress_connection_alarm = True
             return client
 
     @patch("automation.opcua.models.record_opcua_connection_event")

@@ -6,33 +6,14 @@ import {
   disconnectDatabase,
   type DatabaseConfig,
 } from "../services/database";
-import { useTheme } from "../hooks/useTheme";
 import { useTranslation } from "../hooks/useTranslation";
-import { useAppDispatch } from "../hooks/useAppDispatch";
-import { setLocale } from "../store/slices/localeSlice";
 import { showToast } from "../utils/toast";
 import { toggleSidebar } from "./sidebarDom";
+import { DatabaseStatus } from "../components/DatabaseStatus";
 
 export function Header() {
-  const { mode, toggle } = useTheme();
-  const { t, locale } = useTranslation();
-  const dispatch = useAppDispatch();
+  const { t } = useTranslation();
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
-
-  // Cerrar dropdown de idioma al hacer clic fuera
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (showLanguageDropdown) {
-        const target = e.target as HTMLElement;
-        if (!target.closest(".nav-item[style*='position: relative']")) {
-          setShowLanguageDropdown(false);
-        }
-      }
-    };
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, [showLanguageDropdown]);
   const [dbType, setDbType] = useState<"postgres" | "mysql" | "sqlite">("postgres");
   const [dbName, setDbName] = useState("");
   const [dbHost, setDbHost] = useState("");
@@ -377,77 +358,10 @@ export function Header() {
               {connectionError}
             </span>
           )}
+          <DatabaseStatus />
         </form>
 
         <ul className="navbar-nav ms-auto">
-          <li className="nav-item" style={{ position: "relative" }}>
-            <a
-              className="nav-link"
-              href="#"
-              role="button"
-              onClick={(e) => {
-                e.preventDefault();
-                setShowLanguageDropdown(!showLanguageDropdown);
-              }}
-              title={locale === "en" ? "English" : "Español"}
-            >
-              {locale === "en" ? "🇺🇸" : "🇪🇸"}
-            </a>
-            {showLanguageDropdown && (
-              <div
-                className="dropdown-menu dropdown-menu-end show"
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: "100%",
-                  zIndex: 1000,
-                  minWidth: "150px",
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <a
-                  className={`dropdown-item ${locale === "en" ? "active" : ""}`}
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    dispatch(setLocale("en"));
-                    setShowLanguageDropdown(false);
-                  }}
-                >
-                  🇺🇸 English
-                </a>
-                <a
-                  className={`dropdown-item ${locale === "es" ? "active" : ""}`}
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    dispatch(setLocale("es"));
-                    setShowLanguageDropdown(false);
-                  }}
-                >
-                  🇪🇸 Español
-                </a>
-              </div>
-            )}
-          </li>
-          <li className="nav-item">
-            <a
-              className="nav-link"
-              href="#"
-              role="button"
-              onClick={(e) => {
-                e.preventDefault();
-                toggle();
-              }}
-              title={mode === "dark" ? t("header.switchToLight") : t("header.switchToDark")}
-            >
-              {mode === "dark" ? (
-                <i className="bi bi-sun-fill" />
-              ) : (
-                <i className="bi bi-moon-fill" />
-              )}
-            </a>
-          </li>
           <li className="nav-item">
             <a
               className="nav-link"

@@ -12,6 +12,7 @@ import {
 import { getTimezones } from "../services/tags";
 import { getAllUsers, type User } from "../services/users";
 import { createLog } from "../services/logs";
+import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 
 type PresetDate = 
@@ -275,6 +276,11 @@ export function Events() {
         pages: response.pagination?.total_pages || 0,
       });
     } catch (e: any) {
+      if (isDbUnavailableError(e)) {
+        setError(null);
+        setEvents([]);
+        return;
+      }
       const data = e?.response?.data;
       const backendMessage =
         (typeof data === "string" ? data : undefined) ??

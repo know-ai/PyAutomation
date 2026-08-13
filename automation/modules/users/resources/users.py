@@ -8,6 +8,7 @@ from .models.users import signup_parser, login_parser, change_password_parser, r
 from .... import PyAutomation, TIMEZONE, _TIMEZONE
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ...health.require_db import require_remote_db
 from ....modules.users.users import Users as CVTUsers
 from ....dbmodels.users import Users
 
@@ -26,6 +27,8 @@ class UsersCollection(Resource):
     @api.doc(security='apikey', description="Retrieves a list of all registered users with pagination support.")
     @api.response(200, "Success")
     @ns.expect(parser)
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
     @Api.token_required(auth=True)
     def get(self):
         """

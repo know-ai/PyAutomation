@@ -12,6 +12,7 @@ import {
 import { getTimezones } from "../services/tags";
 import { getAllUsers, type User } from "../services/users";
 import { getAlarms, type Alarm } from "../services/alarms";
+import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 
 type PresetDate = 
@@ -243,6 +244,11 @@ export function OperationalLogs() {
         pages: response.pagination.total_pages || 0,
       });
     } catch (e: any) {
+      if (isDbUnavailableError(e)) {
+        setError(null);
+        setLogs([]);
+        return;
+      }
       const errorMsg = e?.response?.data?.message || e?.message || "Error al cargar los logs";
       setError(errorMsg);
       setLogs([]);

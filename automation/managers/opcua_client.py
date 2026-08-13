@@ -31,6 +31,8 @@ class OPCUAClientManager:
         # key: (client_name, mode, max_depth, max_nodes) -> {"ts": float, "data": list}
         self._opcua_variables_cache = {}
         self._opcua_variables_cache_ttl_s = 300
+        self._defer_connection_alarms = False
+        self._pending_audit_source = None
 
     @logging_error_handler
     def discovery(self, host:str='127.0.0.1', port:int=4840)->list[dict]:
@@ -155,9 +157,13 @@ class OPCUAClientManager:
         """
         if client_name in self._clients:
             try:
+                from ..utils.connection_alarms import remove_opcua_connection_alarm
+
                 opcua_client = self._clients.pop(client_name)
                 opcua_client._audit_source = "client-remove"
+                opcua_client._suppress_connection_alarm = True
                 opcua_client.disconnect()
+                remove_opcua_connection_alarm(client_name)
                 # DATABASE PERSISTENCY
                 opcua = OPCUA.get_by_client_name(client_name=client_name)
                 if opcua:
@@ -248,6 +254,9 @@ class OPCUAClientManager:
             # Actualizar nombre del cliente interno si tiene ese atributo
             if hasattr(old_client, 'name'):
                 old_client.name = new_client_name
+
+            from ..utils.connection_alarms import rename_opcua_connection_alarm
+            rename_opcua_connection_alarm(old_client_name, new_client_name)
             
             # Actualizar en la base de datos
             if self.logger.get_db():
@@ -336,6 +345,10 @@ class OPCUAClientManager:
             logging.info(f"OPC UA client {new_client_name} updated and connected successfully")
             print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {new_client_name} updated and connected successfully", "INFO"))
             self._clients[new_client_name] = opcua_client
+
+            if new_client_name != old_client_name:
+                from ..utils.connection_alarms import rename_opcua_connection_alarm
+                rename_opcua_connection_alarm(old_client_name, new_client_name)
             
             # Actualizar referencias en tags cuando cambia la configuración del cliente
             # Buscar tags que usan este cliente (por nombre o por URL antigua)

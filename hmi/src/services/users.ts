@@ -85,7 +85,15 @@ export const getUsers = async (page: number = 1, limit: number = 20): Promise<Us
   const { data } = await api.get("/users/", {
     params: { page, limit },
   });
-  return data;
+  return {
+    data: Array.isArray(data?.data) ? data.data : [],
+    pagination: {
+      page: data?.pagination?.page ?? page,
+      limit: data?.pagination?.limit ?? limit,
+      total_records: data?.pagination?.total_records ?? 0,
+      total_pages: data?.pagination?.total_pages ?? 0,
+    },
+  };
 };
 
 /**

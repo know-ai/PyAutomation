@@ -3,6 +3,7 @@ from .... import PyAutomation
 from ....modules.users.roles import roles
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ...health.require_db import require_remote_db
 from .models.roles import create_role_parser
 
 
@@ -14,6 +15,8 @@ class UsersByRoleResource(Resource):
 
     @api.doc(security='apikey', description="Retrieves a list of all defined roles.")
     @api.response(200, "Success")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
     @Api.token_required(auth=True)
     def get(self):
         """

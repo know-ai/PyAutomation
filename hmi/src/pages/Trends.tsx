@@ -12,6 +12,7 @@ import {
   type TrendsFilter,
   type TrendsResponse,
 } from "../services/tags";
+import { isDbUnavailableError } from "../services/health";
 import Plot from "react-plotly.js";
 import type { Data, Layout, PlotRelayoutEvent } from "plotly.js";
 import axios from "axios";
@@ -393,6 +394,9 @@ export function Trends() {
           return;
         }
         if (fetchId !== fetchIdRef.current) {
+          return;
+        }
+        if (isDbUnavailableError(e)) {
           return;
         }
         if (!options.silent) {

@@ -163,6 +163,8 @@ class LoggerWorker(BaseWorker):
         if self.db_reconnection:
             logging.critical("Trying reconnect to DB...")
             database_connection_auditor.notify_link_lost(source="watchdog")
+            from ..utils.connection_alarms import set_db_disconnected
+            set_db_disconnected(True)
         
         self.db_reconnection = False
         db_connected = app.reconnect_to_db(source="watchdog")

@@ -1,68 +1,54 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "../components/Button";
-import { StripChart, BUFFER_SIZE_MIN, BUFFER_SIZE_MAX, type StripChartConfig } from "../components/StripChart";
+import { StripChart, BUFFER_SIZE_MIN, type StripChartConfig } from "../components/StripChart";
 import { useTranslation } from "../hooks/useTranslation";
 import { ResponsiveGridLayout, Layout as GridLayoutType } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
+import {
+  MAX_STATION_CHARTS,
+  createStationChartId,
+  loadStationRealtimeTrends,
+  saveStationRealtimeTrends,
+} from "../services/workspaceStore";
 
-const STORAGE_KEY = "realTimeTrends_layout";
 const GRID_COLS = 12;
 const GRID_ROW_HEIGHT = 40;
-const MIN_STRIPCHART_ROWS = 6; // Altura mínima pensada para permitir ~3 gráficos en vertical sin scroll
-
-function clampBufferSize(value: unknown): number {
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed)) return BUFFER_SIZE_MIN;
-  return Math.min(BUFFER_SIZE_MAX, Math.max(BUFFER_SIZE_MIN, Math.trunc(parsed)));
-}
-
-function normalizeCharts(charts: StripChartConfig[]): StripChartConfig[] {
-  return charts.map((chart) => ({
-    ...chart,
-    bufferSize: clampBufferSize(chart.bufferSize),
-  }));
-}
+const MIN_STRIPCHART_ROWS = 6;
+const SAVE_DEBOUNCE_MS = 300;
 
 export function RealTimeTrends() {
   const { t } = useTranslation();
   const [isEditMode, setIsEditMode] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
-  const [stripCharts, setStripCharts] = useState<StripChartConfig[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return Array.isArray(parsed) ? normalizeCharts(parsed) : [];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
+  const [stripCharts, setStripCharts] = useState<StripChartConfig[]>(
+    () => loadStationRealtimeTrends().charts
+  );
+  const chartsRef = useRef(stripCharts);
+  const hydratedRef = useRef(false);
+  chartsRef.current = stripCharts;
 
-  // Persistir layout en localStorage (también cuando está vacío)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stripCharts));
+    if (!hydratedRef.current) {
+      hydratedRef.current = true;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      saveStationRealtimeTrends(chartsRef.current);
+    }, SAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
   }, [stripCharts]);
 
-  // Cargar layout guardado al montar
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setStripCharts(normalizeCharts(parsed));
-        }
-      } catch (e) {
-        console.error("Error loading saved layout:", e);
-      }
-    }
+    const flush = () => saveStationRealtimeTrends(chartsRef.current);
+    window.addEventListener("beforeunload", flush);
+    return () => {
+      window.removeEventListener("beforeunload", flush);
+      flush();
+    };
   }, []);
 
-  // Medir ancho del contenedor para ResponsiveGridLayout
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
@@ -74,39 +60,34 @@ export function RealTimeTrends() {
     return () => window.removeEventListener("resize", updateWidth);
   }, []);
 
-  // Crear nuevo StripChart
   const handleAddStripChart = useCallback(() => {
-    const newChart: StripChartConfig = {
-      id: `stripchart-${Date.now()}`,
-      title: t("realTimeTrends.newChartTitle", { index: stripCharts.length + 1 }),
-      tagNames: [],
-      bufferSize: BUFFER_SIZE_MIN,
-      x: 0,
-      y: 0,
-      w: 6,
-      h: MIN_STRIPCHART_ROWS,
-    };
+    setStripCharts((prev) => {
+      if (prev.length >= MAX_STATION_CHARTS) return prev;
+      const maxY = prev.reduce((max, chart) => Math.max(max, chart.y + chart.h), 0);
+      const next: StripChartConfig = {
+        id: createStationChartId(),
+        title: t("realTimeTrends.newChartTitle", { index: prev.length + 1 }),
+        tagNames: [],
+        bufferSize: BUFFER_SIZE_MIN,
+        x: 0,
+        y: maxY,
+        w: 6,
+        h: MIN_STRIPCHART_ROWS,
+      };
+      return [...prev, next];
+    });
+  }, [t]);
 
-    // Calcular posición Y para evitar solapamiento
-    const maxY = stripCharts.reduce((max, chart) => Math.max(max, chart.y + chart.h), 0);
-    newChart.y = maxY;
-
-    setStripCharts((prev) => [...prev, newChart]);
-  }, [stripCharts]);
-
-  // Eliminar StripChart
   const handleDeleteStripChart = useCallback((id: string) => {
     setStripCharts((prev) => prev.filter((chart) => chart.id !== id));
   }, []);
 
-  // Actualizar configuración de un StripChart
   const handleConfigChange = useCallback((updatedConfig: StripChartConfig) => {
     setStripCharts((prev) =>
       prev.map((chart) => (chart.id === updatedConfig.id ? updatedConfig : chart))
     );
   }, []);
 
-  // Manejar cambios en el layout (drag and drop, resize) SOLO en modo edición
   const handleLayoutChange = useCallback(
     (layout: GridLayoutType[]) => {
       if (!isEditMode) return;
@@ -129,7 +110,6 @@ export function RealTimeTrends() {
     [isEditMode]
   );
 
-  // Layout que se entrega al grid, derivado SIEMPRE de stripCharts (fuente de verdad persistida)
   const gridLayout = useMemo<GridLayoutType[]>(() => {
     return stripCharts.map((chart) => ({
       i: chart.id,
@@ -157,7 +137,12 @@ export function RealTimeTrends() {
             <h3 className="card-title m-0">{t("navigation.realTimeTrends")}</h3>
             <div className="d-flex gap-2 align-items-center">
               <span className="badge bg-warning text-dark">{t("realTimeTrends.editMode")}</span>
-              <Button variant="success" className="btn-sm" onClick={handleAddStripChart}>
+              <Button
+                variant="success"
+                className="btn-sm"
+                onClick={handleAddStripChart}
+                disabled={stripCharts.length >= MAX_STATION_CHARTS}
+              >
                 <i className="bi bi-plus-circle me-1"></i>
                 {t("realTimeTrends.addChart")}
               </Button>
@@ -195,7 +180,7 @@ export function RealTimeTrends() {
               compactType={null}
               margin={[10, 10]}
               containerPadding={[0, 0]}
-              breakpoints={{ lg: 0 }} // Un solo breakpoint para que el layout no cambie entre modos
+              breakpoints={{ lg: 0 }}
               resizeHandles={isEditMode ? ["e", "s", "se", "sw"] : []}
             >
               {stripCharts.map((chart) => (
