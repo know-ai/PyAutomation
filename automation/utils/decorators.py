@@ -204,9 +204,7 @@ def logging_error_handler(func, args, kwargs):
             'trace': trace
         })
         logger = logging.getLogger("pyautomation")
-        logger.error(msg=msg)
-        str_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[ERROR] {str_date} {msg}")
+        logger.error(msg)
 
 @decorator
 def db_rollback(func, args, kwargs):

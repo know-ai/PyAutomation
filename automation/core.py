@@ -32,6 +32,12 @@ from .dbmodels.core import BaseModel
 from .utils.decorators import validate_types, logging_error_handler
 from .utils import _colorize_message
 from .utils.db_audit import database_connection_auditor, summarize_db_config
+from .utils.log_filters import (
+    DedupeFilter,
+    DEFAULT_COOLDOWN_S,
+    DEFAULT_ERROR_ALERT_PER_MIN,
+    set_dedupe_filter,
+)
 from flask_socketio import SocketIO
 from geventwebsocket.handler import WebSocketHandler
 from .variables import VARIABLES
@@ -136,6 +142,7 @@ class PyAutomation(Singleton):
 
         self.set_log(file=os.path.join(folder_path, "app.log") ,level=logging.WARNING)
         self.__log_histories = False
+        self._db_live = False
 
     @logging_error_handler
     def ensure_db_config_from_env(self) -> None:
@@ -2773,7 +2780,10 @@ class PyAutomation(Singleton):
 
             self.db_manager.clear_default_tables()
 
-        self._close_existing_db()
+        # Keep the previous handle until the new one actually connects. Closing
+        # first made every failed watchdog reconnect destroy the live link and
+        # leave the manager with a dead object.
+        previous = getattr(self, "_db", None)
 
         if dbtype.lower()=='sqlite':
 
@@ -2781,7 +2791,7 @@ class PyAutomation(Singleton):
             if not dbfile.endswith(".db"):
                 dbfile = f"{dbfile}.db"
             
-            self._db = SqliteDatabase(os.path.join(".", "db", dbfile), pragmas={
+            candidate = SqliteDatabase(os.path.join(".", "db", dbfile), pragmas={
                 'journal_mode': 'wal',
                 'wal_checkpoint': 1,
                 'cache_size': -1024 * 10,  # 10MB
@@ -2797,7 +2807,7 @@ class PyAutomation(Singleton):
 
             db_name = kwargs['name']
             del kwargs['name']
-            self._db = MySQLDatabase(db_name, **kwargs)
+            candidate = MySQLDatabase(db_name, **kwargs)
 
         elif dbtype.lower()=='postgresql':
 
@@ -2808,12 +2818,49 @@ class PyAutomation(Singleton):
             kwargs.pop("max_connections", None)
             kwargs.pop("stale_timeout", None)
             kwargs.pop("timeout", None)
-            self._db = PostgresqlDatabase(db_name, **kwargs)
+            candidate = PostgresqlDatabase(db_name, **kwargs)
 
-        proxy.initialize(self._db)
-        self._db.connect()
+        else:
+            raise ValueError(f"Unsupported database type: {dbtype}")
+
+        proxy.initialize(candidate)
+        try:
+            candidate.connect(reuse_if_open=True)
+        except Exception:
+            self._db_live = False
+            try:
+                if hasattr(candidate, "is_closed") and not candidate.is_closed():
+                    candidate.close()
+                elif hasattr(candidate, "close"):
+                    candidate.close()
+            except Exception:
+                logging.debug("candidate database handle close after connect error", exc_info=True)
+            if previous is not None:
+                self._db = previous
+                try:
+                    proxy.initialize(previous)
+                except Exception:
+                    logging.debug("proxy restore after failed set_db skipped", exc_info=True)
+            else:
+                self._db = None
+            raise
+
+        if previous is not None and previous is not candidate:
+            try:
+                closer = getattr(previous, "close_all", None)
+                if callable(closer):
+                    closer()
+                elif hasattr(previous, "is_closed") and not previous.is_closed():
+                    previous.close()
+                elif hasattr(previous, "close"):
+                    previous.close()
+            except Exception:
+                logging.debug("previous database handle close after successful set_db failed", exc_info=True)
+
+        self._db = candidate
         self.db_manager.set_db(self._db, is_history_logged=self.__log_histories)
         self.db_manager.set_dropped(drop_table)
+        self._db_live = True
 
     @logging_error_handler
     @validate_types(
@@ -3000,14 +3047,15 @@ class PyAutomation(Singleton):
                 # Create default config if not exists
                 default_config = {
                     "logger_period": 10.0,
-                    "log_level": 20
+                    "log_level": 20,
+                    "log_error_cooldown_seconds": DEFAULT_COOLDOWN_S,
                 }
                 self.set_app_config(**default_config)
                 return default_config
                 
         except Exception as e:
             logging.error(f"Failed to read app config: {e}")
-            return {"logger_period": 10.0, "log_level": 20}
+            return {"logger_period": 10.0, "log_level": 20, "log_error_cooldown_seconds": DEFAULT_COOLDOWN_S}
 
     def _format_database_error(self, error: Exception, context: str = "") -> str:
         """
@@ -3148,8 +3196,13 @@ class PyAutomation(Singleton):
 
         - ``ensure_db_config_from_env()`` (for first-run bootstrap), and
         - ``connect_to_db()`` / ``reconnect_to_db()``.
+
+        A truthy Peewee handle is not enough: ``set_db()`` can leave a dead
+        object behind when ``connect()`` fails inside ``@logging_error_handler``.
+        ``_db_live`` is set only after TCP connect succeeds and cleared as soon
+        as a connectivity probe fails.
         """
-        return bool(self.db_manager.get_db())
+        return bool(self.db_manager.get_db()) and bool(getattr(self, "_db_live", False))
 
     @validate_types(test=bool|type(None), reload=bool|type(None), source=str|type(None), output=None|bool)
     def connect_to_db(self, test:bool=False, reload:bool=False, source:str="connect"):
@@ -3236,19 +3289,24 @@ class PyAutomation(Singleton):
 
             self.__log_histories = True
             self.set_db(dbtype=dbtype, **db_config)
+            if not self._historian_is_live():
+                logging.critical("Historian connectivity probe failed; connection not established")
+                return self._fail_db_link(
+                    source=audit_source,
+                    target=target,
+                    error="historian connectivity probe failed",
+                    reconnect=False,
+                )
             # init_database crea tablas y aplica migraciones si corresponde
             self.db_manager.init_database()
-            self.opcua_client_manager._defer_connection_alarms = True
-            try:
-                self.load_opcua_clients_from_db()
-                self.load_db_to_cvt()
-                self.load_db_to_alarm_manager()
-            finally:
-                self.opcua_client_manager._defer_connection_alarms = False
-            self.load_db_to_roles()
-            self.load_db_to_users()
-            if reload:
-                self.load_db_tags_to_machine()
+            if not self._historian_is_live():
+                return self._fail_db_link(
+                    source=audit_source,
+                    target=target,
+                    error="historian connectivity probe failed after init_database",
+                    reconnect=False,
+                )
+            self._hydrate_runtime_from_db(reload_machines=bool(reload))
             logging.info(f"Database connected successfully")
             print(_colorize_message(f"[{str_date}] [INFO] Database connected successfully", "INFO"))
             database_connection_auditor.notify_connect_success(
@@ -3274,14 +3332,75 @@ class PyAutomation(Singleton):
         except Exception as err:
             logging.critical(f"CONNECTING DATABASE ERROR: {err}")
             print(_colorize_message(f"[{str_date}] [CRITICAL] CONNECTING DATABASE ERROR: {err}", "CRITICAL"))
-            database_connection_auditor.notify_connect_failure(
+            return self._fail_db_link(
                 source=audit_source,
                 target=target,
                 error=str(err),
+                reconnect=False,
             )
-            from .utils.connection_alarms import set_db_disconnected
-            set_db_disconnected(True)
-            return False
+
+    def _historian_is_live(self) -> bool:
+        r"""Return True only if the historian answers ``SELECT 1``.
+
+        Used by connect/reconnect so a swallowed ``OperationalError`` cannot be
+        reported as a successful link. Does not use ``@logging_error_handler``.
+        """
+        candidates = []
+        try:
+            manager_db = self.db_manager.get_db()
+        except Exception:
+            manager_db = None
+        app_db = getattr(self, "_db", None)
+        for db in (manager_db, app_db):
+            if db is not None and db not in candidates:
+                candidates.append(db)
+        for db in candidates:
+            try:
+                db.execute_sql("SELECT 1")
+                self._db_live = True
+                return True
+            except Exception:
+                continue
+        self._db_live = False
+        return False
+
+    def _hydrate_runtime_from_db(self, reload_machines: bool = False) -> None:
+        r"""Reload in-memory config from the historian. Call only when live."""
+        self.opcua_client_manager._defer_connection_alarms = True
+        try:
+            self.load_opcua_clients_from_db()
+            self.load_db_to_cvt()
+            self.load_db_to_alarm_manager()
+        finally:
+            self.opcua_client_manager._defer_connection_alarms = False
+        self.load_db_to_roles()
+        self.load_db_to_users()
+        try:
+            restored = users.rebind_sessions_from_db_tokens()
+            if restored:
+                logging.info("Restored %s in-memory session(s) from historian tokens", restored)
+        except Exception:
+            logging.debug("Session rebind after DB hydrate skipped", exc_info=True)
+        if reload_machines:
+            self.load_db_tags_to_machine()
+
+    def _fail_db_link(self, *, source: str, target: str, error: str, reconnect: bool) -> bool:
+        self._db_live = False
+        if reconnect:
+            database_connection_auditor.notify_reconnect_failure(
+                source=source,
+                target=target,
+                error=error,
+            )
+        else:
+            database_connection_auditor.notify_connect_failure(
+                source=source,
+                target=target,
+                error=error,
+            )
+        from .utils.connection_alarms import set_db_disconnected
+        set_db_disconnected(True)
+        return False
         
     @validate_types(test=bool|type(None), reload=bool|type(None), source=str|type(None), output=None|bool)
     def reconnect_to_db(self, test:bool=False, source:str="reconnect"):
@@ -3337,18 +3456,24 @@ class PyAutomation(Singleton):
                         db_config["port"] = None
 
                 self.__log_histories = True
-                self.set_db(dbtype=dbtype, **db_config) 
+                self.set_db(dbtype=dbtype, **db_config)
+                if not self._historian_is_live():
+                    logging.critical("Historian connectivity probe failed; reconnection not established")
+                    return self._fail_db_link(
+                        source=audit_source,
+                        target=target,
+                        error="historian connectivity probe failed",
+                        reconnect=True,
+                    )
                 self.db_manager.init_database()
-                self.opcua_client_manager._defer_connection_alarms = True
-                try:
-                    self.load_opcua_clients_from_db()
-                    self.load_db_to_cvt()
-                    self.load_db_to_alarm_manager()
-                finally:
-                    self.opcua_client_manager._defer_connection_alarms = False
-                self.load_db_to_roles()
-                self.load_db_to_users()
-                self.load_db_tags_to_machine()
+                if not self._historian_is_live():
+                    return self._fail_db_link(
+                        source=audit_source,
+                        target=target,
+                        error="historian connectivity probe failed after init_database",
+                        reconnect=True,
+                    )
+                self._hydrate_runtime_from_db(reload_machines=True)
                 database_connection_auditor.notify_reconnect_success(
                     source=audit_source,
                     target=target,
@@ -3359,26 +3484,25 @@ class PyAutomation(Singleton):
 
                 return True
 
-            database_connection_auditor.notify_reconnect_failure(
+            return self._fail_db_link(
                 source=audit_source,
                 target=target,
                 error="missing-config",
+                reconnect=True,
             )
-            from .utils.connection_alarms import set_db_disconnected
-            set_db_disconnected(True)
-            return False
         
         except Exception as err:
             logging.critical(f"RECONNECTING DATABASE ERROR: {err}")
-            self.db_manager._logger.logger._db = None
-            database_connection_auditor.notify_reconnect_failure(
+            try:
+                self.db_manager._logger.logger._db = None
+            except Exception:
+                pass
+            return self._fail_db_link(
                 source=audit_source,
                 target=target,
                 error=str(err),
+                reconnect=True,
             )
-            from .utils.connection_alarms import set_db_disconnected
-            set_db_disconnected(True)
-            return False
 
     @logging_error_handler
     @validate_types(output=None)
@@ -3406,6 +3530,7 @@ class PyAutomation(Singleton):
         )
         from .utils.connection_alarms import set_db_disconnected
         set_db_disconnected(True)
+        self._db_live = False
         self.__log_histories = False
         self.db_manager._logger.logger.stop_db()
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -3629,6 +3754,9 @@ class PyAutomation(Singleton):
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         logging.info(f"Loading tag subscriptions for state machines from database")
         print(_colorize_message(f"[{str_date}] [INFO] Loading tag subscriptions for state machines from database", "INFO"))
+        if not self.is_db_connected():
+            logging.warning("Skipping tag subscription load: historian is not connected")
+            return
         machines = self.machine_manager.get_machines()
 
 
@@ -4377,11 +4505,18 @@ class PyAutomation(Singleton):
         logging.info(f"Log max bytes: {self.get_app_config().get('log_max_bytes', 10 * 1024 * 1024)} bytes")
         logging.info(f"Log backup count: {self.get_app_config().get('log_backup_count', 3)} backups")
         logging.info(f"Log level: {self.get_app_config().get('log_level', 20)}")
+        logging.info(
+            f"Log error cooldown: {self.get_app_config().get('log_error_cooldown_seconds', DEFAULT_COOLDOWN_S)} s"
+        )
         print(_colorize_message(f"[{str_date}] [INFO] Starting app with configuration:", "INFO"))
         print(_colorize_message(f"[{str_date}] [INFO] Logger period: {self.get_app_config().get('logger_period', 10.0)} seconds", "INFO"))
         print(_colorize_message(f"[{str_date}] [INFO] Log max bytes: {self.get_app_config().get('log_max_bytes', 10 * 1024 * 1024)} bytes", "INFO"))
         print(_colorize_message(f"[{str_date}] [INFO] Log backup count: {self.get_app_config().get('log_backup_count', 3)} backups", "INFO"))
         print(_colorize_message(f"[{str_date}] [INFO] Log level: {self.get_app_config().get('log_level', 20)}", "INFO"))
+        print(_colorize_message(
+            f"[{str_date}] [INFO] Log error cooldown: {self.get_app_config().get('log_error_cooldown_seconds', DEFAULT_COOLDOWN_S)} s",
+            "INFO",
+        ))
 
         # Start workers (logger, DB worker, state machines)
         self.safe_start(test=test, create_tables=create_tables, machines=machines)
@@ -4589,6 +4724,21 @@ class PyAutomation(Singleton):
         self.set_app_config(log_max_bytes=max_bytes, log_backup_count=backup_count)
 
     @logging_error_handler
+    @validate_types(seconds=(int, float), output=None)
+    def update_log_error_cooldown(self, seconds: float):
+        r"""
+        Updates ERROR dedupe cooldown in the live filter and persists it.
+
+        ``seconds=0`` disables suppression (development).
+        """
+        cooldown = max(0.0, float(seconds))
+        filt = getattr(self, "_log_dedupe_filter", None)
+        if filt is not None:
+            filt.set_cooldown(cooldown)
+        logging.info(f"Log error cooldown updated to {cooldown} seconds")
+        self.set_app_config(log_error_cooldown_seconds=cooldown)
+
+    @logging_error_handler
     @validate_types(output=None)
     def __start_logger(self)->None:
         r"""
@@ -4614,14 +4764,25 @@ class PyAutomation(Singleton):
         # Clear existing handlers to avoid duplicates
         for _h in list(root_logger.handlers):
             root_logger.removeHandler(_h)
+        for _f in list(root_logger.filters):
+            root_logger.removeFilter(_f)
+
+        app_logger = logging.getLogger("pyautomation")
+        for _f in list(app_logger.filters):
+            app_logger.removeFilter(_f)
 
         app_config = self.get_app_config()
         # Default fallback to env or hardcoded
         env_max_bytes = int(os.environ.get('AUTOMATION_LOG_MAX_BYTES', 10 * 1024 * 1024))
         env_backup_count = int(os.environ.get('AUTOMATION_LOG_BACKUP_COUNT', 3))
+        env_cooldown = float(os.environ.get('AUTOMATION_LOG_ERROR_COOLDOWN_SECONDS', DEFAULT_COOLDOWN_S))
 
         max_bytes = int(app_config.get('log_max_bytes', env_max_bytes))
         backup_count = int(app_config.get('log_backup_count', env_backup_count))
+        cooldown = float(app_config.get('log_error_cooldown_seconds', env_cooldown))
+
+        log_format = "%(asctime)s:%(levelname)s:%(message)s"
+        formatter = logging.Formatter(log_format)
 
         handler = RotatingFileHandler(
             filename=self._log_file,
@@ -4629,13 +4790,28 @@ class PyAutomation(Singleton):
             backupCount=backup_count,
             encoding="utf-8",
         )
-        log_format = "%(asctime)s:%(levelname)s:%(message)s"
-        formatter = logging.Formatter(log_format)
         handler.setFormatter(formatter)
         root_logger.addHandler(handler)
 
-        # Ensure named logger propagates to root (no extra handler to avoid duplicates)
-        app_logger = logging.getLogger("pyautomation")
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setLevel(logging.ERROR)
+        stream_handler.setFormatter(formatter)
+        root_logger.addHandler(stream_handler)
+
+        # Filter on loggers (once per record), not on each handler — otherwise
+        # the second handler would see the key as already written and drop it.
+        dedupe = DedupeFilter(
+            cooldown_sec=cooldown,
+            alert_per_min=float(
+                app_config.get("log_error_alert_per_min", DEFAULT_ERROR_ALERT_PER_MIN)
+            ),
+        )
+        root_logger.addFilter(dedupe)
+        app_logger.addFilter(dedupe)
+        self._log_dedupe_filter = dedupe
+        set_dedupe_filter(dedupe)
+
+        # Ensure named logger propagates to root (no extra FileHandler)
         app_logger.setLevel(self._logging_level)
         app_logger.propagate = True
 

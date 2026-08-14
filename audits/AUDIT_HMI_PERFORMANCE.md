@@ -32,7 +32,7 @@ Los riesgos dominantes a 3–12 meses de sesión abierta son:
 
 | ID | Estado | Qué se hizo |
 |---|---|---|
-| **HMI-C1** | Hecho | `MAX_HISTORY_POINTS = 720`; historial solo si hay `historySubscribers`; StripChart hace `subscribeTagHistory` / `unsubscribeTagHistory`; logout limpia tags/alarms/machines (`extraReducers` de `logout`). |
+| **HMI-C1** | Hecho | `MAX_HISTORY_POINTS = 720`; `MAX_HISTORY_TAGS = 64` (LRU). Unsubscribe **no** borra el buffer; logout **persiste** historial en `localStorage` (`pyautomation.tagHistory`) y no lo vacía. Sigue recibiendo puntos si el tag ya está rastreado. |
 | **HMI-C2** | Hecho | EventBus en `socketService`: un `socket.on` nativo por evento, fan-out con `Set`, **sin** `once("connect")`. `disconnect()` hace `removeAllListeners` y vacía Sets. |
 | **HMI-H1** | Hecho | Selector por `config.tagNames`; `React.memo(StripChart)`; throttle Plotly 300 ms; se congela si `document.hidden`. |
 | **HMI-H2** | Hecho | Footer usa `selectActiveAlarmsPreview` (top 3); no hidrata 10k. |
@@ -45,7 +45,7 @@ Los riesgos dominantes a 3–12 meses de sesión abierta son:
 | **HMI-M5** | Hecho | `relayoutTimeoutRef` + clear en cleanup de Trends. |
 | **HMI-M6** | Hecho | Export CSV usa `limit: 10000` en variable local, no en React state. |
 | **HMI-M7** | Hecho | `VirtualList` en `MultiSelectSearch` y dropdown StripChart si >200 opciones. |
-| **HMI-M8** | Hecho | Clears en la acción `logout`. |
+| **HMI-M8** | Hecho | Logout limpia `tagValues`/alarms/machines; **conserva** `tagHistory` persistido (tope 720×64). |
 | **Watchdog** | Hecho | `useMemoryWatchdog(512)` + `POST /logs/add` al cruzar umbral. |
 | **P3 UI** | Hecho | `socketService.listenerCount()` en DEV (`window.__pyaSocketListeners`); `useLongTaskObserver(50)` en RealTimeTrends. |
 

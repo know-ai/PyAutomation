@@ -6,6 +6,26 @@ ns = Namespace("Health", description="Service health and readiness checks")
 app = PyAutomation()
 
 
+def _log_error_metrics() -> dict:
+    try:
+        from ....utils.log_filters import get_dedupe_filter
+
+        filt = get_dedupe_filter()
+        if filt is None:
+            return {
+                "LOG_ERROR_RATE_PER_MIN": 0.0,
+                "LOG_ERROR_SUPPRESSED_PER_MIN": 0.0,
+                "LOG_ERROR_ALERT": False,
+            }
+        return filt.snapshot()
+    except Exception:
+        return {
+            "LOG_ERROR_RATE_PER_MIN": 0.0,
+            "LOG_ERROR_SUPPRESSED_PER_MIN": 0.0,
+            "LOG_ERROR_ALERT": False,
+        }
+
+
 @ns.route("/ping")
 class HealthPingResource(Resource):
     @api.doc(description="Lightweight healthcheck endpoint used by container orchestrators.")
@@ -97,6 +117,7 @@ class HealthSystemResource(Resource):
             "POOL_CONNECTIONS_USED": pool_used,
             "SAF_PENDING_CAP_HITS": pending_cap_hits,
             "CVT_LOCK_CONTENTION": lock_contention,
+            **_log_error_metrics(),
         }, 200
 
 

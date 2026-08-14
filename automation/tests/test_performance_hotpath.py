@@ -94,6 +94,15 @@ class TestBufferDeque(unittest.TestCase):
         self.assertEqual(len(buf), 10)
         self.assertEqual(buf.current(), 599)
 
+    def test_count_matches_list_semantics(self):
+        buf = Buffer(size=8, roll="backward")
+        buf(True)
+        buf(False)
+        buf(True)
+        buf(True)
+        self.assertEqual(buf.count(True), 3)
+        self.assertEqual(buf.count(False), 1)
+
 
 class TestCvtIndexes(unittest.TestCase):
     def test_lookups_are_o1_and_is_tag_defined_uses_name(self):

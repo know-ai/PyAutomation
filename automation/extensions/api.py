@@ -83,6 +83,64 @@ class Api(Singleton):
             return decorated
         
         return _validate_reqparser
+
+    @classmethod
+    def _resolve_session_user(cls, token: str):
+        r"""Resolve an authenticated user without forcing a false 'Invalid token'
+        when the historian is unreachable.
+
+        Returns ``(user, error_body, status_code)``. ``error_body`` is None on success.
+        For valid TPT tokens, ``user`` may be None with no error.
+        """
+        if not token:
+            return None, {'message': 'Key is missing.', 'code': 'AUTH_KEY_MISSING'}, 401
+
+        memory_user = users.get_active_user(token=token)
+        if memory_user:
+            return memory_user, None, None
+
+        if users.is_revoked_token(token):
+            return None, {
+                'message': 'Session has been superseded by another login',
+                'code': 'SESSION_SUPERSEDED',
+            }, 401
+
+        db_reachable = True
+        try:
+            from automation import PyAutomation
+            db_reachable = bool(PyAutomation().is_db_connected())
+        except Exception:
+            db_reachable = False
+
+        if db_reachable:
+            try:
+                db_user = Users.get_or_none(token=token)
+                if db_user:
+                    restored = users.activate_session_from_db_record(db_user, token=token)
+                    return restored or memory_user, None, None
+            except Exception:
+                db_reachable = False
+                logging.getLogger("pyautomation").debug(
+                    "Token DB lookup skipped; remote database unreachable",
+                    exc_info=True,
+                )
+        else:
+            logging.getLogger("pyautomation").debug(
+                "Token DB lookup skipped; historian marked disconnected"
+            )
+
+        if Api.verify_tpt(tpt=token):
+            return None, None, None
+
+        # Do not impersonate "logged in elsewhere" when the historian is down
+        # and the in-memory session map no longer has this token.
+        if not db_reachable:
+            return None, {
+                'message': 'Authentication backend temporarily unavailable',
+                'code': 'AUTH_BACKEND_UNAVAILABLE',
+            }, 503
+
+        return None, {'message': 'Invalid token', 'code': 'SESSION_INVALID'}, 401
     
     @classmethod
     def token_required(cls, auth:bool=False):
@@ -100,29 +158,10 @@ class Api(Singleton):
                 elif 'Authorization' in request.headers:
                     token = request.headers['Authorization'].split('Token ')[-1]
 
-                if not token:
-                    return {'message': 'Key is missing.'}, 401
-
-                # In-memory session first: CVT/OPC UA/real-time must keep working
-                # when the remote historian is down.
-                memory_user = users.get_active_user(token=token)
-                if memory_user:
-                    return f(*args, **kwargs)
-
-                try:
-                    db_user = Users.get_or_none(token=token)
-                    if db_user:
-                        return f(*args, **kwargs)
-                except Exception:
-                    logging.getLogger("pyautomation").debug(
-                        "Token DB lookup skipped; remote database unreachable",
-                        exc_info=True,
-                    )
-
-                if Api.verify_tpt(tpt=token):
-                    return f(*args, **kwargs)
-
-                return {'message': 'Invalid token'}, 401
+                _user, err, status = cls._resolve_session_user(token)
+                if err is not None:
+                    return err, status
+                return f(*args, **kwargs)
 
             return decorated
 
@@ -158,25 +197,12 @@ class Api(Singleton):
                     elif 'Authorization' in request.headers:
                         token = request.headers['Authorization'].split('Token ')[-1]
                     
-                    if not token:
-                        return {'message': 'Token is required'}, 401
-                    
-                    # Get user from token
-                    current_user = users.get_active_user(token=token)
-                    
+                    current_user, err, status = cls._resolve_session_user(token)
+                    if err is not None:
+                        return err, status
                     if not current_user:
-                        try:
-                            db_user = Users.get_or_none(token=token)
-                        except Exception:
-                            db_user = None
-                        if db_user:
-                            # Get role from database
-                            role_name = db_user.role.name.upper()
-                            if role_name in [r.upper() for r in role_names]:
-                                return f(*args, **kwargs)
-                        return {'message': 'Invalid token or insufficient permissions'}, 401
+                        return {'message': 'Invalid token', 'code': 'SESSION_INVALID'}, 401
                     
-                    # Check if user's role is in the allowed list
                     user_role_name = current_user.role.name.upper()
                     allowed_roles = [r.upper() for r in role_names]
                     
@@ -224,28 +250,13 @@ class Api(Singleton):
                     elif 'Authorization' in request.headers:
                         token = request.headers['Authorization'].split('Token ')[-1]
                     
-                    if not token:
-                        return {'message': 'Token is required'}, 401
-                    
-                    # Get user from token
-                    current_user = users.get_active_user(token=token)
-                    
+                    current_user, err, status = cls._resolve_session_user(token)
+                    if err is not None:
+                        return err, status
                     if not current_user:
-                        try:
-                            db_user = Users.get_or_none(token=token)
-                        except Exception:
-                            db_user = None
-                        if db_user:
-                            # Get role level from database
-                            role_level = db_user.role.level
-                            if role_level <= max_level:
-                                return f(*args, **kwargs)
-                        return {'message': 'Invalid token or insufficient permissions'}, 401
+                        return {'message': 'Invalid token', 'code': 'SESSION_INVALID'}, 401
                     
-                    # Check if user's role level is <= max_level
-                    user_role_level = current_user.role.level
-                    
-                    if user_role_level <= max_level:
+                    if current_user.role.level <= max_level:
                         return f(*args, **kwargs)
                     
                     return {'message': f'Access denied. Required role level: <= {max_level}'}, 403
@@ -271,8 +282,10 @@ class Api(Singleton):
             
             token = request.headers['Authorization'].split('Token ')[-1]
 
-        if token:
+        if not token:
+            return None
 
-            return users.get_active_user(token=token)
-
-        return None
+        user, err, _status = cls._resolve_session_user(token)
+        if err is not None:
+            return None
+        return user

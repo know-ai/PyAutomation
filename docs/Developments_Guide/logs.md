@@ -117,4 +117,8 @@ While <code>app.log</code> stores text logs, the <code>LogsLoggerEngine</code> p
 PyAutomation uses <code>RotatingFileHandler</code>. When <code>app.log</code> reaches <code>log_max_bytes</code>, it is renamed to <code>app.log.1</code>, and a new log file is created. Old backups are rotated out based on <code>log_backup_count</code>.
 </p>
 
+<p style="color: #1a202c; font-size: 1em; line-height: 1.8; margin: 1em 0 0 0; font-weight: 400;">
+Repeated ERROR records are rate-limited by <code>DedupeFilter</code> (<code>log_error_cooldown_seconds</code>, default 60). The decorator does not <code>print</code>; ERROR also goes to stdout via <code>StreamHandler</code>. Health exposes <code>LOG_ERROR_RATE_PER_MIN</code>. See <code>audits/AUDIT_LOGGING.md</code>.
+</p>
+
 </div>

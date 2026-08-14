@@ -113,8 +113,8 @@ class LoggerWorker(BaseWorker):
                         # Si hay un error durante la reconexión, registrar pero continuar con otros clientes
                         logging.error(f"Error reconnecting OPC UA client '{client_name}': {e}")
         else:
-            
-            app.load_opcua_clients_from_db()
+            if app.is_db_connected():
+                app.load_opcua_clients_from_db()
 
     def get_tags_from_queue(self, _queue):
         r"""
@@ -157,14 +157,15 @@ class LoggerWorker(BaseWorker):
         """
         from automation import PyAutomation
         from ..utils.db_audit import database_connection_auditor
+        from ..utils.connection_alarms import set_db_disconnected
 
         app = PyAutomation()
         
         if self.db_reconnection:
             logging.critical("Trying reconnect to DB...")
             database_connection_auditor.notify_link_lost(source="watchdog")
-            from ..utils.connection_alarms import set_db_disconnected
-            set_db_disconnected(True)
+
+        set_db_disconnected(True)
         
         self.db_reconnection = False
         db_connected = app.reconnect_to_db(source="watchdog")
@@ -173,6 +174,8 @@ class LoggerWorker(BaseWorker):
             
             logging.critical("Reconnection successfully")
             self.db_reconnection = True
+        else:
+            set_db_disconnected(True)
 
     def run(self):
         r"""

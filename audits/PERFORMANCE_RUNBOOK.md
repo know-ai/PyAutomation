@@ -19,6 +19,8 @@ Fuente backend: `GET /api/health/system` y `GET /api/health/saf`.
 | `ALARM_COUNT` | Salto inexplicable | Reload duplicando alarmas / attach no idempotente |
 | `POOL_CONNECTIONS_USED` | N/A (sin pool Peewee) | Si vuelve a >0 tras reintroducir pool: ver §5.1 |
 | `CVT_LOCK_CONTENTION` | Crecimiento monotónico alto | Contención en `Tag._lock`; revisar tasa de `set_value` |
+| `LOG_ERROR_RATE_PER_MIN` | **> 5** | Error recurrente (aunque el dedupe silencie el archivo). Ver `logs/app.log` y SM |
+| `LOG_ERROR_ALERT` | `true` | Misma señal; no hace falta leer miles de líneas |
 | Heap HMI | > 512 MB (`useMemoryWatchdog`) | Toast + `POST /logs/add`; revisar StripCharts y Redux |
 | Socket listeners | `window.__pyaSocketListeners()` (DEV) | Debe ser 1 nativo / evento; callbacks = páginas montadas |
 | Long task Trends RT | > 50 ms (`PerformanceObserver`) | Throttle Plotly / menos charts visibles |
@@ -32,6 +34,8 @@ Alertas Prometheus (orquestador):
 delta(pya_opc_monitored_count[1h]) > 0  AND  config_hash unchanged
 # SAF
 pya_saf_queue_depth > 10000 for 15m
+# Logs (intentos ERROR, incluye suprimidos por dedupe)
+pya_log_error_rate_per_min > 5
 ```
 
 ## 2. Procedimiento de diagnóstico
@@ -94,3 +98,68 @@ HMI: `timeout of 15000ms exceeded`. Arranque y carga de tags/alarmas OK; Postgre
 3. Confirmación de que `_in_use` no crece monotónicamente.
 
 Detalle de auditoría: `audits/AUDIT_BACKEND_PERFORMANCE.md` §3.2 BE-H4.
+
+---
+
+## 6. Gestión de logs, stdout y retención (Operación «Log Eterno»)
+
+Complementa: `audits/AUDIT_LOGGING.md`.
+
+### 6.1 Runtime (`logs/app.log`)
+
+- `RotatingFileHandler`: techo `log_max_bytes × (1 + log_backup_count)` (default **≤ 40 MiB**).
+- Dedupe ERROR: `log_error_cooldown_seconds` (default **60**; `0` = off). Un error a 1 Hz → **1 línea/min** en archivo y stdout.
+- `@logging_error_handler` **no** hace `print`; stdout ERROR pasa por `StreamHandler` con el mismo filtro (una decisión por record, no por handler).
+- Caliente: `PUT /api/settings/update` con `log_error_cooldown_seconds`, `log_max_bytes`+`log_backup_count`, `log_level`.
+
+### 6.2 Stdout / Docker / gunicorn (LOG-H3)
+
+El framework **no** rota el journal del contenedor. Configurar el driver de logging del orquestador:
+
+```json
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+```
+
+Compose:
+
+```yaml
+logging:
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+```
+
+Si se usa systemd/journald, acotar `SystemMaxUse` / `RuntimeMaxUse`. Gunicorn access log: redirigir a journald o rotar con logrotate; no duplicar a un archivo sin techo.
+
+### 6.3 Backups SQLite locales (LOG-H4)
+
+`LoggerWorker` hace `VACUUM INTO db/backups/` cuando el historian SQLite local supera **1 GiB**. El framework **no** borra esos archivos (datos de durabilidad).
+
+Política sugerida (ops, no código de producto):
+
+```bash
+# Conservar 14 días
+find ./db/backups -name '*.db' -mtime +14 -delete
+find ./db/backups -name '*.sha256' -mtime +14 -delete
+```
+
+### 6.4 Tablas PostgreSQL (LOG-H5)
+
+`Logs`, `Events`, `TagValue`, `AlarmSummary` **no** tienen TTL en el framework. Retención = DBA/planta (particiones por mes + `DROP`/`DETACH` de particiones antiguas, o job de archive). No implementar `DELETE` masivo desde la app.
+
+### 6.4 Soak de error controlado
+
+Inyectar un `AttributeError` repetido en un `while_*` de prueba 24 h:
+
+- `du -sb logs/` ≤ `maxBytes * (1+backup) * 1.1`
+- `LOG_ERROR_RATE_PER_MIN` ≈ 60 (intentos) y `LOG_ERROR_SUPPRESSED_PER_MIN` ≈ 59
+- `LOG_ERROR_ALERT=true`
+- CPU del worker sin picos atribuibles a I/O de log
+

@@ -235,9 +235,17 @@ class Users(BaseModel):
 
             user.token = None
             user.save()
+            try:
+                users.logout(token=token)
+            except Exception:
+                pass
 
             return user, "Logout successfull"
         
+        try:
+            users.logout(token=token)
+        except Exception:
+            pass
         return None, "Invalid Token"
 
     @classmethod

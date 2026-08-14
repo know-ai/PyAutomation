@@ -13,7 +13,7 @@
 
 **Empowering Industry 4.0 with Python, React, and Open Standards**
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Build HMI into Python Package](#-build-hmi-changes-into-the-python-package) • [Documentation](#-documentation) • [Contributing](#-contributing)
+[Features](#-features) • [Quick Start](#-quick-start) • [Python Tests](#-running-python-tests) • [Build HMI into Python Package](#-build-hmi-changes-into-the-python-package) • [Documentation](#-documentation) • [Contributing](#-contributing)
 
 </div>
 
@@ -336,6 +336,88 @@ pip install -r requirements.txt
 5. **Access the application:**
 
 Open your browser and navigate to `http://localhost:8050`.
+
+---
+
+## 🧪 Running Python Tests
+
+Unit tests live under `automation/tests/` and use the standard library **`unittest`** runner. They use **relative imports** (`from ..…`), so they must be executed as package modules from the **repository root**, not as loose files under `automation/tests/`.
+
+### Prerequisites
+
+```bash
+cd PyAutomation
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install --upgrade pip
+pip install -r requirements.txt
+# Optional but recommended for an editable install:
+pip install -e .
+```
+
+Use the venv interpreter explicitly if the shell is not activated:
+
+```bash
+./venv/bin/python3 -m unittest …
+```
+
+### Run a single test module
+
+```bash
+./venv/bin/python3 -m unittest automation.tests.test_connection_alarms -v
+```
+
+### Run several modules
+
+```bash
+./venv/bin/python3 -m unittest \
+  automation.tests.test_connection_alarms \
+  automation.tests.test_opcua_connection_audit \
+  automation.tests.test_db_connection_audit \
+  automation.tests.test_store_and_forward \
+  -v
+```
+
+### Run a single test case / method
+
+```bash
+./venv/bin/python3 -m unittest \
+  automation.tests.test_connection_alarms.TestConnectionAlarms.test_database_disconnect_ack_and_restore \
+  -v
+```
+
+### Run the full suite
+
+```bash
+./venv/bin/python3 -m unittest discover -s automation/tests -t . -p 'test_*.py' -v
+```
+
+The `-t .` (top-level directory = repo root) is required so `automation.tests.*` imports resolve. Prefer naming modules explicitly when debugging a failure.
+
+### Available suites
+
+| Module | Focus |
+|--------|--------|
+| `automation.tests.test_alarms` | Alarm manager / ISA-18.2 states |
+| `automation.tests.test_connection_alarms` | DB / OPC UA connection BOOL alarms |
+| `automation.tests.test_core` | Core `PyAutomation` APIs |
+| `automation.tests.test_database_health` | DB health helpers |
+| `automation.tests.test_db_connection_audit` | Historian connection audit trail |
+| `automation.tests.test_log_filters` | Log dedupe / error-rate filters |
+| `automation.tests.test_opcua_connection_audit` | OPC UA connect/reconnect audit |
+| `automation.tests.test_opcua_serialization` | OPC UA client serialization |
+| `automation.tests.test_performance_hotpath` | Hot-path performance checks |
+| `automation.tests.test_performance_soak` | Longer soak (slower) |
+| `automation.tests.test_store_and_forward` | SAF journal / replicator |
+| `automation.tests.test_unit` | Engineering units / variables |
+| `automation.tests.test_user` | Users / roles |
+
+### Notes
+
+- Always run commands from the **repository root** (`PyAutomation/`).
+- Do **not** use `python automation/tests/test_….py` or `unittest discover -s automation/tests` **without** `-t .`: relative imports will fail with `attempted relative import with no known parent package`.
+- Some suites create temporary SQLite files under `./db/` and write to `./logs/`; that is expected.
+- `test_performance_soak` and large SAF suites can take longer; run them separately when iterating on a fix.
 
 ---
 

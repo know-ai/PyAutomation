@@ -168,3 +168,43 @@ class TestConnectionAlarms(unittest.TestCase):
 
         self.app.disconnect_to_db()
         self.assertEqual(self._alarm_state(alarm), "unacknowledged")
+        self.assertFalse(self.app.is_db_connected())
+
+    def test_reconnect_probe_failure_keeps_alarm_and_skips_hydrate(self):
+        conn_alarms.set_db_disconnected(True)
+        alarm = self.app.alarm_manager.get_alarm_by_name(conn_alarms.DB_ALARM_NAME)
+        self.assertEqual(self._alarm_state(alarm), "unacknowledged")
+
+        with patch.object(self.app, "get_db_config", return_value={"dbtype": "sqlite", "dbfile": "test.db"}), \
+             patch.object(self.app, "set_db"), \
+             patch.object(self.app, "_historian_is_live", return_value=False), \
+             patch.object(self.app, "load_opcua_clients_from_db") as load_opcua, \
+             patch.object(self.app, "load_db_to_alarm_manager") as load_alarms, \
+             patch.object(self.app, "load_db_to_roles") as load_roles, \
+             patch.object(self.app, "load_db_to_users") as load_users, \
+             patch.object(self.app, "load_db_tags_to_machine") as load_tags:
+            ok = self.app.reconnect_to_db(source="watchdog")
+
+        self.assertFalse(ok)
+        self.assertFalse(self.app._db_live)
+        self.assertFalse(self.app.is_db_connected())
+        load_opcua.assert_not_called()
+        load_alarms.assert_not_called()
+        load_roles.assert_not_called()
+        load_users.assert_not_called()
+        load_tags.assert_not_called()
+        self.assertEqual(self._alarm_state(alarm), "unacknowledged")
+        self.assertEqual(alarm.state.alarm_status, "Active")
+
+    def test_reconnect_success_clears_alarm_after_ack(self):
+        conn_alarms.set_db_disconnected(True)
+        alarm = self.app.alarm_manager.get_alarm_by_name(conn_alarms.DB_ALARM_NAME)
+        self.assertEqual(self._alarm_state(alarm), "unacknowledged")
+        alarm.acknowledge()
+
+        ok = self.app.reconnect_to_db(test=True)
+        self.assertTrue(ok)
+        self.assertTrue(self.app._db_live)
+        self.assertTrue(self.app.is_db_connected())
+        self.assertEqual(self._alarm_state(alarm), "normal")
+        self.assertEqual(alarm.state.alarm_status, "Not Active")

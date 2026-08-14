@@ -143,6 +143,7 @@ class Users(Singleton):
         self.__by_identifier = dict()
         self.__by_username = dict()
         self.__by_email = dict()
+        self._revoked_tokens = set()
 
     def login(self, password:str, token:str=None, username:str=None, email:str=None):
         r"""
@@ -172,7 +173,7 @@ class Users(Singleton):
             
             # Intentar autenticar
             if self.__auth.login(user=user, password=password, token=token):
-                
+                self._revoke_other_sessions(user)
                 self.active_users[user.token] = user
 
                 return user, f"Login successful"
@@ -184,6 +185,63 @@ class Users(Singleton):
 
             raise ValueError(f"You must submit username or email")
         
+    def _revoke_other_sessions(self, user:User)->None:
+        r"""Drop previous in-memory sessions for this user (single active session)."""
+        stale = [
+            session_token
+            for session_token, session_user in list(self.active_users.items())
+            if session_user is user or (
+                getattr(session_user, "username", None) == getattr(user, "username", None)
+                and session_token != getattr(user, "token", None)
+            )
+        ]
+        for session_token in stale:
+            self.active_users.pop(session_token, None)
+            if session_token:
+                self._revoked_tokens.add(session_token)
+        # Bound growth of the revoked set
+        if len(self._revoked_tokens) > 512:
+            excess = list(self._revoked_tokens)[: len(self._revoked_tokens) - 512]
+            for item in excess:
+                self._revoked_tokens.discard(item)
+
+    def is_revoked_token(self, token:str)->bool:
+        return bool(token) and token in getattr(self, "_revoked_tokens", set())
+
+    def activate_session_from_db_record(self, db_user, token:str=None)->User|None:
+        r"""Rebind a DB-backed session into the in-memory active map. Never raises."""
+        try:
+            username = getattr(db_user, "username", None)
+            if not username:
+                return None
+            user = self.get_by_username(username=username)
+            if user is None:
+                return None
+            session_token = token or getattr(db_user, "token", None)
+            if not session_token:
+                return None
+            user.token = session_token
+            self.active_users[session_token] = user
+            self._revoked_tokens.discard(session_token)
+            return user
+        except Exception:
+            return None
+
+    def rebind_sessions_from_db_tokens(self)->int:
+        r"""After historian reconnect, restore active_users from persisted tokens."""
+        restored = 0
+        try:
+            from ...dbmodels.users import Users as DbUsers
+            for db_user in DbUsers.select():
+                token = getattr(db_user, "token", None)
+                if not token:
+                    continue
+                if self.activate_session_from_db_record(db_user, token=token):
+                    restored += 1
+        except Exception:
+            return restored
+        return restored
+
     def logout(self, token:str)->None:
         r"""
         Documentation here
@@ -193,6 +251,8 @@ class Users(Singleton):
             user = self.active_users.pop(token)
 
             self.__auth.logout(user=user)
+        if token:
+            self._revoked_tokens.add(token)
 
     def signup(self, 
             username:str, 

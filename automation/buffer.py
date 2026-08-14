@@ -83,6 +83,11 @@ class Buffer:
     def __len__(self):
         return len(self._data)
 
+    def count(self, value):
+        """Compatibilidad con ``list.count`` (p. ej. pre-alarma ``count(True)``)."""
+        with self._lock:
+            return self._data.count(value)
+
     def __bool__(self):
         return bool(self._data)
 

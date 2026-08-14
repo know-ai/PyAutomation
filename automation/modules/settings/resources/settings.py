@@ -12,7 +12,8 @@ settings_model = api.model("settings_model", {
     'logger_period': fields.Float(required=False, min=1.0, description='Logger worker period in seconds (>= 1.0)'),
     'log_max_bytes': fields.Integer(required=False, min=1024, description='Max bytes for log file rotation (>= 1024)'),
     'log_backup_count': fields.Integer(required=False, min=1, description='Number of backup log files to keep (>= 1)'),
-    'log_level': fields.Integer(required=False, min=0, max=50, description='Logging level (0=NOTSET, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL)')
+    'log_level': fields.Integer(required=False, min=0, max=50, description='Logging level (0=NOTSET, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL)'),
+    'log_error_cooldown_seconds': fields.Float(required=False, min=0, description='Dedupe cooldown for ERROR logs in seconds (0 disables)'),
 })
 
 @ns.route('/')
@@ -80,6 +81,12 @@ class SettingsUpdateResource(Resource):
                 return "Invalid log_level. Use standard Python logging levels (10, 20, 30, 40, 50)", 400
             
             app.update_log_level(log_level)
+
+        if 'log_error_cooldown_seconds' in data:
+            cooldown = data['log_error_cooldown_seconds']
+            if cooldown < 0:
+                return "log_error_cooldown_seconds must be >= 0", 400
+            app.update_log_error_cooldown(float(cooldown))
 
         return "Settings updated", 200
         

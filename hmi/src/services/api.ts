@@ -43,43 +43,75 @@ api.interceptors.response.use(
     // Verificar si el error es por token inválido
     if (error.response) {
       const status = error.response.status;
-      const payload = error.response.data as { code?: string; message?: string } | string | undefined;
+      const payload = error.response.data as
+        | { code?: string; message?: string }
+        | string
+        | undefined;
+      const code = typeof payload === "object" ? payload?.code : undefined;
       const message =
         (typeof payload === "object" && payload?.message) ||
         (typeof payload === "string" ? payload : "");
 
-      if (status === 503 && typeof payload === "object" && payload?.code === DB_UNAVAILABLE_CODE) {
+      if (
+        status === 503 &&
+        typeof payload === "object" &&
+        (payload?.code === DB_UNAVAILABLE_CODE ||
+          payload?.code === "AUTH_BACKEND_UNAVAILABLE")
+      ) {
         (error as AxiosError & { isDbUnavailable?: boolean }).isDbUnavailable = true;
-        emitDatabaseHealth(false);
+        if (payload?.code === DB_UNAVAILABLE_CODE) {
+          emitDatabaseHealth(false);
+        }
+        // Never force-logout when the historian/auth backend is temporarily down.
         return Promise.reject(error);
       }
 
-      // Detectar token inválido (401 con mensaje "Invalid token" o similar)
-      if (
-        status === 401 &&
-        (message?.toLowerCase().includes("invalid token") ||
-         message?.toLowerCase().includes("token inválido") ||
-         message?.toLowerCase().includes("key is missing"))
-      ) {
-        // Hacer logout
+      // Explicit single-session takeover only.
+      if (status === 401 && code === "SESSION_SUPERSEDED") {
         store.dispatch(logout());
-
-        // Guardar el mensaje del toast en sessionStorage para mostrarlo después de la redirección
-        // El mensaje se traducirá en la página de login usando la clave de traducción
         try {
-          sessionStorage.setItem("pendingToast", JSON.stringify({
-            messageKey: "auth.sessionExpired", // Clave de traducción
-            type: "warning",
-            duration: 0 // 0 = no auto-cerrar, solo con el botón
-          }));
+          sessionStorage.setItem(
+            "pendingToast",
+            JSON.stringify({
+              messageKey: "auth.sessionTakenOver",
+              type: "warning",
+              duration: 0,
+            })
+          );
         } catch (_e) {
           // ignore storage errors
         }
-
-        // Redirigir a login
         const basePath = import.meta.env.VITE_BASE_PATH || "/hmi/";
-        const loginPath = basePath.endsWith("/") 
-          ? `${basePath}login` 
+        const loginPath = basePath.endsWith("/")
+          ? `${basePath}login`
+          : `${basePath}/login`;
+        window.location.href = loginPath;
+        return Promise.reject(error);
+      }
+
+      // Generic invalid/expired session — do not claim "another device".
+      if (
+        status === 401 &&
+        (code === "SESSION_INVALID" ||
+          message?.toLowerCase().includes("invalid token") ||
+          message?.toLowerCase().includes("token inválido"))
+      ) {
+        store.dispatch(logout());
+        try {
+          sessionStorage.setItem(
+            "pendingToast",
+            JSON.stringify({
+              messageKey: "auth.sessionExpired",
+              type: "warning",
+              duration: 0,
+            })
+          );
+        } catch (_e) {
+          // ignore storage errors
+        }
+        const basePath = import.meta.env.VITE_BASE_PATH || "/hmi/";
+        const loginPath = basePath.endsWith("/")
+          ? `${basePath}login`
           : `${basePath}/login`;
         window.location.href = loginPath;
       }
