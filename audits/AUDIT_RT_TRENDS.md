@@ -211,7 +211,7 @@ Prioridad: **RT-H1**. El resto es contexto.
 | **FIX-3** | Separar canales: `updateTagValue` (último valor, coalescible) vs `appendTagHistory` (todas las muestras). Footer/tablas siguen baratas. | SOLID: S — un buffer para UI, otro para forma de onda. |
 | **FIX-4** | Opcional: no aplicar `HIDDEN_FLUSH_EVERY` al canal de historial; sí al de “último valor”. | Fidelidad RT sin re-renderizar tablas en background. |
 
-No hace falta tocar OPC, `set_value_fast`, ni el historiador para este síntoma.
+**Estado (2026-08-14):** Operación «Forma de Onda Perfecta» aplicada. Canal de valor actual sigue last-wins (1 s / 5 s hidden). Canal de historial: cola por tag (máx. 20/flush), flush 1 s aunque la pestaña esté oculta, vaciado inmediato al volver a primer plano. `updateTagValuesBatch` ya no escribe `tagHistory`.
 
 ---
 
@@ -225,7 +225,10 @@ No hace falta tocar OPC, `set_value_fast`, ni el historiador para este síntoma.
 [x] Flush 1 s retrasado por long task / navegación — caso cambio de pantalla
 [x] Plotly throttle 300 ms y freeze hidden — no descartan puntos
 [x] tagHistory persistente — el tramo feo se ve al volver
-[ ] FIX-1..4 (pendiente de implementación)
+[x] FIX-1 cola por tag `pendingHistoryUpdatesRef` (máx. 20/flush)
+[x] FIX-2 flush inmediato de historial al volver a primer plano
+[x] FIX-3 `appendTagHistoryPoints` vs `updateTagValuesBatch` (sin doble append)
+[x] FIX-4 `HIDDEN_FLUSH_EVERY` solo en valor actual / alarmas / máquinas
 ```
 
 ---

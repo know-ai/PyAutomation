@@ -61,7 +61,7 @@ def _system_rss_mb() -> float:
 
 @ns.route("/system")
 class HealthSystemResource(Resource):
-    @api.doc(description="Process RSS, thread count, OPC monitored items and CVT tag count.")
+    @api.doc(description="Process RSS, thread count, OPC monitored items, CVT tag count and observer counts.")
     @api.response(200, "System snapshot")
     def get(self):
         """Continuous health snapshot for soak / leak detection."""
@@ -76,6 +76,8 @@ class HealthSystemResource(Resource):
         pool_used = 0
         pending_cap_hits = 0
         lock_contention = 0
+        tag_observer_count = 0
+        machine_observer_count = 0
         try:
             opc_monitored = app.das.monitored_count()
             opc_subscriptions = len(getattr(app.das, "client_subscriptions", {}) or {})
@@ -84,6 +86,12 @@ class HealthSystemResource(Resource):
         try:
             cvt_tag_count = app.cvt.tag_count()
             lock_contention = app.cvt.lock_contention()
+        except Exception:
+            pass
+        try:
+            counts = app.cvt.observer_counts()
+            tag_observer_count = int(counts.get("TAG_OBSERVER_COUNT") or 0)
+            machine_observer_count = int(counts.get("MACHINE_OBSERVER_COUNT") or 0)
         except Exception:
             pass
         try:
@@ -117,6 +125,8 @@ class HealthSystemResource(Resource):
             "POOL_CONNECTIONS_USED": pool_used,
             "SAF_PENDING_CAP_HITS": pending_cap_hits,
             "CVT_LOCK_CONTENTION": lock_contention,
+            "TAG_OBSERVER_COUNT": tag_observer_count,
+            "MACHINE_OBSERVER_COUNT": machine_observer_count,
             **_log_error_metrics(),
         }, 200
 

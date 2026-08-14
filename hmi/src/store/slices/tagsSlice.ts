@@ -7,6 +7,8 @@ export const MAX_HISTORY_POINTS = 720;
 /** Tope de tags con historial (LRU de no suscritos). ~64×720 pts ≈ 2 MB. */
 export const MAX_HISTORY_TAGS = 64;
 export const HISTORY_STORAGE_KEY = "pyautomation.tagHistory";
+/** Tope de muestras encoladas por tag entre flushes (CA-RT-5). */
+export const HISTORY_POINTS_PER_FLUSH = 20;
 
 export interface TagHistoryPoint {
   timestamp: string;
@@ -100,35 +102,44 @@ export const persistTagHistory = (history: Record<string, TagHistoryPoint[]>): v
   }
 };
 
+export const isTagHistoryTracked = (
+  subscribers: Record<string, number>,
+  history: Record<string, TagHistoryPoint[]>,
+  name: string
+): boolean => !!subscribers[name] || Array.isArray(history[name]);
+
+const tagToHistoryPoint = (tag: Tag): TagHistoryPoint | null => {
+  if (!tag.name || tag.value === undefined || tag.value === null) return null;
+  const numericValue =
+    typeof tag.value === "boolean" ? (tag.value ? 1 : 0) : Number(tag.value);
+  if (Number.isNaN(numericValue)) return null;
+  const timestamp =
+    typeof tag.timestamp === "string" ? tag.timestamp : new Date().toISOString();
+  return { timestamp, value: numericValue };
+};
+
+const appendPointsToHistory = (state: TagsState, name: string, tags: Tag[]) => {
+  if (!name || tags.length === 0) return;
+  if (!isTagHistoryTracked(state.historySubscribers, state.tagHistory, name)) return;
+  const history = state.tagHistory[name] || [];
+  for (const tag of tags) {
+    const point = tagToHistoryPoint(tag);
+    if (!point) continue;
+    history.push(point);
+  }
+  if (history.length > MAX_HISTORY_POINTS) {
+    history.splice(0, history.length - MAX_HISTORY_POINTS);
+  }
+  state.tagHistory[name] = history;
+  if (Object.keys(state.tagHistory).length > MAX_HISTORY_TAGS) {
+    state.tagHistory = evictExcessHistory(state.tagHistory, state.historySubscribers);
+  }
+};
+
 const initialState: TagsState = {
   tagValues: {},
   tagHistory: loadPersistedTagHistory(),
   historySubscribers: {},
-};
-
-const pushHistoryPoint = (state: TagsState, tag: Tag) => {
-  if (!tag.name || tag.value === undefined || tag.value === null) return;
-  const tracked =
-    !!state.historySubscribers[tag.name] || Array.isArray(state.tagHistory[tag.name]);
-  if (!tracked) return;
-  const numericValue =
-    typeof tag.value === "boolean" ? (tag.value ? 1 : 0) : Number(tag.value);
-  if (Number.isNaN(numericValue)) return;
-
-  const history = state.tagHistory[tag.name] || [];
-  const timestamp =
-    typeof tag.timestamp === "string"
-      ? tag.timestamp
-      : new Date().toISOString();
-
-  history.push({ timestamp, value: numericValue });
-  if (history.length > MAX_HISTORY_POINTS) {
-    history.splice(0, history.length - MAX_HISTORY_POINTS);
-  }
-  state.tagHistory[tag.name] = history;
-  if (Object.keys(state.tagHistory).length > MAX_HISTORY_TAGS) {
-    state.tagHistory = evictExcessHistory(state.tagHistory, state.historySubscribers);
-  }
 };
 
 const tagsSlice = createSlice({
@@ -139,15 +150,21 @@ const tagsSlice = createSlice({
       const tag = action.payload;
       if (tag.name) {
         state.tagValues[tag.name] = tag;
-        pushHistoryPoint(state, tag);
       }
     },
     updateTagValuesBatch: (state, action: PayloadAction<Tag[]>) => {
       action.payload.forEach((tag) => {
         if (tag.name) {
           state.tagValues[tag.name] = tag;
-          pushHistoryPoint(state, tag);
         }
+      });
+    },
+    appendTagHistoryPoints: (
+      state,
+      action: PayloadAction<Array<{ name: string; points: Tag[] }>>
+    ) => {
+      action.payload.forEach(({ name, points }) => {
+        appendPointsToHistory(state, name, points);
       });
     },
     subscribeTagHistory: (state, action: PayloadAction<string>) => {
@@ -178,8 +195,9 @@ const tagsSlice = createSlice({
       // tagHistory se conserva (tope MAX_HISTORY_POINTS / MAX_HISTORY_TAGS).
     },
   },
-  extraReducers: (builder) => {
+    extraReducers: (builder) => {
     builder.addCase(logout, (state) => {
+      // Política de producto: tagHistory acotado (720×64) se persiste; no se vacía en logout.
       persistTagHistory(state.tagHistory);
       state.tagValues = {};
       state.historySubscribers = {};
@@ -190,6 +208,7 @@ const tagsSlice = createSlice({
 export const {
   updateTagValue,
   updateTagValuesBatch,
+  appendTagHistoryPoints,
   subscribeTagHistory,
   unsubscribeTagHistory,
   clearTagValues,

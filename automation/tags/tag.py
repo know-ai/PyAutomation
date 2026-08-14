@@ -576,8 +576,35 @@ class Tag:
 
         * **observer** (Observer): The observer instance to detach.
         """
+        if observer is None:
+            return
         observer._subject = None
+        release = getattr(observer, "release", None)
+        if callable(release):
+            release()
         self._observers.discard(observer)
+
+    def detach_all_observers(self):
+        r"""
+        Detaches every observer. ``delete_tag`` owns this cleanup so no
+        TagObserver / MachineObserver / alarm observer keeps the Tag alive.
+        """
+        for observer in list(self._observers):
+            self.detach(observer)
+
+    def detach_machine(self, machine) -> bool:
+        r"""
+        Detaches the ``MachineObserver`` bound to ``machine``, if any.
+
+        **Returns:**
+
+        * **bool**: True when an observer was removed.
+        """
+        for observer in list(self._observers):
+            if isinstance(observer, MachineObserver) and observer.machine is machine:
+                self.detach(observer)
+                return True
+        return False
 
     def notify(self):
         r"""
@@ -656,6 +683,8 @@ class TagObserver(Observer):
         """
         Puts the updated tag data (name, value, timestamp) into the queue.
         """
+        if self._subject is None:
+            return
         try:
             result = dict()
             result["tag"] = self._subject.name
@@ -692,9 +721,17 @@ class MachineObserver(Observer):
         super(MachineObserver, self).__init__()
         self.machine = machine
 
+    def release(self):
+        r"""
+        Drops the machine root so detach does not keep the SM alive.
+        """
+        self.machine = None
+
     def update(self):
 
         """
         Calls the `notify` method of the attached state machine with the new tag value.
         """
+        if self._subject is None or self.machine is None:
+            return
         self.machine.notify(tag=self._subject.name, value=self._subject.value, timestamp=self._subject.timestamp)

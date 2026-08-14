@@ -274,9 +274,34 @@ class CVT:
 
         * **tuple**: (Deleted Tag object, Status message).
         """
+        tag = self._tags.get(id)
+        if tag is None:
+            return None, f"Tag {id} not found"
+        tag.detach_all_observers()
         tag = self._tags.pop(id)
         self._unindex_tag(tag)
         return tag, f"Tag: {tag.name}"
+
+    def observer_counts(self)->dict:
+        r"""
+        Snapshot of live observers. A tag may hold more than one observer
+        (SAF TagObserver, MachineObserver, alarm). Counts must stay stable
+        when the catalogue is fixed; they are not capped by tag count.
+        """
+        from .tag import MachineObserver
+
+        total = 0
+        machines = 0
+        for tag in self._tags.values():
+            observers = getattr(tag, "_observers", None) or ()
+            total += len(observers)
+            for observer in observers:
+                if isinstance(observer, MachineObserver):
+                    machines += 1
+        return {
+            "TAG_OBSERVER_COUNT": total,
+            "MACHINE_OBSERVER_COUNT": machines,
+        }
 
     @logging_error_handler
     def get_tag(self, id:str)->Tag|None:
@@ -923,6 +948,17 @@ class CVTEngine(Singleton):
 
     def lock_contention(self)->int:
         return int(getattr(self._cvt, "lock_contention", 0) or 0)
+
+    def observer_counts(self)->dict:
+        r"""
+        Snapshot of live observers across the CVT (soak / health).
+
+        ``TAG_OBSERVER_COUNT`` is the sum of observers per tag (a tag may
+        have TagObserver + MachineObserver + alarm observers). It is **not**
+        bounded by ``CVT_TAG_COUNT``. With a fixed catalogue both counts
+        must be stable.
+        """
+        return self._cvt.observer_counts()
 
     @logging_error_handler
     def iter_tags(self)->list:

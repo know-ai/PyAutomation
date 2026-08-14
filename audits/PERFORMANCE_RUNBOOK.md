@@ -4,7 +4,7 @@
 |---|---|
 | **Producto** | PyAutomationIO + HMI |
 | **Alcance** | Detectar y corregir degradación 24/7 (RSS, handles OPC, colas SAF, heap HMI) |
-| **Fecha** | 2026-08-13 (actualizado: incidente + reversión BE-H4) |
+| **Fecha** | 2026-08-14 (actualizado: Ciclo de Vida Perfecto — observers + política tagHistory) |
 
 ## 1. Señales y umbrales
 
@@ -13,6 +13,8 @@ Fuente backend: `GET /api/health/system` y `GET /api/health/saf`.
 | Métrica | Umbral | Acción |
 |---|---|---|
 | `RSS_MB` | +20 % en 24 h vs baseline | Soak + `tracemalloc`; revisar observers/alarmas/DAS |
+| `TAG_OBSERVER_COUNT` | Crece con `CVT_TAG_COUNT` fijo | Observers huérfanos: `delete_tag` / `unsubscribe_to` no detach |
+| `MACHINE_OBSERVER_COUNT` | Crece sin cambio de máquinas/suscripciones | `unsubscribe_to` no quitó `MachineObserver` |
 | `OPC_MONITORED_COUNT` | Crecimiento sin cambio de config | Verificar `DAS.reset_client` en reconnect; una subscription por cliente |
 | `SAF_QUEUE_DEPTH` / `PENDING_ROWS` | > 10 000 sostenido | Historiador caído o replicador lento; no borrar PENDING |
 | `SAF_PENDING_CAP_HITS` | Cualquier incremento | Backpressure a 5e6 filas; restaurar PG |
@@ -30,6 +32,9 @@ Alertas Prometheus (orquestador):
 ```
 # RSS deriva
 (pya_rss_mb / pya_rss_mb offset 24h) > 1.20
+# Observers (catálogo fijo)
+delta(pya_tag_observer_count[1h]) > 0 AND delta(pya_cvt_tag_count[1h]) == 0
+delta(pya_machine_observer_count[1h]) > 0 AND config_hash unchanged
 # OPC handles
 delta(pya_opc_monitored_count[1h]) > 0  AND  config_hash unchanged
 # SAF
@@ -44,7 +49,7 @@ pya_log_error_rate_per_min > 5
 2. Comparar con baseline de arranque (mismo worker gunicorn).
 3. Si `OPC_MONITORED_COUNT` crece: dump `DAS.monitored_items` keys; confirmar `nodeid.to_string()`.
 4. Si `PENDING_ROWS` crece: `SAF_REPLICATION_LAG`, circuit breaker, conectividad PG.
-5. Si RSS crece y OPC/SAF planos: `tracemalloc` (ver §3) — buscar `Tag`, `Alarm`, `Buffer`.
+5. Si RSS crece y OPC/SAF planos: comparar `TAG_OBSERVER_COUNT` / `MACHINE_OBSERVER_COUNT` vs baseline; si esos también planos, `tracemalloc` (ver §3) — buscar `Tag`, `Alarm`, `Buffer`.
 6. HMI: DevTools Memory + `performance.memory`; navegación ×500 y `socket.listeners("on.tag").length`.
 7. Si signup/login hacen timeout en HMI pero el arranque y `/health/db` parecen OK: mirar duración del POST en `logs/app.log` (~30 s + 503) → §5.1 (pool / gevent), no asumir “BD caída”.
 
@@ -72,7 +77,7 @@ En planta, arrancar el worker con `tracemalloc.start()` al boot y comparar snaps
 | Disco SAF | Outage largo | Cap 5e6 + alerta; no borrar PENDING |
 | Footer lento | Hidratar 10k alarmas | Preview de 3 (`selectActiveAlarmsPreview`) |
 | Charts acoplados | Selector global `tagHistory` | Selector por `tagNames` + throttle 300 ms |
-| Heap HMI | Historial 10k / listeners huérfanos | 720 pts + EventBus; logout limpia slices |
+| Heap HMI | Historial 10k / listeners huérfanos | 720 pts + EventBus; **tagHistory acotado, no se vacía en logout** (política) |
 | Signup/login timeout 15 s / 503 @ ~30 s | Pool Peewee + gevent sin `close()` | Ver §5.1 — **no** reintroducir pool a ciegas |
 
 ### 5.1 Incidente BE-H4 (2026-08-13) — pool PG bajo gevent
@@ -179,4 +184,38 @@ Validación rápida:
 ./venv/bin/python3 -m unittest automation.tests.test_timezone_hora_unica -v
 curl -k https://localhost:8050/api/system/timezone
 ```
+
+## 8. Observers y memoria (Operación «Ciclo de Vida Perfecto»)
+
+`GET /api/health/system` expone:
+
+| Métrica | Significado |
+|---|---|
+| `TAG_OBSERVER_COUNT` | Suma de `len(tag._observers)` en el CVT. Un tag puede tener TagObserver (SAF) + MachineObserver + observer de alarma. **No** está acotado por `CVT_TAG_COUNT`. |
+| `MACHINE_OBSERVER_COUNT` | Cuántos de esos observers son `MachineObserver`. |
+
+Invariante de soak (catálogo fijo): ambos conteos **estables**. Si `CVT_TAG_COUNT` no cambia y `TAG_OBSERVER_COUNT` sube, hay attach sin detach.
+
+Ciclo de vida:
+
+- `CVT.delete_tag` llama `tag.detach_all_observers()` **antes** del `pop`.
+- `StateMachine.unsubscribe_to` llama `tag.detach_machine(self)` **antes** de `ProcessType.tag = None`.
+- `AlarmManager.delete_alarm` sigue haciendo `detach_from_tag`.
+
+Pruebas: `python -m unittest automation.tests.test_observer_lifecycle -v`.
+
+Soak 24 h (CA-MEM-1): `(RSS_24h - RSS_1h) / RSS_1h < 0.05` tras warmup. Correlacionar con `TAG_OBSERVER_COUNT` y `MACHINE_OBSERVER_COUNT`.
+
+## 9. Política HMI: `tagHistory` acotado (CA-MEM-8)
+
+**Decisión de producto:** el historial RT **no se vacía al logout**. Se persiste en `localStorage` (`pyautomation.tagHistory`) para conservar la curva entre sesiones del mismo cliente.
+
+Cotos (no son opcionales):
+
+- `MAX_HISTORY_POINTS = 720` por tag
+- `MAX_HISTORY_TAGS = 64` (LRU)
+
+`unsubscribeTagHistory` (desmontar StripChart) baja el contador de suscriptores y **conserva** el buffer. `clearTagValues` / `logout` limpian `tagValues` y `historySubscribers`, no el historial.
+
+Esto **no** es una fuga: el heap del historial está acotado. No relajar los topes sin una nueva decisión de producto.
 

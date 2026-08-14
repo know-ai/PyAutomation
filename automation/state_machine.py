@@ -798,32 +798,31 @@ class StateMachineCore(StateMachine):
         r"""
         Unsubscribes the machine from a tag.
 
+        Detaches this machine's ``MachineObserver`` before clearing
+        ``ProcessType.tag``, so the tag no longer notifies a ghost SM.
+
         **Parameters:**
 
         * **tag** (Tag, optional): The tag object to unsubscribe.
         * **default_tag_name** (str, optional): The internal variable name.
         """
-        if tag:
+        process_type = None
+        if tag is not None:
+            process_type = self.get_subscribed_tags().get(tag.name)
+        elif default_tag_name:
+            candidate = getattr(self, default_tag_name, None)
+            if isinstance(candidate, ProcessType) and candidate.tag:
+                process_type = candidate
+                tag = candidate.tag
 
-            tags_subscribed = self.get_subscribed_tags()
-            
-            if tag.name in tags_subscribed:
-               
-                self.machine_engine.unbind_tag(tag=tag, machine=self)
-                tags_subscribed[tag.name].tag = None
-                self.restart_buffer()
-                return True
-            
-        elif default_tag_name: # Default tags on leak state machine
+        if process_type is None or tag is None:
+            return
 
-            if default_tag_name in self.get_subscribed_tags():
-                
-                process_type = self.get_subscribed_tags[default_tag_name]
-                tag = process_type.tag
-                tags_subscribed[tag.name].tag = None
-                self.restart_buffer()
-                self.machine_engine.unbind_tag(tag=tag, machine=self)
-                return True
+        tag.detach_machine(self)
+        self.machine_engine.unbind_tag(tag=tag, machine=self)
+        process_type.tag = None
+        self.restart_buffer()
+        return True
 
     @validate_types(name=str, output=bool)
     def process_type_exists(self, name:str)->bool:
