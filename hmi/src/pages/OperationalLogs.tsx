@@ -9,11 +9,13 @@ import {
   type LogFilter,
   type LogResponse,
 } from "../services/logs";
-import { getTimezones } from "../services/tags";
 import { getAllUsers, type User } from "../services/users";
 import { getAlarms, type Alarm } from "../services/alarms";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
+import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { TimezoneBadge } from "../components/TimezoneBadge";
+import { formatDateTimeLocalForBackend } from "../utils/timezone";
 
 type PresetDate = 
   | "Last Hour"
@@ -67,6 +69,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 
 export function OperationalLogs() {
   const { t } = useTranslation();
+  const { timeZone } = useDisplayTimezone();
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +93,6 @@ export function OperationalLogs() {
   // Opciones para los filtros
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [availableAlarmNames, setAvailableAlarmNames] = useState<string[]>([]);
-  const [availableTimezones, setAvailableTimezones] = useState<string[]>([]);
 
   // Valores seleccionados en los filtros
   const [selectedUsernames, setSelectedUsernames] = useState<string[]>(() => {
@@ -111,9 +113,6 @@ export function OperationalLogs() {
   const [endDate, setEndDate] = useState<string>(() => {
     return localStorage.getItem("operational_logs_endDate") || "";
   });
-  const [selectedTimezone, setSelectedTimezone] = useState<string>(() => {
-    return localStorage.getItem("operational_logs_timezone") || "";
-  });
 
   // Estado para el formulario de agregar log
   const [showAddLogModal, setShowAddLogModal] = useState(false);
@@ -128,7 +127,7 @@ export function OperationalLogs() {
   // Cargar datos cuando cambian los filtros
   useEffect(() => {
     loadLogs();
-  }, [filters]);
+  }, [filters, timeZone]);
 
   // Función helper para convertir Date a formato datetime-local (sin UTC)
   const formatToLocalDateTime = (date: Date): string => {
@@ -142,15 +141,11 @@ export function OperationalLogs() {
 
   // Función para convertir el formato de fecha del input al formato esperado por el backend
   const formatDateTimeForBackend = (dateTimeString: string): string => {
-    if (!dateTimeString) return "";
-    return dateTimeString.replace("T", " ") + ":00.00";
+    return formatDateTimeLocalForBackend(dateTimeString, timeZone);
   };
 
   const loadFilterOptions = async () => {
     try {
-      // Detectar zona horaria del navegador
-      const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
       // Cargar usuarios
       const users = await getAllUsers();
       setAvailableUsers(users);
@@ -163,31 +158,6 @@ export function OperationalLogs() {
         setAvailableAlarmNames(uniqueAlarmNames);
       } catch (e) {
         console.error("Error loading alarm names:", e);
-      }
-
-      // Cargar timezones
-      const timezones = await getTimezones();
-      setAvailableTimezones(timezones);
-      
-      // Intentar usar la zona horaria del navegador, si está disponible
-      if (timezones.length > 0) {
-        const browserTzInList = timezones.find(tz => tz === browserTimezone);
-        if (browserTzInList) {
-          setSelectedTimezone(browserTimezone);
-          localStorage.setItem("operational_logs_timezone", browserTimezone);
-        } else {
-          const browserRegion = browserTimezone.split("/")[0];
-          const similarTz = timezones.find(tz => tz.startsWith(browserRegion + "/"));
-          if (similarTz) {
-            setSelectedTimezone(similarTz);
-            localStorage.setItem("operational_logs_timezone", similarTz);
-          } else {
-            setSelectedTimezone(timezones[0]);
-            localStorage.setItem("operational_logs_timezone", timezones[0]);
-          }
-        }
-      } else if (selectedTimezone) {
-        localStorage.setItem("operational_logs_timezone", selectedTimezone);
       }
 
       // Establecer fechas por defecto solo si no hay fechas guardadas
@@ -230,8 +200,7 @@ export function OperationalLogs() {
       }
 
       // Siempre enviar timezone, usar el seleccionado o el detectado del navegador
-      const timezoneToUse = selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-      payload.timezone = timezoneToUse;
+      payload.timezone = timeZone;
 
       const response = await filterLogs(payload);
       
@@ -409,8 +378,7 @@ export function OperationalLogs() {
         payload.less_than_timestamp = formatDateTimeForBackend(endDate);
       }
 
-      const timezoneToUse = selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-      payload.timezone = timezoneToUse;
+      payload.timezone = timeZone;
 
       const response = await filterLogs(payload);
       const allLogs = response.data || [];
@@ -492,6 +460,7 @@ export function OperationalLogs() {
             <div className="card-header-stack w-100">
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.operationalLogs")}</span>
+                <TimezoneBadge />
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="d-flex align-items-center gap-1">
                     <label className="form-label small mb-0 me-1">

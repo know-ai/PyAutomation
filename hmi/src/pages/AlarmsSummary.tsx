@@ -9,10 +9,12 @@ import {
   type AlarmSummaryFilter,
   type AlarmSummaryResponse,
 } from "../services/alarms";
-import { getTimezones } from "../services/tags";
 import { createLog } from "../services/logs";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
+import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { TimezoneBadge } from "../components/TimezoneBadge";
+import { formatDateTimeLocalForBackend } from "../utils/timezone";
 
 type PresetDate = 
   | "Last Hour"
@@ -68,6 +70,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 
 export function AlarmsSummary() {
   const { t } = useTranslation();
+  const { timeZone } = useDisplayTimezone();
   const [alarmsSummary, setAlarmsSummary] = useState<AlarmSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +93,6 @@ export function AlarmsSummary() {
 
   // Opciones para los filtros
   const [availableStates, setAvailableStates] = useState<string[]>([]);
-  const [availableTimezones, setAvailableTimezones] = useState<string[]>([]);
 
   // Valores seleccionados en los filtros
   const [selectedStates, setSelectedStates] = useState<string[]>(() => {
@@ -106,9 +108,6 @@ export function AlarmsSummary() {
   });
   const [endDate, setEndDate] = useState<string>(() => {
     return localStorage.getItem("alarms_summary_endDate") || "";
-  });
-  const [selectedTimezone, setSelectedTimezone] = useState<string>(() => {
-    return localStorage.getItem("alarms_summary_timezone") || "";
   });
 
   // Estado para el menú contextual y comentarios
@@ -143,7 +142,7 @@ export function AlarmsSummary() {
   // Cargar datos cuando cambian los filtros
   useEffect(() => {
     loadAlarmsSummary();
-  }, [filters]);
+  }, [filters, timeZone]);
 
   // Cerrar menú contextual al hacer click fuera
   useEffect(() => {
@@ -173,25 +172,11 @@ export function AlarmsSummary() {
 
   // Función para convertir el formato de fecha del input al formato esperado por el backend
   const formatDateTimeForBackend = (dateTimeString: string): string => {
-    if (!dateTimeString) return "";
-    // El input datetime-local devuelve formato: YYYY-MM-DDTHH:mm
-    // El backend espera: YYYY-MM-DD HH:mm:ss.00
-    return dateTimeString.replace("T", " ") + ":00.00";
+    return formatDateTimeLocalForBackend(dateTimeString, timeZone);
   };
 
   const loadFilterOptions = async () => {
     try {
-      // Cargar timezones
-      const timezones = await getTimezones();
-      setAvailableTimezones(timezones);
-      if (timezones.length > 0 && !selectedTimezone) {
-        setSelectedTimezone(timezones[0]);
-        localStorage.setItem("alarms_summary_timezone", timezones[0]);
-      } else if (selectedTimezone) {
-        // Guardar el timezone si ya existe
-        localStorage.setItem("alarms_summary_timezone", selectedTimezone);
-      }
-
       // Estados comunes de alarmas (ISA 18.2)
       const commonStates = [
         "Normal",
@@ -238,6 +223,9 @@ export function AlarmsSummary() {
       }
       if (endDate) {
         payload.less_than_timestamp = formatDateTimeForBackend(endDate);
+      }
+      if (timeZone) {
+        payload.timezone = timeZone;
       }
 
       const response: AlarmSummaryResponse = await filterAlarmsSummary(payload);
@@ -334,9 +322,6 @@ export function AlarmsSummary() {
     setStartDate(startStr);
     localStorage.setItem("alarms_summary_startDate", startStr);
     localStorage.setItem("alarms_summary_endDate", endStr);
-    const defaultTimezone = availableTimezones[0] || "";
-    setSelectedTimezone(defaultTimezone);
-    localStorage.setItem("alarms_summary_timezone", defaultTimezone);
     setFilters({
       page: 1,
       limit: 20,
@@ -537,6 +522,9 @@ export function AlarmsSummary() {
       if (endDate) {
         payload.less_than_timestamp = formatDateTimeForBackend(endDate);
       }
+      if (timeZone) {
+        payload.timezone = timeZone;
+      }
 
       const response: AlarmSummaryResponse = await filterAlarmsSummary(payload);
       const allAlarms = response.data || [];
@@ -629,6 +617,7 @@ export function AlarmsSummary() {
             <div className="card-header-stack w-100">
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.alarmsSummary")}</span>
+                <TimezoneBadge />
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="d-flex align-items-center gap-1">
                     <label className="form-label small mb-0 me-1">{t("alarmsSummary.state")}:</label>

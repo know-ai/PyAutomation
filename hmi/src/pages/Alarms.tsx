@@ -9,10 +9,14 @@ import { useAppSelector } from "../hooks/useAppSelector";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { updateAlarmsBatch } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
+import { TimezoneBadge } from "../components/TimezoneBadge";
+import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { formatTimestamp } from "../utils/timezone";
 
 export function Alarms() {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
+  const { timeZone } = useDisplayTimezone();
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -389,8 +393,8 @@ export function Alarms() {
           alarm.description || "",
           stateName || "",
           stateMnemonic || "",
-          alarm.timestamp || "",
-          alarm.ack_timestamp || ""
+          alarm.timestamp ? formatTimestamp(alarm.timestamp, timeZone) : "",
+          alarm.ack_timestamp ? formatTimestamp(alarm.ack_timestamp, timeZone) : ""
         ];
       });
 
@@ -701,7 +705,10 @@ export function Alarms() {
         <Card
           title={
             <div className="d-flex justify-content-between align-items-center w-100">
-              <span>{t("navigation.alarms")}</span>
+              <span className="d-flex align-items-center gap-2">
+                {t("navigation.alarms")}
+                <TimezoneBadge />
+              </span>
               <div className="d-flex gap-2">
                 <Button
                   variant="warning"

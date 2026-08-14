@@ -1278,7 +1278,8 @@ class DAQ(StateMachineCore):
         
         Reads values from OPC UA using the client manager and updates the CVT and DAS buffers.
         """
-        from . import TIMEZONE, MANUFACTURER, SEGMENT
+        from . import MANUFACTURER, SEGMENT
+        from .timebase import ensure_utc
         for tag_name, process_type in self.get_subscribed_tags().items():
             tag = process_type.tag
             namespace = tag.get_node_namespace()
@@ -1288,15 +1289,12 @@ class DAQ(StateMachineCore):
                 data_value = values[0][0]["DataValue"]
                 value = data_value.Value.Value
                 timestamp = data_value.SourceTimestamp
-                if not timestamp:
-                    timestamp = datetime.now(pytz.utc)
-                timestamp = timestamp.replace(tzinfo=pytz.UTC)
+                timestamp = ensure_utc(timestamp)
                 val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
                 if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
                     val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
                 elif not MANUFACTURER and not SEGMENT:
                     val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-                timestamp = timestamp.astimezone(TIMEZONE)
                 self.das.buffer[tag_name]["timestamp"](timestamp)
                 self.das.buffer[tag_name]["values"](val)
 

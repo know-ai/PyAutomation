@@ -5,6 +5,7 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { Footer } from "./Footer";
 import { useTheme } from "../hooks/useTheme";
+import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { useSocket } from "../hooks/useSocket";
 import { useTranslation } from "../hooks/useTranslation";
 import { useMemoryWatchdog } from "../hooks/useMemoryWatchdog";
@@ -19,6 +20,7 @@ import {
 
 export function MainLayout({ children }: PropsWithChildren) {
   useTheme();
+  useDisplayTimezone();
   useSocket();
   useMemoryWatchdog(512);
 

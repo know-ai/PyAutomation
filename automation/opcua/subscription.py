@@ -96,7 +96,9 @@ class SubHandlerServer(Singleton):
         timestamp = data.monitored_item.Value.SourceTimestamp
         if not timestamp:
             timestamp = datetime.now(pytz.utc)
-        timestamp = timestamp.replace(tzinfo=pytz.UTC)
+        else:
+            from ..timebase import ensure_utc
+            timestamp = ensure_utc(timestamp)
         tag_name = node.get_display_name().Text
         
         tag = self.app.get_tag_by_name(name=tag_name)
@@ -247,11 +249,10 @@ class DAS(Singleton):
         r"""
         Update tag value in CVT and buffer
         """
-        from .. import SEGMENT, MANUFACTURER, TIMEZONE
+        from .. import SEGMENT, MANUFACTURER
+        from ..timebase import ensure_utc
         
-        if not timestamp:
-            timestamp = datetime.now(pytz.utc)
-        timestamp = timestamp.replace(tzinfo=pytz.UTC)
+        timestamp = ensure_utc(timestamp)
         
         namespace = node.nodeid.to_string()
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
@@ -263,7 +264,6 @@ class DAS(Singleton):
                 val = self.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
             elif not MANUFACTURER and not SEGMENT:
                 val = self.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
-            timestamp = timestamp.astimezone(TIMEZONE)
             if tag_name in self.buffer:
                 self.buffer[tag_name]["timestamp"](timestamp)
                 self.buffer[tag_name]["values"](val)

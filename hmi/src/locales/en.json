@@ -454,6 +454,16 @@
     "logMaxBytesHint": "Minimum: 1024 bytes",
     "logBackupCountHint": "Minimum: 1 backup"
   },
+  "timezone": {
+    "title": "Time zone",
+    "lede": "How this station displays dates. Storage remains UTC.",
+    "plant": "Plant time",
+    "plantHint": "Operations zone: {{zone}}",
+    "local": "Local time",
+    "localHint": "This browser zone: {{zone}}",
+    "plantBadge": "Plant: {{zone}}",
+    "localBadge": "Local: {{zone}}"
+  },
   "pagination": {
     "itemsPerPage": "Items per page:",
     "pageOf": "Page {{current}} of {{total}} ({{count}} total)",

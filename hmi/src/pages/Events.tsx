@@ -9,11 +9,13 @@ import {
   type EventFilter,
   type EventResponse,
 } from "../services/events";
-import { getTimezones } from "../services/tags";
 import { getAllUsers, type User } from "../services/users";
 import { createLog } from "../services/logs";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
+import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { TimezoneBadge } from "../components/TimezoneBadge";
+import { formatDateTimeLocalForBackend } from "../utils/timezone";
 
 type PresetDate = 
   | "Last Hour"
@@ -67,6 +69,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 
 export function Events() {
   const { t } = useTranslation();
+  const { timeZone } = useDisplayTimezone();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +92,6 @@ export function Events() {
 
   // Opciones para los filtros
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
-  const [availableTimezones, setAvailableTimezones] = useState<string[]>([]);
 
   // Valores seleccionados en los filtros
   const [selectedUsernames, setSelectedUsernames] = useState<string[]>(() => {
@@ -113,9 +115,6 @@ export function Events() {
   });
   const [endDate, setEndDate] = useState<string>(() => {
     return localStorage.getItem("events_endDate") || "";
-  });
-  const [selectedTimezone, setSelectedTimezone] = useState<string>(() => {
-    return localStorage.getItem("events_timezone") || "";
   });
 
   const PRIORITY_OPTIONS = [0, 1, 2, 3, 4, 5];
@@ -153,7 +152,7 @@ export function Events() {
   // Cargar datos cuando cambian los filtros
   useEffect(() => {
     loadEvents();
-  }, [filters]);
+  }, [filters, timeZone]);
 
   // Cerrar menú contextual al hacer click fuera
   useEffect(() => {
@@ -183,43 +182,14 @@ export function Events() {
 
   // Función para convertir el formato de fecha del input al formato esperado por el backend
   const formatDateTimeForBackend = (dateTimeString: string): string => {
-    if (!dateTimeString) return "";
-    return dateTimeString.replace("T", " ") + ":00.00";
+    return formatDateTimeLocalForBackend(dateTimeString, timeZone);
   };
 
   const loadFilterOptions = async () => {
     try {
-      // Detectar zona horaria del navegador
-      const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
       // Cargar usuarios
       const users = await getAllUsers();
       setAvailableUsers(users);
-
-      // Cargar timezones
-      const timezones = await getTimezones();
-      setAvailableTimezones(timezones);
-      
-      // Intentar usar la zona horaria del navegador, si está disponible
-      if (timezones.length > 0) {
-        const browserTzInList = timezones.find(tz => tz === browserTimezone);
-        if (browserTzInList) {
-          setSelectedTimezone(browserTimezone);
-          localStorage.setItem("events_timezone", browserTimezone);
-        } else {
-          const browserRegion = browserTimezone.split("/")[0];
-          const similarTz = timezones.find(tz => tz.startsWith(browserRegion + "/"));
-          if (similarTz) {
-            setSelectedTimezone(similarTz);
-            localStorage.setItem("events_timezone", similarTz);
-          } else {
-            setSelectedTimezone(timezones[0]);
-            localStorage.setItem("events_timezone", timezones[0]);
-          }
-        }
-      } else if (selectedTimezone) {
-        localStorage.setItem("events_timezone", selectedTimezone);
-      }
 
       // Establecer fechas por defecto solo si no hay fechas guardadas
       if (!startDate || !endDate) {
@@ -264,8 +234,7 @@ export function Events() {
       }
 
       // Siempre enviar timezone, usar el seleccionado o el detectado del navegador
-      const timezoneToUse = selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-      payload.timezone = timezoneToUse;
+      payload.timezone = timeZone;
 
       const response: EventResponse = await filterEvents(payload);
       setEvents(response.data || []);
@@ -593,8 +562,7 @@ export function Events() {
         payload.less_than_timestamp = formatDateTimeForBackend(endDate);
       }
 
-      const timezoneToUse = selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-      payload.timezone = timezoneToUse;
+      payload.timezone = timeZone;
 
       const response: EventResponse = await filterEvents(payload);
       const allEvents = response.data || [];
@@ -676,6 +644,7 @@ export function Events() {
             <div className="card-header-stack w-100">
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.events")}</span>
+                <TimezoneBadge />
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="d-flex align-items-center gap-1">
                     <label className="form-label small mb-0 me-1">

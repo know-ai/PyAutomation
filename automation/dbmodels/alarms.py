@@ -436,6 +436,7 @@ class AlarmSummary(BaseModel):
         tags:list[str]=None,
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
+        timezone:str=None,
         page:int=1,
         limit:int=20
         ):
@@ -561,7 +562,7 @@ class AlarmSummary(BaseModel):
         
         paginated_query = query.paginate(page, limit)
         
-        data = [alarm.serialize() for alarm in paginated_query]
+        data = [alarm.serialize(timezone=timezone) for alarm in paginated_query]
         
         return {
             "data": data,
@@ -586,21 +587,19 @@ class AlarmSummary(BaseModel):
         return [comment.serialize() for comment in query.logs]
 
     @logging_error_handler
-    def serialize(self):
+    def serialize(self, timezone=None):
         r"""
         Serializes the summary record.
+
+        **Parameters:**
+
+        * **timezone** (str, optional): IANA zone for presentation. Falls back
+          to ``AUTOMATION_TIMEZONE`` (plant timezone). Storage remains UTC.
         """
-        from .. import TIMEZONE
+        from ..timebase import format_display_datetime
 
-        ack_time = None
-        if self.ack_time:
-            ack_time = self.ack_time
-            ack_time = pytz.UTC.localize(ack_time).astimezone(TIMEZONE)
-            ack_time = ack_time.strftime(tag_engine.DATETIME_FORMAT)
-
-        alarm_time = self.alarm_time
-        alarm_time = pytz.UTC.localize(alarm_time).astimezone(TIMEZONE)
-        alarm_time = alarm_time.strftime(tag_engine.DATETIME_FORMAT)
+        ack_time = format_display_datetime(self.ack_time, timezone)
+        alarm_time = format_display_datetime(self.alarm_time, timezone)
 
         return {
             'id': self.id,

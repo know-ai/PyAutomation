@@ -600,15 +600,10 @@ class Alarm(StateMachine):
 
         * **dict**: Alarm data including state, setpoint, and metadata.
         """
-        timestamp = self.timestamp
-        if timestamp:
+        from ..timebase import iso_millis
 
-            timestamp = timestamp.strftime(self.tag_engine.DATETIME_FORMAT)
-
-        ack_timestamp = self.ack_timestamp
-        if ack_timestamp:
-
-            ack_timestamp = ack_timestamp.strftime(self.tag_engine.DATETIME_FORMAT)
+        timestamp = iso_millis(self.timestamp)
+        ack_timestamp = iso_millis(self.ack_timestamp)
 
         return {
             "identifier": self.identifier,

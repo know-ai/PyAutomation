@@ -12,6 +12,8 @@ import { showToast } from "../utils/toast";
 import { subscribeTagHistory, unsubscribeTagHistory } from "../store/slices/tagsSlice";
 import { usePageHidden } from "../hooks/usePageHidden";
 import { VirtualList } from "./VirtualList";
+import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { toDisplayDate } from "../utils/timezone";
 
 export const BUFFER_SIZE_MIN = 120;
 export const BUFFER_SIZE_MAX = 360;
@@ -37,6 +39,7 @@ interface StripChartProps {
 function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: StripChartProps) {
   const { mode } = useTheme();
   const { t } = useTranslation();
+  const { timeZone } = useDisplayTimezone();
   const dispatch = useAppDispatch();
   const pageHidden = usePageHidden();
   const tagNamesKey = config.tagNames.join("|");
@@ -175,7 +178,7 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
       const tag = availableTags.find((t) => t.name === tagName);
       const unit = getTagUnit(tagName);
       return {
-        x: bufferSlice.map((p) => new Date(p.timestamp)),
+        x: bufferSlice.map((p) => toDisplayDate(p.timestamp, timeZone)),
         y: bufferSlice.map((p) => p.value),
         type: "scatter",
         mode: "lines",
@@ -232,7 +235,7 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
     const next = { data: traces, layout };
     lastPlotRef.current = next;
     return next;
-  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, throttledHistories, pageHidden]);
+  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, throttledHistories, pageHidden, timeZone]);
 
   // Máximo 2 unidades distintas; número de tags ilimitado mientras no se supere ese tope de unidades
   const handleTagToggle = (tagName: string) => {

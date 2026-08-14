@@ -5,6 +5,7 @@ import localeReducer, { loadLocaleFromStorage } from "./slices/localeSlice";
 import tagsReducer, { persistTagHistory } from "./slices/tagsSlice";
 import alarmsReducer from "./slices/alarmsSlice";
 import machinesReducer from "./slices/machinesSlice";
+import displayTimezoneReducer from "./slices/displayTimezoneSlice";
 
 const loadAuthState = () => {
   try {
@@ -43,6 +44,7 @@ export const store = configureStore({
     tags: tagsReducer,
     alarms: alarmsReducer,
     machines: machinesReducer,
+    displayTimezone: displayTimezoneReducer,
   },
   preloadedState: {
     ...loadAuthState(),

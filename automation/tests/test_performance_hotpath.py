@@ -199,6 +199,12 @@ class TestSocketPayloadAndTimestamp(unittest.TestCase):
         self.assertEqual(set(payload.keys()), {"name", "value", "timestamp", "unit"})
         self.assertEqual(payload["name"], "F1")
         self.assertEqual(payload["value"], 21.5)
+        self.assertIsInstance(payload["timestamp"], str)
+        self.assertIn("T", payload["timestamp"])
+        self.assertTrue(
+            payload["timestamp"].endswith("+00:00") or payload["timestamp"].endswith("Z"),
+            payload["timestamp"],
+        )
 
     def test_producer_timestamp_required(self):
         from ..models import require_producer_timestamp

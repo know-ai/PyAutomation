@@ -8,6 +8,31 @@ from ....health.interfaces import IReconnectionHandler
 ns = Namespace("System", description="Operator system actions")
 
 
+def plant_timezone_payload():
+    """Plant timezone for HMI presentation. Storage and logic stay UTC."""
+    from .... import _TIMEZONE
+    return {
+        "timezone": _TIMEZONE,
+        "role": "plant",
+        "description": (
+            "Plant timezone (AUTOMATION_TIMEZONE). Presentation default only; "
+            "storage and business logic remain UTC."
+        ),
+    }
+
+
+@ns.route("/timezone")
+class SystemTimezoneResource(Resource):
+    @api.doc(
+        security=None,
+        description="Returns AUTOMATION_TIMEZONE (plant timezone) for HMI presentation.",
+    )
+    @api.response(200, "Plant timezone")
+    def get(self):
+        """HMI display default: plant timezone. Does not affect historian UTC."""
+        return plant_timezone_payload(), 200
+
+
 @ns.route("/reconnect_db")
 class SystemReconnectDbResource(Resource):
     @api.doc(

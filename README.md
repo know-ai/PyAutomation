@@ -172,6 +172,10 @@ AUTOMATION_OPCUA_SERVER_PORT=53530
 AUTOMATION_APP_SECRET_KEY="CHANGE_ME_TO_A_SECURE_RANDOM_VALUE"
 AUTOMATION_SUPERUSER_PASSWORD="CHANGE_ME_SUPERUSER_PASSWORD"
 
+# Plant timezone (presentation default / reports). Storage remains UTC.
+# TIMEZONE in some compose files is only an alias that maps to this variable.
+AUTOMATION_TIMEZONE=America/Caracas
+
 # Configuración del HMI (opcional)
 # Si usas HTTPS con certificados autofirmados:
 VITE_USE_HTTPS=true
@@ -200,6 +204,8 @@ services:
       AUTOMATION_OPCUA_SERVER_PORT: ${AUTOMATION_OPCUA_SERVER_PORT:-53530}
       AUTOMATION_APP_SECRET_KEY: ${AUTOMATION_APP_SECRET_KEY}
       AUTOMATION_SUPERUSER_PASSWORD: ${AUTOMATION_SUPERUSER_PASSWORD}
+      # Plant timezone (HMI default / reports). Does not affect historian UTC.
+      AUTOMATION_TIMEZONE: ${AUTOMATION_TIMEZONE:-America/Caracas}
       # Variables de entorno para configuración del HMI (HTTP/HTTPS)
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
       VITE_USE_HTTPS: ${VITE_USE_HTTPS:-}
@@ -264,6 +270,9 @@ AUTOMATION_VERSION=2.0.5
 AUTOMATION_OPCUA_SERVER_PORT=53530
 AUTOMATION_APP_SECRET_KEY="your-secure-secret-key-here"
 AUTOMATION_SUPERUSER_PASSWORD="your-secure-password-here"
+
+# Plant timezone (presentation only; storage is UTC)
+AUTOMATION_TIMEZONE=America/Caracas
 
 # Database Configuration
 AUTOMATION_DB_TYPE=postgresql
@@ -339,6 +348,23 @@ Open your browser and navigate to `http://localhost:8050`.
 
 ---
 
+## Plant Timezone (`AUTOMATION_TIMEZONE`)
+
+`AUTOMATION_TIMEZONE` is the **plant timezone** (operations zone). It does **not** change storage (always UTC) or business logic (alarms, detection, calculations).
+
+| Layer | Policy |
+|---|---|
+| Acquisition (OPC UA) | UTC |
+| Historian / database | UTC (epoch ms or ISO-8601 with `Z`) |
+| APIs / Socket.IO | UTC ISO-8601 with offset (`+00:00` or `Z`) |
+| HMI presentation | Operator choice: **Plant time** (`AUTOMATION_TIMEZONE`) or **Local time** (browser), with a visible badge |
+
+In compose stacks, `TIMEZONE` is only an alias: `AUTOMATION_TIMEZONE: ${AUTOMATION_TIMEZONE:-${TIMEZONE}}`. The Python process reads **`AUTOMATION_TIMEZONE` only**.
+
+The HMI loads the plant zone from `GET /api/system/timezone` and stores the operator preference in `localStorage` (`display_timezone` = `plant` | `local`).
+
+---
+
 ## 🧪 Running Python Tests
 
 Unit tests live under `automation/tests/` and use the standard library **`unittest`** runner. They use **relative imports** (`from ..…`), so they must be executed as package modules from the **repository root**, not as loose files under `automation/tests/`.
@@ -375,6 +401,7 @@ Use the venv interpreter explicitly if the shell is not activated:
   automation.tests.test_opcua_connection_audit \
   automation.tests.test_db_connection_audit \
   automation.tests.test_store_and_forward \
+  automation.tests.test_timezone_hora_unica \
   -v
 ```
 

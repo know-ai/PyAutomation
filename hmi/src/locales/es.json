@@ -454,6 +454,16 @@
     "logMaxBytesHint": "Mínimo: 1024 bytes",
     "logBackupCountHint": "Mínimo: 1 backup"
   },
+  "timezone": {
+    "title": "Huso horario",
+    "lede": "Cómo se muestran las fechas en esta estación. El almacenamiento sigue en UTC.",
+    "plant": "Hora de planta",
+    "plantHint": "Huso de operación: {{zone}}",
+    "local": "Hora local",
+    "localHint": "Huso de este navegador: {{zone}}",
+    "plantBadge": "Planta: {{zone}}",
+    "localBadge": "Local: {{zone}}"
+  },
   "pagination": {
     "itemsPerPage": "Items por página:",
     "pageOf": "Página {{current}} de {{total}} ({{count}} total)",

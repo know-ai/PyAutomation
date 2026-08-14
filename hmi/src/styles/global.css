@@ -1574,5 +1574,30 @@ html.light .app-sidebar .brand-text {
   margin-top: 1.25rem;
 }
 
+.timezone-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--bs-border-color);
+  background: var(--bs-tertiary-bg, var(--bs-secondary-bg, #f8f9fa));
+  color: var(--bs-body-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.timezone-badge .bi {
+  font-size: 0.8rem;
+}
+
+.footer-alarms-table .timezone-badge {
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: inherit;
+}
+
 
 

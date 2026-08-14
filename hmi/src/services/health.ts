@@ -60,6 +60,11 @@ export const getDatabaseHealth = async (): Promise<DatabaseHealthResponse> => {
   return data;
 };
 
+export const getPlantTimezone = async (): Promise<string> => {
+  const { data } = await api.get("/system/timezone", { timeout: 2500 });
+  return typeof data?.timezone === "string" ? data.timezone : "";
+};
+
 export const reconnectRemoteDatabase = async (): Promise<DatabaseHealthResponse> => {
   try {
     const { data } = await api.post("/system/reconnect_db", {}, { timeout: 15000 });

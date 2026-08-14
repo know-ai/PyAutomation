@@ -18,12 +18,33 @@ SECONDS_CEILING = 10_000_000_000  # 1e10 — below: unix seconds
 MICROSECONDS_FLOOR = 100_000_000_000_000  # 1e14 — at/above: unix microseconds
 
 
+DISPLAY_DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
+
+
+def ensure_utc(value: datetime | None) -> datetime:
+    """Treat naive timestamps as UTC; convert aware timestamps to UTC."""
+    if value is None:
+        return datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def format_display_datetime(value: datetime | None, timezone_name: str | None = None) -> str | None:
+    """Format a UTC instant for historical APIs in an IANA zone (plant fallback)."""
+    if value is None:
+        return None
+    import os
+    import pytz
+
+    name = timezone_name or os.environ.get("AUTOMATION_TIMEZONE") or "America/Caracas"
+    target = pytz.timezone(name)
+    return ensure_utc(value).astimezone(target).strftime(DISPLAY_DATETIME_FORMAT)
+
+
 def quantize_datetime_ms(value: datetime) -> datetime:
     """Drop sub-millisecond component; keep timezone."""
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    else:
-        value = value.astimezone(timezone.utc)
+    value = ensure_utc(value)
     return value.replace(microsecond=(value.microsecond // 1000) * 1000)
 
 

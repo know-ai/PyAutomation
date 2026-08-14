@@ -160,6 +160,7 @@ class AlarmsLogger(BaseLogger):
             tags:list[str]=None,
             greater_than_timestamp:datetime=None,
             less_than_timestamp:datetime=None,
+            timezone:str=None,
             page:int=1,
             limit:int=20
         ):
@@ -173,6 +174,7 @@ class AlarmsLogger(BaseLogger):
         * **tags** (list[str]): Filter by tag names.
         * **greater_than_timestamp** (datetime): Start time in UTC.
         * **less_than_timestamp** (datetime): End time in UTC.
+        * **timezone** (str): IANA zone for serialize presentation.
         * **page** (int): Pagination page.
         * **limit** (int): Entries per page.
 
@@ -198,6 +200,7 @@ class AlarmsLogger(BaseLogger):
             tags=tags,
             greater_than_timestamp=greater_than_timestamp,
             less_than_timestamp=less_than_timestamp,
+            timezone=timezone,
             page=page,
             limit=limit
         )
@@ -458,6 +461,7 @@ class AlarmsLoggerEngine(BaseEngine):
         tags:list[int]=None,
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
+        timezone:str=None,
         page:int=1,
         limit:int=20
         ):
@@ -466,7 +470,8 @@ class AlarmsLoggerEngine(BaseEngine):
         
         **Note:**
         All timestamps are expected to be in UTC. Timezone conversions should be handled
-        at the API endpoint level before calling this method.
+        at the API endpoint level before calling this method. ``timezone`` is only
+        used when serializing presentation timestamps.
         """
         _query = dict()
         _query["action"] = "filter_alarm_summary_by"
@@ -476,6 +481,7 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["tags"] = tags
         _query["parameters"]["greater_than_timestamp"] = greater_than_timestamp
         _query["parameters"]["less_than_timestamp"] = less_than_timestamp
+        _query["parameters"]["timezone"] = timezone
         _query["parameters"]["page"] = page
         _query["parameters"]["limit"] = limit
         

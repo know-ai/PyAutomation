@@ -4,10 +4,14 @@ import { useAppSelector } from "../hooks/useAppSelector";
 import { acknowledgeAlarm, acknowledgeAllAlarms, type Alarm } from "../services/alarms";
 import { selectActiveAlarmsPreview } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
+import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { TimezoneBadge } from "../components/TimezoneBadge";
+import { formatTimestamp } from "../utils/timezone";
 
 export function Footer() {
   const navigate = useNavigate();
   const preview = useAppSelector(selectActiveAlarmsPreview);
+  const { timeZone } = useDisplayTimezone();
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
@@ -138,7 +142,7 @@ export function Footer() {
             <th>Type</th>
             <th>State</th>
             <th>Trigger Value</th>
-            <th>Alarm Time</th>
+            <th>Alarm Time <TimezoneBadge /></th>
             <th>Ack Timestamp</th>
           </tr>
         </thead>
@@ -193,10 +197,10 @@ export function Footer() {
                 </td>
                 <td style={{ backgroundColor: "#dc3545", color: "#fff" }}>{triggerValue}</td>
                 <td style={{ backgroundColor: "#dc3545", color: "#fff" }}>
-                  {alarm.timestamp || "-"}
+                  {formatTimestamp(alarm.timestamp, timeZone) || "-"}
                 </td>
                 <td style={{ backgroundColor: "#dc3545", color: "#fff" }}>
-                  {alarm.ack_timestamp || "-"}
+                  {formatTimestamp(alarm.ack_timestamp, timeZone) || "-"}
                 </td>
               </tr>
             );

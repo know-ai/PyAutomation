@@ -6,7 +6,6 @@ import {
   getTags,
   getTagsList,
   getTrends,
-  getTimezones,
   type Tag,
   type TagsResponse,
   type TrendsFilter,
@@ -18,6 +17,9 @@ import type { Data, Layout, PlotRelayoutEvent } from "plotly.js";
 import axios from "axios";
 import { useTheme } from "../hooks/useTheme";
 import { useTranslation } from "../hooks/useTranslation";
+import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { TimezoneBadge } from "../components/TimezoneBadge";
+import { formatInstantForBackend } from "../utils/timezone";
 
 type PresetDate =
   | "Last Hour"
@@ -80,11 +82,6 @@ const formatToLocalDateTime = (date: Date): string => {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-const pad2 = (n: number): string => String(n).padStart(2, "0");
-
-const formatDateForBackend = (date: Date): string =>
-  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}.00`;
-
 const localDateTimeInputToMs = (value: string): number => {
   const [datePart, timePart = "00:00"] = value.split("T");
   const [year, month, day] = datePart.split("-").map(Number);
@@ -140,6 +137,7 @@ const ZOOM_CACHE_LIMIT = 8;
 export function Trends() {
   const { t } = useTranslation();
   const { mode } = useTheme();
+  const { timeZone } = useDisplayTimezone();
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("trends_presetDate");
     return (saved as PresetDate) || "Last Hour";
@@ -155,9 +153,6 @@ export function Trends() {
     return saved ? JSON.parse(saved) : [];
   });
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [selectedTimezone, setSelectedTimezone] = useState<string>(() => {
-    return localStorage.getItem("trends_timezone") || "";
-  });
   const [loading, setLoading] = useState(false);
   const [zoomLoading, setZoomLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,9 +179,6 @@ export function Trends() {
   useEffect(() => {
     const loadOptions = async () => {
       try {
-        // Detectar zona horaria del navegador
-        const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
         let allTagsList: Tag[] = [];
         try {
           allTagsList = await getTagsList();
@@ -210,38 +202,6 @@ export function Trends() {
           if (validTags.length !== selectedTags.length) {
             setSelectedTags(validTags);
             localStorage.setItem("trends_selectedTags", JSON.stringify(validTags));
-          }
-        }
-
-        // Cargar timezones para detectar automáticamente
-        const timezones = await getTimezones();
-
-        // Detectar timezone automáticamente solo si no hay uno guardado
-        if (!selectedTimezone) {
-          let detectedTimezone = browserTimezone;
-          if (timezones.includes(browserTimezone)) {
-            detectedTimezone = browserTimezone;
-          } else {
-            // Buscar timezone similar en la misma región
-            const region = browserTimezone.split("/")[0];
-            const similarTimezone = timezones.find((tz) => tz.startsWith(region));
-            if (similarTimezone) {
-              detectedTimezone = similarTimezone;
-            } else if (timezones.length > 0) {
-              detectedTimezone = timezones[0];
-            }
-          }
-          setSelectedTimezone(detectedTimezone);
-          localStorage.setItem("trends_timezone", detectedTimezone);
-        } else {
-          // Validar que el timezone guardado aún esté disponible
-          if (!timezones.includes(selectedTimezone)) {
-            // Buscar timezone similar
-            const region = selectedTimezone.split("/")[0];
-            const similarTimezone = timezones.find((tz) => tz.startsWith(region));
-            const newTimezone = similarTimezone || (timezones.length > 0 ? timezones[0] : browserTimezone);
-            setSelectedTimezone(newTimezone);
-            localStorage.setItem("trends_timezone", newTimezone);
           }
         }
 
@@ -347,7 +307,7 @@ export function Trends() {
       options: { asBase?: boolean; silent?: boolean } = {}
     ) => {
       const tags = options.asBase ? selectedTags : loadedTagsRef.current;
-      const timezone = options.asBase ? selectedTimezone : loadedTimezoneRef.current;
+      const timezone = options.asBase ? timeZone : loadedTimezoneRef.current;
       if (tags.length === 0 || !timezone || endMs <= startMs) {
         return;
       }
@@ -380,8 +340,8 @@ export function Trends() {
       try {
         const filters: TrendsFilter = {
           tags,
-          greater_than_timestamp: formatDateForBackend(new Date(startMs)),
-          less_than_timestamp: formatDateForBackend(new Date(endMs)),
+          greater_than_timestamp: formatInstantForBackend(new Date(startMs), timezone),
+          less_than_timestamp: formatInstantForBackend(new Date(endMs), timezone),
           timezone,
         };
         const data = await getTrends(filters, { signal: controller.signal });
@@ -430,7 +390,7 @@ export function Trends() {
         }
       }
     },
-    [applyTrendsData, cancelInFlight, findCachedRange, rememberZoomCache, selectedTags, selectedTimezone, t]
+    [applyTrendsData, cancelInFlight, findCachedRange, rememberZoomCache, selectedTags, timeZone, t]
   );
 
   const handleLoadTrends = useCallback(async () => {
@@ -563,6 +523,10 @@ export function Trends() {
   // Ref para evitar cargar múltiples veces
   const hasAutoLoadedRef = useRef(false);
 
+  useEffect(() => {
+    hasAutoLoadedRef.current = false;
+  }, [timeZone]);
+
   // Cargar automáticamente los trends si hay filtros válidos guardados
   useEffect(() => {
     if (!optionsLoaded || hasAutoLoadedRef.current) return;
@@ -572,7 +536,7 @@ export function Trends() {
       selectedTags.length > 0 &&
       startDate &&
       endDate &&
-      selectedTimezone
+      timeZone
     ) {
       // Validar fechas antes de cargar
       const start = new Date(startDate);
@@ -584,7 +548,7 @@ export function Trends() {
         handleLoadTrends();
       }
     }
-  }, [optionsLoaded, selectedTags, startDate, endDate, selectedTimezone, handleLoadTrends]);
+  }, [optionsLoaded, selectedTags, startDate, endDate, timeZone, handleLoadTrends]);
 
   // Actualizar fechas cuando cambia el preset
   useEffect(() => {
@@ -619,12 +583,6 @@ export function Trends() {
   useEffect(() => {
     localStorage.setItem("trends_selectedTags", JSON.stringify(selectedTags));
   }, [selectedTags]);
-
-  useEffect(() => {
-    if (selectedTimezone) {
-      localStorage.setItem("trends_timezone", selectedTimezone);
-    }
-  }, [selectedTimezone]);
 
   // Preparar datos para Plotly con múltiples ejes Y
   const plotData = useMemo(() => {
@@ -860,7 +818,10 @@ export function Trends() {
           title={
             <div className="card-header-stack w-100">
               <div className="d-flex justify-content-between align-items-center w-100 flex-wrap gap-2">
-                <h3 className="card-title m-0">{t("navigation.trends")}</h3>
+                <div className="d-flex align-items-center gap-2">
+                  <h3 className="card-title m-0">{t("navigation.trends")}</h3>
+                  <TimezoneBadge />
+                </div>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <label className="form-label small mb-0">{t("trends.selectTags")}:</label>
                   <MultiSelectSearch

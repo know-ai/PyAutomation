@@ -87,11 +87,8 @@ class AlarmsSummaryFilterByResource(Resource):
             
             # Pass as naive UTC datetime to model (model expects UTC naive)
             api.payload['less_than_timestamp'] = dt_utc.replace(tzinfo=None)
-        
-        # Remove timezone from payload as model doesn't need it anymore
-        if 'timezone' in api.payload:
-            del api.payload['timezone']
-                
+
+        api.payload['timezone'] = timezone
         return app.filter_alarms_by(**api.payload)
     
 

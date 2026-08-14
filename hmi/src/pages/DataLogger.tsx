@@ -6,7 +6,6 @@ import {
   getTags,
   getTagsList,
   getTabularData,
-  getTimezones,
   type Tag,
   type TagsResponse,
   type TabularDataFilter,
@@ -14,6 +13,9 @@ import {
 } from "../services/tags";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
+import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { TimezoneBadge } from "../components/TimezoneBadge";
+import { formatDateTimeLocalForBackend } from "../utils/timezone";
 
 type PresetDate = 
   | "Last Minute"
@@ -139,6 +141,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 
 export function DataLogger() {
   const { t } = useTranslation();
+  const { timeZone } = useDisplayTimezone();
   const [tabularData, setTabularData] = useState<TabularDataResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,10 +182,6 @@ export function DataLogger() {
     const saved = localStorage.getItem("datalogger_sampleTime");
     return (saved as SampleTimeOption) || "30 Seg";
   });
-  const [availableTimezones, setAvailableTimezones] = useState<string[]>([]);
-  const [selectedTimezone, setSelectedTimezone] = useState<string>(() => {
-    return localStorage.getItem("datalogger_timezone") || "";
-  });
 
   // Cargar opciones para los filtros
   useEffect(() => {
@@ -194,13 +193,10 @@ export function DataLogger() {
     if (selectedTags.length > 0 && startDate && endDate && filters.page && filters.limit) {
       loadTabularDataWithFilters();
     }
-  }, [filters.page, filters.limit]);
+  }, [filters.page, filters.limit, timeZone]);
 
   const loadFilterOptions = async () => {
     try {
-      // Detectar zona horaria del navegador
-      const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      
       // Catálogo completo (lista slim) para el selector; fallback paginado si falla.
       let allTags: Tag[] = [];
       try {
@@ -225,33 +221,6 @@ export function DataLogger() {
           setSelectedTags(validTags);
           localStorage.setItem("datalogger_selectedTags", JSON.stringify(validTags));
         }
-      }
-
-      // Cargar timezones
-      const timezones = await getTimezones();
-      setAvailableTimezones(timezones);
-      
-      // Intentar usar la zona horaria del navegador, si está disponible
-      if (timezones.length > 0) {
-        const browserTzInList = timezones.find(tz => tz === browserTimezone);
-        if (browserTzInList) {
-          setSelectedTimezone(browserTimezone);
-        } else {
-          // Si no está en la lista, buscar una zona horaria similar
-          // Por ejemplo, si el navegador está en "America/Caracas", buscar otras de "America/"
-          const browserRegion = browserTimezone.split("/")[0];
-          const similarTz = timezones.find(tz => tz.startsWith(browserRegion + "/"));
-          if (similarTz) {
-            setSelectedTimezone(similarTz);
-            localStorage.setItem("datalogger_timezone", similarTz);
-          } else {
-            setSelectedTimezone(timezones[0]);
-            localStorage.setItem("datalogger_timezone", timezones[0]);
-          }
-        }
-      } else if (selectedTimezone) {
-        // Si ya hay un timezone guardado, usarlo
-        localStorage.setItem("datalogger_timezone", selectedTimezone);
       }
 
       // Establecer fechas por defecto solo si no hay fechas guardadas
@@ -310,10 +279,8 @@ export function DataLogger() {
 
   // Función para convertir el formato de fecha del input al formato esperado por el backend
   const formatDateTimeForBackend = (dateTimeString: string): string => {
-    if (!dateTimeString) return "";
-    return dateTimeString.replace("T", " ") + ":00.00";
+    return formatDateTimeLocalForBackend(dateTimeString, timeZone);
   };
-
 
   const handleApplyFilters = () => {
     // Actualizar los filtros y cargar datos
@@ -350,8 +317,7 @@ export function DataLogger() {
       };
 
       // Siempre enviar timezone, usar el seleccionado o el detectado del navegador
-      const timezoneToUse = selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-      payload.timezone = timezoneToUse;
+      payload.timezone = timeZone;
 
       const response: TabularDataResponse = await getTabularData(payload);
       setTabularData(response);
@@ -428,8 +394,7 @@ export function DataLogger() {
       };
 
       // Siempre enviar timezone, usar el seleccionado o el detectado del navegador
-      const timezoneToUse = selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-      payload.timezone = timezoneToUse;
+      payload.timezone = timeZone;
 
       const response: TabularDataResponse = await getTabularData(payload);
       const allData = response.values || [];
@@ -505,6 +470,7 @@ export function DataLogger() {
             <div className="card-header-stack w-100">
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.dataLogger")}</span>
+                <TimezoneBadge />
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="d-flex align-items-center gap-1">
                     <label className="form-label small mb-0 me-1">{t("dataLogger.tagNames")}:</label>

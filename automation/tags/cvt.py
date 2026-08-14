@@ -613,7 +613,6 @@ class CVT:
 
         * **value**: The value that was set (or filtered).
         """
-        from .. import TIMEZONE
         tag = self._tags.get(id)
         if tag is None:
             return None
@@ -636,8 +635,6 @@ class CVT:
 
             tag.set_value(value=value, timestamp=timestamp)
             if self.sio:
-                ts = timestamp.astimezone(TIMEZONE)
-                tag.timestamp = ts
                 payload = tag.serialize_socket()
 
         if payload is not None and self.sio:

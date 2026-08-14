@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "../components/Button";
 import { StripChart, BUFFER_SIZE_MIN, type StripChartConfig } from "../components/StripChart";
 import { useTranslation } from "../hooks/useTranslation";
+import { TimezoneBadge } from "../components/TimezoneBadge";
 import { useLongTaskObserver } from "../hooks/useLongTaskObserver";
 import { ResponsiveGridLayout, Layout as GridLayoutType } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
@@ -136,7 +137,10 @@ export function RealTimeTrends() {
       <div className="col-12">
         {isEditMode && (
           <div className="d-flex justify-content-between align-items-center mb-3">
-            <h3 className="card-title m-0">{t("navigation.realTimeTrends")}</h3>
+            <div className="d-flex align-items-center gap-2">
+              <h3 className="card-title m-0">{t("navigation.realTimeTrends")}</h3>
+              <TimezoneBadge />
+            </div>
             <div className="d-flex gap-2 align-items-center">
               <span className="badge bg-warning text-dark">{t("realTimeTrends.editMode")}</span>
               <Button
@@ -155,6 +159,9 @@ export function RealTimeTrends() {
           <div className="text-center py-5">
             <i className="bi bi-graph-up" style={{ fontSize: "4rem", color: "#6c757d" }}></i>
             <h4 className="mt-3 text-muted">{t("navigation.realTimeTrends")}</h4>
+            <div className="d-flex justify-content-center mb-2">
+              <TimezoneBadge />
+            </div>
             <p className="text-muted">
               {isEditMode
                 ? t("realTimeTrends.emptyEdit")
@@ -166,6 +173,11 @@ export function RealTimeTrends() {
             ref={containerRef}
             style={{ position: "relative", width: "100%", minHeight: "300px" }}
           >
+            {!isEditMode && (
+              <div className="d-flex justify-content-end mb-2">
+                <TimezoneBadge />
+              </div>
+            )}
             <ResponsiveGridLayout
               className="layout"
               layouts={{ lg: gridLayout }}

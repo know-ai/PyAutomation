@@ -163,3 +163,20 @@ Inyectar un `AttributeError` repetido en un `while_*` de prueba 24 h:
 - `LOG_ERROR_ALERT=true`
 - CPU del worker sin picos atribuibles a I/O de log
 
+## 7. Huso de planta (`AUTOMATION_TIMEZONE`)
+
+`AUTOMATION_TIMEZONE` es el **huso de planta** (presentación por defecto e informes). No altera el historiador (UTC) ni la lógica de negocio.
+
+- Código: `os.environ['AUTOMATION_TIMEZONE']` en `automation/__init__.py`.
+- Compose: `AUTOMATION_TIMEZONE: ${AUTOMATION_TIMEZONE:-${TIMEZONE}}` — `TIMEZONE` es solo alias de despliegue.
+- API: `GET /api/system/timezone` → `{ "timezone": "America/Lima", "role": "plant" }`.
+- HMI: selector Planta / Local en Settings (`localStorage` clave `display_timezone`).
+- Sockets `on.tag` / `on.alarm`: ISO-8601 UTC con offset; la UI formatea.
+
+Validación rápida:
+
+```bash
+./venv/bin/python3 -m unittest automation.tests.test_timezone_hora_unica -v
+curl -k https://localhost:8050/api/system/timezone
+```
+
