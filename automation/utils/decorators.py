@@ -55,10 +55,10 @@ def set_event(message:str, classification:str, priority:int, criticity:int, desc
                     if isinstance(result, tuple):
 
                         _description = result[-1]
-                    
+                    from .system_event_audit import clip as _clip
                     event, _ = events_engine.create(
                         message=message,
-                        description=_description,
+                        description=_clip(_description, 256),
                         classification=classification,
                         priority=priority,
                         criticity=criticity,
@@ -70,9 +70,10 @@ def set_event(message:str, classification:str, priority:int, criticity:int, desc
         else:
             if force:
                 user = users.get_by_username(username="system")
+                from .system_event_audit import clip as _clip
                 event, _ = events_engine.create(
                     message=message,
-                    description=description,
+                    description=_clip(description, 256),
                     classification=classification,
                     priority=priority,
                     criticity=criticity,

@@ -75,7 +75,7 @@ class PropertyType:
         
         self.__value = value
     
-    @set_event(message=f"Attribute updated", classification="State Machine", priority=2, criticity=3)
+    @set_event(message="Machine attribute updated", classification="Configuration", priority=2, criticity=3)
     def set_value(self, value, user:User=None, name:str=None, machine=None):
         r"""
         Sets the value and triggers updates (CVT, Events, SocketIO).

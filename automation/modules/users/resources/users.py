@@ -171,7 +171,11 @@ class LoginResource(Resource):
         user, message = app.login(**args)
 
         if user:
-            record_user_session_event(action="LOGIN", user=user)
+            record_user_session_event(
+                action="LOGIN",
+                user=user,
+                extra="method=password",
+            )
             return {
                 "apiKey": user.token,
                 "username": user.username,
@@ -318,7 +322,7 @@ class LogoutResource(Resource):
 
         _, message = Users.logout(token=token)
         if session_user is not None:
-            record_user_session_event(action="LOGOUT", user=session_user)
+            record_user_session_event(action="LOGOUT", user=session_user, extra="reason=user-initiated")
 
         return message, 200
 

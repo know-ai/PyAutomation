@@ -386,6 +386,13 @@ class WriteValueResource(Resource):
         if not tag:
             return {'message': f'Tag {tag_name} does not exist', 'success': False}, 404
         
+        previous = None
+        try:
+            raw = getattr(tag, "value", None)
+            previous = getattr(raw, "value", raw)
+        except Exception:
+            previous = None
+
         # Escribir en CVT
         try:
             timestamp = datetime.now(pytz.utc).astimezone(TIMEZONE)
@@ -396,6 +403,24 @@ class WriteValueResource(Resource):
                 'tag': tag_name,
                 'success': False
             }, 500
+
+        try:
+            from ....utils.system_event_audit import clip, persist_system_event
+
+            user = Api.get_current_user()
+            persist_system_event(
+                message="Tag value forced",
+                description=clip(
+                    f"tag={tag_name} from={previous} to={value}",
+                    256,
+                ),
+                classification="Control",
+                priority=3,
+                criticity=4,
+                user=user,
+            )
+        except Exception:
+            pass
         
         # Si tiene node_namespace, escribir en OPC UA Server usando el método de core
         opcua_result = None

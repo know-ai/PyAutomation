@@ -32,7 +32,7 @@ from .dbmodels.core import BaseModel
 from .utils.decorators import validate_types, logging_error_handler
 from .utils import _colorize_message
 from .utils.db_audit import database_connection_auditor, summarize_db_config
-from .utils.system_lifecycle_audit import record_system_started
+from .utils.system_lifecycle_audit import record_system_started, record_system_stopped
 from .utils.log_filters import (
     DedupeFilter,
     DEFAULT_COOLDOWN_S,
@@ -4596,6 +4596,10 @@ class PyAutomation(Singleton):
         r"""
         Stops the application and all worker threads gracefully.
         """
+        try:
+            record_system_stopped()
+        except Exception:
+            pass
         self.__stop_workers()
 
     @logging_error_handler

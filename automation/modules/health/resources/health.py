@@ -6,6 +6,19 @@ ns = Namespace("Health", description="Service health and readiness checks")
 app = PyAutomation()
 
 
+def _event_rate_metrics() -> dict:
+    try:
+        from ....utils.audit_metrics import snapshot
+
+        return snapshot()
+    except Exception:
+        return {
+            "EVENTS_RATE_PER_MIN": 0.0,
+            "EVENTS_RATE_ALERT": False,
+            "EVENTS_RATE_ALERT_THRESHOLD": 30.0,
+        }
+
+
 def _log_error_metrics() -> dict:
     try:
         from ....utils.log_filters import get_dedupe_filter
@@ -128,6 +141,7 @@ class HealthSystemResource(Resource):
             "TAG_OBSERVER_COUNT": tag_observer_count,
             "MACHINE_OBSERVER_COUNT": machine_observer_count,
             **_log_error_metrics(),
+            **_event_rate_metrics(),
         }, 200
 
 

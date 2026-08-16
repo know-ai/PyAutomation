@@ -463,9 +463,9 @@ class AddAlarmResource(Resource):
             if alarm:
                 if "creation successful" in (message or "").lower():
                     persist_system_event(
-                        message="Created",
+                        message="Alarm created",
                         description=name,
-                        classification="Alarm",
+                        classification="Configuration",
                         priority=2,
                         criticity=2,
                         user=user,

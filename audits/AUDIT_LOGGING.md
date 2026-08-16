@@ -5,10 +5,10 @@
 | **Producto** | PyAutomationIO (`github/PyAutomation/automation`) |
 | **Alcance** | Logs de aplicación (archivo), logs operativos en BD, anti-flood / debounce, rotación y techos de disco; relación con historiador/SAF cuando el “log” es persistencia industrial |
 | **Clasificación** | Auditoría operativa · Confidencialidad interna |
-| **Fecha** | 2026-08-13 (actualizado: Operación «Log Eterno») |
-| **Metodología** | Revisión estática de `core.__start_logger`, `RotatingFileHandler`, Settings API, decoradores, auditores OPC/DB, `CycleSampleCache`, journal SAF, HMI watchdog |
-| **Veredicto** | **A+** en logs de archivo y anti-flood de ERROR: `DedupeFilter` (cooldown 60 s, caché ≤ 1000), sin `print` en el decorator, `StreamHandler` ERROR, métrica `LOG_ERROR_RATE_PER_MIN`. Retención PG/backups SQLite sigue siendo política de planta (documentada, no automática). |
-| **Complementa** | `AUDIT_BACKEND_PERFORMANCE.md` (BE-OK3), `STORE_AND_FORWARD.md`, `PERFORMANCE_RUNBOOK.md`, `docs/Developments_Guide/logs.md` |
+| **Fecha** | 2026-08-16 (actualizado: Operación «Trazabilidad Eterna» + «Log Eterno») |
+| **Metodología** | Revisión estática de `core.__start_logger`, `RotatingFileHandler`, Settings API, decoradores, auditores OPC/DB/SAF/sesión, `CycleSampleCache`, journal SAF, HMI watchdog, `audit_metrics` |
+| **Veredicto** | **A+** en logs de archivo y anti-flood de ERROR: `DedupeFilter` (cooldown 60 s, caché ≤ 1000), `StreamHandler` ERROR, métrica `LOG_ERROR_RATE_PER_MIN`. L3 Events: anti-spam por dominio (DB boot silencioso, OPC/SAF 60 s, operador sin debounce) + `EVENTS_RATE_PER_MIN`. Retención PG/backups SQLite sigue siendo política de planta. |
+| **Complementa** | `AUDIT_USER_EVENTS.md` (inventario de la tabla `Events`), `AUDIT_BACKEND_PERFORMANCE.md` (BE-OK3), `STORE_AND_FORWARD.md`, `PERFORMANCE_RUNBOOK.md`, `docs/Developments_Guide/logs.md` |
 
 ---
 
@@ -44,7 +44,7 @@ Esta auditoría se centra en **L1** (cuello de botella de I/O de texto y disco l
 
 | Productor | Nivel típico | Frecuencia | Notas |
 |---|---|---|---|
-| `@logging_error_handler` | ERROR | Por excepción | Escribe a logger **y** `print` a stdout/stderr (doble salida) |
+| `@logging_error_handler` | ERROR | Por excepción | Solo `logger.error` (sin `print`). Dedupe 60 s en el logger |
 | `logging.getLogger("pyautomation")` | INFO–CRITICAL | Ad hoc | Propagates al root |
 | Librerías | Filtrado | Arranque | `urllib3`/`requests`/`peewee` → WARNING; `opcua` → CRITICAL |
 | SAF journal flush/replicator | ERROR/CRITICAL | Fallos | `exc_info=True` en fallos de flush/replicación |
@@ -63,10 +63,15 @@ Esta auditoría se centra en **L1** (cuello de botella de I/O de texto y disco l
 | Productor | Destino | Anti-flood / techo |
 |---|---|---|
 | `set_value` → TagValue | SAF + PG | `CycleSampleCache` (mismo tag/valor/timestamp de ciclo → drop) |
-| `@set_event` | Events | Solo si la acción “tuvo éxito” (o `force=True`) — **no** rate-limit genérico |
-| `DatabaseConnectionAuditor` | Events | Runtime only: `DISCONNECTED` + `RECONNECTED`. El connect de boot es silencioso (`System started` cubre el arranque). Buffer ≤ 8; fallos de reconnect se resumen en RECONNECTED |
+| `@set_event` / `persist_system_event` | Events | Operador **sin** debounce. Sistema: DB boot silencioso; OPC/SAF cooldown 60 s. Inventario: `AUDIT_USER_EVENTS.md` |
+| `DatabaseConnectionAuditor` | Events | Runtime: `DISCONNECTED` + `RECONNECTED`. Buffer ≤ 8. Fallos de reconnect resumidos en RECONNECTED |
+| `system_lifecycle_audit` | Events | Un `System started` / `System stopped` por ciclo de proceso |
+| `user_session_audit` | Events | `Security`: login/logout/identidad. IP en `origin=` |
+| `audit_metrics` | `/api/health/system` | `EVENTS_RATE_PER_MIN`; `EVENTS_RATE_ALERT` si > 30/min |
 | OPC UA audit | Events | Cooldown de fallos **60 s** (`failure_cooldown_seconds`) |
-| Alarm transitions | AlarmSummary + Events | Por transición de estado, no por tick |
+| SAF journal | Events + L1 CRITICAL | `SAF backpressure triggered` / `SAF disk full` (cooldown 60 s via `audit_metrics.cooldown_allows`) |
+| Alarm operator actions | Events (`Control`) | ack/shelve/OOS — una fila por acción |
+| Alarm process transitions | AlarmSummary | UNACK/RTN **no** van a Events (anti-spam) |
 
 ---
 
@@ -123,7 +128,7 @@ Validación API (`/api/settings/update`):
 | Artefacto | Rotación framework | Riesgo |
 |---|---|---|
 | `logs/app.log*` | Sí | Bajo |
-| stdout/stderr de gunicorn / Docker | Depende del orquestador | Si se redirige a archivo sin logrotate del host, **sí** puede crecer (doble escritura vía `print` en el decorator) |
+| stdout/stderr de gunicorn / Docker | Depende del orquestador | Si se redirige a archivo sin logrotate del host, **sí** puede crecer. `@logging_error_handler` ya no hace `print`; queda `print` residual en `validate_types` (mismatch de tipo, no el hot path) y prints de arranque en `core.py` |
 | `db/saf/journal.db` | Caps + GC de SENT | Acotado por `saf_max_disk_bytes` (default 10 GiB) |
 | `db/backups/*.db` (VACUUM INTO SQLite local) | Dispara a > 1 GiB del historian local | **Puede acumular archivos** si ops no los poda |
 | Tablas PG `Logs` / `Events` / `TagValue` | No | Retención = política de planta |
@@ -188,7 +193,7 @@ Sin esto, un `logger_period` de 10 s durante un outage de horas generaría miles
 |---|---|---|
 | `max_pending_rows` | 5e6 | `JournalBackpressureError`; métrica `SAF_PENDING_CAP_HITS` |
 | `ring_maxsize` | 50 000 | Drop + backpressure |
-| `max_disk_bytes` | 10 GiB | Evict SENT antiguos; si no basta → `JournalDiskFullError` + CRITICAL en L1 |
+| `max_disk_bytes` | 10 GiB | Evict SENT antiguos; si no basta → `JournalDiskFullError` + CRITICAL en L1 **y** Event `SAF disk full` (cooldown 60 s) |
 | `gc_sent_after_s` | 3600 s | GC post-ACK |
 | `replicate_rate_per_s` | 10 000 | Rate limit de réplica |
 
@@ -203,6 +208,19 @@ Sin esto, un `logger_period` de 10 s durante un outage de horas generaría miles
 | **Caliente** | `PUT /api/settings/update` `{ "log_error_cooldown_seconds": 60 }` |
 
 Un error a 1 Hz → **1 línea escrita / 60 s** (~98 % menos I/O). La alerta de health sigue viendo ~60 intentos/min.
+
+### 4.8 Capa Events — anti-spam por dominio (Trazabilidad Eterna)
+
+| Dominio | Política | Archivo |
+|---|---|---|
+| Acciones de operador (login, ack, forzar tag, CRUD, transición) | **Sin** debounce | `@set_event` / `record_user_session_event` / recursos HTTP |
+| DB historiador | Boot silencioso; en caliente un `DISCONNECTED` + un `RECONNECTED` por outage | `db_audit.py` |
+| OPC UA | Cooldown 60 s en fallos | `opcua_audit.py` |
+| SAF capacidad | Cooldown 60 s (`saf:backpressure` / `saf:disk`) | `persistence/journal.py` + `audit_metrics.cooldown_allows` |
+| Arranque / parada | Una vez por proceso | `system_lifecycle_audit.py` |
+| Tasa global | `EVENTS_RATE_PER_MIN`; alerta > 30/min | `GET /api/health/system` |
+
+Catálogo de mensajes y clasificaciones (`Security` / `Configuration` / `Control` / `System` / `Database` / `OPC UA`): **`AUDIT_USER_EVENTS.md`**.
 
 ---
 
@@ -233,7 +251,7 @@ Flag global `is_history_logged` (vía `DBManager.set_db`): si es `False`, los en
 
 Métrica operativa:
 
-- `GET /api/health/system` → `LOG_ERROR_RATE_PER_MIN`, `LOG_ERROR_SUPPRESSED_PER_MIN`, `LOG_ERROR_ALERT`.
+- `GET /api/health/system` → `LOG_ERROR_RATE_PER_MIN`, `LOG_ERROR_SUPPRESSED_PER_MIN`, `LOG_ERROR_ALERT`, **`EVENTS_RATE_PER_MIN`**, **`EVENTS_RATE_ALERT`**.
 - Tamaño de `logs/app.log*` vs `log_max_bytes * (1+backup)`.
 - `SAF_PENDING_CAP_HITS` / `SAF_QUEUE_DEPTH` (historia, no L1).
 
@@ -254,13 +272,16 @@ Métrica operativa:
 | **LOG-OK7** | Watchdog HMI no spamea Logs |
 | **LOG-OK8** | `DedupeFilter` cooldown 60 s, LRU 1000, `cooldown=0` desactiva |
 | **LOG-OK9** | `LOG_ERROR_RATE_PER_MIN` / `LOG_ERROR_ALERT` en `/api/health/system` |
+| **LOG-OK10** | `EVENTS_RATE_PER_MIN` / `EVENTS_RATE_ALERT` (umbral 30/min) en `/api/health/system` |
+| **LOG-OK11** | Events de SAF backpressure/disk con cooldown 60 s; no un Event por sample rechazado |
 
 ### 7.2 Gaps / riesgos
 
 | ID | Severidad | Hallazgo | Estado |
 |---|---|---|---|
 | **LOG-H1** | — | Rate-limit decorator | **Cerrado** — `DedupeFilter` |
-| **LOG-H2** | — | `print` doble | **Cerrado** — solo logger + StreamHandler ERROR |
+| **LOG-H2** | — | `print` doble en `@logging_error_handler` | **Cerrado** — solo logger + StreamHandler ERROR |
+| **LOG-M3** | Info | `print` residual en `validate_types` (mismatch de tipo) y arranque de `core.py` | Aceptable — no es el hot path de excepción de SM |
 | **LOG-H3** | Info | stdout Docker | **Documentado** — runbook §6.2 (`max-size=10m`) |
 | **LOG-H4** | Info | Backups SQLite | **Documentado** — no poda automática a propósito; script ops §6.3 |
 | **LOG-H5** | Info | TTL PG | **Documentado** — retención DBA, no `DELETE` desde app |
@@ -280,6 +301,7 @@ Métrica operativa:
 | **CA-LOG-5** | OPC failure cooldown | Intentos fallidos < 60 s no multiplican Events de fallo |
 | **CA-LOG-6** | CycleSampleCache | Reescrituras idénticas mismo ciclo no incrementan PENDING |
 | **CA-LOG-7** | Error 1 Hz → 1 línea escrita / cooldown; proceso vivo | `DedupeFilter`; `LOG_ERROR_RATE_PER_MIN` cuenta intentos |
+| **CA-LOG-8** | Tasa de Events visible y acotada | `GET /api/health/system` expone `EVENTS_RATE_PER_MIN`; alerta > 30/min; boot DB silencioso |
 
 ---
 
@@ -293,7 +315,7 @@ ls -lh logs/app.log*
 # Config efectiva
 curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/api/settings/" | jq '{log_max_bytes,log_backup_count,log_level,logger_period}'
 # SAF
-curl -sS "$BASE/api/health/system" | jq '{LOG_ERROR_RATE_PER_MIN,LOG_ERROR_SUPPRESSED_PER_MIN,LOG_ERROR_ALERT,LOG_ERROR_COOLDOWN_S}'
+curl -sS "$BASE/api/health/system" | jq '{LOG_ERROR_RATE_PER_MIN,LOG_ERROR_SUPPRESSED_PER_MIN,LOG_ERROR_ALERT,LOG_ERROR_COOLDOWN_S,EVENTS_RATE_PER_MIN,EVENTS_RATE_ALERT}'
 ```
 
 ### 9.2 Endurecer planta ruidosa
@@ -324,6 +346,7 @@ Buscar el mismo `AttributeError`/`TypeError` repetido (patrón pre-alarma `Buffe
 
 | Documento | Relación |
 |---|---|
+| `AUDIT_USER_EVENTS.md` | Inventario L3 de la tabla `Events` (quién/qué/cuándo, clasificaciones, residual de sesión) |
 | `docs/Developments_Guide/logs.md` | Guía de usuario (rotación, decorator, API) — esta auditoría añade techos, gaps y CA |
 | `AUDIT_BACKEND_PERFORMANCE.md` | BE-OK3 confirma rotación; BE-H4 usa `app.log` como evidencia de 503 |
 | `STORE_AND_FORWARD.md` / `PERSISTENCE_FLOW.md` | Caps de journal = “log de durabilidad”, no texto |
@@ -333,8 +356,10 @@ Buscar el mismo `AttributeError`/`TypeError` repetido (patrón pre-alarma `Buffe
 
 ## 11. Conclusión
 
-La gestión de logs de archivo está **acotada y silenciada bajo error sostenido**: rotación ~40 MiB, `DedupeFilter` 60 s, sin `print` en el decorator, stdout ERROR controlado, y `LOG_ERROR_RATE_PER_MIN` para alertar sin leer el archivo.
+La gestión de logs de archivo está **acotada y silenciada bajo error sostenido**: rotación ~40 MiB, `DedupeFilter` 60 s, sin `print` en `@logging_error_handler`, stdout ERROR controlado, y `LOG_ERROR_RATE_PER_MIN` para alertar sin leer el archivo.
+
+La capa **Events (L3)** tiene anti-spam **por dominio** (operador sin debounce; DB boot silencioso; OPC/SAF 60 s) y métrica `EVENTS_RATE_PER_MIN`. El catálogo de mensajes está en `AUDIT_USER_EVENTS.md`.
 
 La retención de **historia PG** y **backups SQLite** permanece deliberadamente fuera del framework (ops/DBA). Stdout del contenedor se acota con el driver Docker documentado en el runbook §6.
 
-**Veredicto operativo:** A+ en L1 y anti-flood de ERROR. Soak de planta (inyección de error 24 h) confirma techo de disco y CPU.
+**Veredicto operativo:** A+ en L1 y anti-flood de ERROR. L3 Events alineado con Trazabilidad Eterna. Soak de planta (inyección de error 24 h) confirma techo de disco y CPU.

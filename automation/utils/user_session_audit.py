@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import logging
 
-from .system_event_audit import clip, get_system_user, persist_system_event
+from .system_event_audit import clip, get_system_user, persist_system_event, request_origin
 
-_CLASSIFICATION = "User"
+_CLASSIFICATION = "Security"
 
 _PRIORITY = {
     "LOGIN": 2,
@@ -75,6 +75,12 @@ def record_user_session_event(
         extra_clip = clip(extra, 120)
         if extra_clip:
             parts.append(extra_clip)
+        if action_key in {"LOGIN", "LOGIN_FAILED", "LOGOUT"}:
+            origin = request_origin()
+            if origin:
+                parts.append(f"origin={origin}")
+            if action_key == "LOGIN" and "method=" not in extra_clip:
+                parts.append("method=password")
         description = " ".join(parts) if parts else action_key.lower()
 
         audit_user = user or actor or get_system_user()

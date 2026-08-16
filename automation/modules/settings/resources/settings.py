@@ -89,6 +89,27 @@ class SettingsUpdateResource(Resource):
                 return "log_error_cooldown_seconds must be >= 0", 400
             app.update_log_error_cooldown(float(cooldown))
 
+        try:
+            from ....utils.system_event_audit import clip, persist_system_event
+
+            changed = [key for key in (
+                "logger_period",
+                "log_max_bytes",
+                "log_backup_count",
+                "log_level",
+                "log_error_cooldown_seconds",
+            ) if key in data]
+            persist_system_event(
+                message="System settings updated",
+                description=clip("keys=" + ",".join(changed) if changed else "settings", 256),
+                classification="Configuration",
+                priority=2,
+                criticity=3,
+                user=Api.get_current_user(),
+            )
+        except Exception:
+            pass
+
         return "Settings updated", 200
 
 

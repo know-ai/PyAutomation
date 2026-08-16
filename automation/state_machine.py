@@ -934,7 +934,7 @@ class StateMachineCore(StateMachine):
 
         attach_observer(machine, tag)
 
-    @set_event(message=f"Switched", classification="State Machine", priority=2, criticity=3)
+    @set_event(message="Machine switched", classification="Control", priority=2, criticity=3)
     @validate_types(to=str, user=User|type(None), output=tuple)
     def transition(self, to:str, user:User=None):
         r"""
@@ -1004,8 +1004,33 @@ class StateMachineCore(StateMachine):
         **Parameters**
 
         * **interval:** (float) execution interval in seconds.
-        """        
+        """
+        previous = getattr(self.machine_interval, "value", self.machine_interval)
         self.machine_interval = interval
+        if user is not None:
+            try:
+                from .utils.system_event_audit import clip, persist_system_event
+                from .modules.users.users import User as CvtUser
+
+                if isinstance(user, CvtUser):
+                    new_value = getattr(interval, "value", interval)
+                    machine_name = getattr(getattr(self, "name", None), "value", None) or "-"
+                    persist_system_event(
+                        message="Machine interval updated",
+                        description=clip(
+                            f"machine={machine_name} from={previous} to={new_value} s",
+                            256,
+                        ),
+                        classification="Configuration",
+                        priority=2,
+                        criticity=3,
+                        user=user,
+                    )
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "Machine interval audit skipped",
+                    exc_info=True,
+                )
 
     def get_allowed_actions(self):
         r"""

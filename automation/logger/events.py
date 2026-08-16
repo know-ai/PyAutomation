@@ -75,6 +75,12 @@ class EventsLogger(BaseLogger):
             )
 
         result, _ = journal_then_remote(record, _write, connected)
+        try:
+            from ..utils.audit_metrics import note_event_persisted
+
+            note_event_persisted()
+        except Exception:
+            pass
         if result is not None and not (isinstance(result, tuple) and result[0] is None):
             return result
         return JournaledEnvelope(record.payload()), "journaled"

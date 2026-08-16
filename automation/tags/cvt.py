@@ -62,7 +62,7 @@ class CVT:
         """
         self.sio:SocketIO = sio
 
-    @set_event(message=f"Created", classification="Tag", priority=1, criticity=1)
+    @set_event(message="Tag created", classification="Configuration", priority=1, criticity=1)
     def set_tag(
         self, 
         name:str, 
@@ -169,7 +169,7 @@ class CVT:
 
         return tag, message
 
-    @set_event(message=f"Updated", classification="Tag", priority=1, criticity=3)
+    @set_event(message="Tag updated", classification="Configuration", priority=1, criticity=3)
     def update_tag(
         self, 
         id:str,  
@@ -260,7 +260,7 @@ class CVT:
 
         return tag, f"Tag: {tag.name}"
 
-    @set_event(message=f"Updated", classification="Tag", priority=1, criticity=5)
+    @set_event(message="Tag deleted", classification="Configuration", priority=1, criticity=5)
     def delete_tag(self, id:str, user:User):
         r"""
         Removes a tag from the CVT.

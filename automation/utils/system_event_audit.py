@@ -32,6 +32,21 @@ def clip(text: Optional[str], max_len: int) -> str:
     return normalized[: max_len - 1] + "…"
 
 
+def request_origin() -> str:
+    """Client IP for audit descriptions. Never raises. Never logs the token."""
+    try:
+        from flask import has_request_context, request
+
+        if not has_request_context():
+            return ""
+        forwarded = request.headers.get("X-Forwarded-For") or ""
+        if forwarded:
+            return clip(forwarded.split(",")[0].strip(), 64)
+        return clip(getattr(request, "remote_addr", None) or "", 64)
+    except Exception:
+        return ""
+
+
 def get_system_user():
     """Return the cached `system` user, or look it up. Never caches a miss."""
     global _system_user

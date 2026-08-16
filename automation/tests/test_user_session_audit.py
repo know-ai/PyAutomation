@@ -19,9 +19,10 @@ class TestUserSessionAuditHelper(unittest.TestCase):
             )
         kwargs = persist.call_args.kwargs
         self.assertEqual(kwargs["message"], "User logged in")
-        self.assertEqual(kwargs["classification"], "User")
+        self.assertEqual(kwargs["classification"], "Security")
         self.assertEqual(kwargs["user"], user)
         self.assertIn("username=operator1", kwargs["description"])
+        self.assertIn("method=password", kwargs["description"])
 
     def test_login_failed_does_not_require_a_user_object(self):
         from ..utils import user_session_audit

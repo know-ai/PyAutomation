@@ -52,4 +52,22 @@ class SystemReconnectDbResource(Resource):
                 "message": "Reconnect is not available",
             }, 503
         snapshot = provider.reconnect()
+        try:
+            from ....extensions import _api as Api
+            from ....utils.system_event_audit import clip, persist_system_event
+
+            user = Api.get_current_user()
+            persist_system_event(
+                message="Database reconnection attempted",
+                description=clip(
+                    f"source=hmi result={'ok' if snapshot.connected else 'failed'}",
+                    256,
+                ),
+                classification="Database",
+                priority=3,
+                criticity=4 if not snapshot.connected else 2,
+                user=user,
+            )
+        except Exception:
+            pass
         return snapshot.as_dict(), 200 if snapshot.connected else 503

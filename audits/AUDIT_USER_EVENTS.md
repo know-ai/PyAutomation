@@ -5,11 +5,11 @@
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/pages/Events.tsx`) |
 | **Alcance** | Qué se persiste en la tabla `Events`, qué acciones de operador quedan trazadas (quién / qué / cuándo) y cómo se registran login / logout |
 | **Fuera de alcance** | Bitácora operacional (`Logs` / `operational-logs`), histórico de alarmas (`AlarmSummary`), datalogger de tags, logs de aplicación (`pyautomation` logger) |
-| **Fecha** | 2026-08-16 |
+| **Fecha** | 2026-08-16 (Operación «Trazabilidad Eterna») |
 | **Clasificación** | Auditoría de trazabilidad de acciones · confidencialidad interna |
-| **Metodología** | Revisión de código de `@set_event`, `persist_system_event`, recursos HTTP y HMI. Tests unitarios del helper de sesión |
+| **Metodología** | Revisión de código de `@set_event`, `persist_system_event`, `audit_metrics`, recursos HTTP y HMI. Tests: `test_user_session_audit`, `test_db_connection_audit`, `test_system_lifecycle_audit`, `test_audit_metrics` |
 | **Complementa** | `audits/AUDIT_LOGGING.md`, `audits/STORE_AND_FORWARD.md`, `audits/PERSISTENCE_FLOW.md` |
-| **Veredicto** | **C+** respecto a un trail de auditoría industrial. Login / logout / identidad quedan en `Events`. Acciones de alarma, tag y transiciones de máquina desde la HMI quedan atadas al usuario de la sesión. Siguen huecos: escritura de valor de tag, alta de alarma en reload, cierre de pestaña sin logout, e intervalo/`on_delay` sin evento propio |
+| **Veredicto** | **A-** respecto a caja negra industrial. Login/logout, forzar tag, CRUD de tags/alarmas, intervalo/on_delay/threshold, transiciones de máquina, arranque/parada limpia, DB en caliente, OPC UA, SAF backpressure y settings quedan en `Events`. Residual: no hay endpoint de borrado de usuario; no hay idle-timeout → `SESSION_INVALID` no ata un usuario; UNACK/RTN siguen en `AlarmSummary` (anti-spam) |
 
 ---
 
@@ -17,12 +17,10 @@
 
 **Antes de este cambio no había eventos de login ni de logout.** La tabla `Events` existía y el HMI `/events` las mostraba, pero `POST /api/users/login` y `POST /api/users/logout` no escribían nada.
 
-**Ahora sí.** Cada inicio de sesión, cada fallo de credenciales y cada cierre de sesión (explícito o por toma de sesión) se persiste en `Events` con `classification = "User"`.
+**Ahora sí.** Identidad usa `classification = "Security"`. Filtrar:
 
-Filtrar en la página Eventos:
-
-- clasificación **User**
-- mensaje `User logged in` / `User logged out` / `User login failed`
+- `User logged in` / `User logged out` / `User login failed`
+- `origin=` (IP) y `method=password` en login; `reason=user-initiated` o `reason=session_superseded` en logout
 
 ---
 
@@ -36,14 +34,14 @@ Tabla Peewee `Events` (`automation/dbmodels/events.py`):
 | `user` | FK → `Users` **obligatoria** | Quién (o `system` si el actor no es un usuario de sesión) |
 | `message` | varchar(256) | Qué ocurrió (texto corto, estable) |
 | `description` | varchar(256), nullable | Detalle (nombre de tag/alarma, `username=…`, `actor=…`) |
-| `classification` | varchar(128) | Familia: `User`, `Alarm`, `Tag`, `State Machine`, `OPC UA`, `Database` |
+| `classification` | varchar(128) | Familia: `Security`, `Configuration`, `Control`, `System`, `Database`, `OPC UA` |
 | `priority` | int | 1–5 según el emisor (valores fijos en código, no ISA-18.2) |
 | `criticity` | int | 1–5 según el emisor |
 
 Reglas duras:
 
 - `Events.create` exige un objeto `modules.users.users.User`. Sin usuario no hay fila.
-- `message` y `description` se recortan a **256** caracteres en la vía `persist_system_event`. `@set_event` **no** recorta: un `description` más largo puede fallar al insertar.
+- `message` y `description` se recortan a **256** caracteres en `persist_system_event` y en `@set_event`.
 - **Nunca** se persisten contraseñas, tokens ni cuerpos crudos de request.
 - Persistencia: journal SAF (`journal_then_remote`) + emit Socket.IO `on.event` para refrescar el HMI.
 - Comentarios sobre un evento **no** van a `Events`: van a `Logs` con FK `event` (anotación humana, no acción automática).
@@ -74,16 +72,16 @@ Hay **tres** caminos. Solo el 1 y el 2 aplican a acciones de operador.
 
 ## 4. Inventario: qué queda registrado
 
-### 4.1 Identidad y sesión — `classification = "User"`
+### 4.1 Identidad y sesión — `classification = "Security"`
 
 Helper: `automation/utils/user_session_audit.py`  
 Cableado: `automation/modules/users/resources/users.py` y toma de sesión en `Users._revoke_other_sessions`.
 
 | Acción | `message` | FK `user` | `description` (patrón) | P | C | Disparo |
 |---|---|---|---|---|---|---|
-| Login OK | `User logged in` | el autenticado | `username=<login>` | 2 | 2 | `POST /users/login` 200 |
-| Login fallido | `User login failed` | **`system`** | `username=<reclamado> reason=invalid_credentials` | 3 | 4 | `POST /users/login` 403 de credenciales |
-| Logout explícito | `User logged out` | el de la sesión | `username=<login>` | 2 | 2 | `POST /users/logout` (sidebar HMI) |
+| Login OK | `User logged in` | el autenticado | `username=<login> method=password origin=<ip>` | 2 | 2 | `POST /users/login` 200 |
+| Login fallido | `User login failed` | **`system`** | `username=<reclamado> reason=invalid_credentials origin=<ip>` | 3 | 4 | `POST /users/login` 403 de credenciales |
+| Logout explícito | `User logged out` | el de la sesión | `username=<login> reason=user-initiated origin=<ip>` | 2 | 2 | `POST /users/logout` (sidebar HMI) |
 | Toma de sesión | `User logged out` | el mismo usuario | `username=<login> reason=session_superseded` | 2 | 2 | segundo login (una sesión activa) |
 | Alta de cuenta | `User account created` | el nuevo usuario | `username=<login>` | 2 | 2 | `POST /users/signup` 200 |
 | Cambio de clave | `User password changed` | el **objetivo** | `username=<objetivo> actor=<quien>` si difieren | 3 | 4 | `POST /users/change_password` 200 |
@@ -94,70 +92,49 @@ Notas de seguridad:
 
 - Login fallido **no** revela si el usuario existe: la FK es `system` y el nombre reclamado va solo en `description`.
 - 503 de base de datos en login **no** genera `LOGIN_FAILED` (no es un rechazo de identidad).
-- Cerrar la pestaña o un 401 `SESSION_INVALID` en el interceptor Axios **no** llama a `/users/logout`. No hay fila `LOGOUT` en esos casos. La toma de sesión sí deja `reason=session_superseded`.
+- Cerrar la pestaña o un 401 `SESSION_INVALID` **no** genera `User session expired`: no hay idle-timeout ni usuario resoluble cuando el token ya no está en memoria ni en BD. La toma de sesión sí deja `reason=session_superseded`.
+- No hay API de borrado de cuenta → no hay `User account deleted`.
 
-### 4.2 Alarmas — `classification = "Alarm"`
+### 4.2 Configuración — `classification = "Configuration"`
 
-Métodos con `@set_event` en `automation/alarms/__init__.py` y `managers/alarms.py`. La API pasa `user=Api.get_current_user()`.
-
-| `message` | Acción de usuario (HMI / API) | `description` típica |
+| `message` | Acción | `description` |
 |---|---|---|
-| `Created` | Alta de alarma (`POST /alarms/add`) | nombre de la alarma |
-| `Updated` | Edición de alarma (`POST /alarms/update`) | mensaje interno del `put` |
-| `Deleted` | Borrado (`DELETE /alarms/delete/<id>`) | id / nombre según retorno |
-| `Acknowledged` | Ack / ack-all | nombre del tag |
-| `Shelved` | Shelve con duración | nombre del tag |
-| `Unshelved` | Unshelve **manual** (si se pasa `user=`) | nombre del tag |
-| `Designed suppression` | Supresión por diseño | nombre del tag |
-| `Designed unsuppression` | Quitar supresión por diseño | nombre del tag |
-| `Removed from service` | Fuera de servicio | nombre del tag |
-| `Returned to service` | Volver a servicio | nombre del tag |
+| `Tag created` / `Tag updated` / `Tag deleted` | CRUD de definición de tag | `Tag: <nombre>` |
+| `Alarm created` / `Alarm updated` / `Alarm deleted` | CRUD de alarma | nombre / tag |
+| `Machine interval updated` | `set_interval` con `user=` | `machine=<n> from=… to=… s` |
+| `Machine on_delay updated` | atributo on_delay HMI | `machine=<n> from=… to=…` |
+| `Machine attribute updated` | threshold vía `set_value(..., user=)` | `threshold To: <valor>` |
+| `System settings updated` | `PUT /settings/update` | `keys=logger_period,…` (sin secretos) |
 
-Huecos:
+### 4.3 Control de operador — `classification = "Control"`
 
-- Unshelve **automático** por vencimiento de tiempo (`alarm_manager` watchdog) llama `unshelve` **sin** `user=` → no hay evento.
-- Transiciones de alarma por proceso (UNACK, RTN, etc.) van al **resumen de alarmas**, no a `Events`.
-
-### 4.3 Tags — `classification = "Tag"`
-
-`CVT.set_tag` / `update_tag` / `delete_tag` tienen `@set_event`. La API HMI ahora pasa el usuario de sesión.
-
-| `message` | Acción | P | C |
-|---|---|---|---|
-| `Created` | Alta de tag | 1 | 1 |
-| `Updated` | Edición de definición | 1 | 3 |
-| `Updated` | Borrado de tag (mismo message que update) | 1 | 5 |
-
-`description` = último elemento de la tupla de retorno (p. ej. `Tag: <nombre>`).
-
-**No** se audita en `Events`:
-
-- `POST /tags/write_value` (escritura de valor de proceso). Sería un flood, no un trail de configuración.
-- Cambios de valor por OPC UA / DAS.
-
-### 4.4 Máquinas de estado — `classification = "State Machine"`
-
-| `message` | Acción de usuario | Notas |
+| `message` | Acción | `description` |
 |---|---|---|
-| `Switched` | `PUT /machines/<name>/transition` con `user=` | transiciones de operador (start / wait / restart / …) |
-| `Switched` | cambio de `buffer_size` (restart + wait inducidos por la API) | el usuario queda en ambas transiciones |
-| `Attribute updated` | cambio de `threshold` vía `set_value(..., user=)` | `description` tipo `threshold To: <valor>` |
+| `Tag value forced` | `POST /tags/write_value` | `tag=<n> from=<prev> to=<nuevo>` — **no** es datalogger |
+| `Alarm acknowledged` | ack / ack-all | nombre del tag |
+| `Alarm shelved` | shelve con duración | nombre del tag |
+| `Alarm unshelved` | unshelve **manual** (`user=`) | nombre del tag |
+| `Alarm suppressed` / `Alarm unsuppressed` | supresión por diseño | nombre del tag |
+| `Alarm removed from service` / `Alarm returned to service` | OOS / RTS | nombre del tag |
+| `Machine switched` | transición HMI | `[<máquina>] from: <a> to: <b>` |
 
-Huecos:
+Unshelve automático (watchdog, sin `user=`): `Alarm unshelved automatically`, clasificación **`System`**, FK `system`. Una vez por vencimiento, no por tick.
 
-- `set_interval` acepta `user=` pero **no** tiene `@set_event` y retorna `None` → **no** hay evento de intervalo.
-- `on_delay` se asigna al atributo sin `set_value` → **no** hay evento.
-- Transiciones internas del motor (ciclo de detección, `to="restart"` desde código de planta **sin** `user=`) no quedan atadas a un operador. Es correcto: no son acciones de usuario.
+Transiciones UNACK/RTN por proceso: **`AlarmSummary`**, no `Events` (anti-spam).
 
-### 4.5 Sistema (no son acciones de operador)
+Cambios de valor por OPC UA / DAS: **datalogger**, no `Events`.
+
+### 4.4 Sistema, Database, OPC UA, SAF
 
 FK casi siempre `system`. Sirven de contexto de planta, no de “quién pulsó qué”.
 
 | Clasificación | Helper | Ejemplos de `message` |
 |---|---|---|
-| `System` | `system_lifecycle_audit.record_system_started` | `System started` — un evento por proceso al arrancar (reinicio manual, orquestador o corte eléctrico: no se distinguen) |
-| `OPC UA` | `opcua_audit.record_opcua_connection_event` | `OPC UA client connected` / `… disconnected` / reconnect |
-| `Database` | `db_audit.DatabaseConnectionAuditor` | **Solo en caliente:** `Database disconnected` y `Database reconnected`. El attach inicial al boot **no** genera `Database connected` |
+| `System` | `system_lifecycle_audit` | `System started` (boot), `System stopped` (parada limpia / `safe_stop`), `SAF backpressure triggered` / `SAF disk full` (cooldown 60 s), `Alarm unshelved automatically` |
+| `OPC UA` | `opcua_audit` | connected / disconnected / reconnect; cooldown de fallos **60 s** |
+| `Database` | `db_audit` | **Solo en caliente:** `Database disconnected` y `Database reconnected`. Boot **no** genera `Database connected`. Reconexión HMI: `Database reconnection attempted` |
+
+Anti-spam: un `DISCONNECTED` por outage; fallos de reconnect resumidos en `RECONNECTED`; OPC UA 60 s; SAF 60 s. Acciones de operador **sin** debounce.
 
 Arranque frente a caída de red (el proceso **sigue vivo**):
 
@@ -176,8 +153,8 @@ Arranque frente a caída de red (el proceso **sigue vivo**):
 En HMI **Eventos** (`/events`):
 
 1. Filtro por **usuario** → todas las filas cuya FK es ese login (alarmas ack, tags, transiciones, login/logout propios).
-2. Filtro por **clasificación** `User` → solo identidad/sesión. Los login fallidos aparecen bajo usuario **`system`**; buscar el login reclamado en **descripción** (`username=`).
-3. Filtro por **mensaje** (`Acknowledged`, `Created`, `Switched`, `User logged in`, …).
+2. Filtro por **clasificación** `Security` → identidad/sesión. Login fallido: usuario **`system`**, buscar el login en **descripción**.
+3. Filtro por **mensaje** (`Tag value forced`, `Alarm acknowledged`, `Machine switched`, `User logged in`, `System started`, …).
 4. Rango de fechas + timezone de planta.
 
 Campo `description` es el vínculo al objeto:
@@ -196,7 +173,8 @@ Prioridad y criticidad **no** son el ranking ISA de la alarma; son constantes de
 | Acción / dato | ¿En `Events`? | Dónde está |
 |---|---|---|
 | Lectura de pantallas, filtros, export CSV | No | no se audita (consulta) |
-| Escritura de valor de tag | No | datalogger / CVT |
+| Escritura de valor de tag (OPC/DAS) | No | datalogger / CVT |
+| Forzar valor desde HMI | Sí | `Tag value forced` (`Control`) |
 | Estado de alarma por proceso (UNACK, RTN) | No | `AlarmSummary` + página Alarmas |
 | Comentario de operador sobre un evento | No como evento nuevo | `Logs` con FK `event` |
 | Bitácora operacional libre | No | tabla `Logs` / página Operational Logs |
@@ -240,34 +218,37 @@ El usuario se resuelve **antes** de borrar el token. Si solo se invalidara prime
 | Tabla | `automation/dbmodels/events.py` |
 | Motor + SAF | `automation/logger/events.py`, `automation/persistence/outbox.py` |
 | Decorador | `automation/utils/decorators.py` → `set_event` |
-| Persistencia fail-safe | `automation/utils/system_event_audit.py` |
-| Sesión / identidad | `automation/utils/user_session_audit.py` |
+| Persistencia fail-safe | `automation/utils/system_event_audit.py` (`persist_system_event` = único writer) |
+| Tasa / cooldown | `automation/utils/audit_metrics.py` → `GET /api/health/system` (`EVENTS_RATE_PER_MIN`, umbral 30/min) |
+| Sesión / identidad | `automation/utils/user_session_audit.py` (`Security`) |
 | HTTP usuarios | `automation/modules/users/resources/users.py` |
 | HTTP tags / alarmas / máquinas | `modules/{tags,alarms,machines}/resources/` |
-| OPC UA / DB / boot | `automation/utils/opcua_audit.py`, `db_audit.py`, `system_lifecycle_audit.py` |
-| Tests | `automation/tests/test_user_session_audit.py`, `test_db_connection_audit.py`, `test_system_lifecycle_audit.py` |
+| OPC UA / DB / boot / SAF | `opcua_audit.py`, `db_audit.py`, `system_lifecycle_audit.py`, `persistence/journal.py` |
+| Tests | `test_user_session_audit.py`, `test_db_connection_audit.py`, `test_system_lifecycle_audit.py`, `test_audit_metrics.py` |
 
 ---
 
 ## 9. Residual / backlog
 
-1. `set_interval` y `on_delay`: cambio de operador sin fila en `Events`.
-2. Message de borrado de tag es `Updated` (crítico 5) — confunde filtros por mensaje; convendría `Deleted`.
-3. `@set_event` no recorta a 256 caracteres.
-4. Logout por cierre de navegador / `SESSION_INVALID` sin round-trip a `/users/logout`.
-5. Alta de alarma no usa `@set_event` en `append_alarm` (evita falsos `Created` en reload); el recurso HTTP persiste `Created` solo si el mensaje es `Alarm creation successful`.
-6. Escritura de tag (`write_value`) deliberadamente fuera del trail; si un procedimiento de planta exige “quién forzó el setpoint”, hay que añadir un evento acotado (no por cada sample OPC).
+1. No hay idle-timeout de sesión ni `User session expired` atable a un usuario en `SESSION_INVALID`.
+2. No hay API de borrado de cuenta → no hay `User account deleted`.
+3. UNACK/RTN de proceso no van a `Events` (política anti-spam; viven en `AlarmSummary`).
+4. `EventFactory` / `IUserEvent` no se introdujeron: el contrato único es `persist_system_event` + `@set_event` + helpers por dominio (SRP sin capas vacías).
+5. `System stopped` solo en parada limpia (`safe_stop`); un kill -9 / corte eléctrico no deja ese evento, sí el siguiente `System started`.
 
 ---
 
 ## 10. Cómo verificar en planta
 
-1. Entrar al HMI con un operador → Eventos, clasificación `User`, mensaje `User logged in`, columna usuario = ese login.
-2. Credencial incorrecta → misma clasificación, mensaje `User login failed`, usuario `system`, descripción con el nombre tecleado.
-3. Logout en el sidebar → `User logged out`.
-4. Login en un segundo navegador → `User logged out` con `reason=session_superseded` y un `User logged in` nuevo.
-5. Ack de una alarma → clasificación `Alarm`, mensaje `Acknowledged`, usuario = operador.
-6. Crear o editar un tag desde Definiciones → clasificación `Tag`, usuario = operador.
-7. Transición manual de máquina → clasificación `State Machine`, mensaje `Switched`.
-8. Reiniciar el servicio → clasificación `System`, mensaje `System started`. **No** debe aparecer `Database connected` por ese boot.
-9. Tirar el historiador con la app viva y levantarlo → `Database disconnected` y luego `Database reconnected`, sin un segundo `System started`.
+1. Login operador → `Security` / `User logged in` / `origin=` / `method=password`.
+2. Credencial incorrecta → `User login failed`, usuario `system`.
+3. Logout sidebar → `reason=user-initiated`.
+4. Segundo navegador → `reason=session_superseded` + `User logged in`.
+5. Ack de alarma → `Control` / `Alarm acknowledged`.
+6. Crear/editar/borrar tag → `Configuration` / `Tag created|updated|deleted`.
+7. Forzar valor de tag → `Control` / `Tag value forced` con `from=` y `to=`.
+8. Cambiar intervalo u on_delay → `Machine interval updated` / `Machine on_delay updated`.
+9. Transición de máquina → `Control` / `Machine switched` con `from:` / `to:`.
+10. Reinicio de servicio → `System started`. **No** `Database connected`.
+11. Caída de historiador en caliente → `Database disconnected` luego `Database reconnected`.
+12. `GET /api/health/system` incluye `EVENTS_RATE_PER_MIN` y `EVENTS_RATE_ALERT`.

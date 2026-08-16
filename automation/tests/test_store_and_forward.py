@@ -122,6 +122,7 @@ class TestSafJournal(unittest.TestCase):
         writer.start()
         try:
             writer._stop.set()
+            writer._ring_event.set()
             if writer._flusher:
                 writer._flusher.join(timeout=1)
             writer._ring.clear()

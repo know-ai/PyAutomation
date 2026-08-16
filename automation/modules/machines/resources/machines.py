@@ -728,6 +728,7 @@ class MachineAttributesResource(Resource):
                             "message": "on_delay must be greater than or equal to 0"
                         }, 400
                     
+                    previous_on_delay = getattr(getattr(machine, "on_delay", None), "value", None)
                     machine.on_delay.value = on_delay_value
                     if hasattr(machine, "_on_delay_from_plant_config"):
                         machine._on_delay_from_plant_config = True
@@ -741,6 +742,23 @@ class MachineAttributesResource(Resource):
                         )
                     
                     updated_attributes.append(f"on_delay to {on_delay_value}")
+                    if user is not None:
+                        try:
+                            from ....utils.system_event_audit import clip, persist_system_event
+
+                            persist_system_event(
+                                message="Machine on_delay updated",
+                                description=clip(
+                                    f"machine={machine_name} from={previous_on_delay} to={on_delay_value}",
+                                    256,
+                                ),
+                                classification="Configuration",
+                                priority=2,
+                                criticity=3,
+                                user=user,
+                            )
+                        except Exception:
+                            pass
                 except (ValueError, TypeError) as e:
                     return {
                         "message": f"Invalid on_delay value: {str(e)}"

@@ -308,7 +308,7 @@ class Alarm(StateMachine):
             self.__transition(transition_name=transition_name)
 
     @logging_error_handler
-    @set_event(message=f"Acknowledged", classification="Alarm", priority=2, criticity=3)
+    @set_event(message="Alarm acknowledged", classification="Control", priority=2, criticity=3)
     def acknowledge(self, user:User=None):
         r"""
         Acknowledges the alarm.
@@ -337,7 +337,7 @@ class Alarm(StateMachine):
         return self, f"{self.tag.get_name()}"
 
     @logging_error_handler
-    @set_event(message=f"Shelved", classification="Alarm", priority=2, criticity=3)
+    @set_event(message="Alarm shelved", classification="Control", priority=2, criticity=3)
     def shelve(self, user:User=None, **options):
         r"""
         Temporarily suppresses the alarm (Shelving).
@@ -359,7 +359,7 @@ class Alarm(StateMachine):
         return self, f"{self.tag.get_name()}"
 
     @logging_error_handler
-    @set_event(message=f"Unshelved", classification="Alarm", priority=2, criticity=3)
+    @set_event(message="Alarm unshelved", classification="Control", priority=2, criticity=3)
     def unshelve(self, user:User=None, current_value=None):
         r"""
         Manually un-shelves the alarm, returning it to service.
@@ -379,7 +379,7 @@ class Alarm(StateMachine):
         return self, f"{self.tag.get_name()}"
 
     @logging_error_handler
-    @set_event(message=f"Designed suppression", classification="Alarm", priority=2, criticity=3)
+    @set_event(message="Alarm suppressed", classification="Control", priority=2, criticity=3)
     def designed_suppression(self, user:User=None):
         r"""
         Suppresses the alarm by design (e.g., maintenance mode).
@@ -390,7 +390,7 @@ class Alarm(StateMachine):
         return self, f"{self.tag.get_name()}"
 
     @logging_error_handler
-    @set_event(message=f"Designed unsuppression", classification="Alarm", priority=2, criticity=3)
+    @set_event(message="Alarm unsuppressed", classification="Control", priority=2, criticity=3)
     def designed_unsuppression(self, user:User=None):
         r"""
         Removes designed suppression.
@@ -399,7 +399,7 @@ class Alarm(StateMachine):
         return self, f"{self.tag.get_name()}"
 
     @logging_error_handler
-    @set_event(message=f"Removed from service", classification="Alarm", priority=2, criticity=3)
+    @set_event(message="Alarm removed from service", classification="Control", priority=2, criticity=3)
     def remove_from_service(self, user:User=None):
         r"""
         Takes the alarm out of service entirely.
@@ -410,7 +410,7 @@ class Alarm(StateMachine):
         return self, f"{self.tag.get_name()}"
 
     @logging_error_handler
-    @set_event(message=f"Returned to service", classification="Alarm", priority=2, criticity=3)
+    @set_event(message="Alarm returned to service", classification="Control", priority=2, criticity=3)
     def return_to_service(self, user:User=None):
         r"""
         Returns the alarm to service from 'Out of Service'.
@@ -449,7 +449,7 @@ class Alarm(StateMachine):
                     pass
         self._machine_observer = None
 
-    @set_event(message=f"Updated", classification="Alarm", priority=2, criticity=3)
+    @set_event(message="Alarm updated", classification="Configuration", priority=2, criticity=3)
     def put(
             self, 
             user:User=None,

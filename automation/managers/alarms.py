@@ -252,7 +252,7 @@ class AlarmManager(Singleton):
         return alarm, message
 
     @logging_error_handler
-    @set_event(message=f"Deleted", classification="Alarm", priority=3, criticity=5)
+    @set_event(message="Alarm deleted", classification="Configuration", priority=3, criticity=5)
     def delete_alarm(self, id:str, user:User=None):
         r"""
         Removes an alarm from the manager and takes it out of service.
@@ -629,6 +629,21 @@ class AlarmManager(Singleton):
 
                         current_tag_value = tag_obj.value if tag_obj else None
                         _alarm.unshelve(current_value=current_tag_value)
+                        try:
+                            from ..utils.system_event_audit import clip, persist_system_event
+
+                            persist_system_event(
+                                message="Alarm unshelved automatically",
+                                description=clip(
+                                    f"alarm={_alarm.name} tag={tag_name}",
+                                    256,
+                                ),
+                                classification="System",
+                                priority=2,
+                                criticity=2,
+                            )
+                        except Exception:
+                            pass
                         continue
 
                     continue

@@ -51,6 +51,37 @@ VALUES (?, ?, ?, ?, 'PENDING', ?, ?, 0)
 """
 
 
+def _notify_saf_capacity_event(kind: str) -> None:
+    """One Events row per outage (60 s cooldown). Never raises into the journal."""
+    try:
+        from ..utils.audit_metrics import cooldown_allows
+        from ..utils.system_event_audit import persist_system_event
+
+        if not cooldown_allows(f"saf:{kind}", 60.0):
+            return
+        if kind == "disk":
+            persist_system_event(
+                message="SAF disk full",
+                description="kind=disk",
+                classification="System",
+                priority=5,
+                criticity=5,
+            )
+        else:
+            persist_system_event(
+                message="SAF backpressure triggered",
+                description="kind=backpressure",
+                classification="System",
+                priority=4,
+                criticity=5,
+            )
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "SAF capacity audit event skipped",
+            exc_info=True,
+        )
+
+
 class JournalWriter:
     """Single writer for the local WAL. Thread-safe. Never swallows SQLite errors."""
 
@@ -99,10 +130,17 @@ class JournalWriter:
     def append(self, persistable: IPersistable) -> int:
         """Durable enqueue. Critical records wait for COMMIT; tags use the ring."""
         self.start()
-        if persistable.is_critical():
-            with self._lock:
-                return self._insert_commit_locked(persistable)
-        return self._enqueue_ring(persistable)
+        try:
+            if persistable.is_critical():
+                with self._lock:
+                    return self._insert_commit_locked(persistable)
+            return self._enqueue_ring(persistable)
+        except JournalBackpressureError:
+            _notify_saf_capacity_event("backpressure")
+            raise
+        except JournalDiskFullError:
+            _notify_saf_capacity_event("disk")
+            raise
 
     def append_many(self, persistables: Sequence[IPersistable]) -> int:
         """Hot-path burst enqueue (one lock). Used by high-rate soak / scanners."""
@@ -110,17 +148,24 @@ class JournalWriter:
         items = list(persistables)
         if not items:
             return 0
-        with self._lock:
-            self._ensure_open_locked()
-            self._guard_pending_locked()
-            if len(self._ring) + len(items) > self.config.ring_maxsize:
-                self.backpressure = True
-                self.dropped_full += len(items)
-                raise JournalBackpressureError(
-                    f"SAF ring full ({self.config.ring_maxsize}); history backpressure engaged"
-                )
-            self._ring.extend(items)
-            self.backpressure = False
+        try:
+            with self._lock:
+                self._ensure_open_locked()
+                self._guard_pending_locked()
+                if len(self._ring) + len(items) > self.config.ring_maxsize:
+                    self.backpressure = True
+                    self.dropped_full += len(items)
+                    raise JournalBackpressureError(
+                        f"SAF ring full ({self.config.ring_maxsize}); history backpressure engaged"
+                    )
+                self._ring.extend(items)
+                self.backpressure = False
+        except JournalBackpressureError:
+            _notify_saf_capacity_event("backpressure")
+            raise
+        except JournalDiskFullError:
+            _notify_saf_capacity_event("disk")
+            raise
         self._ring_event.set()
         return len(items)
 
