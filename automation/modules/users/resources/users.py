@@ -11,6 +11,7 @@ from ....extensions import _api as Api
 from ...health.require_db import require_remote_db
 from ....modules.users.users import Users as CVTUsers
 from ....dbmodels.users import Users
+from ....utils.user_session_audit import record_user_session_event
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S"
 ns = Namespace('Users', description='User Management and Authentication')
@@ -87,7 +88,7 @@ class SignUpResource(Resource):
         user, message = app.signup(**args)
         
         if user:
-
+            record_user_session_event(action="SIGNUP", user=user)
             return user.serialize(), 200
         
         # Analizar el mensaje de error para determinar el tipo de error
@@ -170,9 +171,10 @@ class LoginResource(Resource):
         user, message = app.login(**args)
 
         if user:
-
+            record_user_session_event(action="LOGIN", user=user)
             return {
                 "apiKey": user.token,
+                "username": user.username,
                 "role": user.role.name,
                 "role_level": user.role.level,
                 "datetime": datetime.now(TIMEZONE).strftime(DATETIME_FORMAT),
@@ -215,6 +217,12 @@ class LoginResource(Resource):
                 "user not found",
                 "credentials"
             ]):
+                claimed = args.get("username") or args.get("email") or ""
+                record_user_session_event(
+                    action="LOGIN_FAILED",
+                    username=claimed,
+                    extra="reason=invalid_credentials",
+                )
                 # Errores de autenticación -> 403 Forbidden
                 return {
                     "message": message,
@@ -293,6 +301,7 @@ class LogoutResource(Resource):
 
         Invalidates the current session token.
         """
+        token = None
         if 'X-API-KEY' in request.headers:
                             
             token = request.headers['X-API-KEY']
@@ -301,7 +310,15 @@ class LogoutResource(Resource):
             
             token = request.headers['Authorization'].split('Token ')[-1]
         
+        session_user = users.get_active_user(token=token)
+        if session_user is None:
+            db_row = Users.get_or_none(token=token)
+            if db_row is not None:
+                session_user = users.get_by_username(username=getattr(db_row, "username", None))
+
         _, message = Users.logout(token=token)
+        if session_user is not None:
+            record_user_session_event(action="LOGOUT", user=session_user)
 
         return message, 200
 
@@ -389,6 +406,11 @@ class ChangePasswordResource(Resource):
         )
 
         if result:
+            record_user_session_event(
+                action="PASSWORD_CHANGED",
+                user=target_user,
+                actor=current_user,
+            )
             return {'message': status_msg}, 200
         else:
             return {'message': status_msg}, 400
@@ -470,6 +492,11 @@ class ResetPasswordResource(Resource):
         )
 
         if result:
+            record_user_session_event(
+                action="PASSWORD_RESET",
+                user=target_user,
+                actor=current_user,
+            )
             return {'message': status_msg}, 200
         else:
             return {'message': status_msg}, 400
@@ -548,6 +575,12 @@ class UpdateRoleResource(Resource):
         )
 
         if result:
+            record_user_session_event(
+                action="ROLE_UPDATED",
+                user=target_user,
+                actor=current_user,
+                extra=f"role={new_role_name}",
+            )
             return {'message': status_msg}, 200
         else:
             return {'message': status_msg}, 400

@@ -9,7 +9,6 @@ import { useAppSelector } from "../hooks/useAppSelector";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { updateAlarmsBatch } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
-import { TimezoneBadge } from "../components/TimezoneBadge";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { formatTimestamp } from "../utils/timezone";
 
@@ -700,15 +699,13 @@ export function Alarms() {
   };
 
   return (
-    <div className="row">
-      <div className="col-12">
+    <div className="row g-0 page-fit-viewport">
+      <div className="col-12 h-100">
         <Card
+          className="page-fit-card"
           title={
             <div className="d-flex justify-content-between align-items-center w-100">
-              <span className="d-flex align-items-center gap-2">
-                {t("navigation.alarms")}
-                <TimezoneBadge />
-              </span>
+              <span>{t("navigation.alarms")}</span>
               <div className="d-flex gap-2">
                 <Button
                   variant="warning"

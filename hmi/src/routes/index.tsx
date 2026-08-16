@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { Login } from "../pages/Login";
 import { Signup } from "../pages/Signup";
@@ -21,10 +21,16 @@ import { OperationalLogs } from "../pages/OperationalLogs";
 // import { SCADA } from "../pages/SCADA";
 // import { Performance } from "../pages/Performance";
 import { MainLayout } from "../layouts/MainLayout";
+import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
 
 function ProtectedLayout() {
   const isAuth = useAppSelector((s) => !!s.auth.token);
+  const user = useAppSelector((s) => s.auth.user);
+  const location = useLocation();
   if (!isAuth) return <Navigate to="/login" replace />;
+  if (isSystemUser(user) && location.pathname !== SYSTEM_HOME_PATH) {
+    return <Navigate to={SYSTEM_HOME_PATH} replace />;
+  }
   return (
     <MainLayout>
       <Outlet />

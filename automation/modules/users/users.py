@@ -195,6 +195,17 @@ class Users(Singleton):
                 and session_token != getattr(user, "token", None)
             )
         ]
+        if stale:
+            try:
+                from ...utils.user_session_audit import record_user_session_event
+
+                record_user_session_event(
+                    action="LOGOUT",
+                    user=user,
+                    extra="reason=session_superseded",
+                )
+            except Exception:
+                pass
         for session_token in stale:
             self.active_users.pop(session_token, None)
             if session_token:

@@ -5,6 +5,7 @@ from ..singleton import Singleton
 from functools import wraps
 import logging, jwt
 from ..utils.decorators import decorator
+from ..utils.system_user import is_system_username, system_user_path_allowed
 from ..dbmodels.users import Users
 from ..modules.users.users import Users as CVTUsers
 
@@ -161,6 +162,15 @@ class Api(Singleton):
                 _user, err, status = cls._resolve_session_user(token)
                 if err is not None:
                     return err, status
+                if (
+                    _user is not None
+                    and is_system_username(getattr(_user, "username", None))
+                    and not system_user_path_allowed(request.path)
+                ):
+                    return {
+                        "message": "System user is restricted to user management",
+                        "code": "SYSTEM_USER_RESTRICTED",
+                    }, 403
                 return f(*args, **kwargs)
 
             return decorated

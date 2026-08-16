@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """Audit trail for core ↔ database connection lifecycle.
 
-While the database is down the Events table cannot be written. This auditor
-keeps a small in-memory buffer (one DISCONNECTED, one RECONNECTING, and at
-most one CONNECTION_FAILED per outage) and flushes it when the link returns,
-preserving original timestamps. Reconnect failures are summarized on the
-RECONNECTED event instead of being queued every watchdog cycle.
+The first successful connect at process boot is not a plant event (see
+``system_lifecycle_audit``). This auditor records **runtime** loss and
+recovery of the historian: DISCONNECTED while the app is up, then
+RECONNECTED when the link returns without a process restart.
+
+While the database is down the Events table cannot be written. A small
+in-memory buffer holds DISCONNECTED until the link returns, preserving
+original timestamps. Reconnect failures are summarized on the RECONNECTED
+event instead of being queued every watchdog cycle.
 
 Never include credentials in event descriptions. Never raise into the caller.
 """
@@ -53,6 +57,10 @@ _MESSAGE = {
     "RECONNECTED": "Database reconnected",
     "RECONNECT_FAILED": "Database reconnect failed",
 }
+
+# Initial attach at boot is covered by "System started". Only runtime
+# loss/recovery of an already-live link is written to Events.
+_RUNTIME_ACTIONS = frozenset({"DISCONNECTED", "RECONNECTED"})
 
 _REPLACEABLE_ACTIONS = frozenset({"CONNECTION_FAILED", "RECONNECT_FAILED"})
 _SKIP_ON_RECOVERY = frozenset({"RECONNECT_FAILED"})
@@ -136,18 +144,14 @@ class DatabaseConnectionAuditor:
             with self._lock:
                 self._remember_target(target)
                 self._flush_locked(skip_actions=_SKIP_ON_RECOVERY)
-                action = (
-                    "RECONNECTED"
-                    if self._state == "disconnected" and self._ever_connected
-                    else "CONNECTED"
-                )
-                description = build_db_event_description(
-                    target=self._target,
-                    source=source,
-                    attempts=self._attempts if action == "RECONNECTED" else 0,
-                    error=self._last_error if action == "RECONNECTED" else "",
-                )
-                self._emit_locked(action, description)
+                if self._ever_connected:
+                    description = build_db_event_description(
+                        target=self._target,
+                        source=source,
+                        attempts=self._attempts,
+                        error=self._last_error,
+                    )
+                    self._emit_locked("RECONNECTED", description)
                 self._mark_connected()
         except Exception:
             logging.getLogger("pyautomation").error(
@@ -167,13 +171,16 @@ class DatabaseConnectionAuditor:
                 self._last_error = str(error or "")
                 if self._state == "connected":
                     self._state = "disconnected"
-                description = build_db_event_description(
-                    target=self._target,
-                    source=source,
-                    reason="initial-connect",
-                    error=self._last_error,
-                )
-                self._emit_locked("CONNECTION_FAILED", description)
+                    if self._ever_connected:
+                        description = build_db_event_description(
+                            target=self._target,
+                            source=source,
+                            reason="connect-failed",
+                            error=self._last_error,
+                        )
+                        self._emit_locked("DISCONNECTED", description)
+                elif not self._ever_connected:
+                    return
         except Exception:
             logging.getLogger("pyautomation").error(
                 "Database connect-failure audit failed",
@@ -205,15 +212,6 @@ class DatabaseConnectionAuditor:
             with self._lock:
                 self._remember_target(target)
                 self._attempts += 1
-                if self._state == "connected" or self._attempts != 1:
-                    return
-                description = build_db_event_description(
-                    target=self._target,
-                    source=source,
-                    reason="watchdog-reconnect" if source == "watchdog" else "reconnect",
-                    attempts=self._attempts,
-                )
-                self._emit_locked("RECONNECTING", description)
         except Exception:
             logging.getLogger("pyautomation").error(
                 "Database reconnect-attempt audit failed",
@@ -225,14 +223,14 @@ class DatabaseConnectionAuditor:
             with self._lock:
                 self._remember_target(target)
                 self._flush_locked(skip_actions=_SKIP_ON_RECOVERY)
-                action = "RECONNECTED" if self._ever_connected else "CONNECTED"
-                description = build_db_event_description(
-                    target=self._target,
-                    source=source,
-                    attempts=self._attempts,
-                    error=self._last_error,
-                )
-                self._emit_locked(action, description)
+                if self._ever_connected:
+                    description = build_db_event_description(
+                        target=self._target,
+                        source=source,
+                        attempts=self._attempts,
+                        error=self._last_error,
+                    )
+                    self._emit_locked("RECONNECTED", description)
                 self._mark_connected()
         except Exception:
             logging.getLogger("pyautomation").error(
@@ -305,6 +303,8 @@ class DatabaseConnectionAuditor:
 
     def _emit_locked(self, action: str, description: str, timestamp: Optional[datetime] = None) -> None:
         action_key = action if action in _MESSAGE else "DISCONNECTED"
+        if action_key not in _RUNTIME_ACTIONS:
+            return
         ts = timestamp or datetime.now(timezone.utc)
         persisted = False
         try:
@@ -344,6 +344,8 @@ class DatabaseConnectionAuditor:
             if item.action in skip:
                 continue
             action_key = item.action if item.action in _MESSAGE else "DISCONNECTED"
+            if action_key not in _RUNTIME_ACTIONS:
+                continue
             persisted = False
             try:
                 persisted = bool(

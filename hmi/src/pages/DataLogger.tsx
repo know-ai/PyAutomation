@@ -14,8 +14,8 @@ import {
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
-import { TimezoneBadge } from "../components/TimezoneBadge";
-import { formatDateTimeLocalForBackend } from "../utils/timezone";
+import { formatDateTimeLocalForBackend, formatDateTimeLocalInput } from "../utils/timezone";
+import { readSessionTags, writeSessionTags } from "../utils/sessionFilters";
 
 type PresetDate = 
   | "Last Minute"
@@ -164,10 +164,7 @@ export function DataLogger() {
 
   // Opciones para los filtros
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>(() => {
-    const saved = localStorage.getItem("datalogger_selectedTags");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [selectedTags, setSelectedTags] = useState<string[]>(() => readSessionTags("datalogger_selectedTags"));
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("datalogger_presetDate");
     return (saved as PresetDate) || "Last 30 Minutes";
@@ -207,19 +204,14 @@ export function DataLogger() {
       }
       setAvailableTags(allTags);
 
-      // Seleccionar 3-4 tags por defecto solo si no hay tags guardados
-      if (allTags.length > 0 && selectedTags.length === 0) {
-        const defaultTags = allTags.slice(0, Math.min(4, allTags.length)).map((t) => t.name);
-        setSelectedTags(defaultTags);
-        localStorage.setItem("datalogger_selectedTags", JSON.stringify(defaultTags));
-      } else if (selectedTags.length > 0) {
-        // Validar que los tags guardados aún existan
+      if (selectedTags.length > 0) {
+        // Validar que los tags de esta sesión aún existan
         const validTags = selectedTags.filter(tagName => 
           allTags.some(tag => tag.name === tagName)
         );
         if (validTags.length !== selectedTags.length) {
           setSelectedTags(validTags);
-          localStorage.setItem("datalogger_selectedTags", JSON.stringify(validTags));
+          writeSessionTags("datalogger_selectedTags", validTags);
         }
       }
 
@@ -241,14 +233,7 @@ export function DataLogger() {
   };
 
   // Función helper para convertir Date a formato datetime-local (sin UTC)
-  const formatToLocalDateTime = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
+  const formatToLocalDateTime = (date: Date): string => formatDateTimeLocalInput(date);
 
   const handlePresetDateChange = (preset: PresetDate) => {
     setPresetDate(preset);
@@ -283,21 +268,37 @@ export function DataLogger() {
   };
 
   const handleApplyFilters = () => {
-    // Actualizar los filtros y cargar datos
+    let queryStart = startDate;
+    let queryEnd = endDate;
+    if (presetDate !== "Custom") {
+      const { start, end } = getPresetDateRange(presetDate);
+      queryStart = formatToLocalDateTime(start);
+      queryEnd = formatToLocalDateTime(end);
+      setStartDate(queryStart);
+      setEndDate(queryEnd);
+      localStorage.setItem("datalogger_startDate", queryStart);
+      localStorage.setItem("datalogger_endDate", queryEnd);
+    }
+
     const newFilters = {
       ...filters,
-      page: 1, // Resetear a la primera página al aplicar filtros
+      page: 1,
     };
     setFilters(newFilters);
-    
-    // Cargar datos inmediatamente
-    if (selectedTags.length > 0 && startDate && endDate) {
-      loadTabularDataWithFilters(newFilters);
+
+    if (selectedTags.length > 0 && queryStart && queryEnd) {
+      void loadTabularDataWithFilters(newFilters, queryStart, queryEnd);
     }
   };
 
-  const loadTabularDataWithFilters = async (customFilters?: TabularDataFilter) => {
+  const loadTabularDataWithFilters = async (
+    customFilters?: TabularDataFilter,
+    rangeStart?: string,
+    rangeEnd?: string
+  ) => {
     const filtersToUse = customFilters || filters;
+    const from = rangeStart ?? startDate;
+    const to = rangeEnd ?? endDate;
     
     if (selectedTags.length === 0) {
       setError(t("dataLogger.selectAtLeastOneTag"));
@@ -309,8 +310,8 @@ export function DataLogger() {
     try {
       const payload: TabularDataFilter = {
         tags: selectedTags,
-        greater_than_timestamp: formatDateTimeForBackend(startDate),
-        less_than_timestamp: formatDateTimeForBackend(endDate),
+        greater_than_timestamp: formatDateTimeForBackend(from),
+        less_than_timestamp: formatDateTimeForBackend(to),
         sample_time: sampleTimeToSeconds(sampleTime),
         page: filtersToUse.page || 1,
         limit: filtersToUse.limit || 20,
@@ -355,7 +356,7 @@ export function DataLogger() {
 
   const handleSelectedTagsChange = (next: string[]) => {
     setSelectedTags(next);
-    localStorage.setItem("datalogger_selectedTags", JSON.stringify(next));
+    writeSessionTags("datalogger_selectedTags", next);
   };
 
   const tagOptions = useMemo(
@@ -463,14 +464,14 @@ export function DataLogger() {
   };
 
   return (
-    <div className="row">
-      <div className="col-12">
+    <div className="row g-0 page-fit-viewport">
+      <div className="col-12 h-100">
         <Card
+          className="page-fit-card"
           title={
             <div className="card-header-stack w-100">
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.dataLogger")}</span>
-                <TimezoneBadge />
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="d-flex align-items-center gap-1">
                     <label className="form-label small mb-0 me-1">{t("dataLogger.tagNames")}:</label>
@@ -547,6 +548,7 @@ export function DataLogger() {
                     <label className="form-label small mb-0 me-1">{t("dataLogger.start")}:</label>
                     <input
                       type="datetime-local"
+                      step="1"
                       className="form-control form-control-sm"
                       style={{ width: "180px", maxWidth: "100%" }}
                       value={startDate}
@@ -560,6 +562,7 @@ export function DataLogger() {
                     <label className="form-label small mb-0 me-1">{t("dataLogger.end")}:</label>
                     <input
                       type="datetime-local"
+                      step="1"
                       className="form-control form-control-sm"
                       style={{ width: "180px", maxWidth: "100%" }}
                       value={endDate}
@@ -649,9 +652,9 @@ export function DataLogger() {
           )}
 
           {!loading && tabularData && (
-            <div className="table-responsive" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+            <div className="table-responsive">
               <table className="table table-striped table-hover table-sm">
-                <thead className="table-light" style={{ position: "sticky", top: 0, zIndex: 10 }}>
+                <thead>
                   <tr>
                     {tabularData.display_names && tabularData.display_names.length > 0
                       ? tabularData.display_names.map((name, idx) => (

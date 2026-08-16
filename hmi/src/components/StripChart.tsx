@@ -204,7 +204,9 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
       plot_bgcolor: mode === "dark" ? "#2c3034" : "#f8f9fa",
       font: { color: mode === "dark" ? "#ffffff" : "#212529" },
       xaxis: {
-        // Sin título "Tiempo": el datetime del eje ya lo indica y libera espacio.
+        type: "date",
+        tickformat: "%H:%M:%S",
+        hoverformat: "%H:%M:%S",
         color: mode === "dark" ? "#ffffff" : "#212529",
         gridcolor: mode === "dark" ? "#495057" : "#dee2e6",
       },

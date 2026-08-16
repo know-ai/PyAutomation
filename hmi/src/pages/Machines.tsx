@@ -523,9 +523,55 @@ export function Machines() {
   );
 
   return (
-    <div className="row">
-      <div className="col-12">
-        <Card title={cardTitle}>
+    <div className="row g-0 page-fit-viewport">
+      <div className="col-12 h-100">
+        <Card
+          className="page-fit-card"
+          title={cardTitle}
+          footer={
+            <div className="d-flex justify-content-between align-items-center">
+              <div>
+                <span className="text-muted">
+                  {t("pagination.showing", {
+                    start: machines.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1,
+                    end: Math.min(currentPage * ITEMS_PER_PAGE, machines.length),
+                    total: machines.length,
+                    item: t("pagination.items.machines"),
+                  })}
+                </span>
+              </div>
+              <nav>
+                <ul className="pagination mb-0">
+                  <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
+                    <button
+                      className="page-link"
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      {t("pagination.previous")}
+                    </button>
+                  </li>
+                  {Array.from({ length: Math.max(1, totalPages) }, (_, i) => i + 1).map((page) => (
+                    <li key={page} className={`page-item ${currentPage === page ? "active" : ""}`}>
+                      <button className="page-link" onClick={() => setCurrentPage(page)}>
+                        {page}
+                      </button>
+                    </li>
+                  ))}
+                  <li className={`page-item ${currentPage === Math.max(1, totalPages) ? "disabled" : ""}`}>
+                    <button
+                      className="page-link"
+                      onClick={() => setCurrentPage((prev) => Math.min(Math.max(1, totalPages), prev + 1))}
+                      disabled={currentPage === Math.max(1, totalPages)}
+                    >
+                      {t("pagination.next")}
+                    </button>
+                  </li>
+                </ul>
+              </nav>
+            </div>
+          }
+        >
           {error && (
             <div className="alert alert-danger" role="alert">
               {error}
@@ -545,8 +591,7 @@ export function Machines() {
               <p className="text-muted">{t("machines.noMachinesAvailable")}</p>
             </div>
           ) : (
-            <>
-              <div className="table-responsive">
+            <div className="table-responsive">
                 <table className="table table-striped table-hover" style={{ fontSize: "0.875rem" }}>
                   <thead>
                     <tr>
@@ -691,53 +736,7 @@ export function Machines() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-
-              {/* Paginación */}
-              {totalPages > 1 && (
-                <div className="d-flex justify-content-between align-items-center mt-3">
-                  <div>
-                    <span className="text-muted">
-                      {t("pagination.showing", {
-                        start: (currentPage - 1) * ITEMS_PER_PAGE + 1,
-                        end: Math.min(currentPage * ITEMS_PER_PAGE, machines.length),
-                        total: machines.length,
-                        item: t("pagination.items.machines"),
-                      })}
-                    </span>
-                  </div>
-                  <nav>
-                    <ul className="pagination mb-0">
-                      <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
-                        <button
-                          className="page-link"
-                          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                          disabled={currentPage === 1}
-                        >
-                          {t("pagination.previous")}
-                        </button>
-                      </li>
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                        <li key={page} className={`page-item ${currentPage === page ? "active" : ""}`}>
-                          <button className="page-link" onClick={() => setCurrentPage(page)}>
-                            {page}
-                          </button>
-                        </li>
-                      ))}
-                      <li className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}>
-                        <button
-                          className="page-link"
-                          onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                          disabled={currentPage === totalPages}
-                        >
-                          {t("pagination.next")}
-                        </button>
-                      </li>
-                    </ul>
-                  </nav>
-                </div>
-              )}
-            </>
+            </div>
           )}
         </Card>
       </div>

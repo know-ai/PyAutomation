@@ -185,10 +185,34 @@ export function OpcUaServer() {
     </div>
   );
 
+  const showingStart = attributes.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const showingEnd = Math.min(currentPage * ITEMS_PER_PAGE, attributes.length);
+
   return (
-    <div className="row">
-      <div className="col-12">
-        <Card title={cardTitle}>
+    <div className="row g-0 page-fit-viewport">
+      <div className="col-12 h-100">
+        <Card
+          className="page-fit-card"
+          title={cardTitle}
+          footer={
+            <div className="d-flex justify-content-between align-items-center">
+              <span className="small text-muted">
+                {t("pagination.showing", {
+                  start: showingStart,
+                  end: showingEnd,
+                  total: attributes.length,
+                  item: t("pagination.items.attributes"),
+                })}
+              </span>
+              <PaginationNav
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                disabled={loading}
+              />
+            </div>
+          }
+        >
           {error && (
             <div className="alert alert-danger" role="alert">
               {error}
@@ -208,69 +232,47 @@ export function OpcUaServer() {
               <p className="text-muted">{t("opcuaServer.noAttributesAvailable")}</p>
             </div>
           ) : (
-            <>
-              <div className="table-responsive">
-                <table className="table table-striped table-hover" style={{ fontSize: "0.875rem" }}>
-                  <thead>
-                    <tr>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.name")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.nodeNamespace")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.accessType")}</th>
+            <div className="table-responsive">
+              <table className="table table-striped table-hover" style={{ fontSize: "0.875rem" }}>
+                <thead>
+                  <tr>
+                    <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.name")}</th>
+                    <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.nodeNamespace")}</th>
+                    <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.accessType")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedAttributes.map((attribute) => (
+                    <tr key={attribute.namespace} style={{ height: "auto" }}>
+                      <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>{attribute.name}</td>
+                      <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
+                        <code style={{ fontSize: "0.8rem" }}>{attribute.namespace}</code>
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
+                        <select
+                          className="form-select form-select-sm"
+                          value={attribute.access_type}
+                          onChange={(e) =>
+                            handleAccessTypeChange(
+                              attribute,
+                              e.target.value as "Read" | "Write" | "ReadWrite"
+                            )
+                          }
+                          disabled={updatingNamespace === attribute.namespace}
+                          style={{ minWidth: "120px", padding: "0.25rem 0.5rem", fontSize: "0.8rem" }}
+                        >
+                          {ACCESS_TYPE_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {t(`opcuaServer.accessType.${option}`)}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedAttributes.map((attribute) => (
-                      <tr key={attribute.namespace} style={{ height: "auto" }}>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>{attribute.name}</td>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          <code style={{ fontSize: "0.8rem" }}>{attribute.namespace}</code>
-                        </td>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          <select
-                            className="form-select form-select-sm"
-                            value={attribute.access_type}
-                            onChange={(e) =>
-                              handleAccessTypeChange(
-                                attribute,
-                                e.target.value as "Read" | "Write" | "ReadWrite"
-                              )
-                            }
-                            disabled={updatingNamespace === attribute.namespace}
-                            style={{ minWidth: "120px", padding: "0.25rem 0.5rem", fontSize: "0.8rem" }}
-                          >
-                            {ACCESS_TYPE_OPTIONS.map((option) => (
-                              <option key={option} value={option}>
-                                {t(`opcuaServer.accessType.${option}`)}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Paginación */}
-              {totalPages > 1 && (
-                <div className="pagination-toolbar mt-3">
-                  <span className="text-muted">
-                    {t("pagination.showing", {
-                      start: (currentPage - 1) * ITEMS_PER_PAGE + 1,
-                      end: Math.min(currentPage * ITEMS_PER_PAGE, attributes.length),
-                      total: attributes.length,
-                      item: t("pagination.items.attributes"),
-                    })}
-                  </span>
-                  <PaginationNav
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    onPageChange={setCurrentPage}
-                    disabled={loading}
-                  />
-                </div>
-              )}
-            </>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </div>

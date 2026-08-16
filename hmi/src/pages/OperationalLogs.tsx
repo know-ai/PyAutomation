@@ -14,8 +14,7 @@ import { getAlarms, type Alarm } from "../services/alarms";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
-import { TimezoneBadge } from "../components/TimezoneBadge";
-import { formatDateTimeLocalForBackend } from "../utils/timezone";
+import { formatDateTimeLocalForBackend, formatDateTimeLocalInput } from "../utils/timezone";
 
 type PresetDate = 
   | "Last Hour"
@@ -130,14 +129,7 @@ export function OperationalLogs() {
   }, [filters, timeZone]);
 
   // Función helper para convertir Date a formato datetime-local (sin UTC)
-  const formatToLocalDateTime = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
+  const formatToLocalDateTime = (date: Date): string => formatDateTimeLocalInput(date);
 
   // Función para convertir el formato de fecha del input al formato esperado por el backend
   const formatDateTimeForBackend = (dateTimeString: string): string => {
@@ -227,6 +219,15 @@ export function OperationalLogs() {
   };
 
   const handleApplyFilters = () => {
+    if (presetDate !== "Custom") {
+      const { start, end } = getPresetDateRange(presetDate);
+      const startStr = formatToLocalDateTime(start);
+      const endStr = formatToLocalDateTime(end);
+      setStartDate(startStr);
+      setEndDate(endStr);
+      localStorage.setItem("operational_logs_startDate", startStr);
+      localStorage.setItem("operational_logs_endDate", endStr);
+    }
     const newFilters = {
       ...filters,
       page: 1,
@@ -453,14 +454,14 @@ export function OperationalLogs() {
   };
 
   return (
-    <div className="row">
-      <div className="col-12">
+    <div className="row g-0 page-fit-viewport">
+      <div className="col-12 h-100">
         <Card
+          className="page-fit-card"
           title={
             <div className="card-header-stack w-100">
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.operationalLogs")}</span>
-                <TimezoneBadge />
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="d-flex align-items-center gap-1">
                     <label className="form-label small mb-0 me-1">
@@ -555,6 +556,7 @@ export function OperationalLogs() {
                     </label>
                     <input
                       type="datetime-local"
+                      step="1"
                       className="form-control form-control-sm"
                       style={{ width: "180px", maxWidth: "100%" }}
                       value={startDate}
@@ -570,6 +572,7 @@ export function OperationalLogs() {
                     </label>
                     <input
                       type="datetime-local"
+                      step="1"
                       className="form-control form-control-sm"
                       style={{ width: "180px", maxWidth: "100%" }}
                       value={endDate}
@@ -659,9 +662,9 @@ export function OperationalLogs() {
           )}
 
           {!loading && (
-            <div className="table-responsive" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+            <div className="table-responsive">
               <table className="table table-striped table-hover table-sm">
-                <thead className="table-light" style={{ position: "sticky", top: 0, zIndex: 10 }}>
+                <thead>
                   <tr>
                     <th>{t("tables.id")}</th>
                     <th>{t("tables.timestamp")}</th>

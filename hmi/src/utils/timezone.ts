@@ -74,6 +74,11 @@ export function getTimeZoneParts(date: Date, timeZone: string): DateParts {
 const pad2 = (value: number): string => String(value).padStart(2, "0");
 const pad3 = (value: number): string => String(value).padStart(3, "0");
 
+/** Value for `<input type="datetime-local" step="1">` including seconds. */
+export function formatDateTimeLocalInput(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
 export function formatInstantForBackend(date: Date, timeZone: string): string {
   const parts = getTimeZoneParts(date, timeZone);
   return `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)} ${pad2(parts.hour)}:${pad2(parts.minute)}:${pad2(parts.second)}.00`;

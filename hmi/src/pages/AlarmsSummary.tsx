@@ -13,8 +13,7 @@ import { createLog } from "../services/logs";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
-import { TimezoneBadge } from "../components/TimezoneBadge";
-import { formatDateTimeLocalForBackend } from "../utils/timezone";
+import { formatDateTimeLocalForBackend, formatDateTimeLocalInput } from "../utils/timezone";
 
 type PresetDate = 
   | "Last Hour"
@@ -161,14 +160,7 @@ export function AlarmsSummary() {
   }, [contextMenu.visible]);
 
   // Función helper para convertir Date a formato datetime-local (sin UTC)
-  const formatToLocalDateTime = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
+  const formatToLocalDateTime = (date: Date): string => formatDateTimeLocalInput(date);
 
   // Función para convertir el formato de fecha del input al formato esperado por el backend
   const formatDateTimeForBackend = (dateTimeString: string): string => {
@@ -258,9 +250,18 @@ export function AlarmsSummary() {
   };
 
   const handleApplyFilters = () => {
+    if (presetDate !== "Custom") {
+      const { start, end } = getPresetDateRange(presetDate);
+      const startStr = formatToLocalDateTime(start);
+      const endStr = formatToLocalDateTime(end);
+      setStartDate(startStr);
+      setEndDate(endStr);
+      localStorage.setItem("alarms_summary_startDate", startStr);
+      localStorage.setItem("alarms_summary_endDate", endStr);
+    }
     const newFilters = {
       ...filters,
-      page: 1, // Resetear a la primera página al aplicar filtros
+      page: 1,
     };
     setFilters(newFilters);
     localStorage.setItem("alarms_summary_page", "1");
@@ -610,14 +611,14 @@ export function AlarmsSummary() {
   };
 
   return (
-    <div className="row">
-      <div className="col-12">
+    <div className="row g-0 page-fit-viewport">
+      <div className="col-12 h-100">
         <Card
+          className="page-fit-card"
           title={
             <div className="card-header-stack w-100">
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.alarmsSummary")}</span>
-                <TimezoneBadge />
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="d-flex align-items-center gap-1">
                     <label className="form-label small mb-0 me-1">{t("alarmsSummary.state")}:</label>
@@ -673,6 +674,7 @@ export function AlarmsSummary() {
                     <label className="form-label small mb-0 me-1">{t("alarmsSummary.start")}:</label>
                     <input
                       type="datetime-local"
+                      step="1"
                       className="form-control form-control-sm"
                       style={{ width: "180px", maxWidth: "100%" }}
                       value={startDate}
@@ -686,6 +688,7 @@ export function AlarmsSummary() {
                     <label className="form-label small mb-0 me-1">{t("alarmsSummary.end")}:</label>
                     <input
                       type="datetime-local"
+                      step="1"
                       className="form-control form-control-sm"
                       style={{ width: "180px", maxWidth: "100%" }}
                       value={endDate}

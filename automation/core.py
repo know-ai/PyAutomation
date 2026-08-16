@@ -32,6 +32,7 @@ from .dbmodels.core import BaseModel
 from .utils.decorators import validate_types, logging_error_handler
 from .utils import _colorize_message
 from .utils.db_audit import database_connection_auditor, summarize_db_config
+from .utils.system_lifecycle_audit import record_system_started
 from .utils.log_filters import (
     DedupeFilter,
     DEFAULT_COOLDOWN_S,
@@ -116,31 +117,19 @@ class PyAutomation(Singleton):
         self.das = DAS()
         self.sio = None
         self.server = None
-        folder_path = os.path.join(".", "logs")
+        def _ensure_dir(path: str) -> None:
+            try:
+                os.makedirs(path, exist_ok=True)
+            except OSError:
+                # Distroless nonroot: el volumen puede ser del host (uid 1000 vs 65532).
+                pass
 
-        if not os.path.exists(folder_path):
-            
-            os.makedirs(folder_path)
+        _ensure_dir(os.path.join(".", "logs"))
+        _ensure_dir(os.path.join(".", "db"))
+        _ensure_dir(os.path.join(".", "db", "backups"))
+        _ensure_dir(os.path.join(".", "ssl"))
 
-        folder_db = os.path.join(".", "db")
-
-        if not os.path.exists(folder_db):
-            
-            os.makedirs(folder_db)
-
-        folder_db_backups = os.path.join(".", "db", "backups")
-
-        if not os.path.exists(folder_db_backups):
-            
-            os.makedirs(folder_db_backups)
-
-        folder_ssl = os.path.join(".", "ssl")
-
-        if not os.path.exists(folder_ssl):
-            
-            os.makedirs(folder_ssl)
-
-        self.set_log(file=os.path.join(folder_path, "app.log") ,level=logging.WARNING)
+        self.set_log(file=os.path.join(".", "logs", "app.log") ,level=logging.WARNING)
         self.__log_histories = False
         self._db_live = False
 
@@ -4054,7 +4043,8 @@ class PyAutomation(Singleton):
             tag:str=None,
             description:str=None,
             alarm_type:str=None,
-            trigger_value:int|float=None)->None:
+            trigger_value:int|float=None,
+            user:User=None)->None:
         r"""
         Updates the properties of an existing alarm.
 
@@ -4089,7 +4079,8 @@ class PyAutomation(Singleton):
             tag=tag,
             description=description,
             alarm_type=alarm_type,
-            trigger_value=trigger_value
+            trigger_value=trigger_value,
+            user=user,
         )
         # Persist Tag on Database
         if self.is_db_connected():
@@ -4537,6 +4528,7 @@ class PyAutomation(Singleton):
         else:
             logging.critical("Database is not connected, skipping system user creation")
             print(_colorize_message(f"[{str_date}] [CRITICAL] Database is not connected, skipping system user creation", "CRITICAL"))
+        record_system_started()
 
     @logging_error_handler
     def create_system_user(self):
@@ -4784,17 +4776,34 @@ class PyAutomation(Singleton):
         log_format = "%(asctime)s:%(levelname)s:%(message)s"
         formatter = logging.Formatter(log_format)
 
-        handler = RotatingFileHandler(
-            filename=self._log_file,
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-            encoding="utf-8",
+        to_stdout = str(os.environ.get("AUTOMATION_LOG_TO_STDOUT", "")).strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
         )
-        handler.setFormatter(formatter)
-        root_logger.addHandler(handler)
+        log_file = str(os.environ.get("AUTOMATION_LOG_FILE", "")).strip()
+        if not log_file and not to_stdout:
+            log_file = self._log_file
+
+        if log_file:
+            try:
+                log_dir = os.path.dirname(log_file)
+                if log_dir:
+                    os.makedirs(log_dir, exist_ok=True)
+                handler = RotatingFileHandler(
+                    filename=log_file,
+                    maxBytes=max_bytes,
+                    backupCount=backup_count,
+                    encoding="utf-8",
+                )
+                handler.setFormatter(formatter)
+                root_logger.addHandler(handler)
+            except OSError:
+                to_stdout = True
 
         stream_handler = logging.StreamHandler(sys.stdout)
-        stream_handler.setLevel(logging.ERROR)
+        stream_handler.setLevel(self._logging_level)
         stream_handler.setFormatter(formatter)
         root_logger.addHandler(stream_handler)
 

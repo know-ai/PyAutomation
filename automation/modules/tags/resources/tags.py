@@ -469,7 +469,8 @@ class AddTagResource(Resource):
                 frozen_data_detection=payload.get('frozen_data_detection', False),
                 segment=payload.get('segment', ''),
                 manufacturer=payload.get('manufacturer', ''),
-                kp=payload.get('kp')
+                kp=payload.get('kp'),
+                user=Api.get_current_user(),
             )
             
             if tag:
@@ -537,7 +538,11 @@ class UpdateTagResource(Resource):
             }, 400
         
         try:
-            updated_tag, message = app.update_tag(id=tag_id, **update_kwargs)
+            updated_tag, message = app.update_tag(
+                id=tag_id,
+                user=Api.get_current_user(),
+                **update_kwargs,
+            )
             
             if updated_tag:
                 return {
@@ -581,7 +586,7 @@ class DeleteTagResource(Resource):
             }, 404
         
         try:
-            result = app.delete_tag_by_name(name=tag_name)
+            result = app.delete_tag_by_name(name=tag_name, user=Api.get_current_user())
             
             if result:
                 # If result is a string, it's an error message

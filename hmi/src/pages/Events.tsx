@@ -14,8 +14,7 @@ import { createLog } from "../services/logs";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
-import { TimezoneBadge } from "../components/TimezoneBadge";
-import { formatDateTimeLocalForBackend } from "../utils/timezone";
+import { formatDateTimeLocalForBackend, formatDateTimeLocalInput } from "../utils/timezone";
 
 type PresetDate = 
   | "Last Hour"
@@ -35,6 +34,21 @@ const PRESET_DATES: PresetDate[] = [
   "Last Month",
   "Custom",
 ];
+
+/** Backend sends `%f` microseconds (6 digits). Table shows a single fractional second. */
+function formatEventTimestamp(value?: string | null): string {
+  if (!value) return "-";
+  const dot = value.lastIndexOf(".");
+  if (dot === -1) return `${value}.0`;
+  const fraction = value.slice(dot + 1).replace(/\D.*$/, "");
+  const suffix = value.slice(dot + 1).slice(fraction.length);
+  return `${value.slice(0, dot)}.${(fraction + "0").slice(0, 1)}${suffix}`;
+}
+
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+}
 
 // Calcular fecha basada en preset
 const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
@@ -143,6 +157,7 @@ export function Events() {
   const [selectedEventForComments, setSelectedEventForComments] = useState<Event | null>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
+  const [selectedEventDetail, setSelectedEventDetail] = useState<Event | null>(null);
 
   // Cargar opciones para los filtros
   useEffect(() => {
@@ -171,14 +186,7 @@ export function Events() {
   }, [contextMenu.visible]);
 
   // Función helper para convertir Date a formato datetime-local (sin UTC)
-  const formatToLocalDateTime = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
+  const formatToLocalDateTime = (date: Date): string => formatDateTimeLocalInput(date);
 
   // Función para convertir el formato de fecha del input al formato esperado por el backend
   const formatDateTimeForBackend = (dateTimeString: string): string => {
@@ -265,6 +273,15 @@ export function Events() {
   };
 
   const handleApplyFilters = () => {
+    if (presetDate !== "Custom") {
+      const { start, end } = getPresetDateRange(presetDate);
+      const startStr = formatToLocalDateTime(start);
+      const endStr = formatToLocalDateTime(end);
+      setStartDate(startStr);
+      setEndDate(endStr);
+      localStorage.setItem("events_startDate", startStr);
+      localStorage.setItem("events_endDate", endStr);
+    }
     const newFilters = {
       ...filters,
       page: 1,
@@ -637,14 +654,14 @@ export function Events() {
   };
 
   return (
-    <div className="row">
-      <div className="col-12">
+    <div className="row g-0 page-fit-viewport">
+      <div className="col-12 h-100">
         <Card
+          className="page-fit-card"
           title={
             <div className="card-header-stack w-100">
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.events")}</span>
-                <TimezoneBadge />
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <div className="d-flex align-items-center gap-1">
                     <label className="form-label small mb-0 me-1">
@@ -744,6 +761,7 @@ export function Events() {
                     </label>
                     <input
                       type="datetime-local"
+                      step="1"
                       className="form-control form-control-sm"
                       style={{ width: "180px", maxWidth: "100%" }}
                       value={startDate}
@@ -759,6 +777,7 @@ export function Events() {
                     </label>
                     <input
                       type="datetime-local"
+                      step="1"
                       className="form-control form-control-sm"
                       style={{ width: "180px", maxWidth: "100%" }}
                       value={endDate}
@@ -848,15 +867,14 @@ export function Events() {
           )}
 
           {!loading && (
-            <div className="table-responsive" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+            <div className="table-responsive">
               <table className="table table-striped table-hover table-sm">
-                <thead className="table-light" style={{ position: "sticky", top: 0, zIndex: 10 }}>
+                <thead>
                   <tr>
                     <th>{t("tables.id")}</th>
                     <th>{t("tables.timestamp")}</th>
                     <th>{t("tables.user")}</th>
                     <th>{t("tables.message")}</th>
-                    <th>{t("tables.description")}</th>
                     <th>{t("tables.classification")}</th>
                     <th>{t("tables.priority")}</th>
                     <th>{t("tables.criticity")}</th>
@@ -866,7 +884,7 @@ export function Events() {
                 <tbody>
                   {events.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="text-center text-muted py-4">
+                      <td colSpan={8} className="text-center text-muted py-4">
                         {t("events.noEvents")}
                       </td>
                     </tr>
@@ -875,13 +893,14 @@ export function Events() {
                       <tr
                         key={event.id}
                         onContextMenu={(e) => handleRowContextMenu(e, event)}
-                        style={{ cursor: "context-menu" }}
+                        onDoubleClick={() => setSelectedEventDetail(event)}
+                        style={{ cursor: "pointer" }}
+                        title={t("events.detailHint")}
                       >
                         <td>{event.id || "-"}</td>
-                        <td>{event.timestamp || "-"}</td>
+                        <td>{formatEventTimestamp(event.timestamp)}</td>
                         <td>{event.user?.username || event.username || "-"}</td>
                         <td>{event.message || "-"}</td>
-                        <td>{event.description || "-"}</td>
                         <td>{event.classification || "-"}</td>
                         <td>
                           {event.priority !== null && event.priority !== undefined ? (
@@ -899,11 +918,15 @@ export function Events() {
                         </td>
                         <td>
                           {event.has_comments ? (
-                            <i 
-                              className="bi bi-check-circle text-success" 
+                            <i
+                              className="bi bi-check-circle text-success"
                               title={t("events.hasCommentsClick")}
                               style={{ cursor: "pointer" }}
-                              onClick={() => handleViewComments(event)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewComments(event);
+                              }}
+                              onDoubleClick={(e) => e.stopPropagation()}
                             ></i>
                           ) : (
                             <i className="bi bi-x-circle text-muted" title={t("events.noComments")}></i>
@@ -1087,6 +1110,98 @@ export function Events() {
                         setComments([]);
                       }}
                     >
+                      {t("events.close")}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {selectedEventDetail && (
+            <div
+              className="modal show d-block"
+              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+              onClick={() => setSelectedEventDetail(null)}
+            >
+              <div className="modal-dialog modal-lg modal-dialog-scrollable" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">
+                      {t("events.detailTitle", { id: selectedEventDetail.id || "N/A" })}
+                    </h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      onClick={() => setSelectedEventDetail(null)}
+                    ></button>
+                  </div>
+                  <div className="modal-body">
+                    <dl className="row mb-0">
+                      <dt className="col-sm-4">{t("tables.id")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.id)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.timestamp")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.timestamp)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.user")}</dt>
+                      <dd className="col-sm-8">
+                        {displayValue(selectedEventDetail.user?.username || selectedEventDetail.username)}
+                      </dd>
+
+                      <dt className="col-sm-4">{t("tables.name")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.user?.name)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.lastname")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.user?.lastname)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.email")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.user?.email)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.role")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.user?.role?.name)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.message")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.message)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.description")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.description)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.classification")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.classification)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.priority")}</dt>
+                      <dd className="col-sm-8">
+                        {selectedEventDetail.priority !== null && selectedEventDetail.priority !== undefined ? (
+                          <span className="badge bg-info">{selectedEventDetail.priority}</span>
+                        ) : (
+                          "-"
+                        )}
+                      </dd>
+
+                      <dt className="col-sm-4">{t("tables.criticity")}</dt>
+                      <dd className="col-sm-8">
+                        {selectedEventDetail.criticity !== null && selectedEventDetail.criticity !== undefined ? (
+                          <span className="badge bg-warning">{selectedEventDetail.criticity}</span>
+                        ) : (
+                          "-"
+                        )}
+                      </dd>
+
+                      <dt className="col-sm-4">{t("tables.segment")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.segment)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.manufacturer")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedEventDetail.manufacturer)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.comments")}</dt>
+                      <dd className="col-sm-8">
+                        {selectedEventDetail.has_comments ? t("common.yes") : t("common.no")}
+                      </dd>
+                    </dl>
+                  </div>
+                  <div className="modal-footer">
+                    <Button variant="secondary" onClick={() => setSelectedEventDetail(null)}>
                       {t("events.close")}
                     </Button>
                   </div>

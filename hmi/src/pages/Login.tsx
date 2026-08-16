@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { AuthLayout } from "../layouts/AuthLayout";
-import { Card } from "../components/Card";
-import { Input } from "../components/Input";
 import { Button } from "../components/Button";
 import { DatabaseConfigForm } from "../components/DatabaseConfigForm";
 import { login } from "../services/auth";
@@ -10,6 +8,69 @@ import { useAppDispatch } from "../hooks/useAppDispatch";
 import { loginFailure, loginStart, loginSuccess } from "../store/slices/authSlice";
 import { showToast } from "../utils/toast";
 import { useTranslation } from "../hooks/useTranslation";
+import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
+
+const DATABASE_ERROR_HINTS = [
+  "connecting database error",
+  "database is not configured",
+  "cannot connect to the database",
+  "database connection",
+  "connection to server",
+  "database_connection_error",
+];
+
+type LoginErrorKey =
+  | "auth.invalidCredentials"
+  | "auth.loginError"
+  | "auth.networkError"
+  | "auth.databaseUnavailable"
+  | "auth.tooManyAttempts"
+  | "auth.tokenNotReceived";
+
+function extractBackendText(err: unknown): string {
+  const data = (err as { response?: { data?: unknown } })?.response?.data;
+  if (typeof data === "string") return data;
+  if (data && typeof data === "object") {
+    const payload = data as { message?: unknown; detail?: unknown; error?: unknown; error_type?: unknown };
+    const parts = [payload.message, payload.detail, payload.error, payload.error_type];
+    return parts.filter((part): part is string => typeof part === "string").join(" ");
+  }
+  const message = (err as { message?: unknown })?.message;
+  return typeof message === "string" ? message : "";
+}
+
+function resolveLoginError(err: unknown): { kind: "database" | "credentials"; key: LoginErrorKey } {
+  const axiosErr = err as {
+    response?: { status?: number; data?: { error_type?: string } };
+    code?: string;
+  };
+  const status = axiosErr?.response?.status;
+  const errorType = axiosErr?.response?.data?.error_type;
+  const backendText = extractBackendText(err).toLowerCase();
+
+  const isDatabaseError =
+    status === 503 ||
+    errorType === "database_connection_error" ||
+    DATABASE_ERROR_HINTS.some((hint) => backendText.includes(hint));
+
+  if (isDatabaseError) {
+    return { kind: "database", key: "auth.databaseUnavailable" };
+  }
+
+  if (!axiosErr?.response || axiosErr.code === "ECONNABORTED" || axiosErr.code === "ERR_NETWORK") {
+    return { kind: "credentials", key: "auth.networkError" };
+  }
+
+  if (status === 429) {
+    return { kind: "credentials", key: "auth.tooManyAttempts" };
+  }
+
+  if (status === 401 || status === 403 || errorType === "authentication_error") {
+    return { kind: "credentials", key: "auth.invalidCredentials" };
+  }
+
+  return { kind: "credentials", key: "auth.loginError" };
+}
 
 export function Login() {
   const { t } = useTranslation();
@@ -17,12 +78,14 @@ export function Login() {
   const dispatch = useAppDispatch();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [errorKey, setErrorKey] = useState<LoginErrorKey | null>(null);
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(false);
   const [showDatabaseConfig, setShowDatabaseConfig] = useState(false);
 
-  // Verificar si hay un toast pendiente al cargar la página
+  const credentialsInvalid = errorKey === "auth.invalidCredentials";
+
   useEffect(() => {
     const showPendingToast = () => {
       try {
@@ -30,11 +93,9 @@ export function Login() {
         if (pendingToast) {
           const toastData = JSON.parse(pendingToast);
           sessionStorage.removeItem("pendingToast");
-          // Si tiene messageKey, traducirlo; si tiene message, usarlo directamente
           const message = toastData.messageKey ? t(toastData.messageKey) : toastData.message;
           const type = toastData.type || "warning";
           const duration = toastData.duration || 0;
-          // Mostrar el toast después de asegurar que el DOM esté completamente listo
           showToast(message, type, duration);
         }
       } catch (_e) {
@@ -42,7 +103,6 @@ export function Login() {
       }
     };
 
-    // Usar requestAnimationFrame para asegurar que el DOM esté listo
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         setTimeout(showPendingToast, 100);
@@ -50,51 +110,39 @@ export function Login() {
     });
   }, [t]);
 
+  const clearError = () => {
+    if (errorKey) {
+      setErrorKey(null);
+    }
+  };
+
   const attemptLogin = async () => {
-    setError(null);
+    setErrorKey(null);
     setLoading(true);
     dispatch(loginStart());
     try {
       const resp = await login({ username, password });
       const token = resp?.apiKey || resp?.token || resp?.api_key || null;
-      const user = resp?.user || { username };
-      if (!token) throw new Error(t("auth.tokenNotReceived"));
-      dispatch(loginSuccess({ token, user }));
-      navigate("/communications");
-    } catch (err: any) {
-      const status = err?.response?.status;
-      const data = err?.response?.data;
-      const backendMessage =
-        (typeof data === "string" ? data : undefined) ??
-        data?.message ??
-        data?.detail ??
-        data?.error ??
-        err?.message;
-
-      // Detectar errores de conexión a la base de datos
-      const isDatabaseError = backendMessage && (
-        backendMessage.includes("CONNECTING DATABASE ERROR") ||
-        backendMessage.includes("Database is not configured") ||
-        backendMessage.includes("Cannot connect to the database") ||
-        backendMessage.includes("Database connection") ||
-        backendMessage.includes("connection to server")
-      );
-
-      if (isDatabaseError) {
-        // Mostrar formulario de configuración de base de datos
-        setShowDatabaseConfig(true);
-        setError(backendMessage);
-      } else {
-      let message: string;
-      if (status === 401) {
-        // Credenciales inválidas u otro error de autenticación
-        message = backendMessage || t("auth.invalidCredentials");
-      } else {
-        // Cualquier otro error: mostrar mensaje del backend si existe
-        message = backendMessage || t("auth.loginError");
+      const user = resp?.user || {
+        username: resp?.username || username,
+        role: resp?.role,
+      };
+      if (!token) {
+        setErrorKey("auth.tokenNotReceived");
+        dispatch(loginFailure("auth.tokenNotReceived"));
+        return;
       }
-      setError(message);
-      dispatch(loginFailure(message));
+      dispatch(loginSuccess({ token, user }));
+      navigate(isSystemUser(user) ? SYSTEM_HOME_PATH : "/communications");
+    } catch (err: unknown) {
+      const resolved = resolveLoginError(err);
+      if (resolved.kind === "database") {
+        setShowDatabaseConfig(true);
+        setErrorKey(null);
+        dispatch(loginFailure(resolved.key));
+      } else {
+        setErrorKey(resolved.key);
+        dispatch(loginFailure(resolved.key));
       }
     } finally {
       setLoading(false);
@@ -107,10 +155,8 @@ export function Login() {
   };
 
   const handleDatabaseConnectionSuccess = () => {
-    // Cuando la conexión a la base de datos sea exitosa, intentar login nuevamente
     setShowDatabaseConfig(false);
-    setError(null);
-    // Esperar un momento para que la conexión se establezca completamente
+    setErrorKey(null);
     setTimeout(() => {
       attemptLogin();
     }, 500);
@@ -132,22 +178,36 @@ export function Login() {
           <p className="mb-0 text-muted">{t("auth.loginToContinue")}</p>
         </div>
         <div className="card-body login-card-body">
-          <form onSubmit={handleSubmit} className="mb-3">
+          <form onSubmit={handleSubmit} className="mb-3" noValidate>
+            {errorKey && (
+              <div className="login-feedback" role="alert" aria-live="polite" id="loginError">
+                <i className="bi bi-exclamation-circle login-feedback__icon" aria-hidden="true" />
+                <p className="login-feedback__text">{t(errorKey)}</p>
+              </div>
+            )}
+
             <div className="input-group mb-3">
               <div className="form-floating flex-grow-1">
                 <input
                   id="loginUsername"
                   type="text"
-                  className="form-control"
+                  className={`form-control${credentialsInvalid ? " is-invalid" : ""}`}
                   placeholder={t("auth.username")}
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    clearError();
+                  }}
+                  autoComplete="username"
+                  spellCheck={false}
+                  aria-invalid={credentialsInvalid}
+                  aria-describedby={errorKey ? "loginError" : undefined}
                   required
                 />
                 <label htmlFor="loginUsername">{t("auth.username")}</label>
               </div>
               <div className="input-group-text">
-                <span className="fas fa-user" aria-hidden="true" />
+                <span className="bi bi-person" aria-hidden="true" />
               </div>
             </div>
 
@@ -155,21 +215,34 @@ export function Login() {
               <div className="form-floating flex-grow-1">
                 <input
                   id="loginPassword"
-                  type="password"
-                  className="form-control"
+                  type={showPassword ? "text" : "password"}
+                  className={`form-control${credentialsInvalid ? " is-invalid" : ""}`}
                   placeholder={t("auth.password")}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearError();
+                  }}
+                  autoComplete="current-password"
+                  aria-invalid={credentialsInvalid}
+                  aria-describedby={errorKey ? "loginError" : undefined}
                   required
                 />
                 <label htmlFor="loginPassword">{t("auth.password")}</label>
               </div>
-              <div className="input-group-text">
-                <span className="fas fa-lock" aria-hidden="true" />
-              </div>
+              <button
+                type="button"
+                className="input-group-text login-password-toggle"
+                onClick={() => setShowPassword((visible) => !visible)}
+                aria-label={showPassword ? t("auth.hidePassword") : t("auth.showPassword")}
+                aria-pressed={showPassword}
+                title={showPassword ? t("auth.hidePassword") : t("auth.showPassword")}
+              >
+                <i className={showPassword ? "bi bi-eye-slash" : "bi bi-eye"} aria-hidden="true" />
+              </button>
             </div>
 
-            <div className="row align-items-center mb-3">
+            <div className="row align-items-center mb-0">
               <div className="col-7">
                 <div className="form-check">
                   <input
@@ -190,14 +263,9 @@ export function Login() {
                 </Button>
               </div>
             </div>
-
-            {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
           </form>
 
           <div className="d-grid gap-2 mb-2">
-            {/* <Link className="text-center d-block" to="/forgot-password">
-              {t("auth.forgotPassword")}
-            </Link> */}
             <Link className="text-center d-block" to="/signup">
               {t("auth.createNewAccount")}
             </Link>
@@ -208,5 +276,3 @@ export function Login() {
     </AuthLayout>
   );
 }
-
-

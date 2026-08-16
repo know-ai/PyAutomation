@@ -16,6 +16,7 @@ import type { Tag } from "../services/tags";
 import type { Alarm } from "../services/alarms";
 import type { Machine } from "../services/machines";
 import { isPageHidden } from "./usePageHidden";
+import { isSystemUser } from "../utils/systemUser";
 
 const BUFFER_INTERVAL_MS = 1000;
 const HIDDEN_FLUSH_EVERY = 5;
@@ -38,6 +39,7 @@ const isHistoryTrackedTag = (name: string): boolean => {
 export function useSocket() {
   const dispatch = useAppDispatch();
   const isAuthenticated = useAppSelector((state) => state.auth.status === "authenticated");
+  const isSystemSession = useAppSelector((state) => isSystemUser(state.auth.user));
   const pendingTagUpdatesRef = useRef<Map<string, Tag>>(new Map());
   const pendingHistoryUpdatesRef = useRef<Map<string, Tag[]>>(new Map());
   const pendingAlarmUpdatesRef = useRef<Map<string, Alarm>>(new Map());
@@ -46,7 +48,7 @@ export function useSocket() {
   const hiddenTicksRef = useRef(0);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || isSystemSession) {
       socketService.disconnect();
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -164,7 +166,7 @@ export function useSocket() {
       pendingAlarmUpdatesRef.current.clear();
       pendingMachineUpdatesRef.current.clear();
     };
-  }, [dispatch, isAuthenticated]);
+  }, [dispatch, isAuthenticated, isSystemSession]);
 
   return {
     isConnected: socketService.getIsConnected(),

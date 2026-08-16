@@ -3,6 +3,7 @@ from flask import request, make_response
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ..workspace import load_realtime_trends_workspace, save_realtime_trends_workspace
 import json
 
 ns = Namespace('Settings', description='Application Configuration Settings')
@@ -89,7 +90,48 @@ class SettingsUpdateResource(Resource):
             app.update_log_error_cooldown(float(cooldown))
 
         return "Settings updated", 200
-        
+
+
+workspace_model = api.model("realtime_trends_workspace_model", {
+    'schemaVersion': fields.Integer(required=False),
+    'kind': fields.String(required=False),
+    'scope': fields.String(required=False),
+    'updatedAt': fields.String(required=False),
+    'charts': fields.List(fields.Raw, required=False),
+})
+
+
+@ns.route('/workspace/realtime-trends')
+class RealtimeTrendsWorkspaceResource(Resource):
+
+    @api.doc(
+        security='apikey',
+        description="Station-scoped real-time trends layout. Persisted on disk (db/), survives host reboot.",
+    )
+    @api.response(200, "Workspace retrieved")
+    @Api.token_required(auth=True)
+    def get(self):
+        try:
+            return load_realtime_trends_workspace(), 200
+        except Exception as e:
+            return {'message': f'Failed to retrieve realtime-trends workspace: {str(e)}'}, 500
+
+    @api.doc(security='apikey', description="Replaces the station real-time trends layout.")
+    @api.response(200, "Workspace saved")
+    @api.response(400, "Invalid payload")
+    @Api.token_required(auth=True)
+    @ns.expect(workspace_model)
+    def put(self):
+        data = api.payload
+        if data is None:
+            return {'message': 'JSON body required'}, 400
+        try:
+            return save_realtime_trends_workspace(data), 200
+        except OSError as e:
+            return {'message': f'Failed to persist realtime-trends workspace: {str(e)}'}, 500
+        except Exception as e:
+            return {'message': f'Failed to save realtime-trends workspace: {str(e)}'}, 400
+
 
 @ns.route('/export_config')
 class ExportConfigResource(Resource):

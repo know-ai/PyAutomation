@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import clsx from "clsx";
 import { useDatabaseStatus } from "../hooks/useDatabaseStatus";
 import { useTranslation } from "../hooks/useTranslation";
 
@@ -7,7 +8,7 @@ function formatCheckedAt(ts: number | null, locale: string): string {
   return new Date(ts).toLocaleTimeString(locale === "es" ? "es-PE" : "en-US");
 }
 
-export function DatabaseStatus() {
+export function DatabaseStatus({ compact = false }: { compact?: boolean }) {
   const { t, locale } = useTranslation();
   const { connected, latencyMs, message, lastCheckedAt, reconnecting, reconnect } = useDatabaseStatus();
   const [open, setOpen] = useState(false);
@@ -28,7 +29,7 @@ export function DatabaseStatus() {
 
   return (
     <div
-      className="db-health"
+      className={clsx("db-health", compact && "db-health--compact")}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
       onFocus={() => setOpen(true)}
@@ -42,7 +43,7 @@ export function DatabaseStatus() {
         onClick={() => setOpen((v) => !v)}
       >
         <span className={`db-health__led db-health__led--${tone}`} aria-hidden="true" />
-        <span className="d-none d-xl-inline small">{label}</span>
+        {!compact && <span className="d-none d-xl-inline small">{label}</span>}
       </button>
       {open && (
         <div className="db-health__tooltip" role="status">

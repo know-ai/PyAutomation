@@ -5,11 +5,12 @@ import { acknowledgeAlarm, acknowledgeAllAlarms, type Alarm } from "../services/
 import { selectActiveAlarmsPreview } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
-import { TimezoneBadge } from "../components/TimezoneBadge";
 import { formatTimestamp } from "../utils/timezone";
+import { isSystemUser } from "../utils/systemUser";
 
 export function Footer() {
   const navigate = useNavigate();
+  const user = useAppSelector((s) => s.auth.user);
   const preview = useAppSelector(selectActiveAlarmsPreview);
   const { timeZone } = useDisplayTimezone();
   const [contextMenu, setContextMenu] = useState<{
@@ -47,6 +48,10 @@ export function Footer() {
       };
     }
   }, [contextMenu.visible]);
+
+  if (isSystemUser(user)) {
+    return null;
+  }
 
   const getStateLabel = (alarm: Alarm): string => {
     const state = alarm.state;
@@ -142,7 +147,7 @@ export function Footer() {
             <th>Type</th>
             <th>State</th>
             <th>Trigger Value</th>
-            <th>Alarm Time <TimezoneBadge /></th>
+            <th>Alarm Time</th>
             <th>Ack Timestamp</th>
           </tr>
         </thead>

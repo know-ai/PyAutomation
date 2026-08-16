@@ -983,9 +983,10 @@ export function Tags() {
   };
 
   return (
-    <div className="row">
-      <div className="col-12">
+    <div className="row g-0 page-fit-viewport">
+      <div className="col-12 h-100">
         <Card
+          className="page-fit-card"
           title={
             <div className="d-flex justify-content-between align-items-center w-100">
               <span>{t("navigation.tags")}</span>

@@ -11,8 +11,20 @@ type CardProps = PropsWithChildren<{
 }>;
 
 export function Card({ title, footer, className, style, headerClassName, bodyClassName, children }: CardProps) {
+  const isFitCard = Boolean(
+    className?.split(/\s+/).some((token) => token === "page-fit-card" || token === "trends-fit-card")
+  );
+  const flexLayout = style?.display === "flex" || isFitCard;
+
   return (
-    <div className={clsx("card shadow-sm", className)} style={style}>
+    <div
+      className={clsx("card shadow-sm", className)}
+      style={
+        isFitCard
+          ? { display: "flex", flexDirection: "column", height: "100%", minHeight: 0, ...style }
+          : style
+      }
+    >
       {title && (
         <div className={clsx("card-header py-1", headerClassName)}>
           {typeof title === "string" ? (
@@ -25,7 +37,7 @@ export function Card({ title, footer, className, style, headerClassName, bodyCla
       <div
         className={clsx("card-body", bodyClassName)}
         style={
-          style?.display === "flex"
+          flexLayout
             ? { flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }
             : undefined
         }

@@ -3,6 +3,7 @@ import {
   BUFFER_SIZE_MIN,
   type StripChartConfig,
 } from "../components/StripChart";
+import api from "./api";
 
 export const REALTIME_TRENDS_KIND = "real-time-trends" as const;
 export const REALTIME_TRENDS_SCHEMA_VERSION = 1;
@@ -181,6 +182,56 @@ export function saveStationRealtimeTrends(charts: StripChartConfig[]): boolean {
   };
   const serialized = JSON.stringify(document);
   return writeKey(REALTIME_TRENDS_STORAGE_KEY, serialized);
+}
+
+async function getRemoteWorkspace(): Promise<RealTimeTrendsWorkspace | null> {
+  try {
+    const { data } = await api.get("/settings/workspace/realtime-trends");
+    return parseWorkspace(JSON.stringify(data));
+  } catch {
+    return null;
+  }
+}
+
+async function putRemoteWorkspace(charts: StripChartConfig[]): Promise<boolean> {
+  try {
+    const document: RealTimeTrendsWorkspace = {
+      schemaVersion: REALTIME_TRENDS_SCHEMA_VERSION,
+      kind: REALTIME_TRENDS_KIND,
+      scope: WORKSPACE_SCOPE,
+      updatedAt: new Date().toISOString(),
+      charts: sanitizeCharts(charts),
+    };
+    await api.put("/settings/workspace/realtime-trends", document);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** localStorage cache + station file on the server (`./db/`). */
+export async function persistStationRealtimeTrends(charts: StripChartConfig[]): Promise<boolean> {
+  const localOk = saveStationRealtimeTrends(charts);
+  const remoteOk = await putRemoteWorkspace(charts);
+  return localOk || remoteOk;
+}
+
+/**
+ * Server is the station source of truth (survives host power cycle).
+ * If the server is empty, migrate the browser cache once.
+ */
+export async function hydrateStationRealtimeTrends(): Promise<StripChartConfig[]> {
+  const local = loadStationRealtimeTrends();
+  const remote = await getRemoteWorkspace();
+  if (remote && remote.charts.length > 0) {
+    saveStationRealtimeTrends(remote.charts);
+    return remote.charts;
+  }
+  if (local.charts.length > 0) {
+    await putRemoteWorkspace(local.charts);
+    return local.charts;
+  }
+  return remote ? remote.charts : local.charts;
 }
 
 export function createStationChartId(): string {

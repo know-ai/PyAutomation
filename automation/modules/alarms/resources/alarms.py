@@ -3,6 +3,7 @@ from .... import PyAutomation
 from automation.alarms import AlarmState
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ....utils.system_event_audit import persist_system_event
 
 
 ns = Namespace('Alarms', description='Alarm Management Resources')
@@ -449,15 +450,26 @@ class AddAlarmResource(Resource):
             }, 400
         
         try:
+            user = Api.get_current_user()
             alarm, message = app.create_alarm(
                 name=name,
                 tag=tag,
                 alarm_type=payload.get('alarm_type', 'BOOL'),
                 trigger_value=payload.get('trigger_value', True),
-                description=payload.get('description', '')
+                description=payload.get('description', ''),
+                user=user,
             )
             
             if alarm:
+                if "creation successful" in (message or "").lower():
+                    persist_system_event(
+                        message="Created",
+                        description=name,
+                        classification="Alarm",
+                        priority=2,
+                        criticity=2,
+                        user=user,
+                    )
                 return {
                     'message': f"Alarm '{name}' created successfully",
                     'alarm': {
@@ -536,7 +548,8 @@ class UpdateAlarmResource(Resource):
                 tag=update_kwargs.get('tag'),
                 description=update_kwargs.get('description'),
                 alarm_type=update_kwargs.get('alarm_type'),
-                trigger_value=update_kwargs.get('trigger_value')
+                trigger_value=update_kwargs.get('trigger_value'),
+                user=Api.get_current_user(),
             )
             
             # Get updated alarm
@@ -581,7 +594,7 @@ class DeleteAlarmResource(Resource):
             }, 404
         
         try:
-            app.delete_alarm(id=alarm_id)
+            app.delete_alarm(id=alarm_id, user=Api.get_current_user())
             return {
                 'message': f'Alarm "{alarm.name}" deleted successfully'
             }, 200

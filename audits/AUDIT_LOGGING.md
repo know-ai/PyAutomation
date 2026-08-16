@@ -64,7 +64,7 @@ Esta auditoría se centra en **L1** (cuello de botella de I/O de texto y disco l
 |---|---|---|
 | `set_value` → TagValue | SAF + PG | `CycleSampleCache` (mismo tag/valor/timestamp de ciclo → drop) |
 | `@set_event` | Events | Solo si la acción “tuvo éxito” (o `force=True`) — **no** rate-limit genérico |
-| `DatabaseConnectionAuditor` | Events | Buffer ≤ 8; un `CONNECTION_FAILED` por outage; resumen en RECONNECTED |
+| `DatabaseConnectionAuditor` | Events | Runtime only: `DISCONNECTED` + `RECONNECTED`. El connect de boot es silencioso (`System started` cubre el arranque). Buffer ≤ 8; fallos de reconnect se resumen en RECONNECTED |
 | OPC UA audit | Events | Cooldown de fallos **60 s** (`failure_cooldown_seconds`) |
 | Alarm transitions | AlarmSummary + Events | Por transición de estado, no por tick |
 
@@ -161,7 +161,7 @@ Esto es el “debounce” más importante del hot path de **escritura de histori
 |---|---|
 | **Archivo** | `automation/utils/db_audit.py` |
 | **Capacidad** | `_PENDING_CAP = 8` eventos en memoria mientras DB está caída |
-| **Anti-spam** | Como máximo un `CONNECTION_FAILED` por outage; fallos de reconnect se **resumen** en el `RECONNECTED` en lugar de encolar uno por ciclo del watchdog |
+| **Anti-spam** | Connect inicial de boot **no** escribe Events. En outage: un `DISCONNECTED`; fallos de reconnect se **resumen** en el `RECONNECTED` en lugar de encolar uno por ciclo del watchdog |
 | **Descripciones** | `clip(..., DESCRIPTION_MAX=256)`; nunca credenciales |
 
 Sin esto, un `logger_period` de 10 s durante un outage de horas generaría miles de Events / líneas ERROR.

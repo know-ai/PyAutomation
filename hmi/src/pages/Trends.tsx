@@ -18,8 +18,8 @@ import axios from "axios";
 import { useTheme } from "../hooks/useTheme";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
-import { TimezoneBadge } from "../components/TimezoneBadge";
-import { formatInstantForBackend } from "../utils/timezone";
+import { formatDateTimeLocalInput, formatInstantForBackend } from "../utils/timezone";
+import { readSessionTags, writeSessionTags } from "../utils/sessionFilters";
 
 type PresetDate =
   | "Last Hour"
@@ -72,15 +72,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
   return { start, end };
 };
 
-// Formatear fecha para input datetime-local
-const formatToLocalDateTime = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
+const formatToLocalDateTime = (date: Date): string => formatDateTimeLocalInput(date);
 
 const localDateTimeInputToMs = (value: string): number => {
   const [datePart, timePart = "00:00"] = value.split("T");
@@ -148,10 +140,7 @@ export function Trends() {
   const [endDate, setEndDate] = useState<string>(() => {
     return localStorage.getItem("trends_endDate") || "";
   });
-  const [selectedTags, setSelectedTags] = useState<string[]>(() => {
-    const saved = localStorage.getItem("trends_selectedTags");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [selectedTags, setSelectedTags] = useState<string[]>(() => readSessionTags("trends_selectedTags"));
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(false);
   const [zoomLoading, setZoomLoading] = useState(false);
@@ -201,7 +190,7 @@ export function Trends() {
           );
           if (validTags.length !== selectedTags.length) {
             setSelectedTags(validTags);
-            localStorage.setItem("trends_selectedTags", JSON.stringify(validTags));
+            writeSessionTags("trends_selectedTags", validTags);
           }
         }
 
@@ -399,14 +388,24 @@ export function Trends() {
       return;
     }
 
-    if (!startDate || !endDate) {
+    let queryStart = startDate;
+    let queryEnd = endDate;
+    if (presetDate !== "Custom") {
+      const { start, end } = getPresetDateRange(presetDate);
+      queryStart = formatToLocalDateTime(start);
+      queryEnd = formatToLocalDateTime(end);
+      setStartDate(queryStart);
+      setEndDate(queryEnd);
+    }
+
+    if (!queryStart || !queryEnd) {
       setError(t("trends.selectDateRange"));
       return;
     }
 
-    const startMs = localDateTimeInputToMs(startDate);
-    const endMs = localDateTimeInputToMs(endDate);
-    if (endMs > Date.now()) {
+    const startMs = localDateTimeInputToMs(queryStart);
+    const endMs = localDateTimeInputToMs(queryEnd);
+    if (endMs > Date.now() + 1000) {
       setError(t("trends.endDateCannotBeFuture"));
       return;
     }
@@ -421,7 +420,7 @@ export function Trends() {
     zoomCacheRef.current = [];
     cancelInFlight();
     await fetchTrendsForRange(startMs, endMs, { asBase: true });
-  }, [selectedTags, startDate, endDate, fetchTrendsForRange, cancelInFlight, t]);
+  }, [selectedTags, startDate, endDate, presetDate, fetchTrendsForRange, cancelInFlight, t]);
 
   const restoreBaseRange = useCallback(() => {
     const base = baseCacheRef.current;
@@ -581,7 +580,7 @@ export function Trends() {
   }, [endDate]);
 
   useEffect(() => {
-    localStorage.setItem("trends_selectedTags", JSON.stringify(selectedTags));
+    writeSessionTags("trends_selectedTags", selectedTags);
   }, [selectedTags]);
 
   // Preparar datos para Plotly con múltiples ejes Y
@@ -820,7 +819,6 @@ export function Trends() {
               <div className="d-flex justify-content-between align-items-center w-100 flex-wrap gap-2">
                 <div className="d-flex align-items-center gap-2">
                   <h3 className="card-title m-0">{t("navigation.trends")}</h3>
-                  <TimezoneBadge />
                 </div>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <label className="form-label small mb-0">{t("trends.selectTags")}:</label>
@@ -874,6 +872,7 @@ export function Trends() {
                   <label className="form-label small mb-0">{t("trends.time")}:</label>
                   <input
                     type="datetime-local"
+                    step="1"
                     className="form-control form-control-sm"
                     style={{ width: "180px", maxWidth: "100%" }}
                     value={startDate}
@@ -886,6 +885,7 @@ export function Trends() {
                   />
                   <input
                     type="datetime-local"
+                    step="1"
                     className="form-control form-control-sm"
                     style={{ width: "180px", maxWidth: "100%" }}
                     value={endDate}

@@ -300,9 +300,10 @@ export function UserManagement() {
   };
 
   return (
-    <div className="row">
-      <div className="col-12">
+    <div className="row g-0 page-fit-viewport">
+      <div className="col-12 h-100">
         <Card
+          className="page-fit-card"
           title={
             <div className="d-flex justify-content-between align-items-center w-100">
               <h3 className="card-title m-0">{t("navigation.userManagement")}</h3>
@@ -395,9 +396,9 @@ export function UserManagement() {
           )}
 
           {!loading && (
-            <div className="table-responsive" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+            <div className="table-responsive">
               <table className="table table-striped table-hover table-sm">
-                <thead className="table-light" style={{ position: "sticky", top: 0, zIndex: 10 }}>
+                <thead>
                   <tr>
                     <th>{t("tables.username")}</th>
                     <th>{t("tables.email")}</th>

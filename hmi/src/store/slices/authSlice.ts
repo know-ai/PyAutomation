@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { clearSessionTagFilters } from "../../utils/sessionFilters";
 
 const AUTH_STORAGE_KEY = "pyautomation.auth";
 
@@ -71,6 +72,7 @@ const authSlice = createSlice({
       state.status = "idle";
       state.error = null;
       clearPersistedAuth();
+      clearSessionTagFilters();
     },
     setUser(state, action: PayloadAction<AuthUser | null>) {
       state.user = action.payload;

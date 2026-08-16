@@ -3,14 +3,18 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "../hooks/useTranslation";
 import { logout as logoutService } from "../services/auth";
 import { useAppDispatch } from "../hooks/useAppDispatch";
+import { useAppSelector } from "../hooks/useAppSelector";
 import { logout as logoutAction } from "../store/slices/authSlice";
 import { closeSidebarOnMobile } from "./sidebarDom";
+import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
 
 export function Sidebar() {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const user = useAppSelector((s) => s.auth.user);
+  const systemOnly = isSystemUser(user);
   const [communicationsExpanded, setCommunicationsExpanded] = useState(
     location.pathname.startsWith("/communications")
   );
@@ -138,16 +142,18 @@ export function Sidebar() {
     <aside className="app-sidebar bg-body-secondary shadow">
       <div className="sidebar-brand">
         <NavLink
-          to="/dashboard"
+          to={systemOnly ? SYSTEM_HOME_PATH : "/dashboard"}
           className="brand-link d-flex align-items-center justify-content-center"
           onClick={closeSidebarOnMobile}
         >
           <span className="brand-text fw-light">PyAutomation</span>
         </NavLink>
       </div>
-      <div className="sidebar-wrapper" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 57px)" }}>
+      <div className="sidebar-wrapper">
         <nav className="mt-2" style={{ flex: 1, overflowY: "auto" }}>
           <ul className="nav sidebar-menu flex-column" role="menu" data-lte-toggle="treeview" aria-label="Main navigation">
+            {!systemOnly && (
+              <>
             {/* Communications con submenu desplegable */}
             <li className={`nav-item ${communicationsExpanded ? "menu-open" : ""}`}>
               <a
@@ -311,9 +317,11 @@ export function Sidebar() {
                 ))}
               </ul>
             </li>
+              </>
+            )}
             
             {/* Otros items del menú */}
-            {navItems.map((item) => (
+            {(systemOnly ? navItems.filter((item) => item.to === SYSTEM_HOME_PATH) : navItems).map((item) => (
               <li className="nav-item" key={item.to}>
                 <NavLink
                   to={item.to}

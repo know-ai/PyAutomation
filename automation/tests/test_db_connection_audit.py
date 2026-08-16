@@ -58,7 +58,7 @@ class TestDatabaseConnectionAuditor(unittest.TestCase):
     def _messages(self, persist):
         return [call.kwargs["message"] for call in persist.call_args_list]
 
-    def test_connect_success_is_audited(self):
+    def test_boot_connect_is_silent(self):
         with patch("automation.utils.db_audit.persist_system_event", return_value=True) as persist:
             self.auditor.notify_connect_success(
                 source="core-startup",
@@ -66,19 +66,18 @@ class TestDatabaseConnectionAuditor(unittest.TestCase):
             )
 
         self.assertEqual(self.auditor.state, "connected")
-        self.assertEqual(self._messages(persist), ["Database connected"])
-        self.assertIn("source=core-startup", persist.call_args.kwargs["description"])
-        self.assertEqual(persist.call_args.kwargs["classification"], "Database")
+        persist.assert_not_called()
 
-    def test_connect_failure_is_buffered_when_store_is_down(self):
-        with patch("automation.utils.db_audit.persist_system_event", return_value=False):
+    def test_boot_connect_failure_is_not_an_event(self):
+        with patch("automation.utils.db_audit.persist_system_event", return_value=False) as persist:
             self.auditor.notify_connect_failure(
                 source="core-startup",
                 target="type=postgresql host=db port=5432 name=app",
                 error="could not connect",
             )
 
-        self.assertEqual(self.auditor.pending_actions, ("CONNECTION_FAILED",))
+        persist.assert_not_called()
+        self.assertEqual(self.auditor.pending_actions, ())
 
     def test_outage_does_not_flood_and_flushes_chronologically(self):
         with patch("automation.utils.db_audit.persist_system_event", return_value=True) as persist:
@@ -92,7 +91,7 @@ class TestDatabaseConnectionAuditor(unittest.TestCase):
                 self.auditor.notify_reconnect_attempt(source="watchdog")
                 self.auditor.notify_reconnect_failure(error=f"refused-{index}")
 
-            self.assertEqual(self.auditor.pending_actions, ("DISCONNECTED", "RECONNECTING"))
+            self.assertEqual(self.auditor.pending_actions, ("DISCONNECTED",))
             persist.reset_mock()
             persist.return_value = True
 
@@ -102,7 +101,6 @@ class TestDatabaseConnectionAuditor(unittest.TestCase):
             self._messages(persist),
             [
                 "Database disconnected",
-                "Database reconnecting",
                 "Database reconnected",
             ],
         )
@@ -122,6 +120,20 @@ class TestDatabaseConnectionAuditor(unittest.TestCase):
         self.assertEqual(self._messages(persist), ["Database disconnected"])
         self.assertIn("reason=requested", persist.call_args.kwargs["description"])
         self.assertEqual(self.auditor.state, "disconnected")
+
+    def test_ui_reconnect_after_disconnect_is_reconnected_not_boot(self):
+        with patch("automation.utils.db_audit.persist_system_event", return_value=True) as persist:
+            self.auditor.notify_connect_success(source="core-startup", target="type=sqlite dbfile=app.db")
+            persist.reset_mock()
+            self.auditor.notify_disconnect_requested(source="disconnect")
+            self.auditor.notify_connect_success(source="connect", target="type=sqlite dbfile=app.db")
+
+        self.assertEqual(
+            self._messages(persist),
+            ["Database disconnected", "Database reconnected"],
+        )
+        self.assertEqual(persist.call_args.kwargs["classification"], "Database")
+        self.assertEqual(self.auditor.state, "connected")
 
     def test_never_raises_when_persist_explodes(self):
         with patch(

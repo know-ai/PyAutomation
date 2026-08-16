@@ -229,7 +229,10 @@ class MachineByNameResource(Resource):
                 }, 404
             
             # Update interval
-            machine.set_interval(interval=FloatType(interval_value))
+            machine.set_interval(
+                interval=FloatType(interval_value),
+                user=Api.get_current_user(),
+            )
             
             # Return updated machine serialization
             return {
@@ -298,7 +301,10 @@ class MachineTransitionResource(Resource):
                 }, 404
             
             # Execute transition
-            result, message = machine.transition(to=to_state)
+            result, message = machine.transition(
+                to=to_state,
+                user=Api.get_current_user(),
+            )
             
             if result is None:
                 return {
@@ -506,6 +512,7 @@ class MachineAttributesResource(Resource):
         buffer_size = data.get("buffer_size")
         on_delay = data.get("on_delay")
         detection_threshold_mode = data.get("detection_threshold_mode")
+        user = Api.get_current_user()
 
         # Validar que al menos un atributo esté presente
         if (
@@ -600,17 +607,32 @@ class MachineAttributesResource(Resource):
                                 # Crear un nuevo objeto Percentage con el nuevo valor
                                 new_percentage = Percentage(threshold_value, unit=threshold_unit)
                                 # Usar set_value para actualizar tanto el ProcessType como el tag asociado
-                                machine.threshold.set_value(value=new_percentage, machine=machine, name="threshold")
+                                machine.threshold.set_value(
+                                    value=new_percentage,
+                                    machine=machine,
+                                    name="threshold",
+                                    user=user,
+                                )
                             else:
                                 # Si no es Percentage, actualizar directamente el valor y usar set_value
                                 machine.threshold.value.value = threshold_value
                                 # Si tiene tag, actualizarlo también usando set_value
                                 if machine.threshold.tag:
-                                    machine.threshold.set_value(value=machine.threshold.value, machine=machine, name="threshold")
+                                    machine.threshold.set_value(
+                                        value=machine.threshold.value,
+                                        machine=machine,
+                                        name="threshold",
+                                        user=user,
+                                    )
                         else:
                             # Si no hay valor inicial, crear un nuevo Percentage y usar set_value
                             new_percentage = Percentage(threshold_value, unit=threshold_unit)
-                            machine.threshold.set_value(value=new_percentage, machine=machine, name="threshold")
+                            machine.threshold.set_value(
+                                value=new_percentage,
+                                machine=machine,
+                                name="threshold",
+                                user=user,
+                            )
 
                         # Actualizar en la base de datos si está conectada
                         if app.is_db_connected():
@@ -635,7 +657,10 @@ class MachineAttributesResource(Resource):
                             "message": "interval must be greater than 0"
                         }, 400
                     
-                    machine.set_interval(interval=FloatType(interval_value))
+                    machine.set_interval(
+                        interval=FloatType(interval_value),
+                        user=user,
+                    )
                     
                     # Actualizar en la base de datos si está conectada
                     if app.is_db_connected():
@@ -676,7 +701,7 @@ class MachineAttributesResource(Resource):
 
                     # Actualizar buffer_size y reiniciar la máquina
                     machine.set_buffer_size(size=buffer_size_value)
-                    machine.transition(to="restart")
+                    machine.transition(to="restart", user=user)
                     
                     # Actualizar en la base de datos si está conectada
                     if app.is_db_connected():
@@ -686,7 +711,7 @@ class MachineAttributesResource(Resource):
                         )
                     
                     # Volver al estado wait
-                    machine.transition(to="wait")
+                    machine.transition(to="wait", user=user)
                     
                     updated_attributes.append(f"buffer_size to {buffer_size_value}")
                 except (ValueError, TypeError) as e:
