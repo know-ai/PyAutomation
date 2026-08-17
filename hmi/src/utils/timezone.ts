@@ -154,22 +154,38 @@ function assembleLocaleStamp(
   hour: string,
   minute: string,
   second: string,
-  locale: UiLocale
+  locale: UiLocale,
+  fractional?: string
 ): string {
   const date = locale === "es" ? `${day}/${month}/${year}` : `${month}/${day}/${year}`;
-  return `${date} ${hour}:${minute}:${second}`;
+  const time = `${hour}:${minute}:${second}`;
+  return fractional ? `${date} ${time}.${fractional}` : `${date} ${time}`;
 }
+
+function toFractionalSeconds(rawDigits: string | undefined, digits: 0 | 3): string | undefined {
+  if (digits !== 3) return undefined;
+  if (!rawDigits) return "000";
+  return rawDigits.padEnd(3, "0").slice(0, 3);
+}
+
+export type OperatorTimestampOptions = {
+  /** 0 (default): seconds only. 3: milliseconds, e.g. DataLogger. */
+  fractionalDigits?: 0 | 3;
+};
 
 /**
  * Format historian timestamps like the header clock:
  * Spanish → DD/MM/YYYY HH:MM:SS; English → MM/DD/YYYY HH:MM:SS.
- * Backend serializes ``%m/%d/%Y, %H:%M:%S.%f`` (US order, microseconds).
- * Operator tables never need sub-second precision.
+ * Backend serializes ``%m/%d/%Y, %H:%M:%S.%f`` (US order, microseconds)
+ * or ISO ``YYYY-MM-DD HH:MM:SS.%f``.
+ * Operator tables never need sub-second precision unless ``fractionalDigits`` is set.
  */
 export function formatOperatorTimestamp(
   value: string | Date | null | undefined,
-  locale: UiLocale
+  locale: UiLocale,
+  options?: OperatorTimestampOptions
 ): string {
+  const fractionalDigits = options?.fractionalDigits ?? 0;
   if (value == null || value === "") return "-";
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) return "-";
@@ -180,16 +196,17 @@ export function formatOperatorTimestamp(
       padStamp(value.getHours()),
       padStamp(value.getMinutes()),
       padStamp(value.getSeconds()),
-      locale
+      locale,
+      toFractionalSeconds(pad3(value.getMilliseconds()), fractionalDigits)
     );
   }
 
   const raw = String(value).trim();
   const us = raw.match(
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?/
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?/
   );
   if (us) {
-    const [, month, day, year, hour, minute, second] = us;
+    const [, month, day, year, hour, minute, second, fraction] = us;
     return assembleLocaleStamp(
       year,
       padStamp(Number(month)),
@@ -197,21 +214,54 @@ export function formatOperatorTimestamp(
       padStamp(Number(hour)),
       minute,
       second,
-      locale
+      locale,
+      toFractionalSeconds(fraction, fractionalDigits)
     );
   }
 
   const iso = raw.match(
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?/
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?/
   );
   if (iso) {
-    const [, year, month, day, hour, minute, second] = iso;
-    return assembleLocaleStamp(year, month, day, hour, minute, second, locale);
+    const [, year, month, day, hour, minute, second, fraction] = iso;
+    return assembleLocaleStamp(
+      year,
+      month,
+      day,
+      hour,
+      minute,
+      second,
+      locale,
+      toFractionalSeconds(fraction, fractionalDigits)
+    );
   }
 
   const parsed = new Date(raw);
   if (!Number.isNaN(parsed.getTime())) {
-    return formatOperatorTimestamp(parsed, locale);
+    return formatOperatorTimestamp(parsed, locale, options);
   }
   return raw;
+}
+
+/** Plotly d3-time-format strings matching operator date order. */
+export function plotlyLocaleTimeFormats(locale: UiLocale): {
+  tickformat: string;
+  hoverformat: string;
+  tickformatstops: Array<{ dtickrange: [number | null, number | null]; value: string }>;
+} {
+  const date = locale === "es" ? "%d/%m/%Y" : "%m/%d/%Y";
+  const dateShort = locale === "es" ? "%d/%m" : "%m/%d";
+  const hoverformat = `${date} %H:%M:%S`;
+  return {
+    tickformat: hoverformat,
+    hoverformat,
+    tickformatstops: [
+      { dtickrange: [null, 1000], value: "%H:%M:%S.%L" },
+      { dtickrange: [1000, 60000], value: "%H:%M:%S" },
+      { dtickrange: [60000, 3600000], value: "%H:%M:%S" },
+      { dtickrange: [3600000, 86400000], value: `${dateShort} %H:%M` },
+      { dtickrange: [86400000, 604800000], value: dateShort },
+      { dtickrange: [604800000, null], value: date },
+    ],
+  };
 }

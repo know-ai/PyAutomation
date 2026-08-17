@@ -24,6 +24,12 @@ import {
   type ScheduledQueryContext,
 } from "../hooks/useScheduledQuery";
 import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp } from "../utils/timezone";
+import {
+  eventCriticityBadgeClass,
+  eventPriorityBadgeClass,
+  eventSeverityHintKey,
+} from "../utils/eventSeverity";
+import { translateEventClassification, translateEventMessage } from "../utils/eventCatalog";
 
 type PresetDate = 
   | "Last Hour"
@@ -47,6 +53,24 @@ const PRESET_DATES: PresetDate[] = [
 function displayValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "-";
   return String(value);
+}
+
+function EventLevelBadge({
+  value,
+  kind,
+  t,
+}: {
+  value: unknown;
+  kind: "priority" | "criticity";
+  t: (key: string) => string;
+}) {
+  if (value === null || value === undefined || value === "") return "-";
+  const className = kind === "priority" ? eventPriorityBadgeClass(value) : eventCriticityBadgeClass(value);
+  return (
+    <span className={`badge ${className}`} title={t(eventSeverityHintKey(kind, value))}>
+      {String(value)}
+    </span>
+  );
 }
 
 // Calcular fecha basada en preset
@@ -625,9 +649,9 @@ export function Events() {
           event.id || "",
           event.timestamp ? formatOperatorTimestamp(event.timestamp, locale) : "",
           event.user?.username || event.username || "",
-          event.message || "",
+          translateEventMessage(event.message, t),
           event.description || "",
-          event.classification || "",
+          translateEventClassification(event.classification, t),
           event.priority !== null && event.priority !== undefined ? String(event.priority) : "",
           event.criticity !== null && event.criticity !== undefined ? String(event.criticity) : "",
         ];
@@ -878,21 +902,13 @@ export function Events() {
                         <td>{event.id || "-"}</td>
                         <td>{formatOperatorTimestamp(event.timestamp, locale)}</td>
                         <td>{event.user?.username || event.username || "-"}</td>
-                        <td>{event.message || "-"}</td>
-                        <td>{event.classification || "-"}</td>
+                        <td>{translateEventMessage(event.message, t)}</td>
+                        <td>{translateEventClassification(event.classification, t)}</td>
                         <td>
-                          {event.priority !== null && event.priority !== undefined ? (
-                            <span className="badge bg-info">{event.priority}</span>
-                          ) : (
-                            "-"
-                          )}
+                          <EventLevelBadge value={event.priority} kind="priority" t={t} />
                         </td>
                         <td>
-                          {event.criticity !== null && event.criticity !== undefined ? (
-                            <span className="badge bg-warning">{event.criticity}</span>
-                          ) : (
-                            "-"
-                          )}
+                          <EventLevelBadge value={event.criticity} kind="criticity" t={t} />
                         </td>
                         <td>
                           {event.has_comments ? (
@@ -1140,30 +1156,22 @@ export function Events() {
                       <dd className="col-sm-8">{displayValue(selectedEventDetail.user?.role?.name)}</dd>
 
                       <dt className="col-sm-4">{t("tables.message")}</dt>
-                      <dd className="col-sm-8">{displayValue(selectedEventDetail.message)}</dd>
+                      <dd className="col-sm-8">{translateEventMessage(selectedEventDetail.message, t)}</dd>
 
                       <dt className="col-sm-4">{t("tables.description")}</dt>
                       <dd className="col-sm-8">{displayValue(selectedEventDetail.description)}</dd>
 
                       <dt className="col-sm-4">{t("tables.classification")}</dt>
-                      <dd className="col-sm-8">{displayValue(selectedEventDetail.classification)}</dd>
+                      <dd className="col-sm-8">{translateEventClassification(selectedEventDetail.classification, t)}</dd>
 
                       <dt className="col-sm-4">{t("tables.priority")}</dt>
                       <dd className="col-sm-8">
-                        {selectedEventDetail.priority !== null && selectedEventDetail.priority !== undefined ? (
-                          <span className="badge bg-info">{selectedEventDetail.priority}</span>
-                        ) : (
-                          "-"
-                        )}
+                        <EventLevelBadge value={selectedEventDetail.priority} kind="priority" t={t} />
                       </dd>
 
                       <dt className="col-sm-4">{t("tables.criticity")}</dt>
                       <dd className="col-sm-8">
-                        {selectedEventDetail.criticity !== null && selectedEventDetail.criticity !== undefined ? (
-                          <span className="badge bg-warning">{selectedEventDetail.criticity}</span>
-                        ) : (
-                          "-"
-                        )}
+                        <EventLevelBadge value={selectedEventDetail.criticity} kind="criticity" t={t} />
                       </dd>
 
                       <dt className="col-sm-4">{t("tables.segment")}</dt>

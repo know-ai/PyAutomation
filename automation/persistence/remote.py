@@ -243,7 +243,9 @@ class PeeweeRemoteDB:
                 continue
             fields = {}
             if item.get("ack_timestamp"):
-                fields["ack_time"] = _parse_dt(item.get("ack_timestamp"))
+                ack_stamp = _parse_dt(item.get("ack_timestamp"))
+                if ack_stamp is not None:
+                    fields["ack_time"] = quantize_datetime_ms(ack_stamp)
             if item.get("state"):
                 alarm_state = AlarmStates.get_or_none(name=item["state"])
                 if alarm_state:

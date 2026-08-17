@@ -11,6 +11,7 @@ import { updateAlarmsBatch } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { formatTimestamp } from "../utils/timezone";
+import { alarmStateBadgeClass } from "../utils/alarmState";
 
 export function Alarms() {
   const { t } = useTranslation();
@@ -629,15 +630,7 @@ export function Alarms() {
     }
   };
 
-  const getStateBadgeClass = (state: any) => {
-    if (!state) return "bg-secondary";
-    const stateStr = typeof state === "object" ? state.mnemonic || state.state || "" : String(state);
-    if (stateStr.includes("NORM") || stateStr.includes("Normal")) return "bg-success";
-    if (stateStr.includes("UNACK") || stateStr.includes("Unacknowledged")) return "bg-danger";
-    if (stateStr.includes("ACK") || stateStr.includes("Acknowledged")) return "bg-warning";
-    if (stateStr.includes("RTN") || stateStr.includes("Return")) return "bg-info";
-    return "bg-secondary";
-  };
+  const getStateBadgeClass = (state: any) => alarmStateBadgeClass(state);
 
   const getStateLabel = (state: any) => {
     if (!state) return "-";

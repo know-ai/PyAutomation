@@ -23,7 +23,7 @@ import {
   useScheduledQuery,
   type ScheduledQueryContext,
 } from "../hooks/useScheduledQuery";
-import { formatDateTimeLocalForBackend, formatDateTimeLocalInput } from "../utils/timezone";
+import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp, type UiLocale } from "../utils/timezone";
 import { readSessionTags, writeSessionTags } from "../utils/sessionFilters";
 
 type PresetDate = 
@@ -104,6 +104,16 @@ const sampleTimeToSeconds = (option: SampleTimeOption): number => {
   return conversions[option] || 30;
 };
 
+const DATALOGGER_TIME_OPTS = { fractionalDigits: 3 as const };
+
+const formatDataloggerCell = (cell: unknown, cellIdx: number, locale: UiLocale): string => {
+  if (cell === null || cell === undefined) return "-";
+  if (cellIdx === 0) {
+    return formatOperatorTimestamp(String(cell), locale, DATALOGGER_TIME_OPTS);
+  }
+  return String(cell);
+};
+
 // Calcular fecha basada en preset
 const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
   const end = new Date();
@@ -149,7 +159,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 };
 
 export function DataLogger() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { timeZone } = useDisplayTimezone();
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
   const [tabularData, setTabularData] = useState<TabularDataResponse | null>(null);
@@ -427,8 +437,13 @@ export function DataLogger() {
 
       // Convertir datos a filas CSV
       const rows = allData.map((row) => {
-        return row.map((cell: any) => {
-          return cell !== null && cell !== undefined ? String(cell) : "";
+        return row.map((cell: any, cellIdx: number) => {
+          if (cell === null || cell === undefined) return "";
+          if (cellIdx === 0) {
+            const formatted = formatOperatorTimestamp(String(cell), locale, DATALOGGER_TIME_OPTS);
+            return formatted === "-" ? "" : formatted;
+          }
+          return String(cell);
         });
       });
 
@@ -680,7 +695,7 @@ export function DataLogger() {
                     tabularData.values.map((row, rowIdx) => (
                       <tr key={rowIdx}>
                         {row.map((cell, cellIdx) => (
-                          <td key={cellIdx}>{cell !== null && cell !== undefined ? String(cell) : "-"}</td>
+                          <td key={cellIdx}>{formatDataloggerCell(cell, cellIdx, locale)}</td>
                         ))}
                       </tr>
                     ))

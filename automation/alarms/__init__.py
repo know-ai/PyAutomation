@@ -163,7 +163,11 @@ class Alarm(StateMachine):
     def on_enter_unack_alarm(self):
 
         self.state = AlarmState.UNACK
-        self.timestamp = self.__timestamp
+        from ..timebase import quantize_datetime_ms
+        stamp = getattr(self, "_Alarm__timestamp", None)
+        if not isinstance(stamp, datetime):
+            stamp = datetime.now(timezone.utc)
+        self.timestamp = quantize_datetime_ms(stamp)
         self.alarm_engine.create_record_on_alarm_summary(
                 name=self.name, 
                 state=self.state.state, 
@@ -176,7 +180,11 @@ class Alarm(StateMachine):
     def on_enter_ack_alarm(self):
 
         self.state = AlarmState.ACKED
-        self.ack_timestamp = self.__timestamp
+        from ..timebase import quantize_datetime_ms
+        stamp = getattr(self, "_Alarm__timestamp", None)
+        if not isinstance(stamp, datetime):
+            stamp = datetime.now(timezone.utc)
+        self.ack_timestamp = quantize_datetime_ms(stamp)
         self.alarm_engine.put_record_on_alarm_summary(
             name=self.name, 
             state=self.state.state, 
@@ -328,10 +336,13 @@ class Alarm(StateMachine):
             transition_name = f'{current_state}_to_normal'
 
 
-        tag = self.tag_engine.get_tag_by_name(name=self.tag.name)
+        from ..timebase import quantize_datetime_ms
+
+        now = quantize_datetime_ms(datetime.now(timezone.utc))
+        self.__timestamp = now
         self.alarm_engine.put_record_on_alarm_summary(
-            name=self.name, 
-            ack_timestamp=tag.get_timestamp()
+            name=self.name,
+            ack_timestamp=now,
         )
         self.__transition(transition_name=transition_name)
         return self, f"{self.tag.get_name()}"

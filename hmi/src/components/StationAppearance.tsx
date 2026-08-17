@@ -4,7 +4,21 @@ import { useTranslation } from "../hooks/useTranslation";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { setLocale } from "../store/slices/localeSlice";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { useDisplayDensity } from "../hooks/useDisplayDensity";
 import { SettingsChapter } from "./SettingsChapter";
+import type { DisplayDensity } from "../utils/displayDensity";
+
+const DENSITY_OPTIONS: Array<{
+  id: DisplayDensity;
+  nameKey: string;
+  hintKey: string;
+  icon: string;
+}> = [
+  { id: "auto", nameKey: "settings.displayDensityAuto", hintKey: "settings.displayDensityAutoHint", icon: "bi-aspect-ratio" },
+  { id: "workstation", nameKey: "settings.displayDensityWorkstation", hintKey: "settings.displayDensityWorkstationHint", icon: "bi-laptop" },
+  { id: "control", nameKey: "settings.displayDensityControl", hintKey: "settings.displayDensityControlHint", icon: "bi-tv" },
+  { id: "wall", nameKey: "settings.displayDensityWall", hintKey: "settings.displayDensityWallHint", icon: "bi-display" },
+];
 
 const LANGUAGES = [
   { id: "es" as const, nameKey: "settings.languageSpanish", native: "Español", code: "ES" },
@@ -15,6 +29,7 @@ export function StationAppearance() {
   const { t, locale } = useTranslation();
   const { mode, set } = useTheme();
   const { mode: tzMode, setMode: setTzMode, plantTimezone, browserTimezone } = useDisplayTimezone();
+  const { mode: densityMode, setMode: setDensityMode } = useDisplayDensity();
   const dispatch = useAppDispatch();
 
   return (
@@ -82,6 +97,32 @@ export function StationAppearance() {
                 <span className="settings-choice__hint">{t("settings.themeDarkHint")}</span>
               </span>
             </button>
+          </div>
+        </article>
+
+        <article className="settings-tile settings-tile--span">
+          <div className="settings-tile__label">{t("settings.displayDensity")}</div>
+          <p className="settings-tile__hint">{t("settings.displayDensityLede")}</p>
+          <div className="settings-choice" role="radiogroup" aria-label={t("settings.displayDensity")}>
+            {DENSITY_OPTIONS.map((option) => {
+              const selected = densityMode === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={clsx("settings-choice__card", selected && "is-selected")}
+                  onClick={() => setDensityMode(option.id)}
+                >
+                  <i className={`bi ${option.icon} settings-choice__icon`} aria-hidden="true" />
+                  <span className="settings-choice__copy">
+                    <span className="settings-choice__name">{t(option.nameKey)}</span>
+                    <span className="settings-choice__hint">{t(option.hintKey)}</span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </article>
 

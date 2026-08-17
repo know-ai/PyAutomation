@@ -18,7 +18,7 @@ import axios from "axios";
 import { useTheme } from "../hooks/useTheme";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
-import { formatDateTimeLocalInput, formatInstantForBackend } from "../utils/timezone";
+import { formatDateTimeLocalInput, formatInstantForBackend, plotlyLocaleTimeFormats } from "../utils/timezone";
 import { readSessionTags, writeSessionTags } from "../utils/sessionFilters";
 
 type PresetDate =
@@ -127,7 +127,7 @@ const ZOOM_DEBOUNCE_MS = 220;
 const ZOOM_CACHE_LIMIT = 8;
 
 export function Trends() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { mode } = useTheme();
   const { timeZone } = useDisplayTimezone();
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
@@ -704,6 +704,8 @@ export function Trends() {
     const gridColor = isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)";
     const lineColor = isDark ? "rgba(255, 255, 255, 0.3)" : "rgba(0, 0, 0, 0.3)";
 
+    const xTimeFormats = plotlyLocaleTimeFormats(locale);
+
     // Crear layout con múltiples ejes Y
     const layout: Partial<Layout> = {
       paper_bgcolor: paperBgColor,
@@ -712,17 +714,16 @@ export function Trends() {
         color: textColor,
       },
       xaxis: {
-        title: t("trends.time"),
         type: "date",
+        tickformat: xTimeFormats.tickformat,
+        hoverformat: xTimeFormats.hoverformat,
+        tickformatstops: xTimeFormats.tickformatstops,
         ...(axisRange
           ? { range: axisRange, autorange: false }
           : { autorange: true }),
         gridcolor: gridColor,
         linecolor: lineColor,
         zerolinecolor: lineColor,
-        titlefont: {
-          color: textColor,
-        },
         tickfont: {
           color: textColor,
         },
@@ -742,7 +743,7 @@ export function Trends() {
         bgcolor: "rgba(0,0,0,0)",
         bordercolor: "rgba(0,0,0,0)",
       },
-      margin: { l: 56, r: 48, t: 36, b: 48 },
+      margin: { l: 56, r: 48, t: 36, b: 32 },
       autosize: true,
     };
 
@@ -801,11 +802,11 @@ export function Trends() {
       l: leftMargin,
       r: rightMargin,
       t: 36,
-      b: 48,
+      b: 32,
     };
 
     return { data, layout };
-  }, [trendsData, mode, dataRevision, axisRange, t]);
+  }, [trendsData, mode, dataRevision, axisRange, locale]);
 
   return (
     <div className="row g-0 trends-fit-viewport">
@@ -813,7 +814,7 @@ export function Trends() {
         <Card
           className="trends-fit-card"
           style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}
-          bodyClassName="p-2 d-flex flex-column"
+          bodyClassName="p-0 d-flex flex-column"
           title={
             <div className="card-header-stack w-100">
               <div className="d-flex justify-content-between align-items-center w-100 flex-wrap gap-2">
@@ -906,7 +907,7 @@ export function Trends() {
           }
         >
           {error && (
-            <div className="alert alert-danger py-2 mb-2" role="alert">
+            <div className="alert alert-danger py-2 m-2 mb-0" role="alert">
               {error}
             </div>
           )}

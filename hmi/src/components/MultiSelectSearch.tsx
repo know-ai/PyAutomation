@@ -41,9 +41,15 @@ type PanelPosition = {
   placement: "bottom" | "top";
 };
 
+import { readUiScale } from "../utils/displayDensity";
+
 const PANEL_MAX_HEIGHT = 320;
 const PANEL_MIN_WIDTH = 280;
 const VIEWPORT_GAP = 8;
+
+function scaledPx(base: number): number {
+  return Math.round(base * readUiScale());
+}
 
 export function MultiSelectSearch({
   options,
@@ -101,28 +107,34 @@ export function MultiSelectSearch({
     const trigger = triggerRef.current;
     if (!trigger) return;
 
+    const gap = scaledPx(VIEWPORT_GAP);
+    const minWidth = scaledPx(PANEL_MIN_WIDTH);
+    const maxHeight = scaledPx(PANEL_MAX_HEIGHT);
+    const flipBelow = scaledPx(180);
+    const minPanel = scaledPx(160);
+
     const rect = trigger.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const viewportWidth = window.innerWidth;
-    const spaceBelow = viewportHeight - rect.bottom - VIEWPORT_GAP;
-    const spaceAbove = rect.top - VIEWPORT_GAP;
+    const spaceBelow = viewportHeight - rect.bottom - gap;
+    const spaceAbove = rect.top - gap;
     const placement: "bottom" | "top" =
-      spaceBelow < 180 && spaceAbove > spaceBelow ? "top" : "bottom";
+      spaceBelow < flipBelow && spaceAbove > spaceBelow ? "top" : "bottom";
     const available = placement === "bottom" ? spaceBelow : spaceAbove;
     const width = Math.min(
-      Math.max(rect.width, PANEL_MIN_WIDTH),
-      viewportWidth - VIEWPORT_GAP * 2
+      Math.max(rect.width, minWidth),
+      viewportWidth - gap * 2
     );
     let left = rect.left;
-    if (left + width > viewportWidth - VIEWPORT_GAP) {
-      left = Math.max(VIEWPORT_GAP, viewportWidth - VIEWPORT_GAP - width);
+    if (left + width > viewportWidth - gap) {
+      left = Math.max(gap, viewportWidth - gap - width);
     }
 
     setPosition({
       top: placement === "bottom" ? rect.bottom + 4 : rect.top - 4,
       left,
       width,
-      maxHeight: Math.min(PANEL_MAX_HEIGHT, Math.max(160, available)),
+      maxHeight: Math.min(maxHeight, Math.max(minPanel, available)),
       placement,
     });
   }, []);
@@ -323,8 +335,8 @@ export function MultiSelectSearch({
             <VirtualList
               className="multi-select-search__list"
               items={filtered}
-              height={Math.max(160, position.maxHeight - 96)}
-              itemHeight={48}
+              height={Math.max(scaledPx(160), position.maxHeight - scaledPx(96))}
+              itemHeight={scaledPx(48)}
               highlightedIndex={highlightIndex}
               getKey={(option) => option.value}
               renderItem={(option, index) => {

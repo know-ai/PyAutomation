@@ -6,6 +6,7 @@ import tagsReducer, { persistTagHistory } from "./slices/tagsSlice";
 import alarmsReducer from "./slices/alarmsSlice";
 import machinesReducer from "./slices/machinesSlice";
 import displayTimezoneReducer from "./slices/displayTimezoneSlice";
+import displayDensityReducer from "./slices/displayDensitySlice";
 
 const loadAuthState = () => {
   try {
@@ -45,6 +46,7 @@ export const store = configureStore({
     alarms: alarmsReducer,
     machines: machinesReducer,
     displayTimezone: displayTimezoneReducer,
+    displayDensity: displayDensityReducer,
   },
   preloadedState: {
     ...loadAuthState(),

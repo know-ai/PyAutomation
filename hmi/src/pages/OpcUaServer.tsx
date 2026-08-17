@@ -1,12 +1,10 @@
 import { useEffect, useState, useMemo } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
-import { PaginationNav } from "../components/PaginationNav";
 import { getOpcUaServerAttributes, updateOpcUaServerAccessType, type OpcUaServerAttribute } from "../services/opcua";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
 
-const ITEMS_PER_PAGE = 10;
 const ACCESS_TYPE_OPTIONS: ("Read" | "Write" | "ReadWrite")[] = ["Read", "Write", "ReadWrite"];
 
 export function OpcUaServer() {
@@ -15,6 +13,7 @@ export function OpcUaServer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageLimit, setPageLimit] = useState(20);
   const [updatingNamespace, setUpdatingNamespace] = useState<string | null>(null);
   
   // Estado para el modal de confirmación
@@ -47,12 +46,30 @@ export function OpcUaServer() {
   }, []);
 
   // Paginación
-  const totalPages = Math.ceil(attributes.length / ITEMS_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(attributes.length / pageLimit) || 1);
   const paginatedAttributes = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = startIndex + ITEMS_PER_PAGE;
-    return attributes.slice(startIndex, endIndex);
-  }, [attributes, currentPage]);
+    const startIndex = (currentPage - 1) * pageLimit;
+    return attributes.slice(startIndex, startIndex + pageLimit);
+  }, [attributes, currentPage, pageLimit]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const handleLimitChange = (newLimit: number) => {
+    if (newLimit > 0) {
+      setPageLimit(newLimit);
+      setCurrentPage(1);
+    }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
 
   // Manejar cambio de Access Type
   const handleAccessTypeChange = (attribute: OpcUaServerAttribute, newAccessType: "Read" | "Write" | "ReadWrite") => {
@@ -185,9 +202,6 @@ export function OpcUaServer() {
     </div>
   );
 
-  const showingStart = attributes.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
-  const showingEnd = Math.min(currentPage * ITEMS_PER_PAGE, attributes.length);
-
   return (
     <div className="row g-0 page-fit-viewport">
       <div className="col-12 h-100">
@@ -196,20 +210,64 @@ export function OpcUaServer() {
           title={cardTitle}
           footer={
             <div className="d-flex justify-content-between align-items-center">
-              <span className="small text-muted">
-                {t("pagination.showing", {
-                  start: showingStart,
-                  end: showingEnd,
-                  total: attributes.length,
-                  item: t("pagination.items.attributes"),
-                })}
-              </span>
-              <PaginationNav
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={setCurrentPage}
-                disabled={loading}
-              />
+              <div className="d-flex align-items-center gap-2">
+                <label className="mb-0 small">{t("pagination.itemsPerPage")}</label>
+                <select
+                  className="form-select form-select-sm"
+                  style={{ width: "auto" }}
+                  value={pageLimit}
+                  onChange={(e) => handleLimitChange(Number(e.target.value))}
+                  disabled={loading}
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+              <div className="d-flex align-items-center gap-2">
+                <span className="small text-muted">
+                  {t("pagination.pageOf", {
+                    current: currentPage,
+                    total: totalPages,
+                    count: attributes.length,
+                  })}
+                </span>
+                <div className="btn-group" role="group">
+                  <Button
+                    variant="secondary"
+                    className="btn-sm"
+                    onClick={() => handlePageChange(1)}
+                    disabled={loading || currentPage === 1}
+                  >
+                    «
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="btn-sm"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={loading || currentPage === 1}
+                  >
+                    ‹
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="btn-sm"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={loading || currentPage >= totalPages}
+                  >
+                    ›
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="btn-sm"
+                    onClick={() => handlePageChange(totalPages)}
+                    disabled={loading || currentPage >= totalPages}
+                  >
+                    »
+                  </Button>
+                </div>
+              </div>
             </div>
           }
         >

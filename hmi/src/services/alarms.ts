@@ -96,12 +96,18 @@ export const getAlarmByName = async (alarmName: string): Promise<Alarm> => {
 
 export type AlarmSummary = {
   id?: string | number;
+  identifier?: string;
   name: string;
   tag: string;
   description?: string;
+  alarm_type?: string;
+  trigger_value?: number | boolean | null;
   state: string;
   mnemonic?: string;
   status?: string;
+  condition?: string;
+  segment?: string | null;
+  manufacturer?: string | null;
   alarm_time: string;
   ack_time?: string | null;
   has_comments?: boolean;

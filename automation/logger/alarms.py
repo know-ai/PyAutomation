@@ -5,6 +5,7 @@ This module implements the Alarms Logger, responsible for persisting alarm defin
 alarm status history, and summaries to the database.
 """
 from datetime import datetime
+import logging
 from ..dbmodels import Alarms, AlarmSummary, AlarmTypes, AlarmStates
 from .core import BaseEngine, BaseLogger
 from ..alarms.trigger import TriggerType
@@ -37,6 +38,13 @@ class AlarmsLogger(BaseLogger):
             return
         
         self._db.create_tables(tables, safe=True)
+        try:
+            AlarmSummary.ensure_schema()
+        except Exception:
+            logging.getLogger("pyautomation").warning(
+                "AlarmSummary timestamp scale ensure skipped",
+                exc_info=True,
+            )
         self.__init_default_alarms_schema()
 
     @db_rollback
@@ -339,7 +347,11 @@ class AlarmsLogger(BaseLogger):
             if not alarm:
                 return None
             if ack_timestamp:
-                fields["ack_time"] = ack_timestamp
+                from ..timebase import quantize_datetime_ms
+                stamp = ack_timestamp
+                if isinstance(stamp, datetime):
+                    stamp = quantize_datetime_ms(stamp)
+                fields["ack_time"] = stamp
             if state:
                 alarm_state = AlarmStates.get_or_none(name=state)
                 fields["state"] = alarm_state

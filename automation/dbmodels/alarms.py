@@ -1,3 +1,4 @@
+import logging
 import pytz
 from peewee import CharField, FloatField, ForeignKeyField, TimestampField
 from ..dbmodels.core import BaseModel 
@@ -5,6 +6,7 @@ from datetime import datetime
 from .tags import Tags
 from ..alarms.states import States
 from ..tags.cvt import CVTEngine
+from ..timebase import TAGVALUE_TIMESTAMP_RESOLUTION, SECONDS_CEILING, quantize_datetime_ms
 from ..utils.decorators import logging_error_handler
 
 tag_engine = CVTEngine()
@@ -308,8 +310,8 @@ class AlarmSummary(BaseModel):
     
     alarm = ForeignKeyField(Alarms, backref='summary')
     state = ForeignKeyField(AlarmStates, backref='summary')
-    alarm_time = TimestampField(utc=True)
-    ack_time = TimestampField(utc=True, null=True)
+    alarm_time = TimestampField(utc=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
+    ack_time = TimestampField(utc=True, null=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
 
     @classmethod
     @logging_error_handler
@@ -330,6 +332,10 @@ class AlarmSummary(BaseModel):
         if _alarm:
 
             if _state:
+                if isinstance(timestamp, datetime):
+                    timestamp = quantize_datetime_ms(timestamp)
+                if isinstance(ack_timestamp, datetime):
+                    ack_timestamp = quantize_datetime_ms(ack_timestamp)
 
                 # Create record
                 query = cls(alarm=_alarm.id, state=_state.id, alarm_time=timestamp, ack_time=ack_timestamp)
@@ -602,16 +608,52 @@ class AlarmSummary(BaseModel):
         ack_time = format_display_datetime(self.ack_time, timezone)
         alarm_time = format_display_datetime(self.alarm_time, timezone)
 
+        configured = self.alarm
+        tag = configured.tag if configured else None
+        segment = ""
+        manufacturer = ""
+        if tag is not None and getattr(tag, "segment", None):
+            segment_payload = tag.segment.serialize()
+            segment = segment_payload.get("name") or ""
+            manufacturer = (segment_payload.get("manufacturer") or {}).get("name") or ""
+
         return {
             'id': self.id,
-            'name': self.alarm.name,
-            'tag': self.alarm.tag.name,
-            'description': self.alarm.description,
+            'identifier': configured.identifier if configured else None,
+            'name': configured.name if configured else None,
+            'tag': tag.name if tag is not None else None,
+            'description': configured.description if configured else None,
+            'alarm_type': configured.trigger_type.name if configured and configured.trigger_type else None,
+            'trigger_value': configured.trigger_value if configured else None,
             'state': self.state.name,
             'mnemonic': self.state.mnemonic,
             'status': self.state.status,
+            'condition': self.state.condition,
+            'segment': segment or None,
+            'manufacturer': manufacturer or None,
             'alarm_time': alarm_time,
             'ack_time': ack_time,
             'has_comments': True if self.logs else False
         }
+
+    @classmethod
+    def ensure_schema(cls) -> None:
+        """Scale legacy unix-second ticks on alarm_time / ack_time to milliseconds."""
+        database = cls._meta.database
+        if database is None:
+            return
+        table = cls._meta.table_name
+        logger = logging.getLogger("pyautomation")
+        for column in ("alarm_time", "ack_time"):
+            try:
+                database.execute_sql(
+                    f"UPDATE {table} SET {column} = {column} * 1000 "
+                    f"WHERE {column} IS NOT NULL AND {column} > 0 AND {column} < {SECONDS_CEILING}"
+                )
+            except Exception:
+                logger.warning(
+                    "AlarmSummary: %s seconds→ms skipped",
+                    column,
+                    exc_info=True,
+                )
     

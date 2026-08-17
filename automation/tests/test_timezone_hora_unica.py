@@ -49,6 +49,19 @@ class TestAlarmSummaryTimezone(unittest.TestCase):
         self.assertIn("2026", rendered)
 
 
+class TestAlarmSummaryMillis(unittest.TestCase):
+    def test_summary_fields_use_millisecond_resolution(self):
+        from ..dbmodels.alarms import AlarmSummary
+
+        self.assertEqual(AlarmSummary.alarm_time.resolution, 1000)
+        self.assertEqual(AlarmSummary.ack_time.resolution, 1000)
+
+    def test_display_keeps_milliseconds(self):
+        utc = datetime(2026, 8, 14, 15, 0, 0, 123000, tzinfo=timezone.utc)
+        rendered = format_display_datetime(utc, "UTC")
+        self.assertTrue(rendered.endswith(".123000"), rendered)
+
+
 class TestEnsureUtc(unittest.TestCase):
     def test_aware_converts_to_utc(self):
         caracas = pytz.timezone("America/Caracas")

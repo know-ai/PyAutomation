@@ -22,7 +22,8 @@ import {
   useScheduledQuery,
   type ScheduledQueryContext,
 } from "../hooks/useScheduledQuery";
-import { formatDateTimeLocalForBackend, formatDateTimeLocalInput } from "../utils/timezone";
+import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp, type UiLocale } from "../utils/timezone";
+import { alarmStateBadgeClass } from "../utils/alarmState";
 
 type PresetDate = 
   | "Last Hour"
@@ -76,8 +77,19 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
   return { start, end };
 };
 
+const ALARM_TIME_OPTS = { fractionalDigits: 3 as const };
+
+function formatAlarmTime(value: string | Date | null | undefined, locale: UiLocale): string {
+  return formatOperatorTimestamp(value, locale, ALARM_TIME_OPTS);
+}
+
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "-";
+  return String(value);
+}
+
 export function AlarmsSummary() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { timeZone } = useDisplayTimezone();
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
   const [alarmsSummary, setAlarmsSummary] = useState<AlarmSummary[]>([]);
@@ -143,6 +155,7 @@ export function AlarmsSummary() {
   const [selectedAlarmForComments, setSelectedAlarmForComments] = useState<AlarmSummary | null>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
+  const [selectedAlarmDetail, setSelectedAlarmDetail] = useState<AlarmSummary | null>(null);
 
   // Cargar opciones para los filtros
   useEffect(() => {
@@ -478,7 +491,7 @@ export function AlarmsSummary() {
       const rows = comments.map((comment: any) => {
         return [
           comment.id || "",
-          comment.timestamp || "",
+          comment.timestamp ? formatOperatorTimestamp(comment.timestamp, locale) : "",
           comment.user?.username || "",
           comment.message || "",
           comment.description || "",
@@ -562,11 +575,10 @@ export function AlarmsSummary() {
       // Preparar los datos para CSV
       const headers = [
         t("tables.id"),
+        t("tables.alarmDateTime"),
         t("tables.name"),
-        t("tables.tag"),
         t("tables.description"),
         t("tables.status"),
-        t("tables.alarmDateTime"),
         t("tables.ackDateTime"),
         t("alarmsSummary.hasComments"),
       ];
@@ -575,12 +587,11 @@ export function AlarmsSummary() {
       const rows = allAlarms.map((alarm: AlarmSummary) => {
         return [
           alarm.id || "",
+          alarm.alarm_time ? formatAlarmTime(alarm.alarm_time, locale) : "",
           alarm.name || "",
-          alarm.tag || "",
           alarm.description || "",
           alarm.state || "",
-          alarm.alarm_time || "",
-          alarm.ack_time || "",
+          alarm.ack_time ? formatAlarmTime(alarm.ack_time, locale) : "",
           alarm.has_comments ? t("common.yes") : t("common.no"),
         ];
       });
@@ -788,11 +799,9 @@ export function AlarmsSummary() {
                 <thead>
                   <tr>
                     <th>{t("tables.id")}</th>
-                    <th>{t("tables.name")}</th>
-                    <th>{t("tables.tag")}</th>
-                    <th>{t("tables.description")}</th>
-                    <th>{t("tables.status")}</th>
                     <th>{t("tables.alarmDateTime")}</th>
+                    <th>{t("tables.name")}</th>
+                    <th>{t("tables.status")}</th>
                     <th>{t("tables.ackDateTime")}</th>
                     <th>{t("tables.comments")}</th>
                   </tr>
@@ -800,7 +809,7 @@ export function AlarmsSummary() {
                 <tbody>
                   {alarmsSummary.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="text-center text-muted py-4">
+                      <td colSpan={6} className="text-center text-muted py-4">
                         {t("alarmsSummary.noAlarmsAvailable")}
                       </td>
                     </tr>
@@ -809,26 +818,32 @@ export function AlarmsSummary() {
                       <tr
                         key={alarm.id}
                         onContextMenu={(e) => handleRowContextMenu(e, alarm)}
-                        style={{ cursor: "context-menu" }}
+                        onDoubleClick={() => setSelectedAlarmDetail(alarm)}
+                        style={{ cursor: "pointer" }}
+                        title={t("alarmsSummary.detailHint")}
                       >
                         <td>{alarm.id || "-"}</td>
+                        <td>{formatAlarmTime(alarm.alarm_time, locale)}</td>
                         <td>
                           <strong>{alarm.name || "-"}</strong>
                         </td>
-                        <td>{alarm.tag || "-"}</td>
-                        <td>{alarm.description || "-"}</td>
                         <td>
-                          <span className="badge bg-secondary">{alarm.state || "-"}</span>
+                          <span className={`badge ${alarmStateBadgeClass(alarm.state)}`}>
+                            {t(`alarmsSummary.states.${alarm.state}`)}
+                          </span>
                         </td>
-                        <td>{alarm.alarm_time || "-"}</td>
-                        <td>{alarm.ack_time || "-"}</td>
+                        <td>{alarm.ack_time ? formatAlarmTime(alarm.ack_time, locale) : "-"}</td>
                         <td>
                           {alarm.has_comments ? (
                             <i 
                               className="bi bi-check-circle text-success" 
                               title={t("alarmsSummary.hasCommentsClick")}
                               style={{ cursor: "pointer" }}
-                              onClick={() => handleViewComments(alarm)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewComments(alarm);
+                              }}
+                              onDoubleClick={(e) => e.stopPropagation()}
                             ></i>
                           ) : (
                             <i className="bi bi-x-circle text-muted" title={t("alarmsSummary.noComments")}></i>
@@ -985,7 +1000,7 @@ export function AlarmsSummary() {
                               comments.map((comment) => (
                                 <tr key={comment.id}>
                                   <td>{comment.id || "-"}</td>
-                                  <td>{comment.timestamp || "-"}</td>
+                                  <td>{formatOperatorTimestamp(comment.timestamp, locale)}</td>
                                   <td>{comment.user?.username || "-"}</td>
                                   <td>{comment.message || "-"}</td>
                                   <td>{comment.description || "-"}</td>
@@ -1008,6 +1023,97 @@ export function AlarmsSummary() {
                         setComments([]);
                       }}
                     >
+                      {t("common.close")}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {selectedAlarmDetail && (
+            <div
+              className="modal show d-block"
+              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+              onClick={() => setSelectedAlarmDetail(null)}
+            >
+              <div className="modal-dialog modal-lg modal-dialog-scrollable" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">
+                      {t("alarmsSummary.detailTitle", { id: selectedAlarmDetail.id || "N/A" })}
+                    </h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      onClick={() => setSelectedAlarmDetail(null)}
+                    ></button>
+                  </div>
+                  <div className="modal-body">
+                    <dl className="row mb-0">
+                      <dt className="col-sm-4">{t("tables.id")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.id)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.identifier")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.identifier)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.name")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.name)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.description")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.description)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.tag")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.tag)}</dd>
+
+                      <dt className="col-sm-4">{t("alarms.alarmType")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.alarm_type)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.triggerValue")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.trigger_value)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.status")}</dt>
+                      <dd className="col-sm-8">
+                        <span className={`badge ${alarmStateBadgeClass(selectedAlarmDetail.state)}`}>
+                          {selectedAlarmDetail.state
+                            ? t(`alarmsSummary.states.${selectedAlarmDetail.state}`)
+                            : "-"}
+                        </span>
+                      </dd>
+
+                      <dt className="col-sm-4">{t("tables.mnemonic")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.mnemonic)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.processCondition")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.condition)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.state")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.status)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.alarmDateTime")}</dt>
+                      <dd className="col-sm-8">{formatAlarmTime(selectedAlarmDetail.alarm_time, locale)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.ackDateTime")}</dt>
+                      <dd className="col-sm-8">
+                        {selectedAlarmDetail.ack_time
+                          ? formatAlarmTime(selectedAlarmDetail.ack_time, locale)
+                          : "-"}
+                      </dd>
+
+                      <dt className="col-sm-4">{t("tables.segment")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.segment)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.manufacturer")}</dt>
+                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.manufacturer)}</dd>
+
+                      <dt className="col-sm-4">{t("tables.comments")}</dt>
+                      <dd className="col-sm-8">
+                        {selectedAlarmDetail.has_comments ? t("common.yes") : t("common.no")}
+                      </dd>
+                    </dl>
+                  </div>
+                  <div className="modal-footer">
+                    <Button variant="secondary" onClick={() => setSelectedAlarmDetail(null)}>
                       {t("common.close")}
                     </Button>
                   </div>
