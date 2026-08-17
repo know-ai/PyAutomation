@@ -16,6 +16,9 @@ def _event_rate_metrics() -> dict:
             "EVENTS_RATE_PER_MIN": 0.0,
             "EVENTS_RATE_ALERT": False,
             "EVENTS_RATE_ALERT_THRESHOLD": 30.0,
+            "LOGS_RATE_PER_MIN": 0.0,
+            "LOGS_RATE_ALERT": False,
+            "LOGS_RATE_ALERT_THRESHOLD": 30.0,
         }
 
 

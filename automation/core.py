@@ -4337,58 +4337,38 @@ class PyAutomation(Singleton):
         classification:str=None,
         alarm_summary_id:int=None,
         event_id:int=None,
-        timestamp:datetime=None
+        timestamp:datetime=None,
+        shift:str=None,
+        area:str=None,
+        handover:bool=False,
         )->tuple:
         r"""
-        Creates a new log entry.
-
-        **Parameters:**
-
-        * **message** (str): Log message.
-        * **user** (User): User associated with the log.
-        * **description** (str, optional): Detailed description.
-        * **classification** (str, optional): Log category.
-
-        **Returns:**
-
-        * **tuple**: Created log object and status message.
-
-        **Usage:**
-
-        ```python
-        >>> from automation import PyAutomation
-        >>> from automation.modules.users.users import User
-        >>> from automation.modules.users.roles import Role
-        >>> app = PyAutomation()
-        >>> # Mock user for logging
-        >>> role = Role(name="logger_role", level=1)
-        >>> user = User(username="logger_test", email="log@test.com", role=role, password="password")
-        >>> # Example of log creation (requires active DB connection)
-        >>> # if app.is_db_connected():
-        >>> #     log, msg = app.create_log("System started", user)
-        >>> #     print(log.message)
-        >>> # 'System started'
-        ```
+        Creates a logbook entry. Journals even when the historian is down.
         """
-        if self.is_db_connected():
-            
-            log, message = self.logs_engine.create(
-                message=message, 
-                user=user, 
-                description=description, 
-                classification=classification,
-                alarm_summary_id=alarm_summary_id,
-                event_id=event_id,
-                timestamp=timestamp
-            )
+        log, message = self.logs_engine.create(
+            message=message, 
+            user=user, 
+            description=description, 
+            classification=classification,
+            alarm_summary_id=alarm_summary_id,
+            event_id=event_id,
+            timestamp=timestamp,
+            shift=shift,
+            area=area,
+            handover=bool(handover),
+        )
 
-            if log and self.sio:
+        if log and self.sio:
+            try:
+                payload = log.serialize() if hasattr(log, "serialize") else log
+                self.sio.emit("on.log", data=payload)
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "on.log emit skipped",
+                    exc_info=True,
+                )
 
-                self.sio.emit("on.log", data=log.serialize())
-
-            return log, message
-        
-        return None, "Logs DB is not up"
+        return log, message
         
     @logging_error_handler
     def filter_logs_by(
@@ -4403,7 +4383,10 @@ class PyAutomation(Singleton):
             less_than_timestamp:datetime=None,
             timezone:str="UTC",
             page:int=1,
-            limit:int=20
+            limit:int=20,
+            classifications:list=None,
+            search:str="",
+            exclude_description:str="",
         )->dict:
         r"""
         Filters system logs based on criteria with pagination.
@@ -4439,7 +4422,10 @@ class PyAutomation(Singleton):
                 less_than_timestamp=less_than_timestamp,
                 timezone=timezone,
                 page=page,
-                limit=limit
+                limit=limit,
+                classifications=classifications,
+                search=search,
+                exclude_description=exclude_description,
             )
         
     @logging_error_handler

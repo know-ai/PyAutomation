@@ -171,10 +171,13 @@ class LoginResource(Resource):
         user, message = app.login(**args)
 
         if user:
+            extra = "method=password"
+            if getattr(user, "_login_replaced_session", False) is True:
+                extra += " replaced_session=1"
             record_user_session_event(
                 action="LOGIN",
                 user=user,
-                extra="method=password",
+                extra=extra,
             )
             return {
                 "apiKey": user.token,

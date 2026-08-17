@@ -30,6 +30,7 @@ type MultiSelectSearchProps = {
   disabled?: boolean;
   className?: string;
   style?: CSSProperties;
+  onClose?: () => void;
 };
 
 type PanelPosition = {
@@ -57,6 +58,7 @@ export function MultiSelectSearch({
   disabled = false,
   className,
   style,
+  onClose,
 }: MultiSelectSearchProps) {
   const triggerId = useId();
   const listId = useId();
@@ -129,7 +131,8 @@ export function MultiSelectSearch({
     setOpen(false);
     setQuery("");
     setHighlightIndex(0);
-  }, []);
+    onClose?.();
+  }, [onClose]);
 
   const toggleOption = useCallback(
     (value: string) => {

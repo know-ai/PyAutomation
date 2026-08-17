@@ -256,7 +256,8 @@ class Events(BaseModel):
         Retrieves comments (logs) associated with an event.
         """
         query = cls.read(id=id)
-
+        if not query:
+            return []
         return [comment.serialize() for comment in query.logs]
 
     def serialize(self, timezone=None)-> dict:

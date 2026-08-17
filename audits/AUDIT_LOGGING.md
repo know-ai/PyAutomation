@@ -8,7 +8,7 @@
 | **Fecha** | 2026-08-16 (actualizado: Operación «Trazabilidad Eterna» + «Log Eterno») |
 | **Metodología** | Revisión estática de `core.__start_logger`, `RotatingFileHandler`, Settings API, decoradores, auditores OPC/DB/SAF/sesión, `CycleSampleCache`, journal SAF, HMI watchdog, `audit_metrics` |
 | **Veredicto** | **A+** en logs de archivo y anti-flood de ERROR: `DedupeFilter` (cooldown 60 s, caché ≤ 1000), `StreamHandler` ERROR, métrica `LOG_ERROR_RATE_PER_MIN`. L3 Events: anti-spam por dominio (DB boot silencioso, OPC/SAF 60 s, operador sin debounce) + `EVENTS_RATE_PER_MIN`. Retención PG/backups SQLite sigue siendo política de planta. |
-| **Complementa** | `AUDIT_USER_EVENTS.md` (inventario de la tabla `Events`), `AUDIT_BACKEND_PERFORMANCE.md` (BE-OK3), `STORE_AND_FORWARD.md`, `PERFORMANCE_RUNBOOK.md`, `docs/Developments_Guide/logs.md` |
+| **Complementa** | `AUDIT_USER_EVENTS.md` (inventario de la tabla `Events`), `AUDIT_OPERATIONAL_LOGS.md` (bitácora L2 / tabla `Logs`), `AUDIT_BACKEND_PERFORMANCE.md` (BE-OK3), `STORE_AND_FORWARD.md`, `PERFORMANCE_RUNBOOK.md`, `docs/Developments_Guide/logs.md` |
 
 ---
 
@@ -251,7 +251,7 @@ Flag global `is_history_logged` (vía `DBManager.set_db`): si es `False`, los en
 
 Métrica operativa:
 
-- `GET /api/health/system` → `LOG_ERROR_RATE_PER_MIN`, `LOG_ERROR_SUPPRESSED_PER_MIN`, `LOG_ERROR_ALERT`, **`EVENTS_RATE_PER_MIN`**, **`EVENTS_RATE_ALERT`**.
+- `GET /api/health/system` → `LOG_ERROR_RATE_PER_MIN`, `LOG_ERROR_SUPPRESSED_PER_MIN`, `LOG_ERROR_ALERT`, **`EVENTS_RATE_PER_MIN`**, **`EVENTS_RATE_ALERT`**, **`LOGS_RATE_PER_MIN`**, **`LOGS_RATE_ALERT`**.
 - Tamaño de `logs/app.log*` vs `log_max_bytes * (1+backup)`.
 - `SAF_PENDING_CAP_HITS` / `SAF_QUEUE_DEPTH` (historia, no L1).
 
@@ -315,7 +315,7 @@ ls -lh logs/app.log*
 # Config efectiva
 curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/api/settings/" | jq '{log_max_bytes,log_backup_count,log_level,logger_period}'
 # SAF
-curl -sS "$BASE/api/health/system" | jq '{LOG_ERROR_RATE_PER_MIN,LOG_ERROR_SUPPRESSED_PER_MIN,LOG_ERROR_ALERT,LOG_ERROR_COOLDOWN_S,EVENTS_RATE_PER_MIN,EVENTS_RATE_ALERT}'
+curl -sS "$BASE/api/health/system" | jq '{LOG_ERROR_RATE_PER_MIN,LOG_ERROR_SUPPRESSED_PER_MIN,LOG_ERROR_ALERT,LOG_ERROR_COOLDOWN_S,EVENTS_RATE_PER_MIN,EVENTS_RATE_ALERT,LOGS_RATE_PER_MIN,LOGS_RATE_ALERT}'
 ```
 
 ### 9.2 Endurecer planta ruidosa
@@ -347,6 +347,7 @@ Buscar el mismo `AttributeError`/`TypeError` repetido (patrón pre-alarma `Buffe
 | Documento | Relación |
 |---|---|
 | `AUDIT_USER_EVENTS.md` | Inventario L3 de la tabla `Events` (quién/qué/cuándo, clasificaciones, residual de sesión) |
+| `AUDIT_OPERATIONAL_LOGS.md` | Bitácora L2 (tabla `Logs`, HMI `/operational-logs`, comentarios, watchdog) |
 | `docs/Developments_Guide/logs.md` | Guía de usuario (rotación, decorator, API) — esta auditoría añade techos, gaps y CA |
 | `AUDIT_BACKEND_PERFORMANCE.md` | BE-OK3 confirma rotación; BE-H4 usa `app.log` como evidencia de 503 |
 | `STORE_AND_FORWARD.md` / `PERSISTENCE_FLOW.md` | Caps de journal = “log de durabilidad”, no texto |

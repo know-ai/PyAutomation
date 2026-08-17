@@ -192,21 +192,30 @@ class PersistableRecord:
         alarm_summary_id: int | None = None,
         event_id: int | None = None,
         timestamp: datetime | None = None,
+        shift: str | None = None,
+        area: str | None = None,
+        handover: bool = False,
+        user_name: str | None = None,
     ) -> "PersistableRecord":
         ts = iso(timestamp or utc_now())
+        author = user_name or username or "system"
         return cls(
             domain_name=DOMAIN.LOG,
-            entity=username or "system",
+            entity=author,
             body={
                 "message": message,
                 "username": username,
+                "user_name": author,
                 "description": description,
                 "classification": classification,
                 "alarm_summary_id": alarm_summary_id,
                 "event_id": event_id,
                 "timestamp": ts,
+                "shift": shift,
+                "area": area,
+                "handover": bool(handover),
             },
-            key=f"log:{username}:{ts}:{message}",
+            key=f"log:{author}:{ts}:{message}",
             critical=True,
         )
 
@@ -219,13 +228,18 @@ class JournaledEnvelope:
         self.payload = dict(payload)
 
     def serialize(self, timezone=None) -> dict:
+        username = self.payload.get("user_name") or self.payload.get("username")
         return {
             "id": None,
             "timestamp": self.payload.get("timestamp"),
-            "user": {"username": self.payload.get("username")},
+            "user": {"username": username},
+            "user_name": username,
             "message": self.payload.get("message"),
             "description": self.payload.get("description"),
             "classification": self.payload.get("classification"),
+            "shift": self.payload.get("shift"),
+            "area": self.payload.get("area"),
+            "handover": bool(self.payload.get("handover")),
             "priority": self.payload.get("priority"),
             "criticity": self.payload.get("criticity"),
             "journaled": True,

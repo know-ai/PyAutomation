@@ -25,6 +25,18 @@ class TestAuditMetrics(unittest.TestCase):
         self.assertEqual(data["EVENTS_RATE_PER_MIN"], 2.0)
         self.assertFalse(data["EVENTS_RATE_ALERT"])
         self.assertEqual(data["EVENTS_RATE_ALERT_THRESHOLD"], 30.0)
+        self.assertEqual(data["LOGS_RATE_PER_MIN"], 0.0)
+        self.assertFalse(data["LOGS_RATE_ALERT"])
+
+    def test_log_rate_is_independent_of_events(self):
+        from ..utils.audit_metrics import note_log_persisted
+
+        note_event_persisted()
+        note_log_persisted()
+        note_log_persisted()
+        data = snapshot()
+        self.assertEqual(data["EVENTS_RATE_PER_MIN"], 1.0)
+        self.assertEqual(data["LOGS_RATE_PER_MIN"], 2.0)
 
     def test_cooldown_allows_once_then_blocks(self):
         self.assertTrue(cooldown_allows("saf:backpressure", 60.0))

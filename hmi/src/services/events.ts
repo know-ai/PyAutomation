@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from "axios";
 import api from "./api";
 
 export type Event = {
@@ -46,8 +47,11 @@ export type EventResponse = {
 /**
  * Filtra eventos del sistema según los criterios proporcionados
  */
-export const filterEvents = async (filters: EventFilter): Promise<EventResponse> => {
-  const { data } = await api.post("/events/filter_by", filters);
+export const filterEvents = async (
+  filters: EventFilter,
+  config?: AxiosRequestConfig
+): Promise<EventResponse> => {
+  const { data } = await api.post("/events/filter_by", filters, config);
   return data;
 };
 

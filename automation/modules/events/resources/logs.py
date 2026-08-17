@@ -15,7 +15,10 @@ logs_filter_model = api.model("logs_filter_model",{
     'usernames': fields.List(fields.String(), required=False, description='List of usernames to filter by'),
     'alarm_names': fields.List(fields.String(), required=False, description='List of associated alarm names'),
     'event_ids': fields.List(fields.Integer(), required=False, description='List of associated event IDs'),
-    'classification': fields.String(required=False, description='Log classification'),
+    'classification': fields.String(required=False, description='Log classification (substring)'),
+    'classifications': fields.List(fields.String(), required=False, description='Exact classification families'),
+    'search': fields.String(required=False, description='Search in message OR description'),
+    'exclude_description': fields.String(required=False, description='Exclude this exact description (e.g. memory-watchdog)'),
     'message': fields.String(required=False, description='Partial message content'),
     'description': fields.String(required=False, description='Partial description content'),
     'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description=f'Start time for filtering - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
@@ -29,7 +32,10 @@ logs_model = api.model("logs_model",{
     'message': fields.String(required=True, description="Main log message"),
     'alarm_summary_id': fields.Integer(required=False, description="ID of the associated alarm summary (optional)"),
     'event_id': fields.Integer(required=False, description="ID of the associated event (optional)"),
-    'description': fields.String(required=False, description="Detailed description of the log entry")
+    'description': fields.String(required=False, description="Detailed description of the log entry"),
+    'shift': fields.String(required=False, description="Shift: morning | afternoon | night"),
+    'area': fields.String(required=False, description="Plant area / unit"),
+    'handover': fields.Boolean(required=False, description="Mark as shift handover note"),
 })
 
 @ns.route('/add')
@@ -47,23 +53,22 @@ class AddLogsByResource(Resource):
         Adds a new entry to the operation logs. Can be linked to an alarm or event.
         """
         user = Api.get_current_user()
-        api.payload.update({
-            "user": user
-        })
-        if "event_id" in api.payload:
-            api.payload.update({
-                "classification": "Event"
-            })
-        elif "alarm_summary_id" in api.payload:
-            api.payload.update({
-                "classification": "Alarm"
-            })
-        else:
-            api.payload.update({
-                "classification": "General"
-            })
+        payload = dict(api.payload or {})
+        payload.pop("timestamp", None)
+        payload.pop("classification", None)
+        payload.pop("user", None)
+        from ....utils.operational_log_audit import classify_write, clip_message
 
-        log, message = app.create_log(**api.payload)
+        payload["user"] = user
+        payload["message"] = clip_message(payload.get("message"))
+        payload["classification"] = classify_write(
+            event_id=payload.get("event_id"),
+            alarm_summary_id=payload.get("alarm_summary_id"),
+            description=payload.get("description"),
+        )
+        payload["handover"] = bool(payload.get("handover"))
+
+        log, message = app.create_log(**payload)
         if log:
             
             return log.serialize(), 200

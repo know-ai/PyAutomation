@@ -10,10 +10,12 @@ import time
 from collections import deque
 
 EVENTS_ALERT_PER_MIN = 30.0
+LOGS_ALERT_PER_MIN = 30.0
 _WINDOW_S = 60.0
 
 _lock = threading.Lock()
 _times: deque[float] = deque()
+_log_times: deque[float] = deque()
 _cooldowns: dict[str, float] = {}
 
 
@@ -21,22 +23,40 @@ def note_event_persisted() -> None:
     now = time.monotonic()
     with _lock:
         _times.append(now)
-        _prune_locked(now)
+        _prune_locked(now, _times)
+
+
+def note_log_persisted() -> None:
+    now = time.monotonic()
+    with _lock:
+        _log_times.append(now)
+        _prune_locked(now, _log_times)
 
 
 def events_rate_per_min() -> float:
     now = time.monotonic()
     with _lock:
-        _prune_locked(now)
+        _prune_locked(now, _times)
         return float(len(_times))
+
+
+def logs_rate_per_min() -> float:
+    now = time.monotonic()
+    with _lock:
+        _prune_locked(now, _log_times)
+        return float(len(_log_times))
 
 
 def snapshot() -> dict:
     rate = events_rate_per_min()
+    logs_rate = logs_rate_per_min()
     return {
         "EVENTS_RATE_PER_MIN": round(rate, 2),
         "EVENTS_RATE_ALERT": bool(rate > EVENTS_ALERT_PER_MIN),
         "EVENTS_RATE_ALERT_THRESHOLD": EVENTS_ALERT_PER_MIN,
+        "LOGS_RATE_PER_MIN": round(logs_rate, 2),
+        "LOGS_RATE_ALERT": bool(logs_rate > LOGS_ALERT_PER_MIN),
+        "LOGS_RATE_ALERT_THRESHOLD": LOGS_ALERT_PER_MIN,
     }
 
 
@@ -60,10 +80,12 @@ def reset_audit_metrics() -> None:
     """Test helper."""
     with _lock:
         _times.clear()
+        _log_times.clear()
         _cooldowns.clear()
 
 
-def _prune_locked(now: float) -> None:
+def _prune_locked(now: float, bucket: deque[float] | None = None) -> None:
+    times = bucket if bucket is not None else _times
     cutoff = now - _WINDOW_S
-    while _times and _times[0] < cutoff:
-        _times.popleft()
+    while times and times[0] < cutoff:
+        times.popleft()

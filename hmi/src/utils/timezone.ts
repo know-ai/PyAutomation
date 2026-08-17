@@ -142,3 +142,76 @@ export function toDisplayDate(value: string | Date, timeZone: string): Date {
     parts.millisecond
   );
 }
+
+export type UiLocale = "en" | "es";
+
+const padStamp = (value: number): string => String(value).padStart(2, "0");
+
+function assembleLocaleStamp(
+  year: string,
+  month: string,
+  day: string,
+  hour: string,
+  minute: string,
+  second: string,
+  locale: UiLocale
+): string {
+  const date = locale === "es" ? `${day}/${month}/${year}` : `${month}/${day}/${year}`;
+  return `${date} ${hour}:${minute}:${second}`;
+}
+
+/**
+ * Format historian timestamps like the header clock:
+ * Spanish → DD/MM/YYYY HH:MM:SS; English → MM/DD/YYYY HH:MM:SS.
+ * Backend serializes ``%m/%d/%Y, %H:%M:%S.%f`` (US order, microseconds).
+ * Operator tables never need sub-second precision.
+ */
+export function formatOperatorTimestamp(
+  value: string | Date | null | undefined,
+  locale: UiLocale
+): string {
+  if (value == null || value === "") return "-";
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "-";
+    return assembleLocaleStamp(
+      String(value.getFullYear()),
+      padStamp(value.getMonth() + 1),
+      padStamp(value.getDate()),
+      padStamp(value.getHours()),
+      padStamp(value.getMinutes()),
+      padStamp(value.getSeconds()),
+      locale
+    );
+  }
+
+  const raw = String(value).trim();
+  const us = raw.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?/
+  );
+  if (us) {
+    const [, month, day, year, hour, minute, second] = us;
+    return assembleLocaleStamp(
+      year,
+      padStamp(Number(month)),
+      padStamp(Number(day)),
+      padStamp(Number(hour)),
+      minute,
+      second,
+      locale
+    );
+  }
+
+  const iso = raw.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?/
+  );
+  if (iso) {
+    const [, year, month, day, hour, minute, second] = iso;
+    return assembleLocaleStamp(year, month, day, hour, minute, second, locale);
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return formatOperatorTimestamp(parsed, locale);
+  }
+  return raw;
+}

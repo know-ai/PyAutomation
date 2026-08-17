@@ -165,9 +165,10 @@ export type TabularDataResponse = {
  * Obtiene datos tabulares históricos de tags con resampling
  */
 export const getTabularData = async (
-  filters: TabularDataFilter
+  filters: TabularDataFilter,
+  config?: AxiosRequestConfig
 ): Promise<TabularDataResponse> => {
-  const { data } = await api.post("/tags/get_tabular_data", filters);
+  const { data } = await api.post("/tags/get_tabular_data", filters, config);
   return data;
 };
 

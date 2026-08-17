@@ -173,7 +173,8 @@ class Users(Singleton):
             
             # Intentar autenticar
             if self.__auth.login(user=user, password=password, token=token):
-                self._revoke_other_sessions(user)
+                replaced = self._revoke_other_sessions(user)
+                setattr(user, "_login_replaced_session", replaced)
                 self.active_users[user.token] = user
 
                 return user, f"Login successful"
@@ -185,8 +186,13 @@ class Users(Singleton):
 
             raise ValueError(f"You must submit username or email")
         
-    def _revoke_other_sessions(self, user:User)->None:
-        r"""Drop previous in-memory sessions for this user (single active session)."""
+    def _revoke_other_sessions(self, user:User)->bool:
+        r"""Drop previous in-memory sessions for this user (single active session).
+
+        Replacing a token after boot or a second login is **not** an operator
+        logout. Do not persist ``User logged out`` here — that event is reserved
+        for ``POST /users/logout``.
+        """
         stale = [
             session_token
             for session_token, session_user in list(self.active_users.items())
@@ -195,17 +201,6 @@ class Users(Singleton):
                 and session_token != getattr(user, "token", None)
             )
         ]
-        if stale:
-            try:
-                from ...utils.user_session_audit import record_user_session_event
-
-                record_user_session_event(
-                    action="LOGOUT",
-                    user=user,
-                    extra="reason=session_superseded",
-                )
-            except Exception:
-                pass
         for session_token in stale:
             self.active_users.pop(session_token, None)
             if session_token:
@@ -215,6 +210,7 @@ class Users(Singleton):
             excess = list(self._revoked_tokens)[: len(self._revoked_tokens) - 512]
             for item in excess:
                 self._revoked_tokens.discard(item)
+        return bool(stale)
 
     def is_revoked_token(self, token:str)->bool:
         return bool(token) and token in getattr(self, "_revoked_tokens", set())

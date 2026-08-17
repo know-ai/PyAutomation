@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { HistoryResults } from "../components/HistoryResults";
 import { MultiSelectSearch } from "../components/MultiSelectSearch";
 import {
   filterEvents,
@@ -14,7 +15,15 @@ import { createLog } from "../services/logs";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
-import { formatDateTimeLocalForBackend, formatDateTimeLocalInput } from "../utils/timezone";
+import {
+  FILTER_COMPOSE_MS,
+  FILTER_DATE_MS,
+  FILTER_INSTANT_MS,
+  isRequestCanceled,
+  useScheduledQuery,
+  type ScheduledQueryContext,
+} from "../hooks/useScheduledQuery";
+import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp } from "../utils/timezone";
 
 type PresetDate = 
   | "Last Hour"
@@ -34,16 +43,6 @@ const PRESET_DATES: PresetDate[] = [
   "Last Month",
   "Custom",
 ];
-
-/** Backend sends `%f` microseconds (6 digits). Table shows a single fractional second. */
-function formatEventTimestamp(value?: string | null): string {
-  if (!value) return "-";
-  const dot = value.lastIndexOf(".");
-  if (dot === -1) return `${value}.0`;
-  const fraction = value.slice(dot + 1).replace(/\D.*$/, "");
-  const suffix = value.slice(dot + 1).slice(fraction.length);
-  return `${value.slice(0, dot)}.${(fraction + "0").slice(0, 1)}${suffix}`;
-}
 
 function displayValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "-";
@@ -82,10 +81,12 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 };
 
 export function Events() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { timeZone } = useDisplayTimezone();
+  const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -164,10 +165,13 @@ export function Events() {
     loadFilterOptions();
   }, []);
 
-  // Cargar datos cuando cambian los filtros
   useEffect(() => {
-    loadEvents();
-  }, [filters, timeZone]);
+    setRunner((ctx) => loadEvents(ctx));
+  });
+
+  useEffect(() => {
+    schedule(FILTER_INSTANT_MS);
+  }, [timeZone, schedule]);
 
   // Cerrar menú contextual al hacer click fuera
   useEffect(() => {
@@ -210,21 +214,40 @@ export function Events() {
         setStartDate(startStr);
         localStorage.setItem("events_startDate", startStr);
         localStorage.setItem("events_endDate", endStr);
+        schedule(FILTER_INSTANT_MS);
       }
     } catch (e: any) {
       console.error("Error loading filter options:", e);
     }
   };
 
-  const loadEvents = async () => {
+  const resolveQueryWindow = (): { start: string; end: string } => {
+    if (presetDate !== "Custom") {
+      const { start, end } = getPresetDateRange(presetDate);
+      const now = new Date();
+      const finalEnd = end > now ? now : end;
+      return {
+        start: formatToLocalDateTime(start),
+        end: formatToLocalDateTime(finalEnd),
+      };
+    }
+    return { start: startDate, end: endDate };
+  };
+
+  const resetToFirstPage = () => {
+    localStorage.setItem("events_page", "1");
+    setFilters((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+  };
+
+  const loadEvents = async ({ signal, generation }: ScheduledQueryContext) => {
     setLoading(true);
     setError(null);
     try {
       const payload: EventFilter = {
         ...filters,
       };
+      const queryWindow = resolveQueryWindow();
 
-      // Agregar filtros solo si tienen valores
       if (selectedUsernames.length > 0) {
         payload.usernames = selectedUsernames;
       }
@@ -234,17 +257,17 @@ export function Events() {
       if (selectedCriticities.length > 0) {
         payload.criticities = selectedCriticities;
       }
-      if (startDate) {
-        payload.greater_than_timestamp = formatDateTimeForBackend(startDate);
+      if (queryWindow.start) {
+        payload.greater_than_timestamp = formatDateTimeForBackend(queryWindow.start);
       }
-      if (endDate) {
-        payload.less_than_timestamp = formatDateTimeForBackend(endDate);
+      if (queryWindow.end) {
+        payload.less_than_timestamp = formatDateTimeForBackend(queryWindow.end);
       }
 
-      // Siempre enviar timezone, usar el seleccionado o el detectado del navegador
       payload.timezone = timeZone;
 
-      const response: EventResponse = await filterEvents(payload);
+      const response: EventResponse = await filterEvents(payload, { signal });
+      if (!isCurrent(generation, signal)) return;
       setEvents(response.data || []);
       setPagination({
         page: response.pagination?.page || 1,
@@ -252,10 +275,12 @@ export function Events() {
         total: response.pagination?.total_records || 0,
         pages: response.pagination?.total_pages || 0,
       });
+      setHasLoaded(true);
     } catch (e: any) {
+      if (isRequestCanceled(e) || !isCurrent(generation, signal)) return;
       if (isDbUnavailableError(e)) {
         setError(null);
-        setEvents([]);
+        setHasLoaded(true);
         return;
       }
       const data = e?.response?.data;
@@ -266,29 +291,12 @@ export function Events() {
         data?.error;
       const errorMsg = backendMessage || e?.message || t("events.loadError");
       setError(errorMsg);
-      setEvents([]);
+      setHasLoaded(true);
     } finally {
-      setLoading(false);
+      if (isCurrent(generation, signal)) {
+        setLoading(false);
+      }
     }
-  };
-
-  const handleApplyFilters = () => {
-    if (presetDate !== "Custom") {
-      const { start, end } = getPresetDateRange(presetDate);
-      const startStr = formatToLocalDateTime(start);
-      const endStr = formatToLocalDateTime(end);
-      setStartDate(startStr);
-      setEndDate(endStr);
-      localStorage.setItem("events_startDate", startStr);
-      localStorage.setItem("events_endDate", endStr);
-    }
-    const newFilters = {
-      ...filters,
-      page: 1,
-    };
-    setFilters(newFilters);
-    localStorage.setItem("events_page", "1");
-    localStorage.setItem("events_limit", String(newFilters.limit || 20));
   };
 
   const userOptions = useMemo(
@@ -322,18 +330,24 @@ export function Events() {
   const handleUsernamesChange = (next: string[]) => {
     setSelectedUsernames(next);
     localStorage.setItem("events_selectedUsernames", JSON.stringify(next));
+    resetToFirstPage();
+    schedule(FILTER_COMPOSE_MS);
   };
 
   const handlePrioritiesChange = (next: string[]) => {
     const values = next.map(Number).filter((n) => Number.isFinite(n));
     setSelectedPriorities(values);
     localStorage.setItem("events_selectedPriorities", JSON.stringify(values));
+    resetToFirstPage();
+    schedule(FILTER_COMPOSE_MS);
   };
 
   const handleCriticitiesChange = (next: string[]) => {
     const values = next.map(Number).filter((n) => Number.isFinite(n));
     setSelectedCriticities(values);
     localStorage.setItem("events_selectedCriticities", JSON.stringify(values));
+    resetToFirstPage();
+    schedule(FILTER_COMPOSE_MS);
   };
 
   const handlePresetDateChange = (preset: PresetDate) => {
@@ -349,6 +363,8 @@ export function Events() {
       setEndDate(endStr);
       localStorage.setItem("events_startDate", startStr);
       localStorage.setItem("events_endDate", endStr);
+      resetToFirstPage();
+      schedule(FILTER_INSTANT_MS);
     }
   };
 
@@ -358,6 +374,8 @@ export function Events() {
     const finalValue = selectedEnd > now ? formatToLocalDateTime(now) : value;
     setEndDate(finalValue);
     localStorage.setItem("events_endDate", finalValue);
+    resetToFirstPage();
+    schedule(FILTER_DATE_MS);
   };
 
   const handleRowContextMenu = (e: React.MouseEvent, event: Event) => {
@@ -395,8 +413,7 @@ export function Events() {
       setCommentMessage("");
       setShowCommentModal(false);
       setSelectedEventId(undefined);
-      // Recargar eventos
-      loadEvents();
+      schedule(FILTER_INSTANT_MS);
     } catch (e: any) {
       const errorMsg =
         e?.response?.data?.message ||
@@ -536,12 +553,14 @@ export function Events() {
     });
     localStorage.setItem("events_page", "1");
     localStorage.setItem("events_limit", "20");
+    schedule(FILTER_INSTANT_MS);
   };
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.pages) {
       setFilters({ ...filters, page: newPage });
       localStorage.setItem("events_page", String(newPage));
+      schedule(FILTER_INSTANT_MS);
     }
   };
 
@@ -550,6 +569,7 @@ export function Events() {
       setFilters({ ...filters, page: 1, limit: newLimit });
       localStorage.setItem("events_page", "1");
       localStorage.setItem("events_limit", String(newLimit));
+      schedule(FILTER_INSTANT_MS);
     }
   };
 
@@ -603,7 +623,7 @@ export function Events() {
       const rows = allEvents.map((event: Event) => {
         return [
           event.id || "",
-          event.timestamp || "",
+          event.timestamp ? formatOperatorTimestamp(event.timestamp, locale) : "",
           event.user?.username || event.username || "",
           event.message || "",
           event.description || "",
@@ -663,90 +683,62 @@ export function Events() {
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.events")}</span>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">
-                      {t("events.usernames")}
-                    </label>
-                    <MultiSelectSearch
-                      options={userOptions}
-                      selected={selectedUsernames}
-                      onChange={handleUsernamesChange}
-                      placeholder={t("events.selectUsersPlaceholder")}
-                      searchPlaceholder={t("events.searchUsers")}
-                      emptyText={t("events.noUsersFound")}
-                      selectAllLabel={t("events.selectAll")}
-                      clearLabel={t("common.clear")}
-                      selectedCountLabel={(count) => t("events.selectedCount", { count })}
-                      disabled={loading}
-                      style={{ width: "180px", maxWidth: "100%" }}
-                    />
-                  </div>
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">
-                      {t("events.priority")}
-                    </label>
-                    <MultiSelectSearch
-                      options={priorityOptions}
-                      selected={selectedPriorities.map(String)}
-                      onChange={handlePrioritiesChange}
-                      placeholder={t("events.selectPriorityPlaceholder")}
-                      searchPlaceholder={t("events.searchPriority")}
-                      emptyText={t("events.noPriorityFound")}
-                      selectAllLabel={t("events.selectAll")}
-                      clearLabel={t("common.clear")}
-                      selectedCountLabel={(count) => t("events.selectedCount", { count })}
-                      disabled={loading}
-                      style={{ width: "150px", maxWidth: "100%" }}
-                    />
-                  </div>
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">
-                      {t("events.criticity")}
-                    </label>
-                    <MultiSelectSearch
-                      options={criticityOptions}
-                      selected={selectedCriticities.map(String)}
-                      onChange={handleCriticitiesChange}
-                      placeholder={t("events.selectCriticityPlaceholder")}
-                      searchPlaceholder={t("events.searchCriticity")}
-                      emptyText={t("events.noCriticityFound")}
-                      selectAllLabel={t("events.selectAll")}
-                      clearLabel={t("common.clear")}
-                      selectedCountLabel={(count) => t("events.selectedCount", { count })}
-                      disabled={loading}
-                      style={{ width: "150px", maxWidth: "100%" }}
-                    />
-                  </div>
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">
-                      {t("events.range")}
-                    </label>
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: "150px", maxWidth: "100%" }}
-                      value={presetDate}
-                      onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
-                    >
-                      {PRESET_DATES.map((preset) => (
-                        <option key={preset} value={preset}>
-                          {t(`events.preset.${preset}`)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <Button
-                    variant="primary"
-                    className="btn-sm"
-                    onClick={handleApplyFilters}
-                    disabled={loading}
+                  <MultiSelectSearch
+                    options={userOptions}
+                    selected={selectedUsernames}
+                    onChange={handleUsernamesChange}
+                    onClose={flushPending}
+                    placeholder={t("events.selectUsersPlaceholder")}
+                    searchPlaceholder={t("events.searchUsers")}
+                    emptyText={t("events.noUsersFound")}
+                    selectAllLabel={t("events.selectAll")}
+                    clearLabel={t("common.clear")}
+                    selectedCountLabel={(count) => t("events.selectedCount", { count })}
+                    style={{ width: "180px", maxWidth: "100%" }}
+                  />
+                  <MultiSelectSearch
+                    options={priorityOptions}
+                    selected={selectedPriorities.map(String)}
+                    onChange={handlePrioritiesChange}
+                    onClose={flushPending}
+                    placeholder={t("events.selectPriorityPlaceholder")}
+                    searchPlaceholder={t("events.searchPriority")}
+                    emptyText={t("events.noPriorityFound")}
+                    selectAllLabel={t("events.selectAll")}
+                    clearLabel={t("common.clear")}
+                    selectedCountLabel={(count) => t("events.selectedCount", { count })}
+                    style={{ width: "150px", maxWidth: "100%" }}
+                  />
+                  <MultiSelectSearch
+                    options={criticityOptions}
+                    selected={selectedCriticities.map(String)}
+                    onChange={handleCriticitiesChange}
+                    onClose={flushPending}
+                    placeholder={t("events.selectCriticityPlaceholder")}
+                    searchPlaceholder={t("events.searchCriticity")}
+                    emptyText={t("events.noCriticityFound")}
+                    selectAllLabel={t("events.selectAll")}
+                    clearLabel={t("common.clear")}
+                    selectedCountLabel={(count) => t("events.selectedCount", { count })}
+                    style={{ width: "150px", maxWidth: "100%" }}
+                  />
+                  <select
+                    className="form-select form-select-sm"
+                    style={{ width: "150px", maxWidth: "100%" }}
+                    value={presetDate}
+                    onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
                   >
-                    {t("common.filter")}
-                  </Button>
+                    {PRESET_DATES.map((preset) => (
+                      <option key={preset} value={preset}>
+                        {t(`events.preset.${preset}`)}
+                      </option>
+                    ))}
+                  </select>
                   <Button
                     variant="primary"
                     className="btn-sm"
                     onClick={handleExportCSV}
-                    disabled={loading || events.length === 0}
+                    disabled={events.length === 0}
                   >
                     <i className="bi bi-download me-1"></i>
                     {t("common.csv")}
@@ -755,36 +747,30 @@ export function Events() {
               </div>
               {presetDate === "Custom" && (
                 <div className="card-header-stack__row d-flex align-items-center gap-2 flex-wrap pt-2 mt-1 border-top">
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">
-                      {t("events.start")}
-                    </label>
-                    <input
-                      type="datetime-local"
-                      step="1"
-                      className="form-control form-control-sm"
-                      style={{ width: "180px", maxWidth: "100%" }}
-                      value={startDate}
-                      onChange={(e) => {
-                        setStartDate(e.target.value);
-                        localStorage.setItem("events_startDate", e.target.value);
-                      }}
-                    />
-                  </div>
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">
-                      {t("events.end")}
-                    </label>
-                    <input
-                      type="datetime-local"
-                      step="1"
-                      className="form-control form-control-sm"
-                      style={{ width: "180px", maxWidth: "100%" }}
-                      value={endDate}
-                      onChange={(e) => handleEndDateChange(e.target.value)}
-                      max={new Date().toISOString().slice(0, 16)}
-                    />
-                  </div>
+                  <input
+                    type="datetime-local"
+                    step="1"
+                    className="form-control form-control-sm"
+                    style={{ width: "180px", maxWidth: "100%" }}
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      localStorage.setItem("events_startDate", e.target.value);
+                      resetToFirstPage();
+                      schedule(FILTER_DATE_MS);
+                    }}
+                    onBlur={flushPending}
+                  />
+                  <input
+                    type="datetime-local"
+                    step="1"
+                    className="form-control form-control-sm"
+                    style={{ width: "180px", maxWidth: "100%" }}
+                    value={endDate}
+                    onChange={(e) => handleEndDateChange(e.target.value)}
+                    onBlur={flushPending}
+                    max={new Date().toISOString().slice(0, 16)}
+                  />
                 </div>
               )}
             </div>
@@ -858,15 +844,7 @@ export function Events() {
             </div>
           )}
 
-          {loading && (
-            <div className="text-center py-4">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">{t("common.loading")}</span>
-              </div>
-            </div>
-          )}
-
-          {!loading && (
+          <HistoryResults loading={loading} hasLoaded={hasLoaded} loadingLabel={t("common.loading")}>
             <div className="table-responsive">
               <table className="table table-striped table-hover table-sm">
                 <thead>
@@ -898,7 +876,7 @@ export function Events() {
                         title={t("events.detailHint")}
                       >
                         <td>{event.id || "-"}</td>
-                        <td>{formatEventTimestamp(event.timestamp)}</td>
+                        <td>{formatOperatorTimestamp(event.timestamp, locale)}</td>
                         <td>{event.user?.username || event.username || "-"}</td>
                         <td>{event.message || "-"}</td>
                         <td>{event.classification || "-"}</td>
@@ -938,7 +916,7 @@ export function Events() {
                 </tbody>
               </table>
             </div>
-          )}
+          </HistoryResults>
 
           {/* Menú contextual */}
           {contextMenu.visible && (
@@ -1142,7 +1120,7 @@ export function Events() {
                       <dd className="col-sm-8">{displayValue(selectedEventDetail.id)}</dd>
 
                       <dt className="col-sm-4">{t("tables.timestamp")}</dt>
-                      <dd className="col-sm-8">{displayValue(selectedEventDetail.timestamp)}</dd>
+                      <dd className="col-sm-8">{formatOperatorTimestamp(selectedEventDetail.timestamp, locale)}</dd>
 
                       <dt className="col-sm-4">{t("tables.user")}</dt>
                       <dd className="col-sm-8">

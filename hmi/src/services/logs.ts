@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from "axios";
 import api from "./api";
 
 export type Log = {
@@ -6,6 +7,11 @@ export type Log = {
   message?: string;
   description?: string;
   classification?: string;
+  shift?: string | null;
+  area?: string | null;
+  handover?: boolean;
+  user_name?: string;
+  journaled?: boolean;
   user?: {
     username?: string;
     [key: string]: any;
@@ -27,6 +33,9 @@ export type LogFilter = {
   alarm_names?: string[];
   event_ids?: number[];
   classification?: string;
+  classifications?: string[];
+  search?: string;
+  exclude_description?: string;
   message?: string;
   description?: string;
   greater_than_timestamp?: string;
@@ -53,13 +62,19 @@ export type CreateLogPayload = {
   description?: string;
   alarm_summary_id?: number;
   event_id?: number;
+  shift?: string;
+  area?: string;
+  handover?: boolean;
 };
 
 /**
  * Filtra logs operacionales según los criterios proporcionados
  */
-export const filterLogs = async (filters: LogFilter): Promise<LogResponse> => {
-  const { data } = await api.post("/logs/filter_by", filters);
+export const filterLogs = async (
+  filters: LogFilter,
+  config?: AxiosRequestConfig
+): Promise<LogResponse> => {
+  const { data } = await api.post("/logs/filter_by", filters, config);
   // El backend ahora siempre retorna un objeto con paginación
   if (Array.isArray(data)) {
     // Fallback por compatibilidad (no debería ocurrir)

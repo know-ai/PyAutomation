@@ -894,35 +894,69 @@ html.light .app-sidebar .brand-text {
   overflow: hidden;
 }
 
-.page-fit-card > .card-body > .table-responsive {
+.page-fit-card > .card-body > .table-responsive,
+.page-fit-card > .card-body > .history-results > .table-responsive {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
 
-.page-fit-card > .card-body > :not(.table-responsive) {
+.page-fit-card > .card-body > .history-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.page-fit-card > .card-body > :not(.table-responsive):not(.history-results) {
   flex: 0 0 auto;
 }
 
-.page-fit-card > .card-body > .table-responsive > .table {
+.page-fit-card > .card-body > .table-responsive > .table,
+.page-fit-card > .card-body > .history-results > .table-responsive > .table {
   border-collapse: separate;
   border-spacing: 0;
 }
 
-.page-fit-card > .card-body > .table-responsive > .table > thead > tr > th {
+.page-fit-card > .card-body > .table-responsive > .table > thead > tr > th,
+.page-fit-card > .card-body > .history-results > .table-responsive > .table > thead > tr > th {
   position: sticky;
   z-index: 2;
   background-color: var(--bs-tertiary-bg, var(--bs-secondary-bg));
   box-shadow: 0 1px 0 var(--bs-border-color);
 }
 
-.page-fit-card > .card-body > .table-responsive > .table > thead > tr:first-child > th {
+.page-fit-card > .card-body > .table-responsive > .table > thead > tr:first-child > th,
+.page-fit-card > .card-body > .history-results > .table-responsive > .table > thead > tr:first-child > th {
   top: 0;
   z-index: 3;
 }
 
-.page-fit-card > .card-body > .table-responsive > .table > thead > tr:nth-child(2) > th {
+.page-fit-card > .card-body > .table-responsive > .table > thead > tr:nth-child(2) > th,
+.page-fit-card > .card-body > .history-results > .table-responsive > .table > thead > tr:nth-child(2) > th {
   top: 2.5rem;
+}
+
+.history-results--refreshing > .table-responsive {
+  opacity: 0.62;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.history-results__badge {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.75rem;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--bs-body-bg, #fff) 88%, transparent);
+  box-shadow: 0 0 0 1px var(--bs-border-color);
 }
 
 .trends-plot-host {

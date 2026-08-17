@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { HistoryResults } from "../components/HistoryResults";
 import { MultiSelectSearch } from "../components/MultiSelectSearch";
 import {
   getTags,
@@ -14,6 +15,14 @@ import {
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import {
+  FILTER_DATE_MS,
+  FILTER_HEAVY_MS,
+  FILTER_INSTANT_MS,
+  isRequestCanceled,
+  useScheduledQuery,
+  type ScheduledQueryContext,
+} from "../hooks/useScheduledQuery";
 import { formatDateTimeLocalForBackend, formatDateTimeLocalInput } from "../utils/timezone";
 import { readSessionTags, writeSessionTags } from "../utils/sessionFilters";
 
@@ -142,8 +151,10 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 export function DataLogger() {
   const { t } = useTranslation();
   const { timeZone } = useDisplayTimezone();
+  const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
   const [tabularData, setTabularData] = useState<TabularDataResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -185,12 +196,13 @@ export function DataLogger() {
     loadFilterOptions();
   }, []);
 
-  // Cargar datos cuando cambian los filtros (paginación)
   useEffect(() => {
-    if (selectedTags.length > 0 && startDate && endDate && filters.page && filters.limit) {
-      loadTabularDataWithFilters();
-    }
-  }, [filters.page, filters.limit, timeZone]);
+    setRunner((ctx) => loadTabularData(ctx));
+  });
+
+  useEffect(() => {
+    schedule(FILTER_INSTANT_MS);
+  }, [timeZone, schedule]);
 
   const loadFilterOptions = async () => {
     try {
@@ -226,6 +238,7 @@ export function DataLogger() {
         setStartDate(startStr);
         localStorage.setItem("datalogger_startDate", startStr);
         localStorage.setItem("datalogger_endDate", endStr);
+        schedule(FILTER_INSTANT_MS);
       }
     } catch (e: any) {
       console.error("Error loading filter options:", e);
@@ -235,13 +248,33 @@ export function DataLogger() {
   // Función helper para convertir Date a formato datetime-local (sin UTC)
   const formatToLocalDateTime = (date: Date): string => formatDateTimeLocalInput(date);
 
+  const formatDateTimeForBackend = (dateTimeString: string): string => {
+    return formatDateTimeLocalForBackend(dateTimeString, timeZone);
+  };
+
+  const resolveQueryWindow = (): { start: string; end: string } => {
+    if (presetDate !== "Custom") {
+      const { start, end } = getPresetDateRange(presetDate);
+      const now = new Date();
+      const finalEnd = end > now ? now : end;
+      return {
+        start: formatToLocalDateTime(start),
+        end: formatToLocalDateTime(finalEnd),
+      };
+    }
+    return { start: startDate, end: endDate };
+  };
+
+  const resetToFirstPage = () => {
+    setFilters((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+  };
+
   const handlePresetDateChange = (preset: PresetDate) => {
     setPresetDate(preset);
     localStorage.setItem("datalogger_presetDate", preset);
     if (preset !== "Custom") {
       const { start, end } = getPresetDateRange(preset);
       const now = new Date();
-      // Asegurar que la fecha final no exceda la actual
       const finalEnd = end > now ? now : end;
       const startStr = formatToLocalDateTime(start);
       const endStr = formatToLocalDateTime(finalEnd);
@@ -249,59 +282,34 @@ export function DataLogger() {
       setEndDate(endStr);
       localStorage.setItem("datalogger_startDate", startStr);
       localStorage.setItem("datalogger_endDate", endStr);
+      resetToFirstPage();
+      schedule(FILTER_INSTANT_MS);
     }
   };
 
   const handleEndDateChange = (value: string) => {
     const selectedEnd = new Date(value);
     const now = new Date();
-    
-    // Validar que la fecha final no exceda la actual
     const finalValue = selectedEnd > now ? formatToLocalDateTime(now) : value;
     setEndDate(finalValue);
     localStorage.setItem("datalogger_endDate", finalValue);
+    resetToFirstPage();
+    schedule(FILTER_DATE_MS);
   };
 
-  // Función para convertir el formato de fecha del input al formato esperado por el backend
-  const formatDateTimeForBackend = (dateTimeString: string): string => {
-    return formatDateTimeLocalForBackend(dateTimeString, timeZone);
-  };
-
-  const handleApplyFilters = () => {
-    let queryStart = startDate;
-    let queryEnd = endDate;
-    if (presetDate !== "Custom") {
-      const { start, end } = getPresetDateRange(presetDate);
-      queryStart = formatToLocalDateTime(start);
-      queryEnd = formatToLocalDateTime(end);
-      setStartDate(queryStart);
-      setEndDate(queryEnd);
-      localStorage.setItem("datalogger_startDate", queryStart);
-      localStorage.setItem("datalogger_endDate", queryEnd);
-    }
-
-    const newFilters = {
-      ...filters,
-      page: 1,
-    };
-    setFilters(newFilters);
-
-    if (selectedTags.length > 0 && queryStart && queryEnd) {
-      void loadTabularDataWithFilters(newFilters, queryStart, queryEnd);
-    }
-  };
-
-  const loadTabularDataWithFilters = async (
-    customFilters?: TabularDataFilter,
-    rangeStart?: string,
-    rangeEnd?: string
-  ) => {
-    const filtersToUse = customFilters || filters;
-    const from = rangeStart ?? startDate;
-    const to = rangeEnd ?? endDate;
-    
+  const loadTabularData = async ({ signal, generation }: ScheduledQueryContext) => {
     if (selectedTags.length === 0) {
-      setError(t("dataLogger.selectAtLeastOneTag"));
+      setTabularData(null);
+      setError(null);
+      setHasLoaded(true);
+      setLoading(false);
+      return;
+    }
+
+    const queryWindow = resolveQueryWindow();
+    if (!queryWindow.start || !queryWindow.end) {
+      setHasLoaded(true);
+      setLoading(false);
       return;
     }
 
@@ -310,17 +318,16 @@ export function DataLogger() {
     try {
       const payload: TabularDataFilter = {
         tags: selectedTags,
-        greater_than_timestamp: formatDateTimeForBackend(from),
-        less_than_timestamp: formatDateTimeForBackend(to),
+        greater_than_timestamp: formatDateTimeForBackend(queryWindow.start),
+        less_than_timestamp: formatDateTimeForBackend(queryWindow.end),
         sample_time: sampleTimeToSeconds(sampleTime),
-        page: filtersToUse.page || 1,
-        limit: filtersToUse.limit || 20,
+        page: filters.page || 1,
+        limit: filters.limit || 20,
+        timezone: timeZone,
       };
 
-      // Siempre enviar timezone, usar el seleccionado o el detectado del navegador
-      payload.timezone = timeZone;
-
-      const response: TabularDataResponse = await getTabularData(payload);
+      const response: TabularDataResponse = await getTabularData(payload, { signal });
+      if (!isCurrent(generation, signal)) return;
       setTabularData(response);
       setPagination({
         page: response.pagination?.page || 1,
@@ -328,10 +335,12 @@ export function DataLogger() {
         total: response.pagination?.total_records || 0,
         pages: response.pagination?.total_pages || 0,
       });
+      setHasLoaded(true);
     } catch (e: any) {
+      if (isRequestCanceled(e) || !isCurrent(generation, signal)) return;
       if (isDbUnavailableError(e)) {
         setError(null);
-        setTabularData(null);
+        setHasLoaded(true);
         return;
       }
       const data = e?.response?.data;
@@ -342,21 +351,26 @@ export function DataLogger() {
         data?.error;
       const errorMsg = backendMessage || e?.message || t("dataLogger.loadError");
       setError(errorMsg);
-      setTabularData(null);
+      setHasLoaded(true);
     } finally {
-      setLoading(false);
+      if (isCurrent(generation, signal)) {
+        setLoading(false);
+      }
     }
   };
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.pages) {
       setFilters({ ...filters, page: newPage });
+      schedule(FILTER_INSTANT_MS);
     }
   };
 
   const handleSelectedTagsChange = (next: string[]) => {
     setSelectedTags(next);
     writeSessionTags("datalogger_selectedTags", next);
+    resetToFirstPage();
+    schedule(FILTER_HEAVY_MS);
   };
 
   const tagOptions = useMemo(
@@ -372,6 +386,7 @@ export function DataLogger() {
   const handleLimitChange = (newLimit: number) => {
     if (newLimit > 0) {
       setFilters({ ...filters, page: 1, limit: newLimit });
+      schedule(FILTER_INSTANT_MS);
     }
   };
 
@@ -473,42 +488,36 @@ export function DataLogger() {
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.dataLogger")}</span>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">{t("dataLogger.tagNames")}:</label>
-                    <MultiSelectSearch
-                      options={tagOptions}
-                      selected={selectedTags}
-                      onChange={handleSelectedTagsChange}
-                      placeholder={t("dataLogger.selectTagsPlaceholder")}
-                      searchPlaceholder={t("dataLogger.searchTags")}
-                      emptyText={t("dataLogger.noTagsFound")}
-                      selectAllLabel={t("dataLogger.selectAll")}
-                      clearLabel={t("common.clear")}
-                      selectedCountLabel={(count) =>
-                        t("dataLogger.selectedCount", { count })
-                      }
-                      disabled={loading}
-                      style={{ width: "220px", maxWidth: "100%" }}
-                    />
-                  </div>
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">{t("dataLogger.range")}:</label>
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: "150px", maxWidth: "100%" }}
-                      value={presetDate}
-                      onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
-                    >
-                      {PRESET_DATES.map((preset) => {
-                        const presetKey = preset === "Last hour" ? "Lasthour" : preset.replace(/\s+/g, "");
-                        return (
-                          <option key={preset} value={preset}>
-                            {t(`dataLogger.preset.${presetKey}`)}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
+                  <MultiSelectSearch
+                    options={tagOptions}
+                    selected={selectedTags}
+                    onChange={handleSelectedTagsChange}
+                    onClose={flushPending}
+                    placeholder={t("dataLogger.selectTagsPlaceholder")}
+                    searchPlaceholder={t("dataLogger.searchTags")}
+                    emptyText={t("dataLogger.noTagsFound")}
+                    selectAllLabel={t("dataLogger.selectAll")}
+                    clearLabel={t("common.clear")}
+                    selectedCountLabel={(count) =>
+                      t("dataLogger.selectedCount", { count })
+                    }
+                    style={{ width: "220px", maxWidth: "100%" }}
+                  />
+                  <select
+                    className="form-select form-select-sm"
+                    style={{ width: "150px", maxWidth: "100%" }}
+                    value={presetDate}
+                    onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
+                  >
+                    {PRESET_DATES.map((preset) => {
+                      const presetKey = preset === "Last hour" ? "Lasthour" : preset.replace(/\s+/g, "");
+                      return (
+                        <option key={preset} value={preset}>
+                          {t(`dataLogger.preset.${presetKey}`)}
+                        </option>
+                      );
+                    })}
+                  </select>
                   <div className="d-flex align-items-center gap-1">
                     <label className="form-label small mb-0 me-1">{t("dataLogger.sample")}:</label>
                     <select
@@ -519,6 +528,8 @@ export function DataLogger() {
                         const newSampleTime = e.target.value as SampleTimeOption;
                         setSampleTime(newSampleTime);
                         localStorage.setItem("datalogger_sampleTime", newSampleTime);
+                        resetToFirstPage();
+                        schedule(FILTER_INSTANT_MS);
                       }}
                     >
                       {SAMPLE_TIME_OPTIONS.map((option) => (
@@ -528,14 +539,11 @@ export function DataLogger() {
                       ))}
                     </select>
                   </div>
-                  <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
-                    {t("common.filter")}
-                  </Button>
                   <Button
                     variant="primary"
                     className="btn-sm"
                     onClick={handleExportCSV}
-                    disabled={loading || !tabularData || !tabularData.values || tabularData.values.length === 0}
+                    disabled={!tabularData || !tabularData.values || tabularData.values.length === 0}
                   >
                     <i className="bi bi-download me-1"></i>
                     {t("common.csv")}
@@ -544,32 +552,30 @@ export function DataLogger() {
               </div>
               {presetDate === "Custom" && (
                 <div className="card-header-stack__row d-flex align-items-center gap-2 flex-wrap pt-2 mt-1 border-top">
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">{t("dataLogger.start")}:</label>
-                    <input
-                      type="datetime-local"
-                      step="1"
-                      className="form-control form-control-sm"
-                      style={{ width: "180px", maxWidth: "100%" }}
-                      value={startDate}
-                      onChange={(e) => {
-                        setStartDate(e.target.value);
-                        localStorage.setItem("datalogger_startDate", e.target.value);
-                      }}
-                    />
-                  </div>
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">{t("dataLogger.end")}:</label>
-                    <input
-                      type="datetime-local"
-                      step="1"
-                      className="form-control form-control-sm"
-                      style={{ width: "180px", maxWidth: "100%" }}
-                      value={endDate}
-                      onChange={(e) => handleEndDateChange(e.target.value)}
-                      max={new Date().toISOString().slice(0, 16)}
-                    />
-                  </div>
+                  <input
+                    type="datetime-local"
+                    step="1"
+                    className="form-control form-control-sm"
+                    style={{ width: "180px", maxWidth: "100%" }}
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      localStorage.setItem("datalogger_startDate", e.target.value);
+                      resetToFirstPage();
+                      schedule(FILTER_DATE_MS);
+                    }}
+                    onBlur={flushPending}
+                  />
+                  <input
+                    type="datetime-local"
+                    step="1"
+                    className="form-control form-control-sm"
+                    style={{ width: "180px", maxWidth: "100%" }}
+                    value={endDate}
+                    onChange={(e) => handleEndDateChange(e.target.value)}
+                    onBlur={flushPending}
+                    max={new Date().toISOString().slice(0, 16)}
+                  />
                 </div>
               )}
             </div>
@@ -643,15 +649,8 @@ export function DataLogger() {
             </div>
           )}
 
-          {loading && (
-            <div className="text-center py-4">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">{t("common.loading")}</span>
-              </div>
-            </div>
-          )}
-
-          {!loading && tabularData && (
+          <HistoryResults loading={loading} hasLoaded={hasLoaded} loadingLabel={t("common.loading")}>
+            {tabularData ? (
             <div className="table-responsive">
               <table className="table table-striped table-hover table-sm">
                 <thead>
@@ -689,7 +688,10 @@ export function DataLogger() {
                 </tbody>
               </table>
             </div>
-          )}
+            ) : (
+              <div className="text-muted text-center py-4">{t("dataLogger.selectAtLeastOneTag")}</div>
+            )}
+          </HistoryResults>
         </Card>
       </div>
     </div>

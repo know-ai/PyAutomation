@@ -31,25 +31,15 @@ class LogsLogger(BaseLogger):
         classification:str=None,
         alarm_summary_id:int=None,
         event_id:int=None,
-        timestamp:datetime=None
+        timestamp:datetime=None,
+        shift:str=None,
+        area:str=None,
+        handover:bool=False,
         ):
         r"""
-        Creates a new log entry.
-
-        **Parameters:**
-
-        * **message** (str): Log message.
-        * **user** (User): Associated user.
-        * **description** (str, optional): Details.
-        * **classification** (str, optional): Category.
-        * **alarm_summary_id** (int, optional): Link to an alarm history record.
-        * **event_id** (int, optional): Link to an event record.
-        * **timestamp** (datetime, optional): Time of log.
+        Creates a logbook entry. Always journals (DOMAIN.LOG, critical) even
+        when the historian is down; remote write runs only if connected.
         """
-        if not self.is_history_logged:
-
-            return None, "History logging is not enabled"
-
         from ..persistence.outbox import journal_then_remote
         from ..persistence.records import JournaledEnvelope, PersistableRecord
 
@@ -57,11 +47,15 @@ class LogsLogger(BaseLogger):
         record = PersistableRecord.log(
             message=message,
             username=username,
+            user_name=username,
             description=description,
             classification=classification,
             alarm_summary_id=alarm_summary_id,
             event_id=event_id,
             timestamp=timestamp,
+            shift=shift,
+            area=area,
+            handover=bool(handover),
         )
 
         def _write():
@@ -73,9 +67,20 @@ class LogsLogger(BaseLogger):
                 alarm_summary_id=alarm_summary_id,
                 event_id=event_id,
                 timestamp=timestamp,
+                user_name=username,
+                shift=shift,
+                area=area,
+                handover=bool(handover),
             )
 
-        result, _ = journal_then_remote(record, _write, bool(user) and self.check_connectivity())
+        connected = bool(user) and self.check_connectivity()
+        result, _ = journal_then_remote(record, _write, connected)
+        try:
+            from ..utils.audit_metrics import note_log_persisted
+
+            note_log_persisted()
+        except Exception:
+            pass
         if result is not None and not (isinstance(result, tuple) and result[0] is None):
             return result
         return JournaledEnvelope(record.payload()), "journaled"
@@ -113,7 +118,10 @@ class LogsLogger(BaseLogger):
         less_than_timestamp:datetime=None,
         timezone:str='UTC',
         page:int=1,
-        limit:int=20
+        limit:int=20,
+        classifications:list[str]=None,
+        search:str="",
+        exclude_description:str="",
         ):
         r"""
         Filters logs by various criteria with pagination.
@@ -159,7 +167,10 @@ class LogsLogger(BaseLogger):
             less_than_timestamp=less_than_timestamp,
             timezone=timezone,
             page=page,
-            limit=limit
+            limit=limit,
+            classifications=classifications,
+            search=search,
+            exclude_description=exclude_description,
         )
 
     @db_rollback  
@@ -196,7 +207,10 @@ class LogsLoggerEngine(BaseEngine):
         classification:str=None,
         alarm_summary_id:int=None,
         event_id:int=None,
-        timestamp:datetime=None
+        timestamp:datetime=None,
+        shift:str=None,
+        area:str=None,
+        handover:bool=False,
         ):
         r"""
         Thread-safe log creation.
@@ -211,6 +225,9 @@ class LogsLoggerEngine(BaseEngine):
         _query["parameters"]["alarm_summary_id"] = alarm_summary_id
         _query["parameters"]["event_id"] = event_id
         _query["parameters"]["timestamp"] = timestamp
+        _query["parameters"]["shift"] = shift
+        _query["parameters"]["area"] = area
+        _query["parameters"]["handover"] = bool(handover)
         
         return self.query(_query)
     
@@ -240,7 +257,10 @@ class LogsLoggerEngine(BaseEngine):
         less_than_timestamp:datetime=None,
         timezone:str='UTC',
         page:int=1,
-        limit:int=20
+        limit:int=20,
+        classifications:list[str]=None,
+        search:str="",
+        exclude_description:str="",
         ):
         r"""
         Thread-safe log filtering with pagination.
@@ -259,6 +279,9 @@ class LogsLoggerEngine(BaseEngine):
         _query["parameters"]["timezone"] = timezone
         _query["parameters"]["page"] = page
         _query["parameters"]["limit"] = limit
+        _query["parameters"]["classifications"] = classifications
+        _query["parameters"]["search"] = search
+        _query["parameters"]["exclude_description"] = exclude_description
         
         return self.query(_query)
 

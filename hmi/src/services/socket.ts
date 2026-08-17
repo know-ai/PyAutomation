@@ -149,6 +149,10 @@ class SocketService {
     this.isConnecting = false;
   }
 
+  onLogUpdate(callback: (log: Record<string, unknown>) => void): () => void {
+    return this.subscribe<Record<string, unknown>>("on.log", callback);
+  }
+
   onTagUpdate(callback: (tag: Tag) => void): () => void {
     return this.subscribe<Tag>("on.tag", callback);
   }

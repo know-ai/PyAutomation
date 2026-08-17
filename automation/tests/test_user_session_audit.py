@@ -78,6 +78,31 @@ class TestUserSessionAuditHelper(unittest.TestCase):
         self.assertIn("reason=session_superseded", kwargs["description"])
         self.assertEqual(kwargs["user"], user)
 
+    def test_replacing_in_memory_session_is_not_a_logout_event(self):
+        from ..modules.users.users import Users
+
+        users = Users()
+        previous = dict(users.active_users)
+        previous_revoked = set(users._revoked_tokens)
+        try:
+            current = MagicMock()
+            current.username = "operator1"
+            current.token = "new-token"
+            stale = MagicMock()
+            stale.username = "operator1"
+            stale.token = "old-token"
+            users.active_users = {"old-token": stale}
+            with patch(
+                "automation.utils.user_session_audit.record_user_session_event"
+            ) as record:
+                replaced = users._revoke_other_sessions(current)
+            record.assert_not_called()
+            self.assertTrue(replaced)
+            self.assertNotIn("old-token", users.active_users)
+        finally:
+            users.active_users = previous
+            users._revoked_tokens = previous_revoked
+
     def test_never_raises(self):
         from ..utils import user_session_audit
 

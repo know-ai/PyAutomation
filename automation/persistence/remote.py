@@ -258,17 +258,20 @@ class PeeweeRemoteDB:
 
         written = 0
         for item in payloads:
-            user = _user_for_username(item.get("username") or "system")
-            if user is None:
-                continue
+            username = item.get("username") or item.get("user_name") or "system"
+            user = _user_for_username(username)
             created, _ = Logs.create(
                 message=item.get("message"),
                 user=user,
+                user_name=item.get("user_name") or username,
                 description=item.get("description"),
                 classification=item.get("classification"),
                 alarm_summary_id=item.get("alarm_summary_id"),
                 event_id=item.get("event_id"),
                 timestamp=_parse_dt(item.get("timestamp")),
+                shift=item.get("shift"),
+                area=item.get("area"),
+                handover=bool(item.get("handover")),
             )
             if created is not None:
                 written += 1

@@ -48,15 +48,113 @@ function collectSubscribedFieldTagNames(details: MachineDetailedData): Set<strin
   return names;
 }
 
-/** Tags de campo aún libres para suscribir (no están en Tags Suscritos). */
+/** Tags de campo a?n libres para suscribir (no est?n en Tags Suscritos). */
 function getAvailableFieldTags(details: MachineDetailedData): string[] {
   const subscribed = collectSubscribedFieldTagNames(details);
   return (details.field_tags || []).filter((name) => !subscribed.has(name));
 }
 
-/** Variables internas sin tag asignado (Tags No Suscritos). */
-function getNotSubscribedTagKeys(details: MachineDetailedData): string[] {
-  return Object.keys(details.not_subscribed_tags || {});
+const FLOW_PAIR = ["inlet_flow", "outlet_flow"] as const;
+const DENSITY_PAIR = ["inlet_density", "outlet_density"] as const;
+
+function subscribedInternalVariableNames(details: MachineDetailedData): Set<string> {
+  return new Set(Object.keys(details.read_only_process_type_variables || {}));
+}
+
+function hideExclusivePairSiblings(
+  keys: string[],
+  subscribed: Set<string>,
+  pairs: ReadonlyArray<readonly string[]>
+): string[] {
+  const hidden = new Set<string>();
+  for (const pair of pairs) {
+    const taken = pair.some((name) => subscribed.has(name));
+    if (!taken) continue;
+    for (const name of pair) {
+      if (!subscribed.has(name)) hidden.add(name);
+    }
+  }
+  return keys.filter((key) => !hidden.has(key));
+}
+
+/** Variables internas sin tag asignado (Tags No Suscritos), con pares exclusivos por engine. */
+function getNotSubscribedTagKeys(details: MachineDetailedData, machineName: string): string[] {
+  const keys = Object.keys(details.not_subscribed_tags || {});
+  const subscribed = subscribedInternalVariableNames(details);
+  const name = String(machineName).toLowerCase();
+  const pairs: Array<readonly string[]> = [];
+  if (name.includes("lds")) {
+    pairs.push(FLOW_PAIR, DENSITY_PAIR);
+  } else if (name.includes("pfm") || name.includes("observer")) {
+    pairs.push(DENSITY_PAIR);
+  }
+  if (pairs.length === 0) return keys;
+  return hideExclusivePairSiblings(keys, subscribed, pairs);
+}
+
+function extractProcessUnit(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const record = value as { unit?: unknown; value?: unknown; tag?: { unit?: unknown } };
+  if (typeof record.unit === "string" && record.unit.trim()) return record.unit.trim();
+  if (record.value && typeof record.value === "object") {
+    const nestedUnit = (record.value as { unit?: unknown }).unit;
+    if (typeof nestedUnit === "string" && nestedUnit.trim()) return nestedUnit.trim();
+  }
+  if (typeof record.tag?.unit === "string" && record.tag.unit.trim()) return record.tag.unit.trim();
+  return "";
+}
+
+function getThresholdUnitLabel(
+  machineName: string,
+  details: MachineDetailedData | undefined,
+  mode: "probability" | "statistic" | undefined,
+  t: (key: string) => string
+): { label: string; hint: string } {
+  const name = String(machineName).toLowerCase();
+  const ser = details?.serialization;
+  const pv = details?.process_variables || {};
+  const empty = { label: "", hint: "" };
+
+  if (name === "ppa" || name === "npw" || Boolean(ser?.supports_detection_threshold_mode)) {
+    const isStatistic = (mode || "probability") === "statistic";
+    return {
+      label: isStatistic
+        ? t("machines.detectionThresholdUnitAdim")
+        : t("machines.detectionThresholdUnitPercent"),
+      hint: isStatistic ? t("machines.detectionThresholdModeStatistic") : t("machines.thresholdUnitPercentHint"),
+    };
+  }
+
+  if (name.includes("observer")) {
+    const unit =
+      extractProcessUnit(pv.leak_flow) ||
+      extractProcessUnit(ser?.leak_flow) ||
+      extractProcessUnit(pv.threshold) ||
+      extractProcessUnit(ser?.threshold);
+    return {
+      label: unit,
+      hint: t("machines.thresholdUnitLeakFlowHint"),
+    };
+  }
+
+  if (name.includes("pfm")) {
+    const unit =
+      extractProcessUnit(pv.threshold) ||
+      extractProcessUnit(ser?.threshold) ||
+      t("machines.detectionThresholdUnitPercent");
+    return {
+      label: unit,
+      hint: t("machines.thresholdUnitPercentHint"),
+    };
+  }
+
+  const unit = extractProcessUnit(pv.threshold) || extractProcessUnit(ser?.threshold);
+  if (!unit) return empty;
+  const looksPercent = unit === "%" || unit.toLowerCase().includes("percent");
+  return {
+    label: unit,
+    hint: looksPercent ? t("machines.thresholdUnitPercentHint") : "",
+  };
 }
 
 export function MachinesDetailed() {
@@ -69,12 +167,12 @@ export function MachinesDetailed() {
   const [loadingDetails, setLoadingDetails] = useState<Record<string, boolean>>({});
   const [currentPage, setCurrentPage] = useState<Record<string, number>>({});
   
-  // Estados para los dropdowns del card de Tags Subscriptions (por máquina)
+  // Estados para los dropdowns del card de Tags Subscriptions (por m?quina)
   const [selectedSubscribedTag, setSelectedSubscribedTag] = useState<Record<string, string>>({});
   const [selectedReadOnlyVariable, setSelectedReadOnlyVariable] = useState<Record<string, string>>({});
   const [selectedInternalVariable, setSelectedInternalVariable] = useState<Record<string, string>>({});
   
-  // Estados para los inputs de atributos de máquina (por máquina)
+  // Estados para los inputs de atributos de m?quina (por m?quina)
   const [thresholdValue, setThresholdValue] = useState<Record<string, string>>({});
   const [bufferSizeValue, setBufferSizeValue] = useState<Record<string, string>>({});
   const [onDelayValue, setOnDelayValue] = useState<Record<string, string>>({});
@@ -82,11 +180,11 @@ export function MachinesDetailed() {
     Record<string, "probability" | "statistic">
   >({});
   const [updatingAttribute, setUpdatingAttribute] = useState<Record<string, string | null>>({});
-  // Valores originales para comparar si cambió
+  // Valores originales para comparar si cambi?
   const [originalThresholdValue, setOriginalThresholdValue] = useState<Record<string, number | null>>({});
   const [originalBufferSizeValue, setOriginalBufferSizeValue] = useState<Record<string, number | null>>({});
   const [originalOnDelayValue, setOriginalOnDelayValue] = useState<Record<string, number | null>>({});
-  // Estado para el modal de confirmación
+  // Estado para el modal de confirmaci?n
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<{
     machineName: string;
@@ -122,7 +220,7 @@ export function MachinesDetailed() {
     return null;
   };
 
-  // Buffer para actualizaciones de propiedades de máquinas (patrón de 1 segundo)
+  // Buffer para actualizaciones de propiedades de m?quinas (patr?n de 1 segundo)
   const pendingPropertyUpdatesRef = useRef<Map<string, Record<string, any>>>(new Map());
   const pendingMachineUpdatesRef = useRef<Map<string, Machine>>(new Map());
   const pendingTagUpdatesRef = useRef<Map<string, any>>(new Map());
@@ -142,7 +240,7 @@ export function MachinesDetailed() {
     return () => window.clearInterval(id);
   }, []);
 
-  // Cargar máquinas al montar el componente
+  // Cargar m?quinas al montar el componente
   useEffect(() => {
     const loadMachines = async () => {
       setLoading(true);
@@ -154,18 +252,18 @@ export function MachinesDetailed() {
         // Intentar cargar el tab activo guardado en localStorage
         const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
         
-        // Verificar si el tab guardado existe en las máquinas disponibles
+        // Verificar si el tab guardado existe en las m?quinas disponibles
         let tabToActivate: string | null = null;
         if (savedActiveTab && data.some((m) => m.name === savedActiveTab)) {
           tabToActivate = savedActiveTab;
         } else if (data.length > 0 && data[0].name) {
-          // Si no hay tab guardado válido, usar el primero
+          // Si no hay tab guardado v?lido, usar el primero
           tabToActivate = data[0].name;
         }
         
         if (tabToActivate) {
           setActiveTab(tabToActivate);
-          // Cargar la página guardada para el tab activo
+          // Cargar la p?gina guardada para el tab activo
           const savedPage = localStorage.getItem(getPageStorageKey(tabToActivate));
           if (savedPage) {
             const page = parseInt(savedPage, 10);
@@ -201,7 +299,7 @@ export function MachinesDetailed() {
     }
   }, [activeTab]);
 
-  // Cargar detalles de la máquina cuando cambia el tab activo
+  // Cargar detalles de la m?quina cuando cambia el tab activo
   useEffect(() => {
     if (!activeTab) return;
 
@@ -213,7 +311,7 @@ export function MachinesDetailed() {
       try {
         const data = await getMachineByName(activeTab);
         setMachineDetails((prev) => ({ ...prev, [activeTab]: data }));
-        // Cargar la página guardada o inicializar a 1 si no existe
+        // Cargar la p?gina guardada o inicializar a 1 si no existe
         setCurrentPage((prev) => {
           if (!prev[activeTab]) {
             const savedPage = localStorage.getItem(getPageStorageKey(activeTab));
@@ -241,13 +339,13 @@ export function MachinesDetailed() {
     loadMachineDetails();
   }, [activeTab, t]); // Removido machineDetails de las dependencias para evitar loop infinito
 
-  // Resetear dropdowns cuando cambia el tab (pero mantener la página guardada)
+  // Resetear dropdowns cuando cambia el tab (pero mantener la p?gina guardada)
   useEffect(() => {
     if (activeTab) {
       setSelectedSubscribedTag((prev) => ({ ...prev, [activeTab]: "" }));
       setSelectedReadOnlyVariable((prev) => ({ ...prev, [activeTab]: "" }));
       setSelectedInternalVariable((prev) => ({ ...prev, [activeTab]: "" }));
-      // Cargar la página guardada para este tab, o inicializar a 1 si no existe
+      // Cargar la p?gina guardada para este tab, o inicializar a 1 si no existe
       setCurrentPage((prev) => {
         if (!prev[activeTab]) {
           const savedPage = localStorage.getItem(getPageStorageKey(activeTab));
@@ -256,12 +354,12 @@ export function MachinesDetailed() {
         }
         return prev;
       });
-      // Nota: NO reseteamos valores de atributos aquí.
-      // Mantener los valores por máquina evita el "flash" de placeholders al cambiar de tab.
+      // Nota: NO reseteamos valores de atributos aqu?.
+      // Mantener los valores por m?quina evita el "flash" de placeholders al cambiar de tab.
     }
   }, [activeTab]);
 
-  // Guardar la página actual en localStorage cuando cambie
+  // Guardar la p?gina actual en localStorage cuando cambie
   useEffect(() => {
     Object.entries(currentPage).forEach(([machineName, page]) => {
       if (machineName && page) {
@@ -270,7 +368,7 @@ export function MachinesDetailed() {
     });
   }, [currentPage]);
 
-  // Función helper para mostrar modal de confirmación de threshold
+  // Funci?n helper para mostrar modal de confirmaci?n de threshold
   const handleUpdateThreshold = (machineName: string) => {
     // Para PFM/Observer el Threshold no debe ser editable
     const isThresholdLocked = ["pfm", "observer"].includes(String(machineName).toLowerCase());
@@ -282,7 +380,7 @@ export function MachinesDetailed() {
       return;
     }
 
-    // Solo mostrar modal si el valor cambió
+    // Solo mostrar modal si el valor cambi?
     if (originalThresholdValue[machineName] !== null && value === originalThresholdValue[machineName]) {
       return;
     }
@@ -297,7 +395,7 @@ export function MachinesDetailed() {
     setShowConfirmModal(true);
   };
 
-  // Función para ejecutar la actualización de threshold después de confirmar
+  // Funci?n para ejecutar la actualizaci?n de threshold despu?s de confirmar
   const executeUpdateThreshold = async (machineName: string, value: number) => {
     setUpdatingAttribute((prev) => ({ ...prev, [machineName]: "threshold" }));
     try {
@@ -305,7 +403,7 @@ export function MachinesDetailed() {
         threshold: value,
       });
       showToast(message || t("machines.updateAttribute"), "success");
-      // Refrescar detalles de la máquina
+      // Refrescar detalles de la m?quina
       const data = await getMachineByName(machineName);
       setMachineDetails((prev) => ({
         ...prev,
@@ -405,7 +503,7 @@ export function MachinesDetailed() {
     }
   };
 
-  // Función helper para mostrar modal de confirmación de buffer_size
+  // Funci?n helper para mostrar modal de confirmaci?n de buffer_size
   const handleUpdateBufferSize = (machineName: string) => {
     // Para PFM/Observer el Buffer Size no debe ser editable
     const isBufferSizeLocked = ["pfm", "observer"].includes(String(machineName).toLowerCase());
@@ -417,7 +515,7 @@ export function MachinesDetailed() {
       return;
     }
 
-    // Solo mostrar modal si el valor cambió
+    // Solo mostrar modal si el valor cambi?
     if (originalBufferSizeValue[machineName] !== null && value === originalBufferSizeValue[machineName]) {
       return;
     }
@@ -432,7 +530,7 @@ export function MachinesDetailed() {
     setShowConfirmModal(true);
   };
 
-  // Función para ejecutar la actualización de buffer_size después de confirmar
+  // Funci?n para ejecutar la actualizaci?n de buffer_size despu?s de confirmar
   const executeUpdateBufferSize = async (machineName: string, value: number) => {
     setUpdatingAttribute((prev) => ({ ...prev, [machineName]: "buffer_size" }));
     try {
@@ -440,7 +538,7 @@ export function MachinesDetailed() {
         buffer_size: value,
       });
       showToast(message || t("machines.updateAttribute"), "success");
-      // Refrescar detalles de la máquina
+      // Refrescar detalles de la m?quina
       const data = await getMachineByName(machineName);
       setMachineDetails((prev) => ({
         ...prev,
@@ -476,7 +574,7 @@ export function MachinesDetailed() {
     }
   };
 
-  // Función helper para mostrar modal de confirmación de on_delay
+  // Funci?n helper para mostrar modal de confirmaci?n de on_delay
   const handleUpdateOnDelay = (machineName: string) => {
     // Para PFM/Observer el On Delay no debe ser editable
     const isOnDelayLocked = ["pfm", "observer"].includes(String(machineName).toLowerCase());
@@ -488,7 +586,7 @@ export function MachinesDetailed() {
       return;
     }
 
-    // Solo mostrar modal si el valor cambió
+    // Solo mostrar modal si el valor cambi?
     if (originalOnDelayValue[machineName] !== null && value === originalOnDelayValue[machineName]) {
       return;
     }
@@ -503,7 +601,7 @@ export function MachinesDetailed() {
     setShowConfirmModal(true);
   };
 
-  // Función para ejecutar la actualización de on_delay después de confirmar
+  // Funci?n para ejecutar la actualizaci?n de on_delay despu?s de confirmar
   const executeUpdateOnDelay = async (machineName: string, value: number) => {
     setUpdatingAttribute((prev) => ({ ...prev, [machineName]: "on_delay" }));
     try {
@@ -511,7 +609,7 @@ export function MachinesDetailed() {
         on_delay: value,
       });
       showToast(message || t("machines.updateAttribute"), "success");
-      // Refrescar detalles de la máquina
+      // Refrescar detalles de la m?quina
       const data = await getMachineByName(machineName);
       setMachineDetails((prev) => ({
         ...prev,
@@ -547,7 +645,7 @@ export function MachinesDetailed() {
     }
   };
 
-  // Función para confirmar y ejecutar la actualización
+  // Funci?n para confirmar y ejecutar la actualizaci?n
   const handleConfirmUpdate = async () => {
     if (!pendingUpdate) return;
 
@@ -567,7 +665,7 @@ export function MachinesDetailed() {
     setPendingUpdate(null);
   };
 
-  // Función para cancelar la actualización
+  // Funci?n para cancelar la actualizaci?n
   const handleCancelUpdate = () => {
     if (!pendingUpdate) return;
 
@@ -586,13 +684,13 @@ export function MachinesDetailed() {
     setPendingUpdate(null);
   };
 
-  // Inicializar valores de atributos cuando se cargan los detalles de la máquina
+  // Inicializar valores de atributos cuando se cargan los detalles de la m?quina
   useEffect(() => {
     Object.entries(machineDetails).forEach(([machineName, details]) => {
       if (details && details.serialization) {
         const serialization = details.serialization;
         
-        // Inicializar threshold (para PPA/NPW usa el umbral activo según modo)
+        // Inicializar threshold (para PPA/NPW usa el umbral activo seg?n modo)
         const thresholdNum = extractActiveThreshold(serialization);
         if (thresholdNum !== null) {
           setThresholdValue((prev) => {
@@ -648,9 +746,9 @@ export function MachinesDetailed() {
     });
   }, [machineDetails]);
 
-  // Suscripción a eventos de propiedades de máquinas con buffering
+  // Suscripci?n a eventos de propiedades de m?quinas con buffering
   useEffect(() => {
-    // Función para aplicar las actualizaciones pendientes
+    // Funci?n para aplicar las actualizaciones pendientes
     const flushUpdates = () => {
       if (pendingPropertyUpdatesRef.current.size === 0) {
         return;
@@ -663,13 +761,13 @@ export function MachinesDetailed() {
 
         // Iterar sobre todas las actualizaciones pendientes
         pendingPropertyUpdatesRef.current.forEach((propertyUpdates, machineName) => {
-          // Solo actualizar si tenemos datos de esta máquina
+          // Solo actualizar si tenemos datos de esta m?quina
           if (updated[machineName]) {
             hasUpdates = true;
             // Crear una copia profunda de los detalles actuales
             const currentDetails = { ...updated[machineName] };
             
-            // Aplicar cada actualización de propiedad
+            // Aplicar cada actualizaci?n de propiedad
             Object.entries(propertyUpdates).forEach(([propertyName, propertyValue]) => {
               // 1. Actualizar en process_variables si existe (para variables de proceso como leak, leak_likelihood, etc.)
               // Actualizar tag.value dentro de process_variables ya que ese es el valor que se muestra
@@ -722,7 +820,7 @@ export function MachinesDetailed() {
                 }
               }
               
-              // 3. Actualizar en el nivel raíz si existe
+              // 3. Actualizar en el nivel ra?z si existe
               if (propertyName in currentDetails) {
                 currentDetails[propertyName] = propertyValue;
               }
@@ -732,7 +830,7 @@ export function MachinesDetailed() {
           }
         });
 
-        // Limpiar el buffer después de aplicar
+        // Limpiar el buffer despu?s de aplicar
         pendingPropertyUpdatesRef.current.clear();
 
         return hasUpdates ? updated : prev;
@@ -746,11 +844,11 @@ export function MachinesDetailed() {
       // Por ejemplo: { "LDS": { "leak": 0.5 } } o { "NPW": { "state": "running" } }
       
       Object.entries(data).forEach(([machineName, propertyUpdates]) => {
-        // Usar una función de actualización para acceder al estado actual sin depender de él
+        // Usar una funci?n de actualizaci?n para acceder al estado actual sin depender de ?l
         setMachineDetails((prev) => {
-          // Solo procesar si esta máquina está en nuestros detalles cargados
+          // Solo procesar si esta m?quina est? en nuestros detalles cargados
           if (prev[machineName]) {
-            // Obtener o crear el buffer para esta máquina
+            // Obtener o crear el buffer para esta m?quina
             const existingUpdates = pendingPropertyUpdatesRef.current.get(machineName) || {};
             
             // Fusionar las nuevas actualizaciones con las existentes
@@ -762,7 +860,7 @@ export function MachinesDetailed() {
             // Guardar en el buffer (sobrescribe si ya existe)
             pendingPropertyUpdatesRef.current.set(machineName, mergedUpdates);
           }
-          // No cambiar el estado aquí, solo actualizar el buffer
+          // No cambiar el estado aqu?, solo actualizar el buffer
           return prev;
         });
       });
@@ -776,9 +874,9 @@ export function MachinesDetailed() {
     };
   }, []); // Sin dependencias - se suscribe una sola vez
 
-  // Suscripción a eventos completos de máquinas con buffering (para actualizar state y otros atributos)
+  // Suscripci?n a eventos completos de m?quinas con buffering (para actualizar state y otros atributos)
   useEffect(() => {
-    // Función para aplicar las actualizaciones pendientes de máquinas
+    // Funci?n para aplicar las actualizaciones pendientes de m?quinas
     const flushMachineUpdates = () => {
       if (pendingMachineUpdatesRef.current.size === 0) {
         return;
@@ -791,7 +889,7 @@ export function MachinesDetailed() {
 
         // Iterar sobre todas las actualizaciones pendientes
         pendingMachineUpdatesRef.current.forEach((updatedMachine, machineName) => {
-          // Solo actualizar si tenemos datos de esta máquina
+          // Solo actualizar si tenemos datos de esta m?quina
           if (updated[machineName]) {
             hasUpdates = true;
             // Crear una copia profunda de los detalles actuales
@@ -816,7 +914,7 @@ export function MachinesDetailed() {
           }
         });
 
-        // Limpiar el buffer después de aplicar
+        // Limpiar el buffer despu?s de aplicar
         pendingMachineUpdatesRef.current.clear();
 
         return hasUpdates ? updated : prev;
@@ -826,17 +924,17 @@ export function MachinesDetailed() {
     flushMachinesRef.current = flushMachineUpdates;
 
     const cleanup = socketService.onMachineUpdate((machine: Machine) => {
-      // machine es un objeto Machine completo con toda la información
+      // machine es un objeto Machine completo con toda la informaci?n
       
       if (machine.name) {
-        // Usar una función de actualización para acceder al estado actual sin depender de él
+        // Usar una funci?n de actualizaci?n para acceder al estado actual sin depender de ?l
         setMachineDetails((prev) => {
-          // Solo procesar si esta máquina está en nuestros detalles cargados
+          // Solo procesar si esta m?quina est? en nuestros detalles cargados
           if (prev[machine.name]) {
             // Guardar en el buffer (sobrescribe si ya existe)
             pendingMachineUpdatesRef.current.set(machine.name, machine);
           }
-          // No cambiar el estado aquí, solo actualizar el buffer
+          // No cambiar el estado aqu?, solo actualizar el buffer
           return prev;
         });
       }
@@ -850,9 +948,9 @@ export function MachinesDetailed() {
     };
   }, []); // Sin dependencias - se suscribe una sola vez
 
-  // Suscripción a eventos de tags con buffering (para actualizar process_variables asociados)
+  // Suscripci?n a eventos de tags con buffering (para actualizar process_variables asociados)
   useEffect(() => {
-    // Función para aplicar las actualizaciones pendientes de tags
+    // Funci?n para aplicar las actualizaciones pendientes de tags
     const flushTagUpdates = () => {
       if (pendingTagUpdatesRef.current.size === 0) {
         return;
@@ -865,7 +963,7 @@ export function MachinesDetailed() {
 
         // Iterar sobre todas las actualizaciones pendientes de tags
         pendingTagUpdatesRef.current.forEach((updatedTag, tagId) => {
-          // Buscar en todas las máquinas si algún process_variable tiene este tag asociado
+          // Buscar en todas las m?quinas si alg?n process_variable tiene este tag asociado
           Object.keys(updated).forEach((machineName) => {
             const machineDetails = updated[machineName];
             if (!machineDetails || !machineDetails.process_variables) {
@@ -900,7 +998,7 @@ export function MachinesDetailed() {
                     },
                   };
 
-                  // También actualizar el value del process_variable si el tag tiene value
+                  // Tambi?n actualizar el value del process_variable si el tag tiene value
                   if (updatedTag.value !== undefined) {
                     updatedProcessVar.value = updatedTag.value;
                   }
@@ -917,7 +1015,7 @@ export function MachinesDetailed() {
               }
             });
 
-            // También buscar en subscribed_tags, not_subscribed_tags, etc.
+            // Tambi?n buscar en subscribed_tags, not_subscribed_tags, etc.
             const tagCollections = [
               "subscribed_tags",
               "not_subscribed_tags",
@@ -970,7 +1068,7 @@ export function MachinesDetailed() {
           });
         });
 
-        // Limpiar el buffer después de aplicar
+        // Limpiar el buffer despu?s de aplicar
         pendingTagUpdatesRef.current.clear();
 
         return hasUpdates ? updated : prev;
@@ -980,7 +1078,7 @@ export function MachinesDetailed() {
     flushTagsRef.current = flushTagUpdates;
 
     const cleanup = socketService.onTagUpdate((tag: Tag) => {
-      // tag es un objeto Tag completo con toda la información
+      // tag es un objeto Tag completo con toda la informaci?n
 
       if (tag.id || tag.name) {
         // Usar id como clave principal, o name como fallback
@@ -1001,12 +1099,12 @@ export function MachinesDetailed() {
     };
   }, []); // Sin dependencias - se suscribe una sola vez
 
-  // Obtener los nombres únicos de las máquinas
+  // Obtener los nombres ?nicos de las m?quinas
   const machineNames = machines
     .map((machine) => machine.name)
     .filter((name): name is string => !!name);
 
-  // Función para obtener atributos a mostrar en la tabla (excluyendo los especificados)
+  // Funci?n para obtener atributos a mostrar en la tabla (excluyendo los especificados)
   const getTableAttributes = (data: MachineDetailedData | undefined) => {
     if (!data) return [];
     
@@ -1060,10 +1158,10 @@ export function MachinesDetailed() {
       });
     }
     
-    // 2. Recopilar atributos de primer nivel de serialization (solo los que NO están en process_variables)
+    // 2. Recopilar atributos de primer nivel de serialization (solo los que NO est?n en process_variables)
     if (data.serialization && typeof data.serialization === "object" && data.serialization !== null) {
       Object.entries(data.serialization).forEach(([subKey, subValue]) => {
-        // Omitir si está en excludedKeys, es "actions", o si ya está en process_variables
+        // Omitir si est? en excludedKeys, es "actions", o si ya est? en process_variables
         if (!excludedKeys.includes(subKey) && subKey !== "actions" && !processVariables.has(subKey)) {
           // Formatear si es un objeto con value y unit
           if (typeof subValue === "object" && subValue !== null && "value" in subValue && "unit" in subValue) {
@@ -1076,7 +1174,7 @@ export function MachinesDetailed() {
       });
     }
     
-    // 3. Recopilar otros atributos del nivel raíz (solo los que NO están en process_variables)
+    // 3. Recopilar otros atributos del nivel ra?z (solo los que NO est?n en process_variables)
     Object.entries(data).forEach(([key, value]) => {
       if (!excludedKeys.includes(key) && !processVariables.has(key) && key !== "process_variables" && key !== "serialization") {
         firstLevelAttributes.set(key, value);
@@ -1084,7 +1182,7 @@ export function MachinesDetailed() {
     });
     
     // 4. Agregar atributos en el orden correcto:
-    // Primero los de prioridad que NO están en process_variables
+    // Primero los de prioridad que NO est?n en process_variables
     priorityOrder.forEach((key) => {
       if (firstLevelAttributes.has(key)) {
         attributes.push([key, firstLevelAttributes.get(key)]);
@@ -1099,7 +1197,7 @@ export function MachinesDetailed() {
       processedKeys.add(key);
     });
     
-    // Finalmente, el resto de atributos de primer nivel (ordenados alfabéticamente)
+    // Finalmente, el resto de atributos de primer nivel (ordenados alfab?ticamente)
     const remainingFirstLevel = Array.from(firstLevelAttributes.entries()).sort((a, b) => a[0].localeCompare(b[0]));
     remainingFirstLevel.forEach(([key, value]) => {
       attributes.push([key, value]);
@@ -1109,7 +1207,7 @@ export function MachinesDetailed() {
     return attributes;
   };
 
-  // Función para obtener la clase del badge según el estado
+  // Funci?n para obtener la clase del badge seg?n el estado
   const getStateBadgeClass = (state: string): string => {
     const stateLower = String(state).toLowerCase().trim();
     
@@ -1138,7 +1236,7 @@ export function MachinesDetailed() {
     return "badge bg-secondary";
   };
 
-  // Función para verificar si un estado debe tener efecto blinking
+  // Funci?n para verificar si un estado debe tener efecto blinking
   const shouldBlink = (state: string): boolean => {
     const stateLower = String(state).toLowerCase().trim();
     return (
@@ -1152,7 +1250,7 @@ export function MachinesDetailed() {
     );
   };
 
-  // Función para obtener el estilo del badge según el valor numérico (1-5)
+  // Funci?n para obtener el estilo del badge seg?n el valor num?rico (1-5)
   const getNumericBadgeStyle = (value: number): { className: string; style?: CSSProperties } => {
     if (value === 1) {
       return { className: "badge bg-success" }; // verde
@@ -1177,7 +1275,7 @@ export function MachinesDetailed() {
     return { className: "badge bg-secondary" };
   };
 
-  // Función para formatear el valor de un atributo
+  // Funci?n para formatear el valor de un atributo
   const formatAttributeValue = (value: any, attributeName?: string): string | JSX.Element => {
     if (value === null || value === undefined) return "-";
     
@@ -1200,7 +1298,7 @@ export function MachinesDetailed() {
       );
     }
     
-    // Si es el atributo "priority" o "criticity", mostrar como badge numérico
+    // Si es el atributo "priority" o "criticity", mostrar como badge num?rico
     if (attributeName === "priority" || attributeName === "criticity") {
       const numericValue = typeof value === "object" && value !== null && "value" in value 
         ? value.value 
@@ -1218,7 +1316,7 @@ export function MachinesDetailed() {
           </span>
         );
       }
-      // Si no es un número válido, mostrar como texto normal
+      // Si no es un n?mero v?lido, mostrar como texto normal
       return String(numericValue);
     }
     
@@ -1231,7 +1329,7 @@ export function MachinesDetailed() {
     return String(value);
   };
 
-  // Función para obtener atributos paginados por máquina
+  // Funci?n para obtener atributos paginados por m?quina
   const getPaginatedAttributes = (machineName: string) => {
     const allAttributes = getTableAttributes(machineDetails[machineName]);
     const page = currentPage[machineName] || 1;
@@ -1286,6 +1384,16 @@ export function MachinesDetailed() {
             <div className="tab-content">
               {machineNames.map((machineName) => {
                 const machine = machines.find((m) => m.name === machineName);
+                const details = machineDetails[machineName];
+                const notSubscribedKeys = details
+                  ? getNotSubscribedTagKeys(details, machineName)
+                  : [];
+                const thresholdUnit = getThresholdUnitLabel(
+                  machineName,
+                  details,
+                  detectionThresholdMode[machineName],
+                  t
+                );
                 const isBufferSizeLocked = ["pfm", "observer"].includes(
                   String(machineName).toLowerCase()
                 );
@@ -1416,25 +1524,25 @@ export function MachinesDetailed() {
                                     {Object.entries(machineDetails[machineName].subscribed_tags || {}).map(([fieldTag, processVar]) => {
                                       // Buscar el nombre de la variable interna asociada a este field tag
                                       // En subscribed_tags, la clave es el field tag (ej: "PI_02")
-                                      // Necesitamos encontrar qué variable interna tiene ese tag asociado
+                                      // Necesitamos encontrar qu? variable interna tiene ese tag asociado
                                       // En read_only_process_type_variables, la clave es el nombre de la variable interna
                                       // y varData.tag.name es el field tag
                                       let internalTagName = "";
                                       
-                                      // Normalizar el fieldTag para comparación (sin espacios, en minúsculas)
+                                      // Normalizar el fieldTag para comparaci?n (sin espacios, en min?sculas)
                                       const normalizedFieldTag = String(fieldTag).trim();
                                       
-                                      // Buscar en read_only_process_type_variables (donde están las variables internas suscritas)
+                                      // Buscar en read_only_process_type_variables (donde est?n las variables internas suscritas)
                                       const readOnlyVars = machineDetails[machineName].read_only_process_type_variables || {};
                                       for (const [varName, varData] of Object.entries(readOnlyVars)) {
                                         if (varData && typeof varData === "object" && varData.tag && typeof varData.tag === "object" && varData.tag.name) {
                                           // El tag.name puede ser "MACHINE.fieldTag" (ej: "PPA.PI_02") o solo "fieldTag" (ej: "PI_02")
                                           const tagName = String(varData.tag.name).trim();
-                                          // Extraer solo la parte del field tag (después del punto si existe)
+                                          // Extraer solo la parte del field tag (despu?s del punto si existe)
                                           const tagNameParts = tagName.split(".");
                                           const tagNameWithoutMachine = tagNameParts.length > 1 ? tagNameParts[tagNameParts.length - 1] : tagName;
                                           
-                                          // Comparar: el fieldTag debe coincidir con el tagName (con o sin prefijo de máquina)
+                                          // Comparar: el fieldTag debe coincidir con el tagName (con o sin prefijo de m?quina)
                                           // varName es el nombre de la variable interna (ej: "outlet_pressure")
                                           if (tagName === normalizedFieldTag || tagNameWithoutMachine === normalizedFieldTag) {
                                             internalTagName = varName; // Usar varName, no tagName
@@ -1443,7 +1551,7 @@ export function MachinesDetailed() {
                                         }
                                       }
                                       
-                                      // Si no se encontró en read_only, buscar en process_variables
+                                      // Si no se encontr? en read_only, buscar en process_variables
                                       if (!internalTagName) {
                                         const processVars = machineDetails[machineName].process_variables || {};
                                         for (const [varName, varData] of Object.entries(processVars)) {
@@ -1462,7 +1570,7 @@ export function MachinesDetailed() {
                                       
                                       // Mostrar "fieldTag -> internalTag" o solo "fieldTag" si no hay internalTag
                                       const displayText = internalTagName 
-                                        ? `${fieldTag} → ${internalTagName}`
+                                        ? `${fieldTag} ��� ${internalTagName}`
                                         : fieldTag;
                                       
                                       return (
@@ -1495,11 +1603,15 @@ export function MachinesDetailed() {
                                     <label className="form-label">{t("machines.notSubscribedTags")}</label>
                                     <select
                                       className="form-select"
-                                      value={selectedInternalVariable[machineName] || ""}
+                                      value={
+                                        notSubscribedKeys.includes(selectedInternalVariable[machineName] || "")
+                                          ? selectedInternalVariable[machineName]
+                                          : ""
+                                      }
                                       onChange={(e) => setSelectedInternalVariable((prev) => ({ ...prev, [machineName]: e.target.value }))}
                                     >
                                       <option value="">{t("machines.select")}</option>
-                                      {getNotSubscribedTagKeys(machineDetails[machineName]).map((key) => (
+                                      {notSubscribedKeys.map((key) => (
                                         <option key={key} value={key}>
                                           {key}
                                         </option>
@@ -1537,7 +1649,7 @@ export function MachinesDetailed() {
                                             message || t("machines.subscribe"),
                                             "success"
                                           );
-                                          // Refrescar detalles de la máquina
+                                          // Refrescar detalles de la m?quina
                                           const data = await getMachineByName(machineName);
                                           setMachineDetails((prev) => ({
                                             ...prev,
@@ -1652,7 +1764,7 @@ export function MachinesDetailed() {
                             )}
                           </Card>
                           
-                          {/* Card de Atributos de Máquina (solo para máquinas de leak detection) */}
+                          {/* Card de Atributos de M?quina (solo para m?quinas de leak detection) */}
                           {machineDetails[machineName] && 
                            machineDetails[machineName].serialization &&
                            machineDetails[machineName].serialization.classification &&
@@ -1686,13 +1798,13 @@ export function MachinesDetailed() {
                                     }}
                                     disabled={updatingAttribute[machineName] === "threshold" || isLeakDetectionCoreLocked}
                                   />
+                                  {thresholdUnit.label && (
+                                    <span className="text-muted small" title={thresholdUnit.hint || undefined}>
+                                      {thresholdUnit.label}
+                                    </span>
+                                  )}
                                   {supportsDetectionThresholdMode(machineName) && (
                                     <>
-                                      <span className="text-muted small">
-                                        {(detectionThresholdMode[machineName] || "probability") === "statistic"
-                                          ? t("machines.detectionThresholdUnitAdim")
-                                          : t("machines.detectionThresholdUnitPercent")}
-                                      </span>
                                       <div className="form-check mb-0 ms-1">
                                         <input
                                           className="form-check-input"
@@ -1807,7 +1919,7 @@ export function MachinesDetailed() {
           </>
         )}
 
-        {/* Modal de confirmación de actualización de atributo */}
+        {/* Modal de confirmaci?n de actualizaci?n de atributo */}
         {showConfirmModal && pendingUpdate && (
           <div
             className="modal fade show"

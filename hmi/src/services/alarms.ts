@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from "axios";
 import api from "./api";
 
 export type Alarm = {
@@ -133,9 +134,10 @@ export type AlarmSummaryResponse = {
  * Filtra el histórico de alarmas según los criterios proporcionados
  */
 export const filterAlarmsSummary = async (
-  filters: AlarmSummaryFilter
+  filters: AlarmSummaryFilter,
+  config?: AxiosRequestConfig
 ): Promise<AlarmSummaryResponse> => {
-  const { data } = await api.post("/alarms/summary/filter_by", filters);
+  const { data } = await api.post("/alarms/summary/filter_by", filters, config);
   return data;
 };
 

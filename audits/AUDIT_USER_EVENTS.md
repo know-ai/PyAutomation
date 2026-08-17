@@ -8,7 +8,7 @@
 | **Fecha** | 2026-08-16 (Operación «Trazabilidad Eterna») |
 | **Clasificación** | Auditoría de trazabilidad de acciones · confidencialidad interna |
 | **Metodología** | Revisión de código de `@set_event`, `persist_system_event`, `audit_metrics`, recursos HTTP y HMI. Tests: `test_user_session_audit`, `test_db_connection_audit`, `test_system_lifecycle_audit`, `test_audit_metrics` |
-| **Complementa** | `audits/AUDIT_LOGGING.md`, `audits/STORE_AND_FORWARD.md`, `audits/PERSISTENCE_FLOW.md` |
+| **Complementa** | `audits/AUDIT_LOGGING.md`, `audits/AUDIT_OPERATIONAL_LOGS.md`, `audits/STORE_AND_FORWARD.md`, `audits/PERSISTENCE_FLOW.md` |
 | **Veredicto** | **A-** respecto a caja negra industrial. Login/logout, forzar tag, CRUD de tags/alarmas, intervalo/on_delay/threshold, transiciones de máquina, arranque/parada limpia, DB en caliente, OPC UA, SAF backpressure y settings quedan en `Events`. Residual: no hay endpoint de borrado de usuario; no hay idle-timeout → `SESSION_INVALID` no ata un usuario; UNACK/RTN siguen en `AlarmSummary` (anti-spam) |
 
 ---

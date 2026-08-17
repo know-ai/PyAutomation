@@ -583,7 +583,8 @@ class AlarmSummary(BaseModel):
         Retrieves comments associated with a specific alarm summary entry.
         """
         query = cls.read(id=id)
-
+        if not query:
+            return []
         return [comment.serialize() for comment in query.logs]
 
     @logging_error_handler

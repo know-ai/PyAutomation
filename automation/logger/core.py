@@ -107,6 +107,15 @@ class BaseLogger(Singleton):
                 "SAF exact-once schema ensure skipped",
                 exc_info=True,
             )
+        try:
+            from ..dbmodels.logs import Logs
+
+            Logs.ensure_schema()
+        except Exception:
+            logging.getLogger("pyautomation").warning(
+                "Logs bitácora schema ensure skipped",
+                exc_info=True,
+            )
         self.__init_default_variables_schema()
         self.__init_default_datatypes_schema()
         self.__init_default_roles_schema()

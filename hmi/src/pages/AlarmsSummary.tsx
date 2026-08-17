@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { HistoryResults } from "../components/HistoryResults";
 import { MultiSelectSearch } from "../components/MultiSelectSearch";
 import {
   filterAlarmsSummary,
@@ -13,6 +14,14 @@ import { createLog } from "../services/logs";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import {
+  FILTER_COMPOSE_MS,
+  FILTER_DATE_MS,
+  FILTER_INSTANT_MS,
+  isRequestCanceled,
+  useScheduledQuery,
+  type ScheduledQueryContext,
+} from "../hooks/useScheduledQuery";
 import { formatDateTimeLocalForBackend, formatDateTimeLocalInput } from "../utils/timezone";
 
 type PresetDate = 
@@ -70,8 +79,10 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 export function AlarmsSummary() {
   const { t } = useTranslation();
   const { timeZone } = useDisplayTimezone();
+  const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
   const [alarmsSummary, setAlarmsSummary] = useState<AlarmSummary[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -138,10 +149,13 @@ export function AlarmsSummary() {
     loadFilterOptions();
   }, []);
 
-  // Cargar datos cuando cambian los filtros
   useEffect(() => {
-    loadAlarmsSummary();
-  }, [filters, timeZone]);
+    setRunner((ctx) => loadAlarmsSummary(ctx));
+  });
+
+  useEffect(() => {
+    schedule(FILTER_INSTANT_MS);
+  }, [timeZone, schedule]);
 
   // Cerrar menú contextual al hacer click fuera
   useEffect(() => {
@@ -192,35 +206,55 @@ export function AlarmsSummary() {
         setStartDate(startStr);
         localStorage.setItem("alarms_summary_startDate", startStr);
         localStorage.setItem("alarms_summary_endDate", endStr);
+        schedule(FILTER_INSTANT_MS);
       }
     } catch (e: any) {
       console.error("Error loading filter options:", e);
     }
   };
 
-  const loadAlarmsSummary = async () => {
+  const resolveQueryWindow = (): { start: string; end: string } => {
+    if (presetDate !== "Custom") {
+      const { start, end } = getPresetDateRange(presetDate);
+      const now = new Date();
+      const finalEnd = end > now ? now : end;
+      return {
+        start: formatToLocalDateTime(start),
+        end: formatToLocalDateTime(finalEnd),
+      };
+    }
+    return { start: startDate, end: endDate };
+  };
+
+  const resetToFirstPage = () => {
+    localStorage.setItem("alarms_summary_page", "1");
+    setFilters((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+  };
+
+  const loadAlarmsSummary = async ({ signal, generation }: ScheduledQueryContext) => {
     setLoading(true);
     setError(null);
     try {
       const payload: AlarmSummaryFilter = {
         ...filters,
       };
+      const queryWindow = resolveQueryWindow();
 
-      // Agregar filtros solo si tienen valores
       if (selectedStates.length > 0) {
         payload.states = selectedStates;
       }
-      if (startDate) {
-        payload.greater_than_timestamp = formatDateTimeForBackend(startDate);
+      if (queryWindow.start) {
+        payload.greater_than_timestamp = formatDateTimeForBackend(queryWindow.start);
       }
-      if (endDate) {
-        payload.less_than_timestamp = formatDateTimeForBackend(endDate);
+      if (queryWindow.end) {
+        payload.less_than_timestamp = formatDateTimeForBackend(queryWindow.end);
       }
       if (timeZone) {
         payload.timezone = timeZone;
       }
 
-      const response: AlarmSummaryResponse = await filterAlarmsSummary(payload);
+      const response: AlarmSummaryResponse = await filterAlarmsSummary(payload, { signal });
+      if (!isCurrent(generation, signal)) return;
       setAlarmsSummary(response.data || []);
       setPagination({
         page: response.pagination?.page || 1,
@@ -228,10 +262,12 @@ export function AlarmsSummary() {
         total: response.pagination?.total_records || 0,
         pages: response.pagination?.total_pages || 0,
       });
+      setHasLoaded(true);
     } catch (e: any) {
+      if (isRequestCanceled(e) || !isCurrent(generation, signal)) return;
       if (isDbUnavailableError(e)) {
         setError(null);
-        setAlarmsSummary([]);
+        setHasLoaded(true);
         return;
       }
       const data = e?.response?.data;
@@ -243,29 +279,12 @@ export function AlarmsSummary() {
       const errorMsg =
         backendMessage || e?.message || t("alarmsSummary.loadError");
       setError(errorMsg);
-      setAlarmsSummary([]);
+      setHasLoaded(true);
     } finally {
-      setLoading(false);
+      if (isCurrent(generation, signal)) {
+        setLoading(false);
+      }
     }
-  };
-
-  const handleApplyFilters = () => {
-    if (presetDate !== "Custom") {
-      const { start, end } = getPresetDateRange(presetDate);
-      const startStr = formatToLocalDateTime(start);
-      const endStr = formatToLocalDateTime(end);
-      setStartDate(startStr);
-      setEndDate(endStr);
-      localStorage.setItem("alarms_summary_startDate", startStr);
-      localStorage.setItem("alarms_summary_endDate", endStr);
-    }
-    const newFilters = {
-      ...filters,
-      page: 1,
-    };
-    setFilters(newFilters);
-    localStorage.setItem("alarms_summary_page", "1");
-    localStorage.setItem("alarms_summary_limit", String(newFilters.limit || 20));
   };
 
   const stateOptions = useMemo(
@@ -280,6 +299,8 @@ export function AlarmsSummary() {
   const handleStatesChange = (next: string[]) => {
     setSelectedStates(next);
     localStorage.setItem("alarms_summary_selectedStates", JSON.stringify(next));
+    resetToFirstPage();
+    schedule(FILTER_COMPOSE_MS);
   };
 
   const handlePresetDateChange = (preset: PresetDate) => {
@@ -288,7 +309,6 @@ export function AlarmsSummary() {
     if (preset !== "Custom") {
       const { start, end } = getPresetDateRange(preset);
       const now = new Date();
-      // Asegurar que la fecha final no exceda la actual
       const finalEnd = end > now ? now : end;
       const startStr = formatToLocalDateTime(start);
       const endStr = formatToLocalDateTime(finalEnd);
@@ -296,17 +316,19 @@ export function AlarmsSummary() {
       setEndDate(endStr);
       localStorage.setItem("alarms_summary_startDate", startStr);
       localStorage.setItem("alarms_summary_endDate", endStr);
+      resetToFirstPage();
+      schedule(FILTER_INSTANT_MS);
     }
   };
 
   const handleEndDateChange = (value: string) => {
     const selectedEnd = new Date(value);
     const now = new Date();
-    
-    // Validar que la fecha final no exceda la actual
     const finalValue = selectedEnd > now ? formatToLocalDateTime(now) : value;
     setEndDate(finalValue);
     localStorage.setItem("alarms_summary_endDate", finalValue);
+    resetToFirstPage();
+    schedule(FILTER_DATE_MS);
   };
 
   const handleClearFilters = () => {
@@ -329,12 +351,14 @@ export function AlarmsSummary() {
     });
     localStorage.setItem("alarms_summary_page", "1");
     localStorage.setItem("alarms_summary_limit", "20");
+    schedule(FILTER_INSTANT_MS);
   };
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.pages) {
       setFilters({ ...filters, page: newPage });
       localStorage.setItem("alarms_summary_page", String(newPage));
+      schedule(FILTER_INSTANT_MS);
     }
   };
 
@@ -343,6 +367,7 @@ export function AlarmsSummary() {
       setFilters({ ...filters, page: 1, limit: newLimit });
       localStorage.setItem("alarms_summary_page", "1");
       localStorage.setItem("alarms_summary_limit", String(newLimit));
+      schedule(FILTER_INSTANT_MS);
     }
   };
 
@@ -381,8 +406,7 @@ export function AlarmsSummary() {
       setCommentMessage("");
       setShowCommentModal(false);
       setSelectedAlarmId(undefined);
-      // Recargar alarmas para actualizar has_comments
-      loadAlarmsSummary();
+      schedule(FILTER_INSTANT_MS);
     } catch (e: any) {
       const data = e?.response?.data;
       const backendMessage =
@@ -620,82 +644,71 @@ export function AlarmsSummary() {
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.alarmsSummary")}</span>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">{t("alarmsSummary.state")}:</label>
-                    <MultiSelectSearch
-                      options={stateOptions}
-                      selected={selectedStates}
-                      onChange={handleStatesChange}
-                      placeholder={t("alarmsSummary.selectStatesPlaceholder")}
-                      searchPlaceholder={t("alarmsSummary.searchStates")}
-                      emptyText={t("alarmsSummary.noStatesFound")}
-                      selectAllLabel={t("alarmsSummary.selectAll")}
-                      clearLabel={t("common.clear")}
-                      selectedCountLabel={(count) => t("alarmsSummary.selectedCount", { count })}
-                      disabled={loading}
-                      style={{ width: "200px", maxWidth: "100%" }}
-                    />
-                  </div>
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">{t("alarmsSummary.range")}:</label>
-                    <select
-                      className="form-select form-select-sm"
-                      style={{ width: "150px", maxWidth: "100%" }}
-                      value={presetDate}
-                      onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
-                    >
-                      {PRESET_DATES.map((preset) => (
-                        <option key={preset} value={preset}>
-                          {t(`alarmsSummary.preset.${preset}`)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <Button variant="primary" className="btn-sm" onClick={handleApplyFilters} disabled={loading}>
-                    {t("common.filter")}
-                  </Button>
+                  <MultiSelectSearch
+                    options={stateOptions}
+                    selected={selectedStates}
+                    onChange={handleStatesChange}
+                    onClose={flushPending}
+                    placeholder={t("alarmsSummary.selectStatesPlaceholder")}
+                    searchPlaceholder={t("alarmsSummary.searchStates")}
+                    emptyText={t("alarmsSummary.noStatesFound")}
+                    selectAllLabel={t("alarmsSummary.selectAll")}
+                    clearLabel={t("common.clear")}
+                    selectedCountLabel={(count) => t("alarmsSummary.selectedCount", { count })}
+                    style={{ width: "200px", maxWidth: "100%" }}
+                  />
+                  <select
+                    className="form-select form-select-sm"
+                    style={{ width: "150px", maxWidth: "100%" }}
+                    value={presetDate}
+                    onChange={(e) => handlePresetDateChange(e.target.value as PresetDate)}
+                  >
+                    {PRESET_DATES.map((preset) => (
+                      <option key={preset} value={preset}>
+                        {t(`alarmsSummary.preset.${preset}`)}
+                      </option>
+                    ))}
+                  </select>
                   <Button
                     variant="primary"
                     className="btn-sm"
                     onClick={handleExportCSV}
-                    disabled={loading || alarmsSummary.length === 0}
+                    disabled={alarmsSummary.length === 0}
                   >
                     <i className="bi bi-download me-1"></i>
                     CSV
                   </Button>
-                  <Button variant="secondary" className="btn-sm" onClick={handleClearFilters} disabled={loading}>
+                  <Button variant="secondary" className="btn-sm" onClick={handleClearFilters}>
                     {t("common.clear")}
                   </Button>
                 </div>
               </div>
               {presetDate === "Custom" && (
                 <div className="card-header-stack__row d-flex align-items-center gap-2 flex-wrap pt-2 mt-1 border-top">
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">{t("alarmsSummary.start")}:</label>
-                    <input
-                      type="datetime-local"
-                      step="1"
-                      className="form-control form-control-sm"
-                      style={{ width: "180px", maxWidth: "100%" }}
-                      value={startDate}
-                      onChange={(e) => {
-                        setStartDate(e.target.value);
-                        localStorage.setItem("alarms_summary_startDate", e.target.value);
-                      }}
-                    />
-                  </div>
-                  <div className="d-flex align-items-center gap-1">
-                    <label className="form-label small mb-0 me-1">{t("alarmsSummary.end")}:</label>
-                    <input
-                      type="datetime-local"
-                      step="1"
-                      className="form-control form-control-sm"
-                      style={{ width: "180px", maxWidth: "100%" }}
-                      value={endDate}
-                      onChange={(e) => handleEndDateChange(e.target.value)}
-                      max={new Date().toISOString().slice(0, 16)}
-                    />
-                  </div>
+                  <input
+                    type="datetime-local"
+                    step="1"
+                    className="form-control form-control-sm"
+                    style={{ width: "180px", maxWidth: "100%" }}
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      localStorage.setItem("alarms_summary_startDate", e.target.value);
+                      resetToFirstPage();
+                      schedule(FILTER_DATE_MS);
+                    }}
+                    onBlur={flushPending}
+                  />
+                  <input
+                    type="datetime-local"
+                    step="1"
+                    className="form-control form-control-sm"
+                    style={{ width: "180px", maxWidth: "100%" }}
+                    value={endDate}
+                    onChange={(e) => handleEndDateChange(e.target.value)}
+                    onBlur={flushPending}
+                    max={new Date().toISOString().slice(0, 16)}
+                  />
                 </div>
               )}
             </div>
@@ -769,15 +782,7 @@ export function AlarmsSummary() {
             </div>
           )}
 
-          {loading && (
-            <div className="text-center py-4">
-              <div className="spinner-border text-primary" role="status">
-                <span className="visually-hidden">{t("common.loading")}</span>
-              </div>
-            </div>
-          )}
-
-          {!loading && (
+          <HistoryResults loading={loading} hasLoaded={hasLoaded} loadingLabel={t("common.loading")}>
             <div className="table-responsive">
               <table className="table table-striped table-hover table-sm">
                 <thead>
@@ -835,7 +840,7 @@ export function AlarmsSummary() {
                 </tbody>
               </table>
             </div>
-          )}
+          </HistoryResults>
 
           {/* Menú contextual */}
           {contextMenu.visible && (

@@ -1,248 +1,203 @@
+import logging
 import pytz
-from peewee import CharField, TimestampField, ForeignKeyField, fn
+from peewee import (
+    BooleanField,
+    CharField,
+    TimestampField,
+    ForeignKeyField,
+    fn,
+)
 from ..dbmodels.core import BaseModel
 from datetime import datetime
 from .users import Users
 from .events import Events
 from .alarms import AlarmSummary, Alarms
 from ..modules.users.users import User
+from ..utils.operational_log_audit import (
+    clip_area,
+    clip_description,
+    clip_message,
+    clip_user_name,
+    normalize_shift,
+)
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 
 
 class Logs(BaseModel):
     r"""
-    Database model for Application Logs.
+    Operator logbook (bitácora) plus comments linked to events or alarm summaries.
 
-    Logs store system messages, errors, and informational records, optionally linked to
-    events or alarms.
+    The operator's voice is preserved if a user, event or alarm row is deleted
+    (SET NULL + denormalized ``user_name``).
     """
-    
+
     timestamp = TimestampField(utc=True)
     message = CharField(max_length=256)
     description = CharField(max_length=256, null=True)
     classification = CharField(max_length=128, null=True)
-    user = ForeignKeyField(Users, backref='logs', on_delete='CASCADE')
-    alarm = ForeignKeyField(AlarmSummary, null=True, backref='logs', on_delete='CASCADE')
-    event = ForeignKeyField(Events, null=True, backref='logs', on_delete='CASCADE')
+    user = ForeignKeyField(Users, backref='logs', null=True, on_delete='SET NULL')
+    user_name = CharField(max_length=64, null=True)
+    alarm = ForeignKeyField(AlarmSummary, null=True, backref='logs', on_delete='SET NULL')
+    event = ForeignKeyField(Events, null=True, backref='logs', on_delete='SET NULL')
+    shift = CharField(max_length=32, null=True)
+    area = CharField(max_length=64, null=True)
+    handover = BooleanField(default=False)
+
+    class Meta:
+        indexes = (
+            (('timestamp',), False),
+            (('classification',), False),
+        )
 
     @classmethod
     def create(
-        cls, 
-        message:str, 
-        user:User, 
-        description:str=None, 
-        classification:str=None,
-        alarm_summary_id:int=None,
-        event_id:int=None,
-        timestamp:datetime=None
+        cls,
+        message: str,
+        user: User = None,
+        description: str = None,
+        classification: str = None,
+        alarm_summary_id: int = None,
+        event_id: int = None,
+        timestamp: datetime = None,
+        user_name: str = None,
+        shift: str = None,
+        area: str = None,
+        handover: bool = False,
         )->tuple:
         r"""
-        Creates a new log entry.
-
-        **Parameters:**
-
-        * **message** (str): Log content.
-        * **user** (User): User creating the log.
-        * **description** (str, optional): Additional details.
-        * **classification** (str, optional): Log type/category.
-        * **alarm_summary_id** (int, optional): Link to an alarm summary entry.
-        * **event_id** (int, optional): Link to an event.
-        * **timestamp** (datetime, optional): Log time.
-
-        **Returns:**
-
-        * **tuple**: (Query object, status message)
+        Creates a new logbook row. ``user`` may be omitted on SAF replay if
+        ``user_name`` is present (author already denormalized).
         """
-        if not isinstance(user, User):
+        author = clip_user_name(
+            user_name or (getattr(user, "username", None) if user is not None else None)
+        )
+        _user = None
+        if user is not None:
+            if not isinstance(user, User):
+                return None, f"User {user} - {type(user)} must be an User Object"
+            _user = Users.read_by_username(username=user.username)
+            author = clip_user_name(user.username) or author
 
-            return None, f"User {user} - {type(user)} must be an User Object"
-        
-        _user = Users.read_by_username(username=user.username) 
+        if not author:
+            return None, "user_name is required"
 
         if not timestamp:
-
             timestamp = datetime.now(pytz.UTC)
-        
-        if not isinstance(timestamp, datetime):
 
+        if not isinstance(timestamp, datetime):
             return None, f"Timestamp must be a datetime Object"
-        
-        # Ensure timestamp is timezone-aware and in UTC
+
         if timestamp.tzinfo is None:
-            # If naive, assume it's UTC
             timestamp = pytz.UTC.localize(timestamp)
         else:
-            # If timezone-aware, convert to UTC
             timestamp = timestamp.astimezone(pytz.UTC)
-        
+
         query = cls(
-            message=message,
+            message=clip_message(message),
             user=_user,
-            description=description,
-            classification=classification,
+            user_name=author,
+            description=clip_description(description),
+            classification=clip_message(classification) if classification else None,
             timestamp=timestamp,
-            event=Events.get_or_none(id=event_id),
-            alarm=AlarmSummary.get_or_none(id=alarm_summary_id)
+            event=Events.get_or_none(id=event_id) if event_id not in (None, "") else None,
+            alarm=AlarmSummary.get_or_none(id=alarm_summary_id) if alarm_summary_id not in (None, "") else None,
+            shift=normalize_shift(shift),
+            area=clip_area(area),
+            handover=bool(handover),
         )
         query.save()
 
-        return query, f"Event creation successful"
-    
+        return query, "Log creation successful"
+
     @classmethod
     def read_lasts(cls, lasts:int=1):
-        r"""
-        Retrieves the last N logs.
-
-        **Parameters:**
-
-        * **lasts** (int): Number of logs to retrieve.
-
-        **Returns:**
-
-        * **list**: List of serialized log dictionaries.
-        """
         logs = cls.select().order_by(cls.id.desc()).limit(lasts)
-
         return [log.serialize() for log in logs]
-    
+
     @classmethod
     def filter_by(
-        cls, 
+        cls,
         usernames:list[str]=None,
         alarm_names:list[str]=None,
         event_ids:list[int]=None,
         description:str="",
         message:str="",
         classification:str="",
+        classifications:list[str]=None,
+        search:str="",
+        exclude_description:str="",
         greater_than_timestamp:datetime=None,
         less_than_timestamp:datetime=None,
         timezone:str='UTC',
         page:int=1,
         limit:int=20
         ):
-        r"""
-        Filters logs based on various criteria with pagination.
-
-        **Parameters:**
-
-        * **usernames** (list[str]): Filter by user.
-        * **alarm_names** (list[str]): Filter by linked alarm name.
-        * **event_ids** (list[int]): Filter by linked event ID.
-        * **message**, **description**, **classification**: Text search.
-        * **greater_than_timestamp**, **less_than_timestamp**: Time range.
-        * **page**, **limit**: Pagination control.
-
-        **Returns:**
-
-        * **dict**: {data: list, pagination: dict}
-        """
         import math
         _timezone = pytz.timezone(timezone)
         query = cls.select()
-        
+
         if usernames:
             subquery = Users.select(Users.id).where(Users.username.in_(usernames))
-            query = query.join(Users).where(Users.id.in_(subquery))
-        
+            query = query.where(
+                (cls.user.in_(subquery)) | (cls.user_name.in_(usernames))
+            )
+
         if event_ids:
-            subquery = Events.select(Events.id).where(Events.id.in_(event_ids))
-            query = query.join(Events).where(Events.id.in_(subquery))
-        
+            query = query.where(cls.event.in_(event_ids))
+
         if alarm_names:
             subquery = Alarms.select(Alarms.id).where(Alarms.name.in_(alarm_names))
             alarm_subquery = AlarmSummary.select(AlarmSummary.id).join(Alarms).where(Alarms.id.in_(subquery))
-            query = query.join(AlarmSummary).where(AlarmSummary.id.in_(alarm_subquery))
-        
-        if description:
-            query = query.where(fn.LOWER(cls.description).contains(description.lower()))
-        
-        if message:
-            query = query.where(fn.LOWER(cls.message).contains(message.lower()))
-        
-        if classification:
-            query = query.where(fn.LOWER(cls.classification).contains(classification.lower()))
-        
-        if greater_than_timestamp:
-            # If it's already a datetime object (naive UTC from endpoint), use it directly
-            if isinstance(greater_than_timestamp, datetime):
-                if greater_than_timestamp.tzinfo is not None:
-                    # Convert to naive UTC
-                    dt_utc = greater_than_timestamp.astimezone(pytz.UTC)
-                    greater_than_timestamp = dt_utc.replace(tzinfo=None)
-            else:
-                # Legacy: parse string and convert from user timezone to UTC
-                try:
-                    if '.' in str(greater_than_timestamp):
-                        parts = str(greater_than_timestamp).split('.')
-                        base_time = parts[0]
-                        microseconds = parts[1] if len(parts) > 1 else '0'
-                        microseconds = microseconds.ljust(6, '0')[:6]
-                        formatted_str = f"{base_time}.{microseconds}"
-                        dt_naive = datetime.strptime(formatted_str, '%Y-%m-%d %H:%M:%S.%f')
-                    else:
-                        dt_naive = datetime.strptime(str(greater_than_timestamp), '%Y-%m-%d %H:%M:%S')
-                    dt_local = _timezone.localize(dt_naive)
-                    dt_utc = dt_local.astimezone(pytz.UTC)
-                    greater_than_timestamp = dt_utc.replace(tzinfo=None)
-                except ValueError:
-                    # Try ISO format as fallback
-                    dt = datetime.fromisoformat(str(greater_than_timestamp).replace('Z', '+00:00'))
-                    if dt.tzinfo is not None:
-                        dt = dt.astimezone(pytz.UTC)
-                    greater_than_timestamp = dt.replace(tzinfo=None)
-            
-            query = query.where(cls.timestamp > greater_than_timestamp)
-        
-        if less_than_timestamp:
-            # If it's already a datetime object (naive UTC from endpoint), use it directly
-            if isinstance(less_than_timestamp, datetime):
-                if less_than_timestamp.tzinfo is not None:
-                    # Convert to naive UTC
-                    dt_utc = less_than_timestamp.astimezone(pytz.UTC)
-                    less_than_timestamp = dt_utc.replace(tzinfo=None)
-            else:
-                # Legacy: parse string and convert from user timezone to UTC
-                try:
-                    if '.' in str(less_than_timestamp):
-                        parts = str(less_than_timestamp).split('.')
-                        base_time = parts[0]
-                        microseconds = parts[1] if len(parts) > 1 else '0'
-                        microseconds = microseconds.ljust(6, '0')[:6]
-                        formatted_str = f"{base_time}.{microseconds}"
-                        dt_naive = datetime.strptime(formatted_str, '%Y-%m-%d %H:%M:%S.%f')
-                    else:
-                        dt_naive = datetime.strptime(str(less_than_timestamp), '%Y-%m-%d %H:%M:%S')
-                    dt_local = _timezone.localize(dt_naive)
-                    dt_utc = dt_local.astimezone(pytz.UTC)
-                    less_than_timestamp = dt_utc.replace(tzinfo=None)
-                except ValueError:
-                    # Try ISO format as fallback
-                    dt = datetime.fromisoformat(str(less_than_timestamp).replace('Z', '+00:00'))
-                    if dt.tzinfo is not None:
-                        dt = dt.astimezone(pytz.UTC)
-                    less_than_timestamp = dt.replace(tzinfo=None)
-            
-            query = query.where(cls.timestamp < less_than_timestamp)
-        
-        query = query.order_by(cls.id.desc())
+            query = query.where(cls.alarm.in_(alarm_subquery))
 
+        families = [item.lower() for item in (classifications or []) if item]
+        if classification and not families:
+            query = query.where(fn.LOWER(cls.classification).contains(classification.lower()))
+        elif families:
+            query = query.where(fn.LOWER(cls.classification).in_(families))
+
+        if search:
+            term = search.lower()
+            query = query.where(
+                fn.LOWER(cls.message).contains(term)
+                | fn.LOWER(cls.description).contains(term)
+            )
+        else:
+            if description:
+                query = query.where(fn.LOWER(cls.description).contains(description.lower()))
+            if message:
+                query = query.where(fn.LOWER(cls.message).contains(message.lower()))
+
+        if exclude_description:
+            excluded = exclude_description.lower()
+            query = query.where(
+                cls.description.is_null(True)
+                | (fn.LOWER(cls.description) != excluded)
+            )
+
+        if greater_than_timestamp:
+            greater_than_timestamp = _naive_utc(greater_than_timestamp, _timezone)
+            query = query.where(cls.timestamp > greater_than_timestamp)
+
+        if less_than_timestamp:
+            less_than_timestamp = _naive_utc(less_than_timestamp, _timezone)
+            query = query.where(cls.timestamp < less_than_timestamp)
+
+        query = query.order_by(cls.id.desc())
         total_records = query.count()
-        
-        if limit <= 0: limit = 20
-        if page <= 0: page = 1
-        
-        total_pages = math.ceil(total_records / limit)
-        if total_pages == 0: total_pages = 1
-        
+
+        if limit <= 0:
+            limit = 20
+        if page <= 0:
+            page = 1
+
+        total_pages = math.ceil(total_records / limit) if total_records else 1
         has_next = page < total_pages
         has_prev = page > 1
-        
         paginated_query = query.paginate(page, limit)
-        
-        # Serialize logs with the specified timezone
         data = [log.serialize(timezone=timezone) for log in paginated_query]
-        
+
         return {
             "data": data,
             "pagination": {
@@ -256,43 +211,146 @@ class Logs(BaseModel):
         }
 
     def serialize(self, timezone=None)-> dict:
-        r"""
-        Serializes the log record.
-        
-        **Parameters:**
-        
-        * **timezone** (str, optional): Timezone to convert timestamp to. If None, uses default TIMEZONE.
-        """
         from .. import MANUFACTURER, SEGMENT, TIMEZONE
         timestamp = self.timestamp
         if timestamp:
-            # Convert to specified timezone or default TIMEZONE
             target_tz = pytz.timezone(timezone) if timezone else TIMEZONE
-            # If timestamp is naive, assume it's UTC
             if timestamp.tzinfo is None:
                 timestamp = pytz.UTC.localize(timestamp)
             timestamp = timestamp.astimezone(target_tz)
             timestamp = timestamp.strftime(DATETIME_FORMAT)
 
-        _event = None
-        if self.event:
+        username = self.user_name
+        user_payload = {"username": username} if username else None
+        if self.user:
+            user_payload = self.user.serialize()
+            if username and not user_payload.get("username"):
+                user_payload["username"] = username
 
-            _event = self.event.serialize()
-
-        _alarm = None
-        if self.alarm:
-
-            _alarm = self.alarm.serialize()
+        _event = self.event.serialize() if self.event else None
+        _alarm = self.alarm.serialize() if self.alarm else None
 
         return {
             "id": self.id,
             "timestamp": timestamp,
-            "user": self.user.serialize(),
+            "user": user_payload,
+            "user_name": username,
             "message": self.message,
             "description": self.description,
             "classification": self.classification,
+            "shift": self.shift,
+            "area": self.area,
+            "handover": bool(self.handover),
             "event": _event,
             "alarm": _alarm,
             "segment": SEGMENT,
             "manufacturer": MANUFACTURER
         }
+
+    @classmethod
+    def ensure_schema(cls) -> None:
+        """Add Bitácora Eterna columns and SET NULL FKs on existing historians."""
+        database = cls._meta.database
+        if database is None:
+            return
+        table = cls._meta.table_name
+        logger = logging.getLogger("pyautomation")
+        dialect = type(database).__name__.lower()
+        try:
+            columns = {column.name for column in database.get_columns(table)}
+        except Exception:
+            logger.warning("Logs schema inspect skipped for %s", table, exc_info=True)
+            return
+
+        additions = (
+            ("user_name", "VARCHAR(64)"),
+            ("shift", "VARCHAR(32)"),
+            ("area", "VARCHAR(64)"),
+            ("handover", "INTEGER DEFAULT 0" if "sqlite" in dialect else "BOOLEAN DEFAULT FALSE"),
+        )
+        for name, ddl in additions:
+            if name in columns:
+                continue
+            try:
+                database.execute_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+                logger.info("Logs: added column %s.%s", table, name)
+            except Exception:
+                logger.warning("Logs: add column %s skipped", name, exc_info=True)
+
+        try:
+            database.execute_sql(
+                f"UPDATE {table} SET user_name = ("
+                f"SELECT username FROM {Users._meta.table_name} "
+                f"WHERE {Users._meta.table_name}.id = {table}.user_id"
+                f") WHERE user_name IS NULL AND user_id IS NOT NULL"
+            )
+        except Exception:
+            logger.debug("Logs: backfill user_name skipped", exc_info=True)
+
+        try:
+            database.execute_sql(
+                f"CREATE INDEX IF NOT EXISTS {table}_timestamp ON {table} (timestamp)"
+            )
+        except Exception:
+            logger.debug("Logs: timestamp index skipped", exc_info=True)
+
+        if "postgres" in dialect:
+            _ensure_postgres_set_null_fks(database, table, logger)
+
+
+def _naive_utc(value, timezone):
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            return value.astimezone(pytz.UTC).replace(tzinfo=None)
+        return value
+    try:
+        raw = str(value)
+        if '.' in raw:
+            parts = raw.split('.')
+            microseconds = (parts[1] if len(parts) > 1 else '0').ljust(6, '0')[:6]
+            dt_naive = datetime.strptime(f"{parts[0]}.{microseconds}", '%Y-%m-%d %H:%M:%S.%f')
+        else:
+            dt_naive = datetime.strptime(raw, '%Y-%m-%d %H:%M:%S')
+        return timezone.localize(dt_naive).astimezone(pytz.UTC).replace(tzinfo=None)
+    except ValueError:
+        dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(pytz.UTC)
+        return dt.replace(tzinfo=None)
+
+
+def _ensure_postgres_set_null_fks(database, table: str, logger) -> None:
+    try:
+        database.execute_sql(f"ALTER TABLE {table} ALTER COLUMN user_id DROP NOT NULL")
+    except Exception:
+        logger.debug("Logs: user_id already nullable", exc_info=True)
+
+    try:
+        rows = database.execute_sql(
+            f"SELECT conname FROM pg_constraint "
+            f"WHERE conrelid = '{table}'::regclass AND contype = 'f'"
+        )
+        names = [row[0] for row in rows]
+    except Exception:
+        logger.warning("Logs: list FK constraints skipped", exc_info=True)
+        return
+
+    for name in names:
+        try:
+            database.execute_sql(f'ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "{name}"')
+        except Exception:
+            logger.warning("Logs: drop FK %s skipped", name, exc_info=True)
+
+    statements = (
+        f"ALTER TABLE {table} ADD CONSTRAINT {table}_user_id_fkey "
+        f"FOREIGN KEY (user_id) REFERENCES {Users._meta.table_name}(id) ON DELETE SET NULL",
+        f"ALTER TABLE {table} ADD CONSTRAINT {table}_event_id_fkey "
+        f"FOREIGN KEY (event_id) REFERENCES {Events._meta.table_name}(id) ON DELETE SET NULL",
+        f"ALTER TABLE {table} ADD CONSTRAINT {table}_alarm_id_fkey "
+        f"FOREIGN KEY (alarm_id) REFERENCES {AlarmSummary._meta.table_name}(id) ON DELETE SET NULL",
+    )
+    for sql in statements:
+        try:
+            database.execute_sql(sql)
+        except Exception:
+            logger.debug("Logs: add SET NULL FK skipped (%s)", sql, exc_info=True)

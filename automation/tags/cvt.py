@@ -5,6 +5,7 @@ from ..models import FloatType, StringType, IntegerType, BooleanType
 from ..modules.users.users import User
 from ..modules.users.users import User
 from ..utils.decorators import set_event, logging_error_handler
+from ..utils.tag_audit import describe_tag_update
 from ..filter import filter
 # from ..iad import iad_outlier, iad_frozen_data, iad_out_of_range
 from .tag import Tag
@@ -204,6 +205,7 @@ class CVT:
             return None, message
         
         tag = self._tags[id]
+        change_description = describe_tag_update(tag, kwargs)
         self._unindex_tag(tag)
         if "name" in kwargs:
             tag.set_name(name=kwargs["name"])
@@ -258,7 +260,7 @@ class CVT:
         self._tags[id] = tag
         self._index_tag(tag)
 
-        return tag, f"Tag: {tag.name}"
+        return tag, change_description
 
     @set_event(message="Tag deleted", classification="Configuration", priority=1, criticity=5)
     def delete_tag(self, id:str, user:User):
