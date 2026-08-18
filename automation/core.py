@@ -1,10 +1,10 @@
-import sys, logging, json, os, jwt, requests, urllib3, secrets
+import sys, logging, json, os, jwt, requests, urllib3, secrets, time
 import builtins as _builtins
 from logging.handlers import RotatingFileHandler
 from math import ceil
 from datetime import datetime, timezone
 # DRIVERS IMPORTATION
-from peewee import SqliteDatabase, MySQLDatabase, PostgresqlDatabase
+from peewee import SqliteDatabase
 from peewee import OperationalError, DatabaseError, InterfaceError
 # from peewee_migrations import Router
 from .dbmodels.users import Roles, Users
@@ -226,6 +226,9 @@ class PyAutomation(Singleton):
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(_colorize_message(f"[{str_date}] [INFO] Defining Socket.IO server with certfile: {certfile} and keyfile: {keyfile}", "INFO"))
         self.server = server
+        from .utils.db_connections import install_request_connection_teardown
+
+        install_request_connection_teardown(self.server)
         if certfile and keyfile:
 
             self.sio = SocketIO(
@@ -2763,7 +2766,6 @@ class PyAutomation(Singleton):
         ```
         """
 
-        from .dbmodels import proxy
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if clear_default_tables:
 
@@ -2796,25 +2798,43 @@ class PyAutomation(Singleton):
 
             db_name = kwargs['name']
             del kwargs['name']
-            candidate = MySQLDatabase(db_name, **kwargs)
+            from .utils.db_io import apply_remote_db_kwargs
+            from .utils.db_connections import TrackedMySQLDatabase, REGISTRY
+
+            kwargs = apply_remote_db_kwargs("mysql", kwargs)
+            candidate = TrackedMySQLDatabase(db_name, **kwargs)
+            REGISTRY.bind_instance(candidate)
 
         elif dbtype.lower()=='postgresql':
 
             db_name = kwargs['name']
             del kwargs['name']
+            from .utils.db_io import apply_remote_db_kwargs
+            from .utils.db_connections import TrackedPostgresqlDatabase, REGISTRY
+
             # Not PooledPostgresqlDatabase: gevent/worker threads never return
             # connections, so a small pool stalls signup/login for `timeout` s.
             kwargs.pop("max_connections", None)
             kwargs.pop("stale_timeout", None)
             kwargs.pop("timeout", None)
-            candidate = PostgresqlDatabase(db_name, **kwargs)
+            kwargs = apply_remote_db_kwargs("postgresql", kwargs)
+            candidate = TrackedPostgresqlDatabase(db_name, **kwargs)
+            REGISTRY.bind_instance(candidate)
 
         else:
             raise ValueError(f"Unsupported database type: {dbtype}")
 
-        proxy.initialize(candidate)
+        from .utils.db_connections import (
+            bind_historian_proxy,
+            ensure_bound_connection,
+            force_historian_connect,
+        )
+
+        bind_historian_proxy(candidate)
         try:
-            candidate.connect(reuse_if_open=True)
+            with force_historian_connect():
+                self._connect_historian(candidate, dbtype, kwargs)
+                ensure_bound_connection(candidate)
         except Exception:
             self._db_live = False
             try:
@@ -2827,13 +2847,15 @@ class PyAutomation(Singleton):
             if previous is not None:
                 self._db = previous
                 try:
-                    proxy.initialize(previous)
+                    bind_historian_proxy(previous)
                 except Exception:
                     logging.debug("proxy restore after failed set_db skipped", exc_info=True)
             else:
                 self._db = None
             raise
 
+        # Close the *previous* instance only after the candidate answered
+        # SELECT 1. close_all is owner-scoped: it must not kill candidate sockets.
         if previous is not None and previous is not candidate:
             try:
                 closer = getattr(previous, "close_all", None)
@@ -2850,6 +2872,9 @@ class PyAutomation(Singleton):
         self.db_manager.set_db(self._db, is_history_logged=self.__log_histories)
         self.db_manager.set_dropped(drop_table)
         self._db_live = True
+        from .utils.db_io import mark_remote_db_live
+
+        mark_remote_db_live()
 
     @logging_error_handler
     @validate_types(
@@ -3121,21 +3146,41 @@ class PyAutomation(Singleton):
                     dbfile = f"{dbfile}.db"
                 test_db = SqliteDatabase(os.path.join(".", "db", dbfile))
             elif dbtype == "mysql":
-                test_db = MySQLDatabase(
-                    db_config.get("name", "app_db"),
-                    host=db_config.get("host", "127.0.0.1"),
-                    port=db_config.get("port", 3306),
-                    user=db_config.get("user", "admin"),
-                    password=db_config.get("password", "admin")
+                from .utils.db_connections import ping_throwaway
+                from .utils.db_io import apply_remote_db_kwargs
+
+                params = apply_remote_db_kwargs(
+                    "mysql",
+                    {
+                        "host": db_config.get("host", "127.0.0.1"),
+                        "port": db_config.get("port", 3306),
+                        "user": db_config.get("user", "admin"),
+                        "password": db_config.get("password", "admin"),
+                    },
                 )
+                class _MysqlProbe:
+                    database = db_config.get("name", "app_db")
+                    connect_params = params
+                ping_throwaway(_MysqlProbe())
+                return None
             elif dbtype == "postgresql":
-                test_db = PostgresqlDatabase(
-                    db_config.get("name", "app_db"),
-                    host=db_config.get("host", "127.0.0.1"),
-                    port=db_config.get("port", 5432),
-                    user=db_config.get("user", "admin"),
-                    password=db_config.get("password", "admin")
+                from .utils.db_connections import ping_throwaway
+                from .utils.db_io import apply_remote_db_kwargs
+
+                params = apply_remote_db_kwargs(
+                    "postgresql",
+                    {
+                        "host": db_config.get("host", "127.0.0.1"),
+                        "port": db_config.get("port", 5432),
+                        "user": db_config.get("user", "admin"),
+                        "password": db_config.get("password", "admin"),
+                    },
                 )
+                class _Probe:
+                    database = db_config.get("name", "app_db")
+                    connect_params = params
+                ping_throwaway(_Probe())
+                return None
             else:
                 return None
             
@@ -3188,8 +3233,8 @@ class PyAutomation(Singleton):
 
         A truthy Peewee handle is not enough: ``set_db()`` can leave a dead
         object behind when ``connect()`` fails inside ``@logging_error_handler``.
-        ``_db_live`` is set only after TCP connect succeeds and cleared as soon
-        as a connectivity probe fails.
+        ``_db_live`` is set only after the bound handle answers ``SELECT 1``
+        and cleared as soon as that probe fails. A throwaway ping is not enough.
         """
         return bool(self.db_manager.get_db()) and bool(getattr(self, "_db_live", False))
 
@@ -3278,6 +3323,14 @@ class PyAutomation(Singleton):
 
             self.__log_histories = True
             self.set_db(dbtype=dbtype, **db_config)
+            if not getattr(self, "_db_live", False):
+                logging.critical("Historian TCP connect failed; connection not established")
+                return self._fail_db_link(
+                    source=audit_source,
+                    target=target,
+                    error="historian TCP connect failed",
+                    reconnect=False,
+                )
             if not self._historian_is_live():
                 logging.critical("Historian connectivity probe failed; connection not established")
                 return self._fail_db_link(
@@ -3328,12 +3381,27 @@ class PyAutomation(Singleton):
                 reconnect=False,
             )
 
+    def _connect_historian(self, candidate, dbtype: str, kwargs: dict) -> None:
+        r"""Connect on the calling greenlet/thread.
+
+        ``connect_timeout`` (libpq) bounds the wait. Do **not** call Peewee
+        ``connect()`` on the gevent hub threadpool: that stores the socket in
+        the pool thread's locals and leaks backends in ``pg_stat_activity``.
+        """
+        candidate.connect(reuse_if_open=True)
+
     def _historian_is_live(self) -> bool:
-        r"""Return True only if the historian answers ``SELECT 1``.
+        r"""Return True only if the *bound* Peewee handle answers ``SELECT 1``.
 
         Used by connect/reconnect so a swallowed ``OperationalError`` cannot be
         reported as a successful link. Does not use ``@logging_error_handler``.
+
+        A throwaway ``psycopg2`` ping only proves the host is up. After an
+        outage the models still use this greenlet's handle; that is what
+        must be live before logging ``Reconnection successfully``.
         """
+        from .utils.db_connections import ensure_bound_connection
+
         candidates = []
         try:
             manager_db = self.db_manager.get_db()
@@ -3345,7 +3413,7 @@ class PyAutomation(Singleton):
                 candidates.append(db)
         for db in candidates:
             try:
-                db.execute_sql("SELECT 1")
+                ensure_bound_connection(db)
                 self._db_live = True
                 return True
             except Exception:
@@ -3355,6 +3423,17 @@ class PyAutomation(Singleton):
 
     def _hydrate_runtime_from_db(self, reload_machines: bool = False) -> None:
         r"""Reload in-memory config from the historian. Call only when live."""
+        from .utils.db_connections import keep_historian_socket
+
+        db = getattr(self, "_db", None)
+        ctx = getattr(db, "connection_context", None)
+        if db is not None and callable(ctx) and not keep_historian_socket():
+            with ctx():
+                self._hydrate_runtime_from_db_body(reload_machines=reload_machines)
+            return
+        self._hydrate_runtime_from_db_body(reload_machines=reload_machines)
+
+    def _hydrate_runtime_from_db_body(self, reload_machines: bool = False) -> None:
         self.opcua_client_manager._defer_connection_alarms = True
         try:
             self.load_opcua_clients_from_db()
@@ -3373,6 +3452,14 @@ class PyAutomation(Singleton):
         if reload_machines:
             self.load_db_tags_to_machine()
 
+    def release_ephemeral_historian(self) -> None:
+        """Close this greenlet's historian socket. LoggerWorker keeps its own."""
+        from .utils.db_connections import close_current_greenlet_connection, keep_historian_socket
+
+        if keep_historian_socket():
+            return
+        close_current_greenlet_connection(getattr(self, "_db", None))
+
     def _fail_db_link(self, *, source: str, target: str, error: str, reconnect: bool) -> bool:
         self._db_live = False
         if reconnect:
@@ -3388,7 +3475,10 @@ class PyAutomation(Singleton):
                 error=error,
             )
         from .utils.connection_alarms import set_db_disconnected
+        from .utils.db_io import mark_remote_db_dead
+
         set_db_disconnected(True)
+        mark_remote_db_dead()
         return False
         
     @validate_types(test=bool|type(None), reload=bool|type(None), source=str|type(None), output=None|bool)
@@ -3445,9 +3535,24 @@ class PyAutomation(Singleton):
                         db_config["port"] = None
 
                 self.__log_histories = True
+                reconnect_started = time.monotonic()
                 self.set_db(dbtype=dbtype, **db_config)
+                if not getattr(self, "_db_live", False):
+                    logging.critical(
+                        "Historian TCP connect failed; reconnection not established (%.1fs)",
+                        time.monotonic() - reconnect_started,
+                    )
+                    return self._fail_db_link(
+                        source=audit_source,
+                        target=target,
+                        error="historian TCP connect failed",
+                        reconnect=True,
+                    )
                 if not self._historian_is_live():
-                    logging.critical("Historian connectivity probe failed; reconnection not established")
+                    logging.critical(
+                        "Historian connectivity probe failed; reconnection not established (%.1fs)",
+                        time.monotonic() - reconnect_started,
+                    )
                     return self._fail_db_link(
                         source=audit_source,
                         target=target,
@@ -3463,6 +3568,14 @@ class PyAutomation(Singleton):
                         reconnect=True,
                     )
                 self._hydrate_runtime_from_db(reload_machines=True)
+                from .utils.db_connections import close_foreign_historian_sockets
+
+                closed_foreign = close_foreign_historian_sockets(getattr(self, "_db", None))
+                if closed_foreign:
+                    logging.info(
+                        "Closed %s historian socket(s) left by other greenlets after reconnect",
+                        closed_foreign,
+                    )
                 database_connection_auditor.notify_reconnect_success(
                     source=audit_source,
                     target=target,
@@ -3746,6 +3859,12 @@ class PyAutomation(Singleton):
         if not self.is_db_connected():
             logging.warning("Skipping tag subscription load: historian is not connected")
             return
+        from .utils.db_connections import ephemeral_historian
+
+        with ephemeral_historian(getattr(self, "_db", None)):
+            self._load_db_tags_to_machine_body(str_date)
+
+    def _load_db_tags_to_machine_body(self, str_date: str):
         machines = self.machine_manager.get_machines()
 
 
@@ -4515,34 +4634,32 @@ class PyAutomation(Singleton):
             logging.critical("Database is not connected, skipping system user creation")
             print(_colorize_message(f"[{str_date}] [CRITICAL] Database is not connected, skipping system user creation", "CRITICAL"))
         record_system_started()
+        self.release_ephemeral_historian()
 
     @logging_error_handler
     def create_system_user(self):
         r"""
         Ensures a 'system' user exists with 'sudo' role. Used for automated internal actions.
         """
-        # Create system user
-        users = Users()
-        roles = Roles()
-        system_password = self.server.config.get("AUTOMATION_SUPERUSER_PASSWORD", "super_ultra_secret_password")
-        
-        # Verificar si el usuario system existe
-        if not users.read_by_username(username="system"):
-            # Obtener el rol de administrador
-            admin_role = roles.read_by_name(name="sudo")
-            if admin_role:
-                # Generar password e identificador dinámicamente
-                self.signup(
-                    username="system",
-                    role_name="sudo",
-                    email="system@intelcon.com",
-                    password=system_password,
-                    name="System",
-                    lastname="Intelcon"
-                )
-        else:
+        from .utils.db_connections import ephemeral_historian
 
-            self.reset_password(target_username="system", new_password=system_password)
+        with ephemeral_historian(getattr(self, "_db", None)):
+            users = Users()
+            roles = Roles()
+            system_password = self.server.config.get("AUTOMATION_SUPERUSER_PASSWORD", "super_ultra_secret_password")
+            if not users.read_by_username(username="system"):
+                admin_role = roles.read_by_name(name="sudo")
+                if admin_role:
+                    self.signup(
+                        username="system",
+                        role_name="sudo",
+                        email="system@intelcon.com",
+                        password=system_password,
+                        name="System",
+                        lastname="Intelcon"
+                    )
+            else:
+                self.reset_password(target_username="system", new_password=system_password)
 
     @logging_error_handler
     def safe_start(self, test:bool=False, create_tables:bool=True, machines:tuple=None):

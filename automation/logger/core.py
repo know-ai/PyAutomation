@@ -43,23 +43,29 @@ class BaseLogger(Singleton):
         r"""
         Checks if the database connection is active.
 
+        Remote probes (PostgreSQL / MySQL) run off the gevent hub with a hard
+        timeout. A dead TCP peer must not block Socket.IO ``on.tag``.
+
         **Returns:**
 
         * **bool**: True if connected, False otherwise.
         """
+        from ..utils.db_connections import probe_database
+        from ..utils.db_io import (
+            mark_remote_db_dead,
+            mark_remote_db_live,
+            probe_is_cooling_down,
+            probe_timeout_s,
+        )
 
-        try: 
-            
-            if self._db:
-                
-                self._db.execute_sql('SELECT 1;')
-                
-                return True
-            
-            return False
-        
-        except: 
-            
+        try:
+            if probe_is_cooling_down():
+                return False
+            probe_database(self._db, timeout_s=probe_timeout_s())
+            mark_remote_db_live()
+            return True
+        except Exception:
+            mark_remote_db_dead()
             return False
     
     def set_is_history_logged(self, value:bool=False):

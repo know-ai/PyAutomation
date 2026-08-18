@@ -4,7 +4,7 @@
 |---|---|
 | **Producto** | PyAutomationIO + HMI |
 | **Alcance** | Detectar y corregir degradación 24/7 (RSS, handles OPC, colas SAF, heap HMI) |
-| **Fecha** | 2026-08-14 (actualizado: Ciclo de Vida Perfecto — observers + política tagHistory) |
+| **Fecha** | 2026-08-14 (actualizado: Conexiones Estables — idle ≤ 4, `PyAutomationIO:<hilo>`) |
 
 ## 1. Señales y umbrales
 
@@ -20,6 +20,11 @@ Fuente backend: `GET /api/health/system` y `GET /api/health/saf`.
 | `SAF_PENDING_CAP_HITS` | Cualquier incremento | Backpressure a 5e6 filas; restaurar PG |
 | `ALARM_COUNT` | Salto inexplicable | Reload duplicando alarmas / attach no idempotente |
 | `POOL_CONNECTIONS_USED` | N/A (sin pool Peewee) | Si vuelve a >0 tras reintroducir pool: ver §5.1 |
+| `DB_CONNECTIONS_COUNT` | Censo cliente Peewee | Sockets que este proceso registró |
+| `DB_ACTIVE_CONNECTIONS` | `pg_stat_activity` (datname actual, sin el probe) | Verdad del servidor. Idle 1 worker: **1–3** |
+| `DB_NAMED_CONNECTIONS` | `application_name LIKE 'PyAutomationIO%'` | Idle: casi todas `:LoggerWorker` |
+| `DB_CONNECTIONS_EXPECTED_MAX` | `(workers × 2) + 2` → **4** con 1 worker | Techo idle. Alerta si se supera de forma sostenida |
+| `DB_CONNECTIONS_ALERT_THRESHOLD` | default **6** (`AUTOMATION_DB_CONNECTIONS_ALERT`) | `DB_CONNECTIONS_ALERT` si activas > umbral |
 | `CVT_LOCK_CONTENTION` | Crecimiento monotónico alto | Contención en `Tag._lock`; revisar tasa de `set_value` |
 | `LOG_ERROR_RATE_PER_MIN` | **> 5** | Error recurrente (aunque el dedupe silencie el archivo). Ver `logs/app.log` y SM |
 | `LOG_ERROR_ALERT` | `true` | Misma señal; no hace falta leer miles de líneas |
@@ -65,7 +70,7 @@ En planta, arrancar el worker con `tracemalloc.start()` al boot y comparar snaps
 
 | Prueba | Carga | Éxito |
 |---|---|---|
-| Backend 24 h / 7 d | 100 tags @ 10 Hz; reconnect OPC cada 5 min; outage PG 4 h | RSS ±15 %; `OPC_MONITORED_COUNT` plano; cola SAF baja a 0 tras PG |
+| Backend 24 h / 7 d | 100 tags @ 10 Hz; reconnect OPC cada 5 min; outage PG 4 h | RSS ±15 %; `OPC_MONITORED_COUNT` plano; cola SAF baja a 0 tras PG; **`DB_CONNECTIONS_COUNT` plano y ≤ umbral** |
 | HMI 24 h | 8 StripCharts + 500 cambios de ruta | Heap < 512 MB; listeners nativos constantes |
 
 ## 5. Corrección típica
@@ -218,4 +223,63 @@ Cotos (no son opcionales):
 `unsubscribeTagHistory` (desmontar StripChart) baja el contador de suscriptores y **conserva** el buffer. `clearTagValues` / `logout` limpian `tagValues` y `historySubscribers`, no el historial.
 
 Esto **no** es una fuga: el heap del historial está acotado. No relajar los topes sin una nueva decisión de producto.
+
+## 10. Post-reconexión de red (Operación «Reconexión Efectiva»)
+
+Complementa: `audits/AUDIT_DB_RECONNECT.md`.
+
+Tras un outage, `CRITICAL: Reconnection successfully` **no basta**. El síntoma de la versión defectuosa era ese mensaje seguido de `connection already closed` y `SAF replication failed` (`tag` / `event` / `alarm_summary_update`) con PENDING que no bajaba.
+
+### 10.1 Checklist (T+0 a T+10 min)
+
+1. `GET /api/health/system` → `is_db_connected` debe ser `true`. `DB_ACTIVE_CONNECTIONS` estable (idle 1 worker: **1–3**).
+2. `GET /api/health/db` → `connected: true` (host reachable; no sustituye al handle ligado).
+3. `GET /api/health/saf` → `PENDING_ROWS` **descendente**. No borrar el journal.
+4. `logs/app.log`: cero `connection already closed` después del CRITICAL. Si aparecen, el handle de los modelos está muerto (bug anterior a esta corrección): reiniciar el worker **una vez** y desplegar el patch de reconexión efectiva.
+5. Operador: eventos/alarmas/tags vuelven a persistir sin reiniciar el proceso.
+
+### 10.2 Señales
+
+| Señal | Esperado post-reconexión | Si falla |
+|---|---|---|
+| `is_db_connected` | `true` | Watchdog no cerró el ciclo; ver LoggerWorker |
+| `DB_ACTIVE_CONNECTIONS` | 1–3 (1 worker), sin crecimiento monotónico | Fuga de sockets; ver `AUDIT_DB_CONNECTIONS_ETERNAL.md` |
+| `PENDING_ROWS` | Baja a 0 (o ruido residual) | Handle de escritura muerto o PG lento |
+| `connection already closed` | Ausente | Versión sin censo por owner / `ensure_bound_connection` |
+
+### 10.3 Soak de ciclos (CA-REC-5)
+
+10 ciclos desconectar red ≥ 1 min / restaurar. Tras cada ciclo: checklist §10.1. `DB_ACTIVE_CONNECTIONS` no debe subir de ciclo a ciclo en idle.
+
+## 11. Conteo óptimo de conexiones (Operación «Conexiones Estables»)
+
+Complementa: `audits/AUDIT_OPTIMAL_CONNECTIONS.md`.
+
+Idle persistente con 1 worker: **1** (`PyAutomationIO:LoggerWorker`). Techo **≤ 4**. 8 idle estables no es fuga; son hilos async (LDS/PPA/NPW/PFM) que leyeron `alarms` y no cerraron.
+
+### 11.1 Verificación
+
+```sql
+SELECT application_name, state, count(*)
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND backend_type = 'client backend'
+GROUP BY 1, 2
+ORDER BY 3 DESC;
+
+SELECT pid, application_name, state, left(query, 80), backend_start
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND backend_type = 'client backend'
+ORDER BY backend_start;
+```
+
+Esperado tras el deploy:
+
+- 1 idle `PyAutomationIO:LoggerWorker` (última query `SELECT 1` o un INSERT de SAF).
+- Cero `PyAutomationIO:SM-*` en idle más de un periodo de máquina.
+- Cero `idle in transaction`.
+- `GET /api/health/system` → `DB_ACTIVE_CONNECTIONS` ≤ 4, `is_db_connected` true.
+
+Si `SM-LDS` (u otra) permanece idle: ese módulo toca Peewee fuera de `loop()`. No matar backends a mano; corregir el cierre en código.
 

@@ -49,3 +49,20 @@ def journal_then_remote(
             exc_info=True,
         )
         return None, True
+    finally:
+        # Immediate remote write runs on the caller (SM/OPC/HTTP). Leave the
+        # idle socket only on LoggerWorker; everyone else must close.
+        try:
+            from ..utils.db_connections import (
+                close_current_greenlet_connection,
+                keep_historian_socket,
+            )
+            from .. import PyAutomation
+
+            if not keep_historian_socket():
+                close_current_greenlet_connection(getattr(PyAutomation(), "_db", None))
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "ephemeral historian close after journal_then_remote skipped",
+                exc_info=True,
+            )

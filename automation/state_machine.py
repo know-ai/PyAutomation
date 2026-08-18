@@ -165,8 +165,11 @@ class Machine(Singleton):
         """
         # StateMachine Worker
         config = None
+        from .utils.db_connections import ephemeral_historian
+
         if self.machines_engine.get_db():
-            config = self.load_db_machines_config()
+            with ephemeral_historian(self.machines_engine.get_db()):
+                config = self.load_db_machines_config()
 
         if config:
 

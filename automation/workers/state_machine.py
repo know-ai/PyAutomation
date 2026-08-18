@@ -130,9 +130,12 @@ class SchedThread(Thread):
     """
 
     def __init__(self, machine):
-
-        super(SchedThread, self).__init__()
-
+        machine_name = "machine"
+        try:
+            machine_name = str(machine.name.value)
+        except Exception:
+            pass
+        super(SchedThread, self).__init__(name=f"SM-{machine_name}"[:40])
         self.machine = machine
 
     def stop(self):
@@ -156,7 +159,11 @@ class SchedThread(Thread):
         """
         def loop():
             stamp_machine_cycle(machine)
-            machine.loop()
+            from ..utils.db_connections import ephemeral_historian
+            from automation import PyAutomation
+
+            with ephemeral_historian(getattr(PyAutomation(), "_db", None)):
+                machine.loop()
             interval = machine.get_interval()
             scheduler.call_later(interval, loop, machine)
     
@@ -187,6 +194,7 @@ class AsyncStateMachineWorker(BaseWorker):
     def __init__(self):
 
         super(AsyncStateMachineWorker, self).__init__()
+        self.name = "AsyncStateMachineWorker"
         self._machines = list()
         self._schedulers = list()
         self.jobs = list()
@@ -259,7 +267,7 @@ class StateMachineWorker(BaseWorker):
     def __init__(self, manager):
 
         super(StateMachineWorker, self).__init__()
-        
+        self.name = "StateMachineWorker"
         self._manager = manager
         self._sync_scheduler = MachineScheduler()
         self._async_scheduler = AsyncStateMachineWorker()
@@ -271,7 +279,11 @@ class StateMachineWorker(BaseWorker):
 
         def loop():
             stamp_machine_cycle(machine)
-            machine.loop()
+            from ..utils.db_connections import ephemeral_historian
+            from automation import PyAutomation
+
+            with ephemeral_historian(getattr(PyAutomation(), "_db", None)):
+                machine.loop()
             interval = machine.get_interval()
             self._sync_scheduler.call_later(interval, loop, machine)
 

@@ -35,6 +35,7 @@ class LoggerWorker(BaseWorker):
         """
 
         super(LoggerWorker, self).__init__()
+        self.name = "LoggerWorker"
         
         self._manager = manager
         self._period = period
@@ -182,37 +183,68 @@ class LoggerWorker(BaseWorker):
         Replication worker loop (Phoenix Directive).
 
         The local SQLite journal is the source of truth. This loop:
-        1. Reconnects the remote historian if needed.
-        2. Archives oversized local SQLite historians without deleting live rows.
-        3. Replicates PENDING journal records with ACK-after-commit.
+        1. Replicates PENDING journal records with ACK-after-commit.
+        2. Reconnects the remote historian if needed (fail-fast TCP timeout).
+        3. Archives oversized local SQLite historians without deleting live rows.
         4. Maintains OPC UA client sessions.
+
+        Historian TCP I/O must not run on the gevent hub: a ``No route to host``
+        connect would otherwise freeze Socket.IO ``on.tag`` for the OS timeout.
         """
         self.db_reconnection = True
+        log = logging.getLogger("pyautomation")
 
         while True:
 
-            if self.db_reconnection:
-                db_connection = self.logger.logger.check_connectivity()
-                if db_connection:
-                    self.sqlite_db_backup()
-                else:
-                    self.reconnect_to_db()
-            else:
-                self.reconnect_to_db()
+            cycle_started = time.monotonic()
+            watchdog_started = time.monotonic()
+            from automation import PyAutomation
+            from ..utils.connection_alarms import set_db_disconnected
 
-            try:
-                from ..persistence import get_persistence_gateway
-                get_persistence_gateway().replicate_once()
-            except Exception:
-                logging.getLogger("pyautomation").error(
-                    "SAF replication cycle failed; journal preserved",
-                    exc_info=True,
+            app = PyAutomation()
+            reachable = self.logger.logger.check_connectivity()
+            if reachable:
+                if not app.is_db_connected():
+                    self.reconnect_to_db()
+                else:
+                    self.db_reconnection = True
+            else:
+                set_db_disconnected(True)
+                self.db_reconnection = False
+                app._db_live = False
+                from ..utils.db_connections import close_current_greenlet_connection
+
+                close_current_greenlet_connection(self.logger.logger.get_db())
+            watchdog_s = time.monotonic() - watchdog_started
+            if watchdog_s >= 8.0:
+                log.warning(
+                    "Historian watchdog blocked %.1fs (probe/reconnect); "
+                    "HMI on.tag is independent of this wait",
+                    watchdog_s,
                 )
+
+            if app.is_db_connected():
+                try:
+                    from ..persistence import get_persistence_gateway
+
+                    get_persistence_gateway().replicate_once()
+                except Exception:
+                    log.error(
+                        "SAF replication cycle failed; journal preserved",
+                        exc_info=True,
+                    )
+                self.sqlite_db_backup()
 
             self.check_opcua_connection()
 
             if self.stop_event.is_set():
+                from ..utils.db_connections import close_current_greenlet_connection
+
+                close_current_greenlet_connection(self.logger.logger.get_db())
                 logging.critical("Alarm worker shutdown successfully!")
                 break
 
-            time.sleep(self._period)
+            elapsed = time.monotonic() - cycle_started
+            remaining = self._period - elapsed
+            if remaining > 0:
+                time.sleep(remaining)

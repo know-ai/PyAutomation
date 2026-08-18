@@ -128,9 +128,29 @@ class HealthSystemResource(Resource):
                 pool_used = len(in_use)
         except Exception:
             pass
+        try:
+            from ....utils.db_connections import snapshot_connection_metrics
+
+            conn_metrics = snapshot_connection_metrics(getattr(app, "_db", None))
+        except Exception:
+            conn_metrics = {
+                "DB_CONNECTIONS_COUNT": 0,
+                "DB_ACTIVE_CONNECTIONS": 0,
+                "DB_NAMED_CONNECTIONS": None,
+                "DB_CONNECTIONS_EXPECTED_MAX": 4,
+                "DB_CONNECTIONS_ALERT": False,
+                "DB_CONNECTIONS_ALERT_THRESHOLD": 10,
+                "DB_INSTANCE_ID": None,
+                "DB_APPLICATION_NAME": "PyAutomationIO",
+            }
+        try:
+            db_connected = bool(app.is_db_connected())
+        except Exception:
+            db_connected = False
         return {
             "status": "ok",
             "service": "pyautomation",
+            "is_db_connected": db_connected,
             "RSS_MB": round(rss_mb, 2),
             "THREAD_COUNT": threading.active_count(),
             "OPC_MONITORED_COUNT": opc_monitored,
@@ -143,6 +163,7 @@ class HealthSystemResource(Resource):
             "CVT_LOCK_CONTENTION": lock_contention,
             "TAG_OBSERVER_COUNT": tag_observer_count,
             "MACHINE_OBSERVER_COUNT": machine_observer_count,
+            **conn_metrics,
             **_log_error_metrics(),
             **_event_rate_metrics(),
         }, 200

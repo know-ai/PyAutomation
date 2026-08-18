@@ -117,3 +117,15 @@ def persist_system_event(
             exc_info=True,
         )
         return False
+    finally:
+        try:
+            from .db_connections import close_current_greenlet_connection, keep_historian_socket
+            from .. import PyAutomation
+
+            if not keep_historian_socket():
+                close_current_greenlet_connection(getattr(PyAutomation(), "_db", None))
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "audit historian close skipped",
+                exc_info=True,
+            )

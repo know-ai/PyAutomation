@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from typing import Optional
 
+from ..utils.db_connections import probe_database
 from .interfaces import (
     DB_UNAVAILABLE_MESSAGE,
     HealthSnapshot,
@@ -18,7 +18,6 @@ from .interfaces import (
 PROBE_TIMEOUT_S = 2.0
 CACHE_TTL_S = 1.5
 _LOGGER = logging.getLogger("pyautomation")
-_PROBE_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="db-health")
 
 
 def _engine_label(dbtype: Optional[str]) -> str:
@@ -29,33 +28,6 @@ def _engine_label(dbtype: Optional[str]) -> str:
         "mysql": "MySQL",
         "sqlite": "SQLite",
     }.get(raw, "Database")
-
-
-def _run_with_timeout(fn, timeout_s: float):
-    """Fail closed if SELECT 1 blocks longer than ``timeout_s``.
-
-    Gevent workers hang for minutes on a dead TCP socket; a hard timeout keeps
-    the health endpoint and 503 decorator off the hot path.
-    """
-    try:
-        import gevent
-        from gevent import Timeout as GeventTimeout
-    except ImportError:
-        gevent = None
-        GeventTimeout = None
-
-    if gevent is not None and GeventTimeout is not None:
-        try:
-            with GeventTimeout(timeout_s):
-                return fn()
-        except GeventTimeout:
-            raise TimeoutError("database health probe timed out")
-
-    future = _PROBE_EXECUTOR.submit(fn)
-    try:
-        return future.result(timeout=timeout_s)
-    except FuturesTimeout as exc:
-        raise TimeoutError("database health probe timed out") from exc
 
 
 class DatabaseHealthService(IHealthProvider, IReconnectionHandler):
@@ -117,7 +89,7 @@ class DatabaseHealthService(IHealthProvider, IReconnectionHandler):
 
         started = time.perf_counter()
         try:
-            _run_with_timeout(lambda: db.execute_sql("SELECT 1;"), self._timeout_s)
+            probe_database(db, timeout_s=self._timeout_s)
             latency_ms = (time.perf_counter() - started) * 1000.0
             return HealthSnapshot(
                 connected=True,
