@@ -2,6 +2,7 @@
 """Fail-fast historian I/O — unreachable hosts must not freeze the gevent hub."""
 from __future__ import annotations
 
+import os
 import time
 import unittest
 from unittest.mock import MagicMock, patch
@@ -233,9 +234,10 @@ class TestConnectionRegistry(unittest.TestCase):
     def test_historian_application_name_is_prefixed(self):
         from ..utils.db_connections import historian_application_name
 
-        self.assertTrue(historian_application_name("LoggerWorker").startswith("PyAutomationIO:"))
-        self.assertEqual(historian_application_name("LoggerWorker"), "PyAutomationIO:LoggerWorker")
-        self.assertEqual(historian_application_name("SM-LDS"), "PyAutomationIO:SM-LDS")
+        with patch.dict(os.environ, {"AUTOMATION_MULTI_EDGE_ENABLED": "false"}, clear=False):
+            self.assertTrue(historian_application_name("LoggerWorker").startswith("PyAutomationIO:"))
+            self.assertEqual(historian_application_name("LoggerWorker"), "PyAutomationIO:LoggerWorker")
+            self.assertEqual(historian_application_name("SM-LDS"), "PyAutomationIO:SM-LDS")
 
     def test_ephemeral_historian_closes_when_not_logger_worker(self):
         from ..utils.db_connections import ephemeral_historian

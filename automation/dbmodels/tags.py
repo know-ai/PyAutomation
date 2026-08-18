@@ -424,6 +424,8 @@ class Tags(BaseModel):
     
     identifier = CharField(unique=True)
     name = CharField(unique=True)
+    area = CharField(max_length=64, null=True, index=True)
+    owner_node = CharField(max_length=64, null=True, index=True)
     unit = ForeignKeyField(Units, backref='tags')
     data_type = ForeignKeyField(DataTypes, backref='tags')
     segment = ForeignKeyField(Segment, backref='tags', null=True)
@@ -444,6 +446,12 @@ class Tags(BaseModel):
     out_of_range_detection = BooleanField(default=False)
     outlier_detection = BooleanField(default=False)
     frozen_data_detection = BooleanField(default=False)
+
+    class Meta:
+        indexes = (
+            (("area", "name"), False),
+            (("owner_node", "name"), False),
+        )
 
     @classmethod
     def create(
@@ -470,7 +478,9 @@ class Tags(BaseModel):
         gaussian_filter_r_value:float=0.0,
         out_of_range_detection:bool=False,
         outlier_detection:bool=False,
-        frozen_data_detection:bool=False
+        frozen_data_detection:bool=False,
+        area:str=None,
+        owner_node:str=None
         ):
         r"""
         Creates a new Tag configuration record.
@@ -547,7 +557,9 @@ class Tags(BaseModel):
                                 out_of_range_detection=out_of_range_detection,
                                 outlier_detection=outlier_detection,
                                 frozen_data_detection=frozen_data_detection,
-                                segment=segment_obj
+                                segment=segment_obj,
+                                area=area,
+                                owner_node=owner_node
                                 )
                         else:
                             query = cls(
@@ -571,7 +583,9 @@ class Tags(BaseModel):
                                 gaussian_filter_r_value=gaussian_filter_r_value,
                                 out_of_range_detection=out_of_range_detection,
                                 outlier_detection=outlier_detection,
-                                frozen_data_detection=frozen_data_detection
+                                frozen_data_detection=frozen_data_detection,
+                                area=area,
+                                owner_node=owner_node
                                 )
                         query.save()
                         message = f"{name} tag created successfully"
@@ -623,7 +637,9 @@ class Tags(BaseModel):
                             "scan_time":scan_time,
                             "dead_band":dead_band,
                             "kp":kp,
-                            "active": True
+                            "active": True,
+                            "area": area,
+                            "owner_node": owner_node
                         }
                         cls.put(id=tag.id, **payload)
 
@@ -806,6 +822,8 @@ class Tags(BaseModel):
             'out_of_range_detection': self.out_of_range_detection,
             'frozen_data_detection': self.frozen_data_detection,
             'outlier_detection': self.outlier_detection,
+            'area': self.area,
+            'owner_node': self.owner_node,
             'segment': segment,
             "manufacturer": manufacturer
         }
@@ -820,11 +838,13 @@ class TagValue(BaseModel):
     unit = ForeignKeyField(Units, backref='values')
     value = FloatField()
     timestamp = TimestampField(utc=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
+    area = CharField(max_length=64, null=True, index=True)
     sample_uuid = CharField(max_length=255, unique=True, null=True)
 
     class Meta:
         indexes = (
             (('timestamp',), False),
+            (('area', 'timestamp'), False),
             # Exact-once: one sample per tag per millisecond instant
             (('tag', 'timestamp'), True),
         )
@@ -835,7 +855,8 @@ class TagValue(BaseModel):
         tag:Tags,
         value:float,
         timestamp:datetime,
-        unit=Units):
+        unit=Units,
+        area:str=None):
         r"""
         Creates a new historical value record.
 
@@ -850,6 +871,7 @@ class TagValue(BaseModel):
             tag=tag,
             value=value, 
             timestamp=timestamp,
-            unit=unit
+            unit=unit,
+            area=area
             )
         query.save()

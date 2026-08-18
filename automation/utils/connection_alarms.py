@@ -24,12 +24,32 @@ _TAG_DATA_TYPE = "boolean"
 _ALARM_TYPE = "BOOL"
 
 
+def _scoped_name(name: str) -> str:
+    try:
+        from ..node_scope import get_node_scope
+
+        scope = get_node_scope()
+        if scope.enabled and scope.is_valid:
+            return f"{scope.area}.{name}"
+    except Exception:
+        pass
+    return name
+
+
+def db_tag_name() -> str:
+    return _scoped_name(DB_TAG_NAME)
+
+
+def db_alarm_name() -> str:
+    return _scoped_name(DB_ALARM_NAME)
+
+
 def opcua_tag_name(client_name: str) -> str:
-    return f"SYS.OPCUA.{_sanitize(client_name)}.Disconnected"
+    return _scoped_name(f"SYS.OPCUA.{_sanitize(client_name)}.Disconnected")
 
 
 def opcua_alarm_name(client_name: str) -> str:
-    return f"ALM.OPCUA.{_sanitize(client_name)}"
+    return _scoped_name(f"ALM.OPCUA.{_sanitize(client_name)}")
 
 
 def _sanitize(name: str) -> str:
@@ -62,8 +82,8 @@ def ensure_db_connection_alarm() -> None:
         app = _app()
         _ensure_bool_alarm(
             app,
-            tag_name=DB_TAG_NAME,
-            alarm_name=DB_ALARM_NAME,
+            tag_name=db_tag_name(),
+            alarm_name=db_alarm_name(),
             tag_description=DB_TAG_DESCRIPTION,
             alarm_description=DB_ALARM_DESCRIPTION,
             display_name="Database Disconnected",
@@ -98,7 +118,7 @@ def set_db_disconnected(disconnected: bool) -> None:
     """Drive the database connection alarm from the live link state. Never raises."""
     try:
         ensure_db_connection_alarm()
-        _write_disconnected(DB_TAG_NAME, disconnected)
+        _write_disconnected(db_tag_name(), disconnected)
     except Exception:
         _LOGGER.error("Failed to update database connection alarm", exc_info=True)
 

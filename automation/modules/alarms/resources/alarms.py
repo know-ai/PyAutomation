@@ -9,6 +9,19 @@ from ....utils.system_event_audit import persist_system_event
 ns = Namespace('Alarms', description='Alarm Management Resources')
 app = PyAutomation()
 
+
+def _alarm_scope_error(alarm_name: str | None = None, alarm_id: str | None = None, alarm=None):
+    scope = app._refresh_node_scope()
+    if scope.enabled and not scope.is_valid:
+        return {"message": "Multi-edge node identity is not configured"}, 503
+    target = alarm
+    if target is None:
+        target = app.alarm_manager.peek_alarm(id=alarm_id, name=alarm_name)
+    if target is not None and scope.enabled and not scope.owns_tag(getattr(target, "tag", None)):
+        return {"message": "Alarm belongs to another edge node"}, 403
+    return None
+
+
 # Models
 shelve_alarm_resource_by_name_model = api.model("shelve_alarm_resource_by_name_model",{
     'seconds': fields.Integer(required=False, description='Shelve duration in seconds'),
@@ -94,7 +107,7 @@ class AlarmsCollection(Resource):
             return {'message': 'Limit must be greater than 0'}, 400
         
         # Get all alarms
-        all_alarms = app.alarm_manager.serialize()
+        all_alarms = app.serialize_alarms()
         total = len(all_alarms)
         
         # Calculate pagination
@@ -173,6 +186,9 @@ class AlarmResource(Resource):
 
         Retrieves detailed information about a specific alarm using its unique identifier.
         """
+        violation = _alarm_scope_error(alarm_id=id)
+        if violation:
+            return violation
         alarm = app.get_alarm(id)
 
         if alarm:
@@ -196,6 +212,9 @@ class AlarmByNameResource(Resource):
 
         Retrieves detailed information about a specific alarm using its name.
         """
+        violation = _alarm_scope_error(alarm_name=alarm_name)
+        if violation:
+            return violation
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
         if alarm:
@@ -219,6 +238,9 @@ class AckAlarmByNameResource(Resource):
 
         Acknowledges an alarm that is in an Unacknowledged or Return to Normal Unacknowledged state.
         """
+        violation = _alarm_scope_error(alarm_name=alarm_name)
+        if violation:
+            return violation
         result = dict()
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
@@ -249,6 +271,9 @@ class AckAllAlarmsResource(Resource):
 
         Iterates through all alarms and acknowledges those that are in an Unacknowledged state.
         """
+        violation = _alarm_scope_error()
+        if violation:
+            return violation
         alarms = app.alarm_manager.get_alarms()
 
         for _, alarm in alarms.items():
@@ -279,6 +304,9 @@ class SuppressByDesignAlarmByNameResource(Resource):
 
         Places the alarm into a 'Designed Suppression' state, preventing it from triggering.
         """
+        violation = _alarm_scope_error(alarm_name=alarm_name)
+        if violation:
+            return violation
         result = dict()
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
@@ -307,6 +335,9 @@ class DesignedUnsuppressionAlarmByNameResource(Resource):
 
         Returns an alarm from 'Designed Suppression' state back to normal operation.
         """
+        violation = _alarm_scope_error(alarm_name=alarm_name)
+        if violation:
+            return violation
         result = dict()
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
@@ -339,6 +370,9 @@ class OutOfServiceAlarmByNameResource(Resource):
 
         Places the alarm into 'Out Of Service' state, disabling it completely.
         """
+        violation = _alarm_scope_error(alarm_name=alarm_name)
+        if violation:
+            return violation
         result = dict()
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
@@ -368,6 +402,9 @@ class ShelveAlarmByNameResource(Resource):
 
         Temporarily suppresses an alarm for a specified duration (seconds, minutes, hours, days, weeks).
         """
+        violation = _alarm_scope_error(alarm_name=alarm_name)
+        if violation:
+            return violation
         result = dict()
         args = shelve_alarm_parser.parse_args()
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
@@ -399,6 +436,9 @@ class ReturnToServiceAlarmByNameResource(Resource):
 
         Returns an alarm from 'Out Of Service' state back to normal operation.
         """
+        violation = _alarm_scope_error(alarm_name=alarm_name)
+        if violation:
+            return violation
         result = dict()
         alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
 
@@ -431,6 +471,9 @@ class AddAlarmResource(Resource):
 
         Creates a new alarm in the automation application with the specified configuration.
         """
+        violation = _alarm_scope_error()
+        if violation:
+            return violation
         payload = api.payload
         
         # Required fields
@@ -513,6 +556,9 @@ class UpdateAlarmResource(Resource):
             return {
                 'message': 'Alarm ID is required'
             }, 400
+        violation = _alarm_scope_error(alarm_id=alarm_id)
+        if violation:
+            return violation
         
         # Check if alarm exists
         alarm = app.get_alarm(id=alarm_id)
@@ -586,6 +632,9 @@ class DeleteAlarmResource(Resource):
 
         Deletes an alarm from the system by its ID.
         """
+        violation = _alarm_scope_error(alarm_id=alarm_id)
+        if violation:
+            return violation
         # Check if alarm exists
         alarm = app.get_alarm(id=alarm_id)
         if not alarm:

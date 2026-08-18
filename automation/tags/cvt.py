@@ -8,7 +8,7 @@ from ..utils.decorators import set_event, logging_error_handler
 from ..utils.tag_audit import describe_tag_update
 from ..filter import filter
 # from ..iad import iad_outlier, iad_frozen_data, iad_out_of_range
-from .tag import Tag
+from .tag import Tag, _scope_owns_tag
 from flask_socketio import SocketIO
 
 class CVT:
@@ -88,7 +88,9 @@ class CVT:
         segment:str="",
         kp:float=None,
         id:str=None,
-        user:User=None
+        user:User=None,
+        area:str=None,
+        owner_node:str=None
         )->tuple[Tag, str]:
         """
         Creates and registers a new Tag in the CVT.
@@ -141,6 +143,30 @@ class CVT:
             display_unit = unit
 
         
+        try:
+            from ..node_scope import get_node_scope
+
+            scope = get_node_scope()
+        except (ImportError, AttributeError):
+            scope = None
+        if scope is not None and getattr(scope, "enabled", False):
+            if not getattr(scope, "is_valid", False):
+                return None, "Invalid node scope"
+            area = area or getattr(scope, "area", None)
+            owner_node = owner_node or getattr(scope, "node_id", None)
+            owns_area = getattr(scope, "owns_area", None)
+            area_owned = (
+                bool(owns_area(area))
+                if callable(owns_area)
+                else area == getattr(scope, "area", None)
+            )
+            try:
+                owner_owned = bool(scope.owns_node(owner_node))
+            except Exception:
+                owner_owned = False
+            if not area_owned or not owner_owned:
+                return None, "Tag is not owned by this node scope"
+
         tag = Tag(
             name=name,
             unit=unit,
@@ -163,7 +189,9 @@ class CVT:
             manufacturer=manufacturer,
             segment=segment,
             kp=kp,
-            id=id
+            id=id,
+            area=area,
+            owner_node=owner_node,
         )
         self._tags[tag.id] = tag
         self._index_tag(tag)
@@ -240,6 +268,10 @@ class CVT:
             tag.segment = kwargs["segment"]
         if "manufacturer" in kwargs:
             tag.manufacturer = kwargs["manufacturer"]
+        if "area" in kwargs:
+            tag.area = kwargs["area"]
+        if "owner_node" in kwargs:
+            tag.owner_node = kwargs["owner_node"]
         if "kp" in kwargs:
             tag.set_kp(kp=kwargs["kp"])
         if "gaussian_filter" in kwargs:
@@ -304,6 +336,18 @@ class CVT:
             "TAG_OBSERVER_COUNT": total,
             "MACHINE_OBSERVER_COUNT": machines,
         }
+
+    def prune_not_owned(self, scope) -> list[str]:
+        """Drop foreign runtime objects without mutating the shared catalog."""
+        removed = []
+        for tag_id, tag in list(self._tags.items()):
+            if scope.owns_tag(tag):
+                continue
+            tag.detach_all_observers()
+            self._tags.pop(tag_id, None)
+            self._unindex_tag(tag)
+            removed.append(tag.name)
+        return removed
 
     @logging_error_handler
     def get_tag(self, id:str)->Tag|None:
@@ -643,6 +687,14 @@ class CVT:
         tag = self._tags.get(id)
         if tag is None:
             return None
+        if not _scope_owns_tag(tag):
+            logging.getLogger("pyautomation").error(
+                "CVT rejected foreign write tag=%s area=%s owner_node=%s",
+                getattr(tag, "name", id),
+                getattr(tag, "area", None),
+                getattr(tag, "owner_node", None),
+            )
+            return None
 
         payload = None
         try:
@@ -863,7 +915,9 @@ class CVTEngine(Singleton):
         segment:str="",
         kp:float=None,
         id:str="",
-        user:User|None=None
+        user:User|None=None,
+        area:str|None=None,
+        owner_node:str|None=None
         )->tuple[Tag, str]:
         r"""
         Thread-safe method to create a new tag.
@@ -896,6 +950,8 @@ class CVTEngine(Singleton):
         _query["parameters"]["kp"] = kp
         _query["parameters"]["id"] = id
         _query["parameters"]["user"] = user
+        _query["parameters"]["area"] = area
+        _query["parameters"]["owner_node"] = owner_node
         return self.__query(_query)
     
     @logging_error_handler
@@ -933,6 +989,11 @@ class CVTEngine(Singleton):
         _query["parameters"]["id"] = id
         _query["parameters"]["user"] = user
         return self.__query(_query)
+
+    def prune_not_owned(self, scope) -> list[str]:
+        """Thread-safe local-only pruning used at reconnect boundaries."""
+        with self._request_lock:
+            return self._cvt.prune_not_owned(scope)
     
     @logging_error_handler
     def get_tag(

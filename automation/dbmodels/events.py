@@ -21,7 +21,11 @@ class Events(BaseModel):
     classification = CharField(max_length=128, null=True)
     priority = IntegerField(null=True)
     criticity = IntegerField(null=True)
+    area = CharField(max_length=64, null=True, index=True)
     user = ForeignKeyField(Users, backref='events')
+
+    class Meta:
+        indexes = ((("area", "timestamp"), False),)
 
     @classmethod
     def create(
@@ -32,7 +36,8 @@ class Events(BaseModel):
         classification:str=None,
         priority:int=None,
         criticity:int=None,
-        timestamp:datetime=None
+        timestamp:datetime=None,
+        area:str=None
         )->tuple:
         r"""
         Creates a new event record.
@@ -81,14 +86,15 @@ class Events(BaseModel):
             classification=classification,
             priority=priority,
             criticity=criticity,
-            timestamp=timestamp
+            timestamp=timestamp,
+            area=area
         )
         query.save()
 
         return query, f"Event creation successful"
     
     @classmethod
-    def read_lasts(cls, lasts:int=1):
+    def read_lasts(cls, lasts:int=1, area:str=None):
         r"""
         Retrieves the last N events.
 
@@ -100,7 +106,10 @@ class Events(BaseModel):
 
         * **list**: List of serialized event dictionaries.
         """
-        events = cls.select().order_by(cls.id.desc()).limit(lasts)
+        events = cls.select()
+        if area is not None:
+            events = events.where(cls.area == area)
+        events = events.order_by(cls.id.desc()).limit(lasts)
 
         return [event.serialize() for event in events]
     
@@ -117,7 +126,8 @@ class Events(BaseModel):
         classification:str="",
         timezone:str='UTC',
         page:int=1,
-        limit:int=20
+        limit:int=20,
+        area:str=None,
         ):
         r"""
         Filters events based on criteria with pagination.
@@ -138,6 +148,8 @@ class Events(BaseModel):
         import math
         _timezone = pytz.timezone(timezone)
         query = cls.select()
+        if area is not None:
+            query = query.where(cls.area == area)
         
         if usernames:
             subquery = Users.select(Users.id).where(Users.username.in_(usernames))
@@ -288,6 +300,7 @@ class Events(BaseModel):
             "classification": self.classification,
             "priority": self.priority,
             "criticity": self.criticity,
+            "area": self.area,
             "segment": SEGMENT,
             "manufacturer": MANUFACTURER,
             "has_comments": True if self.logs else False

@@ -100,6 +100,28 @@ class PyAutomation(Singleton):
     def __init__(self):
         
         # Initial setup (first time initialization)
+        from .node_scope import get_node_scope
+
+        self.node_scope = get_node_scope()
+        self.node_id = self.node_scope.node_id
+        self.area = self.node_scope.area
+        self.site = self.node_scope.site
+        self._node_registered = not self.node_scope.enabled
+        self._registered_identity = (
+            None
+            if self.node_scope.enabled
+            else (self.node_scope.node_id, self.node_scope.area)
+        )
+        self.acquisition_ready = self.node_scope.is_valid and self._node_registered
+        self.acquisition_blocked_reason = (
+            None
+            if self.acquisition_ready
+            else (
+                "missing AUTOMATION_NODE_ID or AUTOMATION_AREA"
+                if not self.node_scope.is_valid
+                else "node is not registered"
+            )
+        )
         self.machine = Machine()
         self.machine_manager = self.machine.get_state_machine_manager()
         self.is_starting = True
@@ -132,6 +154,101 @@ class PyAutomation(Singleton):
         self.set_log(file=os.path.join(".", "logs", "app.log") ,level=logging.WARNING)
         self.__log_histories = False
         self._db_live = False
+
+    def _refresh_node_scope(self):
+        """Refresh immutable node identity before every boot/reconnect boundary."""
+        from .node_scope import get_node_scope
+
+        self.node_scope = get_node_scope()
+        self.node_id = self.node_scope.node_id
+        self.area = self.node_scope.area
+        self.site = self.node_scope.site
+        identity = (self.node_scope.node_id, self.node_scope.area)
+        self.acquisition_ready = self.node_scope.is_valid and (
+            not self.node_scope.enabled
+            or (
+                self._node_registered
+                and self._registered_identity == identity
+            )
+        )
+        self.acquisition_blocked_reason = (
+            None
+            if self.acquisition_ready
+            else (
+                "missing AUTOMATION_NODE_ID or AUTOMATION_AREA"
+                if not self.node_scope.is_valid
+                else "node is not registered"
+            )
+        )
+        return self.node_scope
+
+    def _runtime_hydration_allowed(self) -> bool:
+        scope = self._refresh_node_scope()
+        if self.acquisition_ready:
+            return True
+        logging.critical(
+            "Multi-edge acquisition blocked: %s",
+            self.acquisition_blocked_reason,
+        )
+        return False
+
+    def _prune_runtime_scope(self) -> None:
+        """Remove stale foreign runtime objects before bounded rehydration."""
+        scope = self.node_scope
+        if not scope.enabled or not scope.is_valid:
+            return
+        for machine_entry in list(self.machine_manager.get_machines() or []):
+            machine = machine_entry[0]
+            for tag_name in list(machine.get_subscribed_tags()):
+                tag = self.cvt.get_tag_by_name(name=tag_name)
+                if tag is not None and not scope.owns_tag(tag):
+                    machine.unsubscribe_to(tag=tag)
+        self.alarm_manager.prune_not_owned(scope)
+        self.opcua_client_manager.prune_not_owned(scope)
+        removed = self.cvt.prune_not_owned(scope)
+        if removed:
+            logging.warning(
+                "Pruned %d foreign tags before scoped hydration",
+                len(removed),
+            )
+
+    def _register_node(self) -> bool:
+        """Register this edge before any area-runtime catalog is hydrated."""
+        scope = self._refresh_node_scope()
+        if not scope.is_valid:
+            self._node_registered = False
+            self._registered_identity = None
+            return False
+        if not scope.enabled:
+            self._node_registered = True
+            self._registered_identity = (scope.node_id, scope.area)
+            return True
+        try:
+            try:
+                from version import __version__
+            except Exception:
+                __version__ = os.environ.get("AUTOMATION_VERSION")
+            self.db_manager.register_node(
+                node_id=scope.node_id,
+                area=scope.area,
+                site=scope.site,
+                version=__version__,
+            )
+            self._node_registered = True
+            self._registered_identity = (scope.node_id, scope.area)
+            self.acquisition_ready = True
+            self.acquisition_blocked_reason = None
+            return True
+        except Exception:
+            logging.critical(
+                "Node registration failed; acquisition remains fail-closed",
+                exc_info=True,
+            )
+            self.acquisition_ready = False
+            self._node_registered = False
+            self._registered_identity = None
+            self.acquisition_blocked_reason = "node registration failed"
+            return False
 
     @logging_error_handler
     def ensure_db_config_from_env(self) -> None:
@@ -287,7 +404,10 @@ class PyAutomation(Singleton):
 
         ```
         """
-        return self.machine_manager.get_machine(name=name)
+        machine = self.machine_manager.get_machine(name=name)
+        if machine is None or not self._machine_in_scope(machine):
+            return None
+        return machine
 
     @logging_error_handler
     def get_machines(self)->list[tuple[Machine, int, str]]:
@@ -309,7 +429,11 @@ class PyAutomation(Singleton):
 
         ```
         """
-        return self.machine_manager.get_machines()
+        return [
+            entry
+            for entry in self.machine_manager.get_machines()
+            if self._machine_in_scope(entry[0])
+        ]
 
     @logging_error_handler
     @validate_types(output=list)
@@ -321,7 +445,30 @@ class PyAutomation(Singleton):
 
         * **list[dict]**: A list of dictionaries representing the state and configuration of each machine.
         """
-        return self.machine_manager.serialize_machines()
+        return [
+            machine.serialize()
+            for machine, _, _ in self.get_machines()
+        ]
+
+    def _machine_in_scope(self, machine) -> bool:
+        scope = self._refresh_node_scope()
+        if not scope.enabled:
+            return True
+        if not scope.is_valid or machine is None:
+            return False
+        subscribed = {}
+        getter = getattr(machine, "get_subscribed_tags", None)
+        if callable(getter):
+            subscribed = getter() or {}
+        if subscribed:
+            return all(
+                scope.owns_tag(self.cvt.get_tag_by_name(name=tag_name))
+                for tag_name in subscribed
+            )
+        area = getattr(machine, "area", None)
+        if area:
+            return area == scope.area
+        return True
     
     @logging_error_handler
     @validate_types(machine=AutomationStateMachine, tag=Tag, output=dict)
@@ -367,6 +514,8 @@ class PyAutomation(Singleton):
             frozen_data_detection=bool,
             manufacturer=str|type(None),
             segment=str|type(None),
+            area=str|type(None),
+            owner_node=str|type(None),
             id=str|type(None),
             user=User|type(None),
             reload=bool,
@@ -394,6 +543,8 @@ class PyAutomation(Singleton):
             frozen_data_detection:bool=False,
             segment:str|None="",
             manufacturer:str|None="",
+            area:str|None=None,
+            owner_node:str|None=None,
             kp:float|None=None,
             id:str=None,
             user:User|None=None,
@@ -440,6 +591,21 @@ class PyAutomation(Singleton):
         'F'
         ```
         """
+        scope = self._refresh_node_scope()
+        if scope.enabled:
+            if not scope.is_valid:
+                return None, "Multi-edge acquisition identity is not configured"
+            if reload and (not area or not owner_node):
+                return None, f"Tag '{name}' is missing area/owner_node"
+            area = area or scope.area
+            owner_node = owner_node or scope.node_id
+            if area != scope.area or owner_node != scope.node_id:
+                return None, f"Tag '{name}' does not belong to this node"
+            if not reload and not name.startswith(f"{scope.area}."):
+                return None, f"Tag name must be qualified with '{scope.area}.'"
+            if display_name and not display_name.startswith(f"{scope.area}."):
+                display_name = f"{scope.area}.{display_name}"
+
         if not display_name:
 
             display_name = name
@@ -494,7 +660,9 @@ class PyAutomation(Singleton):
             manufacturer=manufacturer,
             kp=kp,
             id=id,
-            user=user
+            user=user,
+            area=area,
+            owner_node=owner_node,
         )
         
         # Si se resolvió el nombre del cliente, establecerlo en el tag junto con la URL
@@ -564,7 +732,18 @@ class PyAutomation(Singleton):
         ```
         """
 
-        return self.cvt.get_tags()
+        tags = self.cvt.get_tags() or []
+        scope = self._refresh_node_scope()
+        if not scope.enabled:
+            return tags
+        if not scope.is_valid:
+            return []
+        return [
+            tag
+            for tag in tags
+            if tag.get("area") == scope.area
+            and tag.get("owner_node") == scope.node_id
+        ]
 
     @logging_error_handler
     @validate_types(manufacturer=str|None, segment=str|None, output=list)
@@ -582,7 +761,15 @@ class PyAutomation(Singleton):
 
         * **list**: List of tag dicts with keys: name, display_unit, variable, display_name.
         """
-        return self.cvt.get_tags_filtered(manufacturer=manufacturer, segment=segment)
+        owned_names = {tag["name"] for tag in self.get_tags()}
+        return [
+            tag
+            for tag in self.cvt.get_tags_filtered(
+                manufacturer=manufacturer,
+                segment=segment,
+            )
+            if tag.get("name") in owned_names
+        ]
 
     @logging_error_handler
     @validate_types(kp_min=int|float, kp_max=int|float, segment=str|type(None), output=list)
@@ -600,7 +787,16 @@ class PyAutomation(Singleton):
 
         * **list**: Serialized tags in the requested KP range.
         """
-        return self.cvt.get_tags_by_kp_range(kp_min=kp_min, kp_max=kp_max, segment=segment)
+        owned_names = {tag["name"] for tag in self.get_tags()}
+        return [
+            tag
+            for tag in self.cvt.get_tags_by_kp_range(
+                kp_min=kp_min,
+                kp_max=kp_max,
+                segment=segment,
+            )
+            if tag.get("name") in owned_names
+        ]
 
     @logging_error_handler
     @validate_types(segment_name=str, kp=int|float, latitude=int|float, longitude=int|float, elevation=int|float|type(None), output=tuple)
@@ -833,7 +1029,16 @@ class PyAutomation(Singleton):
 
         * **list**: A list of Tag objects or None for each requested name.
         """
-        return self.cvt.get_tags_by_names(names=names)
+        tags = self.cvt.get_tags_by_names(names=names)
+        scope = self._refresh_node_scope()
+        if not scope.enabled:
+            return tags
+        return [
+            tag
+            for tag in tags
+            if tag.get("area") == scope.area
+            and tag.get("owner_node") == scope.node_id
+        ]
 
     @logging_error_handler
     @validate_types(name=str, output=Tag|None)
@@ -862,7 +1067,11 @@ class PyAutomation(Singleton):
         0.0
         ```
         """
-        return self.cvt.get_tag_by_name(name=name)
+        tag = self.cvt.get_tag_by_name(name=name)
+        scope = self._refresh_node_scope()
+        if scope.enabled and not scope.owns_tag(tag):
+            return None
+        return tag
     
     @logging_error_handler
     @validate_types(namespace=str, output=Tag|None)
@@ -878,7 +1087,11 @@ class PyAutomation(Singleton):
 
         * **Tag**: The Tag object if found, otherwise None.
         """
-        return self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
+        tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
+        scope = self._refresh_node_scope()
+        if scope.enabled and not scope.owns_tag(tag):
+            return None
+        return tag
 
     @logging_error_handler
     def get_trends(self, start:str, stop:str, timezone:str, *tags):
@@ -896,6 +1109,9 @@ class PyAutomation(Singleton):
 
         * **dict**: Historical data for the requested tags.
         """
+        owned = {tag["name"] for tag in self.get_tags()}
+        if not set(tags).issubset(owned):
+            return {}
         return self.logger_engine.read_trends(start, stop, timezone, *tags)
     
     @logging_error_handler
@@ -916,6 +1132,9 @@ class PyAutomation(Singleton):
 
         * **dict**: Paginated historical data.
         """
+        owned = {tag["name"] for tag in self.get_tags()}
+        if not set(tags).issubset(owned):
+            return {}
         return self.logger_engine.read_table(start, stop, timezone, tags, page, limit)
     
     @logging_error_handler
@@ -937,6 +1156,9 @@ class PyAutomation(Singleton):
 
         * **dict**: Resampled tabular data.
         """
+        owned = {tag["name"] for tag in self.get_tags()}
+        if not set(tags).issubset(owned):
+            return {}
         return self.logger_engine.read_tabular_data(start, stop, timezone, tags, sample_time, page, limit)
     
     @logging_error_handler
@@ -966,6 +1188,9 @@ class PyAutomation(Singleton):
         * **None|str**: None if successful, or an error message string if failed (e.g., tag has active alarms).
         """
         tag = self.cvt.get_tag(id=id)
+        scope = self._refresh_node_scope()
+        if tag is None or (scope.enabled and not scope.owns_tag(tag)):
+            return "Tag does not belong to this edge node"
         tag_name = tag.get_name()
         alarm = self.alarm_manager.get_alarm_by_tag(tag=tag_name)
         if alarm:
@@ -1014,6 +1239,20 @@ class PyAutomation(Singleton):
         ```
         """
         tag = self.cvt.get_tag(id=id)       
+        scope = self._refresh_node_scope()
+        if tag is None or (scope.enabled and not scope.owns_tag(tag)):
+            return None, "Tag does not belong to this edge node"
+        if scope.enabled:
+            if kwargs.get("area", scope.area) != scope.area:
+                return None, "Tag area belongs to another edge node"
+            if kwargs.get("owner_node", scope.node_id) != scope.node_id:
+                return None, "Tag owner_node belongs to another edge node"
+            if "name" in kwargs and not kwargs["name"].startswith(f"{scope.area}."):
+                return None, f"Tag name must be qualified with '{scope.area}.'"
+            if "display_name" in kwargs and not kwargs["display_name"].startswith(
+                f"{scope.area}."
+            ):
+                kwargs["display_name"] = f"{scope.area}.{kwargs['display_name']}"
         if "name" in kwargs:
             tag_name = tag.get_name()
             machines_with_tags_subscribed = list()
@@ -1162,6 +1401,9 @@ class PyAutomation(Singleton):
         ```
         """
         tag = self.cvt.get_tag_by_name(name=name)
+        scope = self._refresh_node_scope()
+        if tag is None or (scope.enabled and not scope.owns_tag(tag)):
+            return "Tag does not belong to this edge node"
         alarm = self.alarm_manager.get_alarm_by_tag(tag=name)
         if alarm:
 
@@ -1730,12 +1972,28 @@ class PyAutomation(Singleton):
         """
         # Obtener clientes conectados en memoria
         connected_clients = self.opcua_client_manager.serialize()
+        scope = self._refresh_node_scope()
+        if scope.enabled:
+            connected_clients = {
+                name: client
+                for name, client in connected_clients.items()
+                if scope.is_valid
+                and client.get("owner_node") == scope.node_id
+            }
         
         # Obtener todos los clientes de la base de datos
         all_clients = {}
         
         if self.is_db_connected():
-            db_clients = self.db_manager.get_opcua_clients()
+            db_clients = (
+                (
+                    self.db_manager.get_opcua_clients_scoped(scope.node_id)
+                    if scope.is_valid
+                    else []
+                )
+                if scope.enabled
+                else self.db_manager.get_opcua_clients()
+            )
             for db_client in db_clients:
                 client_name = db_client.get("client_name")
                 host = db_client.get("host")
@@ -2326,8 +2584,14 @@ class PyAutomation(Singleton):
         )
 
     @logging_error_handler
-    @validate_types(client_name=str, host=str|type(None), port=int|type(None), output=(bool, str|dict))
-    def add_opcua_client(self, client_name:str, host:str="127.0.0.1", port:int=4840):
+    @validate_types(client_name=str, host=str|type(None), port=int|type(None), owner_node=str|type(None), output=(bool, str|dict))
+    def add_opcua_client(
+        self,
+        client_name:str,
+        host:str="127.0.0.1",
+        port:int=4840,
+        owner_node:str=None,
+    ):
         r"""
         Registers and connects a new OPC UA client.
 
@@ -2357,11 +2621,24 @@ class PyAutomation(Singleton):
 
         ```
         """
+        scope = self._refresh_node_scope()
+        if scope.enabled:
+            if not scope.is_valid:
+                return False, "Multi-edge acquisition identity is not configured"
+            owner_node = owner_node or scope.node_id
+            if owner_node != scope.node_id:
+                return False, f"OPC UA client '{client_name}' belongs to another node"
+
         servers = self.find_opcua_servers(host=host, port=port)
 
         # Intentar agregar el cliente al manager incluso si no encuentra servidores
         # El manager manejará la conexión y agregará el cliente a memoria aunque falle
-        result = self.opcua_client_manager.add(client_name=client_name, host=host, port=port)
+        result = self.opcua_client_manager.add(
+            client_name=client_name,
+            host=host,
+            port=port,
+            owner_node=owner_node,
+        )
         
         if result:
             return result
@@ -2399,6 +2676,9 @@ class PyAutomation(Singleton):
 
         ```
         """
+        scope = self._refresh_node_scope()
+        if scope.enabled and client_name not in self.get_opcua_clients():
+            return False
         return self.opcua_client_manager.remove(client_name=client_name)
 
     @logging_error_handler
@@ -2439,6 +2719,10 @@ class PyAutomation(Singleton):
 
         ```
         """
+        scope = self._refresh_node_scope()
+        if scope.enabled and old_client_name not in self.get_opcua_clients():
+            return False, "OPC UA client belongs to another edge node"
+
         # Obtener valores actuales del cliente si no se proporcionan
         current_host = None
         current_port = None
@@ -3348,6 +3632,7 @@ class PyAutomation(Singleton):
                     error="historian connectivity probe failed after init_database",
                     reconnect=False,
                 )
+            self._register_node()
             self._hydrate_runtime_from_db(reload_machines=bool(reload))
             logging.info(f"Database connected successfully")
             print(_colorize_message(f"[{str_date}] [INFO] Database connected successfully", "INFO"))
@@ -3434,13 +3719,16 @@ class PyAutomation(Singleton):
         self._hydrate_runtime_from_db_body(reload_machines=reload_machines)
 
     def _hydrate_runtime_from_db_body(self, reload_machines: bool = False) -> None:
-        self.opcua_client_manager._defer_connection_alarms = True
-        try:
-            self.load_opcua_clients_from_db()
-            self.load_db_to_cvt()
-            self.load_db_to_alarm_manager()
-        finally:
-            self.opcua_client_manager._defer_connection_alarms = False
+        runtime_allowed = self._runtime_hydration_allowed()
+        if runtime_allowed:
+            self._prune_runtime_scope()
+            self.opcua_client_manager._defer_connection_alarms = True
+            try:
+                self.load_opcua_clients_from_db()
+                self.load_db_to_cvt()
+                self.load_db_to_alarm_manager()
+            finally:
+                self.opcua_client_manager._defer_connection_alarms = False
         self.load_db_to_roles()
         self.load_db_to_users()
         try:
@@ -3449,7 +3737,7 @@ class PyAutomation(Singleton):
                 logging.info("Restored %s in-memory session(s) from historian tokens", restored)
         except Exception:
             logging.debug("Session rebind after DB hydrate skipped", exc_info=True)
-        if reload_machines:
+        if reload_machines and runtime_allowed:
             self.load_db_tags_to_machine()
 
     def release_ephemeral_historian(self) -> None:
@@ -3567,6 +3855,7 @@ class PyAutomation(Singleton):
                         error="historian connectivity probe failed after init_database",
                         reconnect=True,
                     )
+                self._register_node()
                 self._hydrate_runtime_from_db(reload_machines=True)
                 from .utils.db_connections import close_foreign_historian_sockets
 
@@ -3663,8 +3952,12 @@ class PyAutomation(Singleton):
         ```
         """
         if self.is_db_connected():
-
-            tags = self.db_manager.get_tags()
+            scope = self._refresh_node_scope()
+            tags = (
+                self.db_manager.get_tags_scoped(area=scope.area)
+                if scope.enabled
+                else self.db_manager.get_tags()
+            )
             str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             # Asegurar que tags sea siempre una lista
@@ -3674,6 +3967,17 @@ class PyAutomation(Singleton):
                 tags = list(tags) if tags else []
 
             for tag in tags:
+                if scope.enabled and (
+                    tag.get("area") != scope.area
+                    or tag.get("owner_node") != scope.node_id
+                ):
+                    logging.critical(
+                        "Skipping inconsistent tag catalog row name=%s area=%s owner_node=%s",
+                        tag.get("name"),
+                        tag.get("area"),
+                        tag.get("owner_node"),
+                    )
+                    continue
 
                 active = tag.pop("active")
 
@@ -3718,8 +4022,12 @@ class PyAutomation(Singleton):
         logging.info(f"Loading alarms from database")
         print(_colorize_message(f"[{str_date}] [INFO] Loading alarms from database", "INFO"))
         if self.is_db_connected():
-
-            alarms = self.db_manager.get_alarms() or list()
+            scope = self._refresh_node_scope()
+            alarms = (
+                self.db_manager.get_alarms_scoped(area=scope.area)
+                if scope.enabled
+                else self.db_manager.get_alarms()
+            ) or list()
             logging.info(f"{len(alarms)} alarms found in database")
             print(_colorize_message(f"[{str_date}] [INFO] {len(alarms)} alarms found in database", "INFO"))
             if alarms:
@@ -3807,8 +4115,12 @@ class PyAutomation(Singleton):
         logging.info(f"Loading OPC UA clients from database")
         print(_colorize_message(f"[{str_date}] [INFO] Loading OPC UA clients from database", "INFO"))
         if self.is_db_connected():
-
-            clients = self.db_manager.get_opcua_clients()
+            scope = self._refresh_node_scope()
+            clients = (
+                self.db_manager.get_opcua_clients_scoped(owner_node=scope.node_id)
+                if scope.enabled
+                else self.db_manager.get_opcua_clients()
+            )
             logging.info(f"{len(clients)} OPC UA clients found in database")
             if len(clients)>0:
                 
@@ -3839,6 +4151,7 @@ class PyAutomation(Singleton):
                             client_name=client_name,
                             host=client.get('host'),
                             port=client.get('port'),
+                            owner_node=client.get('owner_node'),
                             source="core-startup",
                         )
                         logging.warning(f"OPC UA client {client_name} added to memory from database (connection may have failed)")
@@ -3875,7 +4188,14 @@ class PyAutomation(Singleton):
             if machine.classification.value.lower()!="data acquisition system":
 
                 machine_name = machine.name.value
-                machine_db = Machines.get_or_none(name=machine_name)
+                scope = self._refresh_node_scope()
+                machine_db = (
+                    Machines.get_or_none(
+                        (Machines.name == machine_name) & (Machines.area == scope.area)
+                    )
+                    if scope.enabled
+                    else Machines.get_or_none(name=machine_name)
+                )
                 
                 if not machine_db:
 
@@ -3894,6 +4214,15 @@ class PyAutomation(Singleton):
                     logging.info(f"Loading tag {tag_name} from database")
                     print(_colorize_message(f"[{str_date}] [INFO] Loading tag {tag_name} from database", "INFO"))
                     tag = self.cvt.get_tag_by_name(name=tag_name)
+                    if tag is None or (
+                        scope.enabled and not scope.owns_tag(tag)
+                    ):
+                        logging.critical(
+                            "Skipping foreign machine tag binding machine=%s tag=%s",
+                            machine_name,
+                            tag_name,
+                        )
+                        continue
                     machine.subscribe_to(tag=tag, default_tag_name=_tag["default_tag_name"])
                     logging.info(f"Tag {tag_name} loaded from database")
                     print(_colorize_message(f"[{str_date}] [INFO] Tag {tag_name} loaded from database", "INFO"))
@@ -3901,8 +4230,16 @@ class PyAutomation(Singleton):
                 logging.info(f"State machine {machine.name.value} is a data acquisition system, skipping tag subscriptions")
                 print(_colorize_message(f"[{str_date}] [INFO] State machine {machine.name.value} is a data acquisition system, skipping tag subscriptions", "INFO"))
                 machine_name = machine.name.value
-                machine_db = Machines.get_or_none(name=machine_name)
-                machine.identifier.value = machine_db.identifier
+                scope = self._refresh_node_scope()
+                machine_db = (
+                    Machines.get_or_none(
+                        (Machines.name == machine_name) & (Machines.area == scope.area)
+                    )
+                    if scope.enabled
+                    else Machines.get_or_none(name=machine_name)
+                )
+                if machine_db:
+                    machine.identifier.value = machine_db.identifier
 
     @logging_error_handler
     def add_db_table(self, table:BaseModel):
@@ -4042,6 +4379,17 @@ class PyAutomation(Singleton):
         8.5
         ```
         """
+        scope = self._refresh_node_scope()
+        tag_obj = self.cvt.get_tag_by_name(name=tag)
+        if scope.enabled and (
+            not scope.is_valid
+            or tag_obj is None
+            or not scope.owns_tag(tag_obj)
+        ):
+            return None, f"Alarm '{name}' references a tag outside this node"
+        if scope.enabled and not name.startswith(f"{scope.area}."):
+            return None, f"Alarm name must be qualified with '{scope.area}.'"
+
         result = self.alarm_manager.append_alarm(
             name=name,
             tag=tag,
@@ -4077,7 +4425,8 @@ class PyAutomation(Singleton):
                         tag=tag,
                         trigger_type=alarm_type,
                         trigger_value=trigger_value,
-                        description=description
+                        description=description,
+                        area=scope.area,
                     )
             
             return alarm, message
@@ -4112,8 +4461,11 @@ class PyAutomation(Singleton):
         ```
         """
         if self.is_db_connected():
-            
-            return self.alarms_engine.get_lasts(lasts=lasts)
+            scope = self._refresh_node_scope()
+            return self.alarms_engine.get_lasts(
+                lasts=lasts,
+                area=scope.area if scope.enabled else None,
+            )
         
         return list()
 
@@ -4150,6 +4502,9 @@ class PyAutomation(Singleton):
             # Ensure pagination parameters are present or defaulted
             if 'page' not in fields: fields['page'] = 1
             if 'limit' not in fields: fields['limit'] = 20
+            scope = self._refresh_node_scope()
+            if scope.enabled:
+                fields["area"] = scope.area
 
             return self.alarms_engine.filter_alarm_summary_by(**fields)
 
@@ -4192,6 +4547,18 @@ class PyAutomation(Singleton):
 
         ```
         """
+        scope = self._refresh_node_scope()
+        current = self.alarm_manager.get_alarm(id=id)
+        if current is None or (
+            scope.enabled and not scope.owns_tag(getattr(current, "tag", None))
+        ):
+            return
+        if scope.enabled and name and not name.startswith(f"{scope.area}."):
+            return
+        if tag and scope.enabled and not scope.owns_tag(
+            self.cvt.get_tag_by_name(name=tag)
+        ):
+            return
         self.alarm_manager.put(
             id=id,
             name=name,
@@ -4239,7 +4606,14 @@ class PyAutomation(Singleton):
 
         ```
         """
-        return self.alarm_manager.get_alarm(id=id)
+        alarm = self.alarm_manager.get_alarm(id=id)
+        scope = self._refresh_node_scope()
+        if scope.enabled and (
+            alarm is None
+            or not scope.owns_tag(getattr(alarm, "tag", None))
+        ):
+            return None
+        return alarm
 
     @logging_error_handler
     @validate_types(output=dict)
@@ -4277,8 +4651,11 @@ class PyAutomation(Singleton):
         * **list**: Serialized alarm data.
         """
         result = list()
+        scope = self._refresh_node_scope()
         for _, alarm in self.alarm_manager.get_alarms().items():
-
+            alarm_tag = getattr(alarm, "tag", None)
+            if scope.enabled and not scope.owns_tag(alarm_tag):
+                continue
             result.append(alarm.serialize())
 
         return result
@@ -4360,10 +4737,14 @@ class PyAutomation(Singleton):
         * **id** (str): Alarm ID.
         * **user** (User, optional): User performing the deletion.
         """
+        alarm = self.get_alarm(id=id)
+        if alarm is None:
+            return False
         self.alarm_manager.delete_alarm(id=id, user=user)
         if self.is_db_connected():
 
             self.alarms_engine.delete(id=id)
+        return True
 
     # EVENTS METHODS
     @logging_error_handler
@@ -4392,8 +4773,11 @@ class PyAutomation(Singleton):
         ```
         """
         if self.is_db_connected():
-
-            return self.events_engine.get_lasts(lasts=lasts)
+            scope = self._refresh_node_scope()
+            return self.events_engine.get_lasts(
+                lasts=lasts,
+                area=scope.area if scope.enabled else None,
+            )
         
         return list()
 
@@ -4429,7 +4813,7 @@ class PyAutomation(Singleton):
         * **list**: Filtered list of events.
         """
         if self.is_db_connected():
-            
+            scope = self._refresh_node_scope()
             return self.events_engine.filter_by(
                 usernames=usernames,
                 priorities=priorities,
@@ -4441,7 +4825,8 @@ class PyAutomation(Singleton):
                 less_than_timestamp=less_than_timestamp,
                 timezone=timezone,
                 page=page,
-                limit=limit
+                limit=limit,
+                area=scope.area if scope.enabled else None,
             )
         
         return list()
@@ -4464,6 +4849,13 @@ class PyAutomation(Singleton):
         r"""
         Creates a logbook entry. Journals even when the historian is down.
         """
+        scope = self._refresh_node_scope()
+        if scope.enabled:
+            if not scope.is_valid:
+                return None, "Multi-edge node identity is not configured"
+            if area not in (None, scope.area):
+                return None, "Log area belongs to another edge node"
+            area = scope.area
         log, message = self.logs_engine.create(
             message=message, 
             user=user, 
@@ -4529,7 +4921,7 @@ class PyAutomation(Singleton):
         * **dict**: {data: list, pagination: dict}
         """
         if self.is_db_connected():
-
+            scope = self._refresh_node_scope()
             return self.logs_engine.filter_by(
                 usernames=usernames,
                 alarm_names=alarm_names,
@@ -4545,6 +4937,7 @@ class PyAutomation(Singleton):
                 classifications=classifications,
                 search=search,
                 exclude_description=exclude_description,
+                area=scope.area if scope.enabled else None,
             )
         
     @logging_error_handler
@@ -4562,8 +4955,11 @@ class PyAutomation(Singleton):
         * **list**: List of log entries.
         """
         if self.is_db_connected():
-
-            return self.logs_engine.get_lasts(lasts=lasts) or list()
+            scope = self._refresh_node_scope()
+            return self.logs_engine.get_lasts(
+                lasts=lasts,
+                area=scope.area if scope.enabled else None,
+            ) or list()
         
         return list()
 
@@ -4742,6 +5138,13 @@ class PyAutomation(Singleton):
             self.ensure_db_config_from_env()
 
             self.connect_to_db(test=test, source="core-startup")
+            if not self.acquisition_ready:
+                logging.critical(
+                    "Acquisition workers not started: %s",
+                    self.acquisition_blocked_reason,
+                )
+                self.is_starting = False
+                return
             self.db_worker.start()
 
         if machines:
@@ -4750,9 +5153,10 @@ class PyAutomation(Singleton):
             
                 machine.set_socketio(sio=self.sio)
  
-        self.machine.start(machines=machines)
+        if self.acquisition_ready:
+            self.machine.start(machines=machines)
         
-        if self.is_db_connected():
+        if self.is_db_connected() and self.acquisition_ready:
             
             self.load_db_tags_to_machine()
 
@@ -4968,20 +5372,37 @@ class PyAutomation(Singleton):
             Roles, Users, OPCUA, AccessType, OPCUAServer,
             Machines, TagsMachines, LinearReferencingGeospatial
         )
+        scope = self._refresh_node_scope()
+        if scope.enabled and not scope.is_valid:
+            return {
+                "error": "invalid-node-scope",
+                "message": "Multi-edge node identity is not configured",
+            }
+        tags_query = Tags.scoped(area=scope.area) if scope.enabled else Tags.select()
+        alarms_query = Alarms.scoped(area=scope.area) if scope.enabled else Alarms.select()
+        opcua_query = OPCUA.scoped(owner_node=scope.node_id) if scope.enabled else OPCUA.select()
+        machines_query = Machines.scoped(area=scope.area) if scope.enabled else Machines.select()
+        owned_tag_ids = tags_query.select(Tags.id)
+        owned_machine_ids = machines_query.select(Machines.id)
 
         config = {
-            "version": "1.0",
+            "version": "2.0",
             "exported_at": datetime.now(timezone.utc).isoformat(),
+            "node_scope": {
+                "node_id": scope.node_id,
+                "area": scope.area,
+                "site": scope.site,
+            },
             "data": {
                 "Manufacturer": [m.serialize() for m in Manufacturer.select()],
                 "Segment": [s.serialize() for s in Segment.select()],
                 "Variables": [v.serialize() for v in Variables.select()],
                 "Units": [u.serialize() for u in Units.select()],
                 "DataTypes": [dt.serialize() for dt in DataTypes.select()],
-                "Tags": [t.serialize() for t in Tags.select()],
+                "Tags": [t.serialize() for t in tags_query],
                 "AlarmTypes": [at.serialize() for at in AlarmTypes.select()],
                 "AlarmStates": [as_obj.serialize() for as_obj in AlarmStates.select()],
-                "Alarms": [a.serialize() for a in Alarms.select()],
+                "Alarms": [a.serialize() for a in alarms_query],
                 "Roles": [r.serialize() for r in Roles.select()],
                 "Users": [
                     {
@@ -4989,11 +5410,17 @@ class PyAutomation(Singleton):
                         "password": u.password  # Include password hash for import
                     } for u in Users.select()
                 ],
-                "OPCUA": [o.serialize() for o in OPCUA.select()],
+                "OPCUA": [o.serialize() for o in opcua_query],
                 "AccessType": [at.serialize() for at in AccessType.select()],
                 "OPCUAServer": [os_obj.serialize() for os_obj in OPCUAServer.select()],
-                "Machines": [m.serialize() for m in Machines.select()],
-                "TagsMachines": [tm.serialize() for tm in TagsMachines.select()],
+                "Machines": [m.serialize() for m in machines_query],
+                "TagsMachines": [
+                    tm.serialize()
+                    for tm in TagsMachines.select().where(
+                        (TagsMachines.tag.in_(owned_tag_ids))
+                        & (TagsMachines.machine.in_(owned_machine_ids))
+                    )
+                ],
                 "LinearReferencingGeospatial": [lr.serialize() for lr in LinearReferencingGeospatial.select()]
             }
         }
@@ -5032,9 +5459,6 @@ class PyAutomation(Singleton):
         >>> print(result['message'])
         ```
         """
-        if not self.is_db_connected():
-            return {"error": "Database not connected", "message": "Database not connected"}
-
         from .dbmodels import (
             Manufacturer, Segment, Variables, Units, DataTypes,
             Tags, AlarmTypes, AlarmStates, Alarms,
@@ -5047,11 +5471,49 @@ class PyAutomation(Singleton):
             "errors": {},
             "skipped": {}
         }
+        data = config_data.get("data", config_data) if isinstance(config_data, dict) else {}
+        scope = self._refresh_node_scope()
+        if scope.enabled:
+            if not scope.is_valid:
+                return {
+                    "error": "invalid-node-scope",
+                    "message": "Multi-edge node identity is not configured",
+                    "results": results,
+                }
+            checks = {
+                "Tags": ("area", scope.area, "owner_node", scope.node_id),
+                "OPCUA": (None, None, "owner_node", scope.node_id),
+                "Machines": ("area", scope.area, None, None),
+                "Alarms": ("area", scope.area, None, None),
+            }
+            violations = []
+            for section, (area_key, area_value, owner_key, owner_value) in checks.items():
+                for item in data.get(section, []):
+                    if area_key and item.get(area_key) != area_value:
+                        violations.append(f"{section}:{item.get('name', item.get('client_name'))}:area")
+                    if owner_key and item.get(owner_key) != owner_value:
+                        violations.append(f"{section}:{item.get('name', item.get('client_name'))}:owner_node")
+            for item in data.get("TagsMachines", []):
+                tag_ref = item.get("tag")
+                tag_name = (
+                    tag_ref.get("name")
+                    if isinstance(tag_ref, dict)
+                    else tag_ref
+                )
+                if not tag_name or not tag_name.startswith(f"{scope.area}."):
+                    violations.append(f"TagsMachines:{tag_name}:tag")
+            if violations:
+                return {
+                    "error": "foreign-or-unscoped-runtime-data",
+                    "message": "Import rejected before mutation",
+                    "violations": violations,
+                    "results": results,
+                }
+
+        if not self.is_db_connected():
+            return {"error": "Database not connected", "message": "Database not connected"}
 
         try:
-            data = config_data.get("data", config_data)
-
-            # 1. Variables (no dependencies)
             if "Variables" in data:
                 for item in data["Variables"]:
                     try:
@@ -5177,7 +5639,9 @@ class PyAutomation(Singleton):
                                 gaussian_filter_r_value=item.get("gaussian_filter_r_value", 0.0),
                                 out_of_range_detection=item.get("out_of_range_detection", False),
                                 outlier_detection=item.get("outlier_detection", False),
-                                frozen_data_detection=item.get("frozen_data_detection", False)
+                                frozen_data_detection=item.get("frozen_data_detection", False),
+                                area=item.get("area"),
+                                owner_node=item.get("owner_node"),
                             )
                             results["imported"].setdefault("Tags", 0)
                             results["imported"]["Tags"] += 1
@@ -5283,7 +5747,8 @@ class PyAutomation(Singleton):
                                     trigger_type=trigger_type_name,
                                     trigger_value=item.get("trigger_value", 0.0),
                                     description=item.get("description"),
-                                    state=state_name or "Normal"
+                                    state=state_name or "Normal",
+                                    area=item.get("area"),
                                 )
                                 results["imported"].setdefault("Alarms", 0)
                                 results["imported"]["Alarms"] += 1
@@ -5364,7 +5829,8 @@ class PyAutomation(Singleton):
                             OPCUA.create(
                                 client_name=item["client_name"],
                                 host=item["host"],
-                                port=item["port"]
+                                port=item["port"],
+                                owner_node=item.get("owner_node"),
                             )
                             results["imported"].setdefault("OPCUA", 0)
                             results["imported"]["OPCUA"] += 1
@@ -5426,7 +5892,8 @@ class PyAutomation(Singleton):
                                 criticity=item.get("criticity", 0),
                                 priority=item.get("priority", 0),
                                 threshold=item.get("threshold"),
-                                on_delay=item.get("on_delay")
+                                on_delay=item.get("on_delay"),
+                                area=item.get("area"),
                             )
                             results["imported"].setdefault("Machines", 0)
                             results["imported"]["Machines"] += 1

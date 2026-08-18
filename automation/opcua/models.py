@@ -13,11 +13,28 @@ import json
 from enum import Enum
 
 
+def _scope_owns_node(owner_node) -> bool:
+    try:
+        from ..node_scope import get_node_scope
+
+        scope = get_node_scope()
+    except (ImportError, AttributeError):
+        return True
+    if not getattr(scope, "enabled", False):
+        return True
+    if not getattr(scope, "is_valid", False):
+        return False
+    try:
+        return bool(scope.owns_node(owner_node))
+    except Exception:
+        return False
+
+
 class Client(OPCClient):
     r"""
     Documentation here
     """
-    def __init__(self, url, client_name:str, timeout=60):
+    def __init__(self, url, client_name:str, timeout=60, owner_node:str=None):
         r"""
         Documentation here
         """
@@ -25,6 +42,7 @@ class Client(OPCClient):
         self._server_url = url
         self._timeout = timeout
         self.name = client_name
+        self.owner_node = owner_node
         self._client = None
         self._is_open = False
         self._opc_ua_tree = dict()
@@ -99,6 +117,20 @@ class Client(OPCClient):
         r"""
         Documentation here
         """
+        if not _scope_owns_node(getattr(self, "owner_node", None)):
+            self._is_open = False
+            self._connection_state = "disconnected"
+            logging.getLogger("pyautomation").error(
+                "OPC UA connection rejected for foreign owner client=%s owner_node=%s",
+                self.name,
+                getattr(self, "owner_node", None),
+            )
+            return {
+                "message": "OPC UA client is not owned by this node",
+                "url": self._server_url,
+                "is_connected": False,
+                "id": self.get_id(),
+            }, 403
         try:
             # Connect to the server
             super(Client, self).connect()
@@ -160,6 +192,13 @@ class Client(OPCClient):
         
     def reconnect(self):
 
+        if not _scope_owns_node(getattr(self, "owner_node", None)):
+            logging.getLogger("pyautomation").error(
+                "OPC UA reconnect rejected for foreign owner client=%s owner_node=%s",
+                self.name,
+                getattr(self, "owner_node", None),
+            )
+            return
         # if not self.is_connected() or not self.is_token_valid(): 
         if self.is_connected():
             return
@@ -1107,5 +1146,6 @@ class Client(OPCClient):
             'client_id': self.get_id(),
             'server_url': self._server_url,
             'timeout': self._timeout,
-            'is_opened': self.is_connected()
+            'is_opened': self.is_connected(),
+            'owner_node': getattr(self, "owner_node", None),
         }

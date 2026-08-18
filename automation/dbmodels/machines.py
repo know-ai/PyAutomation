@@ -10,6 +10,7 @@ class Machines(BaseModel):
     
     identifier = CharField(unique=True)
     name = CharField(unique=True)
+    area = CharField(max_length=64, null=True, index=True)
     interval = FloatField()
     threshold = FloatField(null=True)
     on_delay = IntegerField(null=True)
@@ -19,6 +20,9 @@ class Machines(BaseModel):
     buffer_roll_type = CharField(max_length=16)
     criticity = IntegerField()
     priority = IntegerField()
+
+    class Meta:
+        indexes = ((("area", "name"), False),)
 
     @classmethod
     def create(
@@ -33,7 +37,8 @@ class Machines(BaseModel):
         criticity:int,
         priority:int,
         threshold:float=None,
-        on_delay:int=None
+        on_delay:int=None,
+        area:str=None
         )-> dict:
         r"""
         Creates a new Machine record.
@@ -71,7 +76,8 @@ class Machines(BaseModel):
                 criticity=criticity,
                 priority=priority,
                 threshold=threshold,
-                on_delay=on_delay
+                on_delay=on_delay,
+                area=area
                 )
             query.save()
             
@@ -120,6 +126,10 @@ class Machines(BaseModel):
         return {f"{query.name}": query.serialize() for query in cls.select()}
 
     @classmethod
+    def read_config_scoped(cls, area:str):
+        return {query.name: query.serialize() for query in cls.scoped(area=area)}
+
+    @classmethod
     def name_exist(cls, name:str)->bool:
         r"""
         Checks if a machine name exists.
@@ -155,7 +165,8 @@ class Machines(BaseModel):
             "criticity": self.criticity,
             "priority": self.priority,
             "threshold": self.threshold,
-            "on_delay": self.on_delay
+            "on_delay": self.on_delay,
+            "area": self.area
         }
 
 

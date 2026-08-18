@@ -73,7 +73,8 @@ class AlarmsLogger(BaseLogger):
             tag:str,
             trigger_type:str,
             trigger_value:float,
-            description:str):
+            description:str,
+            area:str=None):
         r"""
         Creates a new Alarm definition in the database.
 
@@ -96,7 +97,8 @@ class AlarmsLogger(BaseLogger):
             tag=tag,
             trigger_type=trigger_type,
             trigger_value=trigger_value,
-            description=description
+            description=description,
+            area=area,
         )
 
     @db_rollback
@@ -138,7 +140,7 @@ class AlarmsLogger(BaseLogger):
         return Alarms.read_by_name(name=name)
 
     @db_rollback        
-    def get_lasts(self, lasts:int=10):
+    def get_lasts(self, lasts:int=10, area:str=None):
         r"""
         Retrieves the last N entries from the Alarm Summary (history).
 
@@ -158,7 +160,7 @@ class AlarmsLogger(BaseLogger):
             
             return list()
         
-        return AlarmSummary.read_lasts(lasts=lasts)
+        return AlarmSummary.read_lasts(lasts=lasts, area=area)
     
     @db_rollback
     def filter_alarm_summary_by(
@@ -170,7 +172,8 @@ class AlarmsLogger(BaseLogger):
             less_than_timestamp:datetime=None,
             timezone:str=None,
             page:int=1,
-            limit:int=20
+            limit:int=20,
+            area:str=None,
         ):
         r"""
         Filters alarm history based on various criteria.
@@ -210,7 +213,8 @@ class AlarmsLogger(BaseLogger):
             less_than_timestamp=less_than_timestamp,
             timezone=timezone,
             page=page,
-            limit=limit
+            limit=limit,
+            area=area,
         )
     
     @db_rollback
@@ -414,7 +418,8 @@ class AlarmsLoggerEngine(BaseEngine):
         tag:str,
         trigger_type:str,
         trigger_value:float,
-        description:str
+        description:str,
+        area:str=None,
         ):
         r"""
         Thread-safe alarm creation.
@@ -428,12 +433,14 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["trigger_type"] = trigger_type
         _query["parameters"]["trigger_value"] = trigger_value
         _query["parameters"]["description"] = description
+        _query["parameters"]["area"] = area
         
         return self.query(_query)
     
     def get_lasts(
         self,
-        lasts:int=1
+        lasts:int=1,
+        area:str=None,
         ):
         r"""
         Thread-safe retrieval of last alarm events.
@@ -442,6 +449,7 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["action"] = "get_lasts"
         _query["parameters"] = dict()
         _query["parameters"]["lasts"] = lasts
+        _query["parameters"]["area"] = area
         
         return self.query(_query)
     
@@ -475,7 +483,8 @@ class AlarmsLoggerEngine(BaseEngine):
         less_than_timestamp:datetime=None,
         timezone:str=None,
         page:int=1,
-        limit:int=20
+        limit:int=20,
+        area:str=None,
         ):
         r"""
         Thread-safe filtering of alarm summary.
@@ -496,6 +505,7 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["timezone"] = timezone
         _query["parameters"]["page"] = page
         _query["parameters"]["limit"] = limit
+        _query["parameters"]["area"] = area
         
         return self.query(_query)
     

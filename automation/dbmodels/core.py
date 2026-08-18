@@ -62,6 +62,33 @@ class BaseModel(Model):
         return data
 
     @classmethod
+    def scoped(cls, *, area: str | None = None, owner_node: str | None = None):
+        """Construye una consulta acotada usando las dimensiones del modelo."""
+        query = cls.select()
+        applied = False
+        fields = cls._meta.fields
+        if area is not None and "area" in fields:
+            query = query.where(fields["area"] == area)
+            applied = True
+        if owner_node is not None and "owner_node" in fields:
+            query = query.where(fields["owner_node"] == owner_node)
+            applied = True
+        if not applied:
+            raise ValueError(
+                f"{cls.__name__} has no compatible scope for the supplied identity"
+            )
+        return query
+
+    @classmethod
+    def read_scoped(
+        cls,
+        *,
+        area: str | None = None,
+        owner_node: str | None = None,
+    ) -> list[dict]:
+        return [row.serialize() for row in cls.scoped(area=area, owner_node=owner_node)]
+
+    @classmethod
     def put(cls, id:str, **fields):
         r"""
         Updates a record by its ID.

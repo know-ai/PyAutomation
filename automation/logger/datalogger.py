@@ -85,7 +85,9 @@ class DataLogger(BaseLogger):
         dead_band:float=None,
         manufacturer:str="",
         segment:str="",
-        kp:float=None
+        kp:float=None,
+        area:str=None,
+        owner_node:str=None,
         ):
         r"""
         Creates a new tag definition in the database.
@@ -126,7 +128,9 @@ class DataLogger(BaseLogger):
             dead_band=dead_band,
             manufacturer=manufacturer,
             segment=segment,
-            kp=kp
+            kp=kp,
+            area=area,
+            owner_node=owner_node,
             )
             
     @db_rollback
@@ -857,6 +861,8 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"]["manufacturer"] = tag.manufacturer
         _query["parameters"]["segment"] = tag.segment
         _query["parameters"]["kp"] = tag.kp
+        _query["parameters"]["area"] = tag.area
+        _query["parameters"]["owner_node"] = tag.owner_node
         
         return self.query(_query)
 

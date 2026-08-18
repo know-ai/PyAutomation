@@ -10,6 +10,20 @@ from ....variables import Percentage
 ns = Namespace('Machines', description='State Machine Management Resources')
 app = PyAutomation()
 
+
+def _machine_scope_error(machine_name: str | None = None, machine=None):
+    scope = app._refresh_node_scope()
+    if scope.enabled and not scope.is_valid:
+        return {"message": "Multi-edge node identity is not configured"}, 503
+    target = machine
+    if target is None and machine_name:
+        target = app.machine_manager.get_machine(name=StringType(machine_name))
+        if target is None:
+            return None
+    if target is not None and not app._machine_in_scope(target):
+        return {"message": "Machine belongs to another edge node"}, 403
+    return None
+
 # Models
 update_interval_model = api.model("update_interval_model", {
     'interval': fields.Float(required=True, description='Execution interval in seconds'),
@@ -108,7 +122,10 @@ class MachineByNameResource(Resource):
         """
         try:
             # Get machine by name using machine_manager
-            machine = app.machine_manager.get_machine(name=StringType(machine_name))
+            violation = _machine_scope_error(machine_name=machine_name)
+            if violation:
+                return violation
+            machine = app.get_machine(StringType(machine_name))
             
             if not machine:
                 return {
@@ -221,7 +238,10 @@ class MachineByNameResource(Resource):
         
         try:
             # Get machine by name using machine_manager
-            machine = app.machine_manager.get_machine(name=StringType(machine_name))
+            violation = _machine_scope_error(machine_name=machine_name)
+            if violation:
+                return violation
+            machine = app.get_machine(StringType(machine_name))
             
             if not machine:
                 return {
@@ -293,7 +313,10 @@ class MachineTransitionResource(Resource):
         
         try:
             # Get machine by name using machine_manager
-            machine = app.machine_manager.get_machine(name=StringType(machine_name))
+            violation = _machine_scope_error(machine_name=machine_name)
+            if violation:
+                return violation
+            machine = app.get_machine(StringType(machine_name))
             
             if not machine:
                 return {
@@ -358,7 +381,10 @@ class MachineSubscribeResource(Resource):
 
         try:
             # Obtener máquina
-            machine = app.machine_manager.get_machine(name=StringType(machine_name))
+            violation = _machine_scope_error(machine_name=machine_name)
+            if violation:
+                return violation
+            machine = app.get_machine(StringType(machine_name))
             if not machine:
                 return {
                     "message": f"Machine '{machine_name}' not found"
@@ -426,7 +452,10 @@ class MachineUnsubscribeResource(Resource):
 
         try:
             # Obtener máquina
-            machine = app.machine_manager.get_machine(name=StringType(machine_name))
+            violation = _machine_scope_error(machine_name=machine_name)
+            if violation:
+                return violation
+            machine = app.get_machine(StringType(machine_name))
             if not machine:
                 return {
                     "message": f"Machine '{machine_name}' not found"
@@ -531,7 +560,10 @@ class MachineAttributesResource(Resource):
 
         try:
             # Obtener máquina
-            machine = app.machine_manager.get_machine(name=StringType(machine_name))
+            violation = _machine_scope_error(machine_name=machine_name)
+            if violation:
+                return violation
+            machine = app.get_machine(StringType(machine_name))
             if not machine:
                 return {
                     "message": f"Machine '{machine_name}' not found"

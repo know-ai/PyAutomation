@@ -10,11 +10,37 @@ from datetime import datetime
 ns = Namespace('OPCUA Clients', description='OPC UA Client Management Resources')
 app = PyAutomation()
 
+
+def _node_scope():
+    scope = app._refresh_node_scope()
+    if scope.enabled and not scope.is_valid:
+        return scope, ({"message": "Multi-edge node identity is not configured"}, 503)
+    return scope, None
+
+
+def _client_scope_error(client_name=None):
+    scope, error = _node_scope()
+    if error:
+        return error
+    if client_name is None or not scope.enabled:
+        return None
+    if client_name in app.get_opcua_clients():
+        return None
+    memory_clients = getattr(app.opcua_client_manager, "_clients", {})
+    if client_name in memory_clients:
+        return {'message': 'OPC UA client belongs to another edge node'}, 403
+    if app.is_db_connected():
+        for row in app.db_manager.get_opcua_clients() or []:
+            if row.get("client_name") == client_name:
+                return {'message': 'OPC UA client belongs to another edge node'}, 403
+    return None
+
 # Models
 add_client_model = api.model("add_client_model", {
     'client_name': fields.String(required=True, description='Unique name for the OPC UA client'),
     'host': fields.String(required=False, description='OPC UA server host/IP address', default='127.0.0.1'),
-    'port': fields.Integer(required=False, description='OPC UA server port', default=4840)
+    'port': fields.Integer(required=False, description='OPC UA server port', default=4840),
+    'owner_node': fields.String(required=False, description='Owning edge node'),
 })
 
 update_client_model = api.model("update_client_model", {
@@ -32,6 +58,7 @@ add_client_parser = reqparse.RequestParser()
 add_client_parser.add_argument('client_name', type=str, required=True, help='Unique name for the OPC UA client')
 add_client_parser.add_argument('host', type=str, required=False, help='OPC UA server host/IP address', default='127.0.0.1')
 add_client_parser.add_argument('port', type=int, required=False, help='OPC UA server port', default=4840)
+add_client_parser.add_argument('owner_node', type=str, required=False, help='Owning edge node')
 
 update_client_parser = reqparse.RequestParser()
 update_client_parser.add_argument('new_client_name', type=str, required=False, help='New name for the OPC UA client. If not provided, keeps the current name.')
@@ -257,10 +284,17 @@ class AddOPCUAClientResource(Resource):
         Registers and connects a new OPC UA client to the specified server.
         """
         args = add_client_parser.parse_args()
+        scope, error = _node_scope()
+        if error:
+            return error
+        owner_node = args.get('owner_node') or scope.node_id
+        if scope.enabled and owner_node != scope.node_id:
+            return {'message': 'OPC UA client belongs to another edge node'}, 403
         result = app.add_opcua_client(
             client_name=args['client_name'],
             host=args.get('host', '127.0.0.1'),
-            port=args.get('port', 4840)
+            port=args.get('port', 4840),
+            owner_node=owner_node,
         )
         
         if result:
@@ -296,6 +330,9 @@ class UpdateOPCUAClientResource(Resource):
         Updates the configuration (name, host, port) of an existing OPC UA client.
         """
         args = update_client_parser.parse_args()
+        violation = _client_scope_error(client_name)
+        if violation:
+            return violation
         result = app.update_opcua_client(
             old_client_name=client_name,
             new_client_name=args.get('new_client_name'),
@@ -335,6 +372,9 @@ class RemoveOPCUAClientResource(Resource):
 
         Disconnects and removes an OPC UA client configuration.
         """
+        violation = _client_scope_error(client_name)
+        if violation:
+            return violation
         success = app.remove_opcua_client(client_name=client_name)
         
         if success:
@@ -361,6 +401,9 @@ class OPCUAClientTreeResource(Resource):
 
         Retrieves the hierarchical node tree structure from a connected OPC UA server.
         """
+        violation = _client_scope_error(client_name)
+        if violation:
+            return violation
         try:
             # Query params opcionales para soportar diferentes servidores y controlar performance
             mode = request.args.get("mode", "generic")  # generic | legacy
@@ -404,6 +447,9 @@ class OPCUAClientTreeChildrenResource(Resource):
         - include_property_values
         - fallback_to_legacy
         """
+        violation = _client_scope_error(client_name)
+        if violation:
+            return violation
         try:
             node_id = request.args.get("node_id")
             if not node_id:
@@ -449,6 +495,9 @@ class OPCUAClientVariablesResource(Resource):
         - max_nodes
         - fallback_to_legacy
         """
+        violation = _client_scope_error(client_name)
+        if violation:
+            return violation
         try:
             mode = request.args.get("mode", "generic")
             max_depth = int(request.args.get("max_depth", "20"))
@@ -485,6 +534,9 @@ class OPCUAClientAttributesResource(Resource):
         Reads attributes (e.g., Description, DataType) from multiple nodes using the specified OPC UA client.
         Requires namespaces list in request body as JSON array.
         """
+        violation = _client_scope_error(client_name)
+        if violation:
+            return violation
         if not request.is_json:
             return {
                 'message': "Request must be JSON with 'namespaces' array"
@@ -538,6 +590,9 @@ class OPCUAClientValuesResource(Resource):
         Used for polling time and updating in the explorer.
         Requires namespaces list in request body as JSON array.
         """
+        violation = _client_scope_error(client_name)
+        if violation:
+            return violation
         if not request.is_json:
             return {
                 'message': "Request must be JSON with 'namespaces' array"

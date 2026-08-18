@@ -7,6 +7,7 @@ rows live in TagValuePayloadMapper so the inserter stays generic.
 from __future__ import annotations
 
 import logging
+import inspect
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
 
@@ -16,6 +17,26 @@ from ..timebase import epoch_seconds_from_db_tick, quantize_datetime_ms
 
 VALUE_KEYS = ("value", "val", "v", "magnitude", "value_str")
 TIMESTAMP_KEYS = ("timestamp", "ts", "time")
+
+
+def _partition_kwargs(model, item: Mapping[str, Any]) -> dict[str, Any]:
+    """Forward-compatible: emit partition fields only when the model accepts them."""
+    fields = getattr(getattr(model, "_meta", None), "fields", {}) or {}
+    try:
+        signature = inspect.signature(model.create)
+        accepts_kwargs = any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        )
+        accepted = set(signature.parameters)
+    except (TypeError, ValueError):
+        accepts_kwargs = False
+        accepted = set()
+    result = {}
+    for name in ("area", "owner_node"):
+        if name in fields and (accepts_kwargs or name in accepted):
+            result[name] = item.get(name)
+    return result
 
 
 def coerce_tag_value(raw: Any) -> float | None:
@@ -128,6 +149,21 @@ class TagValuePayloadMapper:
             "sample_uuid": canonical_sample_uuid(
                 item.get("sample_uuid") or item.get("idempotency_key")
             ),
+            **self._tag_value_partition(item),
+        }
+
+    @staticmethod
+    def _tag_value_partition(item: Mapping[str, Any]) -> dict[str, Any]:
+        try:
+            from ..dbmodels.tags import TagValue
+
+            fields = getattr(TagValue._meta, "fields", {}) or {}
+        except Exception:
+            fields = {}
+        return {
+            name: item.get(name)
+            for name in ("area", "owner_node")
+            if name in fields
         }
 
     def _lookup_tag(self, name, cache=None):
@@ -205,7 +241,7 @@ class PeeweeRemoteDB:
             user = _user_for_username(item.get("username") or "system")
             if user is None:
                 continue
-            created, _ = Events.create(
+            kwargs = dict(
                 message=item.get("message"),
                 user=user,
                 description=item.get("description"),
@@ -214,6 +250,8 @@ class PeeweeRemoteDB:
                 criticity=item.get("criticity"),
                 timestamp=_parse_dt(item.get("timestamp")),
             )
+            kwargs.update(_partition_kwargs(Events, item))
+            created, _ = Events.create(**kwargs)
             if created is not None:
                 written += 1
         return written
@@ -223,12 +261,14 @@ class PeeweeRemoteDB:
 
         written = 0
         for item in payloads:
-            created = AlarmSummary.create(
+            kwargs = dict(
                 name=item.get("name"),
                 state=item.get("state"),
                 timestamp=_parse_dt(item.get("timestamp")),
                 ack_timestamp=_parse_dt(item.get("ack_timestamp")),
             )
+            kwargs.update(_partition_kwargs(AlarmSummary, item))
+            created = AlarmSummary.create(**kwargs)
             if created is not None:
                 written += 1
         return written
@@ -262,7 +302,7 @@ class PeeweeRemoteDB:
         for item in payloads:
             username = item.get("username") or item.get("user_name") or "system"
             user = _user_for_username(username)
-            created, _ = Logs.create(
+            kwargs = dict(
                 message=item.get("message"),
                 user=user,
                 user_name=item.get("user_name") or username,
@@ -275,6 +315,8 @@ class PeeweeRemoteDB:
                 area=item.get("area"),
                 handover=bool(item.get("handover")),
             )
+            kwargs.update(_partition_kwargs(Logs, item))
+            created, _ = Logs.create(**kwargs)
             if created is not None:
                 written += 1
         return written

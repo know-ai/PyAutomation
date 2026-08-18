@@ -86,7 +86,7 @@ class LogsLogger(BaseLogger):
         return JournaledEnvelope(record.payload()), "journaled"
 
     @db_rollback
-    def get_lasts(self, lasts:int=1):
+    def get_lasts(self, lasts:int=1, area:str=None):
         r"""
         Retrieves the last N logs.
 
@@ -102,7 +102,7 @@ class LogsLogger(BaseLogger):
 
             return list()
         
-        return Logs.read_lasts(lasts=lasts)
+        return Logs.read_lasts(lasts=lasts, area=area)
         
     
     @db_rollback
@@ -122,6 +122,7 @@ class LogsLogger(BaseLogger):
         classifications:list[str]=None,
         search:str="",
         exclude_description:str="",
+        area:str=None,
         ):
         r"""
         Filters logs by various criteria with pagination.
@@ -171,6 +172,7 @@ class LogsLogger(BaseLogger):
             classifications=classifications,
             search=search,
             exclude_description=exclude_description,
+            area=area,
         )
 
     @db_rollback  
@@ -231,10 +233,7 @@ class LogsLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    def get_lasts(
-        self,
-        lasts:int=1
-        ):
+    def get_lasts(self, lasts:int=1, area:str=None):
         r"""
         Thread-safe retrieval of last logs.
         """
@@ -242,6 +241,7 @@ class LogsLoggerEngine(BaseEngine):
         _query["action"] = "get_lasts"
         _query["parameters"] = dict()
         _query["parameters"]["lasts"] = lasts
+        _query["parameters"]["area"] = area
         
         return self.query(_query)
     
@@ -261,6 +261,7 @@ class LogsLoggerEngine(BaseEngine):
         classifications:list[str]=None,
         search:str="",
         exclude_description:str="",
+        area:str=None,
         ):
         r"""
         Thread-safe log filtering with pagination.
@@ -282,6 +283,7 @@ class LogsLoggerEngine(BaseEngine):
         _query["parameters"]["classifications"] = classifications
         _query["parameters"]["search"] = search
         _query["parameters"]["exclude_description"] = exclude_description
+        _query["parameters"]["area"] = area
         
         return self.query(_query)
 

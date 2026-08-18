@@ -7,6 +7,7 @@ sqlite3 or psycopg2.
 from __future__ import annotations
 
 import threading
+import logging
 from typing import Sequence
 
 from .config import SafConfig
@@ -20,6 +21,32 @@ from .replicator import RemoteReplicator
 
 _lock = threading.Lock()
 _gateway: PersistenceOrchestrator | None = None
+
+
+def _scope_owns_persistable(persistable: IPersistable) -> bool:
+    try:
+        from ..node_scope import get_node_scope
+
+        scope = get_node_scope()
+    except (ImportError, AttributeError):
+        return True
+    if not getattr(scope, "enabled", False):
+        return True
+    if not getattr(scope, "is_valid", False):
+        return False
+    payload = persistable.payload()
+    try:
+        owns_area = getattr(scope, "owns_area", None)
+        area_owned = (
+            bool(owns_area(payload.get("area")))
+            if callable(owns_area)
+            else payload.get("area") == getattr(scope, "area", None)
+        )
+        return bool(
+            area_owned and scope.owns_node(payload.get("owner_node"))
+        )
+    except Exception:
+        return False
 
 
 class PersistenceOrchestrator:
@@ -39,6 +66,15 @@ class PersistenceOrchestrator:
         self.journal.start()
 
     def enqueue(self, persistable: IPersistable) -> int:
+        if not _scope_owns_persistable(persistable):
+            logging.getLogger("pyautomation").error(
+                "SAF rejected foreign record domain=%s entity=%s area=%s owner_node=%s",
+                persistable.domain(),
+                persistable.entity_id(),
+                persistable.payload().get("area"),
+                persistable.payload().get("owner_node"),
+            )
+            return 0
         if self.cycle_cache.should_drop(persistable):
             return 0
         return self.journal.append(persistable)

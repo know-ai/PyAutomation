@@ -45,8 +45,10 @@ class CycleSampleCache:
                 self._last_prune = now
             prev = self._last.get(tag)
             if prev is not None:
-                prev_ts, prev_value, _seen = prev
-                if prev_ts == ts and prev_value == value:
+                prev_ts, prev_value, seen = prev
+                if now - seen >= self._ttl_s:
+                    self._last.pop(tag, None)
+                elif prev_ts == ts and prev_value == value:
                     self.dropped += 1
                     return True
             self._last[tag] = (ts, value, now)

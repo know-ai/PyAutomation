@@ -85,7 +85,7 @@ class EventsLogger(BaseLogger):
             return result
         return JournaledEnvelope(record.payload()), "journaled"
 
-    def get_lasts(self, lasts:int=1):
+    def get_lasts(self, lasts:int=1, area:str=None):
         r"""
         Retrieves the most recent events.
 
@@ -105,7 +105,7 @@ class EventsLogger(BaseLogger):
             
             return list()
         
-        return Events.read_lasts(lasts=lasts)
+        return Events.read_lasts(lasts=lasts, area=area)
     
     def filter_by(
         self,
@@ -119,7 +119,8 @@ class EventsLogger(BaseLogger):
         less_than_timestamp:datetime=None,
         timezone:str="UTC",
         page:int=1,
-        limit:int=20
+        limit:int=20,
+        area:str=None,
         ):
         r"""
         Filters events based on multiple criteria.
@@ -161,7 +162,8 @@ class EventsLogger(BaseLogger):
             less_than_timestamp=less_than_timestamp,
             timezone=timezone,
             page=page,
-            limit=limit
+            limit=limit,
+            area=area,
             )
 
     def get_summary(self)->tuple[list, str]:
@@ -218,10 +220,7 @@ class EventsLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    def get_lasts(
-        self,
-        lasts:int=1
-        ):
+    def get_lasts(self, lasts:int=1, area:str=None):
         r"""
         Thread-safe retrieval of last events.
         """
@@ -229,6 +228,7 @@ class EventsLoggerEngine(BaseEngine):
         _query["action"] = "get_lasts"
         _query["parameters"] = dict()
         _query["parameters"]["lasts"] = lasts
+        _query["parameters"]["area"] = area
         
         return self.query(_query)
     
@@ -244,7 +244,8 @@ class EventsLoggerEngine(BaseEngine):
         less_than_timestamp:datetime=None,
         timezone:str='UTC',
         page:int=1,
-        limit:int=20
+        limit:int=20,
+        area:str=None,
         ):
         r"""
         Thread-safe event filtering.
@@ -263,6 +264,7 @@ class EventsLoggerEngine(BaseEngine):
         _query["parameters"]["timezone"] = timezone
         _query["parameters"]["page"] = page
         _query["parameters"]["limit"] = limit
+        _query["parameters"]["area"] = area
         
         return self.query(_query)
 

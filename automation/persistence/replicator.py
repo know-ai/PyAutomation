@@ -18,6 +18,32 @@ from .exceptions import ReplicationError
 from .journal import JournalWriter
 
 
+def _node_scope():
+    try:
+        from ..node_scope import get_node_scope
+
+        return get_node_scope()
+    except (ImportError, AttributeError):
+        return None
+
+
+def _scope_owns_payload(scope, payload: dict[str, Any]) -> bool:
+    if scope is None or not getattr(scope, "enabled", False):
+        return True
+    try:
+        owns_area = getattr(scope, "owns_area", None)
+        area_owned = (
+            bool(owns_area(payload.get("area")))
+            if callable(owns_area)
+            else payload.get("area") == getattr(scope, "area", None)
+        )
+        return bool(
+            area_owned and scope.owns_node(payload.get("owner_node"))
+        )
+    except Exception:
+        return False
+
+
 class CircuitBreaker:
     def __init__(self, fail_threshold: int, open_s: float):
         self.fail_threshold = max(1, int(fail_threshold))
@@ -73,6 +99,14 @@ class RemoteReplicator:
         self.last_error = ""
 
     def replicate_once(self) -> int:
+        scope = _node_scope()
+        if (
+            scope is not None
+            and getattr(scope, "enabled", False)
+            and not getattr(scope, "is_valid", False)
+        ):
+            self.last_error = "invalid node scope"
+            return 0
         if not self.circuit.allow():
             return 0
         if not self.remote.is_reachable():
@@ -84,6 +118,27 @@ class RemoteReplicator:
         rows = self.journal.fetch_pending(allowed)
         if not rows:
             self.circuit.success()
+            self.journal.gc_sent(self.config.gc_sent_after_s, self.config.gc_batch)
+            return 0
+        owned_rows = []
+        foreign_ids = []
+        for row in rows:
+            payload = _payload(row)
+            if _scope_owns_payload(scope, payload):
+                owned_rows.append(row)
+            else:
+                foreign_ids.append(int(row["id"]))
+                logging.getLogger("pyautomation").error(
+                    "SAF discarded foreign journal row id=%s domain=%s area=%s owner_node=%s",
+                    row["id"],
+                    row["domain"],
+                    payload.get("area"),
+                    payload.get("owner_node"),
+                )
+        if foreign_ids:
+            self.journal.mark_sent(foreign_ids)
+        rows = owned_rows
+        if not rows:
             self.journal.gc_sent(self.config.gc_sent_after_s, self.config.gc_batch)
             return 0
         grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)

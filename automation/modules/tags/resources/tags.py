@@ -11,6 +11,21 @@ from ....variables import VARIABLES
 ns = Namespace('Tags', description='Tag Management and Real-time Data')
 app = PyAutomation()
 
+
+def _scope_violation(payload=None, resource=None):
+    scope = app._refresh_node_scope()
+    if scope.enabled and not scope.is_valid:
+        return {"message": "Multi-edge node identity is not configured"}, 503
+    if scope.enabled and resource is not None and not scope.owns_tag(resource):
+        return {"message": "Resource belongs to another edge node"}, 403
+    payload = payload or {}
+    if scope.enabled:
+        if payload.get("area") not in (None, "", scope.area):
+            return {"message": "Requested area belongs to another edge node"}, 403
+        if payload.get("owner_node") not in (None, "", scope.node_id):
+            return {"message": "Requested owner_node belongs to another edge node"}, 403
+    return None
+
 query_trends_model = api.model("query_trends_model",{
     'tags':  fields.List(fields.String(), required=True, description='List of tag names to query'),
     'greater_than_timestamp': fields.DateTime(required=True, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description='Start DateTime'),
@@ -63,6 +78,8 @@ create_tag_model = api.model("create_tag_model", {
     'frozen_data_detection': fields.Boolean(required=False, description='Enable frozen data detection', default=False),
     'segment': fields.String(required=False, description='Network segment', default=''),
     'manufacturer': fields.String(required=False, description='Device manufacturer', default=''),
+    'area': fields.String(required=False, description='ISA-95 runtime area'),
+    'owner_node': fields.String(required=False, description='Owning edge node'),
     'kp': fields.Float(required=False, description='Kilometer Post (KP) value')
 })
 
@@ -88,6 +105,8 @@ update_tag_model = api.model("update_tag_model", {
     'frozen_data_detection': fields.Boolean(required=False, description='Enable frozen data detection'),
     'segment': fields.String(required=False, description='Network segment'),
     'manufacturer': fields.String(required=False, description='Device manufacturer'),
+    'area': fields.String(required=False, description='ISA-95 runtime area'),
+    'owner_node': fields.String(required=False, description='Owning edge node'),
     'kp': fields.Float(required=False, description='Kilometer Post (KP) value')
 })
 
@@ -385,6 +404,9 @@ class WriteValueResource(Resource):
         tag = app.cvt.get_tag_by_name(name=tag_name)
         if not tag:
             return {'message': f'Tag {tag_name} does not exist', 'success': False}, 404
+        violation = _scope_violation(resource=tag)
+        if violation:
+            return violation
         
         previous = None
         try:
@@ -461,6 +483,9 @@ class AddTagResource(Resource):
         Creates a new tag in the automation application with the specified configuration.
         """
         payload = api.payload
+        violation = _scope_violation(payload=payload)
+        if violation:
+            return violation
         
         # Required fields
         name = payload.get('name')
@@ -494,6 +519,8 @@ class AddTagResource(Resource):
                 frozen_data_detection=payload.get('frozen_data_detection', False),
                 segment=payload.get('segment', ''),
                 manufacturer=payload.get('manufacturer', ''),
+                area=payload.get('area'),
+                owner_node=payload.get('owner_node'),
                 kp=payload.get('kp'),
                 user=Api.get_current_user(),
             )
@@ -553,6 +580,9 @@ class UpdateTagResource(Resource):
             return {
                 'message': f'Tag with ID {tag_id} not found'
             }, 404
+        violation = _scope_violation(payload=payload, resource=tag)
+        if violation:
+            return violation
         
         # Build kwargs with only provided fields (excluding 'id')
         update_kwargs = {k: v for k, v in payload.items() if k != 'id' and v is not None}
@@ -603,12 +633,14 @@ class DeleteTagResource(Resource):
         Deletes a tag from the system by its name. 
         Note: Tags with associated alarms cannot be deleted.
         """
-        # Check if tag exists
-        tag = app.get_tag_by_name(name=tag_name)
+        tag = app.cvt.get_tag_by_name(name=tag_name)
         if not tag:
             return {
                 'message': f'Tag "{tag_name}" not found'
             }, 404
+        violation = _scope_violation(resource=tag)
+        if violation:
+            return violation
         
         try:
             result = app.delete_tag_by_name(name=tag_name, user=Api.get_current_user())

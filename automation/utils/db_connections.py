@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import hashlib
 import threading
 from contextlib import contextmanager
 from typing import Any, Iterator
@@ -52,9 +53,33 @@ def _reject_connect_during_outage() -> None:
 
 def historian_application_name(role: str | None = None) -> str:
     """libpq application_name for this greenlet. Max 63 chars (PostgreSQL)."""
-    raw = role or threading.current_thread().name or "unknown"
-    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in raw)[:32]
-    return f"{APPLICATION_NAME_PREFIX}:{safe}"[:63]
+    from ..node_scope import current_node_scope
+
+    def safe(value: str) -> str:
+        return "".join(
+            ch if ch.isalnum() or ch in "._-" else "_" for ch in value
+        ) or "unknown"
+
+    scope = current_node_scope()
+    if not scope.enabled:
+        return (
+            f"{APPLICATION_NAME_PREFIX}:{safe(role)}"
+            if role
+            else APPLICATION_NAME_PREFIX
+        )
+    node_id = scope.node_id
+    role_name = safe(role or threading.current_thread().name or "unknown")
+    # Las conexiones previas a la validación de adquisición conservan el
+    # identificador legacy; una identidad configurada siempre usa node + rol.
+    name = (
+        f"{APPLICATION_NAME_PREFIX}:{safe(node_id)}:{role_name}"
+        if node_id
+        else f"{APPLICATION_NAME_PREFIX}:unconfigured:{role_name}"
+    )
+    if len(name) <= 63:
+        return name
+    digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+    return f"{name[:54]}-{digest}"
 
 
 class ConnectionRegistry:
@@ -186,7 +211,7 @@ def snapshot_connection_metrics(db: Any | None = None) -> dict[str, Any]:
         "DB_CONNECTIONS_ALERT": observed > threshold,
         "DB_CONNECTIONS_ALERT_THRESHOLD": threshold,
         "DB_INSTANCE_ID": REGISTRY.instance_id(),
-        "DB_APPLICATION_NAME": APPLICATION_NAME,
+        "DB_APPLICATION_NAME": historian_application_name(),
     }
 
 

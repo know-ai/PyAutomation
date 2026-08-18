@@ -13,6 +13,40 @@ import sqlite3
 from peewee import SqliteDatabase
 
 
+def _scope_owns_node(owner_node) -> bool:
+    try:
+        from ..node_scope import get_node_scope
+
+        scope = get_node_scope()
+    except (ImportError, AttributeError):
+        return True
+    if not getattr(scope, "enabled", False):
+        return True
+    if not getattr(scope, "is_valid", False):
+        return False
+    try:
+        return bool(scope.owns_node(owner_node))
+    except Exception:
+        return False
+
+
+def _scope_owns_tag(tag) -> bool:
+    try:
+        from ..node_scope import get_node_scope
+
+        scope = get_node_scope()
+    except (ImportError, AttributeError):
+        return True
+    if not getattr(scope, "enabled", False):
+        return True
+    if not getattr(scope, "is_valid", False) or tag is None:
+        return False
+    try:
+        return bool(scope.owns_tag(tag))
+    except Exception:
+        return False
+
+
 class LoggerWorker(BaseWorker):
     r"""
     A background worker thread that handles database operations.
@@ -108,6 +142,13 @@ class LoggerWorker(BaseWorker):
                     continue
 
                 if isinstance(opcua_client, Client):
+                    if not _scope_owns_node(getattr(opcua_client, "owner_node", None)):
+                        logging.getLogger("pyautomation").error(
+                            "Skipping foreign OPC UA reconnect client=%s owner_node=%s",
+                            client_name,
+                            getattr(opcua_client, "owner_node", None),
+                        )
+                        continue
                     try:
                         opcua_client.reconnect()
                     except Exception as e:
@@ -129,26 +170,22 @@ class LoggerWorker(BaseWorker):
 
         * **list**: A list of tag data dictionaries ready for insertion.
         """
-        from .. import SEGMENT, MANUFACTURER
         tags = list()
         while not _queue.empty():
 
             item = _queue.get(block=False)
             tag_name = item["tag"]
             tag = self.cvt.get_tag_by_name(name=tag_name)
-            if tag:
-
-                if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:
-
-                    value = item['value']
-                    timestamp = item["timestamp"]
-                    tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
-
-                elif not MANUFACTURER and not SEGMENT:
-
-                    value = item['value']
-                    timestamp = item["timestamp"]
-                    tags.append({"tag":tag_name, "value":value, "timestamp":timestamp})
+            if tag and _scope_owns_tag(tag):
+                value = item['value']
+                timestamp = item["timestamp"]
+                tags.append({
+                    "tag": tag_name,
+                    "value": value,
+                    "timestamp": timestamp,
+                    "area": getattr(tag, "area", None),
+                    "owner_node": getattr(tag, "owner_node", None),
+                })
 
         return tags
 

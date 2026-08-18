@@ -147,6 +147,25 @@ class HealthSystemResource(Resource):
             db_connected = bool(app.is_db_connected())
         except Exception:
             db_connected = False
+        try:
+            scope = app._refresh_node_scope()
+            node_metrics = {
+                "NODE_ID": scope.node_id,
+                "NODE_AREA": scope.area,
+                "NODE_SITE": scope.site,
+                "MULTI_EDGE_ENABLED": scope.enabled,
+                "ACQUISITION_READY": bool(app.acquisition_ready),
+                "ACQUISITION_BLOCKED_REASON": app.acquisition_blocked_reason,
+            }
+        except Exception:
+            node_metrics = {
+                "NODE_ID": None,
+                "NODE_AREA": None,
+                "NODE_SITE": None,
+                "MULTI_EDGE_ENABLED": True,
+                "ACQUISITION_READY": False,
+                "ACQUISITION_BLOCKED_REASON": "identity unavailable",
+            }
         return {
             "status": "ok",
             "service": "pyautomation",
@@ -157,12 +176,14 @@ class HealthSystemResource(Resource):
             "CVT_TAG_COUNT": cvt_tag_count,
             "OPC_SUBSCRIPTION_COUNT": opc_subscriptions,
             "PENDING_ROWS": pending_rows,
+            "SAF_QUEUE_DEPTH": pending_rows,
             "ALARM_COUNT": alarm_count,
             "POOL_CONNECTIONS_USED": pool_used,
             "SAF_PENDING_CAP_HITS": pending_cap_hits,
             "CVT_LOCK_CONTENTION": lock_contention,
             "TAG_OBSERVER_COUNT": tag_observer_count,
             "MACHINE_OBSERVER_COUNT": machine_observer_count,
+            **node_metrics,
             **conn_metrics,
             **_log_error_metrics(),
             **_event_rate_metrics(),

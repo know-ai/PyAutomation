@@ -57,6 +57,21 @@ def iso_tag(value: datetime | str | None) -> str | None:
     return iso_millis(value)
 
 
+def _scope_metadata(area=None, owner_node=None) -> tuple[str | None, str | None]:
+    try:
+        from ..node_scope import get_node_scope
+
+        scope = get_node_scope()
+    except (ImportError, AttributeError):
+        return area, owner_node
+    if getattr(scope, "enabled", False) and getattr(scope, "is_valid", False):
+        if area is None:
+            area = getattr(scope, "area", None)
+        if owner_node is None:
+            owner_node = getattr(scope, "node_id", None)
+    return area, owner_node
+
+
 @dataclass(frozen=True)
 class PersistableRecord:
     """Canonical IPersistable implemented by all history producers."""
@@ -90,11 +105,20 @@ class PersistableRecord:
         return bool(self.critical)
 
     @classmethod
-    def tag_sample(cls, tag: str, value: Any, timestamp: datetime) -> "PersistableRecord":
+    def tag_sample(
+        cls,
+        tag: str,
+        value: Any,
+        timestamp: datetime,
+        *,
+        area: str | None = None,
+        owner_node: str | None = None,
+    ) -> "PersistableRecord":
         if isinstance(timestamp, datetime):
             timestamp = quantize_datetime_ms(timestamp)
         ts = iso_tag(timestamp)
         key = f"tag:{tag}:{ts}"
+        area, owner_node = _scope_metadata(area, owner_node)
         return cls(
             domain_name=DOMAIN.TAG,
             entity=str(tag),
@@ -103,6 +127,8 @@ class PersistableRecord:
                 "value": _json_safe(value),
                 "timestamp": ts,
                 "sample_uuid": canonical_sample_uuid(key),
+                "area": area,
+                "owner_node": owner_node,
             },
             key=key,
             critical=False,
@@ -119,8 +145,11 @@ class PersistableRecord:
         priority: int | None = None,
         criticity: int | None = None,
         timestamp: datetime | None = None,
+        area: str | None = None,
+        owner_node: str | None = None,
     ) -> "PersistableRecord":
         ts = iso(timestamp or utc_now())
+        area, owner_node = _scope_metadata(area, owner_node)
         return cls(
             domain_name=DOMAIN.EVENT,
             entity=username or "system",
@@ -132,6 +161,8 @@ class PersistableRecord:
                 "priority": priority,
                 "criticity": criticity,
                 "timestamp": ts,
+                "area": area,
+                "owner_node": owner_node,
             },
             key=f"event:{username}:{ts}:{message}",
             critical=True,
@@ -145,8 +176,11 @@ class PersistableRecord:
         state: str,
         timestamp: datetime,
         ack_timestamp: datetime | None = None,
+        area: str | None = None,
+        owner_node: str | None = None,
     ) -> "PersistableRecord":
         ts = iso(timestamp)
+        area, owner_node = _scope_metadata(area, owner_node)
         return cls(
             domain_name=DOMAIN.ALARM_SUMMARY,
             entity=name,
@@ -155,6 +189,8 @@ class PersistableRecord:
                 "state": state,
                 "timestamp": ts,
                 "ack_timestamp": iso(ack_timestamp),
+                "area": area,
+                "owner_node": owner_node,
             },
             key=f"alarm:{name}:{ts}:{state}",
             critical=True,
@@ -167,8 +203,11 @@ class PersistableRecord:
         name: str,
         state: str | None = None,
         ack_timestamp: datetime | None = None,
+        area: str | None = None,
+        owner_node: str | None = None,
     ) -> "PersistableRecord":
         ts = iso(utc_now())
+        area, owner_node = _scope_metadata(area, owner_node)
         return cls(
             domain_name=DOMAIN.ALARM_SUMMARY_UPDATE,
             entity=name,
@@ -176,6 +215,8 @@ class PersistableRecord:
                 "name": name,
                 "state": state,
                 "ack_timestamp": iso(ack_timestamp),
+                "area": area,
+                "owner_node": owner_node,
             },
             key=f"alarm-update:{name}:{ts}:{state}:{iso(ack_timestamp)}",
             critical=True,
@@ -194,11 +235,13 @@ class PersistableRecord:
         timestamp: datetime | None = None,
         shift: str | None = None,
         area: str | None = None,
+        owner_node: str | None = None,
         handover: bool = False,
         user_name: str | None = None,
     ) -> "PersistableRecord":
         ts = iso(timestamp or utc_now())
         author = user_name or username or "system"
+        area, owner_node = _scope_metadata(area, owner_node)
         return cls(
             domain_name=DOMAIN.LOG,
             entity=author,
@@ -213,6 +256,7 @@ class PersistableRecord:
                 "timestamp": ts,
                 "shift": shift,
                 "area": area,
+                "owner_node": owner_node,
                 "handover": bool(handover),
             },
             key=f"log:{author}:{ts}:{message}",

@@ -41,13 +41,14 @@ class Logs(BaseModel):
     alarm = ForeignKeyField(AlarmSummary, null=True, backref='logs', on_delete='SET NULL')
     event = ForeignKeyField(Events, null=True, backref='logs', on_delete='SET NULL')
     shift = CharField(max_length=32, null=True)
-    area = CharField(max_length=64, null=True)
+    area = CharField(max_length=64, null=True, index=True)
     handover = BooleanField(default=False)
 
     class Meta:
         indexes = (
             (('timestamp',), False),
             (('classification',), False),
+            (('area', 'timestamp'), False),
         )
 
     @classmethod
@@ -111,8 +112,11 @@ class Logs(BaseModel):
         return query, "Log creation successful"
 
     @classmethod
-    def read_lasts(cls, lasts:int=1):
-        logs = cls.select().order_by(cls.id.desc()).limit(lasts)
+    def read_lasts(cls, lasts:int=1, area:str=None):
+        logs = cls.select()
+        if area is not None:
+            logs = logs.where(cls.area == area)
+        logs = logs.order_by(cls.id.desc()).limit(lasts)
         return [log.serialize() for log in logs]
 
     @classmethod
@@ -131,11 +135,14 @@ class Logs(BaseModel):
         less_than_timestamp:datetime=None,
         timezone:str='UTC',
         page:int=1,
-        limit:int=20
+        limit:int=20,
+        area:str=None,
         ):
         import math
         _timezone = pytz.timezone(timezone)
         query = cls.select()
+        if area is not None:
+            query = query.where(cls.area == area)
 
         if usernames:
             subquery = Users.select(Users.id).where(Users.username.in_(usernames))

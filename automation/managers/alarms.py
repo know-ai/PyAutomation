@@ -30,6 +30,18 @@ def _normalize_tag_name(tag) -> str:
     return str(tag)
 
 
+def _scope_owns_alarm(alarm) -> bool:
+    if alarm is None:
+        return False
+    try:
+        from ..node_scope import get_node_scope
+
+        scope = get_node_scope()
+    except (ImportError, AttributeError):
+        return True
+    return not scope.enabled or scope.owns_tag(getattr(alarm, "tag", None))
+
+
 class AlarmManager(Singleton):
     r"""
     Singleton class that manages all alarms in the system.
@@ -73,7 +85,18 @@ class AlarmManager(Singleton):
             self._by_tag_name.pop(tag_name, None)
 
     def alarm_count(self) -> int:
-        return len(self._alarms)
+        return len(self.get_alarms())
+
+    def prune_not_owned(self, scope) -> list[str]:
+        """Remove foreign alarms from local indexes only."""
+        removed = []
+        for identifier, alarm in list(self._alarms.items()):
+            if scope.owns_tag(getattr(alarm, "tag", None)):
+                continue
+            self._alarms.pop(identifier, None)
+            self._unindex_alarm(alarm)
+            removed.append(alarm.name)
+        return removed
 
     def get_queue(self)->queue.Queue:
         r"""
@@ -298,8 +321,8 @@ class AlarmManager(Singleton):
         """
 
         if id in self._alarms:
-
-            return self._alarms[id]
+            alarm = self._alarms[id]
+            return alarm if _scope_owns_alarm(alarm) else None
 
     @logging_error_handler
     def get_alarm_by_name(self, name:str)->Alarm:
@@ -314,7 +337,16 @@ class AlarmManager(Singleton):
 
         * **Alarm**: The alarm object if found.
         """
-        return self._by_name.get(name)
+        alarm = self.peek_alarm(name=name)
+        return alarm if _scope_owns_alarm(alarm) else None
+
+    def peek_alarm(self, id: str | None = None, name: str | None = None):
+        """Lookup without applying node scope; used to distinguish 403 from 404."""
+        if id is not None:
+            return self._alarms.get(id)
+        if name is not None:
+            return self._by_name.get(name)
+        return None
 
     # @logging_error_handler
     # def get_alarms_by_tag(self, tag:str)->dict:
@@ -356,7 +388,7 @@ class AlarmManager(Singleton):
         lower = min(kp_min, kp_max)
         upper = max(kp_min, kp_max)
         result = []
-        for _, alarm in self._alarms.items():
+        for _, alarm in self.get_alarms().items():
             tag = alarm.tag
             if not hasattr(tag, 'get_kp'):
                 continue
@@ -384,7 +416,11 @@ class AlarmManager(Singleton):
         * **list[Alarm]**: List of Alarm objects.
         """
         tag_name = _normalize_tag_name(tag)
-        return list(self._by_tag_name.get(tag_name, []))
+        return [
+            alarm
+            for alarm in self._by_tag_name.get(tag_name, [])
+            if _scope_owns_alarm(alarm)
+        ]
 
     @logging_error_handler
     def get_alarms(self)->dict:
@@ -395,7 +431,11 @@ class AlarmManager(Singleton):
 
         * **dict**: Dictionary of all Alarm objects.
         """
-        return self._alarms
+        return {
+            identifier: alarm
+            for identifier, alarm in self._alarms.items()
+            if _scope_owns_alarm(alarm)
+        }
 
     @logging_error_handler
     def get_lasts_active_alarms(self, lasts:int=None)->list:
@@ -431,7 +471,7 @@ class AlarmManager(Singleton):
         * **list**: List of serialized alarm dictionaries.
         """
 
-        return [alarm.serialize() for _, alarm in self._alarms.items()]
+        return [alarm.serialize() for _, alarm in self.get_alarms().items()]
 
     @logging_error_handler
     def get_tag_alarms(self)->list:

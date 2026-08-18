@@ -174,7 +174,10 @@ class ExportConfigResource(Resource):
             config_data = app.export_configuration()
             
             if "error" in config_data:
-                return {'message': config_data["error"]}, 400
+                status = 503 if config_data["error"] == "invalid-node-scope" else 400
+                return {
+                    'message': config_data.get("message") or config_data["error"]
+                }, status
             
             # Create JSON string in memory
             json_str = json.dumps(config_data, indent=2, default=str)
@@ -235,8 +238,20 @@ class ImportConfigResource(Resource):
             # Import configuration
             result = app.import_configuration(config_data)
             
-            if "error" in result:
-                return {'message': result["error"], 'details': result.get("results", {})}, 400
+            error = result.get("error")
+            if error == "invalid-node-scope":
+                return {
+                    'message': result.get("message") or error,
+                    'details': result.get("results", {}),
+                }, 503
+            if error == "foreign-or-unscoped-runtime-data":
+                return {
+                    'message': result.get("message") or error,
+                    'violations': result.get("violations", []),
+                    'details': result.get("results", {}),
+                }, 403
+            if error:
+                return {'message': error, 'details': result.get("results", {})}, 400
             
             return {
                 'message': result.get("message", "Configuration imported successfully"),

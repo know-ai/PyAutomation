@@ -5,6 +5,13 @@ This module implements the Database Manager (DBManager), which orchestrates data
 table registration, and logging engines for various system components.
 """
 import logging, queue
+from peewee import MySQLDatabase, PostgresqlDatabase, SqliteDatabase
+from playhouse.migrate import (
+    MySQLMigrator,
+    PostgresqlMigrator,
+    SqliteMigrator,
+    migrate,
+)
 from ..singleton import Singleton
 from ..logger.datalogger import DataLoggerEngine
 from ..logger.logdict import  LogTable
@@ -39,7 +46,8 @@ from ..dbmodels import (
     AccessType,
     OPCUAServer,
     LinearReferencingGeospatial,
-    BaseModel
+    BaseModel,
+    Nodes,
 )
 
 
@@ -67,6 +75,7 @@ class DBManager(Singleton):
         self.machines_logger = MachinesLoggerEngine()
         self.opcuaserver_logger = OPCUAServerLoggerEngine()
         self._tables = [
+            Nodes,
             Manufacturer,
             Segment,
             Variables, 
@@ -178,7 +187,6 @@ class DBManager(Singleton):
             
         return None
 
-    @logging_error_handler
     def create_tables(self):
         r"""
         Creates all registered tables in the database.
@@ -186,6 +194,53 @@ class DBManager(Singleton):
         self._tables.extend(self._extra_tables)
         self._logger.create_tables(self._tables)
         self.alarms_logger.create_tables(self._tables)
+        self.ensure_schema()
+
+    def ensure_schema(self):
+        """Add nullable scope columns and indexes without inferring ownership."""
+        db = self.get_db()
+        if db is None:
+            return
+        db.create_tables(self._tables, safe=True)
+        migrator_type = (
+            SqliteMigrator
+            if isinstance(db, SqliteDatabase)
+            else (
+                PostgresqlMigrator
+                if isinstance(db, PostgresqlDatabase)
+                else MySQLMigrator
+                if isinstance(db, MySQLDatabase)
+                else None
+            )
+        )
+        if migrator_type is None:
+            raise TypeError(f"Unsupported database for schema migration: {type(db).__name__}")
+        migrator = migrator_type(db)
+        scoped_fields = (
+            (Tags, "area"),
+            (Tags, "owner_node"),
+            (OPCUA, "owner_node"),
+            (Machines, "area"),
+            (Alarms, "area"),
+            (TagValue, "area"),
+            (AlarmSummary, "area"),
+            (Events, "area"),
+            (Logs, "area"),
+        )
+        for model, field_name in scoped_fields:
+            existing = {column.name for column in db.get_columns(model._meta.table_name)}
+            if field_name not in existing:
+                field = model._meta.fields[field_name].clone()
+                field.index = False
+                migrate(
+                    migrator.add_column(
+                        model._meta.table_name,
+                        field_name,
+                        field,
+                    )
+                )
+        for model in {model for model, _ in scoped_fields}:
+            model._schema.create_indexes(safe=True)
 
     @logging_error_handler
     def drop_tables(self):
@@ -304,6 +359,46 @@ class DBManager(Singleton):
         Retrieves all OPC UA client configurations from the database.
         """
         return OPCUA.read_all()
+
+    def scoped_query(
+        self,
+        model: type[BaseModel],
+        *,
+        area: str = None,
+        owner_node: str = None,
+    ):
+        if model not in self._tables:
+            raise ValueError(f"{model.__name__} is not a registered database model")
+        return model.scoped(area=area, owner_node=owner_node)
+
+    def get_tags_scoped(self, area: str, owner_node: str = None):
+        return Tags.read_scoped(area=area, owner_node=owner_node)
+
+    def get_opcua_clients_scoped(self, owner_node: str):
+        return OPCUA.read_scoped(owner_node=owner_node)
+
+    def get_machines_scoped(self, area: str):
+        return Machines.read_config_scoped(area=area)
+
+    def get_alarms_scoped(self, area: str):
+        return Alarms.read_scoped(area=area)
+
+    def register_node(
+        self,
+        node_id: str,
+        area: str,
+        *,
+        site: str = None,
+        hostname: str = None,
+        version: str = None,
+    ):
+        return Nodes.register(
+            node_id=node_id,
+            area=area,
+            site=site,
+            hostname=hostname,
+            version=version,
+        )
 
     # USERS METHODS
     @logging_error_handler

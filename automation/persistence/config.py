@@ -1,15 +1,28 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
+
+
+def _default_journal_path() -> str:
+    enabled = os.environ.get("AUTOMATION_MULTI_EDGE_ENABLED", "true").strip().lower()
+    multi_edge = enabled not in {"0", "false", "no", "off"}
+    node_id = os.environ.get("AUTOMATION_NODE_ID", "").strip()
+    if multi_edge:
+        safe_node = "".join(
+            char if char.isalnum() or char in "._-" else "_"
+            for char in node_id
+        ) or "unconfigured"
+        return os.path.join(".", "db", "saf", safe_node, "journal.db")
+    return os.path.join(".", "db", "saf", "journal.db")
 
 
 @dataclass(frozen=True)
 class SafConfig:
     """Operational contracts for the local outbox (Phoenix Directive)."""
 
-    journal_path: str = os.path.join(".", "db", "saf", "journal.db")
+    journal_path: str = field(default_factory=_default_journal_path)
     max_disk_bytes: int = 10 * 1024 * 1024 * 1024
     max_pending_rows: int = 5_000_000
     ring_maxsize: int = 50_000

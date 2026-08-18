@@ -10,6 +10,23 @@ from ..models import StringType
 from ..logger.datalogger import DataLoggerEngine
 
 
+def _scope_owns_tag(tag) -> bool:
+    try:
+        from ..node_scope import get_node_scope
+
+        scope = get_node_scope()
+    except (ImportError, AttributeError):
+        return True
+    if not getattr(scope, "enabled", False):
+        return True
+    if not getattr(scope, "is_valid", False) or tag is None:
+        return False
+    try:
+        return bool(scope.owns_tag(tag))
+    except Exception:
+        return False
+
+
 class SubHandler(Singleton):
     r"""
     Subscription Handler. To receive events from server for a subscription
@@ -89,7 +106,7 @@ class SubHandlerServer(Singleton):
         return node.get_node_class() == ua.NodeClass.Variable
 
     def datachange_notification(self, node, val, data):
-        from .. import SEGMENT, MANUFACTURER, PyAutomation
+        from .. import PyAutomation
 
         app = PyAutomation()
 
@@ -103,13 +120,12 @@ class SubHandlerServer(Singleton):
         
         tag = self.app.get_tag_by_name(name=tag_name)
         if tag:
+            if not _scope_owns_tag(tag):
+                return
             if tag.get_value()!=val:
 
                 val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-                if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
-                    self.app.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
-                elif not MANUFACTURER and not SEGMENT:
-                    self.app.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp) 
+                self.app.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
         else:
             
             parent = node.get_parent()
@@ -192,6 +208,12 @@ class DAS(Singleton):
         unsubscribed before a replacement is created.
         """
         key = self._node_key(node_id)
+        tag = self.cvt.get_tag_by_node_namespace(node_namespace=key)
+        if not _scope_owns_tag(tag):
+            return None
+        tag_client = getattr(tag, "opcua_client_name", None)
+        if tag_client and tag_client.lower() != (client_name or "").lower():
+            return None
         with self._subscribe_lock:
             bucket = self.monitored_items.setdefault(client_name, {})
             existing = bucket.get(key)
@@ -249,7 +271,6 @@ class DAS(Singleton):
         r"""
         Update tag value in CVT and buffer
         """
-        from .. import SEGMENT, MANUFACTURER
         from ..timebase import ensure_utc
         
         timestamp = ensure_utc(timestamp)
@@ -257,14 +278,11 @@ class DAS(Singleton):
         namespace = node.nodeid.to_string()
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=namespace)
         
-        if tag:
+        if tag and _scope_owns_tag(tag):
             tag_name = tag.get_name()
             val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-            if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
-                val = self.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
-            elif not MANUFACTURER and not SEGMENT:
-                val = self.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
-            if tag_name in self.buffer:
+            val = self.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
+            if val is not None and tag_name in self.buffer:
                 self.buffer[tag_name]["timestamp"](timestamp)
                 self.buffer[tag_name]["values"](val)
 

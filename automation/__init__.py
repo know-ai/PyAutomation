@@ -2,6 +2,7 @@ import os
 import pytz
 from pathlib import Path
 from flask import Flask, send_from_directory, send_file
+from .node_scope import NodeIdentityError, NodeScope, current_node_scope, get_node_scope
 from .core import PyAutomation
 from .state_machine import OPCUAServer
 
@@ -9,6 +10,11 @@ app = Flask(__name__, instance_relative_config=False)
 
 MANUFACTURER = os.environ.get('AUTOMATION_MANUFACTURER')
 SEGMENT = os.environ.get('AUTOMATION_SEGMENT')
+NODE_SCOPE = current_node_scope()
+NODE_ID = NODE_SCOPE.node_id
+AREA = NODE_SCOPE.area
+SITE = NODE_SCOPE.site
+MULTI_EDGE_ENABLED = NODE_SCOPE.multi_edge_enabled
 _TIMEZONE = os.environ.get('AUTOMATION_TIMEZONE') or "America/Caracas"
 TIMEZONE = pytz.timezone(_TIMEZONE)
 CERT_FILE = os.path.join(".", "ssl", os.environ.get('AUTOMATION_CERT_FILE') or "")

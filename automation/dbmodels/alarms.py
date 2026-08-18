@@ -189,12 +189,16 @@ class Alarms(BaseModel):
     
     identifier = CharField(unique=True)
     name = CharField(unique=True, max_length=128)
+    area = CharField(max_length=64, null=True, index=True)
     tag = ForeignKeyField(Tags, backref='alarms')
     trigger_type = ForeignKeyField(AlarmTypes, backref='alarms')
     trigger_value = FloatField()
     description = CharField(null=True, max_length=256)
     state = ForeignKeyField(AlarmStates, backref='alarms')
     timestamp = TimestampField(utc=True, null=True)
+
+    class Meta:
+        indexes = ((("area", "name"), False),)
 
     @classmethod
     @logging_error_handler
@@ -207,7 +211,8 @@ class Alarms(BaseModel):
         trigger_value:float,
         description:str=None,
         state:str=States.NORM.value,
-        timestamp:datetime=None
+        timestamp:datetime=None,
+        area:str=None
         ):
         r"""
         Creates a new Alarm configuration record.
@@ -240,7 +245,8 @@ class Alarms(BaseModel):
                 trigger_value=trigger_value,
                 description=description,
                 state=state,
-                timestamp=timestamp
+                timestamp=timestamp,
+                area=area
             )
             alarm.save()
 
@@ -299,7 +305,8 @@ class Alarms(BaseModel):
             'trigger_value': self.trigger_value,
             'description': self.description,
             'state': self.state.name,
-            'timestamp': timestamp
+            'timestamp': timestamp,
+            'area': self.area
         }
     
 
@@ -312,10 +319,18 @@ class AlarmSummary(BaseModel):
     state = ForeignKeyField(AlarmStates, backref='summary')
     alarm_time = TimestampField(utc=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
     ack_time = TimestampField(utc=True, null=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
+    area = CharField(max_length=64, null=True, index=True)
 
     @classmethod
     @logging_error_handler
-    def create(cls, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
+    def create(
+        cls,
+        name:str,
+        state:str,
+        timestamp:datetime,
+        ack_timestamp:datetime=None,
+        area:str=None,
+    ):
         r"""
         Creates a new entry in the alarm summary.
 
@@ -338,7 +353,13 @@ class AlarmSummary(BaseModel):
                     ack_timestamp = quantize_datetime_ms(ack_timestamp)
 
                 # Create record
-                query = cls(alarm=_alarm.id, state=_state.id, alarm_time=timestamp, ack_time=ack_timestamp)
+                query = cls(
+                    alarm=_alarm.id,
+                    state=_state.id,
+                    alarm_time=timestamp,
+                    ack_time=ack_timestamp,
+                    area=area,
+                )
                 query.save()
                 
                 return query
@@ -425,11 +446,14 @@ class AlarmSummary(BaseModel):
 
     @classmethod
     @logging_error_handler
-    def read_lasts(cls, lasts:int=1):
+    def read_lasts(cls, lasts:int=1, area:str=None):
         r"""
         Retrieves the last N records.
         """
-        alarms = cls.select().order_by(cls.id.desc()).limit(lasts)
+        query = cls.select()
+        if area is not None:
+            query = query.where(cls.area == area)
+        alarms = query.order_by(cls.id.desc()).limit(lasts)
 
         return [alarm.serialize() for alarm in alarms]
     
@@ -444,7 +468,8 @@ class AlarmSummary(BaseModel):
         less_than_timestamp:datetime=None,
         timezone:str=None,
         page:int=1,
-        limit:int=20
+        limit:int=20,
+        area:str=None,
         ):
         r"""
         Filters alarm summary records with pagination.
@@ -468,6 +493,8 @@ class AlarmSummary(BaseModel):
         """
         import math
         query = cls.select()
+        if area is not None:
+            query = query.where(cls.area == area)
         
         # Only apply filters if the lists are provided and not empty
         # If None or empty list, return all records (no filtering)
@@ -631,6 +658,7 @@ class AlarmSummary(BaseModel):
             'condition': self.state.condition,
             'segment': segment or None,
             'manufacturer': manufacturer or None,
+            'area': self.area,
             'alarm_time': alarm_time,
             'ack_time': ack_time,
             'has_comments': True if self.logs else False

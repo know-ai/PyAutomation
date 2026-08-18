@@ -33,7 +33,8 @@ class MachinesLogger(BaseLogger):
             criticity:int,
             priority:int,
             on_delay:int=None,
-            threshold:float=None
+            threshold:float=None,
+            area:str=None,
             ):
         r"""
         Creates a new State Machine definition in the database.
@@ -71,7 +72,8 @@ class MachinesLogger(BaseLogger):
             criticity=criticity,
             priority=priority,
             on_delay=on_delay,
-            threshold=threshold
+            threshold=threshold,
+            area=area,
         )
 
     @db_rollback
@@ -215,7 +217,8 @@ class MachinesLoggerEngine(BaseEngine):
         criticity:int,
         priority:int,
         on_delay:int=None,
-        threshold:float=None
+        threshold:float=None,
+        area:str=None,
         ):
         r"""
         Thread-safe machine creation.
@@ -234,6 +237,7 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"]["priority"] = priority
         _query["parameters"]["on_delay"] = on_delay
         _query["parameters"]["threshold"] = threshold
+        _query["parameters"]["area"] = area
         
         return self.query(_query)
     

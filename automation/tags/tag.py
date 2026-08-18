@@ -1,4 +1,4 @@
-import secrets, logging, threading
+import secrets, logging, threading, time
 from datetime import datetime
 from ..utils import Observer
 from ..utils.decorators import logging_error_handler
@@ -22,6 +22,67 @@ from ..variables import (
 from .filter import GaussianFilter
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
+_scope_audit_lock = threading.Lock()
+_scope_audit_last = {}
+_scope_audit_active = threading.local()
+
+
+def _node_scope():
+    """Local import keeps Tag independent while node_scope is being introduced."""
+    try:
+        from ..node_scope import get_node_scope
+
+        return get_node_scope()
+    except (ImportError, AttributeError):
+        return None
+
+
+def _scope_owns_tag(tag) -> bool:
+    scope = _node_scope()
+    if scope is None or not getattr(scope, "enabled", False):
+        return True
+    if not getattr(scope, "is_valid", False):
+        return False
+    try:
+        return bool(scope.owns_tag(tag))
+    except Exception:
+        return False
+
+
+def _audit_foreign_tag(tag) -> None:
+    """Rate-limited, recursion-safe audit for a corrupt cross-edge update."""
+    logger = logging.getLogger("pyautomation")
+    tag_name = getattr(tag, "name", "") or "-"
+    owner = getattr(tag, "owner_node", None)
+    area = getattr(tag, "area", None)
+    logger.error(
+        "Rejected foreign tag sample tag=%s area=%s owner_node=%s",
+        tag_name,
+        area,
+        owner,
+    )
+    if getattr(_scope_audit_active, "value", False):
+        return
+    now = time.monotonic()
+    with _scope_audit_lock:
+        if now - _scope_audit_last.get(tag_name, 0.0) < 60.0:
+            return
+        _scope_audit_last[tag_name] = now
+    try:
+        _scope_audit_active.value = True
+        from ..utils.system_event_audit import persist_system_event
+
+        persist_system_event(
+            message="Foreign tag sample rejected",
+            description=f"tag={tag_name} area={area or '-'} owner_node={owner or '-'}",
+            classification="Security",
+            priority=5,
+            criticity=5,
+        )
+    except Exception:
+        logger.debug("Foreign tag audit event skipped", exc_info=True)
+    finally:
+        _scope_audit_active.value = False
 
 class Tag:
     r"""
@@ -55,7 +116,9 @@ class Tag:
             manufacturer:str="",
             segment:str="",
             kp:float=None,
-            id:str=None
+            id:str=None,
+            area:str=None,
+            owner_node:str=None
     ):
         r"""
         Initializes a new Tag instance.
@@ -158,6 +221,8 @@ class Tag:
         self.frozen_data_detection = frozen_data_detection
         self.manufacturer = manufacturer
         self.segment = segment
+        self.area = area
+        self.owner_node = owner_node
         self.kp = kp
         self.filter = GaussianFilter()
         self._observers = set()
@@ -647,6 +712,8 @@ class Tag:
             "scan_time": self.get_scan_time(),
             "dead_band": self.get_dead_band(),
             "segment": self.segment,
+            "area": self.area,
+            "owner_node": self.owner_node,
             "kp": self.get_kp(),
             "manufacturer": self.manufacturer,
             "process_filter": self.process_filter,
@@ -685,6 +752,9 @@ class TagObserver(Observer):
         """
         if self._subject is None:
             return
+        if not _scope_owns_tag(self._subject):
+            _audit_foreign_tag(self._subject)
+            return
         try:
             result = dict()
             result["tag"] = self._subject.name
@@ -697,6 +767,8 @@ class TagObserver(Observer):
                 tag=result["tag"],
                 value=result["value"],
                 timestamp=result["timestamp"],
+                area=getattr(self._subject, "area", None),
+                owner_node=getattr(self._subject, "owner_node", None),
             )
             import logging
             logging.getLogger("pyautomation").debug(

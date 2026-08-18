@@ -1,4 +1,5 @@
 from .core import BaseModel, proxy
+from .nodes import Nodes
 from .tags import (
     Manufacturer,
     Segment,

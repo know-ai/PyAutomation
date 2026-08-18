@@ -11,6 +11,31 @@ from ..tags import CVTEngine
 from ..utils.decorators import logging_error_handler
 from ..opcua.subscription import DAS
 
+
+def _scope_and_owner(owner_node=None):
+    try:
+        from ..node_scope import get_node_scope
+
+        scope = get_node_scope()
+    except (ImportError, AttributeError):
+        return None, owner_node
+    if owner_node is None and getattr(scope, "enabled", False):
+        owner_node = getattr(scope, "node_id", None)
+    return scope, owner_node
+
+
+def _scope_owns_node(owner_node) -> bool:
+    scope, owner_node = _scope_and_owner(owner_node)
+    if scope is None or not getattr(scope, "enabled", False):
+        return True
+    if not getattr(scope, "is_valid", False):
+        return False
+    try:
+        return bool(scope.owns_node(owner_node))
+    except Exception:
+        return False
+
+
 class OPCUAClientManager:
     r"""
     Manages multiple OPC UA Client connections and their subscriptions.
@@ -51,7 +76,14 @@ class OPCUAClientManager:
         return Client.find_servers(host, port)
 
     @logging_error_handler
-    def add(self, client_name:str, host:str, port:int, source:str="client-add"):
+    def add(
+        self,
+        client_name:str,
+        host:str,
+        port:int,
+        source:str="client-add",
+        owner_node:str=None,
+    ):
         r"""
         Adds and connects a new OPC UA Client.
 
@@ -66,6 +98,14 @@ class OPCUAClientManager:
         * **tuple**: (Success boolean, Message string).
         """
         endpoint_url = f"opc.tcp://{host}:{port}"
+        _, owner_node = _scope_and_owner(owner_node)
+        if not _scope_owns_node(owner_node):
+            logging.getLogger("pyautomation").error(
+                "OPC UA client rejected for foreign owner client=%s owner_node=%s",
+                client_name,
+                owner_node,
+            )
+            return False, f"Client '{client_name}' is not owned by this node"
         pending_source = getattr(self, "_pending_audit_source", None)
         if pending_source:
             source = pending_source
@@ -75,7 +115,7 @@ class OPCUAClientManager:
 
             return True, f"Client Name {client_name} duplicated"
 
-        opcua_client = Client(endpoint_url, client_name=client_name)
+        opcua_client = Client(endpoint_url, client_name=client_name, owner_node=owner_node)
         opcua_client._audit_source = source or "client-add"
         
         message, status_connection = opcua_client.connect()
@@ -93,7 +133,12 @@ class OPCUAClientManager:
             if self.logger.get_db():
                 # Verificar si ya existe en BD para evitar duplicados
                 if not OPCUA.client_name_exist(client_name):
-                    OPCUA.create(client_name=client_name, host=host, port=port)
+                    OPCUA.create(
+                        client_name=client_name,
+                        host=host,
+                        port=port,
+                        owner_node=owner_node,
+                    )
 
             # RECONNECT TO SUBSCRIPTION 
             # Buscar tags que usan este cliente (por nombre o por URL)
@@ -137,7 +182,12 @@ class OPCUAClientManager:
             if self.logger.get_db():
                 # Verificar si ya existe en BD para evitar duplicados
                 if not OPCUA.client_name_exist(client_name):
-                    OPCUA.create(client_name=client_name, host=host, port=port)
+                    OPCUA.create(
+                        client_name=client_name,
+                        host=host,
+                        port=port,
+                        owner_node=owner_node,
+                    )
             
             # Retornar False para indicar que la conexión falló, pero el cliente está en memoria
             return False, message
@@ -156,6 +206,10 @@ class OPCUAClientManager:
         * **bool**: True if successful, False otherwise.
         """
         if client_name in self._clients:
+            if not _scope_owns_node(
+                getattr(self._clients[client_name], "owner_node", None)
+            ):
+                return False
             try:
                 from ..utils.connection_alarms import remove_opcua_connection_alarm
 
@@ -178,6 +232,25 @@ class OPCUAClientManager:
         
         return False
 
+    def prune_not_owned(self, scope) -> list[str]:
+        """Disconnect foreign clients locally without deleting shared catalog rows."""
+        removed = []
+        for client_name, client in list(self._clients.items()):
+            if scope.owns_node(getattr(client, "owner_node", None)):
+                continue
+            self._clients.pop(client_name, None)
+            client._audit_source = "scope-prune"
+            client._suppress_connection_alarm = True
+            try:
+                client.disconnect()
+            except Exception:
+                logging.getLogger("pyautomation").exception(
+                    "Failed to disconnect foreign OPC UA client %s",
+                    client_name,
+                )
+            removed.append(client_name)
+        return removed
+
     @logging_error_handler
     def update(self, old_client_name:str, new_client_name:str=None, host:str=None, port:int=None):
         r"""
@@ -194,18 +267,27 @@ class OPCUAClientManager:
 
         * **tuple**: (Success boolean, Message string).
         """
+        if old_client_name in self._clients and not _scope_owns_node(
+            getattr(self._clients[old_client_name], "owner_node", None)
+        ):
+            return False, "OPC UA client belongs to another edge node"
         # Si el cliente no está en memoria, intentar cargarlo desde la base de datos
         if old_client_name not in self._clients:
             if self.logger.get_db():
                 db_client = OPCUA.get_by_client_name(client_name=old_client_name)
-                if db_client:
+                if db_client and _scope_owns_node(db_client.owner_node):
                     # Cargar el cliente desde la BD a memoria (aunque no se conecte)
                     # Esto permite actualizar su configuración
                     db_host = db_client.host
                     db_port = db_client.port
                     # Agregar el cliente a memoria (aunque falle la conexión)
                     # El método add() siempre agrega a memoria, incluso si falla la conexión
-                    self.add(client_name=old_client_name, host=db_host, port=db_port)
+                    self.add(
+                        client_name=old_client_name,
+                        host=db_host,
+                        port=db_port,
+                        owner_node=db_client.owner_node,
+                    )
                     # Verificar que el cliente se haya agregado a memoria
                     if old_client_name not in self._clients:
                         return False, f"Failed to load client '{old_client_name}' from database into memory"
@@ -266,7 +348,12 @@ class OPCUAClientManager:
                     query = OPCUA.delete().where(OPCUA.client_name == old_client_name)
                     query.execute()
                     # Crear nuevo registro con el nuevo nombre
-                    OPCUA.create(client_name=new_client_name, host=old_host, port=old_port)
+                    OPCUA.create(
+                        client_name=new_client_name,
+                        host=old_host,
+                        port=old_port,
+                        owner_node=getattr(old_client, "owner_node", None),
+                    )
             
             # IMPORTANTE: Actualizar todos los tags que referencian este cliente por nombre
             # Buscar tags que usan el nombre antiguo del cliente (case-insensitive)
@@ -325,7 +412,12 @@ class OPCUAClientManager:
                     query = OPCUA.delete().where(OPCUA.client_name == old_client_name)
                     query.execute()
                     # Crear nuevo registro con nueva configuración
-                    OPCUA.create(client_name=new_client_name, host=host, port=port)
+                    OPCUA.create(
+                        client_name=new_client_name,
+                        host=host,
+                        port=port,
+                        owner_node=getattr(old_client, "owner_node", None),
+                    )
                 else:
                     # Si solo cambió host/port, actualizar el registro
                     opcua.host = host
@@ -334,7 +426,12 @@ class OPCUAClientManager:
         
         # Crear nuevo cliente con la nueva configuración
         endpoint_url = f"opc.tcp://{host}:{port}"
-        opcua_client = Client(endpoint_url, client_name=new_client_name)
+        owner_node = getattr(old_client, "owner_node", None)
+        opcua_client = Client(
+            endpoint_url,
+            client_name=new_client_name,
+            owner_node=owner_node,
+        )
         opcua_client._audit_source = "client-update"
         
         # Intentar conectar con la nueva configuración
@@ -442,6 +539,12 @@ class OPCUAClientManager:
         * **client_name** (str): Client name.
         """
         if client_name in self._clients:
+            if not _scope_owns_node(getattr(self._clients[client_name], "owner_node", None)):
+                logging.getLogger("pyautomation").error(
+                    "OPC UA connect rejected for foreign owner client=%s",
+                    client_name,
+                )
+                return
             self._clients[client_name]._audit_source = "client-connect"
             self._clients[client_name].connect()
 
@@ -455,6 +558,10 @@ class OPCUAClientManager:
         * **client_name** (str): Client name.
         """
         if client_name in self._clients:
+            if not _scope_owns_node(
+                getattr(self._clients[client_name], "owner_node", None)
+            ):
+                return
             self._clients[client_name]._audit_source = "client-disconnect"
             self._clients[client_name].disconnect()
 
@@ -472,8 +579,10 @@ class OPCUAClientManager:
         * **Client**: The client object.
         """
         if client_name in self._clients:
-
-            return self._clients[client_name]
+            client = self._clients[client_name]
+            return client if _scope_owns_node(
+                getattr(client, "owner_node", None)
+            ) else None
         
     @logging_error_handler
     def get_opcua_tree(
@@ -797,9 +906,20 @@ class OPCUAClientManager:
                     host = url_parts[0]
                     port = int(url_parts[1])
                     # Buscar en la base de datos
-                    opcua_record = OPCUA.select().where(
+                    query = OPCUA.select().where(
                         (OPCUA.host == host) & (OPCUA.port == port)
-                    ).first()
+                    )
+                    try:
+                        from ..node_scope import get_node_scope
+
+                        scope = get_node_scope()
+                        if scope.enabled:
+                            if not scope.is_valid:
+                                return None
+                            query = query.where(OPCUA.owner_node == scope.node_id)
+                    except (ImportError, AttributeError):
+                        pass
+                    opcua_record = query.first()
                     if opcua_record:
                         return opcua_record.client_name
             except Exception as e:
@@ -864,11 +984,11 @@ class OPCUAClientManager:
         * **dict**: Dictionary of serialized client data.
         """
         if client_name:
+            opcua_client = self.get(client_name)
+            return opcua_client.serialize() if opcua_client is not None else {}
 
-            if client_name in self._clients:
-
-                opcua_client = self._clients[client_name]
-
-            return opcua_client.serialize()
-
-        return {client_name: client.serialize() for client_name, client in self._clients.items()}
+        return {
+            name: client.serialize()
+            for name, client in self._clients.items()
+            if _scope_owns_node(getattr(client, "owner_node", None))
+        }

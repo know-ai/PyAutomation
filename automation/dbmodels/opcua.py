@@ -9,9 +9,19 @@ class OPCUA(BaseModel):
     client_name = CharField(unique=True)
     host = CharField()
     port = IntegerField()
+    owner_node = CharField(max_length=64, null=True, index=True)
+
+    class Meta:
+        indexes = ((("owner_node", "client_name"), False),)
 
     @classmethod
-    def create(cls, client_name:str, host:str, port:int):
+    def create(
+        cls,
+        client_name:str,
+        host:str,
+        port:int,
+        owner_node:str=None,
+    ):
         r"""
         Creates a new OPC UA client configuration.
 
@@ -28,7 +38,12 @@ class OPCUA(BaseModel):
 
         if not cls.client_name_exist(client_name):
 
-            query = cls(client_name=client_name, host=host, port=port)
+            query = cls(
+                client_name=client_name,
+                host=host,
+                port=port,
+                owner_node=owner_node,
+            )
             query.save()
 
             return query
@@ -60,5 +75,6 @@ class OPCUA(BaseModel):
         return {
             "client_name": self.client_name,
             "host": self.host,
-            "port": self.port
+            "port": self.port,
+            "owner_node": self.owner_node,
         }

@@ -35,7 +35,25 @@ from .variables import (
 from .logger.machines import MachinesLoggerEngine
 from .logger.datalogger import DataLoggerEngine
 from .logger.alarms import AlarmsLoggerEngine
+from .node_scope import get_node_scope
 from flask_socketio import SocketIO
+
+
+def _scope_owns_tag(tag) -> bool:
+    try:
+        from .node_scope import get_node_scope
+
+        scope = get_node_scope()
+    except (ImportError, AttributeError):
+        return True
+    if not getattr(scope, "enabled", False):
+        return True
+    if not getattr(scope, "is_valid", False) or tag is None:
+        return False
+    try:
+        return bool(scope.owns_tag(tag))
+    except Exception:
+        return False
 
 
 
@@ -91,7 +109,8 @@ class Machine(Singleton):
                 criticity=machine.criticity.value,
                 priority=machine.priority.value,
                 on_delay=on_delay,
-                threshold=threshold
+                threshold=threshold,
+                area=get_node_scope().area,
             )
             self.create_tag_internal_process_type(machine=machine)
 
@@ -1305,10 +1324,11 @@ class DAQ(StateMachineCore):
         
         Reads values from OPC UA using the client manager and updates the CVT and DAS buffers.
         """
-        from . import MANUFACTURER, SEGMENT
         from .timebase import ensure_utc
         for tag_name, process_type in self.get_subscribed_tags().items():
             tag = process_type.tag
+            if not _scope_owns_tag(tag):
+                continue
             namespace = tag.get_node_namespace()
             opcua_address = tag.get_opcua_address()
             values = self.opcua_client_manager.get_node_value_by_opcua_address(opcua_address=opcua_address, namespace=namespace)
@@ -1318,12 +1338,10 @@ class DAQ(StateMachineCore):
                 timestamp = data_value.SourceTimestamp
                 timestamp = ensure_utc(timestamp)
                 val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-                if tag.manufacturer==MANUFACTURER and tag.segment==SEGMENT:      
-                    val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-                elif not MANUFACTURER and not SEGMENT:
-                    val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-                self.das.buffer[tag_name]["timestamp"](timestamp)
-                self.das.buffer[tag_name]["values"](val)
+                val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                if val is not None and tag_name in self.das.buffer:
+                    self.das.buffer[tag_name]["timestamp"](timestamp)
+                    self.das.buffer[tag_name]["values"](val)
 
         super().while_running()
 
@@ -1500,6 +1518,8 @@ class OPCUAServer(StateMachineCore):
         alarms = self.alarm_manager.get_alarms()
         segment = "Alarms"
         for _, alarm in alarms.items():
+            if not _scope_owns_tag(getattr(alarm, "tag", None)):
+                continue
 
             alarm_name = alarm.name
             alarm_description = alarm.description or ""
@@ -1554,7 +1574,10 @@ class OPCUAServer(StateMachineCore):
         from . import MANUFACTURER
         
         segment = "CVT"
-        for tag in self.cvt.get_tags():
+        for tag_object in self.cvt.iter_tags():
+            if not _scope_owns_tag(tag_object):
+                continue
+            tag = tag_object.serialize()
             
             if tag["segment"]:
 
@@ -1628,7 +1651,10 @@ class OPCUAServer(StateMachineCore):
         r"""
         Updates the values of CVT tags in the OPC UA address space.
         """
-        for tag in self.cvt.get_tags():
+        for tag_object in self.cvt.iter_tags():
+            if not _scope_owns_tag(tag_object):
+                continue
+            tag = tag_object.serialize()
             
             segment = "CVT"
             value = tag["value"]
@@ -1657,6 +1683,8 @@ class OPCUAServer(StateMachineCore):
         alarms = self.alarm_manager.get_alarms()
         segment = "Alarms"
         for _, alarm in alarms.items():
+            if not _scope_owns_tag(getattr(alarm, "tag", None)):
+                continue
 
             alarm_name = alarm.name
 
