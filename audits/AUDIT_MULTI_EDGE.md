@@ -1,4 +1,4 @@
-# Auditoría: Adquisición multi-edge y partición por línea
+# Auditoría compacta: adquisición multi-edge y partición por línea
 
 | Campo | Valor |
 |---|---|
@@ -6,10 +6,10 @@
 | **Alcance** | N equipos edge, cada uno con una instancia de PyAutomation + un servidor OPC UA de línea, historiador PostgreSQL **compartido** |
 | **Premisa de planta** | 2 secciones / líneas; ~20 puntos por línea (P, T, Q, ρ); persistencia en la misma BD; el cliente exige un edge por línea |
 | **Fecha original** | 2026-08-18 (baseline: hidratación `read_all()`, sin identidad de nodo) |
-| **Actualización** | 2026-08-18 (Fase 2: lecturas históricas de planta; HMI no envía `area` por defecto) |
+| **Compactación** | 2026-08-18 — este archivo ya era el documento único del dominio; se actualizaron enlaces y el contraste con specs |
 | **Tipo** | Auditoría de contraste · arquitectura · nomenclatura industrial · backlog de grado nuclear |
-| **Complementa** | `specs/01-MULTI-EDGE-ARCHITECTURE.md`, `docs/multi-edge.md`, `STORE_AND_FORWARD.md`, `PERSISTENCE_FLOW.md`, `AUDIT_DB_CONNECTIONS.md`, `AUDIT_OPTIMAL_CONNECTIONS.md` |
-| **Veredicto** | **Fase 1 está en código y pasó laboratorio de 1 edge** (iDetectFugas, `NODE_ID=edge-linea1`, `SEGMENT=Linea1`). Identidad con alias, fail-closed, hidratación acotada, single-writer O(1), SAF aislado, API/HMI acotados y contrato de alarmas de aplicación existen, con suite `test_multi_edge_*`. **No es un producto de grado nuclear:** faltan unique compuesto, RLS, consola/heartbeat operativo, migración de BD poblada, soak 24 h con **dos** edges reales y las defensas de §5. |
+| **Complementa** | `specs/01-MULTI-EDGE-ARCHITECTURE.md`, `docs/multi-edge.md`, [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_DB.md](./AUDIT_DB.md) |
+| **Veredicto** | **Fase 1 está en código y pasó laboratorio de 1 edge** (iDetectFugas, `NODE_ID=edge-linea1`, `SEGMENT=Linea1`). Identidad con alias, fail-closed, hidratación acotada, single-writer O(1), SAF aislado, API/HMI acotados y contrato de alarmas de aplicación existen, con suite `test_multi_edge_*`. **No es un producto de grado nuclear:** faltan unique compuesto, RLS, consola/heartbeat operativo, migración de BD poblada, soak 24 h con **dos** edges reales y las defensas de §5. La spec `01` aún se titula «propuesta no implementado»: **el contraste de implementación es este archivo**, no el encabezado de la spec |
 | **Clasificación** | Confidencialidad interna · grado de diseño (ISA-95 / IEC 62264) |
 
 ---

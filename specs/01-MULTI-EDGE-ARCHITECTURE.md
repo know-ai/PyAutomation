@@ -1,6 +1,6 @@
 # Documento 01: Arquitectura multi-edge (adquisición particionada)
 
-> Especificación PyAutomationIO (**v1.0**, 2026-08-18). Fuentes: [`../audits/AUDIT_MULTI_EDGE.md`](../audits/AUDIT_MULTI_EDGE.md), [`../audits/AUDIT_OPTIMAL_CONNECTIONS.md`](../audits/AUDIT_OPTIMAL_CONNECTIONS.md), [`../audits/AUDIT_DB_CONNECTIONS.md`](../audits/AUDIT_DB_CONNECTIONS.md), `STORE_AND_FORWARD.md`, `PERSISTENCE_FLOW.md`.  
+> Especificación PyAutomationIO (**v1.0**, 2026-08-18). Fuentes: [`../audits/AUDIT_MULTI_EDGE.md`](../audits/AUDIT_MULTI_EDGE.md), [`../audits/AUDIT_DB.md`](../audits/AUDIT_DB.md), [`../audits/AUDIT_STORE_AND_FORWARD.md`](../audits/AUDIT_STORE_AND_FORWARD.md).  
 > Autores: Equipo de Arquitectura PyAutomation.  
 > **Estado:** **Propuesta arquitectónica** — no implementado. Baseline: hidratación `read_all()`; filtro `AUTOMATION_SEGMENT` / `AUTOMATION_MANUFACTURER` solo en parte del hot path.  
 > **Auditoría de contraste:** [`audits/AUDIT_MULTI_EDGE.md`](../audits/AUDIT_MULTI_EDGE.md).
@@ -127,7 +127,7 @@ El alcance cubre:
 - Consola central de gestión de tags; cada edge mantiene su HMI de configuración local.
 - Unique compuesto `(area, name)` (Fase 3); RLS PostgreSQL (Fase 4).
 
-**Relacionado con:** [AUDIT_MULTI_EDGE](../audits/AUDIT_MULTI_EDGE.md) · [AUDIT_OPTIMAL_CONNECTIONS](../audits/AUDIT_OPTIMAL_CONNECTIONS.md) · [AUDIT_DB_CONNECTIONS](../audits/AUDIT_DB_CONNECTIONS.md)
+**Relacionado con:** [AUDIT_MULTI_EDGE](../audits/AUDIT_MULTI_EDGE.md) · [AUDIT_DB](../audits/AUDIT_DB.md) · [AUDIT_STORE_AND_FORWARD](../audits/AUDIT_STORE_AND_FORWARD.md)
 
 **Estado:** **Propuesta v1.0** (2026-08-18).
 
@@ -685,7 +685,7 @@ Esta especificación fija el contrato para transformar PyAutomationIO en adquisi
 | Documento | Uso |
 |-----------|-----|
 | [`audits/AUDIT_MULTI_EDGE.md`](../audits/AUDIT_MULTI_EDGE.md) | Baseline: hidratación global, nomenclatura industrial, invariantes |
-| [`audits/AUDIT_OPTIMAL_CONNECTIONS.md`](../audits/AUDIT_OPTIMAL_CONNECTIONS.md) | Techo de conexiones idle por proceso |
-| [`audits/AUDIT_DB_CONNECTIONS.md`](../audits/AUDIT_DB_CONNECTIONS.md) | Política de handles y `application_name` |
+| [`audits/AUDIT_DB.md`](../audits/AUDIT_DB.md) | Techo de conexiones idle, handles Peewee y `application_name` |
+| [`audits/AUDIT_STORE_AND_FORWARD.md`](../audits/AUDIT_STORE_AND_FORWARD.md) | Journal por `node_id`, exact-once, flujo de persistencia |
 | ISA-95 / IEC 62264 | Área / línea como partición de proceso |
 | ISA-18.2 | Alarmas; no se redefine el modelo, solo la pertenencia por área |
