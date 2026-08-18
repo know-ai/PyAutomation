@@ -3,6 +3,7 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { HistoryResults } from "../components/HistoryResults";
 import { MultiSelectSearch } from "../components/MultiSelectSearch";
+import { AreaFilter } from "../components/AreaFilter";
 import {
   filterLogs,
   createLog,
@@ -15,6 +16,7 @@ import { isDbUnavailableError } from "../services/health";
 import { socketService } from "../services/socket";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { usePlantAreas } from "../hooks/usePlantAreas";
 import {
   FILTER_COMPOSE_MS,
   FILTER_DATE_MS,
@@ -101,6 +103,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 export function OperationalLogs() {
   const { t, locale } = useTranslation();
   const { timeZone } = useDisplayTimezone();
+  const plantAreas = usePlantAreas();
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(false);
@@ -136,6 +139,7 @@ export function OperationalLogs() {
     const saved = localStorage.getItem("operational_logs_selectedAlarmNames");
     return saved ? JSON.parse(saved) : [];
   });
+  const [selectedArea, setSelectedArea] = useState("");
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("operational_logs_presetDate");
     return (saved as PresetDate) || "Last Day";
@@ -173,7 +177,7 @@ export function OperationalLogs() {
 
   useEffect(() => {
     schedule(FILTER_INSTANT_MS);
-  }, [timeZone, schedule]);
+  }, [timeZone, selectedArea, schedule]);
 
   useEffect(() => {
     return socketService.onLogUpdate(() => {
@@ -274,6 +278,9 @@ export function OperationalLogs() {
       }
 
       payload.timezone = timeZone;
+      if (selectedArea) {
+        payload.area = selectedArea;
+      }
 
       const response = await filterLogs(payload, { signal });
       if (!isCurrent(generation, signal)) return;
@@ -454,6 +461,9 @@ export function OperationalLogs() {
       }
 
       payload.timezone = timeZone;
+      if (selectedArea) {
+        payload.area = selectedArea;
+      }
 
       const response = await filterLogs(payload);
       const allLogs = response.data || [];
@@ -543,6 +553,15 @@ export function OperationalLogs() {
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.operationalLogs")}</span>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <AreaFilter
+                    value={selectedArea}
+                    areas={plantAreas}
+                    plantLabel={t("common.plantWide")}
+                    onChange={(area) => {
+                      setSelectedArea(area);
+                      resetToFirstPage();
+                    }}
+                  />
                   <div className="d-flex align-items-center gap-1">
                     <label className="form-label small mb-0 me-1">
                       {t("operationalLogs.viewLabel")}

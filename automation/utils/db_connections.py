@@ -44,11 +44,78 @@ def force_historian_connect() -> Iterator[None]:
         _CONNECT_GATE.forced = False
 
 
+def _historian_known_dead() -> bool:
+    """True when this process already failed the bound historian link.
+
+    A missing handle (first boot, no previous connection) is not "known dead":
+    ``set_db`` must still be allowed to try. A leftover Peewee object with
+    ``_db_live is False`` must not open libpq from the CVT / LDS hot path.
+    """
+    try:
+        from automation import PyAutomation
+
+        app = PyAutomation()
+    except Exception:
+        return False
+    if historian_connect_forced():
+        return False
+    return bool(getattr(app, "_db", None) is not None) and not bool(
+        getattr(app, "_db_live", True)
+    )
+
+
+def is_acquisition_cycle() -> bool:
+    """True on state-machine scheduler threads (``SM-*`` / StateMachineWorker)."""
+    name = threading.current_thread().name or ""
+    return name.startswith("SM-") or name in {
+        "StateMachineWorker",
+        "AsyncStateMachineWorker",
+    }
+
+
+def _mark_app_historian_dead() -> None:
+    from .db_io import mark_remote_db_dead
+
+    mark_remote_db_dead()
+    try:
+        from automation import PyAutomation
+
+        PyAutomation()._db_live = False
+    except Exception:
+        pass
+
+
 def _reject_connect_during_outage() -> None:
     from .db_io import probe_is_cooling_down
 
-    if probe_is_cooling_down() and not historian_connect_forced():
+    if historian_connect_forced():
+        return
+    if probe_is_cooling_down() or _historian_known_dead():
         raise OperationalError("historian unreachable; connect skipped")
+    if is_acquisition_cycle():
+        live = False
+        try:
+            from automation import PyAutomation
+
+            live = bool(getattr(PyAutomation(), "_db_live", False))
+        except Exception:
+            live = False
+        if not live:
+            raise OperationalError("historian unreachable; connect skipped")
+
+
+def _open_tracked_connection(database) -> Any:
+    """libpq/MySQL connect. Failures arm the outage gate so the hub is not retried."""
+    params = getattr(database, "connect_params", None)
+    if isinstance(params, dict):
+        params["application_name"] = historian_application_name()
+    try:
+        conn = super(type(database), database)._connect()
+    except Exception:
+        _mark_app_historian_dead()
+        raise
+    REGISTRY.register(conn, owner=database)
+    return conn
 
 
 def historian_application_name(role: str | None = None) -> str:
@@ -220,12 +287,7 @@ class TrackedPostgresqlDatabase(PostgresqlDatabase):
 
     def _connect(self):
         _reject_connect_during_outage()
-        params = getattr(self, "connect_params", None)
-        if isinstance(params, dict):
-            params["application_name"] = historian_application_name()
-        conn = super()._connect()
-        REGISTRY.register(conn, owner=self)
-        return conn
+        return _open_tracked_connection(self)
 
     def _close(self, conn):
         REGISTRY.unregister(conn, owner=self)
@@ -243,12 +305,7 @@ class TrackedPostgresqlDatabase(PostgresqlDatabase):
 class TrackedMySQLDatabase(MySQLDatabase):
     def _connect(self):
         _reject_connect_during_outage()
-        params = getattr(self, "connect_params", None)
-        if isinstance(params, dict):
-            params["application_name"] = historian_application_name()
-        conn = super()._connect()
-        REGISTRY.register(conn, owner=self)
-        return conn
+        return _open_tracked_connection(self)
 
     def _close(self, conn):
         REGISTRY.unregister(conn, owner=self)

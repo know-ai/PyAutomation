@@ -13,6 +13,19 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _json_datetime(value: datetime | str | None) -> str | None:
+    """Flask-RESTX json.dumps cannot encode datetime."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat()
+    return str(value)
+
+
 class Nodes(BaseModel):
     id = CharField(primary_key=True, max_length=64)
     area = CharField(max_length=64)
@@ -78,7 +91,7 @@ class Nodes(BaseModel):
             "site": self.site,
             "hostname": self.hostname,
             "version": self.version,
-            "last_seen": self.last_seen,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "last_seen": _json_datetime(self.last_seen),
+            "created_at": _json_datetime(self.created_at),
+            "updated_at": _json_datetime(self.updated_at),
         }

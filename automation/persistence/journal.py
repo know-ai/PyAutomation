@@ -169,6 +169,27 @@ class JournalWriter:
         self._ring_event.set()
         return len(items)
 
+    def append_committed_many(self, persistables: Sequence[IPersistable]) -> list[int]:
+        """Durable enqueue of critical records with one lock and one COMMIT."""
+        self.start()
+        items = list(persistables)
+        if not items:
+            return []
+        try:
+            with self._lock:
+                self._ensure_open_locked()
+                row_ids: list[int] = []
+                for persistable in items:
+                    row_ids.append(self._insert_locked(persistable))
+                self._commit_locked()
+                return row_ids
+        except JournalBackpressureError:
+            _notify_saf_capacity_event("backpressure")
+            raise
+        except JournalDiskFullError:
+            _notify_saf_capacity_event("disk")
+            raise
+
     def flush_sync(self) -> None:
         self.start()
         with self._lock:

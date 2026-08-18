@@ -232,9 +232,21 @@ class Alarms(BaseModel):
 
         * **Alarms**: The created alarm record.
         """
-        trigger_type = AlarmTypes.read_by_name(name=trigger_type)
-        tag = Tags.read_by_name(name=tag)
-        state = AlarmStates.read_by_name(name=state)
+        trigger_type_name = trigger_type
+        tag_name = tag
+        state_name = state
+        trigger_type = AlarmTypes.read_by_name(name=trigger_type_name)
+        tag = Tags.read_by_name(name=tag_name)
+        state = AlarmStates.read_by_name(name=state_name)
+        if tag is None or trigger_type is None or state is None:
+            logging.getLogger("pyautomation").error(
+                "Alarms.create skipped name=%s: tag=%s type=%s state=%s",
+                name,
+                None if tag is None else tag_name,
+                None if trigger_type is None else trigger_type_name,
+                None if state is None else state_name,
+            )
+            return None
         if not cls.name_exists(name):
 
             alarm = super().create(
@@ -281,10 +293,16 @@ class Alarms(BaseModel):
         
     @classmethod
     @logging_error_handler
-    def read_by_name(cls, name:str):
+    def read_by_name(cls, name:str, area:str=None):
         r"""
-        Reads an alarm by name.
+        Reads an alarm by name, preferring a matching area when provided.
         """
+        if not name:
+            return None
+        if area:
+            scoped = cls.get_or_none((cls.name == name) & (cls.area == area))
+            if scoped is not None:
+                return scoped
         return cls.get_or_none(name=name)
 
     @logging_error_handler
@@ -341,37 +359,54 @@ class AlarmSummary(BaseModel):
         * **timestamp** (datetime): Time of occurrence.
         * **ack_timestamp** (datetime, optional): Acknowledgment time.
         """
-        _alarm = Alarms.read_by_name(name=name)
+        _alarm = Alarms.read_by_name(name=name, area=area)
         _state = AlarmStates.read_by_name(name=state)
         
-        if _alarm:
+        if not _alarm:
+            logging.getLogger("pyautomation").error(
+                "AlarmSummary.create skipped: catalog missing name=%s area=%s",
+                name,
+                area,
+            )
+            return None
+        if not _state:
+            logging.getLogger("pyautomation").error(
+                "AlarmSummary.create skipped: unknown state=%s name=%s",
+                state,
+                name,
+            )
+            return None
+        if isinstance(timestamp, datetime):
+            timestamp = quantize_datetime_ms(timestamp)
+        if isinstance(ack_timestamp, datetime):
+            ack_timestamp = quantize_datetime_ms(ack_timestamp)
 
-            if _state:
-                if isinstance(timestamp, datetime):
-                    timestamp = quantize_datetime_ms(timestamp)
-                if isinstance(ack_timestamp, datetime):
-                    ack_timestamp = quantize_datetime_ms(ack_timestamp)
+        area = area or getattr(_alarm, "area", None)
 
-                # Create record
-                query = cls(
-                    alarm=_alarm.id,
-                    state=_state.id,
-                    alarm_time=timestamp,
-                    ack_time=ack_timestamp,
-                    area=area,
-                )
-                query.save()
-                
-                return query
+        query = cls(
+            alarm=_alarm.id,
+            state=_state.id,
+            alarm_time=timestamp,
+            ack_time=ack_timestamp,
+            area=area,
+        )
+        query.save()
+        
+        return query
 
     @classmethod
     @logging_error_handler
-    def read_by_name(cls, name:str):
+    def read_by_name(cls, name:str, area:str=None):
         r"""
         Retrieves the latest summary entry for a specific alarm name.
         """
-        alarm = Alarms.read_by_name(name=name)
-        return cls.select().where(cls.alarm==alarm).order_by(cls.id.desc()).get_or_none()
+        alarm = Alarms.read_by_name(name=name, area=area)
+        if alarm is None:
+            return None
+        query = cls.select().where(cls.alarm == alarm)
+        if area is not None:
+            query = query.where(cls.area == area)
+        return query.order_by(cls.id.desc()).get_or_none()
 
     @classmethod
     @logging_error_handler
@@ -656,7 +691,7 @@ class AlarmSummary(BaseModel):
             'mnemonic': self.state.mnemonic,
             'status': self.state.status,
             'condition': self.state.condition,
-            'segment': segment or None,
+            'segment': self.area or segment or None,
             'manufacturer': manufacturer or None,
             'area': self.area,
             'alarm_time': alarm_time,
@@ -684,4 +719,24 @@ class AlarmSummary(BaseModel):
                     column,
                     exc_info=True,
                 )
+        cls._backfill_area_from_alarm()
+
+    @classmethod
+    def _backfill_area_from_alarm(cls) -> None:
+        """Copy Alarms.area onto summary rows that were written without partition."""
+        database = cls._meta.database
+        if database is None:
+            return
+        summary_table = cls._meta.table_name
+        alarms_table = Alarms._meta.table_name
+        logger = logging.getLogger("pyautomation")
+        try:
+            database.execute_sql(
+                f"UPDATE {summary_table} SET area = ("
+                f"SELECT a.area FROM {alarms_table} AS a "
+                f"WHERE a.id = {summary_table}.alarm_id"
+                f") WHERE area IS NULL"
+            )
+        except Exception:
+            logger.warning("AlarmSummary area backfill skipped", exc_info=True)
     

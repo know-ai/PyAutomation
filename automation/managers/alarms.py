@@ -39,7 +39,12 @@ def _scope_owns_alarm(alarm) -> bool:
         scope = get_node_scope()
     except (ImportError, AttributeError):
         return True
-    return not scope.enabled or scope.owns_tag(getattr(alarm, "tag", None))
+    if not scope.enabled:
+        return True
+    tag = getattr(alarm, "tag", None)
+    if isinstance(tag, str):
+        tag = CVTEngine().get_tag_by_name(name=tag)
+    return scope.owns_tag(tag)
 
 
 class AlarmManager(Singleton):
@@ -472,6 +477,49 @@ class AlarmManager(Singleton):
         """
 
         return [alarm.serialize() for _, alarm in self.get_alarms().items()]
+
+    @set_event(message="Alarms acknowledged", classification="Control", priority=2, criticity=3)
+    def acknowledge_all(self, user:User=None):
+        r"""
+        Acknowledge every owned UNACK / RTNUN alarm in one operator action.
+
+        State machines transition in memory first (O(N) CPU, no I/O). Persistence
+        is a single logger round-trip grouped by target ISA state, then socket
+        payloads are emitted after every alarm has the same ack timestamp.
+        """
+        from datetime import datetime, timezone
+        from ..timebase import quantize_datetime_ms
+        from ..logger.alarms import AlarmsLoggerEngine
+
+        now = quantize_datetime_ms(datetime.now(timezone.utc))
+        acknowledged: list[Alarm] = []
+        for alarm in self.get_alarms().values():
+            if alarm.state not in (AlarmState.UNACK, AlarmState.RTNUN):
+                continue
+            if not alarm._acknowledge_in_memory(now):
+                continue
+            acknowledged.append(alarm)
+        if not acknowledged:
+            return None
+
+        payloads = []
+        for alarm in acknowledged:
+            catalog = alarm.catalog_payload()
+            payloads.append(
+                {
+                    "id": alarm.identifier,
+                    "name": alarm.name,
+                    "state": alarm.state.state,
+                    "ack_timestamp": now,
+                    "area": catalog.get("area"),
+                    "tag": catalog.get("tag"),
+                }
+            )
+        AlarmsLoggerEngine().acknowledge_many(payloads)
+        for alarm in acknowledged:
+            if alarm.sio:
+                alarm.sio.emit("on.alarm", data=alarm.serialize())
+        return self, len(acknowledged), f"{len(acknowledged)} alarms acknowledged"
 
     @logging_error_handler
     def get_tag_alarms(self)->list:

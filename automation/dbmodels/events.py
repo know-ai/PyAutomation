@@ -280,7 +280,7 @@ class Events(BaseModel):
         
         * **timezone** (str, optional): Timezone to convert timestamp to. If None, uses default TIMEZONE.
         """
-        from .. import TIMEZONE, MANUFACTURER, SEGMENT
+        from .. import TIMEZONE, MANUFACTURER
         timestamp = self.timestamp
         if timestamp:
             # Convert to specified timezone or default TIMEZONE
@@ -301,7 +301,7 @@ class Events(BaseModel):
             "priority": self.priority,
             "criticity": self.criticity,
             "area": self.area,
-            "segment": SEGMENT,
+            "segment": self.area,
             "manufacturer": MANUFACTURER,
             "has_comments": True if self.logs else False
         }

@@ -21,6 +21,7 @@ class TestUserSessionAuditHelper(unittest.TestCase):
         self.assertEqual(kwargs["message"], "User logged in")
         self.assertEqual(kwargs["classification"], "Security")
         self.assertEqual(kwargs["user"], user)
+        self.assertFalse(kwargs.get("plant_wide", False))
         self.assertIn("username=operator1", kwargs["description"])
         self.assertIn("method=password", kwargs["description"])
 
@@ -59,6 +60,7 @@ class TestUserSessionAuditHelper(unittest.TestCase):
                 actor=actor,
             )
         kwargs = persist.call_args.kwargs
+        self.assertTrue(kwargs.get("plant_wide"))
         self.assertIn("username=operator1", kwargs["description"])
         self.assertIn("actor=admin", kwargs["description"])
 

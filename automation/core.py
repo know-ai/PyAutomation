@@ -39,6 +39,7 @@ from .utils.log_filters import (
     DEFAULT_ERROR_ALERT_PER_MIN,
     set_dedupe_filter,
 )
+from .utils.history_query import optional_area
 from flask_socketio import SocketIO
 from geventwebsocket.handler import WebSocketHandler
 from .variables import VARIABLES
@@ -112,15 +113,11 @@ class PyAutomation(Singleton):
             if self.node_scope.enabled
             else (self.node_scope.node_id, self.node_scope.area)
         )
-        self.acquisition_ready = self.node_scope.is_valid and self._node_registered
+        self.acquisition_ready = bool(self.node_scope.is_valid)
         self.acquisition_blocked_reason = (
             None
             if self.acquisition_ready
-            else (
-                "missing AUTOMATION_NODE_ID or AUTOMATION_AREA"
-                if not self.node_scope.is_valid
-                else "node is not registered"
-            )
+            else (self.node_scope.blocked_reason or "node identity is not valid")
         )
         self.machine = Machine()
         self.machine_manager = self.machine.get_state_machine_manager()
@@ -163,34 +160,39 @@ class PyAutomation(Singleton):
         self.node_id = self.node_scope.node_id
         self.area = self.node_scope.area
         self.site = self.node_scope.site
-        identity = (self.node_scope.node_id, self.node_scope.area)
-        self.acquisition_ready = self.node_scope.is_valid and (
-            not self.node_scope.enabled
-            or (
-                self._node_registered
-                and self._registered_identity == identity
-            )
-        )
+        self.acquisition_ready = bool(self.node_scope.is_valid)
         self.acquisition_blocked_reason = (
             None
             if self.acquisition_ready
-            else (
-                "missing AUTOMATION_NODE_ID or AUTOMATION_AREA"
-                if not self.node_scope.is_valid
-                else "node is not registered"
-            )
+            else (self.node_scope.blocked_reason or "node identity is not valid")
         )
         return self.node_scope
 
+    def _historian_hydration_allowed(self) -> bool:
+        """Catalog reload from PostgreSQL requires a registered node. CVT does not."""
+        scope = self.node_scope
+        if not scope.enabled:
+            return True
+        identity = (scope.node_id, scope.area)
+        return bool(
+            self._node_registered
+            and self._registered_identity == identity
+        )
+
     def _runtime_hydration_allowed(self) -> bool:
         scope = self._refresh_node_scope()
-        if self.acquisition_ready:
-            return True
-        logging.critical(
-            "Multi-edge acquisition blocked: %s",
-            self.acquisition_blocked_reason,
-        )
-        return False
+        if not scope.is_valid:
+            logging.critical(
+                "Multi-edge acquisition blocked: %s",
+                self.acquisition_blocked_reason,
+            )
+            return False
+        if not self._historian_hydration_allowed():
+            logging.warning(
+                "Historian hydration deferred: node is not registered yet"
+            )
+            return False
+        return True
 
     def _prune_runtime_scope(self) -> None:
         """Remove stale foreign runtime objects before bounded rehydration."""
@@ -241,14 +243,26 @@ class PyAutomation(Singleton):
             return True
         except Exception:
             logging.critical(
-                "Node registration failed; acquisition remains fail-closed",
+                "Node registration failed; historian catalog deferred; acquisition continues",
                 exc_info=True,
             )
-            self.acquisition_ready = False
             self._node_registered = False
             self._registered_identity = None
-            self.acquisition_blocked_reason = "node registration failed"
             return False
+
+    def _ensure_acquisition_running(self) -> None:
+        """Start CVT machines if boot skipped them while the historian was down."""
+        if not self.acquisition_ready:
+            return
+        if getattr(self.machine, "state_worker", None) is not None:
+            return
+        try:
+            self.machine.start()
+        except Exception:
+            logging.critical(
+                "Acquisition start after historian reconnect failed",
+                exc_info=True,
+            )
 
     @logging_error_handler
     def ensure_db_config_from_env(self) -> None:
@@ -366,14 +380,16 @@ class PyAutomation(Singleton):
         @self.sio.on('connect')
         def handle_connect(auth=None):
 
+            scope = self._refresh_node_scope()
+            local_area = scope.area if scope.enabled else None
             payload= {
                 "tags": self.get_tags() or list(),
                 "alarms": self.serialize_alarms() or list(),
                 "machines": self.serialize_machines() or list(),
-                "last_alarms": self.get_lasts_alarms(lasts=10) or list(),
+                "last_alarms": self.get_lasts_alarms(lasts=10, area=local_area) or list(),
                 "last_active_alarms": self.get_lasts_active_alarms(lasts=3) or list(),
-                "last_events": self.get_lasts_events(lasts=10) or list(),
-                "last_logs": self.get_lasts_logs(lasts=10) or list()
+                "last_events": self.get_lasts_events(lasts=10, area=local_area) or list(),
+                "last_logs": self.get_lasts_logs(lasts=10, area=local_area) or list()
             }
             self.sio.emit("on_connection", data=payload)
         print(_colorize_message(f"[{str_date}] [INFO] Socket.IO server defined successfully", "INFO"))
@@ -1109,9 +1125,6 @@ class PyAutomation(Singleton):
 
         * **dict**: Historical data for the requested tags.
         """
-        owned = {tag["name"] for tag in self.get_tags()}
-        if not set(tags).issubset(owned):
-            return {}
         return self.logger_engine.read_trends(start, stop, timezone, *tags)
     
     @logging_error_handler
@@ -1132,9 +1145,6 @@ class PyAutomation(Singleton):
 
         * **dict**: Paginated historical data.
         """
-        owned = {tag["name"] for tag in self.get_tags()}
-        if not set(tags).issubset(owned):
-            return {}
         return self.logger_engine.read_table(start, stop, timezone, tags, page, limit)
     
     @logging_error_handler
@@ -1156,9 +1166,6 @@ class PyAutomation(Singleton):
 
         * **dict**: Resampled tabular data.
         """
-        owned = {tag["name"] for tag in self.get_tags()}
-        if not set(tags).issubset(owned):
-            return {}
         return self.logger_engine.read_tabular_data(start, stop, timezone, tags, sample_time, page, limit)
     
     @logging_error_handler
@@ -1171,6 +1178,41 @@ class PyAutomation(Singleton):
         * **list**: List of segment names.
         """
         return self.logger_engine.read_segments()
+
+    @logging_error_handler
+    def get_historian_tags(self, area:str=None)->list:
+        r"""
+        Plant-wide tag catalog from the historian (not the local CVT).
+
+        **Parameters:**
+
+        * **area** (str, optional): Restrict to one area. Omit for the whole plant.
+
+        **Returns:**
+
+        * **list**: Serialized tag dictionaries, each including ``area``.
+        """
+        if not self.is_db_connected():
+            return list()
+        area = optional_area(area)
+        tags = self.logger_engine.get_tags() or list()
+        if area:
+            tags = [tag for tag in tags if tag.get("area") == area]
+        return tags
+
+    @logging_error_handler
+    def get_plant_nodes(self)->list:
+        r"""
+        Registered edge nodes and their areas (selector for historical HMI filters).
+        """
+        if not self.is_db_connected():
+            return list()
+        from .dbmodels.nodes import Nodes
+
+        return [
+            node.serialize()
+            for node in Nodes.select().order_by(Nodes.area, Nodes.id)
+        ]
 
     @logging_error_handler
     @validate_types(id=str, output=None|str)
@@ -3739,6 +3781,8 @@ class PyAutomation(Singleton):
             logging.debug("Session rebind after DB hydrate skipped", exc_info=True)
         if reload_machines and runtime_allowed:
             self.load_db_tags_to_machine()
+        if runtime_allowed:
+            self._sync_runtime_alarms_to_historian()
 
     def release_ephemeral_historian(self) -> None:
         """Close this greenlet's historian socket. LoggerWorker keeps its own."""
@@ -3872,6 +3916,7 @@ class PyAutomation(Singleton):
                 from .utils.connection_alarms import set_db_disconnected, sync_opcua_connection_alarms
                 set_db_disconnected(False)
                 sync_opcua_connection_alarms()
+                self._ensure_acquisition_running()
 
                 return True
 
@@ -4039,6 +4084,36 @@ class PyAutomation(Singleton):
             else:
                 logging.info(f"No alarms found in database")
                 print(_colorize_message(f"[{str_date}] [INFO] No alarms found in database", "INFO"))
+
+    def _sync_runtime_alarms_to_historian(self) -> None:
+        r"""Persist in-memory alarm definitions that never reached the catalog.
+
+        AlarmSummary rows FK to ``Alarms``. If an edge created alarms while the
+        historian was down, SAF later writes 0 rows and the summary stays empty.
+        """
+        if not self.is_db_connected():
+            return
+        synced = 0
+        for alarm in self.alarm_manager.get_alarms().values():
+            payload = alarm.catalog_payload() if hasattr(alarm, "catalog_payload") else {}
+            tag_name = payload.get("tag")
+            if not tag_name:
+                continue
+            try:
+                self.alarms_engine.create(
+                    id=payload.get("identifier") or alarm.identifier,
+                    name=alarm.name,
+                    tag=tag_name,
+                    trigger_type=payload.get("trigger_type") or "BOOL",
+                    trigger_value=payload.get("trigger_value") if payload.get("trigger_value") is not None else 0,
+                    description=payload.get("description") or "",
+                    area=payload.get("area"),
+                )
+                synced += 1
+            except Exception:
+                logging.warning("Alarm catalog sync skipped name=%s", alarm.name, exc_info=True)
+        if synced:
+            logging.info("Synced %s runtime alarm definition(s) to historian catalog", synced)
 
     @logging_error_handler
     @validate_types(output=None)
@@ -4327,6 +4402,7 @@ class PyAutomation(Singleton):
             ack_timestamp=str|type(None),
             user=User|type(None),
             reload=bool,
+            area=str|type(None),
             output=(Alarm|type(None), str)
     )
     def create_alarm(
@@ -4341,7 +4417,8 @@ class PyAutomation(Singleton):
             timestamp:str=None,
             ack_timestamp:str=None,
             user:User=None,
-            reload:bool=False
+            reload:bool=False,
+            area:str=None,
         )->tuple[Alarm, str]:
         r"""
         Creates and registers a new alarm in the system.
@@ -4387,8 +4464,6 @@ class PyAutomation(Singleton):
             or not scope.owns_tag(tag_obj)
         ):
             return None, f"Alarm '{name}' references a tag outside this node"
-        if scope.enabled and not name.startswith(f"{scope.area}."):
-            return None, f"Alarm name must be qualified with '{scope.area}.'"
 
         result = self.alarm_manager.append_alarm(
             name=name,
@@ -4434,14 +4509,15 @@ class PyAutomation(Singleton):
         return None, message
 
     @logging_error_handler
-    @validate_types(lasts=int, output=list)
-    def get_lasts_alarms(self, lasts:int=10)->list:
+    @validate_types(lasts=int, area=str|type(None), output=list)
+    def get_lasts_alarms(self, lasts:int=10, area:str=None)->list:
         r"""
         Retrieves the last N alarms recorded in history.
 
         **Parameters:**
 
         * **lasts** (int): Number of records to retrieve.
+        * **area** (str, optional): Restrict to one area. Omit for the whole plant.
 
         **Returns:**
 
@@ -4461,10 +4537,9 @@ class PyAutomation(Singleton):
         ```
         """
         if self.is_db_connected():
-            scope = self._refresh_node_scope()
             return self.alarms_engine.get_lasts(
                 lasts=lasts,
-                area=scope.area if scope.enabled else None,
+                area=optional_area(area),
             )
         
         return list()
@@ -4502,9 +4577,8 @@ class PyAutomation(Singleton):
             # Ensure pagination parameters are present or defaulted
             if 'page' not in fields: fields['page'] = 1
             if 'limit' not in fields: fields['limit'] = 20
-            scope = self._refresh_node_scope()
-            if scope.enabled:
-                fields["area"] = scope.area
+            if "area" in fields:
+                fields["area"] = optional_area(fields.get("area"))
 
             return self.alarms_engine.filter_alarm_summary_by(**fields)
 
@@ -4553,8 +4627,6 @@ class PyAutomation(Singleton):
             scope.enabled and not scope.owns_tag(getattr(current, "tag", None))
         ):
             return
-        if scope.enabled and name and not name.startswith(f"{scope.area}."):
-            return
         if tag and scope.enabled and not scope.owns_tag(
             self.cvt.get_tag_by_name(name=tag)
         ):
@@ -4580,7 +4652,7 @@ class PyAutomation(Singleton):
                 trigger_value=trigger_value)
 
     @logging_error_handler
-    @validate_types(id=str, output=Alarm)
+    @validate_types(id=str, output=Alarm|type(None))
     def get_alarm(self, id:str)->Alarm:
         r"""
         Retrieves an alarm object by its ID.
@@ -4677,7 +4749,7 @@ class PyAutomation(Singleton):
         return self.alarm_manager.get_lasts_active_alarms(lasts=lasts) or list()
 
     @logging_error_handler
-    @validate_types(name=str, output=Alarm)
+    @validate_types(name=str, output=Alarm|type(None))
     def get_alarm_by_name(self, name:str)->Alarm:
         r"""
         Retrieves an alarm by its name.
@@ -4748,14 +4820,15 @@ class PyAutomation(Singleton):
 
     # EVENTS METHODS
     @logging_error_handler
-    @validate_types(lasts=int, output=list)
-    def get_lasts_events(self, lasts:int=10)->list:
+    @validate_types(lasts=int, area=str|type(None), output=list)
+    def get_lasts_events(self, lasts:int=10, area:str=None)->list:
         r"""
         Retrieves the last N system events.
 
         **Parameters:**
 
         * **lasts** (int): Number of events to retrieve.
+        * **area** (str, optional): Restrict to one area. Omit for the whole plant.
 
         **Returns:**
 
@@ -4773,10 +4846,9 @@ class PyAutomation(Singleton):
         ```
         """
         if self.is_db_connected():
-            scope = self._refresh_node_scope()
             return self.events_engine.get_lasts(
                 lasts=lasts,
-                area=scope.area if scope.enabled else None,
+                area=optional_area(area),
             )
         
         return list()
@@ -4794,7 +4866,8 @@ class PyAutomation(Singleton):
             less_than_timestamp:datetime=None,
             timezone:str="UTC",
             page:int=1,
-            limit:int=20)->list:
+            limit:int=20,
+            area:str=None)->list:
         r"""
         Filters system events based on multiple criteria.
 
@@ -4813,7 +4886,6 @@ class PyAutomation(Singleton):
         * **list**: Filtered list of events.
         """
         if self.is_db_connected():
-            scope = self._refresh_node_scope()
             return self.events_engine.filter_by(
                 usernames=usernames,
                 priorities=priorities,
@@ -4826,7 +4898,7 @@ class PyAutomation(Singleton):
                 timezone=timezone,
                 page=page,
                 limit=limit,
-                area=scope.area if scope.enabled else None,
+                area=optional_area(area),
             )
         
         return list()
@@ -4898,6 +4970,7 @@ class PyAutomation(Singleton):
             classifications:list=None,
             search:str="",
             exclude_description:str="",
+            area:str=None,
         )->dict:
         r"""
         Filters system logs based on criteria with pagination.
@@ -4921,7 +4994,6 @@ class PyAutomation(Singleton):
         * **dict**: {data: list, pagination: dict}
         """
         if self.is_db_connected():
-            scope = self._refresh_node_scope()
             return self.logs_engine.filter_by(
                 usernames=usernames,
                 alarm_names=alarm_names,
@@ -4937,28 +5009,28 @@ class PyAutomation(Singleton):
                 classifications=classifications,
                 search=search,
                 exclude_description=exclude_description,
-                area=scope.area if scope.enabled else None,
+                area=optional_area(area),
             )
         
     @logging_error_handler
-    @validate_types(lasts=int, output=list)
-    def get_lasts_logs(self, lasts:int=10)->list:
+    @validate_types(lasts=int, area=str|type(None), output=list)
+    def get_lasts_logs(self, lasts:int=10, area:str=None)->list:
         r"""
         Retrieves the last N logs.
 
         **Parameters:**
 
         * **lasts** (int): Number of logs to retrieve.
+        * **area** (str, optional): Restrict to one area. Omit for the whole plant.
 
         **Returns:**
 
         * **list**: List of log entries.
         """
         if self.is_db_connected():
-            scope = self._refresh_node_scope()
             return self.logs_engine.get_lasts(
                 lasts=lasts,
-                area=scope.area if scope.enabled else None,
+                area=optional_area(area),
             ) or list()
         
         return list()
@@ -5140,11 +5212,9 @@ class PyAutomation(Singleton):
             self.connect_to_db(test=test, source="core-startup")
             if not self.acquisition_ready:
                 logging.critical(
-                    "Acquisition workers not started: %s",
+                    "Acquisition identity is not valid: %s",
                     self.acquisition_blocked_reason,
                 )
-                self.is_starting = False
-                return
             self.db_worker.start()
 
         if machines:
@@ -5156,7 +5226,7 @@ class PyAutomation(Singleton):
         if self.acquisition_ready:
             self.machine.start(machines=machines)
         
-        if self.is_db_connected() and self.acquisition_ready:
+        if self.is_db_connected() and self._historian_hydration_allowed():
             
             self.load_db_tags_to_machine()
 

@@ -260,7 +260,11 @@ class PeeweeRemoteDB:
         from ..dbmodels.alarms import AlarmSummary
 
         written = 0
+        skipped = []
         for item in payloads:
+            if _ensure_alarm_catalog(item) is None:
+                skipped.append(item.get("name"))
+                continue
             kwargs = dict(
                 name=item.get("name"),
                 state=item.get("state"),
@@ -271,15 +275,30 @@ class PeeweeRemoteDB:
             created = AlarmSummary.create(**kwargs)
             if created is not None:
                 written += 1
+            else:
+                skipped.append(item.get("name"))
+        if skipped:
+            logging.getLogger("pyautomation").error(
+                "SAF alarm_summary skipped %s/%s (catalog or insert failed): %s",
+                len(skipped),
+                len(payloads),
+                skipped[:20],
+            )
         return written
 
     def _write_alarm_updates(self, payloads: Sequence[Mapping]) -> int:
         from ..dbmodels.alarms import AlarmStates, AlarmSummary
 
         written = 0
+        skipped = []
         for item in payloads:
-            alarm = AlarmSummary.read_by_name(name=item.get("name"))
+            _ensure_alarm_catalog(item)
+            alarm = AlarmSummary.read_by_name(
+                name=item.get("name"),
+                area=item.get("area"),
+            )
             if not alarm:
+                skipped.append(item.get("name"))
                 continue
             fields = {}
             if item.get("ack_timestamp"):
@@ -293,6 +312,15 @@ class PeeweeRemoteDB:
             if fields:
                 AlarmSummary.put(id=alarm.id, **fields)
                 written += 1
+            else:
+                skipped.append(item.get("name"))
+        if skipped:
+            logging.getLogger("pyautomation").error(
+                "SAF alarm_summary_update skipped %s/%s (summary missing): %s",
+                len(skipped),
+                len(payloads),
+                skipped[:20],
+            )
         return written
 
     def _write_logs(self, payloads: Sequence[Mapping]) -> int:
@@ -320,6 +348,97 @@ class PeeweeRemoteDB:
             if created is not None:
                 written += 1
         return written
+
+
+def _runtime_alarm(name: str):
+    if not name:
+        return None
+    try:
+        from .. import PyAutomation
+
+        return PyAutomation().alarm_manager.get_alarm_by_name(name)
+    except Exception:
+        return None
+
+
+def _tag_name(tag) -> str | None:
+    if tag is None:
+        return None
+    if isinstance(tag, str):
+        return tag
+    name = getattr(tag, "name", None)
+    if name:
+        return name
+    getter = getattr(tag, "get_name", None)
+    if callable(getter):
+        return getter() or None
+    return None
+
+
+def _alarm_catalog_fields(item: Mapping[str, Any]) -> dict[str, Any] | None:
+    name = item.get("name")
+    tag = item.get("tag") or item.get("tag_name")
+    identifier = item.get("id") or item.get("identifier")
+    trigger_type = item.get("trigger_type") or item.get("alarm_type")
+    trigger_value = item.get("trigger_value")
+    description = item.get("description")
+    area = item.get("area")
+    state = item.get("state")
+    runtime = _runtime_alarm(name)
+    if runtime is not None:
+        tag = tag or _tag_name(getattr(runtime, "tag", None))
+        identifier = identifier or getattr(runtime, "identifier", None)
+        description = description or getattr(runtime, "description", None)
+        payload = getattr(runtime, "catalog_payload", None)
+        extra = payload() if callable(payload) else {}
+        tag = tag or extra.get("tag")
+        identifier = identifier or extra.get("identifier")
+        trigger_type = trigger_type or extra.get("trigger_type")
+        if trigger_value is None:
+            trigger_value = extra.get("trigger_value")
+        description = description or extra.get("description")
+        area = area or extra.get("area")
+        state = state or extra.get("state")
+    if not name or not tag:
+        return None
+    payload = {
+        "identifier": identifier,
+        "name": name,
+        "tag": tag,
+        "trigger_type": trigger_type or "BOOL",
+        "trigger_value": 0.0 if trigger_value is None else trigger_value,
+        "description": description or "",
+        "area": area,
+    }
+    if state:
+        payload["state"] = state
+    return payload
+
+
+def _ensure_alarm_catalog(item: Mapping[str, Any]):
+    from ..dbmodels.alarms import Alarms
+
+    name = item.get("name")
+    area = item.get("area")
+    existing = Alarms.read_by_name(name=name, area=area)
+    if existing is not None:
+        return existing
+    fields = _alarm_catalog_fields(item)
+    if not fields:
+        logging.getLogger("pyautomation").error(
+            "SAF cannot materialize alarm catalog name=%s area=%s (missing tag/runtime)",
+            name,
+            area,
+        )
+        return None
+    if not fields.get("identifier"):
+        import secrets
+
+        fields["identifier"] = secrets.token_hex(4)
+    created = Alarms.create(**fields)
+    if created is not None:
+        return created
+    return Alarms.read_by_name(name=name, area=area)
 
 
 def _user_for_username(username: str):

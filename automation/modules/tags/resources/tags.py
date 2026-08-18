@@ -26,6 +26,21 @@ def _scope_violation(payload=None, resource=None):
             return {"message": "Requested owner_node belongs to another edge node"}, 403
     return None
 
+
+def _historian_tag_exists(name: str) -> bool:
+    """Look up a tag in the historian catalog, not the local CVT."""
+    return bool(app.logger_engine.get_tag_by_name(name=name))
+
+
+catalog_parser = reqparse.RequestParser()
+catalog_parser.add_argument(
+    'area',
+    type=str,
+    location='args',
+    required=False,
+    help='Optional area filter. Omit for plant-wide catalog.',
+)
+
 query_trends_model = api.model("query_trends_model",{
     'tags':  fields.List(fields.String(), required=True, description='List of tag names to query'),
     'greater_than_timestamp': fields.DateTime(required=True, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description='Start DateTime'),
@@ -233,6 +248,24 @@ class TagsNamesCollection(Resource):
         args = self.parser.parse_args()
         names = args.get('names')
         return app.get_tags_by_names(names=names or []), 200
+
+@ns.route('/catalog')
+class HistorianCatalogResource(Resource):
+
+    @api.doc(security='apikey', description="Plant-wide historian tag catalog (not the local CVT).")
+    @api.response(200, "Success")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
+    @ns.expect(catalog_parser)
+    @Api.token_required(auth=True)
+    def get(self):
+        """Historian tag catalog.
+
+        Returns tags from the shared database, including other areas.
+        Optional query parameter ``area`` restricts to one line.
+        """
+        args = catalog_parser.parse_args()
+        return {"data": app.get_historian_tags(area=args.get("area"))}, 200
     
 @ns.route('/query_trends')
 class QueryTrendsResource(Resource):
@@ -265,7 +298,7 @@ class QueryTrendsResource(Resource):
         
         for tag in tags:
 
-            if not app.get_tag_by_name(name=tag):
+            if not _historian_tag_exists(tag):
 
                 return f"{tag} not exist into db", 404
         
@@ -309,7 +342,7 @@ class QueryTableResource(Resource):
             return f"Invalid Timezone", 400
         
         for tag in tags:
-            if not app.get_tag_by_name(name=tag):
+            if not _historian_tag_exists(tag):
                 return f"{tag} not exist into db", 404
         
         separator = '.'
@@ -363,7 +396,7 @@ class GetTabularDataResource(Resource):
             return f"Invalid Timezone", 400
         
         for tag in tags:
-            if not app.get_tag_by_name(name=tag):
+            if not _historian_tag_exists(tag):
                 return f"{tag} not exist into db", 404
         
         separator = '.'
@@ -440,6 +473,7 @@ class WriteValueResource(Resource):
                 priority=3,
                 criticity=4,
                 user=user,
+                area=getattr(tag, "area", None),
             )
         except Exception:
             pass

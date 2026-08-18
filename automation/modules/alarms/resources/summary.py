@@ -1,6 +1,6 @@
 import pytz
 from datetime import datetime, timedelta
-from flask_restx import Namespace, Resource, fields
+from flask_restx import Namespace, Resource, fields, reqparse
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
@@ -19,8 +19,18 @@ alarms_summary_filter_model = api.model("alarms_summary_filter_model",{
     'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE), description=f'End time for filtering - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
     'timezone': fields.String(required=False, default=_TIMEZONE, description='Timezone for the query'),
     'page': fields.Integer(required=False, default=1, description='Page number for pagination'),
-    'limit': fields.Integer(required=False, default=20, description='Items per page')
+    'limit': fields.Integer(required=False, default=20, description='Items per page'),
+    'area': fields.String(required=False, description='Optional area filter. Omit for plant-wide results.'),
 })
+
+lasts_parser = reqparse.RequestParser()
+lasts_parser.add_argument(
+    'area',
+    type=str,
+    location='args',
+    required=False,
+    help='Optional area filter. Omit for plant-wide results.',
+)
 
     
 @ns.route('/filter_by')
@@ -101,14 +111,16 @@ class LastsAlarmsResource(Resource):
     @api.response(503, "Remote database unavailable")
     @require_remote_db
     @Api.token_required(auth=True)
+    @ns.expect(lasts_parser)
     def get(self, lasts:int=10):
         r"""
         Get latest alarm events.
 
         Retrieves the most recent alarm events from the history.
+        Optional query parameter ``area`` restricts to one line; omit for the whole plant.
         """
-
-        return app.get_lasts_alarms(lasts=int(lasts))
+        args = lasts_parser.parse_args()
+        return app.get_lasts_alarms(lasts=int(lasts), area=args.get("area"))
     
 
 @ns.route('/<id>/comments')

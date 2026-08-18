@@ -239,5 +239,34 @@ class TestMultiEdgeSaf(unittest.TestCase):
                 journal.stop()
 
 
+class TestApplicationAlarmContract(unittest.TestCase):
+    def test_leak_alarm_name_does_not_need_area_prefix(self):
+        env = {
+            "AUTOMATION_MULTI_EDGE_ENABLED": "true",
+            "AUTOMATION_NODE_ID": "edge-linea1",
+            "AUTOMATION_SEGMENT": "Linea1",
+            "AUTOMATION_MANUFACTURER": "Test",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            from .. import PyAutomation
+
+            app = PyAutomation()
+            app._refresh_node_scope()
+            tag_name = f"Test.Linea1.LDS.leak.{id(self)}"
+            alarm_name = f"alarm.{tag_name}"
+            tag, message = app.cvt.set_tag(
+                name=tag_name,
+                unit="adim",
+                data_type="int",
+                description="leak flag",
+                variable="Adimentional",
+            )
+            self.assertIsNotNone(tag, message)
+            alarm, message = app.create_alarm(name=alarm_name, tag=tag_name)
+            self.assertIsNotNone(alarm, message)
+            self.assertIsNotNone(app.get_alarm_by_name(name=alarm_name))
+            self.assertIsNone(app.get_alarm_by_name(name=f"missing.{id(self)}"))
+
+
 if __name__ == "__main__":
     unittest.main()

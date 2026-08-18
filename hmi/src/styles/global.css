@@ -658,21 +658,33 @@ html.light .app-sidebar .brand-text {
 
 .header-clock {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
-  gap: 0.7rem;
   z-index: 1;
-  white-space: nowrap;
+  pointer-events: none;
+  padding: 0 4.75rem;
+}
+
+.header-clock > * {
+  pointer-events: auto;
+  min-width: 0;
+}
+
+.header-clock__lead {
+  justify-self: end;
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 0.85rem;
 }
 
 .header-clock__stamp {
+  justify-self: center;
   display: inline-flex;
   align-items: baseline;
   gap: 0.7rem;
+  white-space: nowrap;
 }
 
 .header-clock__date,
@@ -686,6 +698,59 @@ html.light .app-sidebar .brand-text {
 
 .header-clock__time {
   font-weight: 700;
+}
+
+.header-clock__identity {
+  justify-self: start;
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
+  padding-left: 0.85rem;
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.header-clock__site {
+  color: var(--bs-secondary-color, #6c757d);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-clock__dot {
+  color: var(--bs-secondary-color, #6c757d);
+  margin: 0 0.05rem;
+  font-weight: 500;
+}
+
+.header-clock__area {
+  color: var(--bs-body-color);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-clock__identity-empty {
+  color: var(--bs-secondary-color, #6c757d);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 960px) {
+  .header-clock__date {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .header-clock__lead,
+  .header-clock__identity {
+    visibility: hidden;
+  }
 }
 
 .app-sidebar .sidebar-brand {

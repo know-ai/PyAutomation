@@ -25,6 +25,8 @@ export type Tag = {
   frozen_data_detection?: boolean;
   segment?: string;
   manufacturer?: string;
+  area?: string | null;
+  owner_node?: string | null;
   [key: string]: any; // Para campos adicionales que puedan venir del backend
 };
 
@@ -62,6 +64,16 @@ export const getTagsList = async (
   if (manufacturer) payload.manufacturer = manufacturer;
   if (segment) payload.segment = segment;
   const { data } = await api.post("/tags/list", payload);
+  return data?.data || [];
+};
+
+/**
+ * Catálogo de tags del historiador (todas las áreas). GET /tags y /tags/list siguen acotados al CVT local.
+ */
+export const getHistorianCatalog = async (area?: string): Promise<Tag[]> => {
+  const { data } = await api.get("/tags/catalog", {
+    params: area ? { area } : {},
+  });
   return data?.data || [];
 };
 

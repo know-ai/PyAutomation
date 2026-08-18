@@ -2,12 +2,11 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { MultiSelectSearch } from "../components/MultiSelectSearch";
+import { AreaFilter } from "../components/AreaFilter";
 import {
-  getTags,
-  getTagsList,
+  getHistorianCatalog,
   getTrends,
   type Tag,
-  type TagsResponse,
   type TrendsFilter,
   type TrendsResponse,
 } from "../services/tags";
@@ -18,6 +17,7 @@ import axios from "axios";
 import { useTheme } from "../hooks/useTheme";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { usePlantAreas } from "../hooks/usePlantAreas";
 import { formatDateTimeLocalInput, formatInstantForBackend, plotlyLocaleTimeFormats } from "../utils/timezone";
 import { readSessionTags, writeSessionTags } from "../utils/sessionFilters";
 
@@ -130,6 +130,7 @@ export function Trends() {
   const { t, locale } = useTranslation();
   const { mode } = useTheme();
   const { timeZone } = useDisplayTimezone();
+  const plantAreas = usePlantAreas();
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("trends_presetDate");
     return (saved as PresetDate) || "Last Hour";
@@ -141,6 +142,7 @@ export function Trends() {
     return localStorage.getItem("trends_endDate") || "";
   });
   const [selectedTags, setSelectedTags] = useState<string[]>(() => readSessionTags("trends_selectedTags"));
+  const [selectedArea, setSelectedArea] = useState("");
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(false);
   const [zoomLoading, setZoomLoading] = useState(false);
@@ -170,16 +172,9 @@ export function Trends() {
       try {
         let allTagsList: Tag[] = [];
         try {
-          allTagsList = await getTagsList();
+          allTagsList = await getHistorianCatalog(selectedArea || undefined);
         } catch (_e) {
-          let page = 1;
-          let hasMore = true;
-          while (hasMore) {
-            const response: TagsResponse = await getTags(page, 100);
-            allTagsList.push(...(response.data || []));
-            hasMore = page < response.pagination.pages;
-            page++;
-          }
+          allTagsList = [];
         }
         setAvailableTags(allTagsList);
 
@@ -219,13 +214,15 @@ export function Trends() {
       }
     };
     loadOptions();
-  }, []);
+  }, [selectedArea]);
 
   const tagOptions = useMemo(
     () =>
       availableTags.map((tag) => ({
         value: tag.name,
-        label: tag.display_name || tag.name,
+        label: tag.area
+          ? `${tag.display_name || tag.name} (${tag.area})`
+          : tag.display_name || tag.name,
         description: tag.variable || tag.description,
       })),
     [availableTags]
@@ -590,16 +587,18 @@ export function Trends() {
     }
 
     // Agrupar tags por unidad
-    const tagsByUnit = new Map<string, { tagName: string; unit: string; values: { x: string; y: number }[] }[]>();
+    const tagsByUnit = new Map<string, { tagName: string; unit: string; area?: string | null; values: { x: string; y: number }[] }[]>();
     
     Object.entries(trendsData).forEach(([tagName, tagData]) => {
       const unit = tagData.unit || "unknown";
       if (!tagsByUnit.has(unit)) {
         tagsByUnit.set(unit, []);
       }
+      const catalogTag = availableTags.find((item) => item.name === tagName);
       tagsByUnit.get(unit)!.push({
         tagName,
         unit,
+        area: catalogTag?.area,
         values: tagData.values || [],
       });
     });
@@ -686,7 +685,7 @@ export function Trends() {
           y: yValues,
           type: "scatter",
           mode: "lines",
-          name: `${tag.tagName} (${unit})`,
+          name: tag.area ? `${tag.tagName} (${tag.area}) (${unit})` : `${tag.tagName} (${unit})`,
           yaxis: yAxisKey,
           line: {
             width: 2,
@@ -806,7 +805,7 @@ export function Trends() {
     };
 
     return { data, layout };
-  }, [trendsData, mode, dataRevision, axisRange, locale]);
+  }, [trendsData, mode, dataRevision, axisRange, locale, availableTags]);
 
   return (
     <div className="row g-0 trends-fit-viewport">
@@ -822,6 +821,12 @@ export function Trends() {
                   <h3 className="card-title m-0">{t("navigation.trends")}</h3>
                 </div>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <AreaFilter
+                    value={selectedArea}
+                    areas={plantAreas}
+                    plantLabel={t("common.plantWide")}
+                    onChange={setSelectedArea}
+                  />
                   <label className="form-label small mb-0">{t("trends.selectTags")}:</label>
                   <MultiSelectSearch
                     options={tagOptions}

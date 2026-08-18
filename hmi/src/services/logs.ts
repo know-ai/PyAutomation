@@ -43,6 +43,7 @@ export type LogFilter = {
   timezone?: string;
   page?: number;
   limit?: number;
+  area?: string;
 };
 
 export type LogResponse = {

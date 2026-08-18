@@ -263,6 +263,82 @@ class TestConnectionRegistry(unittest.TestCase):
         finally:
             mark_remote_db_live()
 
+    def test_tracked_connect_failure_marks_dead(self):
+        from peewee import OperationalError, PostgresqlDatabase
+
+        from ..utils.db_connections import TrackedPostgresqlDatabase, force_historian_connect
+        from ..utils.db_io import mark_remote_db_live, probe_is_cooling_down
+
+        mark_remote_db_live()
+        db = TrackedPostgresqlDatabase(None)
+        try:
+            with force_historian_connect():
+                with patch.object(
+                    PostgresqlDatabase,
+                    "_connect",
+                    side_effect=OperationalError("timeout expired"),
+                ):
+                    with self.assertRaises(OperationalError):
+                        db._connect()
+            self.assertTrue(probe_is_cooling_down())
+        finally:
+            mark_remote_db_live()
+
+    def test_known_dead_handle_skips_connect_without_force(self):
+        from peewee import OperationalError, PostgresqlDatabase
+
+        from ..utils.db_connections import TrackedPostgresqlDatabase
+        from ..utils.db_io import mark_remote_db_live
+
+        mark_remote_db_live()
+        db = TrackedPostgresqlDatabase(None)
+        app = MagicMock()
+        app._db = object()
+        app._db_live = False
+        with patch("automation.PyAutomation", return_value=app), patch.object(
+            PostgresqlDatabase, "_connect", return_value=object()
+        ) as connect:
+            with self.assertRaises(OperationalError) as raised:
+                db._connect()
+        self.assertIn("unreachable", str(raised.exception))
+        connect.assert_not_called()
+
+    def test_acquisition_thread_skips_connect_when_historian_not_live(self):
+        from peewee import OperationalError, PostgresqlDatabase
+
+        from ..utils.db_connections import TrackedPostgresqlDatabase
+        from ..utils.db_io import mark_remote_db_live
+
+        mark_remote_db_live()
+        db = TrackedPostgresqlDatabase(None)
+        app = MagicMock()
+        app._db = None
+        app._db_live = False
+        thread = MagicMock()
+        thread.name = "SM-LDS"
+        with patch("automation.PyAutomation", return_value=app), patch(
+            "automation.utils.db_connections.threading.current_thread",
+            return_value=thread,
+        ), patch.object(PostgresqlDatabase, "_connect", return_value=object()) as connect:
+            with self.assertRaises(OperationalError):
+                db._connect()
+        connect.assert_not_called()
+
+    def test_run_machine_cycle_survives_historian_operational_error(self):
+        from peewee import OperationalError
+
+        from ..workers.state_machine import run_machine_cycle
+
+        machine = MagicMock()
+        machine.name.value = "LDS"
+        machine.loop.side_effect = OperationalError("historian unreachable; connect skipped")
+        app = MagicMock()
+        app._db = None
+        app._db_live = False
+        with patch("automation.PyAutomation", return_value=app):
+            run_machine_cycle(machine)
+        machine.loop.assert_called_once()
+
     def test_ephemeral_historian_keeps_logger_worker_socket(self):
         from ..utils.db_connections import ephemeral_historian
 
@@ -298,6 +374,72 @@ class TestJournalThenRemoteCloses(unittest.TestCase):
         self.assertTrue(journaled)
         self.assertIsNotNone(result)
         db.close.assert_called()
+
+    def test_batch_enqueues_once_and_marks_sent(self):
+        from datetime import datetime, timezone
+
+        from ..persistence import outbox
+        from ..persistence.records import PersistableRecord
+
+        records = [
+            PersistableRecord.alarm_update(
+                name=f"a{i}",
+                state="Acknowledged",
+                ack_timestamp=datetime.now(timezone.utc),
+            )
+            for i in range(5)
+        ]
+        gateway = MagicMock()
+        gateway.enqueue_many.return_value = [1, 2, 3, 4, 5]
+        db = MagicMock()
+        db.is_closed.return_value = False
+        app = MagicMock()
+        app._db = db
+        with patch.object(outbox, "get_persistence_gateway", return_value=gateway), \
+             patch("automation.PyAutomation", return_value=app), \
+             patch("automation.utils.db_connections.keep_historian_socket", return_value=False):
+            result, journaled = outbox.journal_then_remote_batch(records, lambda: 5, True)
+        self.assertTrue(journaled)
+        self.assertEqual(result, 5)
+        gateway.enqueue_many.assert_called_once()
+        gateway.enqueue.assert_not_called()
+        gateway.mark_replicating.assert_called_once_with([1, 2, 3, 4, 5])
+        gateway.mark_sent.assert_called_once_with([1, 2, 3, 4, 5])
+        db.close.assert_called()
+
+
+class TestAcquisitionWithoutHistorian(unittest.TestCase):
+    def test_valid_identity_starts_acquisition_before_node_registration(self):
+        from ..core import PyAutomation
+
+        app = PyAutomation()
+        previous = (
+            app._node_registered,
+            app._registered_identity,
+            app.acquisition_ready,
+            app.node_scope,
+        )
+        try:
+            app._node_registered = False
+            app._registered_identity = None
+            scope = MagicMock()
+            scope.enabled = True
+            scope.is_valid = True
+            scope.node_id = "edge-1"
+            scope.area = "Linea1"
+            scope.site = "Test"
+            scope.blocked_reason = None
+            with patch("automation.node_scope.get_node_scope", return_value=scope):
+                app._refresh_node_scope()
+            self.assertTrue(app.acquisition_ready)
+            self.assertFalse(app._historian_hydration_allowed())
+        finally:
+            (
+                app._node_registered,
+                app._registered_identity,
+                app.acquisition_ready,
+                app.node_scope,
+            ) = previous
 
 
 def connections_over_threshold():

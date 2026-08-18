@@ -202,7 +202,7 @@ Sin esto, un `logger_period` de 10 s durante un outage de horas generaría miles
 | | |
 |---|---|
 | **Archivo** | `automation/utils/log_filters.py`, `decorators.py`, `core.__start_logger` |
-| **Comportamiento** | Cada excepción → `logger.error(msg)` estructurado. **Sin** `print`. El filtro en el logger (una vez por record) suprime repeticiones `(pathname, lineno, funcName, msg)` durante `log_error_cooldown_seconds` (default 60). Caché LRU ≤ 1000. `cooldown=0` desactiva. |
+| **Comportamiento** | Cada excepción → `logger.error(msg)` estructurado. **Sin** `print` (tampoco en `validate_types`). El filtro suprime repeticiones `(pathname, lineno, funcName, msg)` durante `log_error_cooldown_seconds` (default 60). Al reemitir, anota `[repeated N times in last Xs]`. Caché LRU ≤ 1000. `cooldown=0` desactiva. |
 | **Stdout** | `StreamHandler(sys.stdout)` nivel ERROR, mismo formatter; no comparte el filtro a nivel handler (evitaría el segundo destino). |
 | **Métrica** | `LOG_ERROR_RATE_PER_MIN` cuenta **intentos** ERROR (incl. suprimidos); `LOG_ERROR_ALERT` si > 5/min. |
 | **Caliente** | `PUT /api/settings/update` `{ "log_error_cooldown_seconds": 60 }` |
@@ -281,7 +281,7 @@ Métrica operativa:
 |---|---|---|---|
 | **LOG-H1** | — | Rate-limit decorator | **Cerrado** — `DedupeFilter` |
 | **LOG-H2** | — | `print` doble en `@logging_error_handler` | **Cerrado** — solo logger + StreamHandler ERROR |
-| **LOG-M3** | Info | `print` residual en `validate_types` (mismatch de tipo) y arranque de `core.py` | Aceptable — no es el hot path de excepción de SM |
+| **LOG-M3** | — | `print` residual en `validate_types` | **Cerrado** — solo `logger.error`; `DedupeFilter` anota repeticiones al reemitir |
 | **LOG-H3** | Info | stdout Docker | **Documentado** — runbook §6.2 (`max-size=10m`) |
 | **LOG-H4** | Info | Backups SQLite | **Documentado** — no poda automática a propósito; script ops §6.3 |
 | **LOG-H5** | Info | TTL PG | **Documentado** — retención DBA, no `DELETE` desde app |

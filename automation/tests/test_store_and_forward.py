@@ -74,6 +74,20 @@ class TestSafJournal(unittest.TestCase):
         self.tmp.cleanup()
         reset_persistence_gateway()
 
+    def test_append_committed_many_one_commit(self):
+        records = [
+            PersistableRecord.alarm_update(
+                name=f"A{i}",
+                state="Acknowledged",
+                ack_timestamp=datetime.now(timezone.utc),
+            )
+            for i in range(10)
+        ]
+        ids = self.journal.append_committed_many(records)
+        self.assertEqual(len(ids), 10)
+        self.assertEqual(len(self.journal.fetch_pending(20)), 10)
+        self.assertTrue(all(jid > 0 for jid in ids))
+
     def test_t02_restart_replays_pending(self):
         record = PersistableRecord.event(message="boom", username="system")
         row_id = self.journal.append(record)

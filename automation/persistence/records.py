@@ -57,18 +57,25 @@ def iso_tag(value: datetime | str | None) -> str | None:
     return iso_millis(value)
 
 
-def _scope_metadata(area=None, owner_node=None) -> tuple[str | None, str | None]:
+def _scope_metadata(
+    area=None,
+    owner_node=None,
+    *,
+    plant_wide: bool = False,
+) -> tuple[str | None, str | None]:
     try:
         from ..node_scope import get_node_scope
 
         scope = get_node_scope()
     except (ImportError, AttributeError):
-        return area, owner_node
+        return (None if plant_wide else area), owner_node
     if getattr(scope, "enabled", False) and getattr(scope, "is_valid", False):
-        if area is None:
+        if area is None and not plant_wide:
             area = getattr(scope, "area", None)
         if owner_node is None:
             owner_node = getattr(scope, "node_id", None)
+    if plant_wide:
+        area = None
     return area, owner_node
 
 
@@ -147,9 +154,10 @@ class PersistableRecord:
         timestamp: datetime | None = None,
         area: str | None = None,
         owner_node: str | None = None,
+        plant_wide: bool = False,
     ) -> "PersistableRecord":
         ts = iso(timestamp or utc_now())
-        area, owner_node = _scope_metadata(area, owner_node)
+        area, owner_node = _scope_metadata(area, owner_node, plant_wide=plant_wide)
         return cls(
             domain_name=DOMAIN.EVENT,
             entity=username or "system",
@@ -178,6 +186,11 @@ class PersistableRecord:
         ack_timestamp: datetime | None = None,
         area: str | None = None,
         owner_node: str | None = None,
+        identifier: str | None = None,
+        tag: str | None = None,
+        trigger_type: str | None = None,
+        trigger_value: Any = None,
+        description: str | None = None,
     ) -> "PersistableRecord":
         ts = iso(timestamp)
         area, owner_node = _scope_metadata(area, owner_node)
@@ -191,6 +204,11 @@ class PersistableRecord:
                 "ack_timestamp": iso(ack_timestamp),
                 "area": area,
                 "owner_node": owner_node,
+                "identifier": identifier,
+                "tag": tag,
+                "trigger_type": trigger_type,
+                "trigger_value": trigger_value,
+                "description": description,
             },
             key=f"alarm:{name}:{ts}:{state}",
             critical=True,
@@ -205,6 +223,8 @@ class PersistableRecord:
         ack_timestamp: datetime | None = None,
         area: str | None = None,
         owner_node: str | None = None,
+        identifier: str | None = None,
+        tag: str | None = None,
     ) -> "PersistableRecord":
         ts = iso(utc_now())
         area, owner_node = _scope_metadata(area, owner_node)
@@ -217,6 +237,8 @@ class PersistableRecord:
                 "ack_timestamp": iso(ack_timestamp),
                 "area": area,
                 "owner_node": owner_node,
+                "identifier": identifier,
+                "tag": tag,
             },
             key=f"alarm-update:{name}:{ts}:{state}:{iso(ack_timestamp)}",
             critical=True,
@@ -283,6 +305,7 @@ class JournaledEnvelope:
             "classification": self.payload.get("classification"),
             "shift": self.payload.get("shift"),
             "area": self.payload.get("area"),
+            "segment": self.payload.get("area"),
             "handover": bool(self.payload.get("handover")),
             "priority": self.payload.get("priority"),
             "criticity": self.payload.get("criticity"),

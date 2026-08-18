@@ -3,6 +3,7 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { HistoryResults } from "../components/HistoryResults";
 import { MultiSelectSearch } from "../components/MultiSelectSearch";
+import { AreaFilter } from "../components/AreaFilter";
 import {
   filterEvents,
   getEventComments,
@@ -15,6 +16,7 @@ import { createLog } from "../services/logs";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { usePlantAreas } from "../hooks/usePlantAreas";
 import {
   FILTER_COMPOSE_MS,
   FILTER_DATE_MS,
@@ -53,6 +55,11 @@ const PRESET_DATES: PresetDate[] = [
 function displayValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "-";
   return String(value);
+}
+
+function displayArea(area: string | null | undefined, t: (key: string) => string): string {
+  if (area == null || area === "") return t("common.plantWide");
+  return area;
 }
 
 function EventLevelBadge({
@@ -107,6 +114,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 export function Events() {
   const { t, locale } = useTranslation();
   const { timeZone } = useDisplayTimezone();
+  const plantAreas = usePlantAreas();
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(false);
@@ -145,6 +153,7 @@ export function Events() {
     const saved = localStorage.getItem("events_selectedCriticities");
     return saved ? JSON.parse(saved) : [];
   });
+  const [selectedArea, setSelectedArea] = useState("");
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("events_presetDate");
     return (saved as PresetDate) || "Last Hour";
@@ -195,7 +204,7 @@ export function Events() {
 
   useEffect(() => {
     schedule(FILTER_INSTANT_MS);
-  }, [timeZone, schedule]);
+  }, [timeZone, selectedArea, schedule]);
 
   // Cerrar menú contextual al hacer click fuera
   useEffect(() => {
@@ -289,6 +298,9 @@ export function Events() {
       }
 
       payload.timezone = timeZone;
+      if (selectedArea) {
+        payload.area = selectedArea;
+      }
 
       const response: EventResponse = await filterEvents(payload, { signal });
       if (!isCurrent(generation, signal)) return;
@@ -560,6 +572,7 @@ export function Events() {
     localStorage.removeItem("events_selectedUsernames");
     localStorage.removeItem("events_selectedPriorities");
     localStorage.removeItem("events_selectedCriticities");
+    setSelectedArea("");
     setPresetDate("Last Hour");
     localStorage.setItem("events_presetDate", "Last Hour");
     const { start, end } = getPresetDateRange("Last Hour");
@@ -624,6 +637,9 @@ export function Events() {
       }
 
       payload.timezone = timeZone;
+      if (selectedArea) {
+        payload.area = selectedArea;
+      }
 
       const response: EventResponse = await filterEvents(payload);
       const allEvents = response.data || [];
@@ -637,6 +653,7 @@ export function Events() {
         t("tables.id"),
         t("tables.timestamp"),
         t("tables.user"),
+        t("tables.area"),
         t("tables.message"),
         t("tables.description"),
         t("tables.classification"),
@@ -649,6 +666,7 @@ export function Events() {
           event.id || "",
           event.timestamp ? formatOperatorTimestamp(event.timestamp, locale) : "",
           event.user?.username || event.username || "",
+          event.area ? event.area : t("common.plantWide"),
           translateEventMessage(event.message, t),
           event.description || "",
           translateEventClassification(event.classification, t),
@@ -707,6 +725,15 @@ export function Events() {
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.events")}</span>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <AreaFilter
+                    value={selectedArea}
+                    areas={plantAreas}
+                    plantLabel={t("common.plantWide")}
+                    onChange={(area) => {
+                      setSelectedArea(area);
+                      resetToFirstPage();
+                    }}
+                  />
                   <MultiSelectSearch
                     options={userOptions}
                     selected={selectedUsernames}
@@ -876,6 +903,7 @@ export function Events() {
                     <th>{t("tables.id")}</th>
                     <th>{t("tables.timestamp")}</th>
                     <th>{t("tables.user")}</th>
+                    <th>{t("tables.area")}</th>
                     <th>{t("tables.message")}</th>
                     <th>{t("tables.classification")}</th>
                     <th>{t("tables.priority")}</th>
@@ -886,7 +914,7 @@ export function Events() {
                 <tbody>
                   {events.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="text-center text-muted py-4">
+                      <td colSpan={9} className="text-center text-muted py-4">
                         {t("events.noEvents")}
                       </td>
                     </tr>
@@ -902,6 +930,7 @@ export function Events() {
                         <td>{event.id || "-"}</td>
                         <td>{formatOperatorTimestamp(event.timestamp, locale)}</td>
                         <td>{event.user?.username || event.username || "-"}</td>
+                        <td>{displayArea(event.area, t)}</td>
                         <td>{translateEventMessage(event.message, t)}</td>
                         <td>{translateEventClassification(event.classification, t)}</td>
                         <td>
@@ -1174,8 +1203,13 @@ export function Events() {
                         <EventLevelBadge value={selectedEventDetail.criticity} kind="criticity" t={t} />
                       </dd>
 
+                      <dt className="col-sm-4">{t("tables.area")}</dt>
+                      <dd className="col-sm-8">{displayArea(selectedEventDetail.area, t)}</dd>
+
                       <dt className="col-sm-4">{t("tables.segment")}</dt>
-                      <dd className="col-sm-8">{displayValue(selectedEventDetail.segment)}</dd>
+                      <dd className="col-sm-8">
+                        {displayArea(selectedEventDetail.area || selectedEventDetail.segment, t)}
+                      </dd>
 
                       <dt className="col-sm-4">{t("tables.manufacturer")}</dt>
                       <dd className="col-sm-8">{displayValue(selectedEventDetail.manufacturer)}</dd>

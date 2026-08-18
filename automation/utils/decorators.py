@@ -1,6 +1,8 @@
-import functools, logging, sys, datetime
+import functools, logging, sys
 from ..modules.users.users import User, Users
 from ..logger.events import EventsLoggerEngine
+
+_logger = logging.getLogger("pyautomation")
 
 
 events_engine = EventsLoggerEngine()
@@ -36,12 +38,18 @@ def decorator(declared_decorator):
 
     return final_decorator
 
-def set_event(message:str, classification:str, priority:int, criticity:int, description:str="", force:bool=False):
+def set_event(message:str, classification:str, priority:int, criticity:int, description:str="", force:bool=False, plant_wide:bool=False):
     @decorator
     def wrapper(func, args, kwargs):
         from automation import PyAutomation
+        from .event_scope import resolve_event_area
+        from .system_event_audit import clip as _clip
         app = PyAutomation()
         result = func(*args, **kwargs)
+        area = resolve_event_area(
+            plant_wide=plant_wide,
+            source=(result, kwargs.get("machine"), kwargs.get("tag")),
+        )
         
         if result:
         
@@ -55,14 +63,15 @@ def set_event(message:str, classification:str, priority:int, criticity:int, desc
                     if isinstance(result, tuple):
 
                         _description = result[-1]
-                    from .system_event_audit import clip as _clip
                     event, _ = events_engine.create(
                         message=message,
                         description=_clip(_description, 256),
                         classification=classification,
                         priority=priority,
                         criticity=criticity,
-                        user=user
+                        user=user,
+                        area=area,
+                        plant_wide=plant_wide,
                     )
                     if app.sio:
 
@@ -70,14 +79,15 @@ def set_event(message:str, classification:str, priority:int, criticity:int, desc
         else:
             if force:
                 user = users.get_by_username(username="system")
-                from .system_event_audit import clip as _clip
                 event, _ = events_engine.create(
                     message=message,
                     description=_clip(description, 256),
                     classification=classification,
                     priority=priority,
                     criticity=criticity,
-                    user=user
+                    user=user,
+                    area=area,
+                    plant_wide=plant_wide,
                 )
                 
                 if app.sio:
@@ -97,6 +107,8 @@ def put_alarm_state(func, args, kwargs):
     alarms_engine = AlarmsLoggerEngine()   
     result = func(*args, **kwargs)
     alarm = args[0]
+    if getattr(alarm, "_defer_persist", False):
+        return result
     alarms_engine.put(
         id=alarm.identifier,
         state=alarm.state.state
@@ -126,13 +138,12 @@ def validate_types(**validations):
                 
                     if not isinstance(_data_type, validations[key]):
                         message = f"Expected Input {key} as {validations[key]}, but got {type(_data_type)} in {func}"
-                        logging.error(message)
+                        _logger.error(message)
                         raise TypeError(message)
                     
                 else:
                     message = f"You didn't define {key} argument to validate in {func}"
-                    logger = logging.getLogger("pyautomation")
-                    logger.error(message)
+                    _logger.error(message)
                     raise KeyError(message)
 
             # Call the wrapped function
@@ -148,20 +159,14 @@ def validate_types(**validations):
                         if not isinstance(result[counter], expected):
 
                             message = f"Expected output type ({counter}) {expected}, but got {type(result[counter])} in func {func}"
-                            logger = logging.getLogger("pyautomation")
-                            logger.error(message)
-                            str_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            print(f"[ERROR] {str_date} {message}")
+                            _logger.error(message)
                             raise TypeError(message)
                         
                 else:
 
                     if not isinstance(result, _output):
                         message = f"Expected output type {_output}, but got {type(result)} in func {func}"
-                        logger = logging.getLogger("pyautomation")
-                        logger.error(message)
-                        str_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        print(f"[ERROR] {str_date} {message}")
+                        _logger.error(message)
                         raise TypeError(message)
 
             return result
@@ -194,8 +199,7 @@ def logging_error_handler(func, args, kwargs):
             'message': str(ex),
             'trace': trace
         })
-        logger = logging.getLogger("pyautomation")
-        logger.error(msg)
+        _logger.error(msg)
 
 @decorator
 def db_rollback(func, args, kwargs):
@@ -208,8 +212,7 @@ def db_rollback(func, args, kwargs):
         _, _, e_traceback = sys.exc_info()
         e_message = str(e)
         e_line_number = e_traceback.tb_lineno
-        logger = logging.getLogger("pyautomation")
-        logger.warning(f"Rollback in [line {e_line_number}] {self.__class__.__name__}.{func.__name__} - {e_message}")
+        _logger.warning(f"Rollback in [line {e_line_number}] {self.__class__.__name__}.{func.__name__} - {e_message}")
         conn = self._db.connection()
         conn.rollback()
         result = func(*args, **kwargs)

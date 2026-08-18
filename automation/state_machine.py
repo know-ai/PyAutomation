@@ -98,21 +98,29 @@ class Machine(Singleton):
             threshold = machine.threshold.value
         
         if self.machines_engine.get_db():
-            self.machines_engine.create(
-                identifier=machine.identifier.value,
-                name=machine.name.value,
-                interval=interval.value,
-                description=machine.description.value,
-                classification=machine.classification.value,
-                buffer_size=machine.buffer_size.value,
-                buffer_roll_type=machine.buffer_roll_type.value,
-                criticity=machine.criticity.value,
-                priority=machine.priority.value,
-                on_delay=on_delay,
-                threshold=threshold,
-                area=get_node_scope().area,
-            )
-            self.create_tag_internal_process_type(machine=machine)
+            live = False
+            try:
+                from automation import PyAutomation
+
+                live = bool(PyAutomation().is_db_connected())
+            except Exception:
+                live = False
+            if live:
+                self.machines_engine.create(
+                    identifier=machine.identifier.value,
+                    name=machine.name.value,
+                    interval=interval.value,
+                    description=machine.description.value,
+                    classification=machine.classification.value,
+                    buffer_size=machine.buffer_size.value,
+                    buffer_roll_type=machine.buffer_roll_type.value,
+                    criticity=machine.criticity.value,
+                    priority=machine.priority.value,
+                    on_delay=on_delay,
+                    threshold=threshold,
+                    area=get_node_scope().area,
+                )
+                self.create_tag_internal_process_type(machine=machine)
 
     def drop(self, machine:StateMachine):
         r"""
@@ -186,7 +194,14 @@ class Machine(Singleton):
         config = None
         from .utils.db_connections import ephemeral_historian
 
-        if self.machines_engine.get_db():
+        historian_live = False
+        try:
+            from automation import PyAutomation
+
+            historian_live = bool(PyAutomation().is_db_connected())
+        except Exception:
+            historian_live = False
+        if historian_live and self.machines_engine.get_db():
             with ephemeral_historian(self.machines_engine.get_db()):
                 config = self.load_db_machines_config()
 
@@ -390,6 +405,14 @@ class Machine(Singleton):
                 if self.db_manager.get_db():
                     
                     alarm = self.alarm_manager.get_alarm_by_name(name=name)
+                    area = None
+                    try:
+                        from .node_scope import get_node_scope
+
+                        area = get_node_scope().area
+                    except Exception:
+                        area = None
+                    payload = alarm.catalog_payload() if alarm is not None and hasattr(alarm, "catalog_payload") else {}
                     
                     self.alarms_engine.create(
                         id=alarm.identifier,
@@ -397,7 +420,8 @@ class Machine(Singleton):
                         tag=tag,
                         trigger_type=alarm_type,
                         trigger_value=trigger_value,
-                        description=description
+                        description=description,
+                        area=payload.get("area") or area,
                     )
             
             return alarm, message
@@ -490,6 +514,10 @@ class StateMachineCore(StateMachine):
         self.transitions = transitions
         self.manufacturer = MANUFACTURER
         self.segment = SEGMENT
+        try:
+            self.area = get_node_scope().area
+        except Exception:
+            self.area = None
         self.mass_flow_unit_base = "kg/sec"
         self.volumetric_flow_unit_base = "m3/sec"
         super(StateMachineCore, self).__init__()

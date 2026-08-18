@@ -290,7 +290,19 @@ class AlarmsLogger(BaseLogger):
         )
 
     @db_rollback
-    def create_record_on_alarm_summary(self, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
+    def create_record_on_alarm_summary(
+            self,
+            name:str,
+            state:str,
+            timestamp:datetime,
+            ack_timestamp:datetime=None,
+            identifier:str=None,
+            tag:str=None,
+            trigger_type:str=None,
+            trigger_value=None,
+            description:str=None,
+            area:str=None,
+        ):
         r"""
         Creates a new entry in the Alarm Summary (history log).
 
@@ -313,16 +325,39 @@ class AlarmsLogger(BaseLogger):
             state=state,
             timestamp=timestamp,
             ack_timestamp=ack_timestamp,
+            area=area,
+            identifier=identifier,
+            tag=tag,
+            trigger_type=trigger_type,
+            trigger_value=trigger_value,
+            description=description,
         )
 
         def _write():
-            return AlarmSummary.create(name=name, state=state, timestamp=timestamp, ack_timestamp=ack_timestamp)
+            from ..persistence.remote import _ensure_alarm_catalog
+
+            _ensure_alarm_catalog(record.payload())
+            return AlarmSummary.create(
+                name=name,
+                state=state,
+                timestamp=timestamp,
+                ack_timestamp=ack_timestamp,
+                area=record.payload().get("area") or area,
+            )
 
         result, _ = journal_then_remote(record, _write, self.check_connectivity())
         return result
 
     @db_rollback
-    def put_record_on_alarm_summary(self, name:str, state:str=None, ack_timestamp:datetime=None):
+    def put_record_on_alarm_summary(
+            self,
+            name:str,
+            state:str=None,
+            ack_timestamp:datetime=None,
+            identifier:str=None,
+            tag:str=None,
+            area:str=None,
+        ):
         r"""
         Updates the latest record in the Alarm Summary for a given alarm.
 
@@ -343,11 +378,14 @@ class AlarmsLogger(BaseLogger):
             name=name,
             state=state,
             ack_timestamp=ack_timestamp,
+            area=area,
+            identifier=identifier,
+            tag=tag,
         )
 
         def _write():
             fields = dict()
-            alarm = AlarmSummary.read_by_name(name=name)
+            alarm = AlarmSummary.read_by_name(name=name, area=record.payload().get("area") or area)
             if not alarm:
                 return None
             if ack_timestamp:
@@ -365,6 +403,150 @@ class AlarmsLogger(BaseLogger):
 
         result, _ = journal_then_remote(record, _write, self.check_connectivity())
         return result
+
+    def acknowledge_many(self, updates:list[dict]|None=None):
+        r"""
+        Persist a bulk acknowledge with one journal COMMIT and one remote transaction.
+
+        Each item is ``{id, name, state, ack_timestamp}``. Catalog state and the
+        latest AlarmSummary row are grouped by target state so round-trips stay
+        O(1) in the number of ISA states (ACKED / Normal), not in N alarms.
+        """
+        items = list(updates or [])
+        if not items:
+            return 0
+
+        from ..persistence.outbox import journal_then_remote_batch
+        from ..persistence.records import PersistableRecord
+
+        connected = self.check_connectivity()
+        records = []
+        if self.is_history_logged:
+            records = [
+                PersistableRecord.alarm_update(
+                    name=item.get("name"),
+                    state=item.get("state"),
+                    ack_timestamp=item.get("ack_timestamp"),
+                    area=item.get("area"),
+                    identifier=item.get("id"),
+                    tag=item.get("tag"),
+                )
+                for item in items
+                if item.get("name")
+            ]
+
+        def _write():
+            return self._apply_ack_batch(items)
+
+        if records:
+            result, _ = journal_then_remote_batch(records, _write, connected)
+            return result if result is not None else 0
+        if not connected:
+            return 0
+        return self._apply_ack_batch(items)
+
+    @db_rollback
+    def _apply_ack_batch(self, updates:list[dict])->int:
+        if not updates:
+            return 0
+        db = self.get_db()
+        if db is None:
+            return 0
+
+        from contextlib import nullcontext
+        from peewee import fn
+        from ..timebase import quantize_datetime_ms
+
+        names = [item.get("name") for item in updates if item.get("name")]
+        identifiers = [item.get("id") for item in updates if item.get("id")]
+        by_name = {item["name"]: item for item in updates if item.get("name")}
+        by_identifier = {item["id"]: item for item in updates if item.get("id")}
+
+        clauses = []
+        if identifiers:
+            clauses.append(Alarms.identifier.in_(identifiers))
+        if names:
+            clauses.append(Alarms.name.in_(names))
+        if not clauses:
+            return 0
+
+        query = Alarms.select()
+        catalog = list(query.where(clauses[0] if len(clauses) == 1 else (clauses[0] | clauses[1])))
+        if not catalog:
+            return 0
+
+        state_cache = {}
+
+        def _state(name:str):
+            if not name:
+                return None
+            if name not in state_cache:
+                state_cache[name] = AlarmStates.get_or_none(name=name)
+            return state_cache[name]
+
+        def _update_for(row):
+            return by_name.get(row.name) or by_identifier.get(row.identifier)
+
+        ack_time = None
+        for item in updates:
+            stamp = item.get("ack_timestamp")
+            if isinstance(stamp, datetime):
+                ack_time = quantize_datetime_ms(stamp)
+                break
+
+        catalog_by_state: dict[int, list[int]] = {}
+        alarm_pks = []
+        for row in catalog:
+            item = _update_for(row)
+            if not item:
+                continue
+            alarm_pks.append(row.id)
+            state_row = _state(item.get("state"))
+            if state_row is None:
+                continue
+            catalog_by_state.setdefault(state_row.id, []).append(row.id)
+
+        ctx = db.atomic() if hasattr(db, "atomic") else nullcontext()
+        with ctx:
+            written = 0
+            for state_id, ids in catalog_by_state.items():
+                if not ids:
+                    continue
+                Alarms.update(state=state_id).where(Alarms.id.in_(ids)).execute()
+                written += len(ids)
+
+            if self.is_history_logged and alarm_pks and ack_time is not None:
+                latest = list(
+                    AlarmSummary
+                    .select(AlarmSummary.alarm, fn.MAX(AlarmSummary.id).alias("max_id"))
+                    .where(AlarmSummary.alarm.in_(alarm_pks))
+                    .group_by(AlarmSummary.alarm)
+                )
+                max_ids = [row.max_id for row in latest if getattr(row, "max_id", None)]
+                if max_ids:
+                    summaries = list(
+                        AlarmSummary
+                        .select(AlarmSummary, Alarms)
+                        .join(Alarms)
+                        .where(AlarmSummary.id.in_(max_ids))
+                    )
+                    summary_by_state: dict[int, list[int]] = {}
+                    for summary in summaries:
+                        item = by_name.get(summary.alarm.name)
+                        if not item:
+                            continue
+                        state_row = _state(item.get("state"))
+                        if state_row is None:
+                            continue
+                        summary_by_state.setdefault(state_row.id, []).append(summary.id)
+                    for state_id, ids in summary_by_state.items():
+                        if not ids:
+                            continue
+                        AlarmSummary.update(
+                            ack_time=ack_time,
+                            state=state_id,
+                        ).where(AlarmSummary.id.in_(ids)).execute()
+            return written
 
     @db_rollback
     def get_alarm_summary(self, page:int=1, limit:int=20):
@@ -509,7 +691,19 @@ class AlarmsLoggerEngine(BaseEngine):
         
         return self.query(_query)
     
-    def create_record_on_alarm_summary(self, name:str, state:str, timestamp:datetime, ack_timestamp:datetime=None):
+    def create_record_on_alarm_summary(
+        self,
+        name:str,
+        state:str,
+        timestamp:datetime,
+        ack_timestamp:datetime=None,
+        identifier:str=None,
+        tag:str=None,
+        trigger_type:str=None,
+        trigger_value=None,
+        description:str=None,
+        area:str=None,
+        ):
         r"""
         Thread-safe creation of alarm history record.
         """
@@ -520,6 +714,12 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["state"] = state
         _query["parameters"]["timestamp"] = timestamp
         _query["parameters"]["ack_timestamp"] = ack_timestamp
+        _query["parameters"]["identifier"] = identifier
+        _query["parameters"]["tag"] = tag
+        _query["parameters"]["trigger_type"] = trigger_type
+        _query["parameters"]["trigger_value"] = trigger_value
+        _query["parameters"]["description"] = description
+        _query["parameters"]["area"] = area
         
         return self.query(_query)
     
@@ -527,7 +727,10 @@ class AlarmsLoggerEngine(BaseEngine):
         self,
         name:str,
         state:str=None,
-        ack_timestamp:datetime=None
+        ack_timestamp:datetime=None,
+        identifier:str=None,
+        tag:str=None,
+        area:str=None,
         ):
         r"""
         Thread-safe update of alarm history record.
@@ -538,7 +741,20 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["name"] = name
         _query["parameters"]["state"] = state
         _query["parameters"]["ack_timestamp"] = ack_timestamp
+        _query["parameters"]["identifier"] = identifier
+        _query["parameters"]["tag"] = tag
+        _query["parameters"]["area"] = area
 
+        return self.query(_query)
+
+    def acknowledge_many(self, updates:list[dict]|None=None):
+        r"""
+        Thread-safe bulk acknowledge (one engine round-trip).
+        """
+        _query = dict()
+        _query["action"] = "acknowledge_many"
+        _query["parameters"] = dict()
+        _query["parameters"]["updates"] = updates or []
         return self.query(_query)
 
     def put(

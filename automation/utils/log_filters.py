@@ -93,21 +93,32 @@ class DedupeFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         now_mono = time.monotonic()
         is_error = record.levelno >= logging.ERROR
-        key = (record.pathname, record.lineno, record.funcName, record.getMessage())
+        message = record.getMessage()
+        key = (record.pathname, record.lineno, record.funcName, message)
         with self._lock:
             if is_error:
                 self._error_times.append(now_mono)
                 self._prune_window(self._error_times, now_mono)
             if self.cooldown <= 0:
                 return True
-            last = self._last.get(key)
-            if last is not None and (now_mono - last) < self.cooldown:
-                self.dropped += 1
-                if is_error:
-                    self._suppressed_times.append(now_mono)
-                    self._prune_window(self._suppressed_times, now_mono)
-                return False
-            self._last[key] = now_mono
+            entry = self._last.get(key)
+            if entry is not None:
+                last_emit, suppressed = entry
+                if (now_mono - last_emit) < self.cooldown:
+                    self.dropped += 1
+                    self._last[key] = (last_emit, suppressed + 1)
+                    self._last.move_to_end(key)
+                    if is_error:
+                        self._suppressed_times.append(now_mono)
+                        self._prune_window(self._suppressed_times, now_mono)
+                    return False
+                if suppressed > 0:
+                    record.msg = (
+                        f"{message} [repeated {suppressed} times in last "
+                        f"{self.cooldown:.0f}s]"
+                    )
+                    record.args = ()
+            self._last[key] = (now_mono, 0)
             self._last.move_to_end(key)
             while len(self._last) > self._max:
                 self._last.popitem(last=False)

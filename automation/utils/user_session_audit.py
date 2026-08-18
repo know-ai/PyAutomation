@@ -43,6 +43,12 @@ _MESSAGE = {
     "ROLE_UPDATED": "User role updated",
 }
 
+# Account administration is plant-wide. Session events belong to the edge
+# where the operator logged in or out.
+_PLANT_WIDE = frozenset(
+    {"SIGNUP", "PASSWORD_CHANGED", "PASSWORD_RESET", "ROLE_UPDATED"}
+)
+
 
 def record_user_session_event(
     action: str,
@@ -97,6 +103,7 @@ def record_user_session_event(
             priority=_PRIORITY[action_key],
             criticity=_CRITICITY[action_key],
             user=audit_user,
+            plant_wide=action_key in _PLANT_WIDE,
         )
     except Exception:
         logging.getLogger("pyautomation").error(

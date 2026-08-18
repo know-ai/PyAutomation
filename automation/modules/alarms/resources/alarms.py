@@ -267,24 +267,23 @@ class AckAllAlarmsResource(Resource):
     @Api.token_required(auth=True)
     def post(self):
         """
-        Acknowledge all alarms.
+        Acknowledge all unacknowledged alarms owned by this node.
 
-        Iterates through all alarms and acknowledges those that are in an Unacknowledged state.
+        Transitions every UNACK / RTNUN alarm in memory, persists in one
+        batch, then emits socket updates with a shared ack timestamp.
         """
         violation = _alarm_scope_error()
         if violation:
             return violation
-        alarms = app.alarm_manager.get_alarms()
-
-        for _, alarm in alarms.items():
-
-            if alarm.state in [AlarmState.UNACK, AlarmState.RTNUN]:
-                
-                user = Api.get_current_user()
-                alarm.acknowledge(user=user)
+        user = Api.get_current_user()
+        acknowledged = app.alarm_manager.acknowledge_all(user=user)
+        count = 0
+        if isinstance(acknowledged, tuple) and len(acknowledged) >= 2 and isinstance(acknowledged[1], int):
+            count = acknowledged[1]
         
         result = {
-            'message': "Alarms were acknowledged successfully"
+            'message': "Alarms were acknowledged successfully",
+            'count': count,
         }
         
         return result, 200
@@ -512,6 +511,7 @@ class AddAlarmResource(Resource):
                         priority=2,
                         criticity=2,
                         user=user,
+                        source=alarm,
                     )
                 return {
                     'message': f"Alarm '{name}' created successfully",

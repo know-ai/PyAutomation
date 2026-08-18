@@ -27,6 +27,34 @@ def stamp_machine_cycle(machine):
     return ts
 
 
+def run_machine_cycle(machine) -> None:
+    """One acquisition tick. Historian I/O must not stop the scheduler.
+
+    CVT / OPC UA / leak logic always run. Peewee ``OperationalError`` (outage
+    gate or a missed ``is_db_connected`` check in a ``while_*``) is swallowed
+    so leaking/running/starting all keep the same realtime contract.
+    """
+    from peewee import OperationalError
+
+    from ..utils.db_connections import ephemeral_historian
+    from automation import PyAutomation
+
+    stamp_machine_cycle(machine)
+    app = PyAutomation()
+    try:
+        if getattr(app, "_db_live", False):
+            with ephemeral_historian(getattr(app, "_db", None)):
+                machine.loop()
+        else:
+            machine.loop()
+    except OperationalError:
+        logging.getLogger("pyautomation").debug(
+            "Acquisition cycle skipped historian I/O machine=%s",
+            getattr(getattr(machine, "name", None), "value", None),
+            exc_info=True,
+        )
+
+
 class MachineScheduler():
     r"""
     A simple scheduler for executing tasks (state machine loops) periodically.
@@ -158,12 +186,7 @@ class SchedThread(Thread):
         * **callable**: The loop function.
         """
         def loop():
-            stamp_machine_cycle(machine)
-            from ..utils.db_connections import ephemeral_historian
-            from automation import PyAutomation
-
-            with ephemeral_historian(getattr(PyAutomation(), "_db", None)):
-                machine.loop()
+            run_machine_cycle(machine)
             interval = machine.get_interval()
             scheduler.call_later(interval, loop, machine)
     
@@ -278,12 +301,7 @@ class StateMachineWorker(BaseWorker):
         self._machine = machine
 
         def loop():
-            stamp_machine_cycle(machine)
-            from ..utils.db_connections import ephemeral_historian
-            from automation import PyAutomation
-
-            with ephemeral_historian(getattr(PyAutomation(), "_db", None)):
-                machine.loop()
+            run_machine_cycle(machine)
             interval = machine.get_interval()
             self._sync_scheduler.call_later(interval, loop, machine)
 

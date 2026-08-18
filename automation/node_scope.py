@@ -21,6 +21,25 @@ def _clean(value: str | None) -> str | None:
     return value or None
 
 
+def _resolve_alias(
+    primary: str | None,
+    alias: str | None,
+    *,
+    primary_name: str,
+    alias_name: str,
+) -> tuple[str | None, bool, str | None]:
+    """Una sola identidad con dos nombres de env. Si ambos existen, deben coincidir."""
+    primary = _clean(primary)
+    alias = _clean(alias)
+    if primary and alias and primary != alias:
+        return None, True, (
+            f"{primary_name} ({primary}) and {alias_name} ({alias}) must be the same value"
+        )
+    if primary:
+        return primary, False, None
+    return alias, False, None
+
+
 @dataclass(frozen=True)
 class NodeScope:
     node_id: str | None
@@ -28,6 +47,8 @@ class NodeScope:
     site: str | None = None
     multi_edge_enabled: bool = True
     area_from_segment: bool = False
+    site_from_manufacturer: bool = False
+    identity_conflict: str | None = None
 
     @property
     def enabled(self) -> bool:
@@ -37,31 +58,69 @@ class NodeScope:
     def is_valid(self) -> bool:
         return (
             not self.multi_edge_enabled
-            or bool(self.node_id and self.area)
+            or bool(self.node_id and self.area and not self.identity_conflict)
         )
+
+    @property
+    def blocked_reason(self) -> str | None:
+        if not self.multi_edge_enabled:
+            return None
+        if self.identity_conflict:
+            return self.identity_conflict
+        missing = []
+        if not self.node_id:
+            missing.append("AUTOMATION_NODE_ID")
+        if not self.area:
+            missing.append("AUTOMATION_AREA or AUTOMATION_SEGMENT")
+        if missing:
+            return "missing " + " and ".join(missing)
+        return None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "NodeScope":
         env = os.environ if environ is None else environ
+        area, area_conflict, area_error = _resolve_alias(
+            env.get("AUTOMATION_AREA"),
+            env.get("AUTOMATION_SEGMENT"),
+            primary_name="AUTOMATION_AREA",
+            alias_name="AUTOMATION_SEGMENT",
+        )
+        site_primary = _clean(env.get("AUTOMATION_SITE"))
+        site_alias = _clean(env.get("AUTOMATION_MANUFACTURER"))
+        site_mismatch = bool(
+            site_primary and site_alias and site_primary != site_alias
+        )
+        if site_mismatch:
+            # SITE is optional metadata. Prefer the application name so a leftover
+            # AUTOMATION_SITE cannot fail-close acquisition.
+            site = site_alias
+            site_from_manufacturer = True
+        else:
+            site = site_primary or site_alias
+            site_from_manufacturer = site_primary is None and site is not None
+
         explicit_area = _clean(env.get("AUTOMATION_AREA"))
-        legacy_area = _clean(env.get("AUTOMATION_SEGMENT"))
         return cls(
             node_id=_clean(env.get("AUTOMATION_NODE_ID")),
-            area=explicit_area or legacy_area,
-            site=_clean(env.get("AUTOMATION_SITE")),
+            area=None if area_conflict else area,
+            site=site,
             multi_edge_enabled=_enabled(env.get("AUTOMATION_MULTI_EDGE_ENABLED")),
-            area_from_segment=explicit_area is None and legacy_area is not None,
+            area_from_segment=explicit_area is None and area is not None and not area_conflict,
+            site_from_manufacturer=site_from_manufacturer,
+            identity_conflict=area_error,
         )
 
     def validate_for_acquisition(self) -> "NodeScope":
         """Valida únicamente el contrato de arranque del plano de adquisición."""
         if not self.multi_edge_enabled:
             return self
+        if self.identity_conflict:
+            raise NodeIdentityError(self.identity_conflict)
         missing = []
         if not self.node_id:
             missing.append("AUTOMATION_NODE_ID")
         if not self.area:
-            missing.append("AUTOMATION_AREA")
+            missing.append("AUTOMATION_AREA or AUTOMATION_SEGMENT")
         if missing:
             raise NodeIdentityError(
                 "Multi-edge acquisition requires " + " and ".join(missing)

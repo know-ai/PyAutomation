@@ -1,6 +1,6 @@
 # Arquitectura multi-edge
 
-PyAutomation opera en modo multi-edge por defecto. Cada instancia de adquisición es un nodo con identidad propia. La API y el HMI permanecen disponibles si falta configuración; la hidratación y la adquisición se bloquean (fail-closed) hasta que existan `NODE_ID` y `AREA`.
+PyAutomation opera en modo multi-edge por defecto. Cada instancia de adquisición es un nodo con identidad propia. La API y el HMI permanecen disponibles si falta configuración; la hidratación y la adquisición se bloquean (fail-closed) hasta que existan `NODE_ID` y un área (`AUTOMATION_AREA` o `AUTOMATION_SEGMENT`).
 
 ## Variables obligatorias
 
@@ -8,16 +8,26 @@ PyAutomation opera en modo multi-edge por defecto. Cada instancia de adquisició
 |---|---|---|---|
 | `AUTOMATION_MULTI_EDGE_ENABLED` | No | `true` | Activa partición, single-writer y fail-closed. `false` restaura el modo monolítico. |
 | `AUTOMATION_NODE_ID` | Sí (si multi-edge está activo) | — | Identidad estable del edge. Máximo 64 caracteres. |
-| `AUTOMATION_AREA` | Sí (si multi-edge está activo) | — | Clave ISA-95 de partición (`Linea1`, `Linea2`, …). |
-| `AUTOMATION_SITE` | No | — | Sitio opcional para trazabilidad. |
-| `AUTOMATION_SEGMENT` | Compatibilidad | — | Solo se usa como `AREA` si `AUTOMATION_AREA` está vacío. |
+| `AUTOMATION_SEGMENT` | Sí (si multi-edge está activo; alias de `AREA`) | — | Clave de partición de línea (`Linea1`, `Linea2`, …). Es el nombre que ya usan las aplicaciones. |
+| `AUTOMATION_AREA` | Alias de `SEGMENT` | — | Mismo valor. Si ambos existen, **deben coincidir**. |
+| `AUTOMATION_MANUFACTURER` | No (alias de `SITE`) | — | Sitio / fabricante / cliente de planta. Es el nombre que ya usan las aplicaciones. |
+| `AUTOMATION_SITE` | Alias de `MANUFACTURER` | — | Mismo valor. Si ambos existen, **deben coincidir**. |
 
-Los nombres de tags y alarmas de runtime deben cualificarse con el área: `Linea1.FI_01`.
+No hace falta declarar `AREA` y `SEGMENT` a la vez, ni `SITE` y `MANUFACTURER`. En iDetectFugas basta `AUTOMATION_SEGMENT` y `AUTOMATION_MANUFACTURER`.
+
+Los tags creados por API/HMI se cualifican con el área (`Linea1.FI_01`). Las alarmas de aplicación no: la frontera es el **tag asociado** (`area` + `owner_node`). iDetectFugas sigue usando `alarm.{máquina}.leak` y tags internos `{MANUFACTURER}.{SEGMENT}.{máquina}.*`.
+
+Hay dos planos de datos:
+
+| Plano | Qué | Filtro de área |
+|---|---|---|
+| Runtime / catálogo activo | CVT, alarmas activas, OPC, CRUD, Socket.IO `on.tag`/`on.alarm` | Obligatorio (cada edge solo opera su línea) |
+| Histórico / gestión | AlarmSummary, Events, Logs, TagValue, Users | Global por defecto; `area` es opcional |
 
 ## Receta N-edge
 
 1. Un PostgreSQL compartido para catálogo e histórico.
-2. Un proceso (o contenedor) por área, con `AUTOMATION_NODE_ID` y `AUTOMATION_AREA` únicos.
+2. Un proceso (o contenedor) por línea, con `AUTOMATION_NODE_ID` y `AUTOMATION_SEGMENT` únicos.
 3. Journal SAF local por nodo: `./db/saf/<node_id>/journal.db`.
 4. Clientes OPC UA con `owner_node` igual al `NODE_ID` del edge que los abre.
 5. Comprobar `/api/health/system`: `ACQUISITION_READY=true`, `NODE_ID`, `NODE_AREA`, `SAF_QUEUE_DEPTH` y `DB_CONNECTIONS_COUNT` ≤ 4 idle por edge.
@@ -25,17 +35,17 @@ Los nombres de tags y alarmas de runtime deben cualificarse con el área: `Linea
 Ejemplo:
 
 ```ini
-# Edge A
+# Edge A (nombres de aplicación; AREA/SITE son alias)
 AUTOMATION_MULTI_EDGE_ENABLED=true
 AUTOMATION_NODE_ID=edge-linea1
-AUTOMATION_AREA=Linea1
-AUTOMATION_SITE=Norte
+AUTOMATION_SEGMENT=Linea1
+AUTOMATION_MANUFACTURER=Test
 
 # Edge B
 AUTOMATION_MULTI_EDGE_ENABLED=true
 AUTOMATION_NODE_ID=edge-linea2
-AUTOMATION_AREA=Linea2
-AUTOMATION_SITE=Norte
+AUTOMATION_SEGMENT=Linea2
+AUTOMATION_MANUFACTURER=Test
 ```
 
 `application_name` de PostgreSQL queda `PyAutomationIO:<node_id>:<rol>` (máximo 63 caracteres).
@@ -58,7 +68,7 @@ AUTOMATION_SITE=Norte
 | CA-EDGE-5 | Sin `NODE_ID`: no hay `read_all()` de tags/OPC | fail-closed en `connect_to_db` + `test_ca_edge_5_*` |
 | CA-EDGE-6 | Homólogos cualificados coexisten | `Linea1.FI_01` y `Linea2.FI_01` + `test_ca_edge_6_*` |
 | CA-EDGE-7 | Idle PG ≤ 4 por edge | `/api/health/system` → `DB_CONNECTIONS_EXPECTED_MAX` |
-| CA-EDGE-8 | HMI local no lista puntos ajenos | API/Socket.IO acotados + `test_ca_edge_8_*` |
+| CA-EDGE-8 | Runtime local no lista puntos ajenos; el histórico es de planta | CVT/activas/Socket.IO acotados + `test_ca_edge_8_*`; lecturas históricas sin filtro de área por defecto (`test_filter_by_is_plant_wide_*`) |
 
 Integración 2-edge opt-in:
 
@@ -76,5 +86,5 @@ Checklist operativo:
 2. Confirmar `/api/health/system`: `ACQUISITION_READY=true`, `DB_CONNECTIONS_COUNT` ≤ 4 idle, `SAF_QUEUE_DEPTH` estable.
 3. Reboot de A: el CVT de A no lista `Linea2.*`; B sigue adquiriendo.
 4. Caer OPC de A: A no abre el cliente de B; B no encola samples de A.
-5. HMI de cada edge: listados de tags/alarmas/máquinas/clientes OPC solo del área local.
+5. HMI de cada edge: CVT, alarmas activas, máquinas y clientes OPC solo del área local. Resumen de alarmas, eventos, logs, tendencias y datalogger ven toda la planta (selector de área opcional).
 6. Tras 24 h, `PENDING_ROWS` no crece de forma sostenida y no hay writes cruzados en TagValue (`owner_node`).

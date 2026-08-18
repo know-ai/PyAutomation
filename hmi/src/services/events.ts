@@ -15,6 +15,7 @@ export type Event = {
     username?: string;
     [key: string]: any;
   };
+  area?: string | null;
   [key: string]: any;
 };
 
@@ -30,6 +31,7 @@ export type EventFilter = {
   timezone?: string;
   page?: number;
   limit?: number;
+  area?: string;
 };
 
 export type EventResponse = {

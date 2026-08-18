@@ -65,6 +65,34 @@ export const getPlantTimezone = async (): Promise<string> => {
   return typeof data?.timezone === "string" ? data.timezone : "";
 };
 
+export type PlantNode = {
+  id: string;
+  area: string;
+  site?: string | null;
+  hostname?: string | null;
+  version?: string | null;
+};
+
+export const getPlantNodes = async (): Promise<PlantNode[]> => {
+  const { data } = await api.get("/system/nodes");
+  return data?.data || [];
+};
+
+export type NodeIdentity = {
+  nodeId: string;
+  area: string;
+  site: string;
+};
+
+export const getNodeIdentity = async (): Promise<NodeIdentity> => {
+  const { data } = await api.get("/health/system", { timeout: 2500 });
+  return {
+    nodeId: typeof data?.NODE_ID === "string" ? data.NODE_ID : "",
+    area: typeof data?.NODE_AREA === "string" ? data.NODE_AREA : "",
+    site: typeof data?.NODE_SITE === "string" ? data.NODE_SITE : "",
+  };
+};
+
 export const reconnectRemoteDatabase = async (): Promise<DatabaseHealthResponse> => {
   try {
     const { data } = await api.post("/system/reconnect_db", {}, { timeout: 15000 });

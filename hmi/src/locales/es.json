@@ -22,7 +22,8 @@
     "yes": "Sí",
     "no": "No",
     "time": "Tiempo",
-    "csv": "CSV"
+    "csv": "CSV",
+    "plantWide": "Toda la planta"
   },
   "stripChart": {
     "tags": "Tags",
@@ -166,6 +167,7 @@
       },
       "message": {
         "Alarm acknowledged": "Alarma reconocida",
+        "Alarms acknowledged": "Alarmas reconocidas",
         "Alarm shelved": "Alarma en espera",
         "Alarm unshelved": "Alarma retirada de espera",
         "Alarm unshelved automatically": "Alarma retirada de espera automáticamente",
@@ -377,7 +379,8 @@
     "fullscreen": "Pantalla completa",
     "exitFullscreen": "Salir de pantalla completa",
     "menu": "Menú",
-    "clockLabel": "Hora de estación"
+    "clockLabel": "Hora de estación",
+    "identityUnknown": "Sin identidad"
   },
   "communications": {
     "title": "Clientes OPC UA",

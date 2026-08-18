@@ -29,7 +29,9 @@ class EventsLogger(BaseLogger):
         classification:str=None,
         priority:int=None,
         criticity:int=None,
-        timestamp:datetime=None
+        timestamp:datetime=None,
+        area:str=None,
+        plant_wide:bool=False,
         ):
         r"""
         Creates a new event record in the database.
@@ -43,6 +45,8 @@ class EventsLogger(BaseLogger):
         * **priority** (int, optional): Priority level.
         * **criticity** (int, optional): Criticality level.
         * **timestamp** (datetime, optional): Time of the event.
+        * **area** (str, optional): Line/segment. Omitted for plant-wide actions.
+        * **plant_wide** (bool): If True, persist with ``area=None``.
         """
         if not self.is_history_logged:
 
@@ -50,7 +54,9 @@ class EventsLogger(BaseLogger):
         
         from ..persistence.outbox import journal_then_remote
         from ..persistence.records import JournaledEnvelope, PersistableRecord
+        from ..utils.event_scope import resolve_event_area
 
+        area = resolve_event_area(area=area, plant_wide=plant_wide)
         username = getattr(user, "username", None) or "system"
         record = PersistableRecord.event(
             message=message,
@@ -60,6 +66,8 @@ class EventsLogger(BaseLogger):
             priority=priority,
             criticity=criticity,
             timestamp=timestamp,
+            area=area,
+            plant_wide=plant_wide,
         )
         connected = bool(user) and self.check_connectivity()
 
@@ -72,6 +80,7 @@ class EventsLogger(BaseLogger):
                 priority=priority,
                 criticity=criticity,
                 timestamp=timestamp,
+                area=area,
             )
 
         result, _ = journal_then_remote(record, _write, connected)
@@ -202,7 +211,9 @@ class EventsLoggerEngine(BaseEngine):
         classification:str=None,
         priority:int=None,
         criticity:int=None,
-        timestamp:datetime=None
+        timestamp:datetime=None,
+        area:str=None,
+        plant_wide:bool=False,
         ):
         r"""
         Thread-safe event creation.
@@ -217,6 +228,8 @@ class EventsLoggerEngine(BaseEngine):
         _query["parameters"]["priority"] = priority
         _query["parameters"]["criticity"] = criticity
         _query["parameters"]["timestamp"] = timestamp
+        _query["parameters"]["area"] = area
+        _query["parameters"]["plant_wide"] = plant_wide
         
         return self.query(_query)
     

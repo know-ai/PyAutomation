@@ -70,7 +70,36 @@ class TestDedupeFilter(unittest.TestCase):
         self.assertTrue(filt.filter(rec))
         self.assertFalse(filt.filter(rec))
         time.sleep(0.06)
+        self.assertTrue(filt.filter(self._record()))
+
+    def test_reemit_annotates_suppressed_repeats(self):
+        filt = DedupeFilter(cooldown_sec=0.05)
+        self.assertTrue(filt.filter(self._record()))
+        self.assertFalse(filt.filter(self._record()))
+        self.assertFalse(filt.filter(self._record()))
+        time.sleep(0.06)
+        rec = self._record()
         self.assertTrue(filt.filter(rec))
+        self.assertIn("repeated 2 times", rec.getMessage())
+
+
+class TestValidateTypesLogging(unittest.TestCase):
+    def test_output_mismatch_does_not_print(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from ..utils.decorators import validate_types
+
+        @validate_types(output=str)
+        def _bad():
+            return None
+
+        buf = io.StringIO()
+        with self.assertLogs("pyautomation", level="ERROR"):
+            with redirect_stdout(buf):
+                with self.assertRaises(TypeError):
+                    _bad()
+        self.assertEqual(buf.getvalue(), "")
 
 
 if __name__ == "__main__":

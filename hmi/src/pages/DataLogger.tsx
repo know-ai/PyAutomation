@@ -3,18 +3,18 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { HistoryResults } from "../components/HistoryResults";
 import { MultiSelectSearch } from "../components/MultiSelectSearch";
+import { AreaFilter } from "../components/AreaFilter";
 import {
-  getTags,
-  getTagsList,
+  getHistorianCatalog,
   getTabularData,
   type Tag,
-  type TagsResponse,
   type TabularDataFilter,
   type TabularDataResponse,
 } from "../services/tags";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { usePlantAreas } from "../hooks/usePlantAreas";
 import {
   FILTER_DATE_MS,
   FILTER_HEAVY_MS,
@@ -161,6 +161,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 export function DataLogger() {
   const { t, locale } = useTranslation();
   const { timeZone } = useDisplayTimezone();
+  const plantAreas = usePlantAreas();
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
   const [tabularData, setTabularData] = useState<TabularDataResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -186,6 +187,7 @@ export function DataLogger() {
   // Opciones para los filtros
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>(() => readSessionTags("datalogger_selectedTags"));
+  const [selectedArea, setSelectedArea] = useState("");
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("datalogger_presetDate");
     return (saved as PresetDate) || "Last 30 Minutes";
@@ -204,7 +206,7 @@ export function DataLogger() {
   // Cargar opciones para los filtros
   useEffect(() => {
     loadFilterOptions();
-  }, []);
+  }, [selectedArea]);
 
   useEffect(() => {
     setRunner((ctx) => loadTabularData(ctx));
@@ -219,10 +221,9 @@ export function DataLogger() {
       // Catálogo completo (lista slim) para el selector; fallback paginado si falla.
       let allTags: Tag[] = [];
       try {
-        allTags = await getTagsList();
+        allTags = await getHistorianCatalog(selectedArea || undefined);
       } catch (_e) {
-        const tagsResponse: TagsResponse = await getTags(1, 5000);
-        allTags = tagsResponse.data || [];
+        allTags = [];
       }
       setAvailableTags(allTags);
 
@@ -387,7 +388,9 @@ export function DataLogger() {
     () =>
       availableTags.map((tag) => ({
         value: tag.name,
-        label: tag.display_name || tag.name,
+        label: tag.area
+          ? `${tag.display_name || tag.name} (${tag.area})`
+          : tag.display_name || tag.name,
         description: tag.variable,
       })),
     [availableTags]
@@ -503,6 +506,15 @@ export function DataLogger() {
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.dataLogger")}</span>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <AreaFilter
+                    value={selectedArea}
+                    areas={plantAreas}
+                    plantLabel={t("common.plantWide")}
+                    onChange={(area) => {
+                      setSelectedArea(area);
+                      resetToFirstPage();
+                    }}
+                  />
                   <MultiSelectSearch
                     options={tagOptions}
                     selected={selectedTags}

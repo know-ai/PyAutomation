@@ -108,6 +108,7 @@ export type AlarmSummary = {
   condition?: string;
   segment?: string | null;
   manufacturer?: string | null;
+  area?: string | null;
   alarm_time: string;
   ack_time?: string | null;
   has_comments?: boolean;
@@ -122,6 +123,7 @@ export type AlarmSummaryFilter = {
   timezone?: string;
   page?: number;
   limit?: number;
+  area?: string;
 };
 
 export type AlarmSummaryResponse = {

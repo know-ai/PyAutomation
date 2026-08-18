@@ -90,12 +90,18 @@ def persist_system_event(
     criticity: int,
     user=None,
     timestamp: Optional[datetime] = None,
+    area: Optional[str] = None,
+    plant_wide: bool = False,
+    source=None,
 ) -> bool:
     """Persist a structured system event.
 
     Returns True if the event was stored (journal and/or remote). Never raises.
+    Line/edge events stamp Area/Segment; ``plant_wide=True`` leaves area empty.
     """
     try:
+        from .event_scope import resolve_event_area
+
         audit_user = user or get_system_user()
         created = _events_engine.create(
             message=clip(message, MESSAGE_MAX),
@@ -105,6 +111,8 @@ def persist_system_event(
             priority=priority,
             criticity=criticity,
             timestamp=timestamp,
+            area=resolve_event_area(area=area, plant_wide=plant_wide, source=source),
+            plant_wide=plant_wide,
         )
         event = created[0] if isinstance(created, tuple) else created
         if event is None:

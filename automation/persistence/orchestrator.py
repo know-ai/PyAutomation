@@ -79,6 +79,25 @@ class PersistenceOrchestrator:
             return 0
         return self.journal.append(persistable)
 
+    def enqueue_many(self, persistables: Sequence[IPersistable]) -> list[int]:
+        owned: list[IPersistable] = []
+        for persistable in persistables:
+            if not _scope_owns_persistable(persistable):
+                logging.getLogger("pyautomation").error(
+                    "SAF rejected foreign record domain=%s entity=%s area=%s owner_node=%s",
+                    persistable.domain(),
+                    persistable.entity_id(),
+                    persistable.payload().get("area"),
+                    persistable.payload().get("owner_node"),
+                )
+                continue
+            if self.cycle_cache.should_drop(persistable):
+                continue
+            owned.append(persistable)
+        if not owned:
+            return []
+        return self.journal.append_committed_many(owned)
+
     def mark_sent(self, journal_ids: Sequence[int]) -> None:
         self.journal.mark_sent(journal_ids)
 

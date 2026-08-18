@@ -67,7 +67,7 @@ PyAutomation serves as the **bridge between Operational Technology (OT) and Info
 
 ### 🔌 Industrial Connectivity
 
-- **Multi-Edge by default**: each acquisition node owns one ISA-95 area (`AUTOMATION_NODE_ID` + `AUTOMATION_AREA`). API/HMI stay up if identity is missing; acquisition stays fail-closed. See [docs/multi-edge.md](docs/multi-edge.md).
+- **Multi-Edge by default**: each acquisition node owns one line (`AUTOMATION_NODE_ID` + `AUTOMATION_SEGMENT`, alias of `AUTOMATION_AREA`). `AUTOMATION_MANUFACTURER` is the site alias (`AUTOMATION_SITE`). API/HMI stay up if identity is missing; acquisition stays fail-closed. See [docs/multi-edge.md](docs/multi-edge.md).
 - **Multi-Connection Support**: Connect to multiple OPC UA servers simultaneously
 - **Data Acquisition**: 
   - **DAQ**: Polling-based data collection
@@ -172,11 +172,11 @@ AUTOMATION_OPCUA_SERVER_PORT=53530
 AUTOMATION_APP_SECRET_KEY="CHANGE_ME_TO_A_SECURE_RANDOM_VALUE"
 AUTOMATION_SUPERUSER_PASSWORD="CHANGE_ME_SUPERUSER_PASSWORD"
 
-# Multi-edge identity (required for acquisition; API/HMI stay available if missing)
+# Multi-edge identity (SEGMENT/MANUFACTURER are the app names; AREA/SITE are aliases)
 AUTOMATION_MULTI_EDGE_ENABLED=true
 AUTOMATION_NODE_ID=edge-linea1
-AUTOMATION_AREA=Linea1
-AUTOMATION_SITE=Norte
+AUTOMATION_SEGMENT=Linea1
+AUTOMATION_MANUFACTURER=Test
 
 # Plant timezone (presentation default / reports). Storage remains UTC.
 # TIMEZONE in some compose files is only an alias that maps to this variable.
@@ -214,6 +214,8 @@ services:
       AUTOMATION_TIMEZONE: ${AUTOMATION_TIMEZONE:-America/Caracas}
       AUTOMATION_MULTI_EDGE_ENABLED: ${AUTOMATION_MULTI_EDGE_ENABLED:-true}
       AUTOMATION_NODE_ID: ${AUTOMATION_NODE_ID:-}
+      AUTOMATION_SEGMENT: ${AUTOMATION_SEGMENT:-}
+      AUTOMATION_MANUFACTURER: ${AUTOMATION_MANUFACTURER:-}
       AUTOMATION_AREA: ${AUTOMATION_AREA:-}
       AUTOMATION_SITE: ${AUTOMATION_SITE:-}
       # Variables de entorno para configuración del HMI (HTTP/HTTPS)

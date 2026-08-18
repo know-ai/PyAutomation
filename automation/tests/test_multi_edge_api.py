@@ -156,3 +156,89 @@ class TestScopedMutations(unittest.TestCase):
             payload, status = _alarm_scope_error(alarm_name="Linea2.ALM.1")
         self.assertEqual(status, 503)
         self.assertIn("identity", payload["message"].lower())
+
+
+class TestPlantWideHistoryReads(unittest.TestCase):
+    def test_optional_area_tokens_mean_plant_wide(self):
+        from ..utils.history_query import optional_area
+
+        self.assertIsNone(optional_area(None))
+        self.assertIsNone(optional_area(""))
+        self.assertIsNone(optional_area("  "))
+        self.assertIsNone(optional_area("all"))
+        self.assertIsNone(optional_area("Plant"))
+        self.assertIsNone(optional_area("*"))
+        self.assertEqual(optional_area("Linea2"), "Linea2")
+
+    def test_filter_alarms_by_does_not_inject_node_area(self):
+        from .. import PyAutomation
+
+        app = PyAutomation()
+        env = {
+            "AUTOMATION_MULTI_EDGE_ENABLED": "true",
+            "AUTOMATION_NODE_ID": "edge-a",
+            "AUTOMATION_AREA": "Linea1",
+        }
+        with patch.dict(os.environ, env, clear=False), patch.object(
+            app, "is_db_connected", return_value=True
+        ), patch.object(
+            app.alarms_engine, "filter_alarm_summary_by", return_value={"data": []}
+        ) as mocked:
+            app.filter_alarms_by(page=1, limit=20)
+            self.assertIsNone(mocked.call_args.kwargs.get("area"))
+
+            mocked.reset_mock()
+            app.filter_alarms_by(page=1, limit=20, area="Linea2")
+            self.assertEqual(mocked.call_args.kwargs.get("area"), "Linea2")
+
+            mocked.reset_mock()
+            app.filter_alarms_by(page=1, limit=20, area="all")
+            self.assertIsNone(mocked.call_args.kwargs.get("area"))
+
+    def test_filter_events_and_logs_pass_optional_area(self):
+        from .. import PyAutomation
+
+        app = PyAutomation()
+        env = {
+            "AUTOMATION_MULTI_EDGE_ENABLED": "true",
+            "AUTOMATION_NODE_ID": "edge-a",
+            "AUTOMATION_AREA": "Linea1",
+        }
+        with patch.dict(os.environ, env, clear=False), patch.object(
+            app, "is_db_connected", return_value=True
+        ), patch.object(
+            app.events_engine, "filter_by", return_value={"data": []}
+        ) as events_mocked, patch.object(
+            app.logs_engine, "filter_by", return_value={"data": []}
+        ) as logs_mocked:
+            app.filter_events_by(page=1, limit=20)
+            self.assertIsNone(events_mocked.call_args.kwargs.get("area"))
+            app.filter_events_by(page=1, limit=20, area="Linea2")
+            self.assertEqual(events_mocked.call_args.kwargs.get("area"), "Linea2")
+
+            app.filter_logs_by(page=1, limit=20)
+            self.assertIsNone(logs_mocked.call_args.kwargs.get("area"))
+            app.filter_logs_by(page=1, limit=20, area="Linea2")
+            self.assertEqual(logs_mocked.call_args.kwargs.get("area"), "Linea2")
+
+    def test_get_trends_does_not_require_cvt_ownership(self):
+        from .. import PyAutomation
+
+        app = PyAutomation()
+        with patch.object(
+            app, "get_tags", return_value=[{"name": "Linea1.FI"}]
+        ), patch.object(
+            app.logger_engine,
+            "read_trends",
+            return_value={"Linea2.FI": {"values": [], "unit": "kg/h"}},
+        ) as mocked:
+            result = app.get_trends("s", "e", "UTC", "Linea2.FI")
+            mocked.assert_called_once()
+            self.assertIn("Linea2.FI", result)
+
+    def test_users_table_has_no_area(self):
+        from ..dbmodels.users import Users
+
+        self.assertNotIn("area", Users._meta.fields)
+        self.assertNotIn("owner_node", Users._meta.fields)
+

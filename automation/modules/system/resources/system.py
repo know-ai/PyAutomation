@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 from flask_restx import Namespace, Resource
 
+from .... import PyAutomation
 from ....extensions.api import api
+from ....extensions import _api as Api
+from ...health.require_db import require_remote_db
 from ....health import get_database_health_service
 from ....health.interfaces import IReconnectionHandler
+
+app = PyAutomation()
 
 ns = Namespace("System", description="Operator system actions")
 
@@ -31,6 +36,21 @@ class SystemTimezoneResource(Resource):
     def get(self):
         """HMI display default: plant timezone. Does not affect historian UTC."""
         return plant_timezone_payload(), 200
+
+
+@ns.route("/nodes")
+class SystemNodesResource(Resource):
+    @api.doc(
+        security="apikey",
+        description="Registered edge nodes and areas for plant-wide historical filters.",
+    )
+    @api.response(200, "Node list")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
+    @Api.token_required(auth=True)
+    def get(self):
+        """Plant topology: node_id, area, site. Not a runtime catalog."""
+        return {"data": app.get_plant_nodes()}, 200
 
 
 @ns.route("/reconnect_db")

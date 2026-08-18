@@ -3,6 +3,7 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { HistoryResults } from "../components/HistoryResults";
 import { MultiSelectSearch } from "../components/MultiSelectSearch";
+import { AreaFilter } from "../components/AreaFilter";
 import {
   filterAlarmsSummary,
   getAlarmSummaryComments,
@@ -14,6 +15,7 @@ import { createLog } from "../services/logs";
 import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { usePlantAreas } from "../hooks/usePlantAreas";
 import {
   FILTER_COMPOSE_MS,
   FILTER_DATE_MS,
@@ -91,6 +93,7 @@ function displayValue(value: unknown): string {
 export function AlarmsSummary() {
   const { t, locale } = useTranslation();
   const { timeZone } = useDisplayTimezone();
+  const plantAreas = usePlantAreas();
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
   const [alarmsSummary, setAlarmsSummary] = useState<AlarmSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -121,6 +124,7 @@ export function AlarmsSummary() {
     const saved = localStorage.getItem("alarms_summary_selectedStates");
     return saved ? JSON.parse(saved) : [];
   });
+  const [selectedArea, setSelectedArea] = useState("");
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("alarms_summary_presetDate");
     return (saved as PresetDate) || "Last Hour";
@@ -168,7 +172,7 @@ export function AlarmsSummary() {
 
   useEffect(() => {
     schedule(FILTER_INSTANT_MS);
-  }, [timeZone, schedule]);
+  }, [timeZone, selectedArea, schedule]);
 
   // Cerrar menú contextual al hacer click fuera
   useEffect(() => {
@@ -265,6 +269,9 @@ export function AlarmsSummary() {
       if (timeZone) {
         payload.timezone = timeZone;
       }
+      if (selectedArea) {
+        payload.area = selectedArea;
+      }
 
       const response: AlarmSummaryResponse = await filterAlarmsSummary(payload, { signal });
       if (!isCurrent(generation, signal)) return;
@@ -347,6 +354,7 @@ export function AlarmsSummary() {
   const handleClearFilters = () => {
     setSelectedStates([]);
     localStorage.removeItem("alarms_summary_selectedStates");
+    setSelectedArea("");
     setPresetDate("Last Hour");
     localStorage.setItem("alarms_summary_presetDate", "Last Hour");
     const { start, end } = getPresetDateRange("Last Hour");
@@ -563,6 +571,9 @@ export function AlarmsSummary() {
       if (timeZone) {
         payload.timezone = timeZone;
       }
+      if (selectedArea) {
+        payload.area = selectedArea;
+      }
 
       const response: AlarmSummaryResponse = await filterAlarmsSummary(payload);
       const allAlarms = response.data || [];
@@ -577,6 +588,7 @@ export function AlarmsSummary() {
         t("tables.id"),
         t("tables.alarmDateTime"),
         t("tables.name"),
+        t("tables.area"),
         t("tables.description"),
         t("tables.status"),
         t("tables.ackDateTime"),
@@ -589,6 +601,7 @@ export function AlarmsSummary() {
           alarm.id || "",
           alarm.alarm_time ? formatAlarmTime(alarm.alarm_time, locale) : "",
           alarm.name || "",
+          alarm.area || "",
           alarm.description || "",
           alarm.state || "",
           alarm.ack_time ? formatAlarmTime(alarm.ack_time, locale) : "",
@@ -655,6 +668,15 @@ export function AlarmsSummary() {
               <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
                 <span className="me-auto">{t("navigation.alarmsSummary")}</span>
                 <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <AreaFilter
+                    value={selectedArea}
+                    areas={plantAreas}
+                    plantLabel={t("common.plantWide")}
+                    onChange={(area) => {
+                      setSelectedArea(area);
+                      resetToFirstPage();
+                    }}
+                  />
                   <MultiSelectSearch
                     options={stateOptions}
                     selected={selectedStates}
@@ -801,6 +823,7 @@ export function AlarmsSummary() {
                     <th>{t("tables.id")}</th>
                     <th>{t("tables.alarmDateTime")}</th>
                     <th>{t("tables.name")}</th>
+                    <th>{t("tables.area")}</th>
                     <th>{t("tables.status")}</th>
                     <th>{t("tables.ackDateTime")}</th>
                     <th>{t("tables.comments")}</th>
@@ -809,7 +832,7 @@ export function AlarmsSummary() {
                 <tbody>
                   {alarmsSummary.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center text-muted py-4">
+                      <td colSpan={7} className="text-center text-muted py-4">
                         {t("alarmsSummary.noAlarmsAvailable")}
                       </td>
                     </tr>
@@ -827,6 +850,7 @@ export function AlarmsSummary() {
                         <td>
                           <strong>{alarm.name || "-"}</strong>
                         </td>
+                        <td>{alarm.area || "-"}</td>
                         <td>
                           <span className={`badge ${alarmStateBadgeClass(alarm.state)}`}>
                             {t(`alarmsSummary.states.${alarm.state}`)}
@@ -1100,8 +1124,15 @@ export function AlarmsSummary() {
                           : "-"}
                       </dd>
 
+                      <dt className="col-sm-4">{t("tables.area")}</dt>
+                      <dd className="col-sm-8">
+                        {displayValue(selectedAlarmDetail.area)}
+                      </dd>
+
                       <dt className="col-sm-4">{t("tables.segment")}</dt>
-                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.segment)}</dd>
+                      <dd className="col-sm-8">
+                        {displayValue(selectedAlarmDetail.area || selectedAlarmDetail.segment)}
+                      </dd>
 
                       <dt className="col-sm-4">{t("tables.manufacturer")}</dt>
                       <dd className="col-sm-8">{displayValue(selectedAlarmDetail.manufacturer)}</dd>

@@ -149,7 +149,41 @@ class Alarm(StateMachine):
             transitions.extend(state.transitions)
         self.transitions = transitions
         self.sio:SocketIO|None = None
+        self._defer_persist = False
         super(Alarm, self).__init__()
+
+    def catalog_payload(self) -> dict:
+        r"""Fields needed to persist this alarm definition to the historian catalog."""
+        tag_name = None
+        area = None
+        tag = self.tag
+        if tag is not None:
+            tag_name = getattr(tag, "name", None)
+            if not tag_name:
+                getter = getattr(tag, "get_name", None)
+                if callable(getter):
+                    tag_name = getter()
+            area = getattr(tag, "area", None)
+        if not area:
+            from ..utils.event_scope import resolve_event_area
+
+            area = resolve_event_area()
+        trigger = self.alarm_setpoint
+        trigger_type = None
+        trigger_value = None
+        if trigger is not None:
+            trigger_value = getattr(trigger, "value", None)
+            kind = getattr(trigger, "type", None)
+            if kind is not None:
+                trigger_type = getattr(kind, "value", None) or str(kind)
+        return {
+            "identifier": self.identifier,
+            "tag": tag_name,
+            "trigger_type": trigger_type or "BOOL",
+            "trigger_value": trigger_value,
+            "description": self.description or "",
+            "area": area,
+        }
 
     @logging_error_handler
     @put_alarm_state
@@ -168,11 +202,20 @@ class Alarm(StateMachine):
         if not isinstance(stamp, datetime):
             stamp = datetime.now(timezone.utc)
         self.timestamp = quantize_datetime_ms(stamp)
+        if getattr(self, "_defer_persist", False):
+            return
+        catalog = self.catalog_payload()
         self.alarm_engine.create_record_on_alarm_summary(
                 name=self.name, 
                 state=self.state.state, 
                 timestamp=self.timestamp,
-                ack_timestamp=self.ack_timestamp
+                ack_timestamp=self.ack_timestamp,
+                identifier=catalog.get("identifier"),
+                tag=catalog.get("tag"),
+                trigger_type=catalog.get("trigger_type"),
+                trigger_value=catalog.get("trigger_value"),
+                description=catalog.get("description"),
+                area=catalog.get("area"),
             )
 
     @logging_error_handler
@@ -185,10 +228,16 @@ class Alarm(StateMachine):
         if not isinstance(stamp, datetime):
             stamp = datetime.now(timezone.utc)
         self.ack_timestamp = quantize_datetime_ms(stamp)
+        if getattr(self, "_defer_persist", False):
+            return
+        catalog = self.catalog_payload()
         self.alarm_engine.put_record_on_alarm_summary(
             name=self.name, 
             state=self.state.state, 
-            ack_timestamp=self.ack_timestamp
+            ack_timestamp=self.ack_timestamp,
+            tag=catalog.get("tag"),
+            identifier=catalog.get("identifier"),
+            area=catalog.get("area"),
         )
     
     @logging_error_handler
@@ -197,9 +246,15 @@ class Alarm(StateMachine):
         
         self.timestamp = None
         self.state = AlarmState.RTNUN
+        if getattr(self, "_defer_persist", False):
+            return
+        catalog = self.catalog_payload()
         self.alarm_engine.put_record_on_alarm_summary(
             name=self.name, 
-            state=self.state.state
+            state=self.state.state,
+            tag=catalog.get("tag"),
+            identifier=catalog.get("identifier"),
+            area=catalog.get("area"),
         )
     
     @logging_error_handler
@@ -315,6 +370,32 @@ class Alarm(StateMachine):
             transition_name = f'{current_state}_to_normal'
             self.__transition(transition_name=transition_name)
 
+    def _apply_acknowledge(self, now:datetime)->bool:
+        r"""
+        ISA-18.2 acknowledge transition in memory only.
+
+        Persistence, audit, and socket fan-out are owned by the caller so a
+        bulk acknowledge can pay one round-trip instead of one per alarm.
+        """
+        current_state = self.current_state.name.lower()
+        if current_state == "unack_alarm":
+            transition_name = "unack_alarm_to_ack_alarm"
+        elif current_state == "rtn_unack":
+            transition_name = "rtn_unack_to_normal"
+        else:
+            return False
+        self.__timestamp = now
+        self.__transition(transition_name=transition_name)
+        return True
+
+    def _acknowledge_in_memory(self, now:datetime)->bool:
+        r"""Acknowledge without per-alarm DB writes or socket emits."""
+        self._defer_persist = True
+        try:
+            return self._apply_acknowledge(now)
+        finally:
+            self._defer_persist = False
+
     @logging_error_handler
     @set_event(message="Alarm acknowledged", classification="Control", priority=2, criticity=3)
     def acknowledge(self, user:User=None):
@@ -325,26 +406,19 @@ class Alarm(StateMachine):
 
         * **user** (User, optional): User performing the acknowledgment.
         """
-        current_state = self.current_state.name.lower()
-
-        if current_state=="unack_alarm":
-
-            transition_name = f'{current_state}_to_ack_alarm'
-
-        elif current_state=="rtn_unack":
-
-            transition_name = f'{current_state}_to_normal'
-
-
         from ..timebase import quantize_datetime_ms
 
         now = quantize_datetime_ms(datetime.now(timezone.utc))
-        self.__timestamp = now
+        catalog = self.catalog_payload()
         self.alarm_engine.put_record_on_alarm_summary(
             name=self.name,
             ack_timestamp=now,
+            tag=catalog.get("tag"),
+            identifier=catalog.get("identifier"),
+            area=catalog.get("area"),
         )
-        self.__transition(transition_name=transition_name)
+        if not self._apply_acknowledge(now):
+            return None
         return self, f"{self.tag.get_name()}"
 
     @logging_error_handler
