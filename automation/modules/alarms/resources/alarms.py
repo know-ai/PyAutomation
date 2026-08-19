@@ -44,7 +44,8 @@ create_alarm_model = api.model("create_alarm_model", {
     'tag': fields.String(required=True, description='Tag name to monitor'),
     'alarm_type': fields.String(required=False, description='Alarm type (BOOL, HIGH, LOW, HIGH-HIGH, LOW-LOW)', default='BOOL'),
     'trigger_value': fields.Raw(required=False, description='Value that triggers the alarm (bool, float, or int)', default=True),
-    'description': fields.String(required=False, description='Alarm description', default='')
+    'description': fields.String(required=False, description='Alarm description', default=''),
+    'display_name': fields.String(required=False, description='Operator-facing display name (defaults to the base name)')
 })
 
 alarms_kp_range_model = api.model("alarms_kp_range_model", {
@@ -499,7 +500,9 @@ class AddAlarmResource(Resource):
                 alarm_type=payload.get('alarm_type', 'BOOL'),
                 trigger_value=payload.get('trigger_value', True),
                 description=payload.get('description', ''),
+                display_name=payload.get('display_name'),
                 user=user,
+                skip_validation=False,
             )
             
             if alarm:
@@ -514,7 +517,7 @@ class AddAlarmResource(Resource):
                         source=alarm,
                     )
                 return {
-                    'message': f"Alarm '{name}' created successfully",
+                    'message': f"Alarm '{alarm.name}' created successfully",
                     'alarm': {
                         'id': alarm.identifier,
                         'name': alarm.name,

@@ -4,6 +4,7 @@ import { Button } from "../components/Button";
 import { AlarmTableRow } from "../components/AlarmTableRow";
 import { getAlarms, createAlarm, updateAlarm, deleteAlarm, getAlarmByName, executeAlarmAction, shelveAlarm, acknowledgeAllAlarms, type Alarm, type AlarmsResponse } from "../services/alarms";
 import { getTags, type Tag } from "../services/tags";
+import { getNodeIdentity, type NodeIdentity } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { useAppDispatch } from "../hooks/useAppDispatch";
@@ -12,6 +13,7 @@ import { showToast } from "../utils/toast";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { formatTimestamp } from "../utils/timezone";
 import { alarmStateBadgeClass } from "../utils/alarmState";
+import { VirtualizedCombobox, type ComboboxItem } from "../components/VirtualizedCombobox";
 
 export function Alarms() {
   const { t } = useTranslation();
@@ -60,9 +62,104 @@ export function Alarms() {
     alarm_type: "BOOL",
     trigger_value: "",
     description: "",
+    display_name: "",
   });
+  const [nodeIdentity, setNodeIdentity] = useState<NodeIdentity>({
+    nodeId: "",
+    area: "",
+    site: "",
+  });
+  const [displayNameTouched, setDisplayNameTouched] = useState(false);
+  const [tagSearchTerm, setTagSearchTerm] = useState("");
 
   const alarmTypes = ["BOOL", "HIGH", "LOW", "HIGH-HIGH", "LOW-LOW"];
+
+  const localTags = useMemo(() => {
+    if (!nodeIdentity.area) return availableTags;
+    return availableTags.filter((tag) => !tag.area || tag.area === nodeIdentity.area);
+  }, [availableTags, nodeIdentity.area]);
+  const filteredLocalTags = useMemo(() => {
+    const q = tagSearchTerm.trim().toLowerCase();
+    if (!q) return localTags;
+    return localTags.filter((tag) => (tag.name || "").toLowerCase().includes(q));
+  }, [localTags, tagSearchTerm]);
+  const tagComboboxItems = useMemo<ComboboxItem[]>(
+    () => filteredLocalTags.map((tag) => ({ key: tag.name, value: tag.name, label: tag.name })),
+    [filteredLocalTags]
+  );
+
+  const selectedTag = useMemo(
+    () => localTags.find((tag) => tag.name === formData.tag),
+    [localTags, formData.tag]
+  );
+
+  const computedAlarmName = useMemo(() => {
+    if (!formData.tag) return "";
+    const tagName = (selectedTag?.name || formData.tag || "").trim();
+    if (!tagName) return "";
+    const tagParts = tagName.split(".").filter(Boolean);
+    const fallbackSite = nodeIdentity.site || "Site";
+    const fallbackArea = nodeIdentity.area || "Area";
+    const site = tagParts.length >= 3 ? tagParts[0] : fallbackSite;
+    const area = tagParts.length >= 3 ? tagParts[1] : fallbackArea;
+    const baseTagName = tagParts[tagParts.length - 1];
+    const suffixByType: Record<string, string> = {
+      "HIGH-HIGH": "HH",
+      HIGH: "H",
+      LOW: "L",
+      "LOW-LOW": "LL",
+      BOOL: "B",
+    };
+    const suffix = suffixByType[formData.alarm_type] || "B";
+    return `alarm.${site}.${area}.${baseTagName}.${suffix}`;
+  }, [formData.tag, formData.alarm_type, selectedTag?.name, nodeIdentity.site, nodeIdentity.area]);
+
+  const isCreateFormValid = useMemo(() => {
+    if (!formData.tag || !formData.alarm_type || !computedAlarmName) return false;
+    if (formData.alarm_type === "BOOL") {
+      return formData.trigger_value === "true" || formData.trigger_value === "false";
+    }
+    return formData.trigger_value.trim() !== "" && !Number.isNaN(Number(formData.trigger_value));
+  }, [formData.tag, formData.alarm_type, formData.trigger_value, computedAlarmName]);
+
+  const emptyForm = {
+    name: "",
+    tag: "",
+    alarm_type: "BOOL",
+    trigger_value: "",
+    description: "",
+    display_name: "",
+  };
+
+  const syncDerivedFields = (nextTagName: string, nextType: string) => {
+    const rawTag = (nextTagName || "").trim();
+    const parts = rawTag.split(".").filter(Boolean);
+    const baseTag = parts.length ? parts[parts.length - 1] : rawTag;
+    const site = parts.length >= 3 ? parts[0] : (nodeIdentity.site || "Site");
+    const area = parts.length >= 3 ? parts[1] : (nodeIdentity.area || "Area");
+    const suffixByType: Record<string, string> = {
+      "HIGH-HIGH": "HH",
+      HIGH: "H",
+      LOW: "L",
+      "LOW-LOW": "LL",
+      BOOL: "B",
+    };
+    const suffix = suffixByType[nextType] || "B";
+    return {
+      generatedName: rawTag ? `alarm.${site}.${area}.${baseTag}.${suffix}` : "",
+    };
+  };
+
+  const selectTagForCreate = (nextTag: string) => {
+    const { generatedName } = syncDerivedFields(nextTag, formData.alarm_type);
+    setFormData((prev) => ({
+      ...prev,
+      tag: nextTag,
+      name: generatedName,
+      display_name: displayNameTouched ? prev.display_name : generatedName,
+    }));
+    setTagSearchTerm(nextTag);
+  };
 
   const realTimeAlarms = useAppSelector((state) => state.alarms.alarms);
   const tagValues = useAppSelector((state) => state.tags.tagValues);
@@ -114,6 +211,15 @@ export function Alarms() {
     loadAlarms(1, 20);
     loadTags();
   }, []);
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    setDisplayNameTouched(false);
+    setTagSearchTerm("");
+    getNodeIdentity()
+      .then(setNodeIdentity)
+      .catch(() => setNodeIdentity({ nodeId: "", area: "", site: "" }));
+  }, [showCreateModal]);
 
   // Update local alarms state when real-time alarms change
   useEffect(() => {
@@ -332,6 +438,7 @@ export function Alarms() {
       alarm_type: alarmType,
       trigger_value: triggerValue !== undefined ? String(triggerValue) : "",
       description: alarm.description || "",
+      display_name: "",
     });
     
     setEditingAlarm(alarm);
@@ -539,13 +646,7 @@ export function Alarms() {
       // Cerrar modal y resetear formulario
       setShowEditModal(false);
       setEditingAlarm(null);
-      setFormData({
-        name: "",
-        tag: "",
-        alarm_type: "BOOL",
-        trigger_value: "",
-        description: "",
-      });
+      setFormData({ ...emptyForm });
       
       // Recargar alarmas
       loadAlarms(pagination.page, pagination.limit);
@@ -571,15 +672,26 @@ export function Alarms() {
     
     try {
       // Validar campos requeridos
-      if (!formData.name || !formData.tag) {
+      if (!formData.tag || !isCreateFormValid) {
         setError(t("alarms.nameAndTagRequired"));
+        setCreating(false);
+        return;
+      }
+
+      const selectedTag = availableTags.find((tag) => tag.name === formData.tag);
+      if (
+        nodeIdentity.area &&
+        selectedTag?.area &&
+        selectedTag.area !== nodeIdentity.area
+      ) {
+        setError(t("alarms.tagNotInLocalArea", { area: nodeIdentity.area }));
         setCreating(false);
         return;
       }
 
       // Preparar payload
       const payload: any = {
-        name: formData.name,
+        name: computedAlarmName,
         tag: formData.tag,
         alarm_type: formData.alarm_type || "BOOL",
       };
@@ -600,18 +712,24 @@ export function Alarms() {
       if (formData.description) {
         payload.description = formData.description;
       }
+      if (formData.display_name) {
+        payload.display_name = formData.display_name;
+      }
 
-      await createAlarm(payload);
+      const response = await createAlarm(payload);
+      const responseMessage =
+        response?.message ||
+        t("alarms.createSuccess", { name: computedAlarmName });
+      const responseType = String(responseMessage).toLowerCase().includes("warning")
+        ? "warning"
+        : "success";
+      showToast(responseMessage, responseType);
       
       // Cerrar modal y resetear formulario
       setShowCreateModal(false);
-      setFormData({
-        name: "",
-        tag: "",
-        alarm_type: "BOOL",
-        trigger_value: "",
-        description: "",
-      });
+      setDisplayNameTouched(false);
+      setFormData({ ...emptyForm });
+      setTagSearchTerm("");
       
       // Recargar alarmas and update buffer
       await loadAlarms(pagination.page, pagination.limit);
@@ -625,6 +743,7 @@ export function Alarms() {
       const errorMsg =
         backendMessage || e?.message || t("alarms.createError");
       setError(errorMsg);
+      showToast(errorMsg, "error");
     } finally {
       setCreating(false);
     }
@@ -884,6 +1003,10 @@ export function Alarms() {
                     onClick={() => {
                       setShowCreateModal(false);
                       setError(null);
+                      setTagSearchTerm("");
+                      setIsTagDropdownOpen(false);
+                      setHighlightedTagIndex(-1);
+                      setTagListScrollTop(0);
                     }}
                     aria-label="Close"
                   ></button>
@@ -905,34 +1028,46 @@ export function Alarms() {
                           type="text"
                           className="form-control"
                           required
-                          value={formData.name}
-                          onChange={(e) =>
-                            setFormData({ ...formData, name: e.target.value })
-                          }
+                          value={computedAlarmName}
+                          title={t("alarms.nameAutoTitle")}
+                          readOnly
+                          disabled
                         />
+                        <small className="text-muted">{t("alarms.nameAutoHint")}</small>
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
                           {t("tables.tag")} <span className="text-danger">*</span>
                         </label>
-                        <select
-                          className="form-select"
-                          required
-                          value={formData.tag}
-                          onChange={(e) =>
-                            setFormData({ ...formData, tag: e.target.value })
-                          }
+                        <VirtualizedCombobox
+                          id="alarm-tag-combobox"
+                          items={tagComboboxItems}
+                          inputValue={tagSearchTerm}
+                          onInputValueChange={(nextValue) => {
+                            setTagSearchTerm(nextValue);
+                            if (formData.tag && nextValue.trim() !== formData.tag) {
+                              setFormData((prev) => ({ ...prev, tag: "", name: "" }));
+                            }
+                          }}
+                          onSelect={(item) => selectTagForCreate(item.value)}
+                          placeholder={t("alarms.filterTags")}
                           disabled={loadingTags}
-                        >
-                          <option value="">
-                            {loadingTags ? t("alarms.loadingTags") : t("alarms.selectTag")}
-                          </option>
-                          {availableTags.map((tag) => (
-                            <option key={tag.name} value={tag.name}>
-                              {tag.name}
-                            </option>
-                          ))}
-                        </select>
+                          loading={loadingTags}
+                          loadingText={t("alarms.loadingTags")}
+                          emptyText={t("alarms.noTagsMatchFilter")}
+                        />
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">{t("tables.displayName")}</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={formData.display_name}
+                          onChange={(e) => {
+                            setDisplayNameTouched(true);
+                            setFormData({ ...formData, display_name: e.target.value });
+                          }}
+                        />
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
@@ -943,11 +1078,15 @@ export function Alarms() {
                           required
                           value={formData.alarm_type}
                           onChange={(e) => {
-                            setFormData({ 
-                              ...formData, 
-                              alarm_type: e.target.value,
-                              trigger_value: "" // Limpiar trigger_value al cambiar tipo
-                            });
+                            const nextType = e.target.value;
+                            const { generatedName } = syncDerivedFields(formData.tag, nextType);
+                            setFormData((prev) => ({
+                              ...prev,
+                              alarm_type: nextType,
+                              name: generatedName,
+                              display_name: displayNameTouched ? prev.display_name : generatedName,
+                              trigger_value: "",
+                            }));
                           }}
                         >
                           {alarmTypes.map((type) => (
@@ -1008,12 +1147,16 @@ export function Alarms() {
                       onClick={() => {
                         setShowCreateModal(false);
                         setError(null);
+                        setTagSearchTerm("");
+                        setIsTagDropdownOpen(false);
+                        setHighlightedTagIndex(-1);
+                        setTagListScrollTop(0);
                       }}
                       disabled={creating}
                     >
                       {t("common.cancel")}
                     </button>
-                    <Button type="submit" variant="success" loading={creating}>
+                    <Button type="submit" variant="success" loading={creating} disabled={!isCreateFormValid || creating}>
                       {t("alarms.createAlarm")}
                     </Button>
                   </div>

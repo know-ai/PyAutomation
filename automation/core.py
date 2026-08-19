@@ -535,6 +535,7 @@ class PyAutomation(Singleton):
             id=str|type(None),
             user=User|type(None),
             reload=bool,
+            skip_validation=bool,
             output=(Tag|None, str)
     )
     def create_tag(self,
@@ -565,6 +566,7 @@ class PyAutomation(Singleton):
             id:str=None,
             user:User|None=None,
             reload:bool=False,
+            skip_validation:bool=False,
         )->tuple[Tag,str]:
         r"""
         Creates a new tag in the automation application.
@@ -607,7 +609,10 @@ class PyAutomation(Singleton):
         'F'
         ```
         """
+        from .tag_naming import TagNameError, qualify_user_tag_name, tag_name_validation_skipped
+
         scope = self._refresh_node_scope()
+        skip_name_rules = bool(skip_validation or reload or tag_name_validation_skipped())
         if scope.enabled:
             if not scope.is_valid:
                 return None, "Multi-edge acquisition identity is not configured"
@@ -617,14 +622,17 @@ class PyAutomation(Singleton):
             owner_node = owner_node or scope.node_id
             if area != scope.area or owner_node != scope.node_id:
                 return None, f"Tag '{name}' does not belong to this node"
-            if not reload and not name.startswith(f"{scope.area}."):
-                return None, f"Tag name must be qualified with '{scope.area}.'"
-            if display_name and not display_name.startswith(f"{scope.area}."):
-                display_name = f"{scope.area}.{display_name}"
+            if not skip_name_rules:
+                try:
+                    qualified = qualify_user_tag_name(name, scope.site, scope.area)
+                except TagNameError as exc:
+                    return None, str(exc)
+                name = qualified.name
+                if not display_name:
+                    display_name = qualified.base_name
 
         if not display_name:
-
-            display_name = name
+            display_name = name.split(".")[-1] if name else name
 
         # Si se proporciona opcua_client_name directamente, usarlo
         # Si no, intentar resolverlo desde opcua_address
@@ -1289,12 +1297,19 @@ class PyAutomation(Singleton):
                 return None, "Tag area belongs to another edge node"
             if kwargs.get("owner_node", scope.node_id) != scope.node_id:
                 return None, "Tag owner_node belongs to another edge node"
-            if "name" in kwargs and not kwargs["name"].startswith(f"{scope.area}."):
-                return None, f"Tag name must be qualified with '{scope.area}.'"
-            if "display_name" in kwargs and not kwargs["display_name"].startswith(
-                f"{scope.area}."
-            ):
-                kwargs["display_name"] = f"{scope.area}.{kwargs['display_name']}"
+            if "name" in kwargs:
+                from .tag_naming import TagNameError, qualify_user_tag_name, tag_name_validation_skipped
+
+                if not tag_name_validation_skipped():
+                    try:
+                        qualified = qualify_user_tag_name(
+                            kwargs["name"], scope.site, scope.area
+                        )
+                    except TagNameError as exc:
+                        return None, str(exc)
+                    kwargs["name"] = qualified.name
+            if "display_name" in kwargs and not kwargs["display_name"]:
+                kwargs["display_name"] = str(kwargs.get("name") or tag.get_name()).split(".")[-1]
         if "name" in kwargs:
             tag_name = tag.get_name()
             machines_with_tags_subscribed = list()
@@ -4404,6 +4419,8 @@ class PyAutomation(Singleton):
             user=User|type(None),
             reload=bool,
             area=str|type(None),
+            display_name=str|type(None),
+            skip_validation=bool,
             output=(Alarm|type(None), str)
     )
     def create_alarm(
@@ -4420,6 +4437,8 @@ class PyAutomation(Singleton):
             user:User=None,
             reload:bool=False,
             area:str=None,
+            display_name:str=None,
+            skip_validation:bool=False,
         )->tuple[Alarm, str]:
         r"""
         Creates and registers a new alarm in the system.
@@ -4457,14 +4476,37 @@ class PyAutomation(Singleton):
         8.5
         ```
         """
+        from .alarm_naming import AlarmNameError, qualify_user_alarm_name, alarm_name_validation_skipped
+
         scope = self._refresh_node_scope()
+        skip_name_rules = bool(skip_validation or reload or alarm_name_validation_skipped())
+        if scope.enabled and not scope.is_valid:
+            return None, "Multi-edge node identity is not configured"
+
+        if not skip_name_rules and scope.enabled:
+            try:
+                qualified = qualify_user_alarm_name(name, scope.site, scope.area)
+            except AlarmNameError as exc:
+                return None, str(exc)
+            name = qualified.name
+            if not display_name:
+                display_name = qualified.base_name
+        elif not display_name:
+            display_name = name.split(".")[-1] if name else name
+
         tag_obj = self.cvt.get_tag_by_name(name=tag)
-        if scope.enabled and (
-            not scope.is_valid
-            or tag_obj is None
-            or not scope.owns_tag(tag_obj)
-        ):
-            return None, f"Alarm '{name}' references a tag outside this node"
+        if tag_obj is None:
+            return None, f"Tag '{tag}' does not exist."
+
+        if not skip_name_rules and scope.enabled:
+            tag_area = getattr(tag_obj, "area", None)
+            if tag_area != scope.area:
+                return None, (
+                    f"Tag '{tag}' belongs to area '{tag_area}', but this node is '{scope.area}'. "
+                    f"Please use a tag from the same area."
+                )
+            if not scope.owns_tag(tag_obj):
+                return None, f"Alarm '{name}' references a tag outside this node"
 
         result = self.alarm_manager.append_alarm(
             name=name,
@@ -4488,26 +4530,41 @@ class PyAutomation(Singleton):
         alarm, message = result
 
         if alarm:
+            alarm.display_name = display_name
+            if scope.enabled:
+                alarm.owner_node = scope.node_id
+                if not getattr(alarm, "area", None):
+                    alarm.area = scope.area or area
 
             # Persist Tag on Database
             if not reload:
                 if self.is_db_connected():
                     
                     alarm = self.alarm_manager.get_alarm_by_name(name=name)
-                    
-                    self.alarms_engine.create(
-                        id=alarm.identifier,
-                        name=name,
-                        tag=tag,
-                        trigger_type=alarm_type,
-                        trigger_value=trigger_value,
-                        description=description,
-                        area=scope.area,
-                    )
+                    if alarm is not None:
+                        alarm.display_name = display_name
+                        if scope.enabled:
+                            alarm.owner_node = scope.node_id
+                            alarm.area = scope.area or area
+                        self.alarms_engine.create(
+                            id=alarm.identifier,
+                            name=name,
+                            tag=tag,
+                            trigger_type=alarm_type,
+                            trigger_value=trigger_value,
+                            description=description,
+                            area=scope.area or area,
+                        )
             
             return alarm, message
 
         return None, message
+
+    @logging_error_handler
+    def create_alarm_internal(self, name:str, tag:str, **kwargs):
+        r"""Create an engine/system alarm, skipping HMI name qualification."""
+        kwargs.pop("skip_validation", None)
+        return self.create_alarm(name=name, tag=tag, skip_validation=True, **kwargs)
 
     @logging_error_handler
     @validate_types(lasts=int, area=str|type(None), output=list)

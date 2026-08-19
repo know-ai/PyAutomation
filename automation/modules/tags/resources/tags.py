@@ -557,11 +557,12 @@ class AddTagResource(Resource):
                 owner_node=payload.get('owner_node'),
                 kp=payload.get('kp'),
                 user=Api.get_current_user(),
+                skip_validation=False,
             )
             
             if tag:
                 return {
-                    'message': f"Tag '{name}' created successfully",
+                    'message': f"Tag '{tag.name}' created successfully",
                     'tag': {
                         'id': tag.id,
                         'name': tag.name,

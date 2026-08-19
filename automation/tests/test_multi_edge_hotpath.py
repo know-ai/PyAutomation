@@ -262,7 +262,11 @@ class TestApplicationAlarmContract(unittest.TestCase):
                 variable="Adimentional",
             )
             self.assertIsNotNone(tag, message)
-            alarm, message = app.create_alarm(name=alarm_name, tag=tag_name)
+            alarm, message = app.create_alarm(
+                name=alarm_name,
+                tag=tag_name,
+                skip_validation=True,
+            )
             self.assertIsNotNone(alarm, message)
             self.assertIsNotNone(app.get_alarm_by_name(name=alarm_name))
             self.assertIsNone(app.get_alarm_by_name(name=f"missing.{id(self)}"))

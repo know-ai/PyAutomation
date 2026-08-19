@@ -3,9 +3,12 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getTags, createTag, updateTag, deleteTag, getVariables, getUnitsByVariable, type Tag, type TagsResponse } from "../services/tags";
 import { listClients, getClientVariablesWithOptions, getNodeAttributes, type OpcUaClient } from "../services/opcua";
+import { getNodeIdentity, type NodeIdentity } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { showToast } from "../utils/toast";
+import { validateUserTagNameInput } from "../utils/tagNameValidation";
+import { VirtualizedCombobox, type ComboboxItem } from "../components/VirtualizedCombobox";
 
 // Memoized row component to prevent unnecessary re-renders
 const TagTableRow = memo(({ 
@@ -199,6 +202,62 @@ export function Tags() {
     segment: "",
     manufacturer: "",
   });
+  const [nodeIdentity, setNodeIdentity] = useState<NodeIdentity>({
+    nodeId: "",
+    area: "",
+    site: "",
+  });
+  const [displayNameTouched, setDisplayNameTouched] = useState(false);
+
+  const nodePrefix =
+    nodeIdentity.site && nodeIdentity.area
+      ? `${nodeIdentity.site}.${nodeIdentity.area}`
+      : nodeIdentity.area || "";
+
+  const createNameValidation = useMemo(
+    () => validateUserTagNameInput(formData.name, nodeIdentity.site, nodeIdentity.area),
+    [formData.name, nodeIdentity.site, nodeIdentity.area]
+  );
+
+  const createNameErrorMessage = (() => {
+    if (!formData.name.trim()) return "";
+    if (createNameValidation.ok) return "";
+    const prefix = nodePrefix || "Site.Area";
+    const base =
+      createNameValidation.baseName ||
+      formData.name.trim().split(".").filter(Boolean).pop() ||
+      formData.name.trim();
+    switch (createNameValidation.message) {
+      case "twoParts":
+        return t("tags.nameErrorTwoParts", { prefix: `${prefix}.` });
+      case "mismatch":
+        return t("tags.nameErrorMismatch", { prefix, base });
+      case "reserved":
+        return t("tags.nameErrorReserved");
+      default:
+        return t("tags.nameErrorRequired");
+    }
+  })();
+
+  const handleCreateTagNameChange = (rawName: string) => {
+    const validation = validateUserTagNameInput(rawName, nodeIdentity.site, nodeIdentity.area);
+    setFormData((prev) => {
+      const next = { ...prev, name: rawName };
+      if (!displayNameTouched && validation.baseName) {
+        next.display_name = validation.baseName;
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    setDisplayNameTouched(false);
+    setOpcuaNodeFilter("");
+    getNodeIdentity()
+      .then(setNodeIdentity)
+      .catch(() => setNodeIdentity({ nodeId: "", area: "", site: "" }));
+  }, [showCreateModal]);
 
   const loadTags = async (page: number = pagination.page, limit: number = pagination.limit) => {
     setLoading(true);
@@ -463,6 +522,22 @@ export function Tags() {
       .filter((n) => (n.displayName || "").toLowerCase().includes(q) || (n.namespace || "").toLowerCase().includes(q))
       .slice(0, 5000);
   }, [opcuaNodes, opcuaNodeFilter]);
+  const opcuaNodeComboboxItems = useMemo<ComboboxItem[]>(
+    () =>
+      filteredOpcuaNodes.map((node) => ({
+        key: node.namespace,
+        value: node.namespace,
+        label: node.displayName || node.namespace,
+        title: node.namespace,
+      })),
+    [filteredOpcuaNodes]
+  );
+
+  const selectNodeNamespace = (namespace: string) => {
+    const selectedNode = opcuaNodes.find((n) => n.namespace === namespace);
+    setFormData((prev) => ({ ...prev, node_namespace: namespace }));
+    setOpcuaNodeFilter(selectedNode?.displayName || selectedNode?.namespace || namespace);
+  };
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.pages) {
@@ -512,6 +587,7 @@ export function Tags() {
     setEditingTag(tag);
     setShowEditModal(true);
     setError(null);
+    setOpcuaNodeFilter(tag.node_namespace || "");
     
     // Cargar unidades si hay variable
     if (tag.variable) {
@@ -901,6 +977,17 @@ export function Tags() {
         return;
       }
 
+      const nameCheck = validateUserTagNameInput(
+        formData.name,
+        nodeIdentity.site,
+        nodeIdentity.area
+      );
+      if (!nameCheck.ok) {
+        setError(createNameErrorMessage || t("tags.createError"));
+        setCreating(false);
+        return;
+      }
+
       // Preparar payload
       const payload: any = {
         name: formData.name,
@@ -940,6 +1027,7 @@ export function Tags() {
       
       // Cerrar modal y resetear formulario
       setShowCreateModal(false);
+      setDisplayNameTouched(false);
       setFormData({
         name: "",
         unit: "",
@@ -1300,6 +1388,7 @@ export function Tags() {
                       setError(null);
                       setAvailableUnits([]);
                       setOpcuaNodes([]);
+                      setOpcuaNodeFilter("");
                     }}
                     aria-label="Close"
                   ></button>
@@ -1320,13 +1409,26 @@ export function Tags() {
                         </label>
                         <input
                           type="text"
-                          className="form-control"
+                          className={`form-control${createNameErrorMessage ? " is-invalid" : ""}`}
                           required
                           value={formData.name}
-                          onChange={(e) =>
-                            setFormData({ ...formData, name: e.target.value })
+                          placeholder={
+                            nodePrefix
+                              ? t("tags.namePlaceholderExample", { prefix: `${nodePrefix}.` })
+                              : t("tags.namePlaceholderExample", { prefix: "Site.Area." })
                           }
+                          title={t("tags.nameTooltip")}
+                          onChange={(e) => handleCreateTagNameChange(e.target.value)}
                         />
+                        {createNameErrorMessage ? (
+                          <div className="invalid-feedback d-block">{createNameErrorMessage}</div>
+                        ) : createNameValidation.ok && createNameValidation.qualifiedName ? (
+                          <small className="text-muted">
+                            {t("tags.nameQualifiedPreview", {
+                              name: createNameValidation.qualifiedName,
+                            })}
+                          </small>
+                        ) : null}
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">
@@ -1404,9 +1506,10 @@ export function Tags() {
                           type="text"
                           className="form-control"
                           value={formData.display_name}
-                          onChange={(e) =>
-                            setFormData({ ...formData, display_name: e.target.value })
-                          }
+                          onChange={(e) => {
+                            setDisplayNameTouched(true);
+                            setFormData({ ...formData, display_name: e.target.value });
+                          }}
                         />
                       </div>
                       <div className="col-md-6">
@@ -1483,39 +1586,30 @@ export function Tags() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">{t("tables.nodeNamespace")}</label>
-                        <input
-                          type="text"
-                          className="form-control form-control-sm mb-1"
-                          placeholder={t("common.filter")}
-                          value={opcuaNodeFilter}
-                          onChange={(e) => setOpcuaNodeFilter(e.target.value)}
-                          disabled={!formData.opcua_address || loadingNodes || opcuaNodes.length === 0}
-                        />
-                        <select
-                          className="form-select"
-                          value={formData.node_namespace}
-                          onChange={(e) =>
-                            setFormData({ ...formData, node_namespace: e.target.value })
-                          }
-                          disabled={
-                            !formData.opcua_address || loadingNodes || opcuaNodes.length === 0
-                          }
-                        >
-                          <option value="">
-                            {!formData.opcua_address
+                        <VirtualizedCombobox
+                          id="create-tag-node-namespace-combobox"
+                          items={opcuaNodeComboboxItems}
+                          inputValue={opcuaNodeFilter}
+                          onInputValueChange={(nextValue) => {
+                            setOpcuaNodeFilter(nextValue);
+                            if (formData.node_namespace) {
+                              const selectedNode = opcuaNodes.find((n) => n.namespace === formData.node_namespace);
+                              if (selectedNode && nextValue.trim() !== (selectedNode.displayName || selectedNode.namespace)) {
+                                setFormData((prev) => ({ ...prev, node_namespace: "" }));
+                              }
+                            }
+                          }}
+                          onSelect={(item) => selectNodeNamespace(item.value)}
+                          placeholder={
+                            !formData.opcua_address
                               ? t("tags.selectOpcuaClientFirst")
-                              : loadingNodes
-                              ? t("tags.loadingNodes")
-                              : opcuaNodes.length === 0
-                              ? t("tags.noNodesAvailable")
-                              : t("tags.selectNode")}
-                          </option>
-                          {filteredOpcuaNodes.map((node) => (
-                            <option key={node.namespace} value={node.namespace}>
-                              {node.displayName || node.namespace}
-                            </option>
-                          ))}
-                        </select>
+                              : t("common.filter")
+                          }
+                          disabled={!formData.opcua_address || loadingNodes || opcuaNodes.length === 0}
+                          loading={loadingNodes}
+                          loadingText={t("tags.loadingNodes")}
+                          emptyText={t("tags.noNodesAvailable")}
+                        />
                       </div>
 
                       {/* Polling y Deadband */}
@@ -1718,6 +1812,7 @@ export function Tags() {
                         setError(null);
                         setAvailableUnits([]);
                         setOpcuaNodes([]);
+                        setOpcuaNodeFilter("");
                       }}
                       disabled={creating}
                     >
@@ -1754,6 +1849,7 @@ export function Tags() {
                       setError(null);
                       setAvailableUnits([]);
                       setOpcuaNodes([]);
+                      setOpcuaNodeFilter("");
                     }}
                     aria-label="Close"
                   ></button>
@@ -1858,9 +1954,10 @@ export function Tags() {
                           type="text"
                           className="form-control"
                           value={formData.display_name}
-                          onChange={(e) =>
-                            setFormData({ ...formData, display_name: e.target.value })
-                          }
+                          onChange={(e) => {
+                            setDisplayNameTouched(true);
+                            setFormData({ ...formData, display_name: e.target.value });
+                          }}
                         />
                       </div>
                       <div className="col-md-6">
@@ -1937,39 +2034,30 @@ export function Tags() {
                       </div>
                       <div className="col-md-6">
                         <label className="form-label">{t("tables.nodeNamespace")}</label>
-                        <input
-                          type="text"
-                          className="form-control form-control-sm mb-1"
-                          placeholder={t("common.filter")}
-                          value={opcuaNodeFilter}
-                          onChange={(e) => setOpcuaNodeFilter(e.target.value)}
-                          disabled={!formData.opcua_address || loadingNodes || opcuaNodes.length === 0}
-                        />
-                        <select
-                          className="form-select"
-                          value={formData.node_namespace}
-                          onChange={(e) =>
-                            setFormData({ ...formData, node_namespace: e.target.value })
-                          }
-                          disabled={
-                            !formData.opcua_address || loadingNodes || opcuaNodes.length === 0
-                          }
-                        >
-                          <option value="">
-                            {!formData.opcua_address
+                        <VirtualizedCombobox
+                          id="edit-tag-node-namespace-combobox"
+                          items={opcuaNodeComboboxItems}
+                          inputValue={opcuaNodeFilter}
+                          onInputValueChange={(nextValue) => {
+                            setOpcuaNodeFilter(nextValue);
+                            if (formData.node_namespace) {
+                              const selectedNode = opcuaNodes.find((n) => n.namespace === formData.node_namespace);
+                              if (selectedNode && nextValue.trim() !== (selectedNode.displayName || selectedNode.namespace)) {
+                                setFormData((prev) => ({ ...prev, node_namespace: "" }));
+                              }
+                            }
+                          }}
+                          onSelect={(item) => selectNodeNamespace(item.value)}
+                          placeholder={
+                            !formData.opcua_address
                               ? t("tags.selectOpcuaClientFirst")
-                              : loadingNodes
-                              ? t("tags.loadingNodes")
-                              : opcuaNodes.length === 0
-                              ? t("tags.noNodesAvailable")
-                              : t("tags.selectNode")}
-                          </option>
-                          {filteredOpcuaNodes.map((node) => (
-                            <option key={node.namespace} value={node.namespace}>
-                              {node.displayName || node.namespace}
-                            </option>
-                          ))}
-                        </select>
+                              : t("common.filter")
+                          }
+                          disabled={!formData.opcua_address || loadingNodes || opcuaNodes.length === 0}
+                          loading={loadingNodes}
+                          loadingText={t("tags.loadingNodes")}
+                          emptyText={t("tags.noNodesAvailable")}
+                        />
                       </div>
 
                       {/* Polling y Deadband */}
@@ -2173,6 +2261,7 @@ export function Tags() {
                         setError(null);
                         setAvailableUnits([]);
                         setOpcuaNodes([]);
+                        setOpcuaNodeFilter("");
                       }}
                       disabled={updating}
                     >

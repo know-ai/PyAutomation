@@ -255,6 +255,7 @@ def _ensure_bool_alarm(
             alarm_type=_ALARM_TYPE,
             trigger_value=True,
             description=alarm_description,
+            skip_validation=True,
         )
     elif getattr(app, "is_db_connected", lambda: False)():
         try:

@@ -309,9 +309,10 @@ class Machine(Singleton):
         Writable ProcessType outputs are bound to CVT so the machine can publish them.
         Read-only inputs listed in ``internal_tags_relationships`` get conventional
         field-tag names (FI_01, PI_01, …) created for later OPC UA mapping, but are
-        **not** subscribed: the operator must subscribe after mapping. Binding those
-        inputs here made a cold start look fully subscribed without a TagsMachines
-        row, so the HMI only became usable after a restart.
+        **not** subscribed: the operator must subscribe after mapping.
+
+        Internal tags use ``cvt.set_tag`` (equivalent to ``create_tag(..., skip_validation=True)``)
+        so Site.Area HMI rules do not apply to ``Manufacturer.Segment.Engine.variable`` names.
 
         **Parameters:**
 
