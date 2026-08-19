@@ -20,6 +20,7 @@ import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { usePlantAreas } from "../hooks/usePlantAreas";
 import { formatDateTimeLocalInput, formatInstantForBackend, plotlyLocaleTimeFormats } from "../utils/timezone";
 import { readSessionTags, writeSessionTags } from "../utils/sessionFilters";
+import { buildHistorianTagOptionLabel, resolveTagDisplayLabel } from "../utils/tagDisplayLabel";
 
 type PresetDate =
   | "Last Hour"
@@ -220,11 +221,14 @@ export function Trends() {
     () =>
       availableTags.map((tag) => ({
         value: tag.name,
-        label: tag.area
-          ? `${tag.display_name || tag.name} (${tag.area})`
-          : tag.display_name || tag.name,
+        label: buildHistorianTagOptionLabel(tag),
         description: tag.variable || tag.description,
       })),
+    [availableTags]
+  );
+
+  const tagCatalogByName = useMemo(
+    () => new Map(availableTags.map((tag) => [tag.name, tag])),
     [availableTags]
   );
 
@@ -685,7 +689,9 @@ export function Trends() {
           y: yValues,
           type: "scatter",
           mode: "lines",
-          name: tag.area ? `${tag.tagName} (${tag.area}) (${unit})` : `${tag.tagName} (${unit})`,
+          name: tag.area
+            ? `${resolveTagDisplayLabel(tagCatalogByName.get(tag.tagName), tag.tagName)} (${tag.area}) (${unit})`
+            : `${resolveTagDisplayLabel(tagCatalogByName.get(tag.tagName), tag.tagName)} (${unit})`,
           yaxis: yAxisKey,
           line: {
             width: 2,

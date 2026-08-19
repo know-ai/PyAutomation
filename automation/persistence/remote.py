@@ -11,7 +11,7 @@ import inspect
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
 
-from .idempotent_insert import IdempotentBatchInserter, IIdempotentInserter
+from .idempotent_insert import AlarmSummaryInserter, IdempotentBatchInserter, IIdempotentInserter
 from .records import DOMAIN, canonical_sample_uuid
 from ..timebase import epoch_seconds_from_db_tick, quantize_datetime_ms
 
@@ -199,9 +199,15 @@ class TagValuePayloadMapper:
 class PeeweeRemoteDB:
     """Distribution plane. Never owns durability — that is the local journal."""
 
-    def __init__(self, tag_inserter: IIdempotentInserter | None = None, tag_mapper=None):
+    def __init__(
+        self,
+        tag_inserter: IIdempotentInserter | None = None,
+        tag_mapper=None,
+        alarm_inserter: AlarmSummaryInserter | None = None,
+    ):
         self._tag_inserter = tag_inserter or IdempotentBatchInserter()
         self._tag_mapper = tag_mapper or TagValuePayloadMapper()
+        self._alarm_inserter = alarm_inserter or AlarmSummaryInserter()
 
     def is_reachable(self) -> bool:
         try:
@@ -227,6 +233,25 @@ class PeeweeRemoteDB:
             return self._write_logs(payloads)
         raise ValueError(f"Unsupported SAF domain: {domain}")
 
+    def write_batch_outcomes(self, domain: str, payloads: Sequence[Mapping]) -> list[bool]:
+        if not payloads:
+            return []
+        if domain == DOMAIN.TAG:
+            try:
+                written = self.batch_insert_with_dedupe(payloads)
+                return [written > 0] * len(payloads)
+            except Exception:
+                return [False] * len(payloads)
+        if domain == DOMAIN.EVENT:
+            return self._write_event_outcomes(payloads)
+        if domain == DOMAIN.ALARM_SUMMARY:
+            return self._write_alarm_create_outcomes(payloads)
+        if domain == DOMAIN.ALARM_SUMMARY_UPDATE:
+            return self._write_alarm_update_outcomes(payloads)
+        if domain == DOMAIN.LOG:
+            return self._write_log_outcomes(payloads)
+        raise ValueError(f"Unsupported SAF domain: {domain}")
+
     def batch_insert_with_dedupe(self, payloads: Sequence[Mapping]) -> int:
         rows = self._tag_mapper.to_rows(payloads)
         if not rows:
@@ -234,12 +259,16 @@ class PeeweeRemoteDB:
         return self._tag_inserter.insert_tag_values(rows)
 
     def _write_events(self, payloads: Sequence[Mapping]) -> int:
+        return sum(self._write_event_outcomes(payloads))
+
+    def _write_event_outcomes(self, payloads: Sequence[Mapping]) -> list[bool]:
         from ..dbmodels.events import Events
 
-        written = 0
+        outcomes: list[bool] = []
         for item in payloads:
             user = _user_for_username(item.get("username") or "system")
             if user is None:
+                outcomes.append(False)
                 continue
             kwargs = dict(
                 message=item.get("message"),
@@ -252,44 +281,70 @@ class PeeweeRemoteDB:
             )
             kwargs.update(_partition_kwargs(Events, item))
             created, _ = Events.create(**kwargs)
-            if created is not None:
-                written += 1
-        return written
+            outcomes.append(created is not None)
+        return outcomes
 
     def _write_alarm_creates(self, payloads: Sequence[Mapping]) -> int:
-        from ..dbmodels.alarms import AlarmSummary
-
-        written = 0
-        skipped = []
-        for item in payloads:
-            if _ensure_alarm_catalog(item) is None:
-                skipped.append(item.get("name"))
-                continue
-            kwargs = dict(
-                name=item.get("name"),
-                state=item.get("state"),
-                timestamp=_parse_dt(item.get("timestamp")),
-                ack_timestamp=_parse_dt(item.get("ack_timestamp")),
-            )
-            kwargs.update(_partition_kwargs(AlarmSummary, item))
-            created = AlarmSummary.create(**kwargs)
-            if created is not None:
-                written += 1
-            else:
-                skipped.append(item.get("name"))
+        outcomes = self._write_alarm_create_outcomes(payloads)
+        skipped = sum(1 for ok in outcomes if not ok)
         if skipped:
             logging.getLogger("pyautomation").error(
-                "SAF alarm_summary skipped %s/%s (catalog or insert failed): %s",
-                len(skipped),
+                "SAF alarm_summary skipped %s/%s (catalog or insert failed)",
+                skipped,
                 len(payloads),
-                skipped[:20],
             )
-        return written
+        return sum(outcomes)
+
+    def _alarm_summary_row(self, item: Mapping) -> dict[str, Any] | None:
+        from ..dbmodels.alarms import AlarmStates, AlarmSummary, Alarms
+
+        name = item.get("name")
+        state_name = item.get("state")
+        area = item.get("area")
+        alarm = Alarms.read_by_name(name=name, area=area)
+        state = AlarmStates.read_by_name(name=state_name) if state_name else None
+        if not alarm or not state:
+            return None
+        timestamp = _parse_dt(item.get("timestamp"))
+        if timestamp is None:
+            return None
+        timestamp = quantize_datetime_ms(timestamp)
+        ack_timestamp = _parse_dt(item.get("ack_timestamp"))
+        if ack_timestamp is not None:
+            ack_timestamp = quantize_datetime_ms(ack_timestamp)
+        row = dict(
+            alarm=alarm.id,
+            state=state.id,
+            alarm_time=timestamp,
+            ack_time=ack_timestamp,
+            area=area or getattr(alarm, "area", None),
+            sample_uuid=canonical_sample_uuid(
+                item.get("sample_uuid") or item.get("idempotency_key")
+            ),
+        )
+        row.update(_partition_kwargs(AlarmSummary, item))
+        return row
+
+    def _write_alarm_create_outcomes(self, payloads: Sequence[Mapping]) -> list[bool]:
+        outcomes: list[bool] = []
+        for item in payloads:
+            if _ensure_alarm_catalog(item) is None:
+                outcomes.append(False)
+                continue
+            row = self._alarm_summary_row(item)
+            if row is None:
+                outcomes.append(False)
+                continue
+            outcomes.append(self._alarm_inserter.insert_one(row))
+        return outcomes
 
     def _write_alarm_updates(self, payloads: Sequence[Mapping]) -> int:
+        return sum(self._write_alarm_update_outcomes(payloads))
+
+    def _write_alarm_update_outcomes(self, payloads: Sequence[Mapping]) -> list[bool]:
         from ..dbmodels.alarms import AlarmStates, AlarmSummary
 
-        written = 0
+        outcomes: list[bool] = []
         skipped = []
         for item in payloads:
             _ensure_alarm_catalog(item)
@@ -299,6 +354,7 @@ class PeeweeRemoteDB:
             )
             if not alarm:
                 skipped.append(item.get("name"))
+                outcomes.append(False)
                 continue
             fields = {}
             if item.get("ack_timestamp"):
@@ -311,9 +367,10 @@ class PeeweeRemoteDB:
                     fields["state"] = alarm_state
             if fields:
                 AlarmSummary.put(id=alarm.id, **fields)
-                written += 1
+                outcomes.append(True)
             else:
                 skipped.append(item.get("name"))
+                outcomes.append(False)
         if skipped:
             logging.getLogger("pyautomation").error(
                 "SAF alarm_summary_update skipped %s/%s (summary missing): %s",
@@ -321,12 +378,15 @@ class PeeweeRemoteDB:
                 len(payloads),
                 skipped[:20],
             )
-        return written
+        return outcomes
 
     def _write_logs(self, payloads: Sequence[Mapping]) -> int:
+        return sum(self._write_log_outcomes(payloads))
+
+    def _write_log_outcomes(self, payloads: Sequence[Mapping]) -> list[bool]:
         from ..dbmodels.logs import Logs
 
-        written = 0
+        outcomes: list[bool] = []
         for item in payloads:
             username = item.get("username") or item.get("user_name") or "system"
             user = _user_for_username(username)
@@ -345,9 +405,8 @@ class PeeweeRemoteDB:
             )
             kwargs.update(_partition_kwargs(Logs, item))
             created, _ = Logs.create(**kwargs)
-            if created is not None:
-                written += 1
-        return written
+            outcomes.append(created is not None)
+        return outcomes
 
 
 def _runtime_alarm(name: str):

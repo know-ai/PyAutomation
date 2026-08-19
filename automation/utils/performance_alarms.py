@@ -15,6 +15,7 @@ from .connection_alarms import (
     _scoped_name,
     _write_disconnected,
     _app,
+    scoped_display_name,
 )
 from .system_event_audit import clip, persist_system_event
 
@@ -129,23 +130,112 @@ def threshold_description(spec: PerfAlarmSpec, threshold: Any) -> str:
     return clip(f"{spec.alarm_description}. Triggers when {spec.snapshot_field} ≥ {threshold}{unit}.", 256)
 
 
-def ensure_performance_alarms(config: dict[str, Any] | None = None) -> None:
-    """Create all performance BOOL tags/alarms once. Never raises."""
+_DB_DATA_TYPES = {"bool": "boolean", "int": "integer", "str": "string"}
+
+
+def _unwrap_engine(result: Any) -> Any:
+    if isinstance(result, dict) and "response" in result:
+        return result.get("response")
+    return result
+
+
+def _historian_connected(app) -> bool:
+    checker = getattr(app, "is_db_connected", None)
+    try:
+        return bool(checker()) if callable(checker) else False
+    except Exception:
+        return False
+
+
+def _perf_spec_for_tag_name(tag_name: str) -> PerfAlarmSpec | None:
+    for spec in PERF_ALARM_SPECS:
+        if perf_tag_name(spec.key) == tag_name:
+            return spec
+    return None
+
+
+def _base_display_name(tag_name: str) -> str:
+    parts = [part for part in (tag_name or "").split(".") if part]
+    return parts[-1] if parts else tag_name
+
+
+def _persist_performance_tag(app, tag) -> bool:
+    """Insert/update one SYS.PERF.* tag in the central Tags table. Never raises."""
+    if tag is None:
+        return False
+    original_type = getattr(tag, "data_type", None)
+    original_display = getattr(tag, "display_name", None)
+    try:
+        mapped = _DB_DATA_TYPES.get(str(original_type or ""), original_type)
+        tag.data_type = mapped
+        spec = _perf_spec_for_tag_name(tag.name)
+        tag.display_name = scoped_display_name(spec.display_name) if spec else _base_display_name(tag.name)
+        app.logger_engine.set_tag(tag=tag)
+        row = _unwrap_engine(app.logger_engine.get_tag_by_name(tag.name))
+        return row is not None
+    except Exception:
+        _LOGGER.error("Failed to persist performance tag %s", getattr(tag, "name", "?"), exc_info=True)
+        return False
+    finally:
+        try:
+            tag.data_type = original_type
+            tag.display_name = original_display
+        except Exception:
+            pass
+
+
+def performance_tags_persisted(app=None) -> bool:
+    """True when all 7 SYS.PERF.* tags exist in the historian Tags table."""
+    try:
+        app = app or _app()
+        if not _historian_connected(app):
+            return False
+        for spec in PERF_ALARM_SPECS:
+            row = _unwrap_engine(app.logger_engine.get_tag_by_name(perf_tag_name(spec.key)))
+            if row is None:
+                return False
+        return True
+    except Exception:
+        _LOGGER.debug("performance tag catalog lookup failed", exc_info=True)
+        return False
+
+
+def ensure_performance_alarms(config: dict[str, Any] | None = None) -> bool:
+    """Create BOOL tags/alarms in CVT and persist them to Tags when the historian is up.
+
+    Returns True only if the 7 SYS.PERF.* rows exist in the central database.
+    Never raises. Safe to call on every sampler tick until persisted.
+    """
     try:
         app = _app()
         cfg = config or {}
         for spec in PERF_ALARM_SPECS:
             threshold = cfg.get(f"perf_{spec.key}_threshold")
+            tag_name = perf_tag_name(spec.key)
             _ensure_bool_alarm(
                 app,
-                tag_name=perf_tag_name(spec.key),
+                tag_name=tag_name,
                 alarm_name=perf_alarm_name(spec.key),
                 tag_description=spec.tag_description,
                 alarm_description=threshold_description(spec, threshold),
-                display_name=spec.display_name,
+                display_name=scoped_display_name(spec.display_name),
             )
+        if not _historian_connected(app):
+            _LOGGER.warning("Historian offline; performance tags will persist on reconnect")
+            return False
+        ok = True
+        for spec in PERF_ALARM_SPECS:
+            tag = app.cvt.get_tag_by_name(perf_tag_name(spec.key))
+            if not _persist_performance_tag(app, tag):
+                ok = False
+        if ok:
+            _LOGGER.info("Performance tags persisted to historian (%s)", len(PERF_ALARM_SPECS))
+        else:
+            _LOGGER.error("Performance tag catalog incomplete in historian Tags")
+        return ok
     except Exception:
         _LOGGER.error("Failed to ensure performance alarms", exc_info=True)
+        return False
 
 
 def set_performance_alarm(key: str, active: bool, *, value: Any = None, threshold: Any = None) -> bool:

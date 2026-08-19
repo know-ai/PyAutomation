@@ -59,6 +59,7 @@ class MetricsSamplerWorker(BaseWorker):
         self._txn_prev_at = 0.0
         self._cpu_primed = False
         self._alarms_ready = False
+        self._tags_persisted = False
         self._evaluator = PerfAlarmEvaluator(config_provider=self._app_config)
         self._trend_buffers: dict[str, deque] = {key: deque() for key, _field in TREND_FIELDS}
 
@@ -85,6 +86,7 @@ class MetricsSamplerWorker(BaseWorker):
         """Hot-reload thresholds; evaluate the last snapshot in this cycle."""
         self._evaluator.reload()
         self._alarms_ready = False
+        self._tags_persisted = False
         with self._lock:
             snap = dict(self._snapshot)
         if snap:
@@ -97,11 +99,12 @@ class MetricsSamplerWorker(BaseWorker):
                 _LOGGER.warning("Performance alarm reconfigure evaluate skipped", exc_info=True)
 
     def _ensure_alarms(self) -> None:
-        if self._alarms_ready:
+        if self._alarms_ready and self._tags_persisted:
             return
         try:
-            ensure_performance_alarms(self._evaluator.config)
+            persisted = bool(ensure_performance_alarms(self._evaluator.config))
             self._alarms_ready = True
+            self._tags_persisted = persisted
         except Exception:
             _LOGGER.debug("performance alarms ensure skipped", exc_info=True)
 

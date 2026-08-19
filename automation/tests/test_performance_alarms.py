@@ -122,15 +122,63 @@ class TestPerformanceAlarmNames(unittest.TestCase):
         from automation.utils import performance_alarms as mod
 
         app = MagicMock()
+        app.is_db_connected.return_value = False
         scope = MagicMock(enabled=False, is_valid=False)
         with patch("automation.node_scope.get_node_scope", return_value=scope), patch.object(
             mod, "_app", return_value=app
         ), patch.object(mod, "_ensure_bool_alarm") as ensure:
-            mod.ensure_performance_alarms(load_performance_alarm_config({}))
+            persisted = mod.ensure_performance_alarms(load_performance_alarm_config({}))
+        self.assertFalse(persisted)
         self.assertEqual(ensure.call_count, 7)
         first = ensure.call_args_list[0].kwargs
         self.assertEqual(first["alarm_name"], "ALM.PERF.CPU")
+        self.assertEqual(first["display_name"], "CPU High")
         self.assertIn("System", first["alarm_description"])
+
+    def test_ensure_skips_historian_when_disconnected(self):
+        from automation.utils import performance_alarms as mod
+
+        app = MagicMock()
+        app.is_db_connected.return_value = False
+        scope = MagicMock(enabled=False, is_valid=False)
+        with patch("automation.node_scope.get_node_scope", return_value=scope), patch.object(
+            mod, "_app", return_value=app
+        ), patch.object(mod, "_ensure_bool_alarm"):
+            self.assertFalse(mod.ensure_performance_alarms({}))
+        app.logger_engine.set_tag.assert_not_called()
+
+    def test_ensure_persists_seven_tags_when_connected(self):
+        from automation.utils import performance_alarms as mod
+
+        app = MagicMock()
+        app.is_db_connected.return_value = True
+        tag = MagicMock()
+        tag.name = "SYS.PERF.CPU"
+        tag.data_type = "boolean"
+        tag.display_name = "CPU High"
+        app.cvt.get_tag_by_name.return_value = tag
+        app.logger_engine.get_tag_by_name.return_value = {"result": True, "response": tag}
+        scope = MagicMock(enabled=False, is_valid=False)
+        with patch("automation.node_scope.get_node_scope", return_value=scope), patch.object(
+            mod, "_app", return_value=app
+        ), patch.object(mod, "_ensure_bool_alarm"):
+            self.assertTrue(mod.ensure_performance_alarms({}))
+        self.assertEqual(app.logger_engine.set_tag.call_count, 7)
+        self.assertEqual(app.logger_engine.get_tag_by_name.call_count, 7)
+
+    def test_sampler_retries_persist_until_historian_has_catalog(self):
+        worker = MetricsSamplerWorker(interval_seconds=5)
+        worker._evaluator = PerfAlarmEvaluator(writer=lambda *args, **kwargs: True)
+        with patch(
+            "automation.workers.metrics_sampler.ensure_performance_alarms",
+            side_effect=[False, True],
+        ) as ensure:
+            worker._ensure_alarms()
+            self.assertTrue(worker._alarms_ready)
+            self.assertFalse(worker._tags_persisted)
+            worker._ensure_alarms()
+            self.assertTrue(worker._tags_persisted)
+        self.assertEqual(ensure.call_count, 2)
 
 
 class TestHmiLifecycleContract(unittest.TestCase):
@@ -148,6 +196,57 @@ class TestHmiLifecycleContract(unittest.TestCase):
         self.assertEqual(tone("ack", "ok"), "warn")
         self.assertEqual(tone("shelved", "ok"), "shelved")
         self.assertEqual(tone("normal", "ok"), "ok")
+
+
+class TestPerformanceTagsHistorian(unittest.TestCase):
+    """CA-SAF-TAGS-01/02 against the sqlite test historian."""
+
+    def setUp(self) -> None:
+        import os
+
+        from flask import Flask
+
+        from automation import PyAutomation
+
+        file_path = os.path.join(".", "db", "test.db")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        self.app = PyAutomation()
+        self.server = Flask(__name__)
+        self.app.run(server=self.server, debug=True, test=True, create_tables=True)
+
+    def tearDown(self) -> None:
+        self.app.safe_stop()
+
+    def test_ca_saf_tags_01_seven_sys_perf_tags_in_database(self):
+        from automation.dbmodels.tags import Tags
+        from automation.utils.performance_alarms import ensure_performance_alarms
+
+        self.assertTrue(self.app.is_db_connected())
+        self.assertTrue(ensure_performance_alarms({}))
+        for spec in PERF_ALARM_SPECS:
+            row = Tags.read_by_name(name=perf_tag_name(spec.key))
+            self.assertIsNotNone(row, spec.tag_suffix)
+
+    def test_ca_saf_tags_02_persists_on_retry_after_outage(self):
+        from automation.utils.performance_alarms import ensure_performance_alarms
+
+        with patch.object(self.app, "is_db_connected", return_value=False):
+            with patch.object(self.app.logger_engine, "set_tag") as set_tag:
+                self.assertFalse(ensure_performance_alarms({}))
+                set_tag.assert_not_called()
+        self.assertTrue(ensure_performance_alarms({}))
+        from automation.dbmodels.tags import Tags
+
+        for spec in PERF_ALARM_SPECS:
+            self.assertIsNotNone(Tags.read_by_name(name=perf_tag_name(spec.key)))
+
+    def test_reconnect_calls_ensure_performance_alarms(self):
+        from automation.utils import performance_alarms as mod
+
+        with patch.object(mod, "ensure_performance_alarms") as ensure:
+            self.assertTrue(self.app.reconnect_to_db(test=True))
+        ensure.assert_called()
 
 
 if __name__ == "__main__":

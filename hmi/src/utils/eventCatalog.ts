@@ -6,6 +6,20 @@ const lookup = (t: TranslateFn, section: "message" | "classification", raw: stri
   return translated === key ? null : translated;
 };
 
+/** Map ALM.PERF.* suffixes to performance.alarmTitle keys. */
+const PERF_ALARM_SUFFIX_TO_TITLE_KEY: Record<string, string> = {
+  "ALM.PERF.CPU": "cpu",
+  "ALM.PERF.DISK": "disk",
+  "ALM.PERF.SAF_QUEUE": "saf_queue",
+  "ALM.PERF.SAF_LAG": "saf_lag",
+  "ALM.PERF.METRICS_AGE": "metrics_age",
+  "ALM.PERF.DB_CONN": "db_conn",
+  "ALM.PERF.HTTP_5XX": "http_5xx",
+};
+
+const PERF_ALARM_MESSAGE =
+  /^Performance alarm (.+) (activated|cleared)$/;
+
 /** OPC UA audit stores ``"{canonical}: {client}"``. */
 const MESSAGE_PREFIXES = [
   "OPC UA client connection failed",
@@ -15,6 +29,19 @@ const MESSAGE_PREFIXES = [
   "OPC UA client reconnected",
   "OPC UA client connected",
 ].sort((a, b) => b.length - a.length);
+
+function translatePerformanceAlarmMessage(value: string, t: TranslateFn): string | null {
+  const match = value.match(PERF_ALARM_MESSAGE);
+  if (!match) return null;
+  const [, suffix, state] = match;
+  const titleKey = PERF_ALARM_SUFFIX_TO_TITLE_KEY[suffix];
+  const title = titleKey ? t(`performance.alarmTitle.${titleKey}`) : suffix;
+  const stateKey =
+    state === "activated"
+      ? "events.catalog.performanceAlarm.activated"
+      : "events.catalog.performanceAlarm.cleared";
+  return t(stateKey, { title });
+}
 
 export function translateEventClassification(
   value: string | null | undefined,
@@ -28,6 +55,9 @@ export function translateEventMessage(value: string | null | undefined, t: Trans
   if (value == null || value === "") return "-";
   const exact = lookup(t, "message", value);
   if (exact) return exact;
+
+  const perfAlarm = translatePerformanceAlarmMessage(value, t);
+  if (perfAlarm) return perfAlarm;
 
   for (const prefix of MESSAGE_PREFIXES) {
     if (value === prefix) {

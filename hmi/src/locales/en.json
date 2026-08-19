@@ -216,7 +216,20 @@
         "HMI client reconnected": "HMI client reconnected",
         "HMI client connection rejected": "HMI client connection rejected",
         "HMI TLS handshake failures": "HMI TLS handshake failures",
-        "HMI TLS handshake failure": "HMI TLS handshake failure"
+        "HMI TLS handshake failure": "HMI TLS handshake failure",
+        "Performance alarm settings updated": "Performance alarm settings updated",
+        "NTP clock step detected": "NTP clock step detected",
+        "NTP authentication required": "NTP authentication required",
+        "NTP sync restored": "NTP sync restored",
+        "NTP sync lost": "NTP sync lost",
+        "NTP check failed": "NTP check failed",
+        "NTP settings updated": "NTP settings updated",
+        "Foreign tag sample rejected": "Foreign tag sample rejected",
+        "Machine sample interval updated": "Machine sample interval updated"
+      },
+      "performanceAlarm": {
+        "activated": "Performance alarm {{title}} activated",
+        "cleared": "Performance alarm {{title}} cleared"
       }
     },
     "preset": {

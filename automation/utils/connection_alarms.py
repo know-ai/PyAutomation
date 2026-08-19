@@ -36,6 +36,22 @@ def _scoped_name(name: str) -> str:
     return name
 
 
+def scoped_display_name(friendly: str) -> str:
+    """Globally unique Tags.display_name in multi-edge (area prefix)."""
+    label = str(friendly or "").strip()
+    if not label:
+        return label
+    try:
+        from ..node_scope import get_node_scope
+
+        scope = get_node_scope()
+        if getattr(scope, "enabled", False) and getattr(scope, "area", None):
+            return f"{scope.area} · {label}"
+    except Exception:
+        pass
+    return label
+
+
 def db_tag_name() -> str:
     return _scoped_name(DB_TAG_NAME)
 
@@ -86,7 +102,7 @@ def ensure_db_connection_alarm() -> None:
             alarm_name=db_alarm_name(),
             tag_description=DB_TAG_DESCRIPTION,
             alarm_description=DB_ALARM_DESCRIPTION,
-            display_name="Database Disconnected",
+            display_name=scoped_display_name("Database Disconnected"),
         )
     except Exception:
         _LOGGER.error("Failed to ensure database connection alarm", exc_info=True)
@@ -104,7 +120,7 @@ def ensure_opcua_connection_alarm(client_name: str) -> None:
             alarm_name=opcua_alarm_name(client_name),
             tag_description=f"True when OPC UA client '{client_name}' is disconnected",
             alarm_description=f"OPC UA client '{client_name}' connection lost",
-            display_name=f"OPCUA {client_name} Disconnected",
+            display_name=scoped_display_name(f"OPCUA {client_name} Disconnected"),
         )
     except Exception:
         _LOGGER.error(
@@ -168,7 +184,7 @@ def rename_opcua_connection_alarm(old_client_name: str, new_client_name: str) ->
         new_tag_name = opcua_tag_name(new_client_name)
         old_alarm_name = opcua_alarm_name(old_client_name)
         new_alarm_name = opcua_alarm_name(new_client_name)
-        new_display = f"OPCUA {new_client_name} Disconnected"
+        new_display = scoped_display_name(f"OPCUA {new_client_name} Disconnected")
 
         tag = app.cvt.get_tag_by_name(old_tag_name)
         if tag is not None:

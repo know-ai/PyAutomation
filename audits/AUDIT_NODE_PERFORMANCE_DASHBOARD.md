@@ -448,7 +448,7 @@ Descripción persistida: `System · …`. El modelo `Alarms` **no** tiene column
 | CA-PERF-13 | Aparecen en Alarmas como System | Descripción `System ·`; nombres `ALM.PERF.*`; **manual** filtro |
 | CA-PERF-14 | Dashboard y Alarmas sincronizados | Un AlarmManager + `alarmsSlice` + `on.alarm`; **manual** |
 
-Tests automáticos: `automation.tests.test_performance_alarms` — debounce, clear, disable, None, reconfigure, ensure ×7, contrato de tono.
+Tests automáticos: `automation.tests.test_performance_alarms` — debounce, clear, disable, None, reconfigure, ensure ×7, contrato de tono, CA-SAF-TAGS-01/02.
 
 ### 11.5 Anti-patrones evitados
 
@@ -486,3 +486,4 @@ Layout: header (nodo, área, uptime, edad del snapshot, NTP) → fila gauges (CP
 | 2026-08-19 | Actualización auditoría: catálogo antes/ahora, arquitectura, payload, despliegue, mapa CA↔tests |
 | 2026-08-19 | Alarmas de rendimiento unificadas (spec 06); CA-PERF-09…14; veredicto **A−** se mantiene (soaks + prueba manual de modal pendientes para A+) |
 | 2026-08-19 | UI profesional `/performance` (spec 07); CA-UI-06…10; umbrales PUT para supervisor; veredicto **A−** |
+| 2026-08-19 | Catálogo `SYS.PERF.*` persistido en `Tags` al conectar/reconectar (CA-SAF-TAGS-01…02); evita PENDING eterno de `alarm_summary` |

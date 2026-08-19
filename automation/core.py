@@ -3805,8 +3805,14 @@ class PyAutomation(Singleton):
                 target=target,
             )
             from .utils.connection_alarms import set_db_disconnected, sync_opcua_connection_alarms
+            from .utils.performance_alarms import ensure_performance_alarms
             set_db_disconnected(False)
             sync_opcua_connection_alarms()
+            ensure_performance_alarms()
+            worker = getattr(self, "metrics_worker", None)
+            if worker is not None:
+                worker._tags_persisted = False
+                worker._alarms_ready = False
             try:
                 from .persistence import get_persistence_gateway
                 from .persistence.config import SafConfig
@@ -4036,8 +4042,14 @@ class PyAutomation(Singleton):
                     target=target,
                 )
                 from .utils.connection_alarms import set_db_disconnected, sync_opcua_connection_alarms
+                from .utils.performance_alarms import ensure_performance_alarms
                 set_db_disconnected(False)
                 sync_opcua_connection_alarms()
+                ensure_performance_alarms()
+                worker = getattr(self, "metrics_worker", None)
+                if worker is not None:
+                    worker._tags_persisted = False
+                    worker._alarms_ready = False
                 self._ensure_acquisition_running()
 
                 return True

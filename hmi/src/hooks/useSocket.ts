@@ -18,7 +18,7 @@ import type { Alarm } from "../services/alarms";
 import type { Machine } from "../services/machines";
 import { isPageHidden } from "./usePageHidden";
 import { isSystemUser } from "../utils/systemUser";
-import { scheduleTagHistoryBackfill } from "../utils/tagHistoryBackfill";
+import { scheduleTagHistoryBackfill, resetTagHistoryBackfillThrottle } from "../utils/tagHistoryBackfill";
 
 const BUFFER_INTERVAL_MS = 1000;
 const HIDDEN_FLUSH_EVERY = 5;
@@ -155,11 +155,15 @@ export function useSocket() {
     });
 
     const cleanupConnection = socketService.onConnectionChange(({ connected, reconnect }) => {
-      if (!connected || !reconnect) return;
+      if (!connected) {
+        resetTagHistoryBackfillThrottle();
+        return;
+      }
+      if (!reconnect) return;
       const { historySubscribers } = store.getState().tags;
       const names = Object.keys(historySubscribers).filter((n) => historySubscribers[n] > 0);
       if (names.length === 0) return;
-      scheduleTagHistoryBackfill(names, timeZone, dispatch);
+      scheduleTagHistoryBackfill(names, timeZone, dispatch, true);
     });
 
     return () => {

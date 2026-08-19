@@ -16,6 +16,7 @@ from .config import SafConfig
 from .contracts import IRemoteDB
 from .exceptions import ReplicationError
 from .journal import JournalWriter
+from .records import DOMAIN
 
 
 def _node_scope():
@@ -155,15 +156,24 @@ class RemoteReplicator:
                 payload.setdefault("idempotency_key", source.get("idempotency_key"))
             self.journal.mark_replicating(ids)
             try:
-                written = self._flush_domain(domain, payloads)
-                if written <= 0:
-                    raise ReplicationError(f"remote wrote 0 rows for domain {domain}")
-                if written < len(payloads) and domain != "tag":
-                    raise ReplicationError(
-                        f"partial remote write for {domain}: {written}/{len(payloads)}"
+                outcomes = self._flush_domain_outcomes(domain, payloads)
+                sent_ids = [jid for jid, ok in zip(ids, outcomes) if ok]
+                failed_batch_ids = [jid for jid, ok in zip(ids, outcomes) if not ok]
+                if sent_ids:
+                    self.journal.mark_sent(sent_ids)
+                    replicated += len(sent_ids)
+                if failed_batch_ids:
+                    failed_ids.extend(failed_batch_ids)
+                    last_err = (
+                        f"remote skipped {len(failed_batch_ids)}/{len(ids)} "
+                        f"for domain {domain}"
                     )
-                self.journal.mark_sent(ids)
-                replicated += len(ids)
+                    logging.getLogger("pyautomation").error(
+                        "SAF replication partial for domain %s: %s/%s kept PENDING",
+                        domain,
+                        len(failed_batch_ids),
+                        len(ids),
+                    )
             except Exception as err:
                 last_err = str(err)
                 failed_ids.extend(ids)
@@ -189,6 +199,15 @@ class RemoteReplicator:
     def flush(self) -> int:
         """ReplicationWorker entry point. No SQL dialects here."""
         return self.replicate_once()
+
+    def _flush_domain_outcomes(self, domain: str, payloads: list[dict[str, Any]]) -> list[bool]:
+        writer = getattr(self.remote, "write_batch_outcomes", None)
+        if callable(writer):
+            return writer(domain, payloads)
+        written = self._flush_domain(domain, payloads)
+        if written <= 0:
+            raise ReplicationError(f"remote wrote 0 rows for domain {domain}")
+        return [True] * len(payloads)
 
     def _flush_domain(self, domain: str, payloads: list[dict[str, Any]]) -> int:
         if domain == "tag":

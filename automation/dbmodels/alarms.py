@@ -338,6 +338,7 @@ class AlarmSummary(BaseModel):
     alarm_time = TimestampField(utc=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
     ack_time = TimestampField(utc=True, null=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
     area = CharField(max_length=64, null=True, index=True)
+    sample_uuid = CharField(max_length=255, null=True)
 
     @classmethod
     @logging_error_handler
@@ -348,6 +349,7 @@ class AlarmSummary(BaseModel):
         timestamp:datetime,
         ack_timestamp:datetime=None,
         area:str=None,
+        sample_uuid:str=None,
     ):
         r"""
         Creates a new entry in the alarm summary.
@@ -383,6 +385,35 @@ class AlarmSummary(BaseModel):
 
         area = area or getattr(_alarm, "area", None)
 
+        if sample_uuid:
+            from ..persistence.idempotent_insert import AlarmSummaryInserter
+            from ..persistence.records import canonical_sample_uuid
+
+            row = {
+                "alarm": _alarm.id,
+                "state": _state.id,
+                "alarm_time": timestamp,
+                "ack_time": ack_timestamp,
+                "area": area,
+                "sample_uuid": canonical_sample_uuid(sample_uuid),
+            }
+            if AlarmSummaryInserter().insert_one(row):
+                if row.get("sample_uuid"):
+                    existing = cls.get_or_none(cls.sample_uuid == row["sample_uuid"])
+                    if existing:
+                        return existing
+                return (
+                    cls.select()
+                    .where(
+                        cls.alarm == _alarm.id,
+                        cls.state == _state.id,
+                        cls.alarm_time == timestamp,
+                    )
+                    .order_by(cls.id.desc())
+                    .get_or_none()
+                )
+            return None
+
         query = cls(
             alarm=_alarm.id,
             state=_state.id,
@@ -391,7 +422,7 @@ class AlarmSummary(BaseModel):
             area=area,
         )
         query.save()
-        
+
         return query
 
     @classmethod

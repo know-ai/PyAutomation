@@ -1,10 +1,10 @@
 # T-01 Soak — last run
 
 - tags=1000 hz=100.0 duration_s=2.0 kill_at_s=1.000
-- achieved_tick_hz=0.00
-- generated_fsync=0
+- achieved_tick_hz=1.00
+- generated_fsync=1000
 - journal_durable=0
-- ring_lag_samples=0
+- ring_lag_samples=1000
 - replicated=0
 - remote_rows_first_pass=0
 - remote_rows_after_retry=0

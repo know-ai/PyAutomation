@@ -25,6 +25,7 @@ import {
 } from "../hooks/useScheduledQuery";
 import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp, type UiLocale } from "../utils/timezone";
 import { readSessionTags, writeSessionTags } from "../utils/sessionFilters";
+import { buildHistorianTagOptionLabel, resolveTagDisplayLabel } from "../utils/tagDisplayLabel";
 
 type PresetDate = 
   | "Last Minute"
@@ -388,13 +389,23 @@ export function DataLogger() {
     () =>
       availableTags.map((tag) => ({
         value: tag.name,
-        label: tag.area
-          ? `${tag.display_name || tag.name} (${tag.area})`
-          : tag.display_name || tag.name,
+        label: buildHistorianTagOptionLabel(tag),
         description: tag.variable,
       })),
     [availableTags]
   );
+
+  const tagHeaderLabels = useMemo(() => {
+    const byName = new Map(availableTags.map((tag) => [tag.name, tag]));
+    return (tagNames: string[] | undefined) =>
+      (tagNames ?? []).map((name, idx) => {
+        if (idx === 0 || name === "timestamp") {
+          return t("tables.timestamp");
+        }
+        const tag = byName.get(name);
+        return resolveTagDisplayLabel(tag, name);
+      });
+  }, [availableTags, t]);
 
   const handleLimitChange = (newLimit: number) => {
     if (newLimit > 0) {
@@ -682,11 +693,11 @@ export function DataLogger() {
               <table className="table table-striped table-hover table-sm">
                 <thead>
                   <tr>
-                    {tabularData.display_names && tabularData.display_names.length > 0
-                      ? tabularData.display_names.map((name, idx) => (
+                    {tabularData.tag_names && tabularData.tag_names.length > 0
+                      ? tagHeaderLabels(tabularData.tag_names).map((name, idx) => (
                           <th key={idx}>{name}</th>
                         ))
-                      : tabularData.tag_names?.map((name, idx) => (
+                      : tabularData.display_names?.map((name, idx) => (
                           <th key={idx}>{name}</th>
                         ))}
                   </tr>

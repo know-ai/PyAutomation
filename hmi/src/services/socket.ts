@@ -25,6 +25,7 @@ class SocketService {
   private maxReconnectAttempts: number = Infinity;
   private isConnecting: boolean = false;
   private wasDisconnected: boolean = false;
+  private hadSuccessfulConnection: boolean = false;
   private lastToken: string | null = null;
   private readonly listeners = new Map<string, Set<FanoutHandler>>();
   private readonly nativeBound = new Set<string>();
@@ -196,7 +197,8 @@ class SocketService {
     });
 
     this.socket.on("connect", () => {
-      const reconnect = this.wasDisconnected;
+      const reconnect = this.wasDisconnected || this.hadSuccessfulConnection;
+      this.hadSuccessfulConnection = true;
       this.wasDisconnected = false;
       this.isConnected = true;
       this.isConnecting = false;
@@ -215,6 +217,9 @@ class SocketService {
     });
 
     this.socket.on("connect_error", (err: Error) => {
+      if (this.hadSuccessfulConnection) {
+        this.wasDisconnected = true;
+      }
       this.handleConnectError(err);
     });
 
@@ -241,6 +246,7 @@ class SocketService {
     this.isConnected = false;
     this.isConnecting = false;
     this.wasDisconnected = false;
+    this.hadSuccessfulConnection = false;
     this.emitConnection(false);
   }
 

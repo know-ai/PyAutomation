@@ -59,5 +59,8 @@ class NullRemoteDB:
     def write_batch(self, domain: str, payloads: Sequence[Mapping[str, Any]]) -> int:
         raise RuntimeError("NullRemoteDB rejects all writes")
 
+    def write_batch_outcomes(self, domain: str, payloads: Sequence[Mapping[str, Any]]) -> list[bool]:
+        raise RuntimeError("NullRemoteDB rejects all writes")
+
     def batch_insert_with_dedupe(self, payloads: Sequence[Mapping[str, Any]]) -> int:
         raise RuntimeError("NullRemoteDB rejects all writes")

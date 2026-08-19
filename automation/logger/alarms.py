@@ -343,6 +343,7 @@ class AlarmsLogger(BaseLogger):
                 timestamp=timestamp,
                 ack_timestamp=ack_timestamp,
                 area=record.payload().get("area") or area,
+                sample_uuid=record.payload().get("sample_uuid") or record.idempotency_key(),
             )
 
         result, _ = journal_then_remote(record, _write, self.check_connectivity())

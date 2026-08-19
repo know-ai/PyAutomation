@@ -193,6 +193,7 @@ class PersistableRecord:
         description: str | None = None,
     ) -> "PersistableRecord":
         ts = iso(timestamp)
+        key = f"alarm:{name}:{ts}:{state}"
         area, owner_node = _scope_metadata(area, owner_node)
         return cls(
             domain_name=DOMAIN.ALARM_SUMMARY,
@@ -209,8 +210,9 @@ class PersistableRecord:
                 "trigger_type": trigger_type,
                 "trigger_value": trigger_value,
                 "description": description,
+                "sample_uuid": canonical_sample_uuid(key),
             },
-            key=f"alarm:{name}:{ts}:{state}",
+            key=key,
             critical=True,
         )
 

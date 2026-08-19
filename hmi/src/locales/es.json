@@ -216,7 +216,20 @@
         "HMI client reconnected": "Cliente HMI reconectado",
         "HMI client connection rejected": "Conexión HMI rechazada",
         "HMI TLS handshake failures": "Fallos TLS de handshake HMI",
-        "HMI TLS handshake failure": "Fallo TLS de handshake HMI"
+        "HMI TLS handshake failure": "Fallo TLS de handshake HMI",
+        "Performance alarm settings updated": "Ajustes de alarmas de rendimiento actualizados",
+        "NTP clock step detected": "Salto de reloj NTP detectado",
+        "NTP authentication required": "Autenticación NTP requerida",
+        "NTP sync restored": "Sincronización NTP restablecida",
+        "NTP sync lost": "Sincronización NTP perdida",
+        "NTP check failed": "Fallo en la comprobación NTP",
+        "NTP settings updated": "Ajustes NTP actualizados",
+        "Foreign tag sample rejected": "Muestra de tag externa rechazada",
+        "Machine sample interval updated": "Intervalo de muestra de máquina actualizado"
+      },
+      "performanceAlarm": {
+        "activated": "Alarma de rendimiento {{title}} activada",
+        "cleared": "Alarma de rendimiento {{title}} desactivada"
       }
     },
     "preset": {

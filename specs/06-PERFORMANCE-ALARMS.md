@@ -48,7 +48,8 @@ Nombres cualificados con área en multi-edge (`Linea1.ALM.PERF.CPU`). Descripci�
 - PUT umbrales → `metrics_worker.reconfigure()` en el mismo ciclo (sin restart).
 - GET `/health/node` sigue siendo O(1); el evaluador corre **solo** en el sampler.
 - Ack / shelve / unshelve: endpoints de alarmas existentes + Redux `alarmsSlice` / Socket `on.alarm`.
+- Catálogo `SYS.PERF.*` en tabla `Tags` del historiador: `ensure_performance_alarms()` al conectar/reconectar y reintento en el sampler hasta persistir (CA-SAF-TAGS-01…03).
 
 ## Criterios
 
-CA-PERF-09 … CA-PERF-14. UI profesional: CA-UI-06 … CA-UI-10 ([spec 07](./07-PERFORMANCE-DASHBOARD-UI.md)). Evidencia en la auditoría.
+CA-PERF-09 … CA-PERF-14. UI profesional: CA-UI-06 … CA-UI-10 ([spec 07](./07-PERFORMANCE-DASHBOARD-UI.md)). Catálogo historiador: CA-SAF-TAGS-01…03. Evidencia en la auditoría.

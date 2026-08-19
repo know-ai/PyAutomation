@@ -12,6 +12,10 @@ let lastRunAt = 0;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let abortController: AbortController | null = null;
 
+export function resetTagHistoryBackfillThrottle(): void {
+  lastRunAt = 0;
+}
+
 const trendsToHistory = (response: TrendsResponse): Record<string, TagHistoryPoint[]> => {
   const out: Record<string, TagHistoryPoint[]> = {};
   for (const [name, series] of Object.entries(response)) {
@@ -36,24 +40,26 @@ const trendsToHistory = (response: TrendsResponse): Record<string, TagHistoryPoi
 export function scheduleTagHistoryBackfill(
   tagNames: string[],
   timeZone: string,
-  dispatch: AppDispatch
+  dispatch: AppDispatch,
+  force = false
 ): void {
   if (tagNames.length === 0) return;
 
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
-    void runTagHistoryBackfill(tagNames, timeZone, dispatch);
+    void runTagHistoryBackfill(tagNames, timeZone, dispatch, force);
   }, DEBOUNCE_MS);
 }
 
 async function runTagHistoryBackfill(
   tagNames: string[],
   timeZone: string,
-  dispatch: AppDispatch
+  dispatch: AppDispatch,
+  force = false
 ): Promise<void> {
   const now = Date.now();
-  if (now - lastRunAt < MIN_INTERVAL_MS) return;
+  if (!force && now - lastRunAt < MIN_INTERVAL_MS) return;
   lastRunAt = now;
 
   abortController?.abort();

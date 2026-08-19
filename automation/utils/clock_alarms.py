@@ -14,6 +14,7 @@ from .connection_alarms import (
     _ensure_bool_alarm,
     _scoped_name,
     _write_disconnected,
+    scoped_display_name,
 )
 
 _LOGGER = logging.getLogger("pyautomation")
@@ -42,7 +43,7 @@ def ensure_ntp_sync_alarm() -> None:
             alarm_name=ntp_alarm_name(),
             tag_description=NTP_TAG_DESCRIPTION,
             alarm_description=NTP_ALARM_DESCRIPTION,
-            display_name="NTP Out Of Sync",
+            display_name=scoped_display_name("NTP Out Of Sync"),
         )
     except Exception:
         _LOGGER.error("Failed to ensure NTP sync alarm", exc_info=True)

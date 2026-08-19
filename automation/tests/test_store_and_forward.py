@@ -32,21 +32,27 @@ class FakeRemote:
         return self.reachable
 
     def write_batch(self, domain, payloads):
+        outcomes = self.write_batch_outcomes(domain, payloads)
+        if self.fail_times > 0 and not any(outcomes):
+            raise RuntimeError("remote historian down")
+        return sum(outcomes)
+
+    def write_batch_outcomes(self, domain, payloads):
         self.calls += 1
         if self.fail_times > 0:
             self.fail_times -= 1
             raise RuntimeError("remote historian down")
-        accepted = 0
+        outcomes = []
         for item in payloads:
             payload = dict(item)
             key = payload.get("sample_uuid") or payload.get("idempotency_key") or (domain, str(payload))
             if key in self._seen:
-                accepted += 1
+                outcomes.append(True)
                 continue
             self._seen.add(key)
             self.written.append((domain, payload))
-            accepted += 1
-        return accepted
+            outcomes.append(True)
+        return outcomes
 
     def batch_insert_with_dedupe(self, payloads):
         return self.write_batch(DOMAIN.TAG, payloads)
@@ -536,10 +542,10 @@ class TestReplicatorDomainIsolation(unittest.TestCase):
 
     def test_event_zero_rows_does_not_block_tags(self):
         class EventStarvedRemote(FakeRemote):
-            def write_batch(self, domain, payloads):
+            def write_batch_outcomes(self, domain, payloads):
                 if domain == DOMAIN.EVENT:
-                    return 0
-                return super().write_batch(domain, payloads)
+                    return [False] * len(payloads)
+                return super().write_batch_outcomes(domain, payloads)
 
         self.journal.append(PersistableRecord.event(message="already-there", username="system"))
         self.journal.append(PersistableRecord.tag_sample("FI_01", 1.0, datetime.now(timezone.utc)))
@@ -552,6 +558,167 @@ class TestReplicatorDomainIsolation(unittest.TestCase):
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0]["domain"], DOMAIN.EVENT)
         self.assertEqual({item[0] for item in remote.written}, {DOMAIN.TAG})
+
+
+class TestAlarmSummarySafIdempotency(unittest.TestCase):
+    def setUp(self):
+        from peewee import SqliteDatabase
+
+        from ..dbmodels.alarms import AlarmStates, AlarmTypes, Alarms, AlarmSummary
+        from ..dbmodels.tags import DataTypes, Tags, Units, Variables
+        from ..dbmodels import proxy
+
+        self.db = SqliteDatabase(":memory:")
+        proxy.initialize(self.db)
+        self.db.create_tables(
+            [
+                Variables,
+                Units,
+                DataTypes,
+                Tags,
+                AlarmTypes,
+                AlarmStates,
+                Alarms,
+                AlarmSummary,
+            ]
+        )
+        Variables(name="Adimentional").save()
+        Units(name="adim", unit="adim", variable_id=Variables.get(Variables.name == "Adimentional")).save()
+        DataTypes(name="int").save()
+        unit = Units.get(Units.name == "adim")
+        Tags(
+            identifier="tag-db",
+            name="Linea2.LDS.leak",
+            unit=unit,
+            data_type=DataTypes.get(DataTypes.name == "int"),
+            display_name="Linea2.LDS.leak",
+            display_unit=unit,
+            description="",
+            area="Linea2",
+            owner_node="edge-linea2",
+        ).save()
+        AlarmTypes(name="BOOL").save()
+        AlarmStates(
+            name="Acknowledged",
+            mnemonic="ACK",
+            condition="Active",
+            status="Ack",
+        ).save()
+        Alarms(
+            identifier="alm-db",
+            name="Linea2.ALM.DB.Connection",
+            tag=Tags.get(Tags.name == "Linea2.LDS.leak"),
+            trigger_type=AlarmTypes.get(AlarmTypes.name == "BOOL"),
+            trigger_value=1,
+            state=AlarmStates.get(AlarmStates.name == "Acknowledged"),
+            description="",
+            area="Linea2",
+        ).save()
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_replay_same_alarm_summary_does_not_duplicate(self):
+        from ..persistence.remote import PeeweeRemoteDB
+
+        stamp = datetime(2026, 8, 19, 21, 1, 58, 166000, tzinfo=timezone.utc)
+        record = PersistableRecord.alarm_create(
+            name="Linea2.ALM.DB.Connection",
+            state="Acknowledged",
+            timestamp=stamp,
+            ack_timestamp=datetime(2026, 8, 19, 21, 6, 26, 144000, tzinfo=timezone.utc),
+            area="Linea2",
+        )
+        payload = dict(record.payload())
+        payload["idempotency_key"] = record.idempotency_key()
+        remote = PeeweeRemoteDB()
+        first = remote.write_batch_outcomes(DOMAIN.ALARM_SUMMARY, [payload])
+        second = remote.write_batch_outcomes(DOMAIN.ALARM_SUMMARY, [payload])
+        self.assertEqual(first, [True])
+        self.assertEqual(second, [True])
+        from ..dbmodels.alarms import AlarmSummary
+
+        self.assertEqual(AlarmSummary.select().count(), 1)
+
+    def test_partial_alarm_batch_marks_sent_per_row(self):
+        from ..persistence.remote import PeeweeRemoteDB
+
+        stamp = datetime(2026, 8, 19, 21, 1, 58, tzinfo=timezone.utc)
+        good = PersistableRecord.alarm_create(
+            name="Linea2.ALM.DB.Connection",
+            state="Acknowledged",
+            timestamp=stamp,
+            area="Linea2",
+        )
+        bad = PersistableRecord.alarm_create(
+            name="Linea2.ALM.PERF.SAF_LAG",
+            state="Acknowledged",
+            timestamp=stamp,
+            area="Linea2",
+            tag="Linea2.SYS.PERF.SAF_LAG",
+            trigger_type="BOOL",
+        )
+        good_payload = dict(good.payload())
+        good_payload["idempotency_key"] = good.idempotency_key()
+        bad_payload = dict(bad.payload())
+        bad_payload["idempotency_key"] = bad.idempotency_key()
+        outcomes = PeeweeRemoteDB().write_batch_outcomes(
+            DOMAIN.ALARM_SUMMARY,
+            [good_payload, bad_payload],
+        )
+        self.assertEqual(outcomes[0], True)
+        self.assertEqual(outcomes[1], False)
+        from ..dbmodels.alarms import AlarmSummary
+
+        self.assertEqual(AlarmSummary.select().count(), 1)
+
+    def test_replicator_partial_alarm_batch_keeps_only_failed_pending(self):
+        from unittest.mock import patch
+
+        from ..persistence.remote import PeeweeRemoteDB
+
+        stamp = datetime(2026, 8, 19, 21, 1, 58, tzinfo=timezone.utc)
+        good = PersistableRecord.alarm_create(
+            name="Linea2.ALM.DB.Connection",
+            state="Acknowledged",
+            timestamp=stamp,
+            area="Linea2",
+        )
+        bad = PersistableRecord.alarm_create(
+            name="Linea2.ALM.PERF.SAF_LAG",
+            state="Acknowledged",
+            timestamp=stamp,
+            area="Linea2",
+            tag="Linea2.SYS.PERF.SAF_LAG",
+            trigger_type="BOOL",
+        )
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        config = SafConfig(
+            journal_path=os.path.join(tmp.name, "journal.db"),
+            tag_flush_interval_s=0.005,
+            replicate_batch_size=100,
+            replicate_rate_per_s=10_000,
+        )
+        journal = JournalWriter(config)
+        journal.start()
+        self.addCleanup(journal.stop)
+        journal.append(good)
+        journal.append(bad)
+        journal.flush_sync()
+        remote = PeeweeRemoteDB()
+        replicator = RemoteReplicator(journal, remote, config)
+        with patch.object(remote, "is_reachable", return_value=True), patch(
+            "automation.persistence.replicator._node_scope", return_value=None
+        ):
+            replicated = replicator.replicate_once()
+        self.assertEqual(replicated, 1)
+        pending = journal.fetch_pending(10)
+        self.assertEqual(len(pending), 1)
+        self.assertIn("SAF_LAG", pending[0]["entity_id"])
+        from ..dbmodels.alarms import AlarmSummary
+
+        self.assertEqual(AlarmSummary.select().count(), 1)
 
 
 class TestT01Apocalypse(unittest.TestCase):
