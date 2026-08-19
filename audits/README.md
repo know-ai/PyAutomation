@@ -9,7 +9,7 @@
 
 ---
 
-## Documentos canónicos (9)
+## Documentos canónicos (10)
 
 | Doc | Archivo | Absorbe | Veredicto vigente |
 |---|---|---|---|
@@ -22,6 +22,7 @@
 | **07 Logs, eventos y bitácora** | [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) | `AUDIT_LOGGING`, `AUDIT_USER_EVENTS`, `AUDIT_OPERATIONAL_LOGS` | L1 **A+**; Events **A−**; bitácora **A+** |
 | **08 Tiempo** | [AUDIT_TIMEZONE.md](./AUDIT_TIMEZONE.md) | (ya era único; actualizado) | Operación «Hora Única»: UTC en wire; selector planta/local en HMI |
 | **09 Acondicionamiento de señal** | [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md) | `AUDIT_TAG_NOISE_FILTERS` | **D+** producto: Kalman 1D experimental; `process_filter` e IAD no corren |
+| **10 Máquinas de estado** | [AUDIT_STATE_MACHINES.md](./AUDIT_STATE_MACHINES.md) | (nuevo 2026-08-18) | Capas de muestreo independientes; buffer canónico `self.data` **huérfano** (SM-H1); ventana real = ciclo de máquina |
 
 ---
 
