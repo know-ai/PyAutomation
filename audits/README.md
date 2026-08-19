@@ -3,13 +3,13 @@
 | Campo | Valor |
 |---|---|
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
-| **Fecha de compactación** | 2026-08-18 |
+| **Fecha de compactación** | 2026-08-19 |
 | **Alcance** | Contraste código vs diseño; no son especificaciones de producto (`specs/` y `docs/` cubren eso) |
 | **Regla** | Un documento por dominio. Lo desactualizado se actualizó contra evidencia de código del 2026-08-18 |
 
 ---
 
-## Documentos canónicos (10)
+## Documentos canónicos (11)
 
 | Doc | Archivo | Absorbe | Veredicto vigente |
 |---|---|---|---|
@@ -20,9 +20,10 @@
 | **05 Store-and-Forward** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) | `STORE_AND_FORWARD`, `PERSISTENCE_FLOW`, `T01_SOAK_LAST_RUN` | **A+** durabilidad; historiador ≠ mapeo OPC UA |
 | **06 Multi-edge** | [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) | (ya era único) | Fase 1 en código; soak 2-edge y RLS **pendientes** |
 | **07 Logs, eventos y bitácora** | [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) | `AUDIT_LOGGING`, `AUDIT_USER_EVENTS`, `AUDIT_OPERATIONAL_LOGS` | L1 **A+**; Events **A−**; bitácora **A+** |
-| **08 Tiempo** | [AUDIT_TIMEZONE.md](./AUDIT_TIMEZONE.md) | (ya era único; actualizado) | Operación «Hora Única»: UTC en wire; selector planta/local en HMI |
+| **08 Tiempo (presentación)** | [AUDIT_TIMEZONE.md](./AUDIT_TIMEZONE.md) | (ya era único; actualizado) | Operación «Hora Única»: UTC en wire; selector planta/local en HMI |
 | **09 Acondicionamiento de señal** | [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md) | `AUDIT_TAG_NOISE_FILTERS` | **D+** producto: Kalman 1D experimental; `process_filter` e IAD no corren |
 | **10 Máquinas de estado** | [AUDIT_STATE_MACHINES.md](./AUDIT_STATE_MACHINES.md) | (nuevo 2026-08-18; spec 02) | Tres relojes; SM-H1 cerrado en modo `sample_interval`; iDetectFugas dual-path |
+| **11 NTP / reloj edge** | [AUDIT_NTP_TIME_SYNC.md](./AUDIT_NTP_TIME_SYNC.md) | (nuevo 2026-08-19) | **F** — sin monitor NTP; chrony en SO no documentado; cierra hueco «tiempo» de multi-edge |
 
 ---
 
