@@ -234,6 +234,7 @@ def _ensure_bool_alarm(
             data_type=_TAG_DATA_TYPE,
             description=tag_description,
             display_name=display_name,
+            skip_validation=True,
         )
         if tag is None:
             tag = app.cvt.get_tag_by_name(tag_name)

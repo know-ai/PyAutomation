@@ -177,6 +177,37 @@ class HealthSystemResource(Resource):
                 "BUFFER_UTILIZATION_%": 0.0,
                 "SAMPLE_LOOP_MACHINES": 0,
             }
+        clock_metrics = {}
+        try:
+            worker = getattr(app, "ntp_worker", None)
+            if worker is not None:
+                status = worker.get_status()
+                clock_metrics = {
+                    "clock": {
+                        "enabled": status.get("enabled", False),
+                        "synced": status.get("synced", False),
+                        "warn": status.get("warn", False),
+                        "offset_ms": status.get("offset_ms"),
+                        "server_used": status.get("server_used"),
+                        "stratum": status.get("stratum"),
+                        "delay_ms": status.get("delay_ms"),
+                        "last_check_utc": status.get("last_check_utc"),
+                        "next_check_utc": status.get("next_check_utc"),
+                        "check_interval_s": status.get("check_interval_s"),
+                        "last_error": status.get("last_error"),
+                        "last_address_used": status.get("last_address_used"),
+                        "auth_required_detected": status.get("auth_required_detected"),
+                        "jump_detected": status.get("jump_detected"),
+                        "protocol_version": status.get("protocol_version"),
+                        "CLOCK_OFFSET_MS": status.get("offset_ms"),
+                        "NTP_SYNCED": status.get("synced", False),
+                        "NTP_LAST_CHECK": status.get("last_check_utc"),
+                    }
+                }
+            else:
+                clock_metrics = {"clock": {"enabled": False, "synced": False}}
+        except Exception:
+            clock_metrics = {"clock": {"enabled": False, "synced": False}}
         return {
             "status": "ok",
             "service": "pyautomation",
@@ -197,6 +228,7 @@ class HealthSystemResource(Resource):
             **timing_metrics,
             **node_metrics,
             **conn_metrics,
+            **clock_metrics,
             **_log_error_metrics(),
             **_event_rate_metrics(),
         }, 200

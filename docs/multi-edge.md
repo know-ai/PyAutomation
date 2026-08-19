@@ -88,3 +88,22 @@ Checklist operativo:
 4. Caer OPC de A: A no abre el cliente de B; B no encola samples de A.
 5. HMI de cada edge: CVT, alarmas activas, máquinas y clientes OPC solo del área local. Resumen de alarmas, eventos, logs, tendencias y datalogger ven toda la planta (selector de área opcional).
 6. Tras 24 h, `PENDING_ROWS` no crece de forma sostenida y no hay writes cruzados en TagValue (`owner_node`).
+
+## Sincronización NTP (multi-edge)
+
+Todos los edges deben compartir la **misma epoch UTC** para correlacionar alarmas, TagValue y eventos en el historiador compartido.
+
+| Capa | Responsable | Acción |
+|---|---|---|
+| Disciplina | SO del host (`chrony` / `w32time`) | Mismos 2–3 servidores NTP OT en todos los edges |
+| Verificación | PyAutomation `NtpMonitorWorker` | Mismos servidores en HMI → Sincronización NTP |
+| Red | VLAN OT | UDP **123** saliente desde cada edge; IPv4/IPv6 dual-stack soportado |
+
+Checklist NTP por edge:
+
+1. Host sincronizado (`chronyc tracking` o `w32tm /query /status`).
+2. HMI → Sincronización NTP en verde; `|offset_ms| < 50` en condiciones normales.
+3. `GET /api/health/system` → bloque `clock.synced=true`.
+4. Mismos servidores que el resto de la planta (no `pool.ntp.org` en producción).
+
+Runbook detallado: [ntp-deployment.md](./ntp-deployment.md). Auditoría: [audits/AUDIT_NTP_TIME_SYNC.md](../audits/AUDIT_NTP_TIME_SYNC.md).

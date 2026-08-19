@@ -14,6 +14,7 @@ import { usePageHidden } from "../hooks/usePageHidden";
 import { VirtualList } from "./VirtualList";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { toDisplayDate } from "../utils/timezone";
+import { resolveTagDisplayLabel } from "../utils/tagDisplayLabel";
 
 export const BUFFER_SIZE_MIN = 120;
 export const BUFFER_SIZE_MAX = 360;
@@ -138,6 +139,14 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
     [availableTags]
   );
 
+  const getTagLabel = useCallback(
+    (tagName: string) => {
+      const tag = availableTags.find((t) => t.name === tagName);
+      return resolveTagDisplayLabel(tag, tagName);
+    },
+    [availableTags]
+  );
+
   const lastPlotRef = useRef<{ data: Data[]; layout: Partial<Layout> }>({ data: [], layout: {} });
 
   const plotData = useMemo(() => {
@@ -175,14 +184,13 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
           Math.max(BUFFER_SIZE_MIN, config.bufferSize || BUFFER_SIZE_MIN)
         )
       );
-      const tag = availableTags.find((t) => t.name === tagName);
       const unit = getTagUnit(tagName);
       return {
         x: bufferSlice.map((p) => toDisplayDate(p.timestamp, timeZone)),
         y: bufferSlice.map((p) => p.value),
         type: "scatter",
         mode: "lines",
-        name: tag?.display_name || tagName,
+        name: getTagLabel(tagName),
         line: { color: colorPalette[index % colorPalette.length], width: 2 },
         yaxis: unitAxis[unit] || "y",
       } as Data;
@@ -237,7 +245,7 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
     const next = { data: traces, layout };
     lastPlotRef.current = next;
     return next;
-  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, throttledHistories, pageHidden, timeZone]);
+  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, getTagLabel, throttledHistories, pageHidden, timeZone]);
 
   // Máximo 2 unidades distintas; número de tags ilimitado mientras no se supere ese tope de unidades
   const handleTagToggle = (tagName: string) => {
@@ -398,7 +406,7 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
                                   >
                                     <div className="d-flex justify-content-between align-items-center">
                                       <div>
-                                        <strong className="small">{tag.display_name || tag.name}</strong>
+                                        <strong className="small">{resolveTagDisplayLabel(tag, tag.name)}</strong>
                                         <br />
                                         <span className="text-muted small">
                                           {tag.name} · {getTagUnit(tag.name)}
@@ -453,11 +461,9 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
                           </span>
                         </label>
                         <div className="d-flex flex-wrap gap-1">
-                          {config.tagNames.map((tagName) => {
-                            const tag = availableTags.find((t) => t.name === tagName);
-                            return (
+                          {config.tagNames.map((tagName) => (
                               <span key={tagName} className="badge bg-primary">
-                                {tag?.display_name || tagName}
+                                {getTagLabel(tagName)}
                                 <button
                                   type="button"
                                   className="btn-close btn-close-white ms-1"
@@ -466,8 +472,7 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
                                   aria-label="Remove"
                                 ></button>
                               </span>
-                            );
-                          })}
+                          ))}
                         </div>
                       </div>
                     </div>

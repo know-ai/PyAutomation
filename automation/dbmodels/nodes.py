@@ -4,7 +4,7 @@ from __future__ import annotations
 import socket
 from datetime import datetime, timezone
 
-from peewee import CharField, TimestampField
+from peewee import CharField, TimestampField, BooleanField, FloatField
 
 from .core import BaseModel
 
@@ -33,6 +33,9 @@ class Nodes(BaseModel):
     hostname = CharField(max_length=255, null=True)
     version = CharField(max_length=32, null=True)
     last_seen = TimestampField(utc=True, default=utc_now)
+    ntp_offset_ms = FloatField(null=True)
+    ntp_synced = BooleanField(null=True)
+    ntp_updated_at = TimestampField(utc=True, null=True)
     created_at = TimestampField(utc=True, default=utc_now)
     updated_at = TimestampField(utc=True, default=utc_now)
 
@@ -84,6 +87,25 @@ class Nodes(BaseModel):
         ).execute()
         return cls.get_by_id(node_id)
 
+    @classmethod
+    def update_clock_status(
+        cls,
+        node_id: str,
+        *,
+        ntp_synced: bool | None,
+        ntp_offset_ms: float | None,
+        now: datetime | None = None,
+    ) -> None:
+        if not node_id:
+            return
+        timestamp = now or utc_now()
+        cls.update(
+            ntp_synced=ntp_synced,
+            ntp_offset_ms=ntp_offset_ms,
+            ntp_updated_at=timestamp,
+            updated_at=timestamp,
+        ).where(cls.id == node_id).execute()
+
     def serialize(self) -> dict:
         return {
             "id": self.id,
@@ -92,6 +114,9 @@ class Nodes(BaseModel):
             "hostname": self.hostname,
             "version": self.version,
             "last_seen": _json_datetime(self.last_seen),
+            "ntp_offset_ms": self.ntp_offset_ms,
+            "ntp_synced": self.ntp_synced,
+            "ntp_updated_at": _json_datetime(self.ntp_updated_at),
             "created_at": _json_datetime(self.created_at),
             "updated_at": _json_datetime(self.updated_at),
         }

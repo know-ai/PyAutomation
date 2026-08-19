@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useAppDispatch } from "./useAppDispatch";
+import { useDisplayTimezone } from "./useDisplayTimezone";
 import { socketService } from "../services/socket";
 import {
   appendTagHistoryPoints,
@@ -17,6 +18,7 @@ import type { Alarm } from "../services/alarms";
 import type { Machine } from "../services/machines";
 import { isPageHidden } from "./usePageHidden";
 import { isSystemUser } from "../utils/systemUser";
+import { scheduleTagHistoryBackfill } from "../utils/tagHistoryBackfill";
 
 const BUFFER_INTERVAL_MS = 1000;
 const HIDDEN_FLUSH_EVERY = 5;
@@ -38,6 +40,7 @@ const isHistoryTrackedTag = (name: string): boolean => {
 
 export function useSocket() {
   const dispatch = useAppDispatch();
+  const { timeZone } = useDisplayTimezone();
   const isAuthenticated = useAppSelector((state) => state.auth.status === "authenticated");
   const isSystemSession = useAppSelector((state) => isSystemUser(state.auth.user));
   const pendingTagUpdatesRef = useRef<Map<string, Tag>>(new Map());
@@ -151,11 +154,20 @@ export function useSocket() {
       }
     });
 
+    const cleanupConnection = socketService.onConnectionChange(({ connected, reconnect }) => {
+      if (!connected || !reconnect) return;
+      const { historySubscribers } = store.getState().tags;
+      const names = Object.keys(historySubscribers).filter((n) => historySubscribers[n] > 0);
+      if (names.length === 0) return;
+      scheduleTagHistoryBackfill(names, timeZone, dispatch);
+    });
+
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       cleanupTags();
       cleanupAlarms();
       cleanupMachines();
+      cleanupConnection();
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -166,7 +178,7 @@ export function useSocket() {
       pendingAlarmUpdatesRef.current.clear();
       pendingMachineUpdatesRef.current.clear();
     };
-  }, [dispatch, isAuthenticated, isSystemSession]);
+  }, [dispatch, isAuthenticated, isSystemSession, timeZone]);
 
   return {
     isConnected: socketService.getIsConnected(),

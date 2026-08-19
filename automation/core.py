@@ -11,7 +11,7 @@ from .dbmodels.users import Roles, Users
 from .dbmodels.machines import Machines
 # PYAUTOMATION MODULES IMPORTATION
 from .singleton import Singleton
-from .workers import LoggerWorker
+from .workers import LoggerWorker, NtpMonitorWorker, HmiSessionCleanupWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .opcua.models import Client
 from .tags import CVTEngine, Tag
@@ -379,6 +379,11 @@ class PyAutomation(Singleton):
 
         @self.sio.on('connect')
         def handle_connect(auth=None):
+            from flask import request
+            from .utils.hmi_socket_audit import attempt_hmi_socket_connect
+
+            if not attempt_hmi_socket_connect(auth=auth, sid=request.sid):
+                raise ConnectionRefusedError("Authentication failed")
 
             scope = self._refresh_node_scope()
             local_area = scope.area if scope.enabled else None
@@ -392,6 +397,20 @@ class PyAutomation(Singleton):
                 "last_logs": self.get_lasts_logs(lasts=10, area=local_area) or list()
             }
             self.sio.emit("on_connection", data=payload)
+
+        @self.sio.on('disconnect')
+        def handle_disconnect(reason=None):
+            from flask import request
+            from .utils.hmi_socket_audit import register_hmi_socket_disconnect
+
+            register_hmi_socket_disconnect(sid=request.sid, reason=str(reason or ""))
+
+        @self.sio.on('ping')
+        def handle_hmi_session_ping():
+            from flask import request
+            from .utils.hmi_socket_audit import register_hmi_socket_heartbeat
+
+            register_hmi_socket_heartbeat(sid=request.sid)
         print(_colorize_message(f"[{str_date}] [INFO] Socket.IO server defined successfully", "INFO"))
 
     @logging_error_handler
@@ -3405,6 +3424,12 @@ class PyAutomation(Singleton):
                     "logger_period": 10.0,
                     "log_level": 20,
                     "log_error_cooldown_seconds": DEFAULT_COOLDOWN_S,
+                    "ntp_servers": "",
+                    "ntp_check_interval_s": 3600,
+                    "ntp_warn_offset_ms": 50,
+                    "ntp_alarm_offset_ms": 1000,
+                    "ntp_fail_closed": False,
+                    "ntp_enabled": True,
                 }
                 self.set_app_config(**default_config)
                 return default_config
@@ -3412,6 +3437,56 @@ class PyAutomation(Singleton):
         except Exception as e:
             logging.error(f"Failed to read app config: {e}")
             return {"logger_period": 10.0, "log_level": 20, "log_error_cooldown_seconds": DEFAULT_COOLDOWN_S}
+
+    @logging_error_handler
+    def get_ntp_config(self) -> dict:
+        from .time.ntp_config import load_ntp_config
+
+        return load_ntp_config(self.get_app_config())
+
+    @logging_error_handler
+    def update_ntp_config(self, **kwargs) -> dict:
+        from .time.ntp_config import load_ntp_config, parse_server_list, validate_server_list
+
+        allowed = {
+            "ntp_servers",
+            "ntp_check_interval_s",
+            "ntp_warn_offset_ms",
+            "ntp_alarm_offset_ms",
+            "ntp_step_threshold_ms",
+            "ntp_fail_closed",
+            "ntp_enabled",
+            "ntp_auth_type",
+        }
+        payload = {key: value for key, value in kwargs.items() if key in allowed}
+        if "ntp_servers" in payload:
+            servers = parse_server_list(payload["ntp_servers"])
+            ok, err = validate_server_list(servers)
+            if not ok:
+                raise ValueError(err or "invalid NTP servers")
+            payload["ntp_servers"] = ",".join(servers)
+        if "ntp_check_interval_s" in payload:
+            payload["ntp_check_interval_s"] = max(60, min(86400, int(payload["ntp_check_interval_s"])))
+        if "ntp_warn_offset_ms" in payload:
+            payload["ntp_warn_offset_ms"] = max(1, int(payload["ntp_warn_offset_ms"]))
+        if "ntp_alarm_offset_ms" in payload:
+            payload["ntp_alarm_offset_ms"] = max(1, int(payload["ntp_alarm_offset_ms"]))
+        if "ntp_step_threshold_ms" in payload:
+            payload["ntp_step_threshold_ms"] = max(100, int(payload["ntp_step_threshold_ms"]))
+        if "ntp_auth_type" in payload:
+            auth_type = str(payload["ntp_auth_type"] or "none").strip().lower()
+            if auth_type not in {"none", "symmetric", "nts"}:
+                raise ValueError("ntp_auth_type must be none, symmetric, or nts")
+            payload["ntp_auth_type"] = auth_type
+        if "ntp_fail_closed" in payload:
+            payload["ntp_fail_closed"] = bool(payload["ntp_fail_closed"])
+        if "ntp_enabled" in payload:
+            payload["ntp_enabled"] = bool(payload["ntp_enabled"])
+        self.set_app_config(**payload)
+        worker = getattr(self, "ntp_worker", None)
+        if worker is not None:
+            worker.reconfigure()
+        return self.get_ntp_config()
 
     def _format_database_error(self, error: Exception, context: str = "") -> str:
         """
@@ -5279,6 +5354,12 @@ class PyAutomation(Singleton):
                 )
             self.db_worker.start()
 
+            self.ntp_worker = NtpMonitorWorker(config_provider=self.get_app_config)
+            self.ntp_worker.start()
+
+            self.hmi_session_worker = HmiSessionCleanupWorker()
+            self.hmi_session_worker.start()
+
         if machines:
 
             for machine in machines:
@@ -5301,7 +5382,12 @@ class PyAutomation(Singleton):
         Signals all worker threads to stop.
         """
         self.machine.stop()
-        self.db_worker.stop()
+        if hasattr(self, "ntp_worker") and self.ntp_worker is not None:
+            self.ntp_worker.stop()
+        if hasattr(self, "hmi_session_worker") and self.hmi_session_worker is not None:
+            self.hmi_session_worker.stop()
+        if hasattr(self, "db_worker") and self.db_worker is not None:
+            self.db_worker.stop()
         if hasattr(self, 'subscription_monitor'):
             self.subscription_monitor.stop()
 

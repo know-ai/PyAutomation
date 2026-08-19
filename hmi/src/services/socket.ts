@@ -4,9 +4,19 @@ import type { Tag } from "./tags";
 import type { Alarm } from "./alarms";
 import type { Machine } from "./machines";
 import { store } from "../store/store";
-import { AUTH_STORAGE_KEY } from "../store/slices/authSlice";
+import { AUTH_STORAGE_KEY, logout } from "../store/slices/authSlice";
+import { showToast } from "../utils/toast";
 
 type FanoutHandler = (data: unknown) => void;
+
+export type SocketConnectionState = {
+  connected: boolean;
+  connecting: boolean;
+  /** true on connect after a prior disconnect in this session (not first connect). */
+  reconnect: boolean;
+};
+
+type ConnectionListener = (state: SocketConnectionState) => void;
 
 class SocketService {
   private socket: Socket | null = null;
@@ -14,9 +24,36 @@ class SocketService {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = Infinity;
   private isConnecting: boolean = false;
+  private wasDisconnected: boolean = false;
   private lastToken: string | null = null;
   private readonly listeners = new Map<string, Set<FanoutHandler>>();
   private readonly nativeBound = new Set<string>();
+  private readonly connectionListeners = new Set<ConnectionListener>();
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly HEARTBEAT_MS = 30_000;
+
+  private snapshot(reconnect = false): SocketConnectionState {
+    return {
+      connected: this.isConnected,
+      connecting: this.isConnecting,
+      reconnect,
+    };
+  }
+
+  private emitConnection(reconnect = false): void {
+    const state = this.snapshot(reconnect);
+    for (const listener of this.connectionListeners) {
+      listener(state);
+    }
+  }
+
+  onConnectionChange(listener: ConnectionListener): () => void {
+    this.connectionListeners.add(listener);
+    listener(this.snapshot(false));
+    return () => {
+      this.connectionListeners.delete(listener);
+    };
+  }
 
   private getToken(): string | null {
     const state = store.getState();
@@ -35,6 +72,49 @@ class SocketService {
     }
 
     return token;
+  }
+
+  private socketAuthPayload(): { token: string; reconnect: boolean } | Record<string, never> {
+    const token = this.getToken();
+    if (!token) return {};
+    return { token, reconnect: this.wasDisconnected };
+  }
+
+  private applySocketAuth(): void {
+    if (!this.socket) return;
+    try {
+      (this.socket as Socket & { auth?: unknown }).auth = this.socketAuthPayload();
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.socket?.connected) {
+        this.socket.emit("ping");
+      }
+    }, SocketService.HEARTBEAT_MS);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  private handleConnectError(err: Error): void {
+    this.reconnectAttempts++;
+    this.isConnecting = false;
+    this.emitConnection(false);
+    const message = String(err?.message || err || "");
+    if (message.includes("Authentication failed")) {
+      this.stopHeartbeat();
+      store.dispatch(logout());
+      showToast("Session expired or invalid. Please sign in again.", "error");
+    }
   }
 
   private bindNative(event: string): void {
@@ -82,18 +162,16 @@ class SocketService {
 
     if (this.socket) {
       if (this.lastToken !== token) {
-        try {
-          (this.socket as any).auth = { token };
-        } catch (_e) {
-          // ignore
-        }
+        this.applySocketAuth();
         this.lastToken = token;
         this.socket.disconnect();
         this.isConnecting = true;
+        this.emitConnection(false);
         this.socket.connect();
       }
       if (!this.socket.connected && !this.isConnecting) {
         this.isConnecting = true;
+        this.emitConnection(false);
         this.socket.connect();
       }
       this.bindPendingNatives();
@@ -102,6 +180,7 @@ class SocketService {
 
     this.lastToken = token;
     this.isConnecting = true;
+    this.emitConnection(false);
 
     this.socket = io(SOCKET_IO_URL, {
       autoConnect: false,
@@ -111,26 +190,39 @@ class SocketService {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
-      auth: {
-        token: token,
+      auth: (cb) => {
+        cb(this.socketAuthPayload());
       },
     });
 
     this.socket.on("connect", () => {
+      const reconnect = this.wasDisconnected;
+      this.wasDisconnected = false;
       this.isConnected = true;
       this.isConnecting = false;
       this.reconnectAttempts = 0;
       this.bindPendingNatives();
+      this.startHeartbeat();
+      this.emitConnection(reconnect);
     });
 
     this.socket.on("disconnect", () => {
+      this.wasDisconnected = true;
       this.isConnected = false;
       this.isConnecting = false;
+      this.stopHeartbeat();
+      this.emitConnection(false);
     });
 
-    this.socket.on("connect_error", () => {
-      this.reconnectAttempts++;
-      this.isConnecting = false;
+    this.socket.on("connect_error", (err: Error) => {
+      this.handleConnectError(err);
+    });
+
+    this.socket.io.on("reconnect_attempt", () => {
+      if (this.isConnected) return;
+      this.applySocketAuth();
+      this.isConnecting = true;
+      this.emitConnection(false);
     });
 
     this.bindPendingNatives();
@@ -138,6 +230,7 @@ class SocketService {
   }
 
   disconnect(): void {
+    this.stopHeartbeat();
     if (this.socket) {
       this.socket.removeAllListeners();
       this.socket.disconnect();
@@ -147,6 +240,8 @@ class SocketService {
     this.listeners.clear();
     this.isConnected = false;
     this.isConnecting = false;
+    this.wasDisconnected = false;
+    this.emitConnection(false);
   }
 
   onLogUpdate(callback: (log: Record<string, unknown>) => void): () => void {

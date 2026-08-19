@@ -208,3 +208,45 @@ class TestConnectionAlarms(unittest.TestCase):
         self.assertTrue(self.app.is_db_connected())
         self.assertEqual(self._alarm_state(alarm), "normal")
         self.assertEqual(alarm.state.alarm_status, "Not Active")
+
+    def test_ntp_sync_alarm_created_with_multi_edge_system_tag(self):
+        from unittest.mock import MagicMock
+
+        from ..utils.connection_alarms import _ensure_bool_alarm
+
+        scope = MagicMock()
+        scope.enabled = True
+        scope.is_valid = True
+        scope.area = "Linea1"
+        scope.site = "Supe"
+        scope.node_id = "edge-linea1"
+        scope.owns_area = lambda _area: True
+        scope.owns_node = lambda _node: True
+
+        tag_name = "Linea1.SYS.NTP.OutOfSync"
+        alarm_name = "Linea1.ALM.NTP.OutOfSync"
+
+        env = {
+            "AUTOMATION_MULTI_EDGE_ENABLED": "true",
+            "AUTOMATION_NODE_ID": "edge-linea1",
+            "AUTOMATION_SEGMENT": "Linea1",
+            "AUTOMATION_MANUFACTURER": "Supe",
+        }
+        with patch.dict(os.environ, env, clear=False), patch(
+            "automation.node_scope.get_node_scope", return_value=scope
+        ), patch.object(self.app, "_refresh_node_scope", return_value=scope):
+            _ensure_bool_alarm(
+                self.app,
+                tag_name=tag_name,
+                alarm_name=alarm_name,
+                tag_description="True when the edge clock is out of sync with plant NTP",
+                alarm_description="Edge clock out of sync with plant NTP",
+                display_name="NTP Out Of Sync",
+            )
+
+        tag = self.app.cvt.get_tag_by_name(tag_name)
+        alarm = self.app.alarm_manager.get_alarm_by_name(alarm_name)
+        self.assertIsNotNone(tag)
+        self.assertIsNotNone(alarm)
+        self.assertEqual(alarm.alarm_setpoint.type.value, "BOOL")
+        self.assertEqual(self._alarm_state(alarm), "normal")

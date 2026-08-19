@@ -71,6 +71,9 @@ export type PlantNode = {
   site?: string | null;
   hostname?: string | null;
   version?: string | null;
+  ntp_offset_ms?: number | null;
+  ntp_synced?: boolean | null;
+  ntp_updated_at?: string | null;
 };
 
 export const getPlantNodes = async (): Promise<PlantNode[]> => {

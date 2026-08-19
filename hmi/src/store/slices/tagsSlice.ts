@@ -32,6 +32,23 @@ const trimHistory = (pts: TagHistoryPoint[]): TagHistoryPoint[] => {
   return pts.slice(pts.length - MAX_HISTORY_POINTS);
 };
 
+export const mergeHistoryPoints = (
+  existing: TagHistoryPoint[],
+  incoming: TagHistoryPoint[]
+): TagHistoryPoint[] => {
+  if (incoming.length === 0) return existing;
+  if (existing.length === 0) return trimHistory(incoming.filter(isValidPoint));
+
+  const byTs = new Map<string, number>();
+  for (const p of existing) byTs.set(p.timestamp, p.value);
+  for (const p of incoming) {
+    if (isValidPoint(p)) byTs.set(p.timestamp, p.value);
+  }
+  const merged = Array.from(byTs, ([timestamp, value]) => ({ timestamp, value }));
+  merged.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  return trimHistory(merged);
+};
+
 const lastTimestamp = (pts: TagHistoryPoint[] | undefined): string => {
   if (!pts || pts.length === 0) return "";
   return pts[pts.length - 1]?.timestamp || "";
@@ -167,6 +184,19 @@ const tagsSlice = createSlice({
         appendPointsToHistory(state, name, points);
       });
     },
+    backfillTagHistory: (
+      state,
+      action: PayloadAction<Record<string, TagHistoryPoint[]>>
+    ) => {
+      for (const [name, points] of Object.entries(action.payload)) {
+        if (!state.historySubscribers[name]) continue;
+        const existing = state.tagHistory[name] || [];
+        state.tagHistory[name] = mergeHistoryPoints(existing, points);
+      }
+      if (Object.keys(state.tagHistory).length > MAX_HISTORY_TAGS) {
+        state.tagHistory = evictExcessHistory(state.tagHistory, state.historySubscribers);
+      }
+    },
     subscribeTagHistory: (state, action: PayloadAction<string>) => {
       const name = action.payload;
       if (!name) return;
@@ -209,6 +239,7 @@ export const {
   updateTagValue,
   updateTagValuesBatch,
   appendTagHistoryPoints,
+  backfillTagHistory,
   subscribeTagHistory,
   unsubscribeTagHistory,
   clearTagValues,

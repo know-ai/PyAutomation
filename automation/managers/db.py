@@ -48,6 +48,7 @@ from ..dbmodels import (
     LinearReferencingGeospatial,
     BaseModel,
     Nodes,
+    HMISession,
 )
 
 
@@ -76,6 +77,7 @@ class DBManager(Singleton):
         self.opcuaserver_logger = OPCUAServerLoggerEngine()
         self._tables = [
             Nodes,
+            HMISession,
             Manufacturer,
             Segment,
             Variables, 
@@ -242,6 +244,30 @@ class DBManager(Singleton):
         for model in {model for model, _ in scoped_fields}:
             model._schema.create_indexes(safe=True)
         self._ensure_machine_temporal_schema(db, migrator)
+        self._ensure_nodes_clock_schema(db, migrator)
+
+    def _ensure_nodes_clock_schema(self, db, migrator):
+        table = Nodes._meta.table_name
+        try:
+            existing = {column.name for column in db.get_columns(table)}
+        except Exception:
+            return
+        additions = (
+            ("ntp_offset_ms", Nodes.ntp_offset_ms),
+            ("ntp_synced", Nodes.ntp_synced),
+            ("ntp_updated_at", Nodes.ntp_updated_at),
+        )
+        for field_name, field in additions:
+            if field_name not in existing:
+                cloned = field.clone()
+                cloned.index = False
+                migrate(
+                    migrator.add_column(
+                        table,
+                        field_name,
+                        cloned,
+                    )
+                )
 
     def _ensure_machine_temporal_schema(self, db, migrator):
         """Add execution_interval / sample_interval / sample_override and backfill."""
@@ -443,6 +469,19 @@ class DBManager(Singleton):
             site=site,
             hostname=hostname,
             version=version,
+        )
+
+    def update_node_clock_status(
+        self,
+        node_id: str,
+        *,
+        ntp_synced: bool | None,
+        ntp_offset_ms: float | None,
+    ):
+        return Nodes.update_clock_status(
+            node_id=node_id,
+            ntp_synced=ntp_synced,
+            ntp_offset_ms=ntp_offset_ms,
         )
 
     # USERS METHODS

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { TimezoneBadge } from "./TimezoneBadge";
+import { ClockBadge } from "./ClockBadge";
+import { SocketBadge } from "./SocketBadge";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { useTranslation } from "../hooks/useTranslation";
 import { getNodeIdentity } from "../services/health";
@@ -74,6 +76,8 @@ export function HeaderClock() {
   return (
     <div className="header-clock" aria-label={t("header.clockLabel")}>
       <div className="header-clock__lead">
+        <ClockBadge />
+        <SocketBadge />
         <TimezoneBadge compact />
       </div>
       <time className="header-clock__stamp" dateTime={now.toISOString()}>
