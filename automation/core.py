@@ -1239,7 +1239,7 @@ class PyAutomation(Singleton):
 
             return f"Tag {tag_name} has an alarm associated"
 
-        self.unsubscribe_opcua(tag=tag)
+        self.unsubscribe_opcua(tag=tag, drop_all_machines=True)
         self.cvt.delete_tag(id=id, user=user)
         self.das.buffer.pop(tag_name)
         # Persist Tag on Database
@@ -1451,7 +1451,7 @@ class PyAutomation(Singleton):
 
             return f"Tag {name} has an alarm associated"
 
-        self.unsubscribe_opcua(tag=tag)
+        self.unsubscribe_opcua(tag=tag, drop_all_machines=True)
         # Persist Tag on Database
         if self.is_db_connected():
 
@@ -2923,25 +2923,14 @@ class PyAutomation(Singleton):
         daq.subscribe_to(tag=tag)
 
     @logging_error_handler    
-    @validate_types(tag=Tag, output=None)
-    def unsubscribe_opcua(self, tag:Tag):
+    @validate_types(tag=Tag, drop_all_machines=bool, output=None)
+    def unsubscribe_opcua(self, tag:Tag, drop_all_machines: bool = False):
         r"""
         Unsubscribes a tag from its OPC UA source (DAS or DAQ).
 
-        **Parameters:**
-
-        * **tag** (Tag): The tag object to unsubscribe.
-
-        **Usage:**
-
-        ```python
-        >>> from automation import PyAutomation
-        >>> app = PyAutomation()
-        >>> tag, _ = app.create_tag("Tag_Unsub", "m", "Length")
-        >>> app.subscribe_tag("Tag_Unsub", 1000)
-        >>> app.unsubscribe_opcua(tag)
-        >>> # Verification: check log or internal state if possible
-        ```
+        Tag **edits** (unit, scan_time, …) must not drop leak-detection
+        subscriptions. Only DAQ is recycled so the poller can resubscribe.
+        Pass ``drop_all_machines=True`` when deleting the tag.
         """
 
         if tag.get_node_namespace():
@@ -2955,11 +2944,15 @@ class PyAutomation(Singleton):
                     self.das.unsubscribe(client_name=client_name, node_id=node_id)
                     break
 
-            drop_machine_from_worker, _, _ = self.machine_manager.unsubscribe_tag(tag=tag)
-            if drop_machine_from_worker:
+        drop_machine_from_worker, _, _ = self.machine_manager.unsubscribe_tag(
+            tag=tag,
+            acquisition_only=not drop_all_machines,
+        )
+        if drop_machine_from_worker:
                 
-                self.machine.drop(machine=drop_machine_from_worker)
+            self.machine.drop(machine=drop_machine_from_worker)
 
+        if tag.get_node_namespace():
             # CLEAR BUFFER
             scan_time = tag.get_scan_time()
             if scan_time:
@@ -2973,6 +2966,14 @@ class PyAutomation(Singleton):
                     "timestamp": Buffer(),
                     "values": Buffer()
                 })
+
+        drop_machine_from_worker, _, _ = self.machine_manager.unsubscribe_tag(
+            tag=tag,
+            acquisition_only=not drop_all_machines,
+        )
+        if drop_machine_from_worker:
+                
+            self.machine.drop(machine=drop_machine_from_worker)
 
     @logging_error_handler
     def __update_buffer(self, tag:Tag):
@@ -5109,25 +5110,29 @@ class PyAutomation(Singleton):
         r"""
         Ensures a 'system' user exists with 'sudo' role. Used for automated internal actions.
         """
-        from .utils.db_connections import ephemeral_historian
+        from .utils.db_connections import ephemeral_historian, force_historian_connect
 
-        with ephemeral_historian(getattr(self, "_db", None)):
-            users = Users()
-            roles = Roles()
-            system_password = self.server.config.get("AUTOMATION_SUPERUSER_PASSWORD", "super_ultra_secret_password")
-            if not users.read_by_username(username="system"):
-                admin_role = roles.read_by_name(name="sudo")
-                if admin_role:
-                    self.signup(
-                        username="system",
-                        role_name="sudo",
-                        email="system@intelcon.com",
-                        password=system_password,
-                        name="System",
-                        lastname="Intelcon"
-                    )
-            else:
-                self.reset_password(target_username="system", new_password=system_password)
+        # LoggerWorker may already have armed the outage gate (cooldown /
+        # ``_db_live=False``) between ``safe_start`` and this bootstrap. The
+        # system user is startup work, not the CVT/LDS hot path: allow libpq.
+        with force_historian_connect():
+            with ephemeral_historian(getattr(self, "_db", None)):
+                users = Users()
+                roles = Roles()
+                system_password = self.server.config.get("AUTOMATION_SUPERUSER_PASSWORD", "super_ultra_secret_password")
+                if not users.read_by_username(username="system"):
+                    admin_role = roles.read_by_name(name="sudo")
+                    if admin_role:
+                        self.signup(
+                            username="system",
+                            role_name="sudo",
+                            email="system@intelcon.com",
+                            password=system_password,
+                            name="System",
+                            lastname="Intelcon"
+                        )
+                else:
+                    self.reset_password(target_username="system", new_password=system_password)
 
     @logging_error_handler
     def safe_start(self, test:bool=False, create_tables:bool=True, machines:tuple=None):

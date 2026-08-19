@@ -184,6 +184,11 @@ export function MachinesDetailed() {
   const [originalThresholdValue, setOriginalThresholdValue] = useState<Record<string, number | null>>({});
   const [originalBufferSizeValue, setOriginalBufferSizeValue] = useState<Record<string, number | null>>({});
   const [originalOnDelayValue, setOriginalOnDelayValue] = useState<Record<string, number | null>>({});
+  const [customizeSampling, setCustomizeSampling] = useState<Record<string, boolean>>({});
+  const [sampleIntervalValue, setSampleIntervalValue] = useState<Record<string, string>>({});
+  const [executionIntervalValue, setExecutionIntervalValue] = useState<Record<string, string>>({});
+  const [sampleOverrideValue, setSampleOverrideValue] = useState<Record<string, Record<string, string>>>({});
+  const [savingTemporal, setSavingTemporal] = useState<Record<string, boolean>>({});
   // Estado para el modal de confirmaci?n
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<{
@@ -227,6 +232,7 @@ export function MachinesDetailed() {
   const flushPropertiesRef = useRef<() => void>(() => {});
   const flushMachinesRef = useRef<() => void>(() => {});
   const flushTagsRef = useRef<() => void>(() => {});
+  const temporalHydratedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -304,9 +310,6 @@ export function MachinesDetailed() {
     if (!activeTab) return;
 
     const loadMachineDetails = async () => {
-      // Si ya tenemos los detalles, no recargar (evita loops infinitos)
-      if (machineDetails[activeTab]) return;
-
       setLoadingDetails((prev) => ({ ...prev, [activeTab]: true }));
       try {
         const data = await getMachineByName(activeTab);
@@ -500,6 +503,120 @@ export function MachinesDetailed() {
       console.error("Error updating detection_threshold_mode:", err);
     } finally {
       setUpdatingAttribute((prev) => ({ ...prev, [machineName]: null }));
+    }
+  };
+
+  const scanTimeSeconds = (scanTime: unknown): number => {
+    const n = typeof scanTime === "number" ? scanTime : parseFloat(String(scanTime ?? ""));
+    if (isNaN(n) || n <= 0) return 1;
+    return n / 1000;
+  };
+
+  const handleSaveTemporalConfig = async (machineName: string) => {
+    const details = machineDetails[machineName];
+    const execution = parseFloat(executionIntervalValue[machineName] || "");
+    if (isNaN(execution) || execution < 0.01) {
+      showToast(t("machines.invalidInterval"), "error");
+      return;
+    }
+    const customized = Boolean(customizeSampling[machineName]);
+    let sample: number | null = null;
+    if (customized) {
+      sample = parseFloat(sampleIntervalValue[machineName] || "");
+      if (isNaN(sample) || sample <= 0) {
+        showToast(t("machines.invalidInterval"), "error");
+        return;
+      }
+      if (execution < sample) {
+        showToast(t("machines.invalidInterval"), "error");
+        return;
+      }
+    }
+    const overrides: Record<string, number | null> = {};
+    let blocked = false;
+    if (!customized) {
+      Object.keys(details?.subscribed_tags || {}).forEach((tagName) => {
+        overrides[tagName] = null;
+      });
+    } else {
+      Object.entries(details?.subscribed_tags || {}).forEach(([tagName, payload]) => {
+        const raw = sampleOverrideValue[machineName]?.[tagName];
+        if (!raw) {
+          overrides[tagName] = null;
+          return;
+        }
+        const value = parseFloat(raw);
+        const minScan = scanTimeSeconds(payload?.scan_time);
+        if (isNaN(value) || value < minScan) {
+          blocked = true;
+          return;
+        }
+        overrides[tagName] = value;
+      });
+    }
+    if (blocked) {
+      showToast(t("machines.sampleFasterThanScan"), "error");
+      return;
+    }
+    setSavingTemporal((prev) => ({ ...prev, [machineName]: true }));
+    try {
+      const { message } = await updateMachineAttributes(machineName, {
+        execution_interval: execution,
+        sample_interval: customized ? sample : null,
+        sample_overrides: overrides,
+      });
+      showToast(message || t("machines.temporalUpdated"), "success");
+      const data = await getMachineByName(machineName);
+      temporalHydratedRef.current.delete(machineName);
+      setMachineDetails((prev) => ({ ...prev, [machineName]: data }));
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      showToast(backendMessage || err?.message || t("machines.updateAttributeError"), "error");
+    } finally {
+      setSavingTemporal((prev) => ({ ...prev, [machineName]: false }));
+    }
+  };
+
+  const handleResetTemporalConfig = async (machineName: string) => {
+    const details = machineDetails[machineName];
+    const execution = parseFloat(executionIntervalValue[machineName] || "");
+    if (isNaN(execution) || execution < 0.01) {
+      showToast(t("machines.invalidInterval"), "error");
+      return;
+    }
+    const overrides: Record<string, number | null> = {};
+    Object.keys(details?.subscribed_tags || {}).forEach((tagName) => {
+      overrides[tagName] = null;
+    });
+    setCustomizeSampling((prev) => ({ ...prev, [machineName]: false }));
+    setSampleIntervalValue((prev) => ({ ...prev, [machineName]: "" }));
+    setSampleOverrideValue((prev) => ({ ...prev, [machineName]: {} }));
+    setSavingTemporal((prev) => ({ ...prev, [machineName]: true }));
+    try {
+      const { message } = await updateMachineAttributes(machineName, {
+        execution_interval: execution,
+        sample_interval: null,
+        sample_overrides: overrides,
+      });
+      showToast(message || t("machines.temporalReset"), "success");
+      const data = await getMachineByName(machineName);
+      temporalHydratedRef.current.delete(machineName);
+      setMachineDetails((prev) => ({ ...prev, [machineName]: data }));
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      showToast(backendMessage || err?.message || t("machines.updateAttributeError"), "error");
+    } finally {
+      setSavingTemporal((prev) => ({ ...prev, [machineName]: false }));
     }
   };
 
@@ -741,6 +858,35 @@ export function MachinesDetailed() {
             });
             setOriginalOnDelayValue((prev) => ({ ...prev, [machineName]: onDelayNum }));
           }
+        }
+
+        const execution = serialization.execution_interval ?? serialization.machine_interval;
+        if (execution !== null && execution !== undefined) {
+          setExecutionIntervalValue((prev) => {
+            if (prev[machineName] !== undefined && prev[machineName] !== "") {
+              return prev;
+            }
+            return { ...prev, [machineName]: String(execution) };
+          });
+        }
+        if (!temporalHydratedRef.current.has(machineName)) {
+          const sample = serialization.sample_interval;
+          const customized = sample !== null && sample !== undefined;
+          setCustomizeSampling((prev) => ({
+            ...prev,
+            [machineName]: customized,
+          }));
+          if (customized) {
+            setSampleIntervalValue((prev) => ({ ...prev, [machineName]: String(sample) }));
+          }
+          const overrides = serialization.sample_overrides || {};
+          setSampleOverrideValue((prev) => ({
+            ...prev,
+            [machineName]: Object.fromEntries(
+              Object.entries(overrides).map(([k, v]) => [k, String(v)])
+            ),
+          }));
+          temporalHydratedRef.current.add(machineName);
         }
       }
     });
@@ -1415,6 +1561,7 @@ export function MachinesDetailed() {
                         </div>
                       </div>
                     ) : (
+                      <>
                       <div className="row">
                         {/* Primera columna - Tabla de atributos (6 grid) */}
                         <div className="col-md-6">
@@ -1570,7 +1717,7 @@ export function MachinesDetailed() {
                                       
                                       // Mostrar "fieldTag -> internalTag" o solo "fieldTag" si no hay internalTag
                                       const displayText = internalTagName 
-                                        ? `${fieldTag} ÿÿÿ ${internalTagName}`
+                                        ? `${fieldTag} ??? ${internalTagName}`
                                         : fieldTag;
                                       
                                       return (
@@ -1911,6 +2058,259 @@ export function MachinesDetailed() {
                           )}
                         </div>
                       </div>
+                      {machineDetails[machineName] && (
+                        <div className="row mt-3">
+                          <div className="col-12">
+                            {(() => {
+                              const customized = Boolean(customizeSampling[machineName]);
+                              const execRaw = executionIntervalValue[machineName] || "";
+                              const execNum = parseFloat(execRaw);
+                              const globalSampleRaw = sampleIntervalValue[machineName] || "";
+                              const globalSampleNum = parseFloat(globalSampleRaw);
+                              const subscribed = Object.entries(
+                                machineDetails[machineName].subscribed_tags || {}
+                              );
+                              const overrideInvalid = subscribed.some(([tagName, payload]) => {
+                                const raw = sampleOverrideValue[machineName]?.[tagName] || "";
+                                if (!raw) return false;
+                                const value = parseFloat(raw);
+                                return isNaN(value) || value < scanTimeSeconds(payload?.scan_time);
+                              });
+                              return (
+                            <Card
+                              className="timing-config-card"
+                              title={
+                                <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 w-100">
+                                  <h3 className="card-title mb-0">{t("machines.timingCardTitle")}</h3>
+                                  <span
+                                    className={`badge rounded-pill ${
+                                      customized ? "text-bg-primary" : "text-bg-secondary"
+                                    }`}
+                                  >
+                                    {customized
+                                      ? t("machines.samplingCustomBadge")
+                                      : t("machines.samplingDefaultBadge")}
+                                  </span>
+                                </div>
+                              }
+                            >
+                              <div className="row g-3">
+                                <div className="col-lg-4">
+                                  <div className="timing-config-panel h-100">
+                                    <label className="form-label" htmlFor={`execution-interval-${machineName}`}>
+                                      {t("machines.executionInterval")}
+                                    </label>
+                                    <div className="input-group">
+                                      <input
+                                        id={`execution-interval-${machineName}`}
+                                        type="number"
+                                        min={0.01}
+                                        step={0.01}
+                                        className="form-control"
+                                        value={execRaw}
+                                        onChange={(e) =>
+                                          setExecutionIntervalValue((prev) => ({
+                                            ...prev,
+                                            [machineName]: e.target.value,
+                                          }))
+                                        }
+                                      />
+                                      <span className="input-group-text">s</span>
+                                    </div>
+                                    <p className="text-muted small mb-0 mt-2">
+                                      {t("machines.executionIntervalHelp")}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="col-lg-8">
+                                  <div className="timing-config-panel h-100">
+                                    <label
+                                      className="form-label"
+                                      htmlFor={`sample-interval-${machineName}`}
+                                    >
+                                      {t("machines.samplingGlobalTitle")}
+                                    </label>
+                                    <div className="timing-sample-row">
+                                      <div className="input-group timing-sample-input">
+                                        <input
+                                          id={`sample-interval-${machineName}`}
+                                          type="number"
+                                          min={0.01}
+                                          step={0.01}
+                                          className="form-control"
+                                          value={customized ? globalSampleRaw : execRaw}
+                                          disabled={!customized}
+                                          onChange={(e) =>
+                                            setSampleIntervalValue((prev) => ({
+                                              ...prev,
+                                              [machineName]: e.target.value,
+                                            }))
+                                          }
+                                        />
+                                        <span className="input-group-text">s</span>
+                                      </div>
+                                      <div className="form-check form-switch mb-0">
+                                        <input
+                                          className="form-check-input"
+                                          type="checkbox"
+                                          role="switch"
+                                          id={`customize-sampling-${machineName}`}
+                                          checked={customized}
+                                          onChange={(e) => {
+                                            const checked = e.target.checked;
+                                            setCustomizeSampling((prev) => ({
+                                              ...prev,
+                                              [machineName]: checked,
+                                            }));
+                                            if (checked && !sampleIntervalValue[machineName]) {
+                                              setSampleIntervalValue((prev) => ({
+                                                ...prev,
+                                                [machineName]: execRaw || "0.2",
+                                              }));
+                                            }
+                                          }}
+                                        />
+                                        <label
+                                          className="form-check-label"
+                                          htmlFor={`customize-sampling-${machineName}`}
+                                        >
+                                          {t("machines.customizeSampling")}
+                                        </label>
+                                      </div>
+                                    </div>
+                                    <p className="text-muted small mb-0 mt-2">
+                                      {customized
+                                        ? t("machines.samplingGlobalHint")
+                                        : t("machines.samplingDefaultHint")}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {subscribed.length > 0 && (
+                                <div className="mt-4">
+                                  <div className="d-flex flex-wrap align-items-baseline justify-content-between gap-2 mb-2">
+                                    <h6 className="mb-0">{t("machines.samplingPerTagTitle")}</h6>
+                                    <span className="text-muted small">
+                                      {customized
+                                        ? t("machines.samplingPerTagHint")
+                                        : t("machines.samplingPerTagLegacyHint")}
+                                    </span>
+                                  </div>
+                                  <div className="table-responsive">
+                                    <table className="table table-sm align-middle timing-config-table mb-0">
+                                      <thead>
+                                        <tr>
+                                          <th>{t("machines.subscribedTags")}</th>
+                                          <th>{t("machines.scanTime")}</th>
+                                          {customized && <th>{t("machines.sampleOverride")}</th>}
+                                          <th>{t("machines.samplingEffective")}</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {subscribed.map(([tagName, payload]) => {
+                                          const scanS = scanTimeSeconds(payload?.scan_time);
+                                          const overrideRaw =
+                                            sampleOverrideValue[machineName]?.[tagName] || "";
+                                          const overrideNum = parseFloat(overrideRaw);
+                                          const invalid =
+                                            customized &&
+                                            overrideRaw !== "" &&
+                                            (isNaN(overrideNum) || overrideNum < scanS);
+                                          let effectiveLabel = t("machines.samplingUsesExecution");
+                                          let effectiveValue = !isNaN(execNum) ? `${execNum} s` : "?";
+                                          if (customized) {
+                                            if (overrideRaw && !isNaN(overrideNum)) {
+                                              effectiveLabel = t("machines.samplingUsesOverride");
+                                              effectiveValue = `${overrideNum} s`;
+                                            } else if (!isNaN(globalSampleNum)) {
+                                              effectiveLabel = t("machines.samplingUsesGlobal");
+                                              effectiveValue = `${globalSampleNum} s`;
+                                            } else {
+                                              effectiveValue = "?";
+                                              effectiveLabel = t("machines.samplingUsesGlobal");
+                                            }
+                                          }
+                                          return (
+                                            <tr key={tagName}>
+                                              <td>
+                                                <code className="timing-tag-name">{tagName}</code>
+                                              </td>
+                                              <td className="text-nowrap">
+                                                {payload?.scan_time ?? "?"} ms
+                                                <span className="text-muted"> ({scanS} s)</span>
+                                              </td>
+                                              {customized && (
+                                                <td style={{ minWidth: "9rem", maxWidth: "12rem" }}>
+                                                  <input
+                                                    type="number"
+                                                    min={scanS}
+                                                    step={0.01}
+                                                    placeholder={
+                                                      !isNaN(globalSampleNum)
+                                                        ? String(globalSampleNum)
+                                                        : t("machines.samplingOverridePlaceholder")
+                                                    }
+                                                    className={`form-control form-control-sm ${
+                                                      invalid ? "is-invalid" : ""
+                                                    }`}
+                                                    value={overrideRaw}
+                                                    title={
+                                                      invalid
+                                                        ? t("machines.sampleFasterThanScan")
+                                                        : t("machines.samplingOverridePlaceholder")
+                                                    }
+                                                    onChange={(e) =>
+                                                      setSampleOverrideValue((prev) => ({
+                                                        ...prev,
+                                                        [machineName]: {
+                                                          ...(prev[machineName] || {}),
+                                                          [tagName]: e.target.value,
+                                                        },
+                                                      }))
+                                                    }
+                                                  />
+                                                </td>
+                                              )}
+                                              <td>
+                                                <span className="fw-medium">{effectiveValue}</span>
+                                                <span className="text-muted small ms-1">
+                                                  ({effectiveLabel})
+                                                </span>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="d-flex flex-wrap justify-content-between gap-2 mt-3">
+                                <Button
+                                  variant="secondary"
+                                  onClick={() => handleResetTemporalConfig(machineName)}
+                                  disabled={Boolean(savingTemporal[machineName])}
+                                >
+                                  {t("machines.resetTemporalConfig")}
+                                </Button>
+                                <Button
+                                  onClick={() => handleSaveTemporalConfig(machineName)}
+                                  disabled={Boolean(savingTemporal[machineName]) || overrideInvalid}
+                                >
+                                  {savingTemporal[machineName]
+                                    ? t("machines.updating")
+                                    : t("machines.saveTemporalConfig")}
+                                </Button>
+                              </div>
+                            </Card>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                      </>
                     )}
                   </div>
                 );

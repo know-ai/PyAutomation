@@ -52,7 +52,6 @@ class ConfigView(dash.Dash):
 
         data = [{
                 "name": machine["name"],
-                "sampling_time": machine["machine_interval"], 
                 "description": machine["description"],
                 "state": machine["state"],
                 "criticity": machine["criticity"],

@@ -2,7 +2,7 @@
 
 Índice maestro de especificaciones técnicas de PyAutomationIO (`automation/`).
 
-**Estructura actual (v1.0, 2026-08-18):** **1 documento temático** en la raíz de `specs/` (01). Convención alineada con el índice de especificaciones Ribal SCADA: numeración cero-padded, cabecera de metadatos, anclas internas, criterios de aceptación y enlace a auditoría de contraste.
+**Estructura actual (v1.0, 2026-08-18):** **2 documentos temáticos** en la raíz de `specs/`.
 
 ---
 
@@ -11,6 +11,7 @@
 | Doc | Archivo | Contenido |
 |-----|---------|-----------|
 | **01** | [01-MULTI-EDGE-ARCHITECTURE.md](./01-MULTI-EDGE-ARCHITECTURE.md) | Adquisición multi-edge, partición por área ISA-95, hidratación acotada, single-writer — **propuesta v1.0** ([AUDIT_MULTI_EDGE](../audits/AUDIT_MULTI_EDGE.md)) |
+| **02** | [02-STATE-MACHINE-TEMPORAL-DECOUPLING.md](./02-STATE-MACHINE-TEMPORAL-DECOUPLING.md) | Tres relojes SM (adquisición / muestreo / ejecución) — **implementado v1.0** ([AUDIT_STATE_MACHINES](../audits/AUDIT_STATE_MACHINES.md)) |
 
 ---
 

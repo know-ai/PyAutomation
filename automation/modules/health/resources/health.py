@@ -166,6 +166,17 @@ class HealthSystemResource(Resource):
                 "ACQUISITION_READY": False,
                 "ACQUISITION_BLOCKED_REASON": "identity unavailable",
             }
+        try:
+            from ....state_machine_timing import snapshot_timing_metrics
+
+            timing_metrics = snapshot_timing_metrics()
+        except Exception:
+            timing_metrics = {
+                "SAMPLE_LAG_MS": 0.0,
+                "EXECUTION_CYCLE_US": 0.0,
+                "BUFFER_UTILIZATION_%": 0.0,
+                "SAMPLE_LOOP_MACHINES": 0,
+            }
         return {
             "status": "ok",
             "service": "pyautomation",
@@ -183,6 +194,7 @@ class HealthSystemResource(Resource):
             "CVT_LOCK_CONTENTION": lock_contention,
             "TAG_OBSERVER_COUNT": tag_observer_count,
             "MACHINE_OBSERVER_COUNT": machine_observer_count,
+            **timing_metrics,
             **node_metrics,
             **conn_metrics,
             **_log_error_metrics(),

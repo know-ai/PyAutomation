@@ -241,6 +241,51 @@ class DBManager(Singleton):
                 )
         for model in {model for model, _ in scoped_fields}:
             model._schema.create_indexes(safe=True)
+        self._ensure_machine_temporal_schema(db, migrator)
+
+    def _ensure_machine_temporal_schema(self, db, migrator):
+        """Add execution_interval / sample_interval / sample_override and backfill."""
+
+        machine_columns = {column.name for column in db.get_columns(Machines._meta.table_name)}
+        temporal_fields = (
+            ("execution_interval", Machines.execution_interval),
+            ("sample_interval", Machines.sample_interval),
+        )
+        for field_name, field in temporal_fields:
+            if field_name not in machine_columns:
+                cloned = field.clone()
+                cloned.index = False
+                migrate(
+                    migrator.add_column(
+                        Machines._meta.table_name,
+                        field_name,
+                        cloned,
+                    )
+                )
+        try:
+            Machines.update(execution_interval=Machines.interval).where(
+                Machines.execution_interval.is_null()
+            ).execute()
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "execution_interval backfill skipped",
+                exc_info=True,
+            )
+        link_table = TagsMachines._meta.table_name
+        try:
+            link_columns = {column.name for column in db.get_columns(link_table)}
+        except Exception:
+            return
+        if "sample_override" not in link_columns:
+            cloned = TagsMachines.sample_override.clone()
+            cloned.index = False
+            migrate(
+                migrator.add_column(
+                    link_table,
+                    "sample_override",
+                    cloned,
+                )
+            )
 
     @logging_error_handler
     def drop_tables(self):

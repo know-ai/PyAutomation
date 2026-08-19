@@ -12,6 +12,9 @@ export type Machine = {
   classification: string;
   name: string;
   machine_interval: number;
+  execution_interval?: number;
+  sample_interval?: number | null;
+  sample_overrides?: Record<string, number>;
   buffer_size: number;
   buffer_roll_type: string;
   [key: string]: any;
@@ -104,6 +107,10 @@ export const updateMachineAttributes = async (
   machineName: string,
   attributes: {
     threshold?: number;
+    interval?: number;
+    execution_interval?: number;
+    sample_interval?: number | null;
+    sample_overrides?: Record<string, number | null>;
     buffer_size?: number;
     on_delay?: number;
     detection_threshold_mode?: "probability" | "statistic" | string;

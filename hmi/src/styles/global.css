@@ -2506,5 +2506,76 @@ html[data-hmi-density="control"] .card > .card-header {
   padding-bottom: 0.55rem;
 }
 
+.timing-config-card > .card-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: transparent;
+  border-bottom: 1px solid var(--bs-border-color, #e5e7eb);
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.timing-config-card > .card-header > div {
+  width: 100%;
+}
+
+.timing-config-panel {
+  background: var(--bs-tertiary-bg, #f8fafc);
+  border: 1px solid color-mix(in srgb, var(--bs-border-color, #e5e7eb) 80%, transparent);
+  border-radius: 0.85rem;
+  padding: 1rem 1.15rem;
+}
+
+.timing-config-panel .form-label {
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color, #6b7280);
+}
+
+.timing-sample-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.85rem 1.25rem;
+}
+
+.timing-sample-input {
+  max-width: 16rem;
+  flex: 1 1 12rem;
+}
+
+.timing-sample-row .form-check-label {
+  font-size: 0.875rem;
+}
+
+.timing-config-table thead th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--bs-secondary-color, #6b7280);
+  border-bottom-width: 1px;
+}
+
+.timing-tag-name {
+  font-size: 0.85rem;
+  background: transparent;
+  color: inherit;
+}
+
+[data-bs-theme="dark"] .timing-config-card > .card-header,
+.dark-mode .timing-config-card > .card-header {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-bs-theme="dark"] .timing-config-panel,
+.dark-mode .timing-config-panel {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
 
 

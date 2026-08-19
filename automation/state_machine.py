@@ -37,6 +37,12 @@ from .logger.datalogger import DataLoggerEngine
 from .logger.alarms import AlarmsLoggerEngine
 from .node_scope import get_node_scope
 from flask_socketio import SocketIO
+from .state_machine_timing import (
+    DequeBufferProvider,
+    compute_sample_buffer_maxlen,
+    samples_per_execution,
+    validate_temporal_config,
+)
 
 
 def _scope_owns_tag(tag) -> bool:
@@ -131,6 +137,12 @@ class Machine(Singleton):
         * **machine** (StateMachine): The machine instance to remove.
         """
         self.state_worker._async_scheduler.drop(machine=machine)
+        worker = self.state_worker
+        if worker is not None:
+            key = worker._machine_key(machine)
+            existing = worker._sample_threads.pop(key, None)
+            if existing is not None:
+                existing.stop()
 
     def get_machine(self, name:str):
         r"""
@@ -220,6 +232,16 @@ class Machine(Singleton):
                         machine.criticity.value = config[machine.name.value]["criticity"]
                         machine.priority.value = config[machine.name.value]["priority"]
                         machine.identifier.value = config[machine.name.value]['identifier']
+                        stored_execution = config[machine.name.value].get("execution_interval")
+                        if stored_execution is None:
+                            stored_execution = config[machine.name.value].get("interval")
+                        if stored_execution is not None:
+                            machine.machine_interval = FloatType(stored_execution)
+                        stored_sample = config[machine.name.value].get("sample_interval")
+                        machine._sample_interval = stored_sample
+                        machine.sample_overrides = dict(
+                            config[machine.name.value].get("sample_overrides") or {}
+                        )
                         # Flags para que módulos (p.ej. NPW/Observer) puedan evitar sobreescribir
                         # parámetros que vienen de BD con defaults del modelo/config.
                         on_delay_db = config[machine.name.value].get('on_delay')
@@ -276,12 +298,20 @@ class Machine(Singleton):
         Adds a machine to the running scheduler safely.
         """
         self.state_worker._async_scheduler.join(machine)
+        reconfigure = getattr(self.state_worker, "reconfigure_sampling", None)
+        if callable(reconfigure):
+            reconfigure(machine)
 
     def create_tag_internal_process_type(self, machine:StateMachine):
         r"""
         Automatically creates CVT tags for internal process variables defined in the state machine.
 
-        This allows internal variables of a state machine to be exposed as tags in the system.
+        Writable ProcessType outputs are bound to CVT so the machine can publish them.
+        Read-only inputs listed in ``internal_tags_relationships`` get conventional
+        field-tag names (FI_01, PI_01, …) created for later OPC UA mapping, but are
+        **not** subscribed: the operator must subscribe after mapping. Binding those
+        inputs here made a cold start look fully subscribed without a TagsMachines
+        row, so the HMI only became usable after a restart.
 
         **Parameters:**
 
@@ -314,45 +344,46 @@ class Machine(Singleton):
                     self.db_manager.attach(tag_name=tag_name)
                     break
 
-        internal_variables = machine.get_read_only_process_type_variables()
-        for _tag_name, value in internal_variables.items():
+        relationships = getattr(machine, "internal_tags_relationships", None)
+        if not isinstance(relationships, dict):
+            relationships = {}
+        for _tag_name, value in machine.get_read_only_process_type_variables().items():
+            rel = relationships.get(_tag_name)
+            if not isinstance(rel, dict):
+                continue
             for variable, units in VARIABLES.items():
 
                 if value.unit in units.values() or value.unit in units.keys():
-                    
-                    if hasattr(machine, "internal_tags_relationships"):
-                        tag_name = f"{machine.internal_tags_relationships[_tag_name]['tag']}"
-                        if SEGMENT:
-                            tag_name = f"{SEGMENT}.{tag_name}"
-                        if MANUFACTURER:
-                            tag_name = f"{MANUFACTURER}.{tag_name}"
-                        description = machine.internal_tags_relationships[_tag_name]['description']
+                    tag_name = f"{rel.get('tag') or ''}"
+                    if not tag_name:
+                        break
+                    if SEGMENT:
+                        tag_name = f"{SEGMENT}.{tag_name}"
+                    if MANUFACTURER:
+                        tag_name = f"{MANUFACTURER}.{tag_name}"
+                    description = rel.get("description") or ""
+                    unit = getattr(machine, _tag_name).unit
+                    tag, _ = cvt.set_tag(
+                        name=tag_name,
+                        unit=unit,
+                        data_type="float",
+                        variable=variable,
+                        description=description,
+                        segment=SEGMENT,
+                        manufacturer=MANUFACTURER,
+                        out_of_range_detection=True,
+                        frozen_data_detection=True,
+                        outlier_detection=True
+                    )
 
-                        attr = getattr(machine, _tag_name)
-                        unit = attr.unit
-                        tag, _ = cvt.set_tag(
-                            name=tag_name,
-                            unit=unit,
-                            data_type="float",
-                            variable=variable,
-                            description=description,
-                            segment=SEGMENT,
-                            manufacturer=MANUFACTURER,
-                            out_of_range_detection=True,
-                            frozen_data_detection=True,
-                            outlier_detection=True
-                        )
+                    if not tag:
+                        tag = cvt.get_tag_by_name(name=tag_name)
+                    if tag:
+                        self.logger_engine.set_tag(tag=tag)
+                        self.db_manager.attach(tag_name=tag_name)
+                    break
 
-                        if tag:
-                            # Persist Tag on Database
-                            tag = cvt.get_tag_by_name(name=tag_name)
-                            attr = getattr(machine, _tag_name)
-                            attr.tag = tag
-                            self.logger_engine.set_tag(tag=tag)
-                            self.db_manager.attach(tag_name=tag_name)
-                            break 
-            
-            self.__define_iad_alarms()
+        self.__define_iad_alarms()
              
     def create_alarm(
             self,
@@ -506,6 +537,9 @@ class StateMachineCore(StateMachine):
         self.buffer_size = IntegerType(default=buffer_size)
         self.buffer_roll_type = StringType(default='backward')
         self.sio:SocketIO|None = None
+        self._buffer_provider = DequeBufferProvider()
+        self._sample_interval = None
+        self.sample_overrides = {}
         self.restart_buffer()
         self.machine_engine = MachinesLoggerEngine()
         transitions = []
@@ -543,14 +577,21 @@ class StateMachineCore(StateMachine):
         Default behavior:
         1. Checks if internal buffers for subscribed tags are full.
         2. If full, transitions to **Run** state.
+
+        With ``sample_interval`` set, the SampleScheduler fills ``self.data``
+        asynchronously; this method only *reads* the buffer (golden rule).
         """
         ready_to_run = True
+        buffers = self.data
+        sample_interval = self.get_sample_interval()
 
-        if self.data:
-
-            for _, value in self.data.items():
-
-                if len(value) < value.size:
+        if buffers:
+            needed = 1
+            if sample_interval is not None:
+                needed = samples_per_execution(self.get_interval(), sample_interval)
+            for _, value in buffers.items():
+                target = min(needed, value.size) if sample_interval is not None else value.size
+                if len(value) < target:
                     ready_to_run=False
                     break
 
@@ -677,12 +718,142 @@ class StateMachineCore(StateMachine):
         """
         self.buffer_size.value = size
         self.restart_buffer()
+        self._reconfigure_temporal_schedulers()
+
+    @property
+    def data(self):
+        return self._buffer_provider.as_dict()
+
+    def ensure_sample_buffers(self):
+        r"""Create or resize sample rings without dropping existing points.
+
+        Cadence changes (``sample_interval`` / overrides) keep the series;
+        older samples roll off under the new period.
+        """
+        roll = self.buffer_roll_type.value
+        maxlen = compute_sample_buffer_maxlen(
+            self.get_interval(),
+            self.get_sample_interval(),
+            getattr(self.buffer_size, "value", self.buffer_size),
+        )
+        for tag_name, _ in self.get_subscribed_tags().items():
+            self._buffer_provider.ensure_tag(tag_name, maxlen, roll)
 
     def restart_buffer(self):
         r"""
         Clears and reinitializes data buffers for all subscribed tags.
+
+        Also asks the sample thread to drop its per-tag clocks so the next
+        tick behaves like a cold start (first sample is not delayed).
         """
-        self.data = {tag_name: Buffer(size=self.buffer_size.value, roll=self.buffer_roll_type.value) for tag_name, _ in self.get_subscribed_tags().items()}
+        self._buffer_provider.clear()
+        self.ensure_sample_buffers()
+        self._sample_clock_reset = True
+
+    def _push_to_buffer(self, tag_name: str, value, timestamp) -> None:
+        """SampleScheduler write path. Execution must only read ``self.data``."""
+        self._buffer_provider.push(tag_name, value, timestamp)
+
+    def _get_effective_sample_interval(self, tag_name: str) -> float:
+        override = (self.sample_overrides or {}).get(tag_name)
+        if override is not None:
+            return float(override)
+        sample = self.get_sample_interval()
+        if sample is not None:
+            return float(sample)
+        return float(self.get_interval())
+
+    def _sample_once(self, tick_start: float, last_sample_time: dict) -> None:
+        for tag_name, process_type in self.get_subscribed_tags().items():
+            effective_interval = self._get_effective_sample_interval(tag_name)
+            last = last_sample_time.get(tag_name, 0.0)
+            if (tick_start - last) < effective_interval:
+                continue
+            value = getattr(process_type, "value", None)
+            timestamp = getattr(process_type, "data_timestamp", None)
+            self._push_to_buffer(tag_name, value, timestamp)
+            last_sample_time[tag_name] = tick_start
+
+    def _legacy_sample_and_execute(self) -> None:
+        """Same-tick sampling hook for ``sample_interval IS NULL``.
+
+        Default is a no-op so iDetectFugas (LDS/NPW) keeps sampling inside
+        ``while_*`` / ``verify_inputs`` (CA-SM-04). Vanilla machines that opt
+        into ``sample_interval`` use SampleScheduler instead.
+        """
+        return None
+
+    def get_sample_interval(self):
+        return getattr(self, "_sample_interval", None)
+
+    def set_sample_interval(self, interval, user=None, overrides=None):
+        execution = self.get_interval()
+        merged_overrides = dict(self.sample_overrides or {})
+        if overrides:
+            merged_overrides.update(overrides)
+        validate_temporal_config(
+            self,
+            new_execution=execution,
+            new_sample=interval,
+            overrides=merged_overrides,
+        )
+        self._sample_interval = None if interval is None else float(interval)
+        if overrides is not None:
+            self.sample_overrides = {
+                name: None if value is None else float(value)
+                for name, value in merged_overrides.items()
+            }
+            self.sample_overrides = {
+                name: value
+                for name, value in self.sample_overrides.items()
+                if value is not None
+            }
+        self.ensure_sample_buffers()
+        self._reconfigure_temporal_schedulers()
+        if user is not None:
+            try:
+                from .utils.system_event_audit import clip, persist_system_event
+                from .modules.users.users import User as CvtUser
+
+                if isinstance(user, CvtUser):
+                    persist_system_event(
+                        message="Machine sample interval updated",
+                        description=clip(
+                            f"machine={self.name.value} sample_interval={self._sample_interval}",
+                            256,
+                        ),
+                        classification="Configuration",
+                        priority=2,
+                        criticity=3,
+                        user=user,
+                    )
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "Machine sample interval audit skipped",
+                    exc_info=True,
+                )
+
+    def set_sample_overrides(self, overrides: dict, user=None):
+        self.set_sample_interval(
+            self.get_sample_interval(),
+            user=user,
+            overrides=overrides,
+        )
+
+    def _reconfigure_temporal_schedulers(self) -> None:
+        try:
+            worker = Machine().state_worker
+            reconfigure = getattr(worker, "reconfigure_sampling", None)
+            if callable(reconfigure):
+                reconfigure(self)
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "Sample scheduler reconfigure skipped",
+                exc_info=True,
+            )
+
+    def buffer_utilization_pct(self) -> float:
+        return self._buffer_provider.utilization_pct()
 
     @validate_types(output=dict)
     def get_subscribed_tags(self)->dict:
@@ -960,6 +1131,7 @@ class StateMachineCore(StateMachine):
             else:
                 value.change_unit(unit=process_type.tag.display_unit)
             process_type.value = value
+            process_type.data_timestamp = timestamp
             self.data_timestamp = timestamp
             # if hasattr(self, "verify_inputs"):
             #     self.verify_inputs()
@@ -1056,7 +1228,15 @@ class StateMachineCore(StateMachine):
         * **interval:** (float) execution interval in seconds.
         """
         previous = getattr(self.machine_interval, "value", self.machine_interval)
+        new_value = getattr(interval, "value", interval)
+        validate_temporal_config(
+            self,
+            new_execution=new_value,
+            new_sample=self.get_sample_interval(),
+            overrides=self.sample_overrides,
+        )
         self.machine_interval = interval
+        self._reconfigure_temporal_schedulers()
         if user is not None:
             try:
                 from .utils.system_event_audit import clip, persist_system_event
@@ -1217,7 +1397,10 @@ class StateMachineCore(StateMachine):
             "state": self.current_state.value,
             "actions": self.get_allowed_actions(),
             "manufacturer": self.manufacturer,
-            "segment": self.segment
+            "segment": self.segment,
+            "execution_interval": self.get_interval(),
+            "sample_interval": self.get_sample_interval(),
+            "sample_overrides": dict(self.sample_overrides or {}),
         }
         result.update(self.get_serialized_models())
         
@@ -1288,7 +1471,14 @@ class StateMachineCore(StateMachine):
             self.sio.emit("on.machine", data=self.serialize())
 
     def on_enter_waiting(self):
+        r"""
+        Entering Wait always starts an empty sample window.
 
+        Leak engines restart via confirm_restart → waiting (they never run
+        ``while_restarting`` of this class), so the clear cannot live only
+        on the vanilla restart transition.
+        """
+        self.restart_buffer()
         if self.sio:
 
             self.sio.emit("on.machine", data=self.serialize())

@@ -28,7 +28,7 @@ def stamp_machine_cycle(machine):
 
 
 def run_machine_cycle(machine) -> None:
-    """One acquisition tick. Historian I/O must not stop the scheduler.
+    """One execution tick. Historian I/O must not stop the scheduler.
 
     CVT / OPC UA / leak logic always run. Peewee ``OperationalError`` (outage
     gate or a missed ``is_db_connected`` check in a ``while_*``) is swallowed
@@ -36,11 +36,18 @@ def run_machine_cycle(machine) -> None:
     """
     from peewee import OperationalError
 
+    from ..state_machine_timing import record_execution_metrics
     from ..utils.db_connections import ephemeral_historian
     from automation import PyAutomation
 
+    if machine is not None and getattr(machine, "get_sample_interval", lambda: None)() is None:
+        legacy = getattr(machine, "_legacy_sample_and_execute", None)
+        if callable(legacy):
+            legacy()
+
     stamp_machine_cycle(machine)
     app = PyAutomation()
+    t0 = time.monotonic()
     try:
         if getattr(app, "_db_live", False):
             with ephemeral_historian(getattr(app, "_db", None)):
@@ -53,6 +60,13 @@ def run_machine_cycle(machine) -> None:
             getattr(getattr(machine, "name", None), "value", None),
             exc_info=True,
         )
+    finally:
+        cycle_us = (time.monotonic() - t0) * 1_000_000.0
+        try:
+            name = getattr(getattr(machine, "name", None), "value", None) or "-"
+            record_execution_metrics(name, cycle_us)
+        except Exception:
+            pass
 
 
 class MachineScheduler():
@@ -152,9 +166,87 @@ class MachineScheduler():
             logger.warning(f"State Machine: {machine.name.value} NOT executed on time - Execution Interval: {interval} - Elapsed: {elapsed}")
 
 
+def _machine_wants_sample_scheduler(machine) -> bool:
+    getter = getattr(machine, "get_sample_interval", None)
+    if not callable(getter) or getter() is None:
+        return False
+    classification = ""
+    try:
+        classification = str(machine.classification.value).lower()
+    except Exception:
+        classification = ""
+    if "data acquisition" in classification:
+        return False
+    if machine.__class__.__name__ in {"DAQ", "OPCUAServer"}:
+        return False
+    return True
+
+
+class SampleSchedThread(Thread):
+    """Independent OS thread: fills buffers even if execution blocks (fault isolation)."""
+
+    def __init__(self, machine):
+        machine_name = "machine"
+        try:
+            machine_name = str(machine.name.value)
+        except Exception:
+            pass
+        super(SampleSchedThread, self).__init__(name=f"SM-SAMP-{machine_name}"[:40])
+        self.machine = machine
+        # Never assign ``self._stop``: CPython/gevent Thread._stop() is a method.
+        # Overwriting it with a bool makes thread teardown raise
+        # ``TypeError: 'bool' object is not callable`` (Python 3.12 + gevent).
+        self._stop_requested = False
+        self._last_sample_time = {}
+        self.daemon = True
+
+    def stop(self):
+        self._stop_requested = True
+
+    def run(self):
+        from ..state_machine_timing import coop_sleep, record_sample_metrics
+
+        logger = logging.getLogger("pyautomation")
+        while not self._stop_requested:
+            interval = None
+            getter = getattr(self.machine, "get_sample_interval", None)
+            if callable(getter):
+                interval = getter()
+            if interval is None:
+                break
+            interval = float(interval)
+            tick_start = time.monotonic()
+            try:
+                if getattr(self.machine, "_sample_clock_reset", False):
+                    self._last_sample_time.clear()
+                    self.machine._sample_clock_reset = False
+                self.machine._sample_once(tick_start, self._last_sample_time)
+            except Exception:
+                logger.debug("Sample loop error", exc_info=True)
+            elapsed = time.monotonic() - tick_start
+            if elapsed > 0.10 * interval:
+                logger.warning(
+                    "Sample loop overloaded machine=%s elapsed=%.4fs interval=%.4fs",
+                    getattr(getattr(self.machine, "name", None), "value", None),
+                    elapsed,
+                    interval,
+                )
+            lag_ms = max(0.0, (elapsed - interval) * 1000.0)
+            util = 0.0
+            try:
+                util = self.machine.buffer_utilization_pct()
+            except Exception:
+                util = 0.0
+            name = getattr(getattr(self.machine, "name", None), "value", None) or "-"
+            record_sample_metrics(name, elapsed, lag_ms, util)
+            remain = interval - elapsed
+            if remain > 0 and not self._stop_requested:
+                coop_sleep(remain)
+
+
 class SchedThread(Thread):
     r"""
-    A thread that runs a dedicated scheduler for a single state machine.
+    A thread that runs a dedicated scheduler for a single state machine (execution clock).
     """
 
     def __init__(self, machine):
@@ -294,7 +386,34 @@ class StateMachineWorker(BaseWorker):
         self._manager = manager
         self._sync_scheduler = MachineScheduler()
         self._async_scheduler = AsyncStateMachineWorker()
+        self._sample_threads = {}
         self.jobs = list()
+
+    def _machine_key(self, machine):
+        try:
+            return str(machine.name.value)
+        except Exception:
+            return id(machine)
+
+    def reconfigure_sampling(self, machine) -> None:
+        key = self._machine_key(machine)
+        wanted = _machine_wants_sample_scheduler(machine)
+        existing = self._sample_threads.get(key)
+        alive = existing is not None and existing.is_alive()
+        if wanted and alive:
+            return
+        if existing is not None:
+            self._sample_threads.pop(key, None)
+            try:
+                existing.stop()
+                existing.join(timeout=2.0)
+            except Exception:
+                pass
+        if not wanted:
+            return
+        thread = SampleSchedThread(machine)
+        self._sample_threads[key] = thread
+        thread.start()
 
     def loop_closure(self, machine):
         
@@ -325,6 +444,9 @@ class StateMachineWorker(BaseWorker):
                 func = self.loop_closure(machine)
                 self._sync_scheduler.call_soon(func)
 
+        for machine, _, _ in self._manager.get_machines():
+            self.reconfigure_sampling(machine)
+
         self._async_scheduler.run()
         self._sync_scheduler.run()
 
@@ -332,5 +454,11 @@ class StateMachineWorker(BaseWorker):
         r"""
         Stops both sync and async schedulers.
         """
+        for sampler in list(self._sample_threads.values()):
+            try:
+                sampler.stop()
+            except Exception:
+                pass
+        self._sample_threads.clear()
         self._async_scheduler.stop()
         self._sync_scheduler.stop()

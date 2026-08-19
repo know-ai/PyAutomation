@@ -10,6 +10,13 @@ from ..tags import Tag
 from ..utils.decorators import logging_error_handler
 import queue
 
+
+def _is_acquisition_machine(machine) -> bool:
+    try:
+        return str(machine.classification.value).lower() == "data acquisition system"
+    except Exception:
+        return machine.__class__.__name__ == "DAQ"
+
 class StateMachineManager:
     r"""
     Manages the lifecycle and execution configuration of State Machines.
@@ -113,37 +120,32 @@ class StateMachineManager:
             return machine_to_revome_from_worker
 
     @logging_error_handler
-    def unsubscribe_tag(self, tag:Tag):
+    def unsubscribe_tag(self, tag:Tag, acquisition_only: bool = False):
         r"""
-        Unsubscribes a tag from all state machines. 
-        
-        If a DAQ machine has no more subscribed tags, it is removed.
+        Unsubscribes a tag from state machines.
 
-        **Parameters:**
-
-        * **tag** (Tag): The tag to unsubscribe.
-
-        **Returns:**
-
-        * **tuple**: The removed machine tuple if a DAQ machine was dropped.
+        ``acquisition_only=True`` (tag edit / OPC UA resubscribe) only
+        touches DAQ machines. Leak-detection motors keep the binding.
+        Full drop (``acquisition_only=False``) is for tag deletion.
         """
         machine_to_revome_from_worker = (None, None, None)
         for machine, _, _ in self._machines:
 
-            if hasattr(machine, "unsubscribe_to"):
+            if not hasattr(machine, "unsubscribe_to"):
+                continue
 
-                machine.unsubscribe_to(tag=tag)
+            is_daq = _is_acquisition_machine(machine)
+            if acquisition_only and not is_daq:
+                continue
 
-                if machine.classification.value.lower()=="data acquisition system":
+            machine.unsubscribe_to(tag=tag)
 
-                    if not machine.get_subscribed_tags():
-                
-                        machine_to_revome_from_worker = self.drop(name=machine.name.value)
-                        break
+            if is_daq and not machine.get_subscribed_tags():
 
-        if machine_to_revome_from_worker:
+                machine_to_revome_from_worker = self.drop(name=machine.name.value)
+                break
 
-            return machine_to_revome_from_worker
+        return machine_to_revome_from_worker
 
     @logging_error_handler
     def summary(self)->dict:

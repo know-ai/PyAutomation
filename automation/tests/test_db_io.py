@@ -263,6 +263,24 @@ class TestConnectionRegistry(unittest.TestCase):
         finally:
             mark_remote_db_live()
 
+    def test_forced_connect_allowed_during_outage(self):
+        from peewee import PostgresqlDatabase
+
+        from ..utils.db_connections import TrackedPostgresqlDatabase, force_historian_connect
+        from ..utils.db_io import mark_remote_db_dead, mark_remote_db_live
+
+        mark_remote_db_dead(30.0)
+        db = TrackedPostgresqlDatabase(None)
+        try:
+            with force_historian_connect():
+                with patch.object(
+                    PostgresqlDatabase, "_connect", return_value=object()
+                ) as connect:
+                    self.assertIsNotNone(db._connect())
+                    connect.assert_called_once()
+        finally:
+            mark_remote_db_live()
+
     def test_tracked_connect_failure_marks_dead(self):
         from peewee import OperationalError, PostgresqlDatabase
 

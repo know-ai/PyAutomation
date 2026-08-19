@@ -88,7 +88,10 @@ class MachinesLogger(BaseLogger):
         criticity:IntegerType=None,
         priority:IntegerType=None,
         on_delay:IntegerType=None,
-        threshold:FloatType=None
+        threshold:FloatType=None,
+        execution_interval:float=None,
+        sample_interval=None,
+        sample_interval_set:bool=False,
         ):
         r"""
         Updates an existing State Machine definition.
@@ -115,7 +118,13 @@ class MachinesLogger(BaseLogger):
         machine = Machines.read_by_name(name=name.value)
         if machine_interval:
             
-            fields["interval"] = machine_interval.value
+            fields["interval"] = float(machine_interval.value)
+            fields["execution_interval"] = float(machine_interval.value)
+        if execution_interval is not None:
+            fields["execution_interval"] = float(execution_interval)
+            fields["interval"] = float(execution_interval)
+        if sample_interval_set:
+            fields["sample_interval"] = sample_interval
         if description:
             fields["description"] = description.value
         if classification:
@@ -193,7 +202,17 @@ class MachinesLogger(BaseLogger):
         tag_from_db = Tags.get_or_none(name=tag.name)
         machine_from_db= Machines.get_or_none(name=machine.name.value)
         tags_machine = TagsMachines.get((TagsMachines.tag == tag_from_db) & (TagsMachines.machine == machine_from_db))
-        tags_machine.delete_instance()    
+        tags_machine.delete_instance()
+
+    @db_rollback
+    def put_sample_override(self, tag:Tag, machine, sample_override):
+        if not self.check_connectivity():
+            return None
+        return TagsMachines.put_sample_override(
+            tag_name=tag.name,
+            machine_name=machine.name.value,
+            sample_override=sample_override,
+        )    
 
 class MachinesLoggerEngine(BaseEngine):
     r"""
@@ -252,7 +271,10 @@ class MachinesLoggerEngine(BaseEngine):
         criticity:IntegerType=None,
         priority:IntegerType=None,
         on_delay:IntegerType=None,
-        threshold:FloatType=None
+        threshold:FloatType=None,
+        execution_interval:float=None,
+        sample_interval=None,
+        sample_interval_set:bool=False,
         ):
         r"""
         Thread-safe machine update.
@@ -270,6 +292,9 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"]["priority"] = priority
         _query["parameters"]["on_delay"] = on_delay
         _query["parameters"]["threshold"] = threshold
+        _query["parameters"]["execution_interval"] = execution_interval
+        _query["parameters"]["sample_interval"] = sample_interval
+        _query["parameters"]["sample_interval_set"] = sample_interval_set
 
         return self.query(_query)
 
@@ -312,4 +337,13 @@ class MachinesLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         _query["parameters"]["tag"] = tag
         _query["parameters"]["machine"] = machine
+        return self.query(_query)
+
+    def put_sample_override(self, tag:Tag, machine, sample_override):
+        _query = dict()
+        _query["action"] = "put_sample_override"
+        _query["parameters"] = dict()
+        _query["parameters"]["tag"] = tag
+        _query["parameters"]["machine"] = machine
+        _query["parameters"]["sample_override"] = sample_override
         return self.query(_query)

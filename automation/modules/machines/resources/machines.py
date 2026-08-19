@@ -5,6 +5,7 @@ from ....extensions.api import api
 from ....extensions import _api as Api
 from ....models import StringType, FloatType, IntegerType
 from ....variables import Percentage
+from ....state_machine_timing import MachineConfigError, validate_temporal_config
 
 
 ns = Namespace('Machines', description='State Machine Management Resources')
@@ -23,6 +24,51 @@ def _machine_scope_error(machine_name: str | None = None, machine=None):
     if target is not None and not app._machine_in_scope(target):
         return {"message": "Machine belongs to another edge node"}, 403
     return None
+
+
+def _apply_temporal_update(machine, new_execution, new_sample, overrides, user, persist: bool):
+    resolved_execution = new_execution if new_execution is not None else machine.get_interval()
+    resolved_sample = new_sample if new_sample is not Ellipsis else machine.get_sample_interval()
+    resolved_overrides = overrides if overrides is not None else (machine.sample_overrides or {})
+    validate_temporal_config(
+        machine,
+        new_execution=resolved_execution,
+        new_sample=resolved_sample,
+        overrides=resolved_overrides,
+    )
+    if new_execution is not None:
+        machine.machine_interval = FloatType(new_execution)
+    if new_sample is not Ellipsis:
+        machine._sample_interval = None if new_sample is None else float(new_sample)
+    if overrides is not None:
+        machine.sample_overrides = {
+            name: float(value)
+            for name, value in overrides.items()
+            if value is not None
+        }
+    machine.ensure_sample_buffers()
+    machine._reconfigure_temporal_schedulers()
+    if persist and app.is_db_connected():
+        sample_set = new_sample is not Ellipsis
+        app.machines_engine.put(
+            name=StringType(machine.name.value),
+            machine_interval=IntegerType(int(machine.get_interval())) if new_execution is not None else None,
+            execution_interval=float(machine.get_interval()) if new_execution is not None else None,
+            sample_interval=machine.get_sample_interval() if sample_set else None,
+            sample_interval_set=sample_set,
+        )
+        if overrides is not None:
+            for tag_name, value in overrides.items():
+                tag = app.cvt.get_tag_by_name(name=tag_name)
+                if tag is None:
+                    continue
+                app.machines_engine.put_sample_override(
+                    tag=tag,
+                    machine=machine,
+                    sample_override=value,
+                )
+    return machine
+
 
 # Models
 update_interval_model = api.model("update_interval_model", {
@@ -45,6 +91,9 @@ unsubscribe_model = api.model("unsubscribe_model", {
 update_attributes_model = api.model("update_attributes_model", {
     'threshold': fields.Float(required=False, description='Threshold value to update'),
     'interval': fields.Float(required=False, description='Machine execution interval in seconds'),
+    'execution_interval': fields.Float(required=False, description='Alias of interval (seconds)'),
+    'sample_interval': fields.Float(required=False, description='Independent sample interval in seconds; null = legacy mode'),
+    'sample_overrides': fields.Raw(required=False, description='Map of tag name → sample_override seconds'),
     'buffer_size': fields.Integer(required=False, description='Buffer size for input variables'),
     'on_delay': fields.Integer(required=False, description='Delay before starting the machine'),
     'detection_threshold_mode': fields.String(
@@ -137,10 +186,18 @@ class MachineByNameResource(Resource):
             
             # Serialize subscribed tags (ProcessType objects)
             subscribed_tags_dict = machine.get_subscribed_tags()
-            subscribed_tags = {
-                tag_name: process_type.serialize() 
-                for tag_name, process_type in subscribed_tags_dict.items()
-            }
+            subscribed_tags = {}
+            for tag_name, process_type in subscribed_tags_dict.items():
+                payload = process_type.serialize()
+                tag = getattr(process_type, "tag", None)
+                scan_time = None
+                if tag is not None:
+                    getter = getattr(tag, "get_scan_time", None)
+                    scan_time = getter() if callable(getter) else getattr(tag, "scan_time", None)
+                payload["scan_time"] = scan_time
+                payload["sample_override"] = (machine.sample_overrides or {}).get(tag_name)
+                payload["effective_sample_interval"] = machine._get_effective_sample_interval(tag_name) if machine.get_sample_interval() is not None else None
+                subscribed_tags[tag_name] = payload
             
             # Serialize not subscribed tags (ProcessType objects)
             not_subscribed_tags_dict = machine.get_not_subscribed_tags()
@@ -248,11 +305,17 @@ class MachineByNameResource(Resource):
                     "message": f"Machine '{machine_name}' not found"
                 }, 404
             
-            # Update interval
-            machine.set_interval(
-                interval=FloatType(interval_value),
-                user=Api.get_current_user(),
-            )
+            try:
+                _apply_temporal_update(
+                    machine,
+                    new_execution=interval_value,
+                    new_sample=Ellipsis,
+                    overrides=None,
+                    user=Api.get_current_user(),
+                    persist=app.is_db_connected(),
+                )
+            except MachineConfigError as err:
+                return {"message": str(err)}, 400
             
             # Return updated machine serialization
             return {
@@ -537,7 +600,10 @@ class MachineAttributesResource(Resource):
 
         data = request.json or {}
         threshold = data.get("threshold")
-        interval = data.get("interval")
+        interval = data.get("execution_interval", data.get("interval"))
+        sample_interval_provided = "sample_interval" in data
+        sample_interval = data.get("sample_interval") if sample_interval_provided else Ellipsis
+        sample_overrides = data.get("sample_overrides")
         buffer_size = data.get("buffer_size")
         on_delay = data.get("on_delay")
         detection_threshold_mode = data.get("detection_threshold_mode")
@@ -547,14 +613,17 @@ class MachineAttributesResource(Resource):
         if (
             threshold is None
             and interval is None
+            and not sample_interval_provided
+            and sample_overrides is None
             and buffer_size is None
             and on_delay is None
             and detection_threshold_mode is None
         ):
             return {
                 "message": (
-                    "At least one attribute (threshold, interval, buffer_size, "
-                    "on_delay, detection_threshold_mode) must be provided"
+                    "At least one attribute (threshold, interval, sample_interval, "
+                    "sample_overrides, buffer_size, on_delay, detection_threshold_mode) "
+                    "must be provided"
                 )
             }, 400
 
@@ -680,28 +749,36 @@ class MachineAttributesResource(Resource):
                         "message": f"Invalid threshold value: {str(e)}"
                     }, 400
 
-            # Actualizar interval
-            if interval is not None:
+            # Actualizar interval / sample_interval
+            if interval is not None or sample_interval_provided or sample_overrides is not None:
                 try:
-                    interval_value = float(interval)
-                    if interval_value <= 0:
+                    interval_value = float(interval) if interval is not None else None
+                    if interval_value is not None and interval_value <= 0:
                         return {
                             "message": "interval must be greater than 0"
                         }, 400
-                    
-                    machine.set_interval(
-                        interval=FloatType(interval_value),
+                    if sample_overrides is not None and not isinstance(sample_overrides, dict):
+                        return {
+                            "message": "sample_overrides must be an object of tag_name → seconds"
+                        }, 400
+                    _apply_temporal_update(
+                        machine,
+                        new_execution=interval_value,
+                        new_sample=sample_interval,
+                        overrides=sample_overrides,
                         user=user,
+                        persist=True,
                     )
-                    
-                    # Actualizar en la base de datos si está conectada
-                    if app.is_db_connected():
-                        app.machines_engine.put(
-                            name=StringType(machine_name),
-                            machine_interval=IntegerType(int(interval_value))
-                        )
-                    
-                    updated_attributes.append(f"interval to {interval_value}")
+                    if interval_value is not None:
+                        updated_attributes.append(f"interval to {interval_value}")
+                    if sample_interval_provided:
+                        updated_attributes.append(f"sample_interval to {sample_interval}")
+                    if sample_overrides is not None:
+                        updated_attributes.append("sample_overrides")
+                except MachineConfigError as e:
+                    return {
+                        "message": str(e)
+                    }, 400
                 except (ValueError, TypeError) as e:
                     return {
                         "message": f"Invalid interval value: {str(e)}"

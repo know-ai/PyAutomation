@@ -12,6 +12,8 @@ class Machines(BaseModel):
     name = CharField(unique=True)
     area = CharField(max_length=64, null=True, index=True)
     interval = FloatField()
+    execution_interval = FloatField(null=True)
+    sample_interval = FloatField(null=True)
     threshold = FloatField(null=True)
     on_delay = IntegerField(null=True)
     description = CharField(max_length=128)
@@ -69,6 +71,8 @@ class Machines(BaseModel):
                 identifier=identifier,
                 name=name,
                 interval=interval,
+                execution_interval=interval,
+                sample_interval=None,
                 description=description,
                 classification=classification,
                 buffer_size=buffer_size,
@@ -123,7 +127,7 @@ class Machines(BaseModel):
 
         * **dict**: Map of Machine Name -> Configuration.
         """
-        return {f"{query.name}": query.serialize() for query in cls.select()}
+        return {query.name: query.serialize() | {"sample_overrides": TagsMachines.read_overrides_for_machine(query.name)} for query in cls.select()}
 
     @classmethod
     def read_config_scoped(cls, area:str):
@@ -153,11 +157,16 @@ class Machines(BaseModel):
         Serializes the machine record.
         """
 
+        execution = self.execution_interval
+        if execution is None:
+            execution = self.interval
         return {
             "id": self.id,
             "identifier": self.identifier,
             "name": self.name,
             "interval": self.interval,
+            "execution_interval": execution,
+            "sample_interval": self.sample_interval,
             "description": self.description,
             "classification": self.classification,
             "buffer_size": self.buffer_size,
@@ -178,6 +187,7 @@ class TagsMachines(BaseModel):
     tag = ForeignKeyField(Tags, backref="machines")
     machine = ForeignKeyField(Machines, backref="tags")
     default_tag_name = CharField(max_length=64, null=True)
+    sample_override = FloatField(null=True)
 
     @classmethod
     def create(
@@ -208,6 +218,33 @@ class TagsMachines(BaseModel):
                 )
             query.save()
 
+    @classmethod
+    def put_sample_override(cls, tag_name: str, machine_name: str, sample_override: float | None):
+        tag = Tags.get_or_none(name=tag_name)
+        machine = Machines.get_or_none(name=machine_name)
+        if tag is None or machine is None:
+            return None
+        row = cls.get_or_none(tag=tag, machine=machine)
+        if row is None:
+            return None
+        row.sample_override = sample_override
+        row.save()
+        return row
+
+    @classmethod
+    def read_overrides_for_machine(cls, machine_name: str) -> dict:
+        machine = Machines.get_or_none(name=machine_name)
+        if machine is None:
+            return {}
+        result = {}
+        for row in cls.select().where(cls.machine == machine):
+            if row.sample_override is None:
+                continue
+            tag_name = row.tag.name if row.tag is not None else None
+            if tag_name:
+                result[tag_name] = float(row.sample_override)
+        return result
+
     def serialize(self):
         r"""
         Serializes the relationship.
@@ -215,5 +252,6 @@ class TagsMachines(BaseModel):
         return {
             "machine": self.machine.serialize(),
             "tag": self.tag.serialize(),
-            "default_tag_name": self.default_tag_name
+            "default_tag_name": self.default_tag_name,
+            "sample_override": self.sample_override,
         }

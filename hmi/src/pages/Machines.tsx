@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
-import { getMachines, getMachineByName, updateMachineInterval, transitionMachine, type Machine } from "../services/machines";
+import { getMachines, getMachineByName, transitionMachine, type Machine } from "../services/machines";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
 import { useAppSelector } from "../hooks/useAppSelector";
@@ -20,15 +20,7 @@ export function Machines() {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [updatingMachine, setUpdatingMachine] = useState<string | null>(null);
-  
-  // Estado para el modal de confirmación de intervalo
-  const [showIntervalModal, setShowIntervalModal] = useState(false);
-  const [pendingIntervalUpdate, setPendingIntervalUpdate] = useState<{
-    machineName: string;
-    oldInterval: number;
-    newInterval: number;
-  } | null>(null);
-  
+
   // Estado para el modal de confirmación de transición
   const [showTransitionModal, setShowTransitionModal] = useState(false);
   const [pendingTransition, setPendingTransition] = useState<{
@@ -170,75 +162,6 @@ export function Machines() {
     const endIndex = startIndex + ITEMS_PER_PAGE;
     return machinesWithRealTime.slice(startIndex, endIndex);
   }, [machinesWithRealTime, currentPage]);
-
-  // Manejar cambio de intervalo
-  const handleIntervalChange = (machine: Machine, newInterval: number) => {
-    const intervalValue = parseFloat(String(newInterval));
-    
-    if (isNaN(intervalValue) || intervalValue < 0.1) {
-      showToast(t("machines.invalidInterval"), "error");
-      return;
-    }
-
-    if (intervalValue === machine.machine_interval) {
-      return; // No hay cambio
-    }
-
-    // Mostrar modal de confirmación
-    setPendingIntervalUpdate({
-      machineName: machine.name,
-      oldInterval: machine.machine_interval,
-      newInterval: intervalValue,
-    });
-    setShowIntervalModal(true);
-  };
-
-  // Confirmar actualización de intervalo
-  const handleConfirmIntervalUpdate = async () => {
-    if (!pendingIntervalUpdate) return;
-
-    setUpdatingMachine(pendingIntervalUpdate.machineName);
-    try {
-      const response = await updateMachineInterval(
-        pendingIntervalUpdate.machineName,
-        pendingIntervalUpdate.newInterval
-      );
-
-      // Actualizar la máquina en el estado local
-      setMachines((prev) =>
-        prev.map((m) =>
-          m.name === pendingIntervalUpdate.machineName
-            ? { ...m, machine_interval: pendingIntervalUpdate.newInterval }
-            : m
-        )
-      );
-      // Recargar máquinas para sincronizar con el store
-      loadMachines();
-
-      showToast(response.message || t("machines.intervalUpdated"), "success");
-      setShowIntervalModal(false);
-      setPendingIntervalUpdate(null);
-    } catch (err: any) {
-      const data = err?.response?.data;
-      const backendMessage =
-        (typeof data === "string" ? data : undefined) ??
-        data?.message ??
-        data?.detail ??
-        data?.error;
-      const errorMessage =
-        backendMessage || err?.message || t("machines.updateIntervalError");
-      showToast(errorMessage, "error");
-      console.error("Error updating interval:", err);
-    } finally {
-      setUpdatingMachine(null);
-    }
-  };
-
-  // Cancelar actualización de intervalo
-  const handleCancelIntervalUpdate = () => {
-    setShowIntervalModal(false);
-    setPendingIntervalUpdate(null);
-  };
 
   // Manejar cambio de estado
   const handleStateChange = (machine: Machine, newState: string) => {
@@ -443,7 +366,6 @@ export function Machines() {
       // Preparar los datos para CSV
       const headers = [
         t("tables.name"),
-        t("tables.interval"),
         t("tables.state"),
         t("tables.priority"),
         t("tables.criticity"),
@@ -455,7 +377,6 @@ export function Machines() {
       const rows = machinesWithRealTime.map((machine) => {
         return [
           machine.name || "",
-          machine.machine_interval || "",
           machine.state || "",
           machine.priority !== undefined ? String(machine.priority) : "",
           machine.criticity !== undefined ? String(machine.criticity) : "",
@@ -596,7 +517,6 @@ export function Machines() {
                   <thead>
                     <tr>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.name")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.interval")}</th>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.state")}</th>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.priority")}</th>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.criticity")}</th>
@@ -610,32 +530,6 @@ export function Machines() {
                       <tr key={machine.name} style={{ height: "auto" }}>
                         <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
                           <strong>{machine.name}</strong>
-                        </td>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          <input
-                            type="number"
-                            className="form-control form-control-sm"
-                            key={`interval-${machine.name}-${machine.machine_interval}`}
-                            defaultValue={machine.machine_interval}
-                            onBlur={(e) => {
-                              const value = parseFloat(e.target.value);
-                              if (!isNaN(value) && value >= 0.1 && value !== machine.machine_interval) {
-                                handleIntervalChange(machine, value);
-                              } else if (isNaN(value) || value < 0.1) {
-                                e.target.value = String(machine.machine_interval);
-                                showToast(t("machines.invalidInterval"), "error");
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.currentTarget.blur();
-                              }
-                            }}
-                            disabled={updatingMachine === machine.name}
-                            min="0.1"
-                            step="0.1"
-                            style={{ width: "100px", padding: "0.25rem 0.5rem", fontSize: "0.8rem" }}
-                          />
                         </td>
                         <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
                           <select
@@ -740,74 +634,6 @@ export function Machines() {
           )}
         </Card>
       </div>
-
-      {/* Modal de confirmación de intervalo */}
-      {showIntervalModal && pendingIntervalUpdate && (
-        <div
-          className="modal fade show"
-          style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
-          tabIndex={-1}
-          role="dialog"
-          aria-modal="true"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !updatingMachine) {
-              handleCancelIntervalUpdate();
-            }
-          }}
-        >
-          <div className="modal-dialog modal-dialog-centered" role="document">
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h5 className="modal-title">{t("machines.confirmIntervalChange")}</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={handleCancelIntervalUpdate}
-                  aria-label="Close"
-                  disabled={!!updatingMachine}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <p>
-                  {t("machines.confirmIntervalChangeMessage")}
-                </p>
-                <div className="mb-2">
-                  <strong>{t("machines.machine")}:</strong> {pendingIntervalUpdate.machineName}
-                </div>
-                <div className="mb-2">
-                  <strong>{t("machines.currentInterval")}:</strong> {pendingIntervalUpdate.oldInterval} {t("machines.seconds")}
-                </div>
-                <div>
-                  <strong>{t("machines.newInterval")}:</strong> {pendingIntervalUpdate.newInterval} {t("machines.seconds")}
-                </div>
-              </div>
-              <div className="modal-footer">
-                <Button
-                  variant="secondary"
-                  onClick={handleCancelIntervalUpdate}
-                  disabled={!!updatingMachine}
-                >
-                  {t("common.cancel")}
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleConfirmIntervalUpdate}
-                  disabled={!!updatingMachine}
-                >
-                  {updatingMachine ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      {t("machines.updating")}
-                    </>
-                  ) : (
-                    t("common.confirm")
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal de confirmación de transición */}
       {showTransitionModal && pendingTransition && (

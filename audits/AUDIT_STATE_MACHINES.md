@@ -4,27 +4,40 @@
 |---|---|
 | **Producto** | PyAutomationIO (`automation/state_machine.py`, `automation/workers/state_machine.py`, `automation/opcua/subscription.py`, `automation/tags/`) |
 | **Alcance** | Ciclo de vida de una SM; `machine_interval`; buffers de variables suscritas; relación con CVT, DAS, DAQ y OPC UA; versatilidad de periodos por capa |
-| **Fecha** | 2026-08-18 — evidencia de código |
-| **Complementa** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) (ciclo atómico / historiador), [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md) (deadband / Kalman), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) (scope en DAQ/DAS), [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) (observers, GIL) |
-| **Consumidor de referencia** | iDetectFugas (`gitlab/intelcon/idetectfugas`) — LDS/NPW/PPA/… **sobreescriben** `while_waiting` y llenan **su** `self.buffer`, no el `self.data` del framework |
-| **Veredicto** | El runtime de SM es **core y usable** (A− scheduler). Las tres capas de tiempo **sí son independientes**. El buffer canónico `StateMachineCore.data` **no se alimenta** (SM-H1): `wait → run` del core es teatro salvo que la app lo sustituya. La cadencia de la ventana algorítmica en planta es hoy **el ciclo de la máquina**, no el `scan_time` de campo |
+| **Fecha** | 2026-08-18 — evidencia de código; **re-auditoría post spec 02** (desacoplamiento temporal) |
+| **Complementa** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), `specs/02-STATE-MACHINE-TEMPORAL-DECOUPLING.md` |
+| **Consumidor de referencia** | iDetectFugas — **dual-path**: legado si `sample_interval IS NULL`; migrado lee `self.data` (`app/sampling.py`) |
+| **Veredicto** | **A−** con tres relojes. SM-H1 **cerrado** si `sample_interval` está definido (`SampleSchedThread` → `_push_to_buffer`). Modo legado = comportamiento pre-spec. Regla de oro `execution ≥ sample ≥ scan` rechazada en API (400) |
 | **Clasificación** | Auditoría de arquitectura · runtime de control |
 
 ---
 
 ## 0. Respuesta directa
 
-| Pregunta | Respuesta (código 2026-08-18) |
+| Pregunta | Respuesta (código 2026-08-18, spec 02) |
 |---|---|
-| ¿Cada cuánto corre un ciclo de máquina? | Cada `machine_interval` **segundos** (default **1.0**). El scheduler compensa el tiempo de `loop()`: duerme `interval − elapsed`. Si `elapsed > interval` loguea *NOT executed on time* y no duerme |
-| ¿Cómo se configura? | Constructor (`interval=`), `append_machine(..., interval=FloatType(s))`, `set_interval()`, API `PUT /machines/<name>/attributes` (`interval`), persistencia BD (`Machines.interval`) y YAML de app si el módulo lo implementa |
-| ¿El buffer de tags suscritos se llena con el dato de campo? | **El CVT sí** (último valor + observers). **`self.data` del framework no**: `notify()` actualiza `ProcessType.value` (last-wins) y `data_timestamp`; **nunca** hace `self.data[tag](muestra)`. Ver SM-H1 |
-| ¿Con qué frecuencia se actualiza el valor visto por la SM? | A ritmo de **adquisición** (DAQ/DAS) que pasa deadband. Cada `cvt.set_value` notifica `MachineObserver` → `machine.notify` |
-| ¿Con qué frecuencia se llena el buffer de ventana? | En el **core: nunca**. En apps tipo iDetectFugas: **una muestra por ciclo de máquina** (`verify_inputs` en `while_waiting` / `while_running`), tomada del `ProcessType` ya notificado |
-| OPC UA cada 200 ms y SM a 1 s: ¿qué pasa? | Campo → CVT ~5 Hz. La SM ve el **último** valor en cada tick de 1 s. Las 4 muestras intermedias **no entran** en la ventana de la máquina (se perdieron para el algoritmo; el historiador SAF sí las puede tener si pasaron deadband) |
-| ¿Se puede llenar el buffer a otra frecuencia ≥ adquisición? | **No hay palanca de “fill interval”.** Para muestrear más fino que el ciclo hay que **bajar `machine_interval`** (y entonces el ciclo también corre más rápido) **o** empujar muestras en `notify()` (hoy no existe). No se puede “llenar el buffer a 200 ms y ejecutar lógica a 1 s” con el core actual |
-| ¿El ciclo puede ser más rápido que el campo? | **Sí.** Si `machine_interval` < `scan_time`, el ciclo **repite el último valor** de CVT. La ventana se llena de duplicados |
-| ¿Tiempos de muestreo distintos por capa? | **Sí, y es el diseño actual.** Ver §4. No hay un reloj maestro único |
+| ¿Cada cuánto corre un ciclo de **ejecución**? | Cada `execution_interval` / `machine_interval` **segundos** (default **1.0**, mínimo **0.01** salvo DAQ). Compensa `loop()`: duerme `interval − elapsed` |
+| ¿Cada cuánto se **muestrea** el buffer? | Si `sample_interval` no es NULL: `SampleSchedThread` (hilo OS propio) llama `_sample_once` cada `sample_interval` s, con override por tag. Si es NULL: **legado** — no hay sampler; iDetectFugas sigue muestreando en el tick de ejecución |
+| ¿Cómo se configura? | `PUT /machines/<name>/attributes` (`execution_interval` / `interval`, `sample_interval`, `sample_overrides`). HMI detalle: checkbox «Personalizar muestreo». Persistencia: `machines.execution_interval`, `machines.sample_interval`, `tags_machines.sample_override` |
+| ¿El buffer de tags suscritos se llena con el dato de campo? | CVT = last-wins a ritmo de adquisición. **Modo desacoplado:** `_push_to_buffer` copia `ProcessType.value` al anillo `IBufferProvider` (`self.data`) a ritmo de muestreo. **Legado:** `self.data` sigue sin llenarse; las apps usan su `self.buffer` |
+| OPC UA 200 ms, sample 0.2 s, ejecución 1.0 s | DAQ-200 escribe CVT ~5 Hz. Sampler toma 1 muestra / 0.2 s (5 por ventana de ejecución). `while_running` corre a 1 Hz **leyendo** el buffer, sin llenarlo (cláusula nuclear) |
+| ¿Se puede llenar el buffer a otra frecuencia que el ciclo? | **Sí**, activando `sample_interval` con `execution_interval >= sample_interval >= scan_time` |
+| ¿El ciclo puede ser más rápido que el muestreo o el campo? | **No vía API.** `MachineConfigError` → HTTP **400** con el mensaje de la regla violada |
+| ¿Tiempos distintos por capa? | Adquisición (`scan_time` ms) / muestreo (`sample_interval` s, override por tag) / ejecución (`execution_interval` s) / historiador (evento CVT) |
+
+### 0.1 Contrato spec 02 (implementado)
+
+| Reloj | Pieza | Aislamiento |
+|---|---|---|
+| Adquisición | DAS / DAQ → CVT | Sin cambios |
+| Muestreo | `SampleSchedThread` + `IBufferProvider._push_to_buffer` | **Hilo OS** (no greenlet del hub): un `while_*` bloqueante no detiene el llenado |
+| Ejecución | `SchedThread` / `run_machine_cycle` → `loop()` | No llama `_push_to_buffer`. En legado inyecta `_legacy_sample_and_execute()` (no-op de fábrica) |
+
+Validación: `validate_temporal_config` en `automation/state_machine_timing.py`. Métricas en `/api/health/system`: `SAMPLE_LAG_MS`, `EXECUTION_CYCLE_US`, `BUFFER_UTILIZATION_%`.
+
+Migración: `ensure_schema` añade columnas y hace `execution_interval = interval` donde era NULL. Rollback: `sample_interval = NULL`.
+
+Tests: `automation/tests/test_state_machine_timing.py` (CA-SM-01, 02, 04, latencia N=100). Soak 24 h CA-SM-05 en planta.
 
 ---
 
@@ -127,7 +140,7 @@ Confundirlos es el origen de la pregunta “¿cada cuánto se llena el buffer?�
 | **A. CVT — valor actual** | `Tag.value` + `Tag.timestamp` | DAS `datachange` o DAQ `while_running` → `cvt.set_value` | Adquisición ∩ deadband | 1 muestra (last-wins) |
 | **A'. CVT — anillo del tag** | `Tag.values` / `Tag.timestamps` | `Tag.set_value` | Igual que A | `Buffer()` default **10** |
 | **B. DAS / tendencias HMI** | `DAS.buffer[tag]{values,timestamp}` | Mismo hot path de campo **y** escrituras internas de SM | Adquisición (y a veces deadband inconsistente, SM-H3) | `ceil(10 / ceil(scan_time/1000))` al crear tag; `restart_buffer` usa **600 s** equivalentes — **fórmulas distintas** |
-| **C. Framework SM** | `StateMachineCore.data[tag_name]` | **Nadie** (SM-H1) | — | `buffer_size` (default **10**), roll `backward` |
+| **C. Framework SM** | `StateMachineCore.data` via `IBufferProvider` | `SampleSchedThread._push_to_buffer` si `sample_interval` definido; **nadie** en legado | `sample_interval` (desacoplado) o nulo (legado) | `max(buffer_size, 2×ceil(exec/sample))` acotado a 10 000 |
 | **D. App (LDS/NPW/…)** | `self.buffer[...]` propio | `verify_inputs()` en el ciclo | **`machine_interval`** | `buffer_size` de la máquina / YAML |
 
 `ProcessType` de entrada **no es un buffer**: es el último valor notificado. La ventana temporal para un algoritmo hay que construirla en C (roto) o en D (lo que hace iDetectFugas).
@@ -155,7 +168,7 @@ Consecuencia:
 
 DAQ y `OPCUAServer` **saltan** ese contrato (`while_waiting` → `wait_to_run` inmediato). Las apps de planta **reimplementan** la espera sobre su buffer D.
 
-**SM-H1 — Crítica (producto / framework):** `StateMachineCore.data` es un anillo huérfano. `buffer_size` / `buffer_roll_type` del core no gobiernan la ventana real salvo que la subclase copie el tamaño a `self.buffer` (LDS lo hace en `on_enter_waiting`). Cambiar `buffer_size` por API llama `set_buffer_size` → `restart_buffer()` del **core** y, en iDetectFugas, persistencia YAML + reinicio de la ventana de app.
+**SM-H1 — Cerrado (modo desacoplado) / residual legado:** con `sample_interval` el SampleScheduler alimenta `self.data`. En legado (`NULL`) el anillo del core sigue vacío a propósito para no romper LDS/NPW (`self.buffer` de app). `buffer_size` dimensiona el anillo del provider (y sigue gobernando la ventana YAML de iDetectFugas).
 
 ---
 
@@ -234,7 +247,7 @@ No es un muestreo configurable de la SM. Cada `set_value` de campo que pasa dead
 | Tags a 200 ms y 1000 ms en la **misma** SM | **Sí.** El CVT mezcla ritmos. La SM, al muestrear last-wins una vez por ciclo, ve un collage. La ventana D no interpola |
 | DAS (≤100 ms) + SM lenta | El valor llega por **evento**, no por el intervalo de la SM. Sigue siendo last-wins al tick de la máquina |
 
-**SM-C1 — Diseño vigente:** las capas 1 y 3 **sí** tienen periodos propios. La capa “buffer de SM” **no** tiene periodo propio: o es el ciclo (apps) o no existe (core).
+**SM-C1 — Diseño vigente:** tres relojes. `sample_interval` es el fill-interval del buffer del core. En legado el fill sigue siendo el ciclo de ejecución (apps).
 
 ---
 
@@ -319,12 +332,12 @@ Decoradores IAD en `CVT.set_value` siguen **comentados**. `process_filter` no co
 
 | ID | Severidad | Hecho | Impacto | Mitigación actual / residual |
 |---|---|---|---|---|
-| **SM-H1** | Alta (framework) | `self.data` nunca recibe muestras; `notify` es last-wins | Core `wait→run` no funciona; docs mienten; `buffer_size` del core no es la ventana | Apps (iDetectFugas) override + `self.buffer`. Residual: cualquier SM “vanilla” se queda en `wait` |
+| **SM-H1** | Cerrada (opt-in) | Sampler escribe `self.data` si `sample_interval` está set | `wait→run` del core funciona en modo desacoplado | Residual: legado = iDetectFugas `self.buffer` |
 | **SM-H2** | Media | Persistencia de `interval` vía API usa `int(seconds)` | `0.2` s se guarda como `0` en BD; al reboot el config loader puede romper el periodo | No usar subsegundo si se depende de BD, o persistir float |
 | **SM-H3** | Baja | DAS actualiza su anillo si `set_value` retorna no-`None`; el deadband de CVT **retorna el valor** sin notificar SM | Tendencia HMI puede avanzar y la SM no | Correlacionar `on.tag` vs `ProcessType` |
 | **SM-H4** | Media (ops) | DAS publishing interval fijo **1000 ms**; el umbral 100 ms no es el periodo de muestreo OPC | Quien pone `scan_time=50` cree 20 Hz; el cliente pide publish 1 Hz | Para 200 ms usar **DAQ** (`scan_time>100`), no DAS |
 | **SM-H5** | Baja | Dos fórmulas de tamaño de `das.buffer` (10 s vs 600 s; `ceil(scan_time/1000)` trata 200 ms como 1 s) | Anillo HMI de tags sub-segundo queda corto (~10 muestras) | No fiarse de DAS buffer como historiador |
-| **SM-C1** | Info / diseño | Periodos por capa independientes; no hay fill-interval | Decimación last-wins si SM más lenta que el campo | Documentar; o implementar push en `notify` si se exige ventana a ritmo de campo |
+| **SM-C1** | Info / diseño | Tres relojes; fill-interval = `sample_interval` (opt-in) | Legado decima last-wins al tick de ejecución | Activar muestreo personalizado |
 | **SM-C2** | Info | Scheduler no encola ticks perdidos | Bajo sobrecarga se pierde isocronía, no se “alcanza” | Acortar `while_*` o subir `interval` |
 
 ---
@@ -341,28 +354,32 @@ Decoradores IAD en `CVT.set_value` siguen **comentados**. `process_filter` no co
 | `ProcessType.set_value` → CVT | `automation/models.py` |
 | `MachineObserver` | `automation/tags/tag.py` |
 | Anillo genérico | `automation/buffer.py` |
+| Validador + IBufferProvider + métricas | `automation/state_machine_timing.py` |
+| SampleScheduler (hilo OS) | `automation/workers/state_machine.py` (`SampleSchedThread`) |
+| Schema `execution_interval` / `sample_interval` / `sample_override` | `automation/dbmodels/machines.py`, `managers/db.py` `ensure_schema` |
 | API atributos SM | `automation/modules/machines/resources/machines.py` |
+| HMI detalle (muestreo / ejecución) | `hmi/src/pages/MachinesDetailed.tsx` |
+| Spec | `specs/02-STATE-MACHINE-TEMPORAL-DECOUPLING.md` |
+| Tests CA-SM | `automation/tests/test_state_machine_timing.py` |
 | Guía (desactualizada en el punto del buffer C) | `docs/Developments_Guide/core/state_machines.md` |
 | Patrón app de ventana real | `gitlab/intelcon/idetectfugas/app/modules/{lds,npw,...}/__init__.py` `verify_inputs` |
 
 ---
 
-## 10. Criterio de aceptación (si se cierra SM-H1)
+## 10. Criterios de aceptación (spec 02)
 
-Un tag de campo a 200 ms y una SM a 1 s deben poder declararse así, de forma explícita y testeable:
+- **CA-SM-01:** `sample_interval=0.2` + `execution_interval=1.0` → 5 puntos por ventana (`samples_per_execution`).
+- **CA-SM-02:** tag `scan_time=500` ms → API/validador rechaza `sample_interval=0.2` (400 / `MachineConfigError`).
+- **CA-SM-03:** columnas persistidas + backfill `execution_interval = interval`; SIGKILL no pierde la config.
+- **CA-SM-04:** `sample_interval IS NULL` → no se lanza `SampleSchedThread`; `_legacy_sample_and_execute` es no-op.
+- **CA-SM-05:** muestreo de 100 tags en &lt; 1 ms (unitaria); soak 24 h CPU &lt; 0.5 % a 1 kHz = planta.
 
-1. **Adquisición** = 200 ms (DAQ-200).
-2. **Ciclo de lógica** = 1 s (`machine_interval`).
-3. **Ventana** = o bien “N ciclos de máquina” (hoy, de facto) o “N muestras de campo” (requiere push en `notify` o un sampler). **No mezclar ambos significados en un solo `buffer_size` sin documentarlo.**
-
-Hasta entonces, en planta: **`buffer_size` × `machine_interval` ≈ horizonte temporal de la ventana**, no `buffer_size` × `scan_time`.
+Vanilla SM nueva: activar `sample_interval` y tratar `buffer_size × sample_interval` como horizonte de campo. iDetectFugas: dual-path en `app/sampling.py` + `LeakStateMachine` (legado si `sample_interval IS NULL`; migrado lee `self.data`).
 
 ---
 
 ## 11. Conclusión
 
-PyAutomation **sí** deja definir tiempos distintos por capa: `scan_time` (campo, ms, agrupado en DAQ o DAS), `machine_interval` (lógica, s, por máquina) e historiador (evento CVT). Esa es la versatilidad real.
+Hay **tres relojes** cuando el operador activa muestreo personalizado: `scan_time` (campo), `sample_interval` (llenado del buffer del core, hilo aislado) y `execution_interval` (lógica). La API rechaza cualquier violación de `ejecución ≥ muestreo ≥ adquisición`.
 
-Lo que **no** está es un tercer reloj “frecuencia de llenado del buffer de la SM” desacoplado del ciclo. El anillo del framework no se alimenta; las aplicaciones serias muestrean el CVT **una vez por tick**. OPC UA a 200 ms no llena una ventana de 40 a 200 ms: llena el CVT a 200 ms y, si la máquina corre a 1 s, la ventana avanza a 1 Hz.
-
-Para una SM nueva: no confiar en `while_waiting` del core; decidir si la ventana es tiempo-de-máquina o tiempo-de-campo; y no bloquear el `while_*`.
+iDetectFugas ya tiene **dual-path**: `sample_interval` nulo = legado (`self.buffer` de app); con muestreo personalizado los motores leen `self.data` y no empujan al provider. Detalle: `gitlab/intelcon/idetectfugas/audits/AUDIT_CORE_SAMPLING.md`. Una SM nueva debe setear `sample_interval` y no bloquear `while_*`.

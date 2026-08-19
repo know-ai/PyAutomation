@@ -260,7 +260,6 @@ class MachinesComponents:
                         data=[],
                         columns=[
                             {'name': 'name', 'id': 'name', 'editable': False}, 
-                            {'name': 'sampling_time', 'id': 'sampling_time', 'editable': False}, 
                             {'name': 'description', 'id': 'description', 'editable': False}, 
                             {'name': 'state', 'id': 'state', 'editable': False}, 
                             {'name': 'criticity', 'id': 'criticity', 'editable': False}, 
