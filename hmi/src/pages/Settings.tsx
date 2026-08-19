@@ -3,6 +3,7 @@ import { Button } from "../components/Button";
 import { StationAppearance } from "../components/StationAppearance";
 import { ClockSyncPanel } from "../components/ClockSyncPanel";
 import { DatabaseConnectivityPanel } from "../components/DatabaseConnectivityPanel";
+import { PerformanceAlarmConfig } from "../components/PerformanceAlarmConfig";
 import { ServiceRuntimePanel } from "../components/ServiceRuntimePanel";
 import { SettingsChapter } from "../components/SettingsChapter";
 import { getSettings, updateSettings, exportConfig, importConfig, type AppConfig } from "../services/settings";
@@ -12,6 +13,7 @@ import { showToast } from "../utils/toast";
 const TOC = [
   { href: "#settings-station", labelKey: "settings.navStation" },
   { href: "#settings-clock", labelKey: "settings.navClock" },
+  { href: "#settings-performance", labelKey: "settings.navPerformance" },
   { href: "#settings-historian", labelKey: "settings.navHistorian" },
   { href: "#settings-service", labelKey: "settings.navService" },
   { href: "#settings-backup", labelKey: "settings.navBackup" },
@@ -158,9 +160,11 @@ export function Settings() {
 
       <ClockSyncPanel />
 
+      <PerformanceAlarmConfig />
+
       <SettingsChapter
         id="settings-historian"
-        index="03"
+        index="04"
         kicker={t("settings.historianKicker")}
         title={t("settings.historianTitle")}
         lede={t("settings.historianLede")}
@@ -170,7 +174,7 @@ export function Settings() {
 
       <SettingsChapter
         id="settings-service"
-        index="04"
+        index="05"
         kicker={t("settings.serviceKicker")}
         title={t("settings.applicationSettings")}
         lede={t("settings.runtimeLede")}
@@ -187,7 +191,7 @@ export function Settings() {
 
       <SettingsChapter
         id="settings-backup"
-        index="05"
+        index="06"
         kicker={t("settings.backupKicker")}
         title={t("settings.backupTitle")}
         lede={t("settings.backupLede")}

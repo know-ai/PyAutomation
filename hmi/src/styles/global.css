@@ -2775,6 +2775,408 @@ html.light .app-sidebar .brand-text {
   min-width: 0;
 }
 
+.performance-page {
+  min-width: 0;
+}
+
+.perf-hero__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 1rem;
+}
+
+.perf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 999px;
+  background: var(--bs-body-bg);
+  font-size: 0.78rem;
+  color: inherit;
+}
+
+.perf-chip strong {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  color: var(--bs-secondary-color);
+}
+
+button.perf-chip {
+  cursor: pointer;
+}
+
+.perf-chip--ok { border-color: rgba(25, 135, 84, 0.45); }
+.perf-chip--warn { border-color: rgba(201, 162, 39, 0.55); }
+.perf-chip--error { border-color: rgba(220, 53, 69, 0.5); }
+.perf-chip--shelved { border-color: rgba(108, 117, 125, 0.5); }
+
+.perf-section {
+  min-width: 0;
+  margin-bottom: 1.35rem;
+}
+
+.perf-section__title {
+  margin: 0 0 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+
+.perf-section__toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.7rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.perf-section__toggle:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: 3px;
+  border-radius: 0.35rem;
+}
+
+.perf-gauges,
+.perf-panels,
+.perf-trends {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+@media (min-width: 700px) {
+  .perf-gauges,
+  .perf-trends {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .perf-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .perf-gauges {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .perf-panels {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.perf-tile,
+.perf-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--bs-body-color) 2.5%, var(--bs-body-bg));
+  overflow: hidden;
+}
+
+.perf-tile--ok,
+.perf-panel--ok {
+  border-color: rgba(25, 135, 84, 0.38);
+  background: color-mix(in srgb, #198754 6%, var(--bs-body-bg));
+}
+
+.perf-tile--warn,
+.perf-panel--warn {
+  border-color: rgba(201, 162, 39, 0.55);
+  background: color-mix(in srgb, #c9a227 10%, var(--bs-body-bg));
+}
+
+.perf-tile--error,
+.perf-panel--error {
+  border-color: rgba(220, 53, 69, 0.5);
+  background: color-mix(in srgb, #dc3545 10%, var(--bs-body-bg));
+}
+
+.perf-tile--shelved,
+.perf-panel--shelved {
+  border-color: rgba(108, 117, 125, 0.45);
+  background: color-mix(in srgb, #6c757d 10%, var(--bs-body-bg));
+}
+
+.perf-tile--clickable,
+.perf-panel--clickable {
+  cursor: pointer;
+}
+
+.perf-tile--clickable:hover,
+.perf-tile--clickable:focus-visible,
+.perf-panel--clickable:hover,
+.perf-panel--clickable:focus-visible {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bs-primary) 35%, transparent);
+  outline: none;
+}
+
+.perf-tile__head,
+.perf-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.perf-tile__label,
+.perf-panel__title {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+
+.perf-tile__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.perf-tile__mark {
+  font-size: 0.85rem;
+  color: var(--bs-secondary-color);
+}
+
+.perf-tile--alarmable .perf-tile__mark {
+  color: inherit;
+}
+
+.perf-tile__gear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+}
+
+.perf-tile__gear:hover,
+.perf-tile__gear:focus-visible {
+  background: color-mix(in srgb, var(--bs-body-color) 8%, transparent);
+}
+
+.perf-gauge {
+  width: 100%;
+  height: 4.4rem;
+}
+
+.perf-gauge__track {
+  stroke: color-mix(in srgb, var(--bs-body-color) 12%, transparent);
+}
+
+.perf-tile__value,
+.perf-alarm-modal__hero {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.perf-tile--gauge .perf-tile__value {
+  font-size: 1.45rem;
+  text-align: center;
+}
+
+.perf-tile__threshold {
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color);
+}
+
+.perf-tile__hint {
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color);
+  line-height: 1.35;
+}
+
+.perf-tile canvas,
+.perf-panel canvas,
+.perf-trend canvas {
+  width: 100%;
+  max-width: 100%;
+  height: 2.25rem;
+}
+
+.perf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.perf-badge__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.perf-badge--ok { color: #198754; }
+.perf-badge--ack,
+.perf-badge--warn { color: #c9a227; }
+.perf-badge--unack,
+.perf-badge--error { color: #dc3545; }
+.perf-badge--shelved { color: #6c757d; }
+
+.perf-badge__dot--live {
+  animation: perf-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes perf-pulse {
+  50% { opacity: 0.3; transform: scale(0.85); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .perf-badge__dot--live {
+    animation: none;
+  }
+}
+
+.perf-panel__body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 0.7rem;
+}
+
+.perf-stat__label {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+
+.perf-stat__value {
+  font-weight: 650;
+  font-size: 0.95rem;
+}
+
+.perf-trend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.85rem 0.95rem 0.7rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--bs-body-color) 2%, var(--bs-body-bg));
+}
+
+.perf-trend__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.perf-trend__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+
+.perf-trend__value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-trend__plot {
+  width: 100%;
+  height: 9.75rem;
+}
+
+.perf-trend__plot svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.perf-trend__grid {
+  stroke: color-mix(in srgb, var(--bs-body-color) 10%, transparent);
+  stroke-width: 1;
+}
+
+.perf-trend__axis-line {
+  stroke: color-mix(in srgb, var(--bs-body-color) 28%, transparent);
+  stroke-width: 1;
+}
+
+.perf-trend__threshold {
+  stroke: #dc3545;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.7;
+}
+
+.perf-trend__axis {
+  fill: var(--bs-secondary-color);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-gauge__idle {
+  stroke: color-mix(in srgb, var(--bs-body-color) 16%, transparent);
+}
+
+.perf-alarm-modal {
+  background: color-mix(in srgb, #000 35%, transparent);
+}
+
+.perf-alarm-modal__facts {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 0.85rem;
+}
+
+.perf-alarm-modal__facts dt {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+
+.perf-alarm-modal__facts dd {
+  margin: 0.15rem 0 0;
+  font-weight: 600;
+}
+
+.perf-alarm-modal__events {
+  font-size: 0.85rem;
+}
+
+.perf-config__current {
+  margin-bottom: 1rem;
+}
+
 /* Densidad de pantalla: TVs / muros. En --hmi-ui-scale: 1 el layout actual no cambia. */
 :root,
 [data-bs-theme="light"],

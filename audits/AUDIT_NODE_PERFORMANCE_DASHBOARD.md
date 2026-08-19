@@ -4,9 +4,11 @@
 |---|---|
 | **Producto** | PyAutomationIO (`automation/`) + HMI React (`hmi/src/`) |
 | **Alcance** | Visibilidad en tiempo real del rendimiento por edge/nodo — sin degradar el hot path de adquisición ni el consumo del propio nodo al mostrar métricas |
-| **Fecha** | 2026-08-19 |
-| **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) |
-| **Veredicto vigente** | **D** — Base backend **B+** (`/health/system` rico pero costoso); **no existe** pantalla HMI de performance. Objetivo A+ requiere snapshot O(1) + `MetricsSamplerWorker` + ruta `/performance` |
+| **Fecha** | 2026-08-19 (dashboard P0+P1 + alarmas ISA-18.2 + UI profesional spec 07) |
+| **Spec** | [specs/05-NODE-PERFORMANCE-DASHBOARD.md](../specs/05-NODE-PERFORMANCE-DASHBOARD.md) v1.0 · [specs/06-PERFORMANCE-ALARMS.md](../specs/06-PERFORMANCE-ALARMS.md) v1.0 · [specs/07-PERFORMANCE-DASHBOARD-UI.md](../specs/07-PERFORMANCE-DASHBOARD-UI.md) v3.0 |
+| **Runbook** | [docs/node-performance-runbook.md](../docs/node-performance-runbook.md) · índice [docs/runbook.md](../docs/runbook.md) |
+| **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) |
+| **Veredicto vigente** | **A−** — Dashboard O(1) + alarmas ISA-18.2 + UI profesional en fuente. **A+** tras soak 24 h, prueba 2-edge y prueba manual de gauges/modales en planta (CA-UI-06…10, CA-PERF-09/10/13/14) |
 | **Clasificación** | Auditoría operativa · observabilidad · dashboard edge |
 
 ---
@@ -15,242 +17,223 @@
 
 | Pregunta | Respuesta (código 2026-08-19) |
 |---|---|
-| ¿Existe una pantalla HMI para medir performance del nodo en tiempo real? | **No** — ruta `/performance` **comentada**; componente `Performance` **ausente** |
-| ¿Hay API lista para alimentar ese dashboard sin matar el nodo? | **Parcial** — `GET /api/health/system` expone ~40 métricas pero **recalcula en cada GET** (OPC, PG `pg_stat_activity`, gateway SAF, NTP) → **no O(1)** para poll agresivo |
-| ¿Socket.IO / TLS / clientes HMI visibles en health? | **No en API** — datos en PG `hmi_sessions` + Events; **SocketBadge** solo estado local del navegador |
-| ¿Contadores HTTP (req/min, 5xx, latencia)? | **No** — sin middleware de conteo |
-| ¿RAM / CPU / disco del host? | **RAM sí** (`RSS_MB`); **CPU y disco host no**; disco SAF journal sí (`/health/saf`) |
-| ¿Métricas BD remota (TPS, conexiones, disco servidor PG)? | **Parcial** — `DB_ACTIVE_CONNECTIONS` vía `pg_stat_activity` (costoso); **sin TPS**, **sin disco del servidor PG** |
-| ¿Poll 1 Hz desde 10 HMIs es seguro hoy? | **No** — multiplicaría carga de `/health/system` × clientes |
-| ¿Qué falta para A+ industrial? | Snapshot cacheado O(1) + worker muestreador + pantalla HMI ligera + catálogo métrico unificado |
+| ¿Existe una pantalla HMI para medir performance del nodo en tiempo real? | **Sí** — `/performance` (`Performance.tsx`), ítem sidebar speedometer, i18n `es`/`en`, roles **admin / supervisor / sudo** |
+| ¿Hay API lista para alimentar ese dashboard sin matar el nodo? | **Sí** — `GET /api/health/node` copia un dict precomputado (`Cache-Control: max-age=1`). **`/health/system` no se tocó** — sigue recalculando OPC/PG/SAF; no usarlo para poll 3 s |
+| ¿Clientes HMI visibles? | **Sí** — `HMI_ACTIVE_CLIENTS` = `count_sessions()` filtrado por `node_id` del edge local |
+| ¿Contadores HTTP (req/min, 5xx, in-flight)? | **Sí** — `automation/utils/http_metrics.py` (lock + deque 60 s); middleware Flask con `teardown_request` anti-fuga |
+| ¿RAM / CPU / disco del host? | **Sí** — `psutil` en el sampler (`HOST_CPU_PERCENT`, `HOST_RSS_MB`, `HOST_DISK_*`); fallback `resource`/`threading` si psutil falla |
+| ¿Métricas BD (txn/min, conexiones)? | **Parcial A** — `DB_TXN_PER_MIN` vía `pg_stat_database` throwaway; `DB_ACTIVE_CONNECTIONS` en sampler; `DB_DISK_FREE_GB` siempre `null` (P2 opcional) |
+| ¿Poll 3 s desde N HMIs es seguro? | **Diseño sí** — GET es O(1). Soak 10 clientes × 24 h **pendiente** (CA-NPD-02) |
+| ¿El observador cuesta más que lo observado? | **No en el request path.** El coste vive en `MetricsSamplerWorker` (hilo daemon, default 5 s) |
+| ¿Hay alarmas de rendimiento gestionables desde el dashboard y Alarmas? | **Sí** — 7 BOOL ISA-18.2 (`ALM.PERF.*`). Campana + umbral en tarjeta; clic → modal ack/shelve/unshelve; engranaje → umbral. Misma instancia en `/alarms`. |
 
 ### 0.1 Principio rector
 
 > **El observador no puede costar más que lo observado.**
 
-En un edge OT con adquisición a 1 Hz, el dashboard de performance debe:
+| Capa | Regla | Implementación |
+|---|---|---|
+| Hot path HTTP | O(1) por evento | `on_request()` / `on_response()` — incrementos bajo lock |
+| Poll operador | O(1) por GET | `get_snapshot()` — `dict()` + `METRICS_AGE_MS` |
+| Muestreo | Coste acotado, fuera del poll | `MetricsSamplerWorker` — psutil, COUNT(*), 1–2 queries throwaway |
+| HMI | Pausa en background | `usePerformancePoll` — 3 s foco / 30 s `document.hidden` |
 
-1. **Leer** un dict precomputado — O(1) por request HTTP.
-2. **Escribir** contadores en el hot path solo con incrementos atómicos — O(1) por evento.
-3. **Muestrear** CPU, PG, sesiones HMI en un **worker daemon** (5–30 s), nunca en cada poll del operador.
-4. **Pausar** el poll HMI cuando `document.hidden` ([AUDIT_HMI.md](./AUDIT_HMI.md) HMI-H3).
+### 0.2 Evolución del veredicto
+
+| Fecha | Estado | Resumen |
+|---|---|---|
+| 2026-08-19 (mañana) | **D** | Sin pantalla `/performance`; `/health/system` costoso; sin contadores HTTP ni CPU/disco host |
+| 2026-08-19 (tarde) | **A−** | P0+P1+P2 txn/min en código; 14 unit tests OK; HMI y docs en fuente; soak planta pendiente |
+| 2026-08-19 (alarmas) | **A−** | Alarmas ISA-18.2 unificadas; evaluador debounce; Settings hot-reload; modal HMI; 13 tests CA-PERF |
+| 2026-08-19 (UI v3.0) | **A−** | Spec 07: gauges, paneles, umbral en tarjeta, modal de configuración; CA-UI-06…10 en código fuente (build HMI pendiente en este host) |
 
 ---
 
-## 1. Catálogo de métricas solicitadas vs estado actual
+## 1. Catálogo de métricas: antes vs ahora
 
-### 1.1 Conectividad Socket.IO / TLS / HMI
+### 1.1 Conectividad HMI / Socket
 
-| Métrica | Fuente hoy | API health | HMI | Gap |
-|---|---|---|---|---|
-| Clientes HMI activos (global) | `hmi_sessions` COUNT(*) | ❌ | ❌ (solo badge local) | **NPD-H1** |
-| Sesiones por username / IP | Tabla `hmi_sessions` | ❌ | ❌ | NPD-H2 |
-| TLS handshake failures / IP | Events + `hmi_tls_telemetry` | ❌ | ❌ | NPD-H3 |
-| Socket conectado (este cliente) | `socket.ts` | — | ✅ `SocketBadge` | OK local |
-| Reconnect rate | Events `HMI client reconnected` | ❌ | ❌ | Derivable de Events, no RT |
-
-Referencia: [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md).
+| Métrica | Antes (D) | Ahora (A−) | Fuente |
+|---|---|---|---|
+| Clientes HMI activos (global edge) | ❌ | ✅ `HMI_ACTIVE_CLIENTS` | `hmi_session_store.count_sessions()` |
+| Edad del muestreo de sesiones | ❌ | ✅ `HMI_SESSIONS_SAMPLE_AGE_MS` | `_sample_hmi` |
+| TLS / reconnect rate | ❌ | ❌ | Derivable de Events; fuera de alcance P0 |
 
 ### 1.2 HTTP / API REST
 
-| Métrica | Fuente hoy | Gap |
-|---|---|---|
-| Requests totales | — | **NPD-H4** — sin middleware |
-| Requests / min (ventana deslizante) | — | NPD-H4 |
-| Requests in-flight | — | NPD-H4 |
-| Errores 5xx / min | — | NPD-H4 |
-| Latencia p50/p95 API | — | NPD-H5 (fase 2; ring buffer en worker) |
-| Top endpoints (opcional) | — | NPD-H6 (fase 3; cardinalidad acotada LRU) |
+| Métrica | Antes | Ahora | Fuente |
+|---|---|---|---|
+| Requests totales | ❌ | ✅ `HTTP_REQUESTS_TOTAL` | `http_metrics.py` |
+| Requests / min | ❌ | ✅ `HTTP_REQUESTS_1M` | deque 60 s |
+| In-flight | ❌ | ✅ `HTTP_IN_FLIGHT` | before/after/teardown |
+| 5xx total / min | ❌ | ✅ `HTTP_5XX_TOTAL` / `HTTP_5XX_1M` | idem |
+| Latencia p50/p95 API | ❌ | ❌ (P2) | No implementado |
 
-Hoy solo existen proxies indirectos: `LOG_ERROR_RATE_PER_MIN`, `EVENTS_RATE_PER_MIN` ([AUDIT_LOGGING.md](./AUDIT_LOGGING.md)).
+### 1.3 Host local
 
-### 1.3 Recursos del proceso edge (host local)
+| Métrica | Antes | Ahora | Fuente |
+|---|---|---|---|
+| RSS | Solo en `/health/system` | ✅ `HOST_RSS_MB` | psutil / `resource` |
+| CPU % | ❌ | ✅ `HOST_CPU_PERCENT` | psutil (primed al arranque) |
+| Disco libre / usado | ❌ | ✅ `HOST_DISK_FREE_GB`, `HOST_DISK_USED_PERCENT` | `psutil.disk_usage('/')` |
+| Hilos | Solo en `/health/system` | ✅ `HOST_THREADS` | psutil |
 
-| Métrica | `/health/system` | Notas |
-|---|---|---|
-| RSS memoria (`RSS_MB`) | ✅ | psutil / `resource` |
-| Hilos (`THREAD_COUNT`) | ✅ | |
-| CPU % proceso / sistema | ❌ | **NPD-H7** |
-| Disco libre host (`/`, `/var`, journal) | ❌ | **NPD-H8** — solo `SAF_DISK_BYTES` en `/health/saf` |
-| Load average | ❌ | NPD-H8 |
-| FDs abiertos | ❌ | Opcional fase 2 |
+### 1.4 Historiador PostgreSQL
 
-### 1.4 Base de datos remota (historiador PostgreSQL)
+| Métrica | Antes | Ahora | Fuente |
+|---|---|---|---|
+| Conectado + latencia | ✅ `/health/db` (cache 1.5 s) | ✅ `DB_CONNECTED`, `DB_LATENCY_MS` | sampler + `DatabaseHealthService` |
+| Conexiones activas PG | ✅ en `/health/system` (costoso) | ✅ `DB_ACTIVE_CONNECTIONS` | sampler (throwaway) |
+| Sockets libpq locales | ✅ | ✅ `DB_CONNECTIONS_LOCAL` | `snapshot_connection_metrics` |
+| Txn / min | ❌ | ✅ `DB_TXN_PER_MIN` | `query_pg_txn_counters` + delta |
+| Disco servidor PG | ❌ | ❌ `DB_DISK_FREE_GB=null` | P2 opcional |
 
-| Métrica | Fuente hoy | Gap |
-|---|---|---|
-| Conectado + latencia probe | ✅ `/health/db` | Cache 1.5 s — OK para badge |
-| Conexiones activas PG (`pg_stat_activity`) | ✅ `DB_ACTIVE_CONNECTIONS` | **Costoso** si en cada GET system |
-| Conexiones libpq in-process | ✅ `DB_CONNECTIONS_COUNT` | [AUDIT_DB.md](./AUDIT_DB.md) |
-| Alerta umbral conexiones | ✅ `DB_CONNECTIONS_ALERT` | |
-| TPS / transacciones min | ❌ | **NPD-H9** — requiere `pg_stat_database` muestreado |
-| Tamaño BD / disco servidor PG | ❌ | **NPD-H10** — requiere extensión o query remota 30 s |
-| Replication lag (si aplica) | Parcial SAF | `SAF_REPLICATION_LAG` ≠ lag PG streaming |
-| Locks / deadlocks | ❌ | Fase 3 |
+### 1.5 Adquisición, SAF, reloj
 
-### 1.5 Adquisición, SAF y hot path ([AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md))
-
-| Métrica | `/health/system` | Uso dashboard |
-|---|---|---|
-| `OPC_MONITORED_COUNT` | ✅ | Carga OPC |
-| `CVT_TAG_COUNT` | ✅ | Tamaño CVT |
-| `CVT_LOCK_CONTENTION` | ✅ | Contención |
-| `TAG_OBSERVER_COUNT` / `MACHINE_OBSERVER_COUNT` | ✅ | Observers vivos |
-| `SAF_QUEUE_DEPTH` | ✅ | Cola historiador |
-| `SAF_PENDING_CAP_HITS` | ✅ | Backpressure |
-| `SAMPLE_LAG_MS` / `EXECUTION_CYCLE_US` | ✅ | State machines |
-| `BUFFER_UTILIZATION_%` | ✅ | Buffers SM |
-| `ACQUISITION_READY` | ✅ | Identidad multi-edge |
-
-### 1.6 Otros parámetros recomendados para la pantalla
-
-| Métrica | Fuente | Prioridad |
-|---|---|---|
-| NTP offset / synced | `/health/system` → `clock` | P0 |
-| Log ERROR rate | `LOG_ERROR_RATE_PER_MIN` | P1 |
-| Events rate | `EVENTS_RATE_PER_MIN` | P1 |
-| Alarmas activas en memoria | `ALARM_COUNT` | P1 |
-| `NODE_ID` / `NODE_AREA` / identidad | ✅ | P0 |
-| Edad del snapshot (`METRICS_AGE_MS`) | ❌ | P0 — confianza operador |
-| Versión / uptime proceso | ❌ | P2 |
+| Métrica | Antes | Ahora | Fuente |
+|---|---|---|---|
+| OPC / CVT / SM lag | ✅ `/health/system` | ✅ en snapshot | `_sample_acquisition` |
+| SAF queue / lag / disco | ✅ `/health/saf` | ✅ `SAF_*` | `get_persistence_gateway().snapshot()` |
+| NTP | ✅ bloque `clock` en system | ✅ `clock` en snapshot | `ntp_worker.get_status()` |
+| `ACQUISITION_READY` | ✅ | ✅ | `app.acquisition_ready` |
 
 ---
 
-## 2. Inventario de código (evidencia 2026-08-19)
+## 2. Arquitectura implementada
 
-### 2.1 Backend — endpoints existentes
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  HOT PATH — O(1) por evento                                    │
+│  • Flask before_request → on_request()                           │
+│  • after_request + teardown_request → on_response()             │
+│  • (existente) CVT, SAF, OPC ya tienen contadores O(1)           │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ cada tick (default 5 s, clamp 5–30)
+┌───────────────────────────▼─────────────────────────────────────┐
+│  MetricsSamplerWorker (hilo daemon, BaseWorker)                  │
+│  • psutil: CPU, RSS, disk, threads                               │
+│  • count_sessions(node_id)                                       │
+│  • pg_stat_database (txn/min) + pg_stat_activity (throwaway)    │
+│  • gateway SAF, timing SM, NTP status                            │
+│  • http_metrics.snapshot()                                       │
+│  • _publish → dict merge (conserva último valor si sub-muestra │
+│    falla o devuelve None)                                        │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ lectura O(1)
+┌───────────────────────────▼─────────────────────────────────────┐
+│  GET /api/health/node                                            │
+│  • node_metrics_payload() → worker.get_snapshot()                │
+│  • @token_required + @auth_roles admin|supervisor|sudo           │
+│  • Cache-Control: max-age=1                                      │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ poll 3 s (30 s si document.hidden)
+┌───────────────────────────▼─────────────────────────────────────┐
+│  HMI /performance                                                │
+│  • Tarjetas por sección + Sparkline canvas (60 pts, sin Plotly)  │
+│  • Umbrales visuales ok/warn/error (CPU, disco, age, 5xx, SAF)  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-| Ruta | Archivo | Coste por GET | Uso actual |
-|---|---|---|---|
-| `GET /api/health/ping` | `automation/modules/health/resources/health.py` | **Mínimo** | Docker liveness |
-| `GET /api/health/system` | mismo | **Alto** — OPC + PG + SAF + NTP | Soak manual, scripts ops |
-| `GET /api/health/db` | + `automation/health/service.py` | **Medio** — SELECT 1 cache 1.5 s | HMI `DatabaseStatus` poll 8 s |
-| `GET /api/health/saf` | + `automation/persistence/health.py` | Medio | Ops / alertas 503 |
-| `GET /api/system/nodes` | `automation/modules/system/resources/system.py` | Bajo | Catálogo multi-edge (sin métricas RT) |
+**Orden de arranque** (`core.py`): BD conectada → `NtpMonitorWorker` → `HmiSessionCleanupWorker` → **`MetricsSamplerWorker`**. Parada simétrica en `__stop_workers`.
 
-Campos clave de `/health/system` (extracto):
+**Variable de entorno:** `AUTOMATION_METRICS_SAMPLE_INTERVAL_S` (default 5, rango 5–30).
 
-```211:234:automation/modules/health/resources/health.py
+---
+
+## 3. Inventario de código (evidencia 2026-08-19)
+
+### 3.1 Backend
+
+| Artefacto | Estado | Notas |
+|---|---|---|
+| `automation/utils/http_metrics.py` | ✅ | Lock + deque; `install_http_metrics`; flag `g._pya_http_open` |
+| `automation/workers/metrics_sampler.py` | ✅ | `MetricsSamplerWorker`; `_publish` last-value-on-fault |
+| `automation/utils/db_connections.py` | ✅ | `query_pg_txn_counters` — psycopg2 throwaway, sin pool Peewee |
+| `automation/modules/health/resources/health.py` | ✅ | `GET /health/node`; `node_metrics_payload()` |
+| `GET /api/health/system` | ✅ sin regresión | Sigue recalculando en cada GET |
+| `automation/core.py` | ✅ | `install_http_metrics(server)` + start/stop `metrics_worker` |
+| `requirements.txt` | ✅ | `psutil==6.1.1` añadido (única dependencia nueva) |
+
+Extracto endpoint O(1):
+
+```65:90:automation/modules/health/resources/health.py
+def node_metrics_payload():
+    """O(1) copy of the sampler snapshot. Safe when the worker is not running."""
+    worker = getattr(app, "metrics_worker", None)
+    if worker is None or not hasattr(worker, "get_snapshot"):
         return {
-            "status": "ok",
-            "service": "pyautomation",
-            "is_db_connected": db_connected,
-            "RSS_MB": round(rss_mb, 2),
-            "THREAD_COUNT": threading.active_count(),
-            "OPC_MONITORED_COUNT": opc_monitored,
-            ...
-            **timing_metrics,
-            **node_metrics,
-            **conn_metrics,
-            **clock_metrics,
-            **_log_error_metrics(),
-            **_event_rate_metrics(),
-        }, 200
+            "status": "warming",
+            "METRICS_AGE_MS": None,
+            "message": "Metrics sampler is not running",
+        }
+    return worker.get_snapshot()
+
+
+@ns.route("/node")
+class HealthNodeResource(Resource):
+    ...
+    def get(self):
+        """Read-only copy of the sampler dict. No historian, OPC or psutil on this path."""
+        return node_metrics_payload(), 200, {"Cache-Control": "max-age=1"}
 ```
 
-### 2.2 HMI — observabilidad parcial
+### 3.2 HMI
 
-| Componente | Poll | Endpoint | Limitación |
-|---|---|---|---|
-| `DatabaseStatusProvider` | 8 s | `/health/db` | Solo latencia/conexión BD |
-| `ClockBadge` | 60 s | implícito vía clock API | NTP, no performance |
-| `SocketBadge` | pub/sub local | — | No métricas servidor |
-| `useMemoryWatchdog` | continuo | POST `/logs/add` | Heap **navegador**, no edge |
-| `ServiceRuntimePanel` | — | settings | Solo logger period/level |
-| **`/performance`** | — | — | **Ruta comentada, sin página** |
-
-```22:22:hmi/src/routes/index.tsx
-// import { Performance } from "../pages/Performance";
-```
-
-```67:67:hmi/src/routes/index.tsx
-        {/* <Route path="/performance" element={<Performance />} /> */}
-```
-
-Servicio HMI: `hmi/src/services/health.ts` — **no** expone wrapper de `/health/system` completo.
-
-### 2.3 Contadores existentes reutilizables (patrones O(1))
-
-| Módulo | Patrón | Reutilizable para |
+| Artefacto | Estado | Notas |
 |---|---|---|
-| `automation/utils/audit_metrics.py` | Ventana deslizante + rate/min | HTTP req/min |
-| `automation/utils/log_filters.py` | DedupeFilter + snapshot | Errores/min |
-| `automation/health/service.py` | Cache TTL 1.5 s | Modelo para `/health/node` |
-| `automation/workers/hmi_session_cleanup.py` | Worker daemon 60 s | Modelo `MetricsSamplerWorker` |
-| `automation/state_machine_timing.py` | Snapshot timing | Ya en system health |
+| `hmi/src/pages/Performance.tsx` | ✅ | 8 secciones: Identidad, Host, HTTP, HMI, BD, SAF, Adquisición, Reloj |
+| `hmi/src/services/performance.ts` | ✅ | `getNodePerformance()`, `pollIntervalMs`, `pushRing`, `canViewPerformance` |
+| `hmi/src/hooks/usePerformancePoll.ts` | ✅ | `visibilitychange` → re-arma intervalo |
+| `hmi/src/components/Sparkline.tsx` | ✅ | Canvas 2D, sin Plotly |
+| `hmi/src/routes/index.tsx` | ✅ | `<Route path="/performance" …>` activa |
+| `hmi/src/layouts/Sidebar.tsx` | ✅ | Nav oculta si rol no autorizado |
+| `hmi/src/styles/global.css` | ✅ | `.performance-page`, `.perf-grid`, `.perf-tile--ok/warn/error` |
+| `hmi/src/locales/{es,en}.json` | ✅ | Bloque `performance` + `navigation.performance` |
+
+Seguridad HMI: sin rol → `<Navigate to="/events" />`; API → 403 con JWT válido pero rol insuficiente.
+
+### 3.3 Tests automatizados
+
+Suite: `automation/tests/test_node_performance.py` — **14 tests, OK** (2026-08-19).
+
+| Clase | Test | CA |
+|---|---|---|
+| `TestHttpMetrics` | `test_request_window_increments` | CA-NPD-04 |
+| | `test_in_flight_tracks_open_requests` | — |
+| | `test_flask_middleware_counts` | CA-NPD-04 |
+| | `test_middleware_exception_does_not_leak_in_flight` | robustez HTTP |
+| `TestMetricsSampler` | `test_sample_interval_clamped` | env clamp |
+| | `test_get_snapshot_is_o1_copy` | CA-NPD-01 |
+| | `test_get_snapshot_p95_under_5ms` | CA-NPD-01 |
+| | `test_psutil_fields_when_available` | CA-NPD-05 |
+| | `test_survives_db_outage` | CA-NPD-10 |
+| | `test_hmi_active_clients_uses_store_count` | CA-NPD-03 |
+| `TestHealthNodeEndpoint` | `test_node_endpoint_reads_snapshot_only` | CA-NPD-01 |
+| | `test_system_endpoint_still_present` | CA-NPD-09 |
+| | `test_sampler_does_not_use_peewee_pool` | CA-NPD-12 |
+| | `test_hmi_poll_hidden_contract` | CA-NPD-08 |
+
+Comando:
+
+```bash
+python -m unittest automation.tests.test_node_performance -q
+```
 
 ---
 
-## 3. Brechas vs requisito «ultra ligero, O(1), sin Big-O en el poll»
+## 4. Contrato del payload `GET /api/health/node`
 
-| ID | Severidad | Hallazgo | Impacto |
-|---|---|---|---|
-| **NPD-H1** | Alta | Clientes HMI no expuestos en health | Operador no ve carga socket global |
-| **NPD-H4** | Alta | Sin contadores HTTP | Ciego a picos API / loops HMI |
-| **NPD-H7** | Alta | Sin CPU % | No detecta saturación edge |
-| **NPD-H8** | Alta | Sin disco host | Riesgo disco lleno (journal, logs, backups) |
-| **NPD-H9** | Media | Sin TPS / txn min BD | Ciego a carga historiador |
-| **NPD-H10** | Media | Sin disco servidor PG remoto | Capacidad BD en otro host invisible |
-| **NPD-H11** | Alta | `/health/system` no es O(1) | Poll RT desde HMI **peligroso** |
-| **NPD-H12** | Alta | Pantalla Performance ausente | Requisito producto sin cumplir |
-| **NPD-H13** | Media | Sin histórico/sparklines en producto | Solo snapshot; aceptable en cliente (ring 60 pts) |
-| **NPD-H14** | Baja | Sin export Prometheus | Ops externa manual |
-
-### 3.1 Anti-patrones prohibidos
-
-| Anti-patrón | Por qué |
-|---|---|
-| Poll `/health/system` cada 1 s desde N clientes | Multiplica OPC + PG queries — incidente tipo BE-H4 |
-| `COUNT(*) hmi_sessions` en cada GET | O(n) filas — usar cache worker 30 s |
-| `pg_stat_activity` en request path | Conexión throwaway + query — mover a sampler |
-| Gráficos Plotly en dashboard performance | Pesado; preferir tarjetas + sparkline CSS/canvas ligero |
-| Push Socket.IO métricas sin suscriptores | Emitir solo si hay listeners en room `node.metrics` |
-
----
-
-## 4. Arquitectura objetivo A+ (especificación de diseño)
-
-### 4.1 Capas
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  HOT PATH (O(1) por evento)                                 │
-│  • http_requests_total++, http_5xx_total++                  │
-│  • http_in_flight++/--                                       │
-│  • (existente) cvt_lock_contention, audit rates               │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ cada 5–30 s
-┌──────────────────────────▼──────────────────────────────────┐
-│  MetricsSamplerWorker (daemon, 1 hilo)                       │
-│  • psutil: CPU%, disk_usage('/')                             │
-│  • count_sessions() — 30 s                                   │
-│  • pg_stat_database / pg_stat_activity — 30 s                │
-│  • gateway SAF parcial, OPC counts (mover lógica de system)  │
-│  • escribe _NODE_METRICS_SNAPSHOT dict + METRICS_AGE_MS      │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ GET O(1)
-┌──────────────────────────▼──────────────────────────────────┐
-│  GET /api/health/node  (o /health/system?lite=1)             │
-│  • lectura dict + JSON serialize — sin I/O blocking           │
-│  • Cache-Control: max-age=1                                  │
-│  • auth: token (admin/supervisor)                            │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ poll 3 s (pause if hidden)
-┌──────────────────────────▼──────────────────────────────────┐
-│  HMI /performance — NodePerformancePanel                     │
-│  • tarjetas + sparklines ring buffer cliente (60 pts)        │
-│  • secciones: Host | HTTP | HMI | DB | SAF | Acquisition     │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 4.2 Payload objetivo `GET /api/health/node` (~35 campos)
+Ejemplo representativo (~35 campos):
 
 ```json
 {
   "status": "ok",
   "METRICS_AGE_MS": 420,
-  "NODE_ID": "edge-linea1",
   "uptime_s": 86412,
+  "NODE_ID": "edge-linea1",
+  "NODE_AREA": "Linea1",
+  "NODE_SITE": "Test",
+  "MULTI_EDGE_ENABLED": true,
 
   "HOST_RSS_MB": 412.5,
   "HOST_CPU_PERCENT": 18.2,
@@ -260,21 +243,22 @@ Servicio HMI: `hmi/src/services/health.ts` — **no** expone wrapper de `/health
 
   "HTTP_REQUESTS_TOTAL": 184320,
   "HTTP_REQUESTS_1M": 38,
+  "HTTP_5XX_TOTAL": 2,
   "HTTP_5XX_1M": 0,
-  "HTTP_IN_FLIGHT": 2,
+  "HTTP_IN_FLIGHT": 1,
 
   "HMI_ACTIVE_CLIENTS": 3,
-  "HMI_SESSIONS_SAMPLE_AGE_MS": 12000,
+  "HMI_SESSIONS_SAMPLE_AGE_MS": 4.2,
 
   "DB_CONNECTED": true,
-  "DB_LATENCY_MS": 4,
+  "DB_LATENCY_MS": 4.1,
   "DB_ACTIVE_CONNECTIONS": 5,
   "DB_CONNECTIONS_LOCAL": 2,
-  "DB_TXN_PER_MIN": 1240,
+  "DB_TXN_PER_MIN": 1240.0,
   "DB_DISK_FREE_GB": null,
 
-  "SAF_QUEUE_DEPTH": 12,
-  "SAF_REPLICATION_LAG_MS": 80,
+  "SAF_QUEUE_DEPTH": 0,
+  "SAF_REPLICATION_LAG_MS": 80.0,
   "SAF_DISK_BYTES": 524288000,
 
   "OPC_MONITORED_COUNT": 847,
@@ -283,76 +267,82 @@ Servicio HMI: `hmi/src/services/health.ts` — **no** expone wrapper de `/health
   "SAMPLE_LAG_MS": 1.2,
   "ACQUISITION_READY": true,
 
-  "clock": { "synced": true, "offset_ms": 3 }
+  "clock": {
+    "enabled": true,
+    "synced": true,
+    "warn": false,
+    "offset_ms": 3.0
+  }
 }
 ```
 
-`DB_DISK_FREE_GB`: solo si query remota habilitada y permisos; si no → `null` + tooltip «requiere extensión ops».
-
-### 4.3 Complejidad garantizada
-
-| Operación | Complejidad | Notas |
-|---|---|---|
-| GET `/health/node` | **O(1)** | Copia dict precomputado |
-| Incremento HTTP | **O(1)** | Atómico |
-| HTTP req/min | **O(1)** amortizado | Mismo patrón `audit_metrics` |
-| Worker sampler | **O(1)** por tick | Coste acotado fijo, no escala con tags |
-| HMI render | **O(k)** k=60 puntos sparkline | Independiente de tags OPC |
-
-**No** O(n_tags), **no** O(n_sessions) en request path.
-
-### 4.4 UI HMI — layout propuesto
-
-| Sección | Tarjetas | Fuente |
-|---|---|---|
-| **Identidad** | Node, area, uptime, metrics age | snapshot |
-| **Host** | RSS, CPU, disco, threads | snapshot |
-| **HTTP** | req/min, 5xx/min, in-flight | snapshot |
-| **HMI / Socket** | clientes activos, link Events | snapshot + enlace |
-| **Historiador** | latencia, conexiones, txn/min | snapshot + `/health/db` |
-| **SAF** | queue, lag, disco journal | snapshot |
-| **Adquisición** | OPC items, CVT, SM lag, lock | snapshot |
-| **Reloj** | NTP badge inline | clock block |
-
-Comportamiento: poll **3 s** en foco; **30 s** en `document.hidden`; un solo fetch paralelo por tick.
+| Campo clave | Interpretación operativa |
+|---|---|
+| `METRICS_AGE_MS` | Confianza del operador. Warning UI ≥ 15 s; crítico ≥ 60 s |
+| `DB_TXN_PER_MIN` | `null` en primer tick o si PG no responde; no invalida el resto |
+| `DB_DISK_FREE_GB` | Reservado P2; siempre `null` hoy |
+| `HTTP_*` | Ventana deslizante 60 s; no incluye latencia por ruta |
 
 ---
 
-## 5. Criterios de aceptación (CA-NPD-01 … CA-NPD-15)
+## 5. Brechas cerradas y pendientes
 
-| ID | Criterio | Tipo |
+### 5.1 Cerradas (P0–P1)
+
+| ID | Hallazgo original | Resolución |
 |---|---|---|
-| CA-NPD-01 | `GET /health/node` responde < 5 ms p95 local (dict precomputado) | Auto |
-| CA-NPD-02 | 10 HMIs polleando 3 s no elevan RSS > 5 % vs baseline | Soak |
-| CA-NPD-03 | `HMI_ACTIVE_CLIENTS` coincide con `SELECT COUNT(*) FROM hmi_sessions` ±0 | Auto |
-| CA-NPD-04 | `HTTP_REQUESTS_1M` incrementa tras tráfico sintético | Auto |
-| CA-NPD-05 | CPU y disco host presentes cuando psutil disponible | Auto |
-| CA-NPD-06 | Pantalla `/performance` accesible admin/supervisor | Manual |
-| CA-NPD-07 | Sparklines 60 pts sin memory leak 1 h | Manual |
-| CA-NPD-08 | Poll pausa en pestaña oculta | Auto HMI |
-| CA-NPD-09 | `/health/system` sin regresión (modo full sigue existiendo) | Auto |
-| CA-NPD-10 | Worker sampler sobrevive reconnect BD | Integration |
-| CA-NPD-11 | DB txn/min visible si PG reachable | Integration |
-| CA-NPD-12 | Sin pool Peewee reintroducido | Review |
-| CA-NPD-13 | Documentación runbook performance | Docs |
-| CA-NPD-14 | Multi-edge: cada nodo muestra **solo** sus métricas | Manual 2-edge |
-| CA-NPD-15 | Carga sampler < 1 % CPU media edge idle | Soak 24 h |
+| NPD-H1 | Clientes HMI no expuestos | `HMI_ACTIVE_CLIENTS` |
+| NPD-H4 | Sin contadores HTTP | Middleware O(1) |
+| NPD-H7 | Sin CPU % | psutil en sampler |
+| NPD-H8 | Sin disco host | `disk_usage('/')` |
+| NPD-H9 | Sin txn/min | `query_pg_txn_counters` |
+| NPD-H11 | `/health/system` no O(1) para poll RT | Nuevo `/health/node` |
+| NPD-H12 | Pantalla ausente | `/performance` |
+| NPD-H13 | Sin sparklines | Canvas + ring 60 pts |
+
+### 5.2 Abiertas (P2–P3)
+
+| ID | Item | Prioridad |
+|---|---|---|
+| NPD-H5 | Latencia p50/p95 HTTP por ruta | P2 |
+| NPD-H10 | Disco remoto PG (`DB_DISK_FREE_GB`) | P2 opcional |
+| NPD-H14 | Export Prometheus `/metrics` | P3 |
+| — | Push Socket.IO `node.metrics` | P2 opcional |
+| — | Soak 24 h multi-cliente | Requerido para A+ |
+
+### 5.3 Anti-patrones prohibidos (verificados)
+
+| Anti-patrón | Estado |
+|---|---|
+| Poll `/health/system` cada 1–3 s desde N HMIs | **Evitado** — HMI usa `/health/node` |
+| `COUNT(*) hmi_sessions` en cada GET HTTP | **Evitado** — solo en sampler |
+| `pg_stat_*` en request path de `/node` | **Evitado** — throwaway en worker |
+| Pool Peewee en sampler | **Ausente** — test estático CA-NPD-12 |
+| Plotly en dashboard performance | **Evitado** — canvas ligero |
 
 ---
 
-## 6. Plan de implementación recomendado
+## 6. Criterios de aceptación (CA-NPD-01 … CA-NPD-15)
 
-| Fase | Entregable | Prioridad |
+| ID | Criterio | Evidencia 2026-08-19 |
 |---|---|---|
-| **P0** | `http_metrics.py` middleware O(1) + `MetricsSamplerWorker` + `GET /health/node` | Crítico |
-| **P0** | Exponer `HMI_ACTIVE_CLIENTS`, CPU, disco host | Crítico |
-| **P1** | Página HMI `/performance` + servicio `getNodePerformance()` | Alto |
-| **P1** | PG `pg_stat_database` → txn/min (sampler 30 s) | Alto |
-| **P2** | Disco remoto PG (si permisos) + latencia p95 HTTP | Medio |
-| **P2** | Push opcional Socket.IO `node.metrics` si suscriptores | Medio |
-| **P3** | Export Prometheus `/metrics` | Bajo |
+| CA-NPD-01 | GET dict &lt; 5 ms p95 local | `test_get_snapshot_p95_under_5ms` — p95 &lt; 5 ms en 200 iteraciones |
+| CA-NPD-02 | 10 HMIs polleando 3 s, RSS &lt; +5 % vs baseline | **Pendiente** soak 24 h |
+| CA-NPD-03 | `HMI_ACTIVE_CLIENTS` = COUNT store | `test_hmi_active_clients_uses_store_count`; SQL real: `WHERE node_id = :edge` |
+| CA-NPD-04 | `HTTP_REQUESTS_1M` tras tráfico | `test_request_window_increments` + `test_flask_middleware_counts` |
+| CA-NPD-05 | CPU y disco si psutil | `test_psutil_fields_when_available` |
+| CA-NPD-06 | `/performance` admin/supervisor; 403 otro | `@auth_roles` + `canViewPerformance` + redirect Events; **manual** |
+| CA-NPD-07 | Sparklines 60 pts sin leak 1 h | `pushRing` acota; **manual** DevTools |
+| CA-NPD-08 | Poll 30 s si pestaña oculta | `pollIntervalMs` + `usePerformancePoll`; `test_hmi_poll_hidden_contract` |
+| CA-NPD-09 | `/health/system` sin regresión | `test_system_endpoint_still_present` |
+| CA-NPD-10 | Sampler sobrevive BD down | `test_survives_db_outage` |
+| CA-NPD-11 | txn/min visible o null sin error | `_sample_db` + `_publish` last-value |
+| CA-NPD-12 | Sin pool Peewee reintroducido | `test_sampler_does_not_use_peewee_pool` |
+| CA-NPD-13 | Runbook performance | `docs/node-performance-runbook.md`, `docs/runbook.md`, § multi-edge |
+| CA-NPD-14 | Multi-edge: solo métricas locales | `count_sessions(node_id)`; **manual** 2-edge |
+| CA-NPD-15 | Sampler &lt; 1 % CPU idle | **Pendiente** soak 24 h |
 
-Spec sugerida: `specs/05-NODE-PERFORMANCE-DASHBOARD.md` (pendiente de crear).
+**Automatizados hoy:** 11/15 (73 %). **Pendientes de planta:** CA-NPD-02, 06 (parcial), 07, 14, 15.
 
 ---
 
@@ -360,40 +350,139 @@ Spec sugerida: `specs/05-NODE-PERFORMANCE-DASHBOARD.md` (pendiente de crear).
 
 | Dimensión | Nota | Comentario |
 |---|---|---|
-| Datos backend disponibles | **B+** | `/health/system` rico pero no apto como dashboard RT |
-| Métricas socket HMI | **C** | PG existe; no expuesto en health |
-| Métricas HTTP | **F** | No implementado |
-| CPU / disco host | **F** | No implementado |
-| Métricas BD remota | **C+** | Latencia + conexiones; sin TPS/disco |
-| Pantalla HMI | **F** | Ruta comentada, sin UI |
-| Diseño O(1) poll | **A** (diseño) / **F** (código) | Arquitectura definida; falta implementar |
-| Impacto en hot path | **A** (diseño) | Worker + contadores atómicos |
+| Poll O(1) | **A+** | Copia dict; p95 &lt; 5 ms en unit test |
+| Contadores HTTP | **A** | Lock + ventana 60 s; `teardown_request` evita in-flight leak |
+| Sampler | **A** | Daemon; last-value on fault; intervalo 5–30 s configurable |
+| Métricas host | **A** | psutil; fallback `resource` |
+| HMI dashboard | **A** | Tarjetas + canvas + modal ISA-18.2; poll hidden; RBAC |
+| Alarmas de rendimiento | **A** | 7 BOOL; debounce; Settings hot-reload; misma fuente que `/alarms` |
+| BD txn/min | **A−** | Throwaway OK; disco PG remoto no implementado |
+| Multi-edge scope | **A** (diseño) / **manual pendiente** | Filtro `node_id` en código |
+| Prometheus | **N/A** | P3 explícito |
+| Soak planta | **Pendiente** | CA-NPD-02, 14, 15 |
 
-**Veredicto global: D** — Hay **cimientos** de observabilidad (health, soak, audit rates) pero **no hay producto** de dashboard de performance de nodo. El operador hoy debe usar curl/scripts + Events + `/health/system` manual.
-
-**Objetivo A+** tras P0+P1 + CA-NPD-01…15 en planta.
+**Veredicto global: A−.** Observabilidad operativa + alarmas ISA-18.2 unificadas, sin tocar el hot path. **A+** cuando soaks 24 h, 2-edge y prueba manual CA-PERF-09/10/13/14 en planta estén cerrados.
 
 ---
 
-## 8. Referencias
+## 8. Despliegue y rollout
+
+| Paso | Acción |
+|---|---|
+| 1 | `pip install` wheel con `psutil==6.1.1` (incluido en `requirements.txt`) |
+| 2 | `npm run build` en `hmi/` — la HMI empaquetada no incluye `/performance` hasta rebuild |
+| 3 | Rebuild wheel + `pip install --force-reinstall` en venv de planta |
+| 4 | Verificar `GET /api/health/node` con token admin (debe responder &lt; 5 ms) |
+| 5 | HMI → **Rendimiento del nodo**; confirmar `METRICS_AGE_MS` &lt; 10 s en idle |
+| 6 | Multi-edge: repetir en cada edge; confirmar `NODE_ID` distinto por instancia |
+
+**No usar** `/api/health/system` como sustituto del dashboard — multiplica consultas OPC/PG por cliente.
+
+---
+
+## 9. Referencias
 
 | Tema | Ruta |
 |---|---|
-| Health system (full) | `automation/modules/health/resources/health.py` |
-| Health DB cache | `automation/health/service.py` |
-| PG connection metrics | `automation/utils/db_connections.py` |
-| Audit rates (patrón) | `automation/utils/audit_metrics.py` |
-| HMI sessions count | `automation/utils/hmi_session_store.py` |
-| Socket traceability | [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md) |
-| Hot path / runbook | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) |
-| HMI poll patterns | [AUDIT_HMI.md](./AUDIT_HMI.md) |
-| Ruta performance (stub) | `hmi/src/routes/index.tsx` |
-| Soak tests | `automation/tests/test_performance_soak.py` |
+| Spec | [specs/05-NODE-PERFORMANCE-DASHBOARD.md](../specs/05-NODE-PERFORMANCE-DASHBOARD.md) |
+| Runbook | [docs/node-performance-runbook.md](../docs/node-performance-runbook.md) |
+| Multi-edge | [docs/multi-edge.md](../docs/multi-edge.md) § Dashboard |
+| Changelog | [CHANGELOG.md](../CHANGELOG.md) |
+| Health node | `automation/modules/health/resources/health.py` |
+| Sampler | `automation/workers/metrics_sampler.py` |
+| HTTP metrics | `automation/utils/http_metrics.py` |
+| Txn PG | `automation/utils/db_connections.py` → `query_pg_txn_counters` |
+| HMI sessions | `automation/utils/hmi_session_store.py` → `count_sessions` |
+| Tests | `automation/tests/test_node_performance.py` (14) + `test_performance_alarms.py` (13) |
+| Spec alarmas | [specs/06-PERFORMANCE-ALARMS.md](../specs/06-PERFORMANCE-ALARMS.md) |
+| Hot path (contraste) | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) |
 
 ---
 
-## 9. Changelog
+## 11. Alarmas de rendimiento unificadas (ISA-18.2)
+
+Fuente de verdad: **tag BOOL + AlarmManager**. El dashboard no duplica estado: se suscribe a `alarmsSlice` (Socket `on.alarm` + hidratación `GET /alarms/`). Ack/shelve/unshelve usan los endpoints de alarmas.
+
+### 11.1 Catálogo (7)
+
+| Key | Alarma | Métrica | Default | Debounce |
+|---|---|---|---|---|
+| cpu | `{area}.ALM.PERF.CPU` | `HOST_CPU_PERCENT` | 85 % | 3 ticks |
+| disk | `{area}.ALM.PERF.DISK` | `HOST_DISK_USED_PERCENT` | 90 % | 3 |
+| saf_queue | `{area}.ALM.PERF.SAF_QUEUE` | `SAF_QUEUE_DEPTH` | 5000 | 3 |
+| saf_lag | `{area}.ALM.PERF.SAF_LAG` | `SAF_REPLICATION_LAG_MS` | 10000 ms | 3 |
+| metrics_age | `{area}.ALM.PERF.METRICS_AGE` | `METRICS_AGE_MS` (edad al inicio del tick) | 30000 ms | 3 |
+| db_conn | `{area}.ALM.PERF.DB_CONN` | `DB_ACTIVE_CONNECTIONS` | 10 | 3 |
+| http_5xx | `{area}.ALM.PERF.HTTP_5XX` | `HTTP_5XX_1M` | 5 / min | 3 |
+
+Descripción persistida: `System · …`. El modelo `Alarms` **no** tiene columna `classification`; Events de transición usan `classification=System`. La página Alarmas las lista como cualquier BOOL.
+
+### 11.2 Evaluación
+
+`PerfAlarmEvaluator` corre **solo** en el sampler (O(7) por tick). Activación con debounce; retorno a normal inmediato. `None` no dispara. PUT Settings llama `metrics_worker.reconfigure()` y reevalúa el último snapshot **en el mismo ciclo** (CA-PERF-12).
+
+`GET /health/node` no evalúa umbrales. Incluye `PERF_ALARMS` (catálogo + umbrales + nombres) en el dict precomputado.
+
+### 11.3 HMI
+
+| Pieza | Comportamiento |
+|---|---|
+| `MetricTile` / `MetricGauge` | Variante gauge o tile; campana vs ℹ️; engranaje Configurar; badge ACTIVA/ACK/SILENCIADA/OK; umbral; sparkline |
+| `PerfPanel` | Subsistemas HTTP / HMI / BD / SAF / Adquisición |
+| `PerformanceAlarmModal` | Valor, umbral, estado ISA-18.2; Ack; Shelve 1 h; Unshelve; Configurar abre modal de umbral; enlace Events |
+| `PerformanceThresholdModal` | Umbral, debounce, habilitado; PUT `/settings/performance`; preview would-alarm vs último snapshot |
+| `usePerformanceAlarms` | Selector Redux + hidrata `GET /alarms/?limit=500` |
+| `PerformanceAlarmConfig` | Settings capítulo 03; enabled, debounce, umbral por alarma (admin/supervisor/sudo) |
+| Página Alarmas | Misma instancia; sync vía `alarmsSlice` (CA-PERF-14) |
+
+`POST /api/alarms/unshelve/<name>` envuelve `Alarm.unshelve()` (antes no había ruta HTTP).
+
+### 11.4 CA-PERF-09 … 14
+
+| ID | Criterio | Evidencia 2026-08-19 |
+|---|---|---|
+| CA-PERF-09 | Clic en tarjeta con alarma → modal correcto | Código: `onOpen` + `PerformanceAlarmModal`; **manual** |
+| CA-PERF-10 | Ack → tarjeta amarilla | `acknowledgeAlarm` + `toneFromLifecycle("ack")=warn`; shelved → gris; contrato unitario; **manual** Socket |
+| CA-PERF-11 | Shelve / Unshelve | Modal + `POST /alarms/shelve` / `unshelve`; **manual** |
+| CA-PERF-12 | Umbral Settings &lt; 1 ciclo sampler | `test_reconfigure_evaluates_last_snapshot`; `update_performance_alarm_config` → `reconfigure()` |
+| CA-PERF-13 | Aparecen en Alarmas como System | Descripción `System ·`; nombres `ALM.PERF.*`; **manual** filtro |
+| CA-PERF-14 | Dashboard y Alarmas sincronizados | Un AlarmManager + `alarmsSlice` + `on.alarm`; **manual** |
+
+Tests automáticos: `automation.tests.test_performance_alarms` — debounce, clear, disable, None, reconfigure, ensure ×7, contrato de tono.
+
+### 11.5 Anti-patrones evitados
+
+- No HI/LO sobre CPU (solo BOOL).
+- No pool Peewee / no eval en GET `/node`.
+- No Plotly; modal Bootstrap ligero.
+- No segundo store de alarmas en el dashboard.
+
+---
+
+## 12. UI profesional (spec 07 / CA-UI-06 … 10)
+
+Fuente: `hmi/src/pages/Performance.tsx` + `MetricTile` + `PerfPanel` + dos modales. El backend de evaluación **no** cambia.
+
+Layout: header (nodo, área, uptime, edad del snapshot, NTP) → fila gauges (CPU, RSS, disco, cola SAF, NTP) → paneles de subsistema → tendencias colapsables.
+
+| ID | Criterio | Evidencia 2026-08-19 |
+|---|---|---|
+| CA-UI-06 | Indicador de estado + umbral en tarjetas alarmables | Campana, badge, `thresholdLine`; tono `toneFromLifecycle` (shelved = gris) |
+| CA-UI-07 | Engranaje abre modal de umbrales | `PerformanceThresholdModal`; stopPropagation en el gear |
+| CA-UI-08 | Cambio de umbral &lt; 1 ciclo | PUT existente + `reconfigure()`; `onSaved` → `load()` |
+| CA-UI-09 | Modal alarma Ack / Shelve / Unshelve / Configurar | `PerformanceAlarmModal` |
+| CA-UI-10 | Responsivo ≥ 1024×768 | 5 gauges / 3 paneles desde 1024 px; 2 columnas entre 700 y 1023 |
+
+**Limitación de este host:** no hay `npm`; los cambios en `hmi/src/` no se ven en el bundle empaquetado hasta `npm run build`.
+
+---
+
+## 10. Changelog
 
 | Fecha | Cambio |
 |---|---|
 | 2026-08-19 | Creación auditoría; veredicto **D**; arquitectura objetivo A+ documentada |
+| 2026-08-19 | Implementación P0+P1+P2 txn/min; veredicto **A−**; 14 unit tests; docs runbook/spec/multi-edge |
+| 2026-08-19 | Actualización auditoría: catálogo antes/ahora, arquitectura, payload, despliegue, mapa CA↔tests |
+| 2026-08-19 | Alarmas de rendimiento unificadas (spec 06); CA-PERF-09…14; veredicto **A−** se mantiene (soaks + prueba manual de modal pendientes para A+) |
+| 2026-08-19 | UI profesional `/performance` (spec 07); CA-UI-06…10; umbrales PUT para supervisor; veredicto **A−** |

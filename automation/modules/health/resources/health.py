@@ -1,6 +1,7 @@
 from flask_restx import Namespace, Resource
 from .... import PyAutomation
 from ....extensions.api import api
+from ....extensions import _api as Api
 
 ns = Namespace("Health", description="Service health and readiness checks")
 app = PyAutomation()
@@ -59,6 +60,34 @@ class HealthPingResource(Resource):
             "service": "pyautomation",
             "detail": "HTTP stack and core application are responding"
         }, 200
+
+
+def node_metrics_payload():
+    """O(1) copy of the sampler snapshot. Safe when the worker is not running."""
+    worker = getattr(app, "metrics_worker", None)
+    if worker is None or not hasattr(worker, "get_snapshot"):
+        return {
+            "status": "warming",
+            "METRICS_AGE_MS": None,
+            "message": "Metrics sampler is not running",
+        }
+    return worker.get_snapshot()
+
+
+@ns.route("/node")
+class HealthNodeResource(Resource):
+    @api.doc(
+        security="apikey",
+        description="O(1) node performance snapshot precomputed by MetricsSamplerWorker.",
+    )
+    @api.response(200, "Node performance snapshot")
+    @api.response(401, "Authentication required")
+    @api.response(403, "Role not allowed")
+    @Api.token_required(auth=True)
+    @Api.auth_roles(["admin", "supervisor", "sudo"])
+    def get(self):
+        """Read-only copy of the sampler dict. No historian, OPC or psutil on this path."""
+        return node_metrics_payload(), 200, {"Cache-Control": "max-age=1"}
 
 
 def _system_rss_mb() -> float:

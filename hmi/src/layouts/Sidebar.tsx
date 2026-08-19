@@ -7,6 +7,7 @@ import { useAppSelector } from "../hooks/useAppSelector";
 import { logout as logoutAction } from "../store/slices/authSlice";
 import { closeSidebarOnMobile } from "./sidebarDom";
 import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
+import { canViewPerformance } from "../services/performance";
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -40,6 +41,7 @@ export function Sidebar() {
     // { to: "/scada", icon: "bi bi-diagram-3", labelKey: "navigation.scada" },
     { to: "/events", icon: "bi bi-calendar-event", labelKey: "navigation.events" },
     { to: "/operational-logs", icon: "bi bi-journal-text", labelKey: "navigation.operationalLogs" },
+    { to: "/performance", icon: "bi bi-speedometer2", labelKey: "navigation.performance" },
     { to: "/user-management", icon: "bi bi-people", labelKey: "navigation.userManagement" },
     { to: "/settings", icon: "bi bi-gear", labelKey: "navigation.settings" },
   ];
@@ -321,7 +323,10 @@ export function Sidebar() {
             )}
             
             {/* Otros items del menú */}
-            {(systemOnly ? navItems.filter((item) => item.to === SYSTEM_HOME_PATH) : navItems).map((item) => (
+            {(systemOnly
+              ? navItems.filter((item) => item.to === SYSTEM_HOME_PATH)
+              : navItems.filter((item) => item.to !== "/performance" || canViewPerformance(user?.role))
+            ).map((item) => (
               <li className="nav-item" key={item.to}>
                 <NavLink
                   to={item.to}

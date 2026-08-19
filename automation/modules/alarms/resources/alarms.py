@@ -422,6 +422,32 @@ class ShelveAlarmByNameResource(Resource):
         return {'message': f"Alarm Name {alarm_name} does not exist"}, 400
 
 
+@ns.route('/unshelve/<alarm_name>')
+@api.param('alarm_name', 'The alarm name')
+class UnshelveAlarmByNameResource(Resource):
+
+    @api.doc(security='apikey', description="Unshelves an alarm and re-evaluates the process condition.")
+    @api.response(200, "Alarm unshelved successfully")
+    @api.response(400, "Alarm not found or not shelved")
+    @Api.token_required(auth=True)
+    def post(self, alarm_name: str):
+        """Return a shelved alarm to service. Existing ISA-18.2 unshelve() owns the lifecycle."""
+        violation = _alarm_scope_error(alarm_name=alarm_name)
+        if violation:
+            return violation
+        alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
+        if not alarm:
+            return {'message': f"Alarm Name {alarm_name} does not exist"}, 400
+        if alarm.current_state.name.lower() != "shelved":
+            return {'message': f"{alarm.name} is not shelved"}, 400
+        user = Api.get_current_user()
+        alarm.unshelve(user=user)
+        return {
+            'message': f"{alarm.name} was unshelved successfully",
+            'data': alarm.serialize(),
+        }, 200
+
+
 @ns.route('/return_to_service/<alarm_name>')
 @api.param('alarm_name', 'The alarm name')
 class ReturnToServiceAlarmByNameResource(Resource):

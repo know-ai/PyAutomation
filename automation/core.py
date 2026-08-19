@@ -11,7 +11,7 @@ from .dbmodels.users import Roles, Users
 from .dbmodels.machines import Machines
 # PYAUTOMATION MODULES IMPORTATION
 from .singleton import Singleton
-from .workers import LoggerWorker, NtpMonitorWorker, HmiSessionCleanupWorker
+from .workers import LoggerWorker, NtpMonitorWorker, HmiSessionCleanupWorker, MetricsSamplerWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .opcua.models import Client
 from .tags import CVTEngine, Tag
@@ -358,8 +358,10 @@ class PyAutomation(Singleton):
         print(_colorize_message(f"[{str_date}] [INFO] Defining Socket.IO server with certfile: {certfile} and keyfile: {keyfile}", "INFO"))
         self.server = server
         from .utils.db_connections import install_request_connection_teardown
+        from .utils.http_metrics import install_http_metrics
 
         install_request_connection_teardown(self.server)
+        install_http_metrics(self.server)
         if certfile and keyfile:
 
             self.sio = SocketIO(
@@ -3488,6 +3490,35 @@ class PyAutomation(Singleton):
             worker.reconfigure()
         return self.get_ntp_config()
 
+    @logging_error_handler
+    def get_performance_alarm_config(self) -> dict:
+        from .utils.performance_alarm_config import load_performance_alarm_config, public_config
+
+        return public_config(load_performance_alarm_config(self.get_app_config()))
+
+    @logging_error_handler
+    def update_performance_alarm_config(self, **kwargs) -> dict:
+        from .utils.performance_alarm_config import (
+            _BOOL_KEYS,
+            _DEFAULTS,
+            load_performance_alarm_config,
+            normalize_payload,
+            public_config,
+        )
+
+        incoming = normalize_payload(kwargs)
+        allowed = set(_DEFAULTS)
+        payload = {key: value for key, value in incoming.items() if key in allowed}
+        for key in _BOOL_KEYS:
+            if key in payload:
+                payload[key] = bool(payload[key])
+        if payload:
+            self.set_app_config(**payload)
+        worker = getattr(self, "metrics_worker", None)
+        if worker is not None and hasattr(worker, "reconfigure"):
+            worker.reconfigure()
+        return public_config(load_performance_alarm_config(self.get_app_config()))
+
     def _format_database_error(self, error: Exception, context: str = "") -> str:
         """
         Formatea un mensaje de error de base de datos de manera descriptiva,
@@ -5360,6 +5391,9 @@ class PyAutomation(Singleton):
             self.hmi_session_worker = HmiSessionCleanupWorker()
             self.hmi_session_worker.start()
 
+            self.metrics_worker = MetricsSamplerWorker()
+            self.metrics_worker.start()
+
         if machines:
 
             for machine in machines:
@@ -5386,6 +5420,8 @@ class PyAutomation(Singleton):
             self.ntp_worker.stop()
         if hasattr(self, "hmi_session_worker") and self.hmi_session_worker is not None:
             self.hmi_session_worker.stop()
+        if hasattr(self, "metrics_worker") and self.metrics_worker is not None:
+            self.metrics_worker.stop()
         if hasattr(self, "db_worker") and self.db_worker is not None:
             self.db_worker.stop()
         if hasattr(self, 'subscription_monitor'):

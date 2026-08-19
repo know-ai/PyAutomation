@@ -508,6 +508,71 @@ def count_named_backends(db: Any | None) -> int | None:
     return _count_pg_activity(db, named_only=True)
 
 
+def query_pg_txn_counters(db: Any | None) -> tuple[int, int] | None:
+    """Throwaway ``pg_stat_database`` commit/rollback counters. Never uses Peewee pool."""
+    from .db_io import probe_is_cooling_down
+
+    if db is None or not _is_remote_peewee(db):
+        return None
+    if probe_is_cooling_down():
+        return None
+    params = dict(getattr(db, "connect_params", {}) or {})
+    database = getattr(db, "database", None)
+    if not database:
+        return None
+    budget = connect_timeout_s()
+    params = apply_remote_db_kwargs("postgresql", params)
+    params["application_name"] = historian_application_name("probe")
+
+    def _query() -> tuple[int, int] | None:
+        import psycopg2
+
+        allowed = {
+            "host",
+            "port",
+            "user",
+            "password",
+            "connect_timeout",
+            "keepalives",
+            "keepalives_idle",
+            "keepalives_interval",
+            "keepalives_count",
+            "sslmode",
+            "options",
+            "application_name",
+        }
+        kwargs = {key: params[key] for key in allowed if key in params and params[key] is not None}
+        conn = None
+        try:
+            conn = psycopg2.connect(dbname=database, **kwargs)
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT xact_commit, xact_rollback FROM pg_stat_database "
+                    "WHERE datname = current_database()"
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                return int(row[0] or 0), int(row[1] or 0)
+        except Exception:
+            return None
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    try:
+        counted = run_uncooperative_db_call(_query, timeout_s=float(budget) + 1.0)
+        if not counted:
+            return None
+        return int(counted[0]), int(counted[1])
+    except Exception:
+        _LOGGER.debug("pg_stat_database census skipped", exc_info=True)
+        return None
+
+
 def close_foreign_historian_sockets(db: Any | None) -> int:
     """Drop sockets opened on ``db`` by other greenlets. Keep this greenlet's."""
     if db is None:

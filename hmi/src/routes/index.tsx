@@ -18,8 +18,7 @@ import { UserManagement } from "../pages/UserManagement";
 import { Settings } from "../pages/Settings";
 import { Events } from "../pages/Events";
 import { OperationalLogs } from "../pages/OperationalLogs";
-// import { SCADA } from "../pages/SCADA";
-// import { Performance } from "../pages/Performance";
+import { Performance } from "../pages/Performance";
 import { MainLayout } from "../layouts/MainLayout";
 import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
 
@@ -63,8 +62,7 @@ export function AppRoutes() {
         <Route path="/machines/detailed" element={<MachinesDetailed />} />
         <Route path="/events" element={<Events />} />
         <Route path="/operational-logs" element={<OperationalLogs />} />
-        {/* <Route path="/scada" element={<SCADA />} /> */}
-        {/* <Route path="/performance" element={<Performance />} /> */}
+        <Route path="/performance" element={<Performance />} />
         <Route path="/user-management" element={<UserManagement />} />
         <Route path="/settings" element={<Settings />} />
       </Route>

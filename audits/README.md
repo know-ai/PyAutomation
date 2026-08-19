@@ -25,7 +25,7 @@
 | **10 Máquinas de estado** | [AUDIT_STATE_MACHINES.md](./AUDIT_STATE_MACHINES.md) | (nuevo 2026-08-18; spec 02) | Tres relojes; SM-H1 cerrado en modo `sample_interval`; iDetectFugas dual-path |
 | **11 NTP / reloj edge** | [AUDIT_NTP_TIME_SYNC.md](./AUDIT_NTP_TIME_SYNC.md) | (nuevo 2026-08-19) | **A** — monitor universal v2.0 (IPv4/IPv6, backoff, salto, runbook); soak 2-edge **pendiente** (A+) |
 | **12 Trazabilidad Socket HMI** | [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md) | Spec [04-HMI-SOCKET-TRACEABILITY](../specs/04-HMI-SOCKET-TRACEABILITY.md) | **A+** — PG `hmi_sessions`, fail-closed, TLS/IP, heartbeat; soak 2-edge **pendiente** |
-| **13 Dashboard performance nodo** | [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](./AUDIT_NODE_PERFORMANCE_DASHBOARD.md) | (nuevo 2026-08-19) | **D** — sin pantalla `/performance`; `/health/system` costoso; arquitectura O(1) definida |
+| **13 Dashboard performance nodo** | [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](./AUDIT_NODE_PERFORMANCE_DASHBOARD.md) | Specs [05](../specs/05-NODE-PERFORMANCE-DASHBOARD.md) + [06](../specs/06-PERFORMANCE-ALARMS.md) | **A−** — snapshot O(1), sampler, `/performance`, alarmas `ALM.PERF.*`; soak 24 h / 2-edge / modal planta **pendientes** (A+) |
 
 ---
 

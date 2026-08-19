@@ -655,6 +655,12 @@ class Alarm(StateMachine):
                 "Remove From Service": "remove_from_service"
             }
 
+        elif current_state=="shelved":
+
+            result = {
+                "Unshelve": "unshelve"
+            }
+
         elif current_state=="suppressed_by_design":
 
             result = {

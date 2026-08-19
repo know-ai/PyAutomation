@@ -107,3 +107,9 @@ Checklist NTP por edge:
 4. Mismos servidores que el resto de la planta (no `pool.ntp.org` en producción).
 
 Runbook detallado: [ntp-deployment.md](./ntp-deployment.md). Auditoría: [audits/AUDIT_NTP_TIME_SYNC.md](../audits/AUDIT_NTP_TIME_SYNC.md).
+
+## Dashboard de rendimiento por edge
+
+Cada proceso tiene su propio `MetricsSamplerWorker` y su propio `GET /api/health/node`. El snapshot es **local al nodo**: CPU, disco, HTTP, cola SAF, clientes HMI (`hmi_sessions` filtrado por `node_id`) y adquisición de esa instancia. Linea1 no muestra métricas de Linea2.
+
+La pantalla HMI `/performance` (roles admin/supervisor/sudo) hace poll de 3 s contra el edge al que está conectada. Runbook: [node-performance-runbook.md](./node-performance-runbook.md). Spec: [05-NODE-PERFORMANCE-DASHBOARD.md](../specs/05-NODE-PERFORMANCE-DASHBOARD.md).
