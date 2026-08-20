@@ -17,7 +17,8 @@ Each tag includes core metadata:
 - `unit`, `display_unit`, `variable` (physical quantity)
 - `data_type` (`float`, `int`, `bool`, `str`)
 - `opcua_address`, `node_namespace`, `scan_time`, `dead_band`
-- Optional quality/conditioning flags: `process_filter`, `gaussian_filter`, `outlier_detection`, `out_of_range_detection`, `frozen_data_detection`
+- Optional quality/conditioning flags: `filter_enabled`, `filter_wavelet`, `filter_level`, `filter_threshold_factor`, `filter_persist`, `outlier_detection`, `out_of_range_detection`, `frozen_data_detection`
+- Runtime quality on each tag: `quality` (1.0=GOOD, 0.5=UNCERTAIN, 0.0=BAD)
 
 Serialization (`tag.serialize()`) returns a JSON-ready dictionary used by APIs and dashboards.
 
@@ -38,7 +39,9 @@ cvt.set_tag(
     description="Level of TK-101",
     scan_time=1000,
     dead_band=0.01,
-    gaussian_filter=True,
+    filter_enabled=True,
+    filter_wavelet="db4",
+    filter_level=4,
 )
 
 # Read a tag

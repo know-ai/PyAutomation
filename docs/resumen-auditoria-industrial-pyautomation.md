@@ -211,7 +211,7 @@ PyAutomation 2.x (Python/React) queda en modo mantenimiento; 3.x es una **reescr
 | Tipos: float, int, bool, str | ✅ |
 | Unidades, variables, segmentos, fabricantes | ✅ |
 | Deadband | ✅ |
-| Filtros: gaussiano, proceso | ✅ |
+| Filtro wavelet RT (`.f`) + calidad OPC | ✅ |
 | Detección de anomalías: outlier, out-of-range, frozen data | ✅ |
 | `scan_time` independiente por tag (state machine) | ✅ |
 | Emisión Socket.IO `on.tag` | ✅ |

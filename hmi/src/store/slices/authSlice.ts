@@ -54,6 +54,11 @@ const authSlice = createSlice({
     loginStart(state) {
       state.status = "loading";
       state.error = null;
+      // Drop any leftover session immediately so in-flight polls cannot
+      // revoke the new login with SESSION_SUPERSEDED.
+      state.token = null;
+      state.user = null;
+      clearPersistedAuth();
     },
     loginSuccess(state, action: PayloadAction<{ token: string; user: AuthUser }>) {
       state.status = "authenticated";

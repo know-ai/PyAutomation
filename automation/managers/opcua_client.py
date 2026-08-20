@@ -140,36 +140,29 @@ class OPCUAClientManager:
                         owner_node=owner_node,
                     )
 
-            # RECONNECT TO SUBSCRIPTION 
-            # Buscar tags que usan este cliente (por nombre o por URL)
-            for tag in self.cvt.get_tags():
-                tag_id = tag.get("id")
-                if not tag_id:
+            from automation import PyAutomation
+
+            app = PyAutomation()
+            for tag_obj in self.cvt.iter_tags_for_opcua_client(client_name, endpoint_url):
+                namespace = tag_obj.get_node_namespace()
+                if not namespace:
                     continue
-                
-                tag_obj = self.cvt.get_tag(id=tag_id)
-                should_reconnect = False
-                
-                if tag_obj:
-                    # Verificar si el tag usa este cliente
-                    # Opción 1: Si el tag tiene opcua_client_name que coincida (case-insensitive)
-                    if hasattr(tag_obj, 'opcua_client_name') and tag_obj.opcua_client_name:
-                        if tag_obj.opcua_client_name.lower() == client_name.lower():
-                            should_reconnect = True
-                    # Opción 2: Compatibilidad hacia atrás - si usa la URL
-                    elif tag.get("opcua_address") == endpoint_url:
-                        should_reconnect = True
-                        # Si el tag tenía URL pero no nombre, actualizar para usar el nombre del cliente
-                        if hasattr(tag_obj, 'set_opcua_client_name'):
-                            tag_obj.set_opcua_client_name(client_name, opcua_address=endpoint_url)
-                
-                if should_reconnect:
-                    if not tag.get("scan_time"):
-                        subscription = self.das.get_or_create_subscription(opcua_client, client_name)
-                        node_id = opcua_client.get_node_id_by_namespace(tag["node_namespace"])
-                        if node_id:
-                            self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
+                address = tag_obj.get_opcua_address() or endpoint_url
+                app.subscribe_opcua(
+                    tag=tag_obj,
+                    opcua_address=address,
+                    node_namespace=namespace,
+                    scan_time=tag_obj.get_scan_time(),
+                    reload=True,
+                )
+                try:
                     self.das.restart_buffer(tag=tag_obj)
+                except Exception:
+                    logging.getLogger("pyautomation").debug(
+                        "DAS buffer restart skipped tag=%s",
+                        getattr(tag_obj, "name", None),
+                        exc_info=True,
+                    )
         
             return True, message
         else:

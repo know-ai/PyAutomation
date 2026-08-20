@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { MetricTile } from "../components/MetricTile";
 import { PerfPanel, PerfStat } from "../components/PerfPanel";
@@ -22,6 +22,7 @@ import {
   type TileTone,
 } from "../services/performanceAlarms";
 import { patchPerformanceCatalog, refreshPerformanceTrends, valuesOf } from "../services/performanceTrends";
+import { getWaveletFilterStatuses, type TagFilterStatus } from "../services/tags";
 
 function formatNumber(value: number | null | undefined, digits = 1, unit = ""): string {
   if (value == null || Number.isNaN(Number(value))) return "—";
@@ -30,6 +31,13 @@ function formatNumber(value: number | null | undefined, digits = 1, unit = ""): 
     minimumFractionDigits: digits > 0 ? Math.min(digits, 1) : 0,
   });
   return unit ? `${formatted} ${unit}` : formatted;
+}
+
+function qualityBadgeTone(quality?: string): string {
+  if (quality === "GOOD") return "success";
+  if (quality === "UNCERTAIN") return "warning";
+  if (quality === "BAD") return "danger";
+  return "secondary";
 }
 
 function formatUptime(seconds: number | null | undefined): string {
@@ -89,6 +97,7 @@ export function Performance() {
   const [openKey, setOpenKey] = useState<PerfAlarmKey | null>(null);
   const [configKey, setConfigKey] = useState<PerfAlarmKey | null>(null);
   const [trendsOpen, setTrendsOpen] = useState(true);
+  const [waveletRows, setWaveletRows] = useState<TagFilterStatus[]>([]);
   const bindings = usePerformanceAlarms(snapshot.PERF_ALARMS);
   const error =
     errorStatus === 403
@@ -127,6 +136,20 @@ export function Performance() {
   const openBinding = openKey ? bindings[openKey] : undefined;
   const configBinding = configKey ? bindings[configKey] : undefined;
   const safMax = Math.max(Number(bindings.saf_queue.catalog?.threshold || 5000) * 1.25, Number(snapshot.SAF_QUEUE_DEPTH || 0), 1);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const rows = await getWaveletFilterStatuses();
+      if (!cancelled) setWaveletRows(rows);
+    };
+    load();
+    const timer = window.setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   if (!allowed) {
     return <Navigate to="/events" replace />;
@@ -339,6 +362,50 @@ export function Performance() {
             <PerfStat label={t("performance.sampleLag")} value={formatNumber(snapshot.SAMPLE_LAG_MS, 2, "ms")} />
           </PerfPanel>
         </div>
+      </section>
+
+      <section className="perf-section" aria-label={t("performance.waveletFilters")}>
+        <h3 className="perf-section__title">{t("performance.waveletFilters")}</h3>
+        {waveletRows.length === 0 ? (
+          <p className="text-muted mb-0">{t("performance.waveletEmpty")}</p>
+        ) : (
+          <div className="table-responsive">
+            <table className="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>{t("performance.waveletSource")}</th>
+                  <th>{t("performance.waveletFiltered")}</th>
+                  <th>{t("performance.waveletStatus")}</th>
+                  <th>{t("performance.waveletQuality")}</th>
+                  <th>{t("performance.waveletAge")}</th>
+                  <th>{t("performance.waveletRate")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {waveletRows.map((row) => {
+                  const age = row.age_ms ?? null;
+                  const tone = age == null ? "secondary" : age > 5000 ? "danger" : age > 1000 ? "warning" : "success";
+                  return (
+                    <tr key={row.source || row.filtered_tag}>
+                      <td><code>{row.source}</code></td>
+                      <td><code>{row.filtered_tag}</code></td>
+                      <td>
+                        <span className={`badge text-bg-${tone}`}>{row.status}</span>
+                      </td>
+                      <td>
+                        <span className={`badge text-bg-${qualityBadgeTone(row.last_publication_quality)}`}>
+                          {row.last_publication_quality || "—"}
+                        </span>
+                      </td>
+                      <td>{age == null ? "—" : `${(age / 1000).toFixed(2)} s`}</td>
+                      <td>{row.raw_rate == null ? "—" : `${row.raw_rate} Hz`}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="perf-section" aria-label={t("performance.trends")}>

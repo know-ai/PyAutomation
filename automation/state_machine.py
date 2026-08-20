@@ -953,6 +953,44 @@ class StateMachineCore(StateMachine):
             return field_tags
         return [name for name in field_tags if name not in subscribed]
 
+    def _wavelet_source_tag(self, tag: Tag):
+        from .signal_conditioning.filtered_tags import is_filtered_derivative_name, source_tag_name
+        from .tags import CVTEngine
+
+        if tag is None:
+            return None
+        if is_filtered_derivative_name(tag.name):
+            return CVTEngine().get_tag_by_name(source_tag_name(tag.name)) or tag
+        return tag
+
+    def _register_wavelet_tag(self, tag: Tag) -> Tag:
+        from .signal_conditioning.filtered_tags import (
+            machine_sample_interval,
+            resolve_subscription_tag,
+            tag_filter_enabled,
+        )
+        from .workers.wavelet_worker import get_wavelet_worker
+
+        source = self._wavelet_source_tag(tag)
+        subscription_tag = resolve_subscription_tag(source)
+        if source and tag_filter_enabled(source):
+            worker = get_wavelet_worker()
+            if worker is not None:
+                worker.sync_from_tag(
+                    source,
+                    sample_interval=machine_sample_interval(self),
+                    machine_name=self.name.value,
+                )
+        return subscription_tag or tag
+
+    def _unregister_wavelet_tag(self, tag: Tag) -> None:
+        from .workers.wavelet_worker import get_wavelet_worker
+
+        source = self._wavelet_source_tag(tag)
+        worker = get_wavelet_worker()
+        if worker is not None and source is not None:
+            worker.unregister_tag(source.name, machine_name=self.name.value)
+
     def subscribe_to(self, tag:Tag, default_tag_name:str=None):
         r"""
         Subscribes the machine to a tag.
@@ -969,6 +1007,9 @@ class StateMachineCore(StateMachine):
 
         * **tuple**: (Success bool, Message str) or True/False.
         """
+        if tag is not None:
+            tag = self._register_wavelet_tag(tag)
+
         if default_tag_name and tag:    # Designed to default tags into State Machine
 
             if self.process_type_exists(name=default_tag_name):
@@ -1040,6 +1081,7 @@ class StateMachineCore(StateMachine):
         if process_type is None or tag is None:
             return
 
+        self._unregister_wavelet_tag(tag)
         tag.detach_machine(self)
         self.machine_engine.unbind_tag(tag=tag, machine=self)
         process_type.tag = None
@@ -1529,7 +1571,16 @@ class DAQ(StateMachineCore):
             description=description,
             classification=classification
             )
-        
+
+    def _register_wavelet_tag(self, tag: Tag) -> Tag:
+        """DAQ must poll the raw OPC source; never remap acquisition to ``.f``."""
+        from .signal_conditioning.filtered_tags import is_filtered_derivative_name, source_tag_name
+
+        if tag is not None and is_filtered_derivative_name(getattr(tag, "name", "")):
+            source = CVTEngine().get_tag_by_name(source_tag_name(tag.name))
+            return source or tag
+        return tag
+
     # State Methods
     def while_waiting(self):
         r"""
@@ -1849,8 +1900,6 @@ class OPCUAServer(StateMachineCore):
                     "description", 
                     "opcua_address", 
                     "node_namespace", 
-                    "process_filter",
-                    "gaussian_filter",
                     "out_of_range_detection",
                     "frozen_data_detection",
                     "outlier_detection"

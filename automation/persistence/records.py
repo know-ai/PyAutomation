@@ -120,23 +120,27 @@ class PersistableRecord:
         *,
         area: str | None = None,
         owner_node: str | None = None,
+        quality: float | None = None,
     ) -> "PersistableRecord":
         if isinstance(timestamp, datetime):
             timestamp = quantize_datetime_ms(timestamp)
         ts = iso_tag(timestamp)
         key = f"tag:{tag}:{ts}"
         area, owner_node = _scope_metadata(area, owner_node)
+        body = {
+            "tag": tag,
+            "value": _json_safe(value),
+            "timestamp": ts,
+            "sample_uuid": canonical_sample_uuid(key),
+            "area": area,
+            "owner_node": owner_node,
+        }
+        if quality is not None:
+            body["quality"] = quality
         return cls(
             domain_name=DOMAIN.TAG,
             entity=str(tag),
-            body={
-                "tag": tag,
-                "value": _json_safe(value),
-                "timestamp": ts,
-                "sample_uuid": canonical_sample_uuid(key),
-                "area": area,
-                "owner_node": owner_node,
-            },
+            body=body,
             key=key,
             critical=False,
         )

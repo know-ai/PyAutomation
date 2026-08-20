@@ -439,13 +439,14 @@ class Tags(BaseModel):
     dead_band = FloatField(null=True)
     kp = FloatField(null=True)
     active = BooleanField(default=True)
-    process_filter = BooleanField(default=False)
-    gaussian_filter = BooleanField(default=False)
-    gaussian_filter_threshold = FloatField(default=1.0)
-    gaussian_filter_r_value = FloatField(default=0.0)
     out_of_range_detection = BooleanField(default=False)
     outlier_detection = BooleanField(default=False)
     frozen_data_detection = BooleanField(default=False)
+    filter_enabled = BooleanField(default=False)
+    filter_wavelet = CharField(max_length=16, default="db4")
+    filter_level = IntegerField(default=4)
+    filter_threshold_factor = FloatField(default=3.0)
+    filter_persist = BooleanField(default=False)
 
     class Meta:
         indexes = (
@@ -472,10 +473,11 @@ class Tags(BaseModel):
         dead_band:float=0.0,
         kp:float=None,
         active:bool=True,
-        process_filter:bool=False,
-        gaussian_filter:bool=False,
-        gaussian_filter_threshold:float=1.0,
-        gaussian_filter_r_value:float=0.0,
+        filter_enabled:bool=False,
+        filter_wavelet:str="db4",
+        filter_level:int=4,
+        filter_threshold_factor:float=3.0,
+        filter_persist:bool=False,
         out_of_range_detection:bool=False,
         outlier_detection:bool=False,
         frozen_data_detection:bool=False,
@@ -501,8 +503,6 @@ class Tags(BaseModel):
         * **scan_time** (int, optional): Polling interval.
         * **dead_band** (float, optional): Deadband value.
         * **active** (bool, optional): Active status.
-        * **process_filter** (bool, optional): Enable process filter.
-        * **gaussian_filter** (bool, optional): Enable Gaussian filter.
         """
         result = dict()
         message = f"{name} already exist into database"
@@ -550,10 +550,11 @@ class Tags(BaseModel):
                                 dead_band=dead_band,
                                 kp=kp,
                                 active=active,
-                                process_filter=process_filter,
-                                gaussian_filter=gaussian_filter,
-                                gaussian_filter_threshold=gaussian_filter_threshold,
-                                gaussian_filter_r_value=gaussian_filter_r_value,
+                                filter_enabled=filter_enabled,
+                                filter_wavelet=filter_wavelet,
+                                filter_level=filter_level,
+                                filter_threshold_factor=filter_threshold_factor,
+                                filter_persist=filter_persist,
                                 out_of_range_detection=out_of_range_detection,
                                 outlier_detection=outlier_detection,
                                 frozen_data_detection=frozen_data_detection,
@@ -577,10 +578,11 @@ class Tags(BaseModel):
                                 dead_band=dead_band,
                                 kp=kp,
                                 active=active,
-                                process_filter=process_filter,
-                                gaussian_filter=gaussian_filter,
-                                gaussian_filter_threshold=gaussian_filter_threshold,
-                                gaussian_filter_r_value=gaussian_filter_r_value,
+                                filter_enabled=filter_enabled,
+                                filter_wavelet=filter_wavelet,
+                                filter_level=filter_level,
+                                filter_threshold_factor=filter_threshold_factor,
+                                filter_persist=filter_persist,
                                 out_of_range_detection=out_of_range_detection,
                                 outlier_detection=outlier_detection,
                                 frozen_data_detection=frozen_data_detection,
@@ -783,22 +785,9 @@ class Tags(BaseModel):
             manufacturer = segment["manufacturer"]["name"]
             segment = segment["name"]
 
-        gaussian_filter_r_value = 0
-        if hasattr(self, "gaussian_filter_r_value"):
-
-            gaussian_filter_r_value = self.gaussian_filter_r_value
-
-        gaussian_filter_threshold = 0
-        if hasattr(self, "gaussian_filter_threshold"):
-
-            gaussian_filter_threshold = self.gaussian_filter_threshold
-
         # Resolver opcua_address desde opcua_client_name si está disponible
-        # opcua_address es un campo de la base de datos, no una propiedad calculada
         resolved_opcua_address = self.opcua_address if hasattr(self, 'opcua_address') else None
-        # Si tenemos opcua_client_name pero no opcua_address, se resolverá dinámicamente
-        # cuando se cree el tag en memoria desde PyAutomation
-        
+
         return {
             'id': self.identifier,
             'name': self.name,
@@ -815,10 +804,11 @@ class Tags(BaseModel):
             'kp': self.kp,
             'variable': self.unit.variable_id.name,
             'active': self.active,
-            'process_filter': self.process_filter,
-            'gaussian_filter': self.gaussian_filter,
-            'gaussian_filter_threshold': gaussian_filter_threshold,
-            'gaussian_filter_r_value': gaussian_filter_r_value,
+            'filter_enabled': getattr(self, "filter_enabled", False),
+            'filter_wavelet': getattr(self, "filter_wavelet", "db4"),
+            'filter_level': getattr(self, "filter_level", 4),
+            'filter_threshold_factor': getattr(self, "filter_threshold_factor", 3.0),
+            'filter_persist': getattr(self, "filter_persist", False),
             'out_of_range_detection': self.out_of_range_detection,
             'frozen_data_detection': self.frozen_data_detection,
             'outlier_detection': self.outlier_detection,

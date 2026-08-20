@@ -6,7 +6,6 @@ from ..modules.users.users import User
 from ..modules.users.users import User
 from ..utils.decorators import set_event, logging_error_handler
 from ..utils.tag_audit import describe_tag_update
-from ..filter import filter
 # from ..iad import iad_outlier, iad_frozen_data, iad_out_of_range
 from .tag import Tag, _scope_owns_tag
 from flask_socketio import SocketIO
@@ -77,10 +76,11 @@ class CVT:
         node_namespace:str="",
         scan_time:int=None,
         dead_band:float=None,
-        process_filter:bool=False,
-        gaussian_filter:bool=False,
-        gaussian_filter_threshold:float=1.0,
-        gaussian_filter_r_value:float=0.0,
+        filter_enabled:bool=False,
+        filter_wavelet:str="db4",
+        filter_level:int=4,
+        filter_threshold_factor:float=3.0,
+        filter_persist:bool=False,
         outlier_detection:bool=False,
         out_of_range_detection:bool=False,
         frozen_data_detection:bool=False,
@@ -179,10 +179,11 @@ class CVT:
             node_namespace=node_namespace,
             scan_time=scan_time,
             dead_band=dead_band,
-            process_filter=process_filter,
-            gaussian_filter=gaussian_filter,
-            gaussian_filter_threshold=gaussian_filter_threshold,
-            gaussian_filter_r_value=gaussian_filter_r_value,
+            filter_enabled=filter_enabled,
+            filter_wavelet=filter_wavelet,
+            filter_level=filter_level,
+            filter_threshold_factor=filter_threshold_factor,
+            filter_persist=filter_persist,
             outlier_detection=outlier_detection,
             out_of_range_detection=out_of_range_detection,
             frozen_data_detection=frozen_data_detection,
@@ -274,20 +275,24 @@ class CVT:
             tag.owner_node = kwargs["owner_node"]
         if "kp" in kwargs:
             tag.set_kp(kp=kwargs["kp"])
-        if "gaussian_filter" in kwargs:
-            gaussian_filter_value = kwargs["gaussian_filter"]
-            if isinstance(gaussian_filter_value, str):
-                tag.gaussian_filter = gaussian_filter_value.strip().lower() in ("1", "true", "yes", "on")
+        if "filter_enabled" in kwargs:
+            value = kwargs["filter_enabled"]
+            if isinstance(value, str):
+                tag.filter_enabled = value.strip().lower() in ("1", "true", "yes", "on")
             else:
-                tag.gaussian_filter = bool(gaussian_filter_value)
-
-        if "gaussian_filter_r_value" in kwargs:
-
-            tag.gaussian_filter_r_value = kwargs['gaussian_filter_r_value']
-
-        if "gaussian_filter_threshold" in kwargs:
-
-            tag.gaussian_filter_threshold = kwargs['gaussian_filter_threshold']
+                tag.filter_enabled = bool(value)
+        if "filter_wavelet" in kwargs:
+            tag.filter_wavelet = kwargs["filter_wavelet"]
+        if "filter_level" in kwargs:
+            tag.filter_level = int(kwargs["filter_level"])
+        if "filter_threshold_factor" in kwargs:
+            tag.filter_threshold_factor = float(kwargs["filter_threshold_factor"])
+        if "filter_persist" in kwargs:
+            value = kwargs["filter_persist"]
+            if isinstance(value, str):
+                tag.filter_persist = value.strip().lower() in ("1", "true", "yes", "on")
+            else:
+                tag.filter_persist = bool(value)
         
         self._tags[id] = tag
         self._index_tag(tag)
@@ -664,11 +669,10 @@ class CVT:
         return data
     
     @logging_error_handler
-    @filter
     # @iad_frozen_data
     # @iad_out_of_range
     # @iad_outlier
-    def set_value(self, id:str, value, timestamp:datetime):
+    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0):
         """
         Sets a new value for a tag.
 
@@ -679,6 +683,7 @@ class CVT:
         * **id** (str): Tag ID.
         * **value**: New value.
         * **timestamp** (datetime): Timestamp of the value.
+        * **quality** (float, optional): OPC-style quality code.
 
         **Returns:**
 
@@ -703,18 +708,11 @@ class CVT:
                 self.lock_contention += 1
         except Exception:
             pass
-        with tag._lock:
-            if tag.dead_band and isinstance(value, (int, float)):
-                try:
-                    current_value = tag.value.value
-                    if abs(value - current_value) < tag.dead_band:
-                        return value
-                except Exception as e:
-                    logging.error(f"Error in deadband logic: {e}")
-
-            tag.set_value(value=value, timestamp=timestamp)
-            if self.sio:
-                payload = tag.serialize_socket()
+        applied = tag.set_value(value=value, timestamp=timestamp, quality=quality)
+        if applied is False:
+            return value
+        if self.sio:
+            payload = tag.serialize_socket()
 
         if payload is not None and self.sio:
             self.sio.emit("on.tag", data=payload)
@@ -904,10 +902,11 @@ class CVTEngine(Singleton):
         node_namespace:str="",
         scan_time:int=0,
         dead_band:float=0.0,
-        process_filter:bool=False,
-        gaussian_filter:bool=False,
-        gaussian_filter_threshold:float=1.0,
-        gaussian_filter_r_value:float=0.0,
+        filter_enabled:bool=False,
+        filter_wavelet:str="db4",
+        filter_level:int=4,
+        filter_threshold_factor:float=3.0,
+        filter_persist:bool=False,
         outlier_detection:bool=False,
         out_of_range_detection:bool=False,
         frozen_data_detection:bool=False,
@@ -938,10 +937,11 @@ class CVTEngine(Singleton):
         _query["parameters"]["node_namespace"] = node_namespace
         _query["parameters"]["scan_time"] = scan_time
         _query["parameters"]["dead_band"] = dead_band
-        _query["parameters"]["process_filter"] = process_filter
-        _query["parameters"]["gaussian_filter"] = gaussian_filter
-        _query["parameters"]["gaussian_filter_threshold"] = gaussian_filter_threshold
-        _query["parameters"]["gaussian_filter_r_value"] = gaussian_filter_r_value
+        _query["parameters"]["filter_enabled"] = filter_enabled
+        _query["parameters"]["filter_wavelet"] = filter_wavelet
+        _query["parameters"]["filter_level"] = filter_level
+        _query["parameters"]["filter_threshold_factor"] = filter_threshold_factor
+        _query["parameters"]["filter_persist"] = filter_persist
         _query["parameters"]["outlier_detection"] = outlier_detection
         _query["parameters"]["out_of_range_detection"] = out_of_range_detection
         _query["parameters"]["frozen_data_detection"] = frozen_data_detection
@@ -1178,17 +1178,17 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     @logging_error_handler
-    def set_value_fast(self, id:str, value, timestamp:datetime):
+    def set_value_fast(self, id:str, value, timestamp:datetime, quality:float=1.0):
         r"""
         Hot-path write: dict lookup O(1) + per-tag lock. Does not use the
         administrative request/response queue.
         """
         if timestamp is None:
             raise ValueError("set_value requires a timestamp from the producer")
-        return self._cvt.set_value(id=id, value=value, timestamp=timestamp)
+        return self._cvt.set_value(id=id, value=value, timestamp=timestamp, quality=quality)
 
     @logging_error_handler
-    def set_value(self, id:str, value, timestamp:datetime):
+    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0):
         r"""
         Tag value write. Acquisition uses the fast path; CRUD stays on __query.
         """

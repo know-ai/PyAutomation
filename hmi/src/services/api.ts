@@ -13,7 +13,56 @@ const api = axios.create({
   timeout: 15000,
 });
 
+function isPublicAuthRequest(config?: AxiosRequestConfig | null): boolean {
+  const url = `${config?.baseURL || ""}${config?.url || ""}`.toLowerCase();
+  return url.includes("/users/login") || url.includes("/users/signup");
+}
+
+function requestApiKey(error: AxiosError): string | null {
+  const headers = error.config?.headers;
+  if (!headers) return null;
+  const fromGetter = (headers as { get?: (key: string) => unknown }).get?.("X-API-KEY");
+  const raw =
+    fromGetter ??
+    (headers as Record<string, unknown>)["X-API-KEY"] ??
+    (headers as Record<string, unknown>)["x-api-key"];
+  return typeof raw === "string" && raw ? raw : null;
+}
+
+function isStaleAuthFailure(error: AxiosError): boolean {
+  const used = requestApiKey(error);
+  const current = store.getState().auth.token;
+  return Boolean(current && used && used !== current);
+}
+
+function redirectToLogin(messageKey: string): void {
+  store.dispatch(logout());
+  try {
+    sessionStorage.setItem(
+      "pendingToast",
+      JSON.stringify({
+        messageKey,
+        type: "warning",
+        duration: 0,
+      })
+    );
+  } catch (_e) {
+    // ignore storage errors
+  }
+  const basePath = import.meta.env.VITE_BASE_PATH || "/hmi/";
+  const loginPath = basePath.endsWith("/") ? `${basePath}login` : `${basePath}/login`;
+  window.location.href = loginPath;
+}
+
 api.interceptors.request.use((config) => {
+  if (isPublicAuthRequest(config)) {
+    if (config.headers) {
+      delete (config.headers as Record<string, unknown>)["X-API-KEY"];
+      delete (config.headers as Record<string, unknown>)["x-api-key"];
+    }
+    return config;
+  }
+
   const state = store.getState();
   let token = state.auth.token;
 
@@ -67,25 +116,11 @@ api.interceptors.response.use(
       }
 
       // Explicit single-session takeover only.
+      // Ignore 401s from an older token after a successful re-login in this tab.
       if (status === 401 && code === "SESSION_SUPERSEDED") {
-        store.dispatch(logout());
-        try {
-          sessionStorage.setItem(
-            "pendingToast",
-            JSON.stringify({
-              messageKey: "auth.sessionTakenOver",
-              type: "warning",
-              duration: 0,
-            })
-          );
-        } catch (_e) {
-          // ignore storage errors
+        if (!isStaleAuthFailure(error)) {
+          redirectToLogin("auth.sessionTakenOver");
         }
-        const basePath = import.meta.env.VITE_BASE_PATH || "/hmi/";
-        const loginPath = basePath.endsWith("/")
-          ? `${basePath}login`
-          : `${basePath}/login`;
-        window.location.href = loginPath;
         return Promise.reject(error);
       }
 
@@ -96,24 +131,9 @@ api.interceptors.response.use(
           message?.toLowerCase().includes("invalid token") ||
           message?.toLowerCase().includes("token inválido"))
       ) {
-        store.dispatch(logout());
-        try {
-          sessionStorage.setItem(
-            "pendingToast",
-            JSON.stringify({
-              messageKey: "auth.sessionExpired",
-              type: "warning",
-              duration: 0,
-            })
-          );
-        } catch (_e) {
-          // ignore storage errors
+        if (!isStaleAuthFailure(error)) {
+          redirectToLogin("auth.sessionExpired");
         }
-        const basePath = import.meta.env.VITE_BASE_PATH || "/hmi/";
-        const loginPath = basePath.endsWith("/")
-          ? `${basePath}login`
-          : `${basePath}/login`;
-        window.location.href = loginPath;
       }
     }
 

@@ -16,10 +16,11 @@ export type Tag = {
   scan_time?: number;
   dead_band?: number;
   kp?: number;
-  process_filter?: boolean;
-  gaussian_filter?: boolean;
-  gaussian_filter_threshold?: number;
-  gaussian_filter_r_value?: number;
+  filter_enabled?: boolean;
+  filter_wavelet?: string;
+  filter_level?: number;
+  filter_threshold_factor?: number;
+  filter_persist?: boolean;
   outlier_detection?: boolean;
   out_of_range_detection?: boolean;
   frozen_data_detection?: boolean;
@@ -114,6 +115,39 @@ export const deleteTag = async (tagName: string): Promise<any> => {
 /**
  * Escribe un valor a un tag
  */
+export type TagFilterStatus = {
+  enabled: boolean;
+  status: string;
+  source?: string;
+  filtered_tag?: string;
+  age_ms?: number | null;
+  last_value?: number | null;
+  last_good_value?: number | null;
+  raw_rate?: number | null;
+  drop_count?: number;
+  bad_samples_dropped?: number;
+  last_publication_quality?: string;
+  sample_interval?: number;
+};
+
+export const getTagFilterStatus = async (tagName: string): Promise<TagFilterStatus | null> => {
+  try {
+    const { data } = await api.get(`/tags/${encodeURIComponent(tagName)}/filter/status`);
+    return data;
+  } catch {
+    return null;
+  }
+};
+
+export const getWaveletFilterStatuses = async (): Promise<TagFilterStatus[]> => {
+  try {
+    const { data } = await api.get("/tags/filter/status");
+    return data?.data || [];
+  } catch {
+    return [];
+  }
+};
+
 export const writeTagValue = async (
   tagName: string,
   value: any

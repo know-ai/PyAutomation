@@ -245,6 +245,62 @@ class DBManager(Singleton):
             model._schema.create_indexes(safe=True)
         self._ensure_machine_temporal_schema(db, migrator)
         self._ensure_nodes_clock_schema(db, migrator)
+        self._ensure_tag_filter_schema(db, migrator)
+
+    def _drop_legacy_tag_columns(self, db, migrator=None):
+        if db is None:
+            return
+        legacy = ("gaussian_filter", "gaussian_filter_threshold", "gaussian_filter_r_value", "process_filter")
+        try:
+            existing = {column.name for column in db.get_columns(Tags._meta.table_name)}
+        except Exception:
+            return
+        to_drop = [name for name in legacy if name in existing]
+        if not to_drop:
+            return
+        vendor = getattr(db, "vendor", "") or ""
+        table = Tags._meta.table_name
+        logger = logging.getLogger("pyautomation")
+        try:
+            if vendor == "postgresql":
+                cols = ", ".join(f'DROP COLUMN IF EXISTS "{name}"' for name in to_drop)
+                db.execute_sql(f'ALTER TABLE "{table}" {cols};')
+            elif vendor == "mysql":
+                for name in to_drop:
+                    db.execute_sql(f"ALTER TABLE `{table}` DROP COLUMN `{name}`;")
+            else:
+                drop_migrator = migrator or SqliteMigrator(db)
+                for name in to_drop:
+                    migrate(drop_migrator.drop_column(table, name))
+            logger.info("Dropped legacy tag columns: %s", ", ".join(to_drop))
+        except Exception:
+            logger.warning("Legacy tag column drop skipped", exc_info=True)
+
+    def _ensure_tag_filter_schema(self, db, migrator):
+        table = Tags._meta.table_name
+        try:
+            existing = {column.name for column in db.get_columns(table)}
+        except Exception:
+            return
+        additions = (
+            ("filter_enabled", Tags.filter_enabled),
+            ("filter_wavelet", Tags.filter_wavelet),
+            ("filter_level", Tags.filter_level),
+            ("filter_threshold_factor", Tags.filter_threshold_factor),
+            ("filter_persist", Tags.filter_persist),
+        )
+        for field_name, field in additions:
+            if field_name not in existing:
+                cloned = field.clone()
+                cloned.index = False
+                migrate(
+                    migrator.add_column(
+                        table,
+                        field_name,
+                        cloned,
+                    )
+                )
+        self._drop_legacy_tag_columns(db, migrator)
 
     def _ensure_nodes_clock_schema(self, db, migrator):
         table = Nodes._meta.table_name

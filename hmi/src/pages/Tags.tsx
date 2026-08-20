@@ -9,6 +9,7 @@ import { useAppSelector } from "../hooks/useAppSelector";
 import { showToast } from "../utils/toast";
 import { validateUserTagNameInput } from "../utils/tagNameValidation";
 import { VirtualizedCombobox, type ComboboxItem } from "../components/VirtualizedCombobox";
+import { WaveletFilterPanel } from "../components/WaveletFilterPanel";
 
 // Memoized row component to prevent unnecessary re-renders
 const TagTableRow = memo(({ 
@@ -192,10 +193,11 @@ export function Tags() {
     scan_time: "",
     dead_band: "",
     kp: "",
-    process_filter: false,
-    gaussian_filter: false,
-    gaussian_filter_threshold: "1.0",
-    gaussian_filter_r_value: "0.0",
+    filter_enabled: false,
+    filter_wavelet: "db4",
+    filter_level: 4,
+    filter_threshold_factor: 3.0,
+    filter_persist: false,
     outlier_detection: false,
     out_of_range_detection: false,
     frozen_data_detection: false,
@@ -573,10 +575,11 @@ export function Tags() {
       scan_time: tag.scan_time ? String(tag.scan_time) : "",
       dead_band: tag.dead_band !== undefined ? String(tag.dead_band) : "",
       kp: tag.kp !== undefined && tag.kp !== null ? String(tag.kp) : "",
-      process_filter: tag.process_filter || false,
-      gaussian_filter: tag.gaussian_filter || false,
-      gaussian_filter_threshold: tag.gaussian_filter_threshold !== undefined ? String(tag.gaussian_filter_threshold) : "1.0",
-      gaussian_filter_r_value: tag.gaussian_filter_r_value !== undefined ? String(tag.gaussian_filter_r_value) : "0.0",
+      filter_enabled: tag.filter_enabled || false,
+      filter_wavelet: tag.filter_wavelet || "db4",
+      filter_level: tag.filter_level || 4,
+      filter_threshold_factor: tag.filter_threshold_factor ?? 3.0,
+      filter_persist: tag.filter_persist || false,
       outlier_detection: tag.outlier_detection || false,
       out_of_range_detection: tag.out_of_range_detection || false,
       frozen_data_detection: tag.frozen_data_detection || false,
@@ -642,10 +645,11 @@ export function Tags() {
         t("tables.nodeNamespace"),
         t("tables.scanTime"),
         t("tables.deadBand"),
-        t("tags.processFilter"),
-        t("tags.gaussianFilter"),
-        t("tags.gaussianFilterThreshold"),
-        t("tags.gaussianFilterRValue"),
+        t("tags.waveletFilter"),
+        t("tags.waveletFamily"),
+        t("tags.waveletLevel"),
+        t("tags.waveletThreshold"),
+        t("tags.waveletPersist"),
         t("tags.outlierDetection"),
         t("tags.outOfRangeDetection"),
         t("tags.frozenDataDetection"),
@@ -679,10 +683,11 @@ export function Tags() {
           tag.node_namespace ? (opcuaNodeDisplayNames[tag.node_namespace] || tag.node_namespace) : "",
           tag.scan_time || "",
           tag.dead_band !== undefined ? tag.dead_band : "",
-          tag.process_filter ? t("common.yes") : t("common.no"),
-          tag.gaussian_filter ? t("common.yes") : t("common.no"),
-          tag.gaussian_filter_threshold !== undefined ? tag.gaussian_filter_threshold : "",
-          tag.gaussian_filter_r_value !== undefined ? tag.gaussian_filter_r_value : "",
+          tag.filter_enabled ? t("common.yes") : t("common.no"),
+          tag.filter_wavelet || "",
+          tag.filter_level !== undefined ? tag.filter_level : "",
+          tag.filter_threshold_factor !== undefined ? tag.filter_threshold_factor : "",
+          tag.filter_persist ? t("common.yes") : t("common.no"),
           tag.outlier_detection ? t("common.yes") : t("common.no"),
           tag.out_of_range_detection ? t("common.yes") : t("common.no"),
           tag.frozen_data_detection ? t("common.yes") : t("common.no"),
@@ -870,13 +875,21 @@ export function Tags() {
         payload.manufacturer = formData.manufacturer;
       }
 
-      // Comparar booleanos
-      if (formData.process_filter !== (original.process_filter || false)) {
-        payload.process_filter = formData.process_filter;
+      // Comparar booleanos      
+      if (formData.filter_enabled !== (original.filter_enabled || false)) {
+        payload.filter_enabled = formData.filter_enabled;
       }
-      
-      if (formData.gaussian_filter !== (original.gaussian_filter || false)) {
-        payload.gaussian_filter = formData.gaussian_filter;
+      if (formData.filter_wavelet !== (original.filter_wavelet || "db4")) {
+        payload.filter_wavelet = formData.filter_wavelet;
+      }
+      if (Number(formData.filter_level) !== Number(original.filter_level || 4)) {
+        payload.filter_level = Number(formData.filter_level);
+      }
+      if (Number(formData.filter_threshold_factor) !== Number(original.filter_threshold_factor ?? 3.0)) {
+        payload.filter_threshold_factor = Number(formData.filter_threshold_factor);
+      }
+      if (formData.filter_persist !== (original.filter_persist || false)) {
+        payload.filter_persist = formData.filter_persist;
       }
       
       if (formData.outlier_detection !== (original.outlier_detection || false)) {
@@ -891,20 +904,8 @@ export function Tags() {
         payload.frozen_data_detection = formData.frozen_data_detection;
       }
 
-      // Comparar valores de filtro gaussiano
-      const originalGaussianThreshold = original.gaussian_filter_threshold !== undefined ? String(original.gaussian_filter_threshold) : "1.0";
-      if (formData.gaussian_filter_threshold !== originalGaussianThreshold) {
-        if (formData.gaussian_filter_threshold) {
-          payload.gaussian_filter_threshold = parseFloat(formData.gaussian_filter_threshold);
-        }
-      }
-      
-      const originalGaussianRValue = original.gaussian_filter_r_value !== undefined ? String(original.gaussian_filter_r_value) : "0.0";
-      if (formData.gaussian_filter_r_value !== originalGaussianRValue) {
-        if (formData.gaussian_filter_r_value) {
-          payload.gaussian_filter_r_value = parseFloat(formData.gaussian_filter_r_value);
-        }
-      }
+      // Comparar valores de filtro wavelet
+      // (ya incluidos arriba)
 
       // Si no hay campos para actualizar, mostrar error
       const fieldsToUpdate = Object.keys(payload).filter(key => key !== 'id');
@@ -935,10 +936,11 @@ export function Tags() {
         scan_time: "",
         dead_band: "",
         kp: "",
-        process_filter: false,
-        gaussian_filter: false,
-        gaussian_filter_threshold: "1.0",
-        gaussian_filter_r_value: "0.0",
+        filter_enabled: false,
+        filter_wavelet: "db4",
+        filter_level: 4,
+        filter_threshold_factor: 3.0,
+        filter_persist: false,
         outlier_detection: false,
         out_of_range_detection: false,
         frozen_data_detection: false,
@@ -1009,19 +1011,14 @@ export function Tags() {
       if (formData.manufacturer) payload.manufacturer = formData.manufacturer;
 
       // Booleanos
-      payload.process_filter = formData.process_filter;
-      payload.gaussian_filter = formData.gaussian_filter;
+      payload.filter_enabled = formData.filter_enabled;
+      payload.filter_wavelet = formData.filter_wavelet;
+      payload.filter_level = Number(formData.filter_level);
+      payload.filter_threshold_factor = Number(formData.filter_threshold_factor);
+      payload.filter_persist = formData.filter_persist;
       payload.outlier_detection = formData.outlier_detection;
       payload.out_of_range_detection = formData.out_of_range_detection;
       payload.frozen_data_detection = formData.frozen_data_detection;
-
-      // Valores de filtro gaussiano
-      if (formData.gaussian_filter_threshold) {
-        payload.gaussian_filter_threshold = parseFloat(formData.gaussian_filter_threshold);
-      }
-      if (formData.gaussian_filter_r_value) {
-        payload.gaussian_filter_r_value = parseFloat(formData.gaussian_filter_r_value);
-      }
 
       await createTag(payload);
       
@@ -1041,10 +1038,11 @@ export function Tags() {
         scan_time: "",
         dead_band: "",
         kp: "",
-        process_filter: false,
-        gaussian_filter: false,
-        gaussian_filter_threshold: "1.0",
-        gaussian_filter_r_value: "0.0",
+        filter_enabled: false,
+        filter_wavelet: "db4",
+        filter_level: 4,
+        filter_threshold_factor: 3.0,
+        filter_persist: false,
         outlier_detection: false,
         out_of_range_detection: false,
         frozen_data_detection: false,
@@ -1645,72 +1643,12 @@ export function Tags() {
                       <div className="col-12">
                         <h6 className="border-bottom pb-2">{t("tags.filters")}</h6>
                       </div>
-                      <div className="col-md-6">
-                        <div className="form-check">
-                          <input
-                            className="form-check-input"
-                            type="checkbox"
-                            checked={formData.process_filter}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                process_filter: e.target.checked,
-                              })
-                            }
-                          />
-                          <label className="form-check-label">{t("tags.processFilter")}</label>
-                        </div>
-                      </div>
-                      <div className="col-md-6">
-                        <div className="form-check">
-                          <input
-                            className="form-check-input"
-                            type="checkbox"
-                            checked={formData.gaussian_filter}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                gaussian_filter: e.target.checked,
-                              })
-                            }
-                          />
-                          <label className="form-check-label">{t("tags.gaussianFilter")}</label>
-                        </div>
-                      </div>
-                      {formData.gaussian_filter && (
-                        <>
-                          <div className="col-md-6">
-                            <label className="form-label">{t("tags.gaussianFilterThreshold")}</label>
-                            <input
-                              type="number"
-                              className="form-control"
-                              step="0.1"
-                              value={formData.gaussian_filter_threshold}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  gaussian_filter_threshold: e.target.value,
-                                })
-                              }
-                            />
-                          </div>
-                          <div className="col-md-6">
-                            <label className="form-label">{t("tags.gaussianFilterRValue")}</label>
-                            <input
-                              type="number"
-                              className="form-control"
-                              step="0.1"
-                              value={formData.gaussian_filter_r_value}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  gaussian_filter_r_value: e.target.value,
-                                })
-                              }
-                            />
-                          </div>
-                        </>
-                      )}
+                      <WaveletFilterPanel
+                        formData={formData}
+                        sourceName={formData.name}
+                        dataType={formData.data_type}
+                        onChange={(patch) => setFormData({ ...formData, ...patch })}
+                      />
 
                       {/* Detección */}
                       <div className="col-12">
@@ -2093,72 +2031,12 @@ export function Tags() {
                       <div className="col-12">
                         <h6 className="border-bottom pb-2">{t("tags.filters")}</h6>
                       </div>
-                      <div className="col-md-6">
-                        <div className="form-check">
-                          <input
-                            className="form-check-input"
-                            type="checkbox"
-                            checked={formData.process_filter}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                process_filter: e.target.checked,
-                              })
-                            }
-                          />
-                          <label className="form-check-label">{t("tags.processFilter")}</label>
-                        </div>
-                      </div>
-                      <div className="col-md-6">
-                        <div className="form-check">
-                          <input
-                            className="form-check-input"
-                            type="checkbox"
-                            checked={formData.gaussian_filter}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                gaussian_filter: e.target.checked,
-                              })
-                            }
-                          />
-                          <label className="form-check-label">{t("tags.gaussianFilter")}</label>
-                        </div>
-                      </div>
-                      {formData.gaussian_filter && (
-                        <>
-                          <div className="col-md-6">
-                            <label className="form-label">{t("tags.gaussianFilterThreshold")}</label>
-                            <input
-                              type="number"
-                              className="form-control"
-                              step="0.1"
-                              value={formData.gaussian_filter_threshold}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  gaussian_filter_threshold: e.target.value,
-                                })
-                              }
-                            />
-                          </div>
-                          <div className="col-md-6">
-                            <label className="form-label">{t("tags.gaussianFilterRValue")}</label>
-                            <input
-                              type="number"
-                              className="form-control"
-                              step="0.1"
-                              value={formData.gaussian_filter_r_value}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  gaussian_filter_r_value: e.target.value,
-                                })
-                              }
-                            />
-                          </div>
-                        </>
-                      )}
+                      <WaveletFilterPanel
+                        formData={formData}
+                        sourceName={formData.name}
+                        dataType={formData.data_type}
+                        onChange={(patch) => setFormData({ ...formData, ...patch })}
+                      />
 
                       {/* Detección */}
                       <div className="col-12">

@@ -217,9 +217,9 @@ DAQ respeta `node_scope` (multi-edge): no escribe tags de otra área.
 
 Memoria de proceso. Una escritura = valor actual + notify de observers (SM, alarmas, `TagObserver` → SAF, `on.tag` SocketIO).
 
-Deadband en `CVT.set_value` **corta** `Tag.set_value` y por tanto **no** hay `MachineObserver`. El `ProcessType` de la SM se queda en el último valor que pasó la banda. Ver [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md).
+Deadband en `Tag.set_value` **corta** el ingest wavelet y los observers. El `ProcessType` de la SM se queda en el último valor que pasó la banda. Ver [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md).
 
-Kalman (“gaussiano”) si está ON actúa en este hot path, **antes** de que la SM vea el valor.
+El filtrado wavelet actúa **off-thread** en tag `.f`; la SM suscrita consume el valor filtrado, no el raw del hot path.
 
 ### 4.3 Capa 3 — Ciclo de máquina (`machine_interval`)
 
@@ -316,7 +316,7 @@ Deben ser **cortos**. `time.sleep` dentro del handler **rompe** el periodo (el s
 
 ### 7.6 IAD / filtros
 
-Decoradores IAD en `CVT.set_value` siguen **comentados**. `process_filter` no corre. Una SM **no** puede asumir datos “acondicionados de proceso”; solo deadband + Kalman opcional.
+Decoradores IAD en `CVT.set_value` siguen **comentados**. Una SM **no** debe asumir datos pre-acondicionados en el tag source; para filtrado wavelet debe suscribirse al tag `.f` (`filter_enabled`). Solo deadband aplica al raw en hot path.
 
 ### 7.7 API de atributos
 

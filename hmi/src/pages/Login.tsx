@@ -5,6 +5,7 @@ import { Button } from "../components/Button";
 import { DatabaseConfigForm } from "../components/DatabaseConfigForm";
 import { login } from "../services/auth";
 import { useAppDispatch } from "../hooks/useAppDispatch";
+import { useAppSelector } from "../hooks/useAppSelector";
 import { loginFailure, loginStart, loginSuccess } from "../store/slices/authSlice";
 import { showToast } from "../utils/toast";
 import { useTranslation } from "../hooks/useTranslation";
@@ -76,6 +77,9 @@ export function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const existingToken = useAppSelector((s) => s.auth.token);
+  const authStatus = useAppSelector((s) => s.auth.status);
+  const existingUser = useAppSelector((s) => s.auth.user);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -85,6 +89,14 @@ export function Login() {
   const [showDatabaseConfig, setShowDatabaseConfig] = useState(false);
 
   const credentialsInvalid = errorKey === "auth.invalidCredentials";
+
+  useEffect(() => {
+    if (authStatus === "authenticated" && existingToken) {
+      navigate(isSystemUser(existingUser) ? SYSTEM_HOME_PATH : "/communications", {
+        replace: true,
+      });
+    }
+  }, [authStatus, existingToken, existingUser, navigate]);
 
   useEffect(() => {
     const showPendingToast = () => {
@@ -151,6 +163,9 @@ export function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) {
+      return;
+    }
     await attemptLogin();
   };
 

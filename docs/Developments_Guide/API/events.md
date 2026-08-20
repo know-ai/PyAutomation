@@ -58,8 +58,11 @@ Triggered when a tag's value changes (deadband logic applies).
     "dead_band": 0.1,
     "segment": "Line1",
     "manufacturer": "Siemens",
-    "process_filter": false,
-    "gaussian_filter": false,
+    "filter_enabled": false,
+    "filter_wavelet": "db4",
+    "filter_level": 4,
+    "filter_threshold_factor": 3.0,
+    "filter_persist": false,
     "out_of_range_detection": false,
     "frozen_data_detection": false,
     "outlier_detection": false

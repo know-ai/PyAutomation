@@ -1,4 +1,5 @@
 import pytz
+import logging
 import threading
 from datetime import datetime
 from math import ceil
@@ -209,11 +210,48 @@ class DAS(Singleton):
         """
         key = self._node_key(node_id)
         tag = self.cvt.get_tag_by_node_namespace(node_namespace=key)
+        if tag is None:
+            stored = None
+            try:
+                stored = node_id.nodeid.to_string()
+            except Exception:
+                stored = str(node_id)
+            for candidate in self.cvt.iter_tags():
+                ns = getattr(candidate, "node_namespace", None)
+                if ns and ns in (key, stored):
+                    tag = candidate
+                    break
+        if tag is None:
+            logging.getLogger("pyautomation").warning(
+                "DAS subscribe skipped: no CVT tag for OPC node=%s client=%s",
+                key,
+                client_name,
+            )
+            return None
         if not _scope_owns_tag(tag):
+            logging.getLogger("pyautomation").warning(
+                "DAS subscribe skipped: scope rejected tag=%s node=%s",
+                getattr(tag, "name", None),
+                key,
+            )
             return None
         tag_client = getattr(tag, "opcua_client_name", None)
         if tag_client and tag_client.lower() != (client_name or "").lower():
+            logging.getLogger("pyautomation").warning(
+                "DAS subscribe skipped: client mismatch tag=%s expected=%s got=%s",
+                getattr(tag, "name", None),
+                tag_client,
+                client_name,
+            )
             return None
+        try:
+            inner = getattr(self.cvt, "_cvt", None)
+            if inner is not None and key:
+                inner._namespace_index[key] = tag.id
+                if getattr(tag, "node_namespace", None):
+                    inner._namespace_index[tag.node_namespace] = tag.id
+        except Exception:
+            pass
         with self._subscribe_lock:
             bucket = self.monitored_items.setdefault(client_name, {})
             existing = bucket.get(key)
@@ -235,7 +273,13 @@ class DAS(Singleton):
             val = node_id.get_value()
             self.update_tag_value(node=node_id, val=val)
         except Exception:
-            pass
+            logging.getLogger("pyautomation").warning(
+                "DAS initial read failed node=%s tag=%s",
+                key,
+                getattr(tag, "name", None),
+                exc_info=True,
+            )
+        return True
 
     def unsubscribe(self, client_name:str, node_id):
         r"""

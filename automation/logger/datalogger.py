@@ -88,6 +88,11 @@ class DataLogger(BaseLogger):
         kp:float=None,
         area:str=None,
         owner_node:str=None,
+        filter_enabled:bool=False,
+        filter_wavelet:str="db4",
+        filter_level:int=4,
+        filter_threshold_factor:float=3.0,
+        filter_persist:bool=False,
         ):
         r"""
         Creates a new tag definition in the database.
@@ -131,6 +136,11 @@ class DataLogger(BaseLogger):
             kp=kp,
             area=area,
             owner_node=owner_node,
+            filter_enabled=filter_enabled,
+            filter_wavelet=filter_wavelet,
+            filter_level=filter_level,
+            filter_threshold_factor=filter_threshold_factor,
+            filter_persist=filter_persist,
             )
             
     @db_rollback
@@ -176,7 +186,7 @@ class DataLogger(BaseLogger):
         **Parameters:**
 
         * **id** (str): Tag ID.
-        * **kwargs**: Fields to update (e.g., gaussian_filter=True).
+        * **kwargs**: Fields to update.
         """
         if not self.check_connectivity():
 
@@ -184,13 +194,6 @@ class DataLogger(BaseLogger):
         
         tag = Tags.get(identifier=id)
 
-        if "gaussian_filter" in kwargs:
-            gaussian_filter_value = kwargs["gaussian_filter"]
-            if isinstance(gaussian_filter_value, str):
-                kwargs["gaussian_filter"] = gaussian_filter_value.strip().lower() in ("1", "true", "yes", "on")
-            else:
-                kwargs["gaussian_filter"] = bool(gaussian_filter_value)
-        
         return Tags.put(id=tag.id, **kwargs)
 
     @db_rollback
@@ -863,6 +866,11 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"]["kp"] = tag.kp
         _query["parameters"]["area"] = tag.area
         _query["parameters"]["owner_node"] = tag.owner_node
+        _query["parameters"]["filter_enabled"] = getattr(tag, "filter_enabled", False)
+        _query["parameters"]["filter_wavelet"] = getattr(tag, "filter_wavelet", "db4")
+        _query["parameters"]["filter_level"] = getattr(tag, "filter_level", 4)
+        _query["parameters"]["filter_threshold_factor"] = getattr(tag, "filter_threshold_factor", 3.0)
+        _query["parameters"]["filter_persist"] = getattr(tag, "filter_persist", False)
         
         return self.query(_query)
 

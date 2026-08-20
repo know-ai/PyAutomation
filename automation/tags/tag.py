@@ -1,5 +1,7 @@
+import math
 import secrets, logging, threading, time
 from datetime import datetime
+from ..signal_conditioning.quality import GOOD, UNCERTAIN, is_good_quality, is_good_sample
 from ..utils import Observer
 from ..utils.decorators import logging_error_handler
 from ..buffer import Buffer
@@ -19,7 +21,6 @@ from ..variables import (
     Adimentional,
     Volume
 )
-from .filter import GaussianFilter
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
 _scope_audit_lock = threading.Lock()
@@ -106,10 +107,11 @@ class Tag:
             scan_time:int=None,
             dead_band:float=None,
             timestamp:datetime=None,
-            process_filter:bool=False,
-            gaussian_filter:bool=False,
-            gaussian_filter_threshold:float=1.0,
-            gaussian_filter_r_value:float=0.0,
+            filter_enabled:bool=False,
+            filter_wavelet:str="db4",
+            filter_level:int=4,
+            filter_threshold_factor:float=3.0,
+            filter_persist:bool=False,
             outlier_detection:bool=False,
             out_of_range_detection:bool=False,
             frozen_data_detection:bool=False,
@@ -137,10 +139,6 @@ class Tag:
         * **scan_time** (int, optional): Polling interval in milliseconds.
         * **dead_band** (float, optional): Minimum change required to update value.
         * **timestamp** (datetime, optional): Initial timestamp.
-        * **process_filter** (bool, optional): Enable process value filtering.
-        * **gaussian_filter** (bool, optional): Enable Gaussian (Kalman) filtering.
-        * **gaussian_filter_threshold** (float, optional): Threshold for filter adaptation.
-        * **gaussian_filter_r_value** (float, optional): R value for Kalman filter.
         * **outlier_detection** (bool, optional): Enable outlier detection.
         * **out_of_range_detection** (bool, optional): Enable out-of-range detection.
         * **frozen_data_detection** (bool, optional): Enable frozen data detection.
@@ -212,10 +210,14 @@ class Tag:
         self.scan_time = scan_time
         self.dead_band = dead_band
         self.timestamp = timestamp
-        self.process_filter = process_filter
-        self.gaussian_filter = gaussian_filter
-        self.gaussian_filter_threshold = gaussian_filter_threshold
-        self.gaussian_filter_r_value = gaussian_filter_r_value
+        self.quality = GOOD
+        self._bad_samples_dropped = 0
+        self._last_quality = GOOD
+        self.filter_enabled = filter_enabled
+        self.filter_wavelet = filter_wavelet
+        self.filter_level = filter_level
+        self.filter_threshold_factor = filter_threshold_factor
+        self.filter_persist = filter_persist
         self.outlier_detection = outlier_detection
         self.out_of_range_detection = out_of_range_detection
         self.frozen_data_detection = frozen_data_detection
@@ -224,7 +226,6 @@ class Tag:
         self.area = area
         self.owner_node = owner_node
         self.kp = kp
-        self.filter = GaussianFilter()
         self._observers = set()
         self._lock = threading.RLock()
 
@@ -239,7 +240,12 @@ class Tag:
         self.name = name
 
     @logging_error_handler
-    def set_value(self, value:float|str|int|bool, timestamp:datetime=None):
+    def set_value(
+        self,
+        value: float | str | int | bool,
+        timestamp: datetime = None,
+        quality: float = GOOD,
+    ):
         r"""
         Updates the value of the tag.
 
@@ -252,14 +258,20 @@ class Tag:
 
         * **value** (float|str|int|bool): New value.
         * **timestamp** (datetime, optional): Time of the value change. Defaults to now.
+        * **quality** (float, optional): OPC-style quality (1.0=GOOD, 0.5=UNCERTAIN, 0= BAD).
         """
+        q = float(quality) if quality is not None else GOOD
+        self._last_quality = q
+        bad_sample = not is_good_sample(value, q) if isinstance(value, (int, float)) else not is_good_quality(q)
+        if bad_sample:
+            self._bad_samples_dropped += 1
+
         with self._lock:
             if self.dead_band and isinstance(value, (int, float)):
                 try:
                     current_value = self.value.value
                     if abs(value - current_value) < self.dead_band:
-                        
-                        return
+                        return False
                 except Exception as e:
                     logging.error(f"Error in deadband logic: {e}")
 
@@ -267,9 +279,41 @@ class Tag:
                 timestamp = datetime.now()
             self.value.set_value(value=value, unit=self.display_unit)
             self.timestamp = timestamp
+            self.quality = UNCERTAIN if bad_sample else GOOD
             self.values(self.get_value())
             self.timestamps(timestamp.strftime(DATETIME_FORMAT))
+        self._ingest_wavelet_sample(value, timestamp, quality=q)
         self.notify()
+        return True
+
+    def _ingest_wavelet_sample(self, value, timestamp: datetime, quality: float = GOOD) -> None:
+        from ..signal_conditioning.filtered_tags import is_filtered_derivative_name, tag_filter_enabled
+
+        if not tag_filter_enabled(self) or is_filtered_derivative_name(self.name):
+            return
+        if not isinstance(value, (int, float)):
+            return
+        try:
+            from ..workers.wavelet_worker import get_wavelet_worker
+
+            worker = get_wavelet_worker()
+            if worker is None:
+                return
+            default_interval = 1.0
+            scan_time = getattr(self, "scan_time", None)
+            if scan_time:
+                default_interval = max(0.05, float(scan_time) / 1000.0)
+            worker.ensure_ingest(
+                self.name,
+                float(value),
+                timestamp,
+                quality=quality,
+                default_interval=default_interval,
+            )
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "Wavelet ingest skipped tag=%s", getattr(self, "name", ""), exc_info=True
+            )
 
     def set_display_name(self, name:str):
         r"""
@@ -716,8 +760,13 @@ class Tag:
             "owner_node": self.owner_node,
             "kp": self.get_kp(),
             "manufacturer": self.manufacturer,
-            "process_filter": self.process_filter,
-            "gaussian_filter": self.gaussian_filter,
+            "quality": self.quality,
+            "bad_samples_dropped": self._bad_samples_dropped,
+            "filter_enabled": self.filter_enabled,
+            "filter_wavelet": self.filter_wavelet,
+            "filter_level": self.filter_level,
+            "filter_threshold_factor": self.filter_threshold_factor,
+            "filter_persist": self.filter_persist,
             "out_of_range_detection": self.out_of_range_detection,
             "frozen_data_detection": self.frozen_data_detection,
             "outlier_detection": self.outlier_detection
@@ -731,6 +780,7 @@ class Tag:
             "value": self.get_value(),
             "timestamp": iso_millis(self.get_timestamp()),
             "unit": self.get_display_unit(),
+            "quality": getattr(self, "quality", GOOD),
         }
 
 
@@ -769,6 +819,7 @@ class TagObserver(Observer):
                 timestamp=result["timestamp"],
                 area=getattr(self._subject, "area", None),
                 owner_node=getattr(self._subject, "owner_node", None),
+                quality=getattr(self._subject, "quality", None),
             )
             import logging
             logging.getLogger("pyautomation").debug(

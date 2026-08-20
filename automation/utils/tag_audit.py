@@ -20,9 +20,11 @@ _GETTERS: tuple[tuple[str, Callable[[Any], Any]], ...] = (
     ("segment", lambda t: getattr(t, "segment", None)),
     ("manufacturer", lambda t: getattr(t, "manufacturer", None)),
     ("kp", lambda t: t.get_kp() if hasattr(t, "get_kp") else getattr(t, "kp", None)),
-    ("gaussian_filter", lambda t: getattr(t, "gaussian_filter", None)),
-    ("gaussian_filter_r_value", lambda t: getattr(t, "gaussian_filter_r_value", None)),
-    ("gaussian_filter_threshold", lambda t: getattr(t, "gaussian_filter_threshold", None)),
+    ("filter_enabled", lambda t: getattr(t, "filter_enabled", None)),
+    ("filter_wavelet", lambda t: getattr(t, "filter_wavelet", None)),
+    ("filter_level", lambda t: getattr(t, "filter_level", None)),
+    ("filter_threshold_factor", lambda t: getattr(t, "filter_threshold_factor", None)),
+    ("filter_persist", lambda t: getattr(t, "filter_persist", None)),
 )
 
 

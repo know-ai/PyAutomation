@@ -84,10 +84,11 @@ create_tag_model = api.model("create_tag_model", {
     'node_namespace': fields.String(required=False, description='OPC UA Node ID'),
     'scan_time': fields.Integer(required=False, description='Polling interval in ms'),
     'dead_band': fields.Float(required=False, description='Deadband value'),
-    'process_filter': fields.Boolean(required=False, description='Enable process filter', default=False),
-    'gaussian_filter': fields.Boolean(required=False, description='Enable Gaussian filter', default=False),
-    'gaussian_filter_threshold': fields.Float(required=False, description='Gaussian filter threshold', default=1.0),
-    'gaussian_filter_r_value': fields.Float(required=False, description='Gaussian filter R value', default=0.0),
+    'filter_enabled': fields.Boolean(required=False, description='Enable wavelet filter', default=False),
+    'filter_wavelet': fields.String(required=False, description='PyWavelets wavelet name', default='db4'),
+    'filter_level': fields.Integer(required=False, description='DWT decomposition level', default=4),
+    'filter_threshold_factor': fields.Float(required=False, description='Soft threshold sigma multiplier', default=3.0),
+    'filter_persist': fields.Boolean(required=False, description='Historize filtered .f tag', default=False),
     'outlier_detection': fields.Boolean(required=False, description='Enable outlier detection', default=False),
     'out_of_range_detection': fields.Boolean(required=False, description='Enable out of range detection', default=False),
     'frozen_data_detection': fields.Boolean(required=False, description='Enable frozen data detection', default=False),
@@ -111,10 +112,11 @@ update_tag_model = api.model("update_tag_model", {
     'node_namespace': fields.String(required=False, description='OPC UA Node ID'),
     'scan_time': fields.Integer(required=False, description='Polling interval in ms'),
     'dead_band': fields.Float(required=False, description='Deadband value'),
-    'process_filter': fields.Boolean(required=False, description='Enable process filter'),
-    'gaussian_filter': fields.Boolean(required=False, description='Enable Gaussian filter'),
-    'gaussian_filter_threshold': fields.Float(required=False, description='Gaussian filter threshold'),
-    'gaussian_filter_r_value': fields.Float(required=False, description='Gaussian filter R value'),
+    'filter_enabled': fields.Boolean(required=False, description='Enable wavelet filter'),
+    'filter_wavelet': fields.String(required=False, description='PyWavelets wavelet name'),
+    'filter_level': fields.Integer(required=False, description='DWT decomposition level'),
+    'filter_threshold_factor': fields.Float(required=False, description='Soft threshold sigma multiplier'),
+    'filter_persist': fields.Boolean(required=False, description='Historize filtered .f tag'),
     'outlier_detection': fields.Boolean(required=False, description='Enable outlier detection'),
     'out_of_range_detection': fields.Boolean(required=False, description='Enable out of range detection'),
     'frozen_data_detection': fields.Boolean(required=False, description='Enable frozen data detection'),
@@ -544,10 +546,11 @@ class AddTagResource(Resource):
                 node_namespace=payload.get('node_namespace'),
                 scan_time=payload.get('scan_time'),
                 dead_band=payload.get('dead_band'),
-                process_filter=payload.get('process_filter', False),
-                gaussian_filter=payload.get('gaussian_filter', False),
-                gaussian_filter_threshold=payload.get('gaussian_filter_threshold', 1.0),
-                gaussian_filter_r_value=payload.get('gaussian_filter_r_value', 0.0),
+                filter_enabled=payload.get('filter_enabled', False),
+                filter_wavelet=payload.get('filter_wavelet', 'db4'),
+                filter_level=payload.get('filter_level', 4),
+                filter_threshold_factor=payload.get('filter_threshold_factor', 3.0),
+                filter_persist=payload.get('filter_persist', False),
                 outlier_detection=payload.get('outlier_detection', False),
                 out_of_range_detection=payload.get('out_of_range_detection', False),
                 frozen_data_detection=payload.get('frozen_data_detection', False),
@@ -764,3 +767,54 @@ class UnitsByVariableResource(Resource):
             'data': units,
             'total': len(units)
         }, 200
+
+
+@ns.route('/<path:tag_name>/filter/status')
+@api.param('tag_name', 'Source tag name')
+class TagFilterStatusResource(Resource):
+
+    @api.doc(security='apikey', description="Returns live wavelet filter status for a tag.")
+    @api.response(200, "Success")
+    @api.response(404, "Tag or filter not found")
+    @Api.token_required(auth=True)
+    def get(self, tag_name):
+        from ....workers.wavelet_worker import get_wavelet_worker
+        from ....signal_conditioning.filtered_tags import source_tag_name, tag_filter_enabled
+
+        tag = app.cvt.get_tag_by_name(name=source_tag_name(tag_name))
+        if tag is None:
+            return {"message": f"Tag '{tag_name}' not found"}, 404
+        violation = _scope_violation(resource=tag)
+        if violation:
+            return violation
+        worker = get_wavelet_worker()
+        status = worker.get_status(tag.name) if worker is not None else None
+        if status is None:
+            return {
+                "enabled": bool(tag_filter_enabled(tag)),
+                "status": "idle",
+                "source": tag.name,
+                "filtered_tag": f"{tag.name}.f",
+                "age_ms": None,
+                "last_value": None,
+                "raw_rate": None,
+                "drop_count": 0,
+                "bad_samples_dropped": getattr(tag, "_bad_samples_dropped", 0),
+                "last_publication_quality": "GOOD",
+                "last_good_value": None,
+            }, 200
+        return status, 200
+
+
+@ns.route('/filter/status')
+class TagFilterStatusCollection(Resource):
+
+    @api.doc(security='apikey', description="Lists live wavelet filter status for all registered tags.")
+    @api.response(200, "Success")
+    @Api.token_required(auth=True)
+    def get(self):
+        from ....workers.wavelet_worker import get_wavelet_worker
+
+        worker = get_wavelet_worker()
+        items = worker.list_status() if worker is not None else []
+        return {"data": items, "total": len(items)}, 200

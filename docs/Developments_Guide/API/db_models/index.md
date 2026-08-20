@@ -72,10 +72,11 @@ erDiagram
         int scan_time
         float dead_band
         boolean active
-        boolean process_filter
-        boolean gaussian_filter
-        float gaussian_filter_threshold
-        float gaussian_filter_r_value
+        boolean filter_enabled
+        string filter_wavelet
+        int filter_level
+        float filter_threshold_factor
+        boolean filter_persist
         boolean out_of_range_detection
         boolean outlier_detection
         boolean frozen_data_detection

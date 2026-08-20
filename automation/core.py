@@ -542,10 +542,11 @@ class PyAutomation(Singleton):
             scan_time=int|float|type(None),
             dead_band=int|float|type(None),
             kp=int|float|type(None),
-            process_filter=bool,
-            gaussian_filter=bool,
-            gaussian_filter_threshold=float|int,
-            gaussian_filter_r_value=float|int,
+            filter_enabled=bool,
+            filter_wavelet=str,
+            filter_level=int,
+            filter_threshold_factor=float|int,
+            filter_persist=bool,
             outlier_detection=bool,
             out_of_range_detection=bool,
             frozen_data_detection=bool,
@@ -572,10 +573,11 @@ class PyAutomation(Singleton):
             node_namespace:str=None,
             scan_time:int=None,
             dead_band:float=None,
-            process_filter:bool=False,
-            gaussian_filter:bool=False,
-            gaussian_filter_threshold:float=1.0,
-            gaussian_filter_r_value:float=0.0,
+            filter_enabled:bool=False,
+            filter_wavelet:str="db4",
+            filter_level:int=4,
+            filter_threshold_factor:float=3.0,
+            filter_persist:bool=False,
             outlier_detection:bool=False,
             out_of_range_detection:bool=False,
             frozen_data_detection:bool=False,
@@ -694,10 +696,11 @@ class PyAutomation(Singleton):
             node_namespace=node_namespace,
             scan_time=scan_time,
             dead_band=dead_band,
-            process_filter=process_filter,
-            gaussian_filter=gaussian_filter,
-            gaussian_filter_threshold=gaussian_filter_threshold,
-            gaussian_filter_r_value=gaussian_filter_r_value,
+            filter_enabled=filter_enabled,
+            filter_wavelet=filter_wavelet,
+            filter_level=filter_level,
+            filter_threshold_factor=filter_threshold_factor,
+            filter_persist=filter_persist,
             outlier_detection=outlier_detection,
             out_of_range_detection=out_of_range_detection,
             frozen_data_detection=frozen_data_detection,
@@ -745,6 +748,7 @@ class PyAutomation(Singleton):
                 if tag_obj:
                     self.subscribe_opcua(tag=tag_obj, opcua_address=resolved_opcua_address, node_namespace=node_namespace, scan_time=scan_time, reload=reload)
 
+            self._sync_wavelet_runtime(tag)
             return tag, message
         
         else:
@@ -1344,10 +1348,18 @@ class PyAutomation(Singleton):
 
                 return None, f"{tag_name} is subscribed into {machines_with_tags_subscribed}"
 
-        keys_to_check = ["gaussian_filter", "threshold", "R-value"]
-        
-        if not any(key in kwargs for key in keys_to_check):
-            
+        filter_only_keys = {
+            "filter_enabled",
+            "filter_wavelet",
+            "filter_level",
+            "filter_threshold_factor",
+            "filter_persist",
+        }
+        # Bounce OPC only when non-filter fields change. Saving wavelet + OPC
+        # together must still (re)subscribe acquisition.
+        opc_relevant = bool(set(kwargs.keys()) - filter_only_keys)
+
+        if opc_relevant:
             self.unsubscribe_opcua(tag)
 
         # Persist Tag on Database
@@ -1355,35 +1367,6 @@ class PyAutomation(Singleton):
             
             kwargs["unit"] = list(VARIABLES[kwargs["variable"]].values())[0]
             kwargs["display_unit"] = list(VARIABLES[kwargs["variable"]].values())[0]
-
-        if "R-value" in kwargs:
-
-            try:
-                r_value = float(kwargs.pop("R-value"))
-                if r_value < 0.0 or r_value > 100.0:
-
-                    r_value = tag.gaussian_filter_r_value * 100.0
-
-            except Exception as err:
-
-                r_value = tag.gaussian_filter_r_value
-
-            kwargs['gaussian_filter_r_value'] = r_value / 100.0
-
-        if "threshold" in kwargs:
-
-            try:
-
-                threshold = float(kwargs.pop("threshold"))
-                if threshold < 0.0:
-
-                    threshold = tag.gaussian_filter_threshold
-
-            except Exception as err:
-
-                threshold = tag.gaussian_filter_threshold
-
-            kwargs['gaussian_filter_threshold'] = threshold
 
         # Si se está actualizando opcua_address, intentar resolver el nombre del cliente
         if "opcua_address" in kwargs:
@@ -1435,25 +1418,41 @@ class PyAutomation(Singleton):
 
             self.das.buffer.pop(tag_name)
 
-        keys_to_check = ["gaussian_filter", "gaussian_filter_threshold", "gaussian_filter_r_value"]
+        if kwargs and opc_relevant:
+            self.__update_buffer(tag=tag)
 
-        if kwargs:
-
-            if not any(key in kwargs for key in keys_to_check):
-                
-                self.__update_buffer(tag=tag)
-
-                if "scan_time" in kwargs:
-                    scan_time = kwargs["scan_time"]
-                    if isinstance(scan_time, int):
-                        self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
-                    else:
-                        self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
+            if "scan_time" in kwargs:
+                scan_time = kwargs["scan_time"]
+                if isinstance(scan_time, int):
+                    self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=scan_time)
                 else:
-
                     self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
+            else:
+                self.subscribe_opcua(tag, opcua_address=tag.get_opcua_address(), node_namespace=tag.get_node_namespace(), scan_time=tag.get_scan_time())
         
+        updated = result[0] if isinstance(result, tuple) else result
+        if updated is not None:
+            self._sync_wavelet_runtime(updated)
         return result
+
+    def _sync_wavelet_runtime(self, tag) -> None:
+        from .signal_conditioning.filtered_tags import maybe_ensure_persistent_filtered_tag, tag_filter_enabled
+        from .workers.wavelet_worker import get_wavelet_worker
+
+        if tag is None:
+            return
+        maybe_ensure_persistent_filtered_tag(tag)
+        worker = get_wavelet_worker()
+        if worker is None:
+            return
+        if not tag_filter_enabled(tag):
+            worker.unregister_tag(tag.name)
+            return
+        default_interval = 1.0
+        scan_time = getattr(tag, "scan_time", None)
+        if scan_time:
+            default_interval = max(0.05, float(scan_time) / 1000.0)
+        worker.sync_from_tag(tag, sample_interval=default_interval)
 
     @logging_error_handler
     @validate_types(name=str, output=None|str)
@@ -2871,38 +2870,91 @@ class PyAutomation(Singleton):
 
         ```
         """
-        if opcua_address and node_namespace:
-
-            if not scan_time or scan_time<=100:                                                           # SUBSCRIBE BY DAS
-                
-                for client_name, info in self.get_opcua_clients().items():
-
-                    if opcua_address==info.get("server_url"):
-                        # Verificar que el cliente esté conectado antes de intentar suscribirse
-                        is_connected = info.get("is_opened", False) or info.get("connected", False)
-                        if not is_connected:
-                            # Si el cliente no está conectado, saltar y continuar con el siguiente
-                            # Esto puede pasar cuando se carga un tag desde la BD y el cliente no está conectado
-                            continue
-
-                        opcua_client = self.get_opcua_client(client_name=client_name)
-                        # Verificar que el cliente sea válido antes de usarlo
-                        if opcua_client is None:
-                            continue
-                            
-                        # Verificar que el cliente esté realmente conectado
-                        if not opcua_client.is_connected():
-                            continue
-                            
-                        subscription = self.das.get_or_create_subscription(opcua_client, client_name)
-                        node_id = opcua_client.get_node_id_by_namespace(node_namespace)
-                        if node_id:
-                            self.das.subscribe(subscription=subscription, client_name=client_name, node_id=node_id)
-                        break
-
-            else:                                                                       # SUBSCRIBE BY DAQ
-                
-                self.subscribe_tag(tag_name=tag.get_name(), scan_time=scan_time, reload=reload)
+        logger = logging.getLogger("pyautomation")
+        tag_name = tag.get_name() if tag is not None else "-"
+        if not opcua_address or not node_namespace:
+            logger.warning(
+                "OPC subscribe skipped tag=%s reason=missing-mapping address=%s namespace=%s",
+                tag_name,
+                opcua_address,
+                node_namespace,
+            )
+            return
+        tag_client = getattr(tag, "opcua_client_name", None) if tag is not None else None
+        if not scan_time or scan_time <= 100:
+            matched = False
+            for client_name, info in self.get_opcua_clients().items():
+                server_url = info.get("server_url")
+                name_match = bool(tag_client) and tag_client.lower() == (client_name or "").lower()
+                url_match = opcua_address in (server_url, client_name)
+                if not (name_match or url_match):
+                    continue
+                matched = True
+                opcua_client = self.get_opcua_client(client_name=client_name)
+                is_connected = (
+                    info.get("is_opened", False)
+                    or info.get("connected", False)
+                    or (opcua_client is not None and opcua_client.is_connected())
+                )
+                if opcua_client is None or not is_connected:
+                    logger.warning(
+                        "OPC DAS subscribe deferred tag=%s client=%s reason=not-connected",
+                        tag_name,
+                        client_name,
+                    )
+                    continue
+                subscription = self.das.get_or_create_subscription(opcua_client, client_name)
+                try:
+                    node_id = opcua_client.get_node_id_by_namespace(node_namespace)
+                except Exception:
+                    logger.error(
+                        "OPC DAS subscribe failed tag=%s namespace=%s (invalid NodeId)",
+                        tag_name,
+                        node_namespace,
+                        exc_info=True,
+                    )
+                    break
+                if not node_id:
+                    logger.warning(
+                        "OPC DAS subscribe failed tag=%s namespace=%s reason=node-not-found",
+                        tag_name,
+                        node_namespace,
+                    )
+                    break
+                subscribed = self.das.subscribe(
+                    subscription=subscription,
+                    client_name=client_name,
+                    node_id=node_id,
+                )
+                if subscribed is None:
+                    logger.warning(
+                        "OPC DAS subscribe returned empty tag=%s client=%s namespace=%s",
+                        tag_name,
+                        client_name,
+                        node_namespace,
+                    )
+                else:
+                    logger.info(
+                        "OPC DAS subscribed tag=%s client=%s namespace=%s",
+                        tag_name,
+                        client_name,
+                        node_namespace,
+                    )
+                break
+            if not matched:
+                logger.warning(
+                    "OPC DAS subscribe skipped tag=%s reason=no-matching-client address=%s client_name=%s",
+                    tag_name,
+                    opcua_address,
+                    tag_client,
+                )
+        else:
+            logger.info(
+                "OPC DAQ subscribe tag=%s scan_time=%s ms",
+                tag_name,
+                scan_time,
+            )
+            self.subscribe_tag(tag_name=tag.get_name(), scan_time=scan_time, reload=reload)
 
         # Asegurar que el buffer existe antes de actualizarlo
         if tag.get_name() in self.das.buffer:
@@ -2948,13 +3000,10 @@ class PyAutomation(Singleton):
             interval = FloatType(scan_time / 1000)
             daq.set_opcua_client_manager(manager=self.opcua_client_manager)
             self.machine.append_machine(machine=daq, interval=interval, mode="async")
-            
-            if not reload:
-
-                if self.machine.state_worker:
-                    self.machine.join(machine=daq)
-                else:
-                    self.machine.start()
+            if self.machine.state_worker:
+                self.machine.join(machine=daq)
+            elif not reload:
+                self.machine.start()
 
         daq.subscribe_to(tag=tag)
 
@@ -5406,6 +5455,10 @@ class PyAutomation(Singleton):
             self.metrics_worker = MetricsSamplerWorker()
             self.metrics_worker.start()
 
+            from .workers.wavelet_worker import start_wavelet_worker
+
+            self.wavelet_worker = start_wavelet_worker()
+
         if machines:
 
             for machine in machines:
@@ -5434,6 +5487,10 @@ class PyAutomation(Singleton):
             self.hmi_session_worker.stop()
         if hasattr(self, "metrics_worker") and self.metrics_worker is not None:
             self.metrics_worker.stop()
+        if hasattr(self, "wavelet_worker") and self.wavelet_worker is not None:
+            from .workers.wavelet_worker import stop_wavelet_worker
+
+            stop_wavelet_worker()
         if hasattr(self, "db_worker") and self.db_worker is not None:
             self.db_worker.stop()
         if hasattr(self, 'subscription_monitor'):
@@ -5899,10 +5956,11 @@ class PyAutomation(Singleton):
                                 dead_band=item.get("dead_band"),
                                 kp=item.get("kp"),
                                 active=item.get("active", True),
-                                process_filter=item.get("process_filter", False),
-                                gaussian_filter=item.get("gaussian_filter", False),
-                                gaussian_filter_threshold=item.get("gaussian_filter_threshold", 1.0),
-                                gaussian_filter_r_value=item.get("gaussian_filter_r_value", 0.0),
+                                filter_enabled=item.get("filter_enabled", False),
+                                filter_wavelet=item.get("filter_wavelet", "db4"),
+                                filter_level=item.get("filter_level", 4),
+                                filter_threshold_factor=item.get("filter_threshold_factor", 3.0),
+                                filter_persist=item.get("filter_persist", False),
                                 out_of_range_detection=item.get("out_of_range_detection", False),
                                 outlier_detection=item.get("outlier_detection", False),
                                 frozen_data_detection=item.get("frozen_data_detection", False),

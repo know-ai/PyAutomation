@@ -132,37 +132,31 @@ Set a threshold for value changes. Updates are only processed if the value chang
 
 ![Advanced Configuration Options](../images/CreateTagPollingAndFilterConfiguration.png)
 
-#### 10.1. Data Filtering
+#### 10.1. Wavelet Filter (Real-Time)
 
-Filters are used to smooth noisy sensor readings and improve signal quality before storing values in the database.
-
-##### Gaussian Filter (Kalman Filter)
-
-The **Gaussian Filter** implements an adaptive Kalman Filter algorithm designed to reduce noise in sensor measurements while preserving true signal changes.
+The **Wavelet RT filter** applies discrete wavelet transform (DWT) denoising off the acquisition hot path. Raw samples stay on the source tag; filtered values are published on a derived tag `{name}.f` at the state machine `sample_interval`.
 
 **How it works:**
-- The filter maintains an internal state that estimates the "true" value based on historical measurements
-- It uses an adaptive algorithm that adjusts its sensitivity based on the variance of incoming data
-- When the innovation (difference between predicted and measured values) variance exceeds a threshold, the filter becomes more responsive to changes
-- When variance is low, the filter applies stronger smoothing to reduce noise
+- OPC acquisition writes raw values O(1) into a ring buffer (no DWT on the hot path)
+- A dedicated `WaveletWorker` runs DWT + soft threshold + inverse DWT on a sliding window
+- State machines subscribed to a filtered tag automatically consume `{name}.f`
+- Bad OPC quality or non-finite values trigger **hold**: the `.f` tag keeps the last good value with **UNCERTAIN** quality
 
 **Configuration Parameters:**
-- **Threshold** (default: 100): Controls when the filter switches between adaptive modes. Higher values make the filter more conservative (smoother), lower values make it more responsive to changes
-- **R Value** (default: 0.5): Measurement noise parameter. Lower values indicate higher confidence in measurements (less filtering), higher values indicate more noise (more filtering)
+- **filter_enabled**: Master switch
+- **filter_wavelet** (default: `db4`): PyWavelets family (`db4`, `db6`, `sym4`, …)
+- **filter_level** (default: 4): DWT decomposition levels (1–6)
+- **filter_threshold_factor** (default: 3.0): Soft-threshold multiplier (higher = smoother)
+- **filter_persist**: When enabled, the `.f` tag is registered in the historian (SAF)
 
 **Use Cases:**
-- Sensors with high electrical noise
-- Mechanical vibrations affecting sensor readings
-- Radio frequency interference (RFI) in industrial environments
-- Analog-to-digital conversion noise
+- Noisy analog sensors used by state machines or control logic
+- Signals requiring smoothing without delaying raw acquisition trends
+- Process tags where operators need visibility into filter health (hold / UNCERTAIN quality)
 
-**Example:** A temperature sensor reading 25.3°C, 25.1°C, 25.4°C, 25.2°C might be filtered to a stable 25.25°C, reducing database storage of minor fluctuations while preserving actual temperature trends.
+**Example:** Tag `Line1.Pressure` with wavelet enabled publishes filtered values on `Line1.Pressure.f`. If the source goes BAD, the HMI shows hold + UNCERTAIN on the filtered tag while preserving the last good reading.
 
-##### Process Filter
-
-The **Process Filter** is a boolean flag that enables additional process-level filtering. This feature provides a framework for custom filtering logic that can be extended based on specific industrial process requirements.
-
-**Note:** This filter serves as a foundation for process-specific filtering implementations and can be customized for particular use cases.
+> **Note:** Legacy Gaussian (Kalman) and process filters were removed in 2026-08-19. Use wavelet RT only.
 
 ![Filter Configuration](../images/CreateTagForm_FilterConfiguration.png)
 
