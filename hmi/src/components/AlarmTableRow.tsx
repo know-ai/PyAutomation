@@ -3,6 +3,7 @@ import { Button } from "./Button";
 import { useTranslation } from "../hooks/useTranslation";
 import type { Alarm } from "../services/alarms";
 import type { Tag } from "../services/tags";
+import { translateAlarmDescription } from "../utils/alarmCatalog";
 
 type AlarmTableRowProps = {
   alarm: Alarm;
@@ -74,7 +75,7 @@ export const AlarmTableRow = memo(
         </td>
         <td>{displayTagValue}</td>
         <td>{triggerValue}</td>
-        <td>{currentAlarm.description || "-"}</td>
+        <td>{translateAlarmDescription(currentAlarm.description, currentAlarm.name, t)}</td>
         <td>
           <span className={`badge ${getStateBadgeClass(currentAlarm.state)}`}>
             {getStateLabel(currentAlarm.state)}

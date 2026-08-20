@@ -40,6 +40,34 @@ function qualityBadgeTone(quality?: string): string {
   return "secondary";
 }
 
+type TranslateFn = (key: string, params?: Record<string, string | number>) => string;
+
+function formatWaveletEta(row: TagFilterStatus, t: TranslateFn): string {
+  const status = (row.status || "").toLowerCase();
+  if (status === "ok" || row.warmup_eta_s === 0) {
+    return t("performance.waveletEtaReady");
+  }
+  if (status !== "warmup" || row.warmup_eta_s == null) {
+    return "—";
+  }
+  const eta = Number(row.warmup_eta_s);
+  if (!Number.isFinite(eta)) return "—";
+  const fill = row.ring_fill ?? 0;
+  const window = row.window ?? 0;
+  const progress = window > 0 ? `${fill}/${window}` : "";
+  const seconds = eta < 10 ? eta.toFixed(1) : String(Math.round(eta));
+  if (progress) {
+    return t("performance.waveletEtaProgress", { progress, seconds });
+  }
+  return t("performance.waveletEtaSeconds", { seconds });
+}
+
+function waveletStatusLabel(status: string | undefined, t: TranslateFn): string {
+  const key = `tags.waveletStatus.${(status || "").toLowerCase()}`;
+  const translated = t(key);
+  return translated === key ? status || "—" : translated;
+}
+
 function formatUptime(seconds: number | null | undefined): string {
   if (seconds == null || seconds < 0) return "—";
   const total = Math.floor(seconds);
@@ -376,6 +404,7 @@ export function Performance() {
                   <th>{t("performance.waveletSource")}</th>
                   <th>{t("performance.waveletFiltered")}</th>
                   <th>{t("performance.waveletStatus")}</th>
+                  <th>{t("performance.waveletEta")}</th>
                   <th>{t("performance.waveletQuality")}</th>
                   <th>{t("performance.waveletAge")}</th>
                   <th>{t("performance.waveletRate")}</th>
@@ -384,13 +413,44 @@ export function Performance() {
               <tbody>
                 {waveletRows.map((row) => {
                   const age = row.age_ms ?? null;
-                  const tone = age == null ? "secondary" : age > 5000 ? "danger" : age > 1000 ? "warning" : "success";
+                  const status = (row.status || "").toLowerCase();
+                  const tone =
+                    status === "ok"
+                      ? "success"
+                      : status === "warmup"
+                        ? "info"
+                        : status === "hold"
+                          ? "warning"
+                          : status === "failed"
+                            ? "danger"
+                            : age == null
+                              ? "secondary"
+                              : age > 5000
+                                ? "danger"
+                                : age > 1000
+                                  ? "warning"
+                                  : "success";
                   return (
                     <tr key={row.source || row.filtered_tag}>
                       <td><code>{row.source}</code></td>
                       <td><code>{row.filtered_tag}</code></td>
                       <td>
-                        <span className={`badge text-bg-${tone}`}>{row.status}</span>
+                        <span className={`badge text-bg-${tone}`}>{waveletStatusLabel(row.status, t)}</span>
+                      </td>
+                      <td>
+                        <span
+                          className={status === "warmup" ? "text-info fw-semibold" : "text-muted"}
+                          title={
+                            status === "warmup" && row.window
+                              ? t("performance.waveletEtaHint", {
+                                  remaining: row.warmup_remaining ?? 0,
+                                  window: row.window,
+                                })
+                              : undefined
+                          }
+                        >
+                          {formatWaveletEta(row, t)}
+                        </span>
                       </td>
                       <td>
                         <span className={`badge text-bg-${qualityBadgeTone(row.last_publication_quality)}`}>

@@ -13,6 +13,7 @@ import { showToast } from "../utils/toast";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { formatTimestamp } from "../utils/timezone";
 import { alarmStateBadgeClass } from "../utils/alarmState";
+import { translateAlarmDescription } from "../utils/alarmCatalog";
 import { VirtualizedCombobox, type ComboboxItem } from "../components/VirtualizedCombobox";
 
 export function Alarms() {
@@ -497,7 +498,7 @@ export function Alarms() {
           alarm.tag || "",
           alarmType,
           triggerValue !== undefined ? String(triggerValue) : "",
-          alarm.description || "",
+          translateAlarmDescription(alarm.description, alarm.name, t),
           stateName || "",
           stateMnemonic || "",
           alarm.timestamp ? formatTimestamp(alarm.timestamp, timeZone) : "",

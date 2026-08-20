@@ -89,6 +89,21 @@ class WaveletWorker(BaseWorker):
                     return
             self._tags.pop(source_name, None)
 
+    def rename_source(self, old_name: str, new_name: str) -> None:
+        """Move an active filter entry when the raw source tag is renamed."""
+        if not old_name or not new_name or old_name == new_name:
+            return
+        with self._lock:
+            entry = self._tags.pop(old_name, None)
+            if entry is None:
+                return
+            entry.source_name = new_name
+            existing = self._tags.get(new_name)
+            if existing is not None and existing is not entry:
+                # Prefer the renamed entry (keeps ring / warmup progress).
+                entry.machines |= existing.machines
+            self._tags[new_name] = entry
+
     def update_sample_interval(self, source_name: str, sample_interval: float) -> None:
         interval = max(0.05, float(sample_interval))
         with self._lock:

@@ -1317,6 +1317,13 @@ class PyAutomation(Singleton):
         scope = self._refresh_node_scope()
         if tag is None or (scope.enabled and not scope.owns_tag(tag)):
             return None, "Tag does not belong to this edge node"
+        from .signal_conditioning.filtered_tags import is_filtered_derivative_name
+
+        if is_filtered_derivative_name(getattr(tag, "name", "")):
+            return None, (
+                "Filtered tags (.f) are managed by the source tag wavelet filter; "
+                "edit the raw tag filter section instead"
+            )
         if scope.enabled:
             if kwargs.get("area", scope.area) != scope.area:
                 return None, "Tag area belongs to another edge node"
@@ -1347,6 +1354,9 @@ class PyAutomation(Singleton):
             if machines_with_tags_subscribed:
 
                 return None, f"{tag_name} is subscribed into {machines_with_tags_subscribed}"
+
+        previous_name = tag.get_name() if "name" in kwargs else None
+        identity_fields_changed = ("name" in kwargs) or ("display_name" in kwargs) or ("description" in kwargs)
 
         filter_only_keys = {
             "filter_enabled",
@@ -1432,20 +1442,37 @@ class PyAutomation(Singleton):
         
         updated = result[0] if isinstance(result, tuple) else result
         if updated is not None:
-            self._sync_wavelet_runtime(updated)
+            # Cascade name/display onto an already-created .f even if filter is currently off.
+            if identity_fields_changed or previous_name:
+                from .signal_conditioning.filtered_tags import propagate_filtered_tag_identity
+
+                propagate_filtered_tag_identity(updated, previous_name=previous_name)
+            self._sync_wavelet_runtime(updated, previous_name=previous_name)
         return result
 
-    def _sync_wavelet_runtime(self, tag) -> None:
-        from .signal_conditioning.filtered_tags import maybe_ensure_persistent_filtered_tag, tag_filter_enabled
+    def _sync_wavelet_runtime(self, tag, previous_name: str | None = None) -> None:
+        from .signal_conditioning.filtered_tags import (
+            ensure_filtered_tag,
+            maybe_ensure_persistent_filtered_tag,
+            tag_filter_enabled,
+        )
         from .workers.wavelet_worker import get_wavelet_worker
 
         if tag is None:
             return
-        maybe_ensure_persistent_filtered_tag(tag)
         worker = get_wavelet_worker()
+        if worker is not None and previous_name and previous_name != getattr(tag, "name", None):
+            worker.rename_source(previous_name, tag.name)
+        maybe_ensure_persistent_filtered_tag(tag)
+        if tag_filter_enabled(tag):
+            # Keep .f identity aligned / create when missing (lazy path).
+            ensure_filtered_tag(tag, previous_name=previous_name)
         if worker is None:
             return
         if not tag_filter_enabled(tag):
+            # Unregister under both names in case rename already moved the entry.
+            if previous_name:
+                worker.unregister_tag(previous_name)
             worker.unregister_tag(tag.name)
             return
         default_interval = 1.0
@@ -1477,6 +1504,13 @@ class PyAutomation(Singleton):
 
         ```
         """
+        from .signal_conditioning.filtered_tags import is_filtered_derivative_name
+
+        if is_filtered_derivative_name(name):
+            return (
+                "Filtered tags (.f) cannot be deleted directly; "
+                "disable the wavelet filter on the source tag instead"
+            )
         tag = self.cvt.get_tag_by_name(name=name)
         scope = self._refresh_node_scope()
         if tag is None or (scope.enabled and not scope.owns_tag(tag)):

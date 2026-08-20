@@ -11,6 +11,12 @@ type VirtualListProps<T> = {
   getKey: (item: T, index: number) => string;
   renderItem: (item: T, index: number) => ReactNode;
   highlightedIndex?: number;
+  /**
+   * When this token changes, scroll so ``highlightedIndex`` is visible.
+   * Do not scroll on every highlight change (e.g. mouse hover while scrolling).
+   */
+  scrollToIndexToken?: number;
+  onScroll?: () => void;
 };
 
 export function shouldVirtualize(count: number): boolean {
@@ -26,11 +32,16 @@ export function VirtualList<T>({
   getKey,
   renderItem,
   highlightedIndex,
+  scrollToIndexToken,
+  onScroll: onScrollProp,
 }: VirtualListProps<T>) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
 
   useEffect(() => {
+    if (scrollToIndexToken == null) {
+      return;
+    }
     if (highlightedIndex == null || highlightedIndex < 0) {
       return;
     }
@@ -45,11 +56,21 @@ export function VirtualList<T>({
     } else if (bottom > el.scrollTop + el.clientHeight) {
       el.scrollTop = bottom - el.clientHeight;
     }
-  }, [highlightedIndex, itemHeight]);
+  }, [scrollToIndexToken, highlightedIndex, itemHeight]);
+
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    setScrollTop(event.currentTarget.scrollTop);
+    onScrollProp?.();
+  };
 
   if (!shouldVirtualize(items.length)) {
     return (
-      <div ref={scrollerRef} className={className} style={{ maxHeight: height, overflowY: "auto" }}>
+      <div
+        ref={scrollerRef}
+        className={className}
+        style={{ maxHeight: height, overflowY: "auto" }}
+        onScroll={() => onScrollProp?.()}
+      >
         {items.map((item, index) => (
           <div key={getKey(item, index)}>{renderItem(item, index)}</div>
         ))}
@@ -63,16 +84,12 @@ export function VirtualList<T>({
   const padTop = start * itemHeight;
   const padBottom = Math.max(0, (items.length - end) * itemHeight);
 
-  const onScroll = (event: UIEvent<HTMLDivElement>) => {
-    setScrollTop(event.currentTarget.scrollTop);
-  };
-
   return (
     <div
       ref={scrollerRef}
       className={className}
       style={{ height, overflowY: "auto" }}
-      onScroll={onScroll}
+      onScroll={handleScroll}
     >
       <div style={{ height: padTop }} aria-hidden="true" />
       {items.slice(start, end).map((item, offset) => {

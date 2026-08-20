@@ -245,6 +245,7 @@
   "tags": {
     "editTag": "Edit tag",
     "deleteTag": "Delete tag",
+    "filteredRowHint": "Filtered tag (.f): managed from the raw tag wavelet filter. Disabling the filter on the source does not delete history.",
     "loadError": "Error loading tags",
     "noIdToEdit": "Tag has no ID, cannot edit",
     "noNameToDelete": "Tag has no name, cannot delete",
@@ -1022,7 +1023,14 @@
     "hours": "Hours",
     "minutes": "Minutes",
     "seconds": "Seconds",
-    "applyShelve": "Apply Shelve"
+    "applyShelve": "Apply Shelve",
+    "catalog": {
+      "dbConnectionLost": "Historian database connection lost",
+      "ntpOutOfSync": "Edge clock out of sync with plant NTP",
+      "opcuaConnectionLost": "OPC UA client '{{client}}' connection lost",
+      "performance": "System · {{title}}",
+      "performanceThreshold": "System · {{title}}. Triggers when {{field}} ≥ {{threshold}}."
+    }
   },
   "alarmsSummary": {
     "loadError": "Error loading alarms summary",
@@ -1209,6 +1217,11 @@
     "waveletSource": "Source",
     "waveletFiltered": "Filtered",
     "waveletStatus": "Status",
+    "waveletEta": "ETA to OK",
+    "waveletEtaReady": "Ready",
+    "waveletEtaSeconds": "{{seconds}} s",
+    "waveletEtaProgress": "{{progress}} · {{seconds}} s",
+    "waveletEtaHint": "{{remaining}} of {{window}} samples left to finish warmup",
     "waveletQuality": ".f quality",
     "waveletAge": "Age",
     "waveletRate": "Rate",

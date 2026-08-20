@@ -41,8 +41,12 @@ export function VirtualizedCombobox({
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [scrollTop, setScrollTop] = useState(0);
+  const [keyboardScrollToken, setKeyboardScrollToken] = useState(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const keyboardNavRef = useRef(false);
+  const scrollingRef = useRef(false);
+  const scrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overscan = 4;
 
   const visibleCount = Math.ceil(listHeight / rowHeight);
@@ -84,6 +88,8 @@ export function VirtualizedCombobox({
 
   useEffect(() => {
     if (!isOpen || highlightedIndex < 0 || !listRef.current) return;
+    if (!keyboardNavRef.current) return;
+    keyboardNavRef.current = false;
     const listEl = listRef.current;
     const targetTop = highlightedIndex * rowHeight;
     const targetBottom = targetTop + rowHeight;
@@ -94,7 +100,38 @@ export function VirtualizedCombobox({
     } else if (targetBottom > viewBottom) {
       listEl.scrollTop = targetBottom - listHeight;
     }
-  }, [highlightedIndex, isOpen, rowHeight, listHeight]);
+  }, [highlightedIndex, keyboardScrollToken, isOpen, rowHeight, listHeight]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollIdleTimerRef.current) {
+        clearTimeout(scrollIdleTimerRef.current);
+      }
+    };
+  }, []);
+
+  const markListScrolling = () => {
+    scrollingRef.current = true;
+    if (scrollIdleTimerRef.current) {
+      clearTimeout(scrollIdleTimerRef.current);
+    }
+    scrollIdleTimerRef.current = setTimeout(() => {
+      scrollingRef.current = false;
+      scrollIdleTimerRef.current = null;
+    }, 120);
+  };
+
+  const highlightFromMouse = (index: number) => {
+    if (scrollingRef.current) return;
+    keyboardNavRef.current = false;
+    setHighlightedIndex(index);
+  };
+
+  const highlightFromKeyboard = (index: number) => {
+    keyboardNavRef.current = true;
+    setHighlightedIndex(index);
+    setKeyboardScrollToken((token) => token + 1);
+  };
 
   const renderHighlighted = (text: string, query: string) => {
     const q = query.trim();
@@ -142,11 +179,11 @@ export function VirtualizedCombobox({
           if (e.key === "ArrowDown") {
             e.preventDefault();
             if (!items.length) return;
-            setHighlightedIndex((prev) => (prev < items.length - 1 ? prev + 1 : 0));
+            highlightFromKeyboard(highlightedIndex < items.length - 1 ? highlightedIndex + 1 : 0);
           } else if (e.key === "ArrowUp") {
             e.preventDefault();
             if (!items.length) return;
-            setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : items.length - 1));
+            highlightFromKeyboard(highlightedIndex > 0 ? highlightedIndex - 1 : items.length - 1);
           } else if (e.key === "Enter") {
             if (highlightedIndex >= 0 && highlightedIndex < items.length) {
               e.preventDefault();
@@ -172,7 +209,10 @@ export function VirtualizedCombobox({
           ref={listRef}
           className="dropdown-menu show w-100 mt-1 p-0"
           style={{ maxHeight: `${listHeight}px`, overflowY: "auto" }}
-          onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+          onScroll={(e) => {
+            setScrollTop((e.target as HTMLDivElement).scrollTop);
+            markListScrolling();
+          }}
         >
           {loading ? (
             <div className="dropdown-item text-muted">{loadingText}</div>
@@ -197,7 +237,7 @@ export function VirtualizedCombobox({
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
                     }}
-                    onMouseEnter={() => setHighlightedIndex(index)}
+                    onMouseEnter={() => highlightFromMouse(index)}
                     onMouseDown={(evt) => evt.preventDefault()}
                     onClick={() => {
                       onSelect(item);

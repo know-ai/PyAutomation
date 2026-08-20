@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from automation.signal_conditioning.filtered_tags import (
+    filtered_display_name,
     filtered_tag_name,
     is_filtered_derivative_name,
     source_tag_name,
@@ -47,6 +48,57 @@ class TestWaveletNaming(unittest.TestCase):
         derived = _TagStub(name="P.f", filter_enabled=False)
         self.assertTrue(tag_filter_enabled(src))
         self.assertFalse(tag_filter_enabled(derived))
+
+    def test_filtered_display_name_suffix(self):
+        tag = _TagStub(name="Supe.Linea1.FI_01", display_name="Flujo 01")
+        tag.get_display_name = lambda: "Flujo 01"
+        self.assertEqual(filtered_display_name(tag), "Flujo 01.filtro")
+
+    def test_propagate_renames_filtered_tag_and_display(self):
+        from automation.signal_conditioning.filtered_tags import propagate_filtered_tag_identity
+
+        source = _TagStub(name="Area.New", display_name="Nuevo", description="desc")
+        source.get_display_name = lambda: "Nuevo"
+        source.get_name = lambda: "Area.New"
+
+        derived = _TagStub(
+            id="f1",
+            name="Area.Old.f",
+            display_name="Viejo.filtro",
+            description="old",
+        )
+        derived.get_display_name = lambda: derived.display_name
+        derived.set_display_name = lambda name: setattr(derived, "display_name", name)
+        derived.set_description = lambda description: setattr(derived, "description", description)
+
+        def get_by_name(name):
+            if name == "Area.New.f":
+                return None
+            if name == "Area.Old.f":
+                return derived
+            return None
+
+        def update_tag(id, **kwargs):
+            if "name" in kwargs:
+                derived.name = kwargs["name"]
+            return derived, "ok"
+
+        fake_app = MagicMock()
+        fake_app.cvt.get_tag_by_name.side_effect = get_by_name
+        fake_app.cvt.update_tag.side_effect = update_tag
+        fake_app.is_db_connected.return_value = False
+        fake_app.das.buffer = {"Area.Old.f": 1}
+        fake_app.alarm_manager._by_tag_name = {}
+
+        with patch("automation.PyAutomation", return_value=fake_app), patch(
+            "automation.workers.wavelet_worker.get_wavelet_worker", return_value=None
+        ):
+            result = propagate_filtered_tag_identity(source, previous_name="Area.Old")
+
+        self.assertIs(result, derived)
+        self.assertEqual(derived.name, "Area.New.f")
+        self.assertEqual(derived.display_name, "Nuevo.filtro")
+        self.assertNotIn("Area.Old.f", fake_app.das.buffer)
 
 
 class TestSampleRing(unittest.TestCase):
@@ -164,6 +216,26 @@ class TestWaveletBlockFilter(unittest.TestCase):
             window = _window_size(level, "db4")
             self.assertGreaterEqual(_safe_dwt_level(window, "db4", level), level)
 
+    def test_warmup_eta_is_deterministic(self):
+        flt = WaveletBlockFilter(wavelet="db4", level=3, threshold_factor=3.0)
+        base = datetime(2026, 1, 1)
+        interval = 0.5
+        # Half the window filled at fixed cadence
+        half = flt._window // 2
+        for i in range(half):
+            flt.update(float(i), base + timedelta(seconds=interval * i), quality=GOOD)
+        result = flt.process()
+        self.assertEqual(result.status, FilterStatus.WARMUP)
+        status = flt.snapshot_status(interval)
+        self.assertEqual(status["status"], "warmup")
+        self.assertEqual(status["ring_fill"], half)
+        self.assertEqual(status["warmup_remaining"], flt._window - half)
+        self.assertIsNotNone(status["warmup_eta_s"])
+        self.assertGreater(status["warmup_eta_s"], 0)
+        # ETA ≈ remaining * observed sample period
+        expected = (flt._window - half) * interval
+        self.assertAlmostEqual(status["warmup_eta_s"], expected, delta=interval)
+
     def test_high_level_is_clamped_without_pywt_warning(self):
         # Undersized window forces clamp; pywt boundary UserWarning must stay silent.
         self.assertEqual(_safe_dwt_level(32, "db4", 5), 2)
@@ -224,6 +296,20 @@ class TestWaveletWorker(unittest.TestCase):
         self.assertEqual(entry2.filter.threshold_factor, 2.0)
         result = entry2.filter.process()
         self.assertEqual(result.status, FilterStatus.OK)
+        worker.stop()
+
+    def test_rename_source_keeps_ring(self):
+        worker = WaveletWorker(tick_ms=20)
+        worker.register_tag("Old.Tag", sample_interval=0.1, level=1)
+        base = datetime(2026, 1, 1)
+        for i in range(8):
+            worker.ensure_ingest("Old.Tag", float(i), base + timedelta(milliseconds=50 * i))
+        ring_before = len(worker._tags["Old.Tag"].filter._ring)
+        worker.rename_source("Old.Tag", "New.Tag")
+        self.assertNotIn("Old.Tag", worker._tags)
+        self.assertIn("New.Tag", worker._tags)
+        self.assertEqual(worker._tags["New.Tag"].source_name, "New.Tag")
+        self.assertEqual(len(worker._tags["New.Tag"].filter._ring), ring_before)
         worker.stop()
 
     def test_publish_applies_quality_to_derived_tag(self):

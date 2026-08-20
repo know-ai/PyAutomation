@@ -128,6 +128,12 @@ export type TagFilterStatus = {
   bad_samples_dropped?: number;
   last_publication_quality?: string;
   sample_interval?: number;
+  window?: number;
+  ring_fill?: number;
+  warmup_remaining?: number;
+  warmup_eta_s?: number | null;
+  configured_level?: number;
+  effective_level?: number;
 };
 
 export const getTagFilterStatus = async (tagName: string): Promise<TagFilterStatus | null> => {

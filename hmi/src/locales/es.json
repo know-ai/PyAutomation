@@ -245,6 +245,7 @@
   "tags": {
     "editTag": "Editar tag",
     "deleteTag": "Eliminar tag",
+    "filteredRowHint": "Tag filtrado (.f): se gestiona desde el filtro wavelet del tag raw. Desactivar el filtro en el origen no elimina el historial.",
     "loadError": "Error al cargar tags",
     "noIdToEdit": "El tag no tiene ID, no se puede editar",
     "noNameToDelete": "El tag no tiene nombre, no se puede eliminar",
@@ -1017,7 +1018,14 @@
     "hours": "Horas",
     "minutes": "Minutos",
     "seconds": "Segundos",
-    "applyShelve": "Aplicar Shelve"
+    "applyShelve": "Aplicar Shelve",
+    "catalog": {
+      "dbConnectionLost": "Conexión al historiador perdida",
+      "ntpOutOfSync": "Reloj del nodo fuera de sincronización con NTP de planta",
+      "opcuaConnectionLost": "Conexión del cliente OPC UA '{{client}}' perdida",
+      "performance": "Sistema · {{title}}",
+      "performanceThreshold": "Sistema · {{title}}. Se dispara cuando {{field}} ≥ {{threshold}}."
+    }
   },
   "alarmsSummary": {
     "loadError": "Error al cargar el resumen de alarmas",
@@ -1204,6 +1212,11 @@
     "waveletSource": "Fuente",
     "waveletFiltered": "Filtrado",
     "waveletStatus": "Estado",
+    "waveletEta": "ETA a OK",
+    "waveletEtaReady": "Listo",
+    "waveletEtaSeconds": "{{seconds}} s",
+    "waveletEtaProgress": "{{progress}} · {{seconds}} s",
+    "waveletEtaHint": "Faltan {{remaining}} de {{window}} muestras para completar el warmup",
     "waveletQuality": "Calidad .f",
     "waveletAge": "Edad",
     "waveletRate": "Tasa",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 _FILTER_SUFFIX = ".f"
+_FILTER_DISPLAY_SUFFIX = ".filtro"
 
 
 def filtered_tag_name(source_name: str) -> str:
@@ -25,6 +26,34 @@ def source_tag_name(filtered_name: str) -> str:
     if name.endswith(_FILTER_SUFFIX):
         return name[: -len(_FILTER_SUFFIX)]
     return name
+
+
+def _source_display_base(source_tag) -> str:
+    base = ""
+    getter = getattr(source_tag, "get_display_name", None)
+    if callable(getter):
+        try:
+            base = str(getter() or "").strip()
+        except Exception:
+            base = ""
+    if not base:
+        base = str(getattr(source_tag, "display_name", None) or "").strip()
+    if not base:
+        name = str(getattr(source_tag, "name", "") or "")
+        base = name.split(".")[-1] if name else "tag"
+    if base.endswith(_FILTER_DISPLAY_SUFFIX):
+        return base[: -len(_FILTER_DISPLAY_SUFFIX)]
+    return base
+
+
+def filtered_display_name(source_tag) -> str:
+    """UI display name for a ``.f`` tag: raw display name + ``.filtro``."""
+    return f"{_source_display_base(source_tag)}{_FILTER_DISPLAY_SUFFIX}"
+
+
+def filtered_description(source_tag) -> str:
+    source_desc = getattr(source_tag, "description", None) or getattr(source_tag, "name", "")
+    return f"Wavelet filtered · {source_desc}"
 
 
 def tag_filter_enabled(tag) -> bool:
@@ -69,18 +98,202 @@ def maybe_ensure_persistent_filtered_tag(source_tag) -> object | None:
     return ensure_filtered_tag(source_tag, persist=True)
 
 
-def ensure_filtered_tag(source_tag, *, persist: bool | None = None) -> object | None:
+def sync_filtered_tag_metadata(source_tag, derived) -> dict:
+    """Keep ``.f`` display_name / description aligned with the raw source tag.
+
+    Returns ``{"display_name": bool, "description": bool}`` for what changed.
+    """
+    changed = {"display_name": False, "description": False}
+    if source_tag is None or derived is None:
+        return changed
+    desired_display = filtered_display_name(source_tag)
+    desired_desc = filtered_description(source_tag)
+    try:
+        current_display = (
+            derived.get_display_name()
+            if hasattr(derived, "get_display_name")
+            else getattr(derived, "display_name", None)
+        )
+        if current_display != desired_display and hasattr(derived, "set_display_name"):
+            derived.set_display_name(desired_display)
+            changed["display_name"] = True
+        if getattr(derived, "description", None) != desired_desc:
+            if hasattr(derived, "set_description"):
+                derived.set_description(description=desired_desc)
+            else:
+                derived.description = desired_desc
+            changed["description"] = True
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "Filtered tag metadata sync skipped for %s",
+            getattr(source_tag, "name", "?"),
+            exc_info=True,
+        )
+    return changed
+
+
+def _persist_filtered_identity(app, derived, *, fields: dict) -> None:
+    """Write renamed/synced .f fields to the historian when connected."""
+    if not fields or derived is None:
+        return
+    try:
+        if not app.is_db_connected():
+            return
+        payload = {k: v for k, v in fields.items() if v is not None}
+        if not payload:
+            return
+        app.logger_engine.update_tag(id=derived.id, **payload)
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "Filtered tag historian identity update skipped for %s",
+            getattr(derived, "name", "?"),
+            exc_info=True,
+        )
+
+
+def _remap_alarm_tag_index(old_name: str, new_name: str) -> None:
+    """Keep AlarmManager lookups working after a ``.f`` rename."""
+    if not old_name or not new_name or old_name == new_name:
+        return
+    try:
+        from .. import PyAutomation
+
+        mgr = PyAutomation().alarm_manager
+        bucket = getattr(mgr, "_by_tag_name", {}).pop(old_name, None)
+        if not bucket:
+            return
+        for alarm in bucket:
+            tag_ref = getattr(alarm, "tag", None)
+            if isinstance(tag_ref, str) and tag_ref == old_name:
+                alarm.tag = new_name
+        dest = mgr._by_tag_name.setdefault(new_name, [])
+        for alarm in bucket:
+            if alarm not in dest:
+                dest.append(alarm)
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "Alarm tag-index remap skipped %s → %s", old_name, new_name, exc_info=True
+        )
+
+
+def _find_existing_filtered_tag(app, source_tag, previous_name: str | None):
+    """Locate an existing ``.f`` by new name, then by previous source name."""
+    new_derived_name = filtered_tag_name(getattr(source_tag, "name", "") or "")
+    derived = app.cvt.get_tag_by_name(new_derived_name) if new_derived_name else None
+    if derived is not None:
+        return derived, new_derived_name, None
+
+    if previous_name:
+        old_derived_name = filtered_tag_name(previous_name)
+        if old_derived_name and old_derived_name != new_derived_name:
+            derived = app.cvt.get_tag_by_name(old_derived_name)
+            if derived is not None:
+                return derived, new_derived_name, old_derived_name
+    return None, new_derived_name, None
+
+
+def propagate_filtered_tag_identity(
+    source_tag,
+    *,
+    previous_name: str | None = None,
+) -> object | None:
+    """
+    Cascade source ``name`` / ``display_name`` onto an already-created ``.f`` tag.
+
+    - Renames ``old.f`` → ``new.f`` when the raw tag is renamed.
+    - Always realigns ``display_name`` to ``{raw_display}.filtro``.
+    - Persists identity fields to the historian when connected.
+    - Remaps wavelet worker + alarm indexes for the rename.
+
+    Does **not** create a new ``.f``; use ``ensure_filtered_tag`` for that.
+    """
+    if source_tag is None:
+        return None
+    try:
+        from .. import PyAutomation
+
+        app = PyAutomation()
+        derived, new_derived_name, old_derived_name = _find_existing_filtered_tag(
+            app, source_tag, previous_name
+        )
+        if derived is None:
+            return None
+
+        persist_fields: dict = {}
+        if old_derived_name and derived.name != new_derived_name:
+            conflict = app.cvt.get_tag_by_name(new_derived_name)
+            if conflict is not None and getattr(conflict, "id", None) != getattr(derived, "id", None):
+                logging.getLogger("pyautomation").warning(
+                    "Cannot rename filtered tag %s → %s: target already exists",
+                    old_derived_name,
+                    new_derived_name,
+                )
+            else:
+                renamed, msg = app.cvt.update_tag(id=derived.id, name=new_derived_name)
+                if renamed is None:
+                    logging.getLogger("pyautomation").warning(
+                        "Filtered tag rename failed %s → %s: %s",
+                        old_derived_name,
+                        new_derived_name,
+                        msg,
+                    )
+                else:
+                    derived = renamed
+                    persist_fields["name"] = new_derived_name
+                    _remap_alarm_tag_index(old_derived_name, new_derived_name)
+                    try:
+                        from ..workers.wavelet_worker import get_wavelet_worker
+
+                        worker = get_wavelet_worker()
+                        if worker is not None and previous_name:
+                            worker.rename_source(previous_name, source_tag.name)
+                    except Exception:
+                        logging.getLogger("pyautomation").debug(
+                            "Wavelet worker source rename skipped",
+                            exc_info=True,
+                        )
+                    try:
+                        das = getattr(app, "das", None)
+                        buffer = getattr(das, "buffer", None)
+                        if isinstance(buffer, dict):
+                            buffer.pop(old_derived_name, None)
+                    except Exception:
+                        pass
+
+        meta = sync_filtered_tag_metadata(source_tag, derived)
+        if meta.get("display_name"):
+            persist_fields["display_name"] = filtered_display_name(source_tag)
+        if meta.get("description"):
+            persist_fields["description"] = filtered_description(source_tag)
+        _persist_filtered_identity(app, derived, fields=persist_fields)
+        return derived
+    except Exception:
+        logging.getLogger("pyautomation").error(
+            "Failed to propagate filtered tag identity for %s",
+            getattr(source_tag, "name", "?"),
+            exc_info=True,
+        )
+        return None
+
+
+def ensure_filtered_tag(
+    source_tag,
+    *,
+    persist: bool | None = None,
+    previous_name: str | None = None,
+) -> object | None:
     """Create or fetch the ``.f`` CVT tag mirroring metadata from the source tag."""
     if source_tag is None:
         return None
     from .. import PyAutomation
 
     app = PyAutomation()
-    derived_name = filtered_tag_name(source_tag.name)
-    existing = app.cvt.get_tag_by_name(derived_name)
+    # Prefer cascade/rename when an older .f already exists under previous_name.
+    existing = propagate_filtered_tag_identity(source_tag, previous_name=previous_name)
     if existing is not None:
         return existing
 
+    derived_name = filtered_tag_name(source_tag.name)
     cfg = resolve_filter_config(source_tag)
     should_persist = cfg["persist"] if persist is None else bool(persist)
     try:
@@ -88,9 +301,9 @@ def ensure_filtered_tag(source_tag, *, persist: bool | None = None) -> object | 
             name=derived_name,
             unit=getattr(source_tag, "unit", "adim"),
             data_type="float",
-            description=f"Wavelet filtered · {getattr(source_tag, 'description', source_tag.name)}",
+            description=filtered_description(source_tag),
             variable=getattr(source_tag, "variable", "Adimentional"),
-            display_name=f"{getattr(source_tag, 'display_name', source_tag.name.split('.')[-1])} (filt)",
+            display_name=filtered_display_name(source_tag),
             display_unit=getattr(source_tag, "display_unit", None) or getattr(source_tag, "unit", "adim"),
             scan_time=getattr(source_tag, "scan_time", None),
             dead_band=None,

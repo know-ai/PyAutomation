@@ -332,6 +332,24 @@ class WaveletBlockFilter:
                     self._status = FilterStatus.HOLD
         last = self._last_result
         interval = max(0.05, float(sample_interval or 1.0))
+        ring_fill = len(self._ring)
+        remaining = max(0, self._window - ring_fill)
+        warmup_eta_s = None
+        if remaining > 0:
+            points = self._ring.snapshot()
+            eta = remaining * interval
+            if len(points) >= 2:
+                try:
+                    span = (points[-1].timestamp - points[0].timestamp).total_seconds()
+                    if span > 0:
+                        rate = (len(points) - 1) / span
+                        if rate > 0:
+                            eta = remaining / rate
+                except Exception:
+                    pass
+            warmup_eta_s = round(max(0.0, eta), 1)
+        elif self._status == FilterStatus.OK:
+            warmup_eta_s = 0.0
         return {
             "status": self._status.value,
             "age_ms": age_ms,
@@ -344,6 +362,9 @@ class WaveletBlockFilter:
             "last_good_value": self._last_good_value,
             "raw_rate": round(1.0 / interval, 3),
             "window": self._window,
+            "ring_fill": ring_fill,
+            "warmup_remaining": remaining,
+            "warmup_eta_s": warmup_eta_s,
             "configured_level": self.level,
             "effective_level": self._effective_level,
         }

@@ -72,11 +72,17 @@ export function MultiSelectSearch({
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  /** Only keyboard navigation should scroll the list to the highlight. */
+  const keyboardNavRef = useRef(false);
+  const scrollingRef = useRef(false);
+  const scrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlightIndex, setHighlightIndex] = useState(0);
   const [position, setPosition] = useState<PanelPosition | null>(null);
+  /** Bumped only on keyboard nav so VirtualList scrolls without fighting the wheel. */
+  const [keyboardScrollToken, setKeyboardScrollToken] = useState(0);
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
@@ -143,8 +149,33 @@ export function MultiSelectSearch({
     setOpen(false);
     setQuery("");
     setHighlightIndex(0);
+    keyboardNavRef.current = false;
     onClose?.();
   }, [onClose]);
+
+  const markListScrolling = useCallback(() => {
+    scrollingRef.current = true;
+    if (scrollIdleTimerRef.current) {
+      clearTimeout(scrollIdleTimerRef.current);
+    }
+    scrollIdleTimerRef.current = setTimeout(() => {
+      scrollingRef.current = false;
+      scrollIdleTimerRef.current = null;
+    }, 120);
+  }, []);
+
+  const highlightFromMouse = useCallback((index: number) => {
+    // While the user is scrolling, ignore hover highlights — they fight scrollIntoView
+    // and pull the list back toward the cursor position (usually the top of the panel).
+    if (scrollingRef.current || keyboardNavRef.current) return;
+    setHighlightIndex(index);
+  }, []);
+
+  const highlightFromKeyboard = useCallback((index: number) => {
+    keyboardNavRef.current = true;
+    setHighlightIndex(index);
+    setKeyboardScrollToken((token) => token + 1);
+  }, []);
 
   const toggleOption = useCallback(
     (value: string) => {
@@ -190,7 +221,18 @@ export function MultiSelectSearch({
       close();
     };
 
-    const onReposition = () => updatePosition();
+    const onReposition = (event: Event) => {
+      // Ignore scrolls inside the dropdown panel — they must not reset layout/scroll.
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        panelRef.current &&
+        (target === panelRef.current || panelRef.current.contains(target))
+      ) {
+        return;
+      }
+      updatePosition();
+    };
 
     document.addEventListener("mousedown", onPointerDown);
     window.addEventListener("resize", onReposition);
@@ -201,18 +243,24 @@ export function MultiSelectSearch({
       document.removeEventListener("mousedown", onPointerDown);
       window.removeEventListener("resize", onReposition);
       window.removeEventListener("scroll", onReposition, true);
+      if (scrollIdleTimerRef.current) {
+        clearTimeout(scrollIdleTimerRef.current);
+        scrollIdleTimerRef.current = null;
+      }
     };
   }, [close, open, updatePosition]);
 
   useEffect(() => {
     setHighlightIndex(0);
+    keyboardNavRef.current = false;
   }, [query]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !keyboardNavRef.current) return;
+    keyboardNavRef.current = false;
     const el = optionRefs.current[highlightIndex];
     el?.scrollIntoView({ block: "nearest" });
-  }, [highlightIndex, open]);
+  }, [highlightIndex, keyboardScrollToken, open]);
 
   const handleTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (disabled) return;
@@ -232,13 +280,13 @@ export function MultiSelectSearch({
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setHighlightIndex((index) => Math.min(index + 1, Math.max(filtered.length - 1, 0)));
+      highlightFromKeyboard(Math.min(highlightIndex + 1, Math.max(filtered.length - 1, 0)));
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setHighlightIndex((index) => Math.max(index - 1, 0));
+      highlightFromKeyboard(Math.max(highlightIndex - 1, 0));
       return;
     }
 
@@ -338,6 +386,8 @@ export function MultiSelectSearch({
               height={Math.max(scaledPx(160), position.maxHeight - scaledPx(96))}
               itemHeight={scaledPx(48)}
               highlightedIndex={highlightIndex}
+              scrollToIndexToken={keyboardScrollToken}
+              onScroll={markListScrolling}
               getKey={(option) => option.value}
               renderItem={(option, index) => {
                 const isSelected = selectedSet.has(option.value);
@@ -354,7 +404,7 @@ export function MultiSelectSearch({
                     className={`multi-select-search__option${
                       isSelected ? " is-selected" : ""
                     }${isHighlighted ? " is-highlighted" : ""}`}
-                    onMouseEnter={() => setHighlightIndex(index)}
+                    onMouseEnter={() => highlightFromMouse(index)}
                     onClick={() => toggleOption(option.value)}
                   >
                     <span

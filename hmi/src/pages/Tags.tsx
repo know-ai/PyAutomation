@@ -10,6 +10,7 @@ import { showToast } from "../utils/toast";
 import { validateUserTagNameInput } from "../utils/tagNameValidation";
 import { VirtualizedCombobox, type ComboboxItem } from "../components/VirtualizedCombobox";
 import { WaveletFilterPanel } from "../components/WaveletFilterPanel";
+import { isFilteredDerivativeName } from "../utils/filteredTags";
 
 // Memoized row component to prevent unnecessary re-renders
 const TagTableRow = memo(({ 
@@ -30,6 +31,7 @@ const TagTableRow = memo(({
   onDelete: (tag: Tag) => void;
 }) => {
   const { t } = useTranslation();
+  const isFilteredRow = isFilteredDerivativeName(tag.name);
   // Get real-time value from store if available, otherwise use tag.value
   const realTimeTag = tag.name ? tagValues[tag.name] : null;
   const value = realTimeTag?.value !== undefined && realTimeTag?.value !== null
@@ -43,7 +45,7 @@ const TagTableRow = memo(({
     : "-";
 
   return (
-    <tr>
+    <tr className={isFilteredRow ? "table-secondary" : undefined} title={isFilteredRow ? t("tags.filteredRowHint") : undefined}>
       <td>
         <strong
           title={tag.display_name || undefined}
@@ -51,6 +53,11 @@ const TagTableRow = memo(({
         >
           {tag.name || "-"}
         </strong>
+        {isFilteredRow && (
+          <span className="badge text-bg-info ms-2" title={t("tags.filteredRowHint")}>
+            .f
+          </span>
+        )}
       </td>
       <td>{tag.variable || "-"}</td>
       <td>{displayValue}</td>
@@ -86,7 +93,8 @@ const TagTableRow = memo(({
             variant="secondary"
             className="btn-sm"
             onClick={() => onEdit(tag)}
-            title={t("tags.editTag")}
+            title={isFilteredRow ? t("tags.filteredRowHint") : t("tags.editTag")}
+            disabled={isFilteredRow}
           >
             <i className="bi bi-pencil"></i>
           </Button>
@@ -94,7 +102,8 @@ const TagTableRow = memo(({
             variant="danger"
             className="btn-sm"
             onClick={() => onDelete(tag)}
-            title={t("tags.deleteTag")}
+            title={isFilteredRow ? t("tags.filteredRowHint") : t("tags.deleteTag")}
+            disabled={isFilteredRow}
           >
             <i className="bi bi-trash"></i>
           </Button>
@@ -554,6 +563,10 @@ export function Tags() {
   };
 
   const handleEditTag = (tag: Tag) => {
+    if (isFilteredDerivativeName(tag.name)) {
+      showToast(t("tags.filteredRowHint"), "warning");
+      return;
+    }
     if (!tag.id) {
       setError(t("tags.noIdToEdit"));
       return;
@@ -610,6 +623,10 @@ export function Tags() {
   };
 
   const handleDeleteTag = (tag: Tag) => {
+    if (isFilteredDerivativeName(tag.name)) {
+      showToast(t("tags.filteredRowHint"), "warning");
+      return;
+    }
     if (!tag.name) {
       setError(t("tags.noNameToDelete"));
       return;
