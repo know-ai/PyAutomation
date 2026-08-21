@@ -168,6 +168,62 @@ class PyAutomation(Singleton):
         )
         return self.node_scope
 
+    def _hydrate_from_local_catalog(self) -> None:
+        """Load runtime from ./db/catalog.db when the historian is down.
+
+        Does **not** require Nodes registration in PostgreSQL (that needs the
+        remote). A valid AUTOMATION_NODE_ID + AREA/SEGMENT is enough.
+        """
+        scope = self._refresh_node_scope()
+        self.load_db_to_roles()
+        self.load_db_to_users()
+        if not scope.is_valid:
+            logging.warning(
+                "Local catalog hydration skipped (identity invalid): %s",
+                self.acquisition_blocked_reason,
+            )
+            return
+        # Synthetic registration so scoped loaders and acquisition can proceed
+        # until the historian accepts a real Nodes UPSERT on reconnect.
+        if not self._node_registered:
+            self._node_registered = True
+            self._registered_identity = (scope.node_id, scope.area)
+            logging.info(
+                "Local catalog autonomy: synthetic node registration node_id=%s area=%s",
+                scope.node_id,
+                scope.area,
+            )
+        self.opcua_client_manager._defer_connection_alarms = True
+        try:
+            self.load_opcua_clients_from_db()
+            self.load_db_to_cvt()
+            self.load_db_to_alarm_manager()
+        finally:
+            self.opcua_client_manager._defer_connection_alarms = False
+        try:
+            from .utils.connection_alarms import sync_opcua_connection_alarms
+
+            sync_opcua_connection_alarms()
+        except Exception:
+            logging.debug("OPC connection alarm sync after local hydrate skipped", exc_info=True)
+        try:
+            self._ensure_saf_tag_observers()
+        except Exception:
+            logging.debug("SAF TagObserver hydrate attach skipped", exc_info=True)
+        logging.info("Runtime hydrated from local catalog mirror")
+
+    def _ensure_saf_tag_observers(self) -> None:
+        """Attach SAF TagObserver to every CVT tag (historian optional)."""
+        tags = self.cvt.get_tags() or []
+        for entry in tags:
+            name = entry.get("name") if isinstance(entry, dict) else getattr(entry, "name", None)
+            if not name:
+                continue
+            try:
+                self.db_manager.attach(tag_name=name)
+            except Exception:
+                logging.debug("SAF TagObserver attach skipped name=%s", name, exc_info=True)
+
     def _historian_hydration_allowed(self) -> bool:
         """Catalog reload from PostgreSQL requires a registered node. CVT does not."""
         scope = self.node_scope
@@ -230,12 +286,37 @@ class PyAutomation(Singleton):
                 from version import __version__
             except Exception:
                 __version__ = os.environ.get("AUTOMATION_VERSION")
-            self.db_manager.register_node(
-                node_id=scope.node_id,
-                area=scope.area,
-                site=scope.site,
-                version=__version__,
-            )
+            try:
+                self.db_manager.register_node(
+                    node_id=scope.node_id,
+                    area=scope.area,
+                    site=scope.site,
+                    version=__version__,
+                )
+            except Exception:
+                logging.critical(
+                    "Node registration failed; historian catalog deferred; acquisition continues",
+                    exc_info=True,
+                )
+            try:
+                from .catalog.local_provider import LocalCatalogProvider
+                from .catalog.versions import edge_node_id, now_ms
+                import socket
+
+                LocalCatalogProvider().upsert(
+                    "nodes",
+                    {
+                        "id": scope.node_id,
+                        "area": scope.area,
+                        "site": scope.site,
+                        "hostname": socket.gethostname(),
+                        "version": __version__,
+                    },
+                    node_id=edge_node_id(),
+                    version=now_ms(),
+                )
+            except Exception:
+                logging.debug("local catalog node register skipped", exc_info=True)
             self._node_registered = True
             self._registered_identity = (scope.node_id, scope.area)
             self.acquisition_ready = True
@@ -265,6 +346,27 @@ class PyAutomation(Singleton):
             )
 
     @logging_error_handler
+    def ensure_runtime_db_layout(self) -> str:
+        r"""
+        Ensure the on-disk ``./db`` tree exists for offline catalog operation.
+
+        Creates:
+        - ``./db`` — app_config, db_config, catalog.db
+        - ``./db/saf`` — store-and-forward journals
+        - ``./db/backups`` — optional local backups
+
+        Safe to call repeatedly. Returns the absolute ``./db`` path.
+        """
+        root = os.path.abspath(os.path.join(".", "db"))
+        for relative in ("", "saf", "backups"):
+            path = root if not relative else os.path.join(root, relative)
+            try:
+                os.makedirs(path, exist_ok=True)
+            except Exception:
+                logging.debug("runtime db layout mkdir skipped path=%s", path, exc_info=True)
+        return root
+
+    @logging_error_handler
     def ensure_db_config_from_env(self) -> None:
         r"""
         Bootstrap database configuration from environment variables if no
@@ -280,7 +382,7 @@ class PyAutomation(Singleton):
 
         Supported environment variables:
 
-        - ``AUTOMATION_DB_TYPE``: ``sqlite`` (default), ``postgresql`` or ``mysql``.
+        - ``AUTOMATION_DB_TYPE``: ``postgresql`` (default) or ``mysql``.
         - For SQLite:
           - ``AUTOMATION_DB_FILE``: database filename (default: ``app.db``).
         - For PostgreSQL/MySQL:
@@ -295,12 +397,13 @@ class PyAutomation(Singleton):
         if existing_config:
             return
 
-        dbtype = os.environ.get("AUTOMATION_DB_TYPE", "sqlite").lower()
+        dbtype = os.environ.get("AUTOMATION_DB_TYPE", "postgresql").lower()
 
         if dbtype == "sqlite":
-            dbfile = os.environ.get("AUTOMATION_DB_FILE", "app.db")
-            logging.info(f"Bootstrapping SQLite DB config from env: file={dbfile}")
-            self.set_db_config(dbtype="sqlite", dbfile=dbfile)
+            logging.warning(
+                "SQLite is not a supported historian engine (spec 11). "
+                "Use postgresql or mysql. Local catalog uses ./db/catalog.db automatically."
+            )
             return
 
         if dbtype in ("postgresql", "mysql"):
@@ -338,7 +441,7 @@ class PyAutomation(Singleton):
 
         logging.warning(
             f"Unsupported AUTMATION_DB_TYPE '{dbtype}' for env-based DB bootstrap. "
-            "Supported types are: sqlite, postgresql, mysql."
+            "Supported types are: postgresql, mysql."
         )
     
     @logging_error_handler
@@ -389,16 +492,24 @@ class PyAutomation(Singleton):
 
             scope = self._refresh_node_scope()
             local_area = scope.area if scope.enabled else None
-            payload= {
+            def _safe_hist(loader, default=None):
+                try:
+                    return loader() or default
+                except Exception:
+                    logging.debug("Socket on_connection hydrate skipped", exc_info=True)
+                    return default
+
+            payload = {
                 "tags": self.get_tags() or list(),
                 "alarms": self.serialize_alarms() or list(),
                 "machines": self.serialize_machines() or list(),
-                "last_alarms": self.get_lasts_alarms(lasts=10, area=local_area) or list(),
-                "last_active_alarms": self.get_lasts_active_alarms(lasts=3) or list(),
-                "last_events": self.get_lasts_events(lasts=10, area=local_area) or list(),
-                "last_logs": self.get_lasts_logs(lasts=10, area=local_area) or list()
+                "last_alarms": _safe_hist(lambda: self.get_lasts_alarms(lasts=10, area=local_area), list()),
+                "last_active_alarms": _safe_hist(lambda: self.get_lasts_active_alarms(lasts=3), list()),
+                "last_events": _safe_hist(lambda: self.get_lasts_events(lasts=10, area=local_area), list()),
+                "last_logs": _safe_hist(lambda: self.get_lasts_logs(lasts=10, area=local_area), list()),
             }
-            self.sio.emit("on_connection", data=payload)
+            # Only the connecting client needs the hydrate snapshot.
+            self.sio.emit("on_connection", data=payload, to=request.sid)
 
         @self.sio.on('disconnect')
         def handle_disconnect(reason=None):
@@ -720,10 +831,20 @@ class PyAutomation(Singleton):
 
         # CREATE OPCUA SUBSCRIPTION
         if tag:
-                
+            # SAF TagObserver is local (journal.db); attach even when the historian is down.
+            try:
+                self.db_manager.attach(tag_name=name)
+            except Exception:
+                logging.debug("SAF TagObserver attach skipped name=%s", name, exc_info=True)
             if self.is_db_connected():
                 self.logger_engine.set_tag(tag=tag)
-                self.db_manager.attach(tag_name=name)
+            else:
+                try:
+                    from .catalog.seed import persist_tag_to_local
+
+                    persist_tag_to_local(tag)
+                except Exception:
+                    logging.debug("local catalog tag persist skipped", exc_info=True)
 
             if scan_time:
 
@@ -861,7 +982,21 @@ class PyAutomation(Singleton):
         Creates a new linear-referencing geospatial point for a segment.
         """
         if not self.is_db_connected():
-            return None, "Database not connected"
+            try:
+                from .catalog.mutations import persist_lrs_point_local
+
+                point = persist_lrs_point_local(
+                    segment_name=segment_name,
+                    kp=kp,
+                    latitude=latitude,
+                    longitude=longitude,
+                    elevation=elevation,
+                )
+                if point is None:
+                    return None, f"Segment {segment_name} does not exist into database"
+                return point, "Linear referencing geospatial point created successfully"
+            except Exception as err:
+                return None, f"Local catalog LRS create failed: {err}"
 
         from .dbmodels import LinearReferencingGeospatial
         point, message = LinearReferencingGeospatial.create(
@@ -873,6 +1008,12 @@ class PyAutomation(Singleton):
         )
         if point is None:
             return None, message
+        try:
+            from .catalog.bootstrap import mirror_historian_row
+
+            mirror_historian_row(point)
+        except Exception:
+            logging.debug("catalog LRS mirror skipped", exc_info=True)
         return point.serialize(), message
 
     @logging_error_handler
@@ -882,7 +1023,9 @@ class PyAutomation(Singleton):
         Retrieves all linear-referencing geospatial points.
         """
         if not self.is_db_connected():
-            return []
+            from .catalog.mutations import list_lrs_points_local
+
+            return list_lrs_points_local()
 
         from .dbmodels import LinearReferencingGeospatial
         return LinearReferencingGeospatial.read_all()
@@ -894,7 +1037,9 @@ class PyAutomation(Singleton):
         Retrieves linear-referencing points for a segment ordered by KP.
         """
         if not self.is_db_connected():
-            return []
+            from .catalog.mutations import list_lrs_points_local
+
+            return list_lrs_points_local(segment_name=segment_name)
 
         from .dbmodels import LinearReferencingGeospatial
         query = LinearReferencingGeospatial.read_by_segment_name(segment_name=segment_name)
@@ -907,6 +1052,11 @@ class PyAutomation(Singleton):
         Retrieves one linear-referencing geospatial point by ID.
         """
         if not self.is_db_connected():
+            from .catalog.mutations import list_lrs_points_local
+
+            for point in list_lrs_points_local():
+                if int(point.get("id") or -1) == int(id):
+                    return point
             return None
 
         from .dbmodels import LinearReferencingGeospatial
@@ -921,7 +1071,28 @@ class PyAutomation(Singleton):
         Updates a linear-referencing geospatial point by ID.
         """
         if not self.is_db_connected():
-            return None, "Database not connected"
+            from .catalog.mutations import list_lrs_points_local, persist_lrs_point_local
+
+            current = None
+            for point in list_lrs_points_local():
+                if int(point.get("id") or -1) == int(id):
+                    current = point
+                    break
+            if current is None:
+                return None, f"Linear referencing geospatial point {id} not found"
+            fields = kwargs.copy()
+            segment_name = fields.pop("segment_name", current.get("segment"))
+            updated = persist_lrs_point_local(
+                segment_name=segment_name,
+                kp=fields.get("kp", current.get("kp")),
+                latitude=fields.get("latitude", current.get("latitude")),
+                longitude=fields.get("longitude", current.get("longitude")),
+                elevation=fields.get("elevation", current.get("elevation")),
+                point_id=id,
+            )
+            if updated is None:
+                return None, f"Segment {segment_name} does not exist into database"
+            return updated, "Linear referencing geospatial point updated successfully"
 
         from .dbmodels import LinearReferencingGeospatial, Segment
         point = LinearReferencingGeospatial.read(id=id)
@@ -941,6 +1112,12 @@ class PyAutomation(Singleton):
 
         LinearReferencingGeospatial.put(id=id, **fields)
         updated = LinearReferencingGeospatial.read(id=id)
+        try:
+            from .catalog.bootstrap import mirror_historian_row
+
+            mirror_historian_row(updated)
+        except Exception:
+            logging.debug("catalog LRS update mirror skipped", exc_info=True)
         return updated.serialize(), "Linear referencing geospatial point updated successfully"
 
     @logging_error_handler
@@ -950,12 +1127,22 @@ class PyAutomation(Singleton):
         Deletes a linear-referencing geospatial point by ID.
         """
         if not self.is_db_connected():
-            return False, "Database not connected"
+            from .catalog.mutations import delete_lrs_point_local
+
+            if not delete_lrs_point_local(point_id=id):
+                return False, f"Linear referencing geospatial point {id} not found"
+            return True, "Linear referencing geospatial point deleted successfully"
 
         from .dbmodels import LinearReferencingGeospatial
         rows = LinearReferencingGeospatial.delete_by_id(id=id)
         if rows == 0:
             return False, f"Linear referencing geospatial point {id} not found"
+        try:
+            from .catalog.mutations import delete_lrs_point_local
+
+            delete_lrs_point_local(point_id=id)
+        except Exception:
+            logging.debug("local catalog LRS delete skipped", exc_info=True)
         return True, "Linear referencing geospatial point deleted successfully"
 
     @logging_error_handler
@@ -965,7 +1152,9 @@ class PyAutomation(Singleton):
         Retrieves geospatial coordinates by segment and KP with interpolation support.
         """
         if not self.is_db_connected():
-            return None, "Database not connected"
+            from .catalog.mutations import interpolate_lrs_local
+
+            return interpolate_lrs_local(segment_name=segment_name, kp=kp)
 
         from .dbmodels import LinearReferencingGeospatial
         return LinearReferencingGeospatial.interpolate_by_segment_and_kp(
@@ -992,7 +1181,53 @@ class PyAutomation(Singleton):
         }
 
         if not self.is_db_connected():
-            result["errors"].append("Database not connected")
+            from .catalog.mutations import (
+                ensure_segment_local,
+                list_lrs_points_local,
+                persist_lrs_point_local,
+            )
+
+            for idx, row in enumerate(rows, start=1):
+                try:
+                    segment_name = row.get("segment_name") or default_segment_name
+                    if not segment_name:
+                        result["errors"].append(f"Row {idx}: missing segment_name")
+                        continue
+                    if ensure_segment_local(segment_name) is None:
+                        result["errors"].append(f"Row {idx}: segment {segment_name} does not exist")
+                        continue
+                    if row.get("kp") is None or row.get("latitude") is None or row.get("longitude") is None:
+                        result["errors"].append(f"Row {idx}: missing kp/latitude/longitude")
+                        continue
+                    kp = float(row.get("kp"))
+                    existing = next(
+                        (
+                            p
+                            for p in list_lrs_points_local(segment_name=segment_name)
+                            if float(p.get("kp") or 0) == kp
+                        ),
+                        None,
+                    )
+                    if existing and not update_existing:
+                        result["skipped"] += 1
+                        continue
+                    point = persist_lrs_point_local(
+                        segment_name=segment_name,
+                        kp=kp,
+                        latitude=float(row.get("latitude")),
+                        longitude=float(row.get("longitude")),
+                        elevation=None if row.get("elevation") is None else float(row.get("elevation")),
+                        point_id=None if existing is None else existing.get("id"),
+                    )
+                    if point is None:
+                        result["errors"].append(f"Row {idx}: local persist failed")
+                        continue
+                    if existing:
+                        result["updated"] += 1
+                    else:
+                        result["created"] += 1
+                except Exception as err:
+                    result["errors"].append(f"Row {idx}: {err}")
             return result
 
         from .dbmodels import LinearReferencingGeospatial, Segment
@@ -1279,6 +1514,12 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             self.logger_engine.delete_tag(id=id)
+        try:
+            from .catalog.mutations import soft_deactivate_tag_local
+
+            soft_deactivate_tag_local(identifier=id, name=tag_name)
+        except Exception:
+            logging.debug("local catalog tag delete skipped", exc_info=True)
 
     @logging_error_handler
     def update_tag(
@@ -1365,6 +1606,18 @@ class PyAutomation(Singleton):
             or ("variable" in kwargs)
         )
 
+        # Empty opcua_* from the HMI (client map not ready) must not erase a live mapping.
+        for opc_key in ("opcua_address", "opcua_client_name", "node_namespace"):
+            if opc_key not in kwargs:
+                continue
+            raw = kwargs.get(opc_key)
+            if raw is None or (isinstance(raw, str) and not str(raw).strip()):
+                kwargs.pop(opc_key, None)
+        if "scan_time" in kwargs and kwargs.get("scan_time") in (None, "", 0):
+            # Keep existing scan_time unless a positive interval is provided.
+            if getattr(tag, "scan_time", None):
+                kwargs.pop("scan_time", None)
+
         filter_only_keys = {
             "filter_enabled",
             "filter_wavelet",
@@ -1396,6 +1649,23 @@ class PyAutomation(Singleton):
                 return None, f'Variable "{var_name}" not found'
             kwargs["unit"] = unit
             kwargs["display_unit"] = display_unit
+        elif "unit" in kwargs or "display_unit" in kwargs:
+            # Unit-only edits must stay within the tag's current variable catalogue.
+            var_name = getattr(tag, "variable", None) or (
+                tag.get_variable() if hasattr(tag, "get_variable") else None
+            )
+            if var_name and var_name in VARIABLES:
+                allowed = set(VARIABLES[var_name].values())
+                if "unit" in kwargs and kwargs["unit"] not in allowed:
+                    return (
+                        None,
+                        f'Unit "{kwargs["unit"]}" is not valid for variable "{var_name}"',
+                    )
+                if "display_unit" in kwargs and kwargs["display_unit"] not in allowed:
+                    return (
+                        None,
+                        f'Display unit "{kwargs["display_unit"]}" is not valid for variable "{var_name}"',
+                    )
 
         # Si se está actualizando opcua_address, intentar resolver el nombre del cliente
         if "opcua_address" in kwargs:
@@ -1442,6 +1712,14 @@ class PyAutomation(Singleton):
                     id=id,  
                     **kwargs
                 )
+        else:
+            try:
+                from .catalog.seed import persist_tag_to_local
+
+                updated_tag = self.cvt.get_tag(id=id)
+                persist_tag_to_local(updated_tag)
+            except Exception:
+                logging.debug("local catalog tag update persist skipped", exc_info=True)
 
         if "name" in kwargs:
 
@@ -1461,6 +1739,14 @@ class PyAutomation(Singleton):
         
         updated = result[0] if isinstance(result, tuple) else result
         if updated is not None:
+            try:
+                self.db_manager.attach(tag_name=updated.get_name())
+            except Exception:
+                logging.debug(
+                    "SAF TagObserver attach skipped after update name=%s",
+                    getattr(updated, "name", None),
+                    exc_info=True,
+                )
             # Cascade name/display onto an already-created .f even if filter is currently off.
             if identity_fields_changed or previous_name:
                 from .signal_conditioning.filtered_tags import propagate_filtered_tag_identity
@@ -1646,26 +1932,17 @@ class PyAutomation(Singleton):
                     # Otro tipo de error inesperado
                     return None, self._format_database_error(db_error, "during login")
             else:
-                # No hay base de datos configurada, intentar obtener el error real de conexión
-                conn_error = self._try_get_database_connection_error()
-                if conn_error:
-                    return None, self._format_database_error(conn_error, "during login")
-                # Si no hay configuración, retornar mensaje genérico
-                db_config = self.get_db_config()
-                if not db_config:
-                    return None, "Database is not configured correctly. Please configure the database connection first."
-                else:
-                    # Hay configuración pero no se puede conectar y no se pudo obtener el error específico
-                    # Intentar formatear un mensaje con la información de configuración disponible
-                    dbtype = db_config.get("dbtype", "").lower()
-                    if dbtype == "sqlite":
-                        config_info = f"SQLite database file: {db_config.get('dbfile', 'unknown')}"
-                    else:
-                        host = db_config.get("host", "unknown")
-                        port = db_config.get("port", "unknown")
-                        user = db_config.get("user", "unknown")
-                        config_info = f'connection to server at "{host}", port {port} failed for user "{user}"'
-                    return None, f'CONNECTING DATABASE ERROR: {config_info}: Unable to establish connection. Please verify the database server is running and the configuration is correct.'
+                from .catalog.auth import login_local
+
+                # Historian down: local catalog is the auth source of truth.
+                # Never coerce a failed local login into a "configure database" response.
+                local_user, local_msg = login_local(
+                    password=password, username=username, email=email
+                )
+                if local_user is not None:
+                    return local_user, local_msg
+                msg = (local_msg or "").strip() or "Invalid credentials"
+                return None, f"Authentication error: {msg}"
                     
         except Exception as e:
             # En caso de cualquier excepción no prevista, retornar una tupla válida con mensaje descriptivo
@@ -1789,8 +2066,45 @@ class PyAutomation(Singleton):
                     return None, f"User created in memory but cannot be persisted. {error_msg}"
 
             else:
-                # No hay base de datos configurada, usar autenticación en memoria
-                return None, "Database is not configured correctly. Please configure the database connection first."
+                user, message = users.signup(
+                    username=username,
+                    role_name=role_name,
+                    email=email,
+                    password=password,
+                    name=name,
+                    lastname=lastname,
+                    identifier=identifier,
+                    encode_password=encode_password
+                )
+                if user is None:
+                    return None, message or "Signup failed"
+                try:
+                    from .catalog.bootstrap import write_catalog_row
+                    from .catalog.hydrate import fill_roles_from_local
+
+                    fill_roles_from_local()
+                    role_rows = {}
+                    from .catalog.local_provider import LocalCatalogProvider
+
+                    for row in LocalCatalogProvider().read_all("roles"):
+                        if str(row.get("name") or "").upper() == str(role_name).upper():
+                            role_rows = row
+                            break
+                    write_catalog_row(
+                        "users",
+                        {
+                            "username": user.username,
+                            "email": user.email,
+                            "password": user.password,
+                            "identifier": user.identifier,
+                            "name": user.name,
+                            "lastname": user.lastname,
+                            "role_id": role_rows.get("_pk") if role_rows else None,
+                        },
+                    )
+                except Exception:
+                    logging.debug("local catalog signup mirror skipped", exc_info=True)
+                return user, message or "User created in local catalog"
 
             return user, message
             
@@ -1878,6 +2192,20 @@ class PyAutomation(Singleton):
             if self.is_db_connected():
                 
                 _, message = self.db_manager.set_role(name=name, level=level, identifier=role.identifier)
+            else:
+                try:
+                    from .catalog.bootstrap import write_catalog_row
+
+                    write_catalog_row(
+                        "roles",
+                        {
+                            "name": str(name).upper(),
+                            "level": level,
+                            "identifier": role.identifier,
+                        },
+                    )
+                except Exception:
+                    logging.debug("local catalog role persist skipped", exc_info=True)
 
             return role, message
 
@@ -1942,10 +2270,45 @@ class PyAutomation(Singleton):
             # Also update CVT user password
             if target_user:
                 target_user.password = users.encode(new_password)
+            try:
+                from .catalog.local_provider import LocalCatalogProvider
+                from .catalog.versions import edge_node_id, now_ms
+
+                hashed = target_user.password if target_user else users.encode(new_password)
+                for row in LocalCatalogProvider().read_all("users"):
+                    if row.get("username") == target_username:
+                        payload = dict(row)
+                        payload["password"] = hashed
+                        LocalCatalogProvider().upsert(
+                            "users",
+                            payload,
+                            node_id=edge_node_id(),
+                            version=now_ms(),
+                        )
+                        break
+            except Exception:
+                logging.debug("local catalog password dual-write skipped", exc_info=True)
         else:
-            # Update CVT user password
+            # Update CVT user password + local catalog mirror
             if target_user:
                 target_user.password = users.encode(new_password)
+                try:
+                    from .catalog.local_provider import LocalCatalogProvider
+                    from .catalog.versions import edge_node_id, now_ms
+
+                    for row in LocalCatalogProvider().read_all("users"):
+                        if row.get("username") == target_username:
+                            payload = dict(row)
+                            payload["password"] = target_user.password
+                            LocalCatalogProvider().upsert(
+                                "users",
+                                payload,
+                                node_id=edge_node_id(),
+                                version=now_ms(),
+                            )
+                            break
+                except Exception:
+                    logging.debug("local catalog password change skipped", exc_info=True)
             message = f"Password updated successfully for {target_username}"
 
         return message, "Password changed successfully"
@@ -1993,10 +2356,45 @@ class PyAutomation(Singleton):
             # Also update CVT user password
             if target_user:
                 target_user.password = users.encode(new_password)
+            try:
+                from .catalog.local_provider import LocalCatalogProvider
+                from .catalog.versions import edge_node_id, now_ms
+
+                hashed = target_user.password if target_user else users.encode(new_password)
+                for row in LocalCatalogProvider().read_all("users"):
+                    if row.get("username") == target_username:
+                        payload = dict(row)
+                        payload["password"] = hashed
+                        LocalCatalogProvider().upsert(
+                            "users",
+                            payload,
+                            node_id=edge_node_id(),
+                            version=now_ms(),
+                        )
+                        break
+            except Exception:
+                logging.debug("local catalog password reset dual-write skipped", exc_info=True)
         else:
             # Update CVT user password
             if target_user:
                 target_user.password = users.encode(new_password)
+            try:
+                from .catalog.local_provider import LocalCatalogProvider
+                from .catalog.versions import edge_node_id, now_ms
+
+                for row in LocalCatalogProvider().read_all("users"):
+                    if row.get("username") == target_username:
+                        payload = dict(row)
+                        payload["password"] = target_user.password
+                        LocalCatalogProvider().upsert(
+                            "users",
+                            payload,
+                            node_id=edge_node_id(),
+                            version=now_ms(),
+                        )
+                        break
+            except Exception:
+                logging.debug("local catalog password reset skipped", exc_info=True)
             message = f"Password reset successfully for {target_username}"
 
         return message, "Password reset successfully"
@@ -2046,11 +2444,60 @@ class PyAutomation(Singleton):
                 updated_user, cvt_message = users.update_role(username=target_username, new_role_name=new_role_name)
                 if updated_user:
                     message = f"Role updated successfully for {target_username}"
+            try:
+                from .catalog.local_provider import LocalCatalogProvider
+                from .catalog.versions import edge_node_id, now_ms
+
+                role_pk = None
+                for role_row in LocalCatalogProvider().read_all("roles"):
+                    if str(role_row.get("name") or "").upper() == str(new_role_name).upper():
+                        role_pk = role_row.get("_pk") or role_row.get("id")
+                        break
+                for row in LocalCatalogProvider().read_all("users"):
+                    if row.get("username") == target_username:
+                        payload = dict(row)
+                        if role_pk is not None:
+                            payload["role_id"] = role_pk
+                            payload["role"] = role_pk
+                        LocalCatalogProvider().upsert(
+                            "users",
+                            payload,
+                            node_id=edge_node_id(),
+                            version=now_ms(),
+                        )
+                        break
+            except Exception:
+                logging.debug("local catalog role dual-write skipped", exc_info=True)
         else:
-            # Update CVT user role
+            # Update CVT user role + local catalog mirror
             updated_user, message = users.update_role(username=target_username, new_role_name=new_role_name)
             if not updated_user:
                 return None, message
+            try:
+                from .catalog.local_provider import LocalCatalogProvider
+                from .catalog.versions import edge_node_id, now_ms
+
+                role_pk = None
+                for role_row in LocalCatalogProvider().read_all("roles"):
+                    if str(role_row.get("name") or "").upper() == str(new_role_name).upper():
+                        role_pk = role_row.get("_pk") or role_row.get("id")
+                        break
+                for row in LocalCatalogProvider().read_all("users"):
+                    if row.get("username") == target_username:
+                        payload = dict(row)
+                        if role_pk is not None:
+                            # Local clone field is ``role`` with column ``role_id``.
+                            payload["role_id"] = role_pk
+                            payload["role"] = role_pk
+                        LocalCatalogProvider().upsert(
+                            "users",
+                            payload,
+                            node_id=edge_node_id(),
+                            version=now_ms(),
+                        )
+                        break
+            except Exception:
+                logging.debug("local catalog role update skipped", exc_info=True)
 
         return message, "Role updated successfully"
 
@@ -3386,6 +3833,7 @@ class PyAutomation(Singleton):
 
         ```
         """
+        self.ensure_runtime_db_layout()
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if dbtype.lower()=="sqlite":
 
@@ -3413,7 +3861,8 @@ class PyAutomation(Singleton):
                 'name': name,
             }
 
-        with open('./db/db_config.json', 'w') as json_file:
+        config_path = os.path.join(".", "db", "db_config.json")
+        with open(config_path, 'w') as json_file:
 
             json.dump(db_config, json_file)
 
@@ -3439,21 +3888,24 @@ class PyAutomation(Singleton):
 
         ```
         """
+        config_path = os.path.join(".", "db", "db_config.json")
         try:
-
-            with open('./db/db_config.json', 'r') as json_file:
-
-                db_config = json.load(json_file)
-
-            return db_config
-        
+            with open(config_path, 'r') as json_file:
+                return json.load(json_file)
+        except FileNotFoundError:
+            # Cold start / offline catalog: no historian config yet. Expected.
+            logging.info(
+                "No historian config at %s yet; edge will use the local catalog until configured",
+                config_path,
+            )
+            return None
         except Exception as e:
             str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             _, _, e_traceback = sys.exc_info()
             e_filename = os.path.split(e_traceback.tb_frame.f_code.co_filename)[1]
             e_message = str(e)
             e_line_number = e_traceback.tb_lineno
-            message = f"Database is not configured: {e_line_number} - {e_filename} - {e_message}"
+            message = f"Database config unreadable: {e_line_number} - {e_filename} - {e_message}"
             logging.warning(message)
             print(_colorize_message(f"[{str_date}] [WARNING] {message}", "WARNING"))
             return None
@@ -3480,6 +3932,7 @@ class PyAutomation(Singleton):
         ```
         """
         try:
+            self.ensure_runtime_db_layout()
             config_path = os.path.join(".", "db", "app_config.json")
             config = {}
             
@@ -3518,6 +3971,7 @@ class PyAutomation(Singleton):
         ```
         """
         try:
+            self.ensure_runtime_db_layout()
             config_path = os.path.join(".", "db", "app_config.json")
             if os.path.exists(config_path):
                 with open(config_path, 'r') as f:
@@ -3619,6 +4073,13 @@ class PyAutomation(Singleton):
         worker = getattr(self, "metrics_worker", None)
         if worker is not None and hasattr(worker, "reconfigure"):
             worker.reconfigure()
+        # Keep ALM.PERF.* descriptions in sync with live thresholds (local catalog + remote).
+        try:
+            from .utils.performance_alarms import ensure_performance_alarms
+
+            ensure_performance_alarms(load_performance_alarm_config(self.get_app_config()))
+        except Exception:
+            pass
         return public_config(load_performance_alarm_config(self.get_app_config()))
 
     def _format_database_error(self, error: Exception, context: str = "") -> str:
@@ -3874,7 +4335,20 @@ class PyAutomation(Singleton):
             self.__log_histories = True
             self.set_db(dbtype=dbtype, **db_config)
             if not getattr(self, "_db_live", False):
-                logging.critical("Historian TCP connect failed; connection not established")
+                # Startup without a reachable historian is a supported offline mode.
+                level = logging.WARNING if audit_source == "core-startup" else logging.CRITICAL
+                logging.log(
+                    level,
+                    "Historian unreachable (%s); continuing with local catalog",
+                    target,
+                )
+                print(
+                    _colorize_message(
+                        f"[{str_date}] [WARNING] Historian unreachable ({target}); "
+                        "continuing with local catalog. Configure it later from HMI Settings.",
+                        "WARNING",
+                    )
+                )
                 return self._fail_db_link(
                     source=audit_source,
                     target=target,
@@ -3882,7 +4356,11 @@ class PyAutomation(Singleton):
                     reconnect=False,
                 )
             if not self._historian_is_live():
-                logging.critical("Historian connectivity probe failed; connection not established")
+                level = logging.WARNING if audit_source == "core-startup" else logging.CRITICAL
+                logging.log(
+                    level,
+                    "Historian connectivity probe failed; continuing with local catalog",
+                )
                 return self._fail_db_link(
                     source=audit_source,
                     target=target,
@@ -3899,6 +4377,7 @@ class PyAutomation(Singleton):
                     reconnect=False,
                 )
             self._register_node()
+            self._sync_catalog_with_historian(reason="connect")
             self._hydrate_runtime_from_db(reload_machines=bool(reload))
             logging.info(f"Database connected successfully")
             print(_colorize_message(f"[{str_date}] [INFO] Database connected successfully", "INFO"))
@@ -3977,6 +4456,33 @@ class PyAutomation(Singleton):
                 continue
         self._db_live = False
         return False
+
+    def _sync_catalog_with_historian(self, *, reason: str = "connect") -> None:
+        """Run one catalog replicator cycle so local offline rows reach PG first.
+
+        Must run before ``_sync_runtime_alarms_to_historian`` / performance
+        dual-writes so remote ``Tags`` exist when ``Alarms.create`` resolves FKs.
+        """
+        try:
+            from .catalog.replicator import get_catalog_replicator
+
+            worker = get_catalog_replicator()
+            if worker is None:
+                from .catalog.replicator import CatalogReplicatorWorker
+
+                worker = CatalogReplicatorWorker(sync_interval=30.0)
+            result = worker.cycle(force=True)
+            logging.info(
+                "Catalog sync before historian hydrate (%s): %s",
+                reason,
+                result,
+            )
+        except Exception:
+            logging.getLogger("pyautomation").warning(
+                "Catalog sync before historian hydrate skipped (%s)",
+                reason,
+                exc_info=True,
+            )
 
     def _hydrate_runtime_from_db(self, reload_machines: bool = False) -> None:
         r"""Reload in-memory config from the historian. Call only when live."""
@@ -4130,6 +4636,9 @@ class PyAutomation(Singleton):
                         reconnect=True,
                     )
                 self._register_node()
+                # Push local catalog (tags/units/alarms) before hydrate dual-writes,
+                # otherwise Alarms.create fails with tag=None on the remote.
+                self._sync_catalog_with_historian(reason="reconnect")
                 self._hydrate_runtime_from_db(reload_machines=True)
                 from .utils.db_connections import close_foreign_historian_sockets
 
@@ -4232,6 +4741,7 @@ class PyAutomation(Singleton):
 
         ```
         """
+        tags = []
         if self.is_db_connected():
             scope = self._refresh_node_scope()
             tags = (
@@ -4239,42 +4749,45 @@ class PyAutomation(Singleton):
                 if scope.enabled
                 else self.db_manager.get_tags()
             )
-            str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            from .catalog.hydrate import local_tag_payloads
 
-            # Asegurar que tags sea siempre una lista
-            if tags is None:
-                tags = []
-            elif not isinstance(tags, list):
-                tags = list(tags) if tags else []
+            tags = local_tag_payloads()
+            scope = self._refresh_node_scope()
+        str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            for tag in tags:
-                if scope.enabled and (
-                    tag.get("area") != scope.area
-                    or tag.get("owner_node") != scope.node_id
-                ):
-                    logging.critical(
-                        "Skipping inconsistent tag catalog row name=%s area=%s owner_node=%s",
-                        tag.get("name"),
-                        tag.get("area"),
-                        tag.get("owner_node"),
-                    )
-                    continue
+        if tags is None:
+            tags = []
+        elif not isinstance(tags, list):
+            tags = list(tags) if tags else []
 
-                active = tag.pop("active")
+        for tag in tags:
+            if scope.enabled and (
+                tag.get("area") != scope.area
+                or tag.get("owner_node") != scope.node_id
+            ):
+                logging.critical(
+                    "Skipping inconsistent tag catalog row name=%s area=%s owner_node=%s",
+                    tag.get("name"),
+                    tag.get("area"),
+                    tag.get("owner_node"),
+                )
+                continue
 
-                if active:
-                    # Si el tag tiene opcua_client_name pero no opcua_address, resolver la URL
-                    if tag.get("opcua_client_name") and not tag.get("opcua_address"):
-                        client_name = tag.get("opcua_client_name")
-                        client = self.opcua_client_manager.get(client_name)
-                        if client:
-                            tag["opcua_address"] = client.serialize().get("server_url")
-                    
-                    logging.info(f"Loading tag {tag['name']} from database")
-                    print(_colorize_message(f"[{str_date}] [INFO] Loading tag {tag['name']} from database", "INFO"))
-                    self.create_tag(reload=True, **tag)
-                    logging.info(f"Tag {tag['name']} loaded from database")
-                    print(_colorize_message(f"[{str_date}] [INFO] Tag {tag['name']} loaded from database", "INFO"))
+            active = tag.pop("active", True)
+
+            if active:
+                if tag.get("opcua_client_name") and not tag.get("opcua_address"):
+                    client_name = tag.get("opcua_client_name")
+                    client = self.opcua_client_manager.get(client_name)
+                    if client:
+                        tag["opcua_address"] = client.serialize().get("server_url")
+
+                logging.info(f"Loading tag {tag['name']} from database")
+                print(_colorize_message(f"[{str_date}] [INFO] Loading tag {tag['name']} from database", "INFO"))
+                self.create_tag(reload=True, **tag)
+                logging.info(f"Tag {tag['name']} loaded from database")
+                print(_colorize_message(f"[{str_date}] [INFO] Tag {tag['name']} loaded from database", "INFO"))
 
     @logging_error_handler
     @validate_types(output=None)
@@ -4309,17 +4822,21 @@ class PyAutomation(Singleton):
                 if scope.enabled
                 else self.db_manager.get_alarms()
             ) or list()
-            logging.info(f"{len(alarms)} alarms found in database")
-            print(_colorize_message(f"[{str_date}] [INFO] {len(alarms)} alarms found in database", "INFO"))
-            if alarms:
-                for alarm in alarms:
+        else:
+            from .catalog.hydrate import local_alarm_payloads
 
-                    self.create_alarm(reload=True, **alarm)
-                    logging.info(f"Alarm {alarm['name']} loaded from database")
-                    print(_colorize_message(f"[{str_date}] [INFO] Alarm {alarm['name']} loaded from database", "INFO"))
-            else:
-                logging.info(f"No alarms found in database")
-                print(_colorize_message(f"[{str_date}] [INFO] No alarms found in database", "INFO"))
+            alarms = local_alarm_payloads()
+        logging.info(f"{len(alarms)} alarms found in database")
+        print(_colorize_message(f"[{str_date}] [INFO] {len(alarms)} alarms found in database", "INFO"))
+        if alarms:
+            for alarm in alarms:
+
+                self.create_alarm(reload=True, **alarm)
+                logging.info(f"Alarm {alarm['name']} loaded from database")
+                print(_colorize_message(f"[{str_date}] [INFO] Alarm {alarm['name']} loaded from database", "INFO"))
+        else:
+            logging.info(f"No alarms found in database")
+            print(_colorize_message(f"[{str_date}] [INFO] No alarms found in database", "INFO"))
 
     def _sync_runtime_alarms_to_historian(self) -> None:
         r"""Persist in-memory alarm definitions that never reached the catalog.
@@ -4329,11 +4846,22 @@ class PyAutomation(Singleton):
         """
         if not self.is_db_connected():
             return
+        from .dbmodels.tags import Tags
+
         synced = 0
+        skipped = 0
         for alarm in self.alarm_manager.get_alarms().values():
             payload = alarm.catalog_payload() if hasattr(alarm, "catalog_payload") else {}
             tag_name = payload.get("tag")
             if not tag_name:
+                continue
+            if Tags.read_by_name(name=tag_name) is None:
+                skipped += 1
+                logging.debug(
+                    "Alarm catalog sync deferred name=%s (tag %s not in historian yet)",
+                    alarm.name,
+                    tag_name,
+                )
                 continue
             try:
                 self.alarms_engine.create(
@@ -4350,6 +4878,11 @@ class PyAutomation(Singleton):
                 logging.warning("Alarm catalog sync skipped name=%s", alarm.name, exc_info=True)
         if synced:
             logging.info("Synced %s runtime alarm definition(s) to historian catalog", synced)
+        if skipped:
+            logging.info(
+                "Deferred %s runtime alarm definition(s) until tags finish catalog sync",
+                skipped,
+            )
 
     @logging_error_handler
     @validate_types(output=None)
@@ -4382,6 +4915,11 @@ class PyAutomation(Singleton):
             Roles.fill_cvt_roles()
             logging.info(f"Roles loaded from database")
             print(_colorize_message(f"[{str_date}] [INFO] Roles loaded from database", "INFO"))
+        else:
+            from .catalog.hydrate import fill_roles_from_local
+
+            fill_roles_from_local()
+            logging.info("Roles loaded from local catalog")
 
     @logging_error_handler
     @validate_types(output=None)
@@ -4415,6 +4953,11 @@ class PyAutomation(Singleton):
             Users.fill_cvt_users()
             logging.info(f"Users loaded from database")
             print(_colorize_message(f"[{str_date}] [INFO] Users loaded from database", "INFO"))
+        else:
+            from .catalog.hydrate import fill_users_from_local
+
+            fill_users_from_local()
+            logging.info("Users loaded from local catalog")
     
     @logging_error_handler
     @validate_types(output=None)
@@ -4432,45 +4975,44 @@ class PyAutomation(Singleton):
                 if scope.enabled
                 else self.db_manager.get_opcua_clients()
             )
-            logging.info(f"{len(clients)} OPC UA clients found in database")
-            if len(clients)>0:
+        else:
+            from .catalog.hydrate import local_opcua_clients
+
+            clients = local_opcua_clients()
+        logging.info(f"{len(clients)} OPC UA clients found in database")
+        if len(clients)>0:
                 
-                print(_colorize_message(f"[{str_date}] [INFO] {len(clients)} OPC UA clients found in database", "INFO"))
-            else:
-                print(_colorize_message(f"[{str_date}] [WARNING] No OPC UA clients found in database", "WARNING"))
+            print(_colorize_message(f"[{str_date}] [INFO] {len(clients)} OPC UA clients found in database", "INFO"))
+        else:
+            print(_colorize_message(f"[{str_date}] [WARNING] No OPC UA clients found in database", "WARNING"))
             
-            for client in clients:
-                client_name = client.get('client_name')
-                self.opcua_client_manager._pending_audit_source = "core-startup"
-                # Intentar agregar el cliente, incluso si falla la conexión
-                # Esto asegura que esté en memoria para poder actualizarlo
-                result = self.add_opcua_client(**client)
-                if result:
-                    success, message = result
-                    if success:
-                        logging.info(f"OPC UA client {client_name} loaded from database and connected")
-                        print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {client_name} loaded from database and connected", "INFO"))
-                    else:
-                        # Cliente agregado a memoria pero no conectado
-                        logging.warning(f"OPC UA client {client_name} loaded from database but not connected: {message}")
-                        print(_colorize_message(f"[{str_date}] [WARNING] OPC UA client {client_name} loaded from database but not connected: {message}", "WARNING"))
+        for client in clients:
+            client_name = client.get('client_name')
+            self.opcua_client_manager._pending_audit_source = "core-startup"
+            result = self.add_opcua_client(**client)
+            if result:
+                success, message = result
+                if success:
+                    logging.info(f"OPC UA client {client_name} loaded from database and connected")
+                    print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {client_name} loaded from database and connected", "INFO"))
                 else:
-                    # Si add_opcua_client retorna None, intentar agregar directamente al manager
-                    # para asegurar que esté en memoria aunque no se conecte
-                    try:
-                        self.opcua_client_manager.add(
-                            client_name=client_name,
-                            host=client.get('host'),
-                            port=client.get('port'),
-                            owner_node=client.get('owner_node'),
-                            source="core-startup",
-                        )
-                        logging.warning(f"OPC UA client {client_name} added to memory from database (connection may have failed)")
-                        print(_colorize_message(f"[{str_date}] [WARNING] OPC UA client {client_name} added to memory from database (connection may have failed)", "WARNING"))
-                    except Exception as e:
-                        logging.error(f"Failed to load OPC UA client {client_name} from database: {e}")
-                        print(_colorize_message(f"[{str_date}] [ERROR] Failed to load OPC UA client {client_name} from database: {e}", "ERROR"))
-            self.opcua_client_manager._pending_audit_source = None
+                    logging.warning(f"OPC UA client {client_name} loaded from database but not connected: {message}")
+                    print(_colorize_message(f"[{str_date}] [WARNING] OPC UA client {client_name} loaded from database but not connected: {message}", "WARNING"))
+            else:
+                try:
+                    self.opcua_client_manager.add(
+                        client_name=client_name,
+                        host=client.get('host'),
+                        port=client.get('port'),
+                        owner_node=client.get('owner_node'),
+                        source="core-startup",
+                    )
+                    logging.warning(f"OPC UA client {client_name} added to memory from database (connection may have failed)")
+                    print(_colorize_message(f"[{str_date}] [WARNING] OPC UA client {client_name} added to memory from database (connection may have failed)", "WARNING"))
+                except Exception as e:
+                    logging.error(f"Failed to load OPC UA client {client_name} from database: {e}")
+                    print(_colorize_message(f"[{str_date}] [ERROR] Failed to load OPC UA client {client_name} from database: {e}", "ERROR"))
+        self.opcua_client_manager._pending_audit_source = None
 
     @logging_error_handler
     def load_db_tags_to_machine(self):
@@ -4775,6 +5317,24 @@ class PyAutomation(Singleton):
                             description=description,
                             area=scope.area or area,
                         )
+                else:
+                    try:
+                        from .catalog.seed import persist_alarm_to_local, persist_tag_to_local
+
+                        persist_tag_to_local(tag_obj)
+                        alarm = self.alarm_manager.get_alarm_by_name(name=name)
+                        if alarm is not None:
+                            persist_alarm_to_local(
+                                identifier=alarm.identifier,
+                                name=name,
+                                tag_name=tag,
+                                trigger_type=alarm_type,
+                                trigger_value=trigger_value,
+                                description=description,
+                                area=scope.area or area,
+                            )
+                    except Exception:
+                        logging.debug("local catalog alarm persist skipped", exc_info=True)
             
             return alarm, message
 
@@ -4928,6 +5488,22 @@ class PyAutomation(Singleton):
                 description=description,
                 alarm_type=alarm_type,
                 trigger_value=trigger_value)
+        try:
+            from .catalog.mutations import persist_alarm_fields_local
+
+            current_after = self.alarm_manager.get_alarm(id=id)
+            persist_alarm_fields_local(
+                identifier=id,
+                name=name or getattr(current_after, "name", None),
+                tag_name=tag or getattr(getattr(current_after, "tag", None), "name", None) or (
+                    current_after.tag if isinstance(getattr(current_after, "tag", None), str) else None
+                ),
+                description=description,
+                alarm_type=alarm_type,
+                trigger_value=trigger_value,
+            )
+        except Exception:
+            logging.debug("local catalog alarm update skipped", exc_info=True)
 
     @logging_error_handler
     @validate_types(id=str, output=Alarm|type(None))
@@ -5094,6 +5670,12 @@ class PyAutomation(Singleton):
         if self.is_db_connected():
 
             self.alarms_engine.delete(id=id)
+        try:
+            from .catalog.mutations import soft_delete_alarm_local
+
+            soft_delete_alarm_local(identifier=id)
+        except Exception:
+            logging.debug("local catalog alarm delete skipped", exc_info=True)
         return True
 
     # EVENTS METHODS
@@ -5377,8 +5959,16 @@ class PyAutomation(Singleton):
             self.create_system_user()
             database_connection_auditor.flush()
         else:
-            logging.critical("Database is not connected, skipping system user creation")
-            print(_colorize_message(f"[{str_date}] [CRITICAL] Database is not connected, skipping system user creation", "CRITICAL"))
+            logging.warning(
+                "Historian unreachable; ensuring system user and defaults in local catalog"
+            )
+            print(
+                _colorize_message(
+                    f"[{str_date}] [WARNING] Historian unreachable; ensuring system user in local catalog",
+                    "WARNING",
+                )
+            )
+            self.create_system_user()
         record_system_started()
         self.release_ephemeral_historian()
 
@@ -5386,19 +5976,50 @@ class PyAutomation(Singleton):
     def create_system_user(self):
         r"""
         Ensures a 'system' user exists with 'sudo' role. Used for automated internal actions.
+
+        When the historian is down, roles/user are seeded and written into the local
+        catalog mirror so the edge can operate until remote sync catches up.
         """
         from .utils.db_connections import ephemeral_historian, force_historian_connect
+
+        system_password = self.server.config.get(
+            "AUTOMATION_SUPERUSER_PASSWORD", "super_ultra_secret_password"
+        )
+
+        if not self.is_db_connected():
+            try:
+                from .catalog.seed import seed_local_catalog_defaults
+
+                seed_local_catalog_defaults(system_password=system_password)
+                from .catalog.hydrate import fill_roles_from_local, fill_users_from_local
+
+                fill_roles_from_local()
+                fill_users_from_local()
+            except Exception:
+                logging.debug("local system user seed skipped", exc_info=True)
+            mem = users.get_by_username(username="system")
+            if mem is None:
+                self.signup(
+                    username="system",
+                    role_name="sudo",
+                    email="system@intelcon.com",
+                    password=system_password,
+                    name="System",
+                    lastname="Intelcon",
+                )
+            else:
+                self.reset_password(target_username="system", new_password=system_password)
+            return
 
         # LoggerWorker may already have armed the outage gate (cooldown /
         # ``_db_live=False``) between ``safe_start`` and this bootstrap. The
         # system user is startup work, not the CVT/LDS hot path: allow libpq.
         with force_historian_connect():
             with ephemeral_historian(getattr(self, "_db", None)):
-                users = Users()
-                roles = Roles()
-                system_password = self.server.config.get("AUTOMATION_SUPERUSER_PASSWORD", "super_ultra_secret_password")
-                if not users.read_by_username(username="system"):
-                    admin_role = roles.read_by_name(name="sudo")
+                db_users = Users()
+                db_roles = Roles()
+                if not db_users.read_by_username(username="system"):
+                    admin_role = db_roles.read_by_name(name="sudo")
                     if admin_role:
                         self.signup(
                             username="system",
@@ -5477,6 +6098,7 @@ class PyAutomation(Singleton):
         """
         if self._create_tables:
             
+            self.ensure_runtime_db_layout()
             app_config = self.get_app_config()
             logger_period = float(app_config.get("logger_period", 10.0))
 
@@ -5489,9 +6111,49 @@ class PyAutomation(Singleton):
 
             # Bootstrap DB configuration from environment variables on first run,
             # but once db_config.json exists, it will override any env changes.
+            # Missing / unreachable historian is OK: operate on local catalog.
             self.ensure_db_config_from_env()
 
+            from .catalog.bootstrap import bootstrap_local_catalog
+            from .catalog.replicator import start_catalog_replicator
+
+            bootstrap_local_catalog()
             self.connect_to_db(test=test, source="core-startup")
+            if not self.is_db_connected():
+                logging.info(
+                    "Starting in offline-catalog mode (no remote historian). "
+                    "Configure PostgreSQL/MySQL from HMI Settings when ready."
+                )
+                print(
+                    _colorize_message(
+                        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] "
+                        "Offline catalog mode: local ./db/catalog.db is the configuration source",
+                        "INFO",
+                    )
+                )
+                try:
+                    from .catalog.seed import seed_local_catalog_defaults
+
+                    system_password = self.server.config.get(
+                        "AUTOMATION_SUPERUSER_PASSWORD",
+                        "super_ultra_secret_password",
+                    )
+                    seed_local_catalog_defaults(system_password=system_password)
+                except Exception:
+                    logging.debug("local catalog cold-start seed skipped", exc_info=True)
+                try:
+                    self._hydrate_from_local_catalog()
+                except Exception:
+                    logging.debug("local catalog hydration skipped", exc_info=True)
+                try:
+                    from .utils.connection_alarms import ensure_db_connection_alarm
+                    from .utils.performance_alarms import ensure_performance_alarms
+
+                    ensure_db_connection_alarm()
+                    ensure_performance_alarms()
+                except Exception:
+                    logging.debug("local catalog system alarms ensure skipped", exc_info=True)
+            start_catalog_replicator()
             if not self.acquisition_ready:
                 logging.critical(
                     "Acquisition identity is not valid: %s",
@@ -5525,6 +6187,11 @@ class PyAutomation(Singleton):
             
             self.load_db_tags_to_machine()
 
+        try:
+            self._ensure_saf_tag_observers()
+        except Exception:
+            logging.debug("SAF TagObserver startup attach skipped", exc_info=True)
+
         self.is_starting = False
 
     @logging_error_handler
@@ -5546,6 +6213,12 @@ class PyAutomation(Singleton):
             stop_wavelet_worker()
         if hasattr(self, "db_worker") and self.db_worker is not None:
             self.db_worker.stop()
+        try:
+            from .catalog.replicator import stop_catalog_replicator
+
+            stop_catalog_replicator()
+        except Exception:
+            pass
         if hasattr(self, 'subscription_monitor'):
             self.subscription_monitor.stop()
 

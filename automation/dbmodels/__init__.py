@@ -24,3 +24,4 @@ from .machines import Machines, TagsMachines
 from .opcua_server import AccessType, OPCUAServer
 from .linear_referencing_geospatial import LinearReferencingGeospatial
 from .hmi_sessions import HMISession
+from .catalog_versions import CatalogVersions

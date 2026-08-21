@@ -7,7 +7,10 @@
 | **Versión** | 1.3 |
 | **Fecha** | 2026-08-21 |
 | **Producto** | PyAutomationIO (`automation/` + HMI React) |
-| **Estado** | **Propuesta** — diseño A+; implementación pendiente |
+| **Estado** | **Implementado** (Fases 1–8 y 10 en código; soak 24 h **pendiente**) |
+| **Runbook** | [catalog-sqlite-runbook.md](../docs/catalog-sqlite-runbook.md) |
+| **Documentación feature** | [catalog-sqlite.md](../docs/catalog-sqlite.md) |
+| **Auditoría** | [AUDIT_CATALOG_SQLITE_LOCAL.md](../audits/AUDIT_CATALOG_SQLITE_LOCAL.md) |
 | **Complementa** | [01-MULTI-EDGE-ARCHITECTURE.md](./01-MULTI-EDGE-ARCHITECTURE.md), [09-OPC-QUALITY-AND-DEGRADED-STARTUP.md](./09-OPC-QUALITY-AND-DEGRADED-STARTUP.md), [AUDIT_DB.md](../audits/AUDIT_DB.md), [AUDIT_STORE_AND_FORWARD.md](../audits/AUDIT_STORE_AND_FORWARD.md) |
 | **Normas** | ISA-95 · IEC 61508 (SIL-ready, no certificación) · ISA-18.2 · IEC 62443 |
 | **Audiencia** | Arquitectura de software · ingeniería de procesos · operaciones OT |
@@ -63,6 +66,8 @@ Dotar a PyAutomationIO de un **catálogo local espejo en SQLite** en cada edge, 
 6. Eliminación de SQLite como opción en la HMI de configuración del historiador central (solo PostgreSQL/MySQL).
 7. Replicación de **todas** las tablas de catálogo (no series temporales) con integridad referencial y orden de sincronización.
 8. Consistencia multi-edge: el central coordina; los edges no se replican entre sí; la política de conflictos deja al central como fuente de verdad final.
+
+**Ajustes de implementación (respecto al diagrama inicial):** `catalog_versions.row_id` es `VARCHAR(64)` (PKs mixtas, p. ej. `Nodes.id`). Tabla SQL real `hmi_sessions`: se crea en el espejo; **las filas no se replican**.
 
 **Fuera de alcance:** rediseño del SAF de históricos; certificación SIL formal; dump completo periódico del catálogo (solo diferencial); replicación directa entre edges (todo pasa por el central).
 
@@ -132,6 +137,7 @@ Dotar a PyAutomationIO de un **catálogo local espejo en SQLite** en cada edge, 
 | `LocalCatalogProvider` | SQLite local (`./db/catalog.db`) | L, S |
 | `RemoteCatalogProvider` | PostgreSQL/MySQL existente envuelto en la interfaz | L, S |
 | `CatalogReplicatorWorker` | Sync bidireccional, conflictos y versionado | S, O |
+| `catalog.seed` | Cold-start: defaults (roles, units, datatypes, alarm meta, `system`) en espejo si el historiador no está | S |
 | `CatalogVersionManager` | Timestamps de modificación (`catalog_version` por fila) | S |
 | `ConflictResolver` | Política timestamp + prioridad de nodo | S, O |
 | `DegradedModeCoordinator` | Banner degradado + fallback de autenticación | S, D |
@@ -186,7 +192,7 @@ Se crea en el espejo local y en el remoto:
 ```sql
 CREATE TABLE catalog_versions (
     table_name VARCHAR(64) NOT NULL,
-    row_id INTEGER NOT NULL,          -- PK de la fila (nombre si es textual)
+    row_id VARCHAR(64) NOT NULL,      -- PK de la fila (INTEGER o CharField, p. ej. Nodes.id)
     version BIGINT NOT NULL,          -- timestamp UNIX (ms) de última modificación
     node_id VARCHAR(64),              -- quién hizo el cambio (edge o central)
     conflict_resolved BOOLEAN DEFAULT false,
@@ -337,16 +343,16 @@ Tests previstos: unitarios (conflictos, versionado, orden FK), integración push
 
 | Fase | Entregable | Prioridad | Estimación | Estado |
 |---|---|---|---|---|
-| 1 | Modelo `catalog_versions` + migración SQL (ambos lados) | P0 | 1 d | Pendiente |
-| 2 | `ICatalogProvider` + adaptadores local/remoto (todas las tablas) | P0 | 2 d | Pendiente |
-| 3 | `CatalogReplicatorWorker` (push/pull, conflictos, orden de dependencias) | P0 | 2.5 d | Pendiente |
-| 4 | Arranque / hidratación local + modo degradado | P0 | 1 d | Pendiente |
-| 5 | Autenticación local (login con fallback) | P1 | 0.5 d | Pendiente |
-| 6 | HMI: banner, métricas, alarmas | P1 | 1 d | Pendiente |
-| 7 | Eliminar SQLite de la HMI de configuración | P0 | 0.5 d | Pendiente |
-| 8 | Tests unitarios e integración (incluye multi-edge) | P0 | 2.5 d | Pendiente |
-| 9 | Soak 24 h planta (CA-CATALOG-01…14) | P0 validación | 1 d | Pendiente |
-| 10 | Documentación y runbook | P2 | 0.5 d | Pendiente |
+| 1 | Modelo `catalog_versions` + migración SQL (ambos lados) | P0 | 1 d | **Implementado** |
+| 2 | `ICatalogProvider` + adaptadores local/remoto (todas las tablas) | P0 | 2 d | **Implementado** |
+| 3 | `CatalogReplicatorWorker` (push/pull, conflictos, orden de dependencias) | P0 | 2.5 d | **Implementado** |
+| 4 | Arranque / hidratación local + modo degradado | P0 | 1 d | **Implementado** |
+| 5 | Autenticación local (login con fallback) | P1 | 0.5 d | **Implementado** |
+| 6 | HMI: banner, métricas, alarmas | P1 | 1 d | **Implementado** |
+| 7 | Eliminar SQLite de la HMI de configuración | P0 | 0.5 d | **Implementado** |
+| 8 | Tests unitarios e integración (incluye multi-edge) | P0 | 2.5 d | **Implementado** (multi-edge soak skip) |
+| 9 | Soak 24 h planta (CA-CATALOG-01…14) | P0 validación | 1 d | Procedimiento en runbook |
+| 10 | Documentación y runbook | P2 | 0.5 d | **Implementado** |
 
 ---
 

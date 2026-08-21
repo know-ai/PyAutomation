@@ -212,6 +212,21 @@ class LoggerWorker(BaseWorker):
             
             logging.critical("Reconnection successfully")
             self.db_reconnection = True
+            try:
+                from ..catalog.replicator import get_catalog_replicator
+
+                worker = get_catalog_replicator()
+                if worker is not None:
+                    worker.cycle(force=True)
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "catalog sync after reconnect skipped",
+                    exc_info=True,
+                )
+            logging.getLogger("pyautomation").info(
+                "Historian link restored: catalog hydrate + SAF drain in progress. "
+                "Any prior 'socket replaced' INFO lines during this window are expected and harmless."
+            )
         else:
             set_db_disconnected(True)
 
