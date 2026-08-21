@@ -11,6 +11,7 @@ import {
 import type { PerfAlarmCatalogEntry } from "../services/performance";
 import { showToast } from "../utils/toast";
 import { alarmStateBadgeClass } from "../utils/alarmState";
+import { translateAlarmDescription } from "../utils/alarmCatalog";
 
 type PerformanceAlarmModalProps = {
   open: boolean;
@@ -88,10 +89,10 @@ export function PerformanceAlarmModal({
                 <dt>{t("performance.alarmThreshold")}</dt>
                 <dd>{formatThresholdLabel(catalog?.threshold, catalog?.unit) || "—"}</dd>
               </div>
-              {alarm?.description ? (
+              {alarm?.description || alarm?.name ? (
                 <div>
                   <dt>{t("tables.description")}</dt>
-                  <dd>{alarm.description}</dd>
+                  <dd>{translateAlarmDescription(alarm?.description, alarm?.name, t)}</dd>
                 </div>
               ) : null}
             </dl>

@@ -507,6 +507,16 @@ def _user_for_username(username: str):
 
     memory_user = UsersService().get_by_username(username=username)
     if memory_user is not None:
+        try:
+            from ..catalog.ensure_historian import ensure_historian_user
+
+            ensure_historian_user(memory_user)
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "SAF ensure historian user skipped username=%s",
+                username,
+                exc_info=True,
+            )
         return memory_user
     db_user = Users.read_by_username(username=username)
     if db_user is None:

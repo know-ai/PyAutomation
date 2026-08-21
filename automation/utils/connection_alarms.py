@@ -274,7 +274,19 @@ def _ensure_bool_alarm(
             description=alarm_description,
             skip_validation=True,
         )
-    elif getattr(app, "is_db_connected", lambda: False)():
+        return
+
+    desired = (alarm_description or "").strip()
+    current = (getattr(alarm, "description", None) or "").strip()
+    if desired and desired != current:
+        # Refresh description (e.g. PERF thresholds) in CVT + local catalog + historian.
+        try:
+            app.update_alarm(id=alarm.identifier, description=desired)
+            return
+        except Exception:
+            _LOGGER.debug("Alarm description refresh skipped for %s", alarm_name, exc_info=True)
+
+    if getattr(app, "is_db_connected", lambda: False)():
         try:
             app.alarms_engine.create(
                 id=alarm.identifier,

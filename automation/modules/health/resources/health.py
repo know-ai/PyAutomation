@@ -3,6 +3,23 @@ from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
 
+def _catalog_metrics() -> dict:
+    try:
+        from ....catalog.metrics import snapshot as catalog_snapshot
+        from ....catalog.provider import refresh_catalog_source
+
+        refresh_catalog_source()
+        return catalog_snapshot()
+    except Exception:
+        return {
+            "CATALOG_SOURCE": "local",
+            "CATALOG_SYNC_LAST_SUCCESS_UTC": None,
+            "CATALOG_SYNC_PENDING_ROWS": 0,
+            "CATALOG_SYNC_CONFLICT_COUNT": 0,
+            "CATALOG_TABLES_COUNT": 0,
+        }
+
+
 ns = Namespace("Health", description="Service health and readiness checks")
 app = PyAutomation()
 
@@ -260,6 +277,7 @@ class HealthSystemResource(Resource):
             **clock_metrics,
             **_log_error_metrics(),
             **_event_rate_metrics(),
+            **_catalog_metrics(),
         }, 200
 
 

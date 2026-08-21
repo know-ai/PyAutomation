@@ -9,7 +9,7 @@
 
 ---
 
-## Documentos canónicos (14)
+## Documentos canónicos (15)
 
 | Doc | Archivo | Absorbe | Veredicto vigente |
 |---|---|---|---|
@@ -27,6 +27,7 @@
 | **12 Trazabilidad Socket HMI** | [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md) | Spec [04-HMI-SOCKET-TRACEABILITY](../specs/04-HMI-SOCKET-TRACEABILITY.md) | **A+** — PG `hmi_sessions`, fail-closed, TLS/IP, heartbeat; soak 2-edge **pendiente** |
 | **13 Dashboard performance nodo** | [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](./AUDIT_NODE_PERFORMANCE_DASHBOARD.md) | Specs [05](../specs/05-NODE-PERFORMANCE-DASHBOARD.md) + [06](../specs/06-PERFORMANCE-ALARMS.md) | **A−** — snapshot O(1), sampler, `/performance`, alarmas `ALM.PERF.*`; soak 24 h / 2-edge / modal planta **pendientes** (A+) |
 | **14 Calidad OPC + arranque degradado** | [AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md](./AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md) | Specs [09](../specs/09-OPC-QUALITY-AND-DEGRADED-STARTUP.md) + [10](../specs/10-OPC-QUALITY-A-PLUS.md) — verificación 2026-08-21 | **A− disponibilidad** / **A− calidad** (A+ condicionado a soak) / **A Login-UX** — CA-OQ-01…12 PASS; soak 13–15 pendiente |
+| **15 Catálogo local SQLite** | [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md) | Spec [11](../specs/11-CATALOG-SQLITE-LOCAL.md) — verificación 2026-08-21 | **A− autonomía** / **A separación SAF** / **A HMI-API** — CA-01…06/10…13 PASS; soak 07–09/14 pendiente |
 
 ---
 

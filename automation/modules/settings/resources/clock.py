@@ -34,9 +34,9 @@ class SettingsClockResource(Resource):
         except Exception as exc:
             return {"message": str(exc)}, 500
 
-    @api.doc(security="apikey", description="Updates NTP monitor configuration (admin).")
+    @api.doc(security="apikey", description="Updates NTP monitor configuration (admin/supervisor/sudo).")
     @Api.token_required(auth=True)
-    @Api.auth_roles(["admin"])
+    @Api.auth_roles(["admin", "supervisor", "sudo"])
     @ns.expect(clock_settings_model)
     def put(self):
         data = api.payload or {}

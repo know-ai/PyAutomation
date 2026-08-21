@@ -11,6 +11,8 @@ from ..logger.core import BaseLogger
 from ..utils.db_io import (
     apply_remote_db_kwargs,
     connect_timeout_s,
+    is_stale_historian_handle,
+    log_historian_link_issue,
     mark_remote_db_live,
     probe_is_cooling_down,
     run_uncooperative_db_call,
@@ -20,6 +22,67 @@ from ..utils.db_connections import (
     close_current_greenlet_connection,
     snapshot_connection_metrics,
 )
+
+
+class TestStaleHistorianHandleLogging(unittest.TestCase):
+    def test_detects_already_closed(self):
+        self.assertTrue(is_stale_historian_handle(RuntimeError("connection already closed")))
+        self.assertTrue(is_stale_historian_handle("InterfaceError: cursor already closed"))
+        self.assertFalse(is_stale_historian_handle(RuntimeError("connection refused")))
+
+    def test_stale_handle_logs_info_not_error(self):
+        import logging
+
+        records = []
+
+        class Capture(logging.Logger):
+            def __init__(self):
+                super().__init__("capture")
+
+            def info(self, msg, *args, **kwargs):
+                records.append((logging.INFO, msg % args if args else msg))
+
+            def warning(self, msg, *args, **kwargs):
+                records.append((logging.WARNING, msg % args if args else msg))
+
+            def debug(self, *args, **kwargs):
+                return None
+
+        log_historian_link_issue(
+            Capture(),
+            RuntimeError("connection already closed"),
+            where="Alarms.create",
+            action="create",
+        )
+        self.assertEqual(records[0][0], logging.INFO)
+        self.assertIn("No data loss", records[0][1])
+
+    def test_real_outage_logs_warning_with_no_loss_clarifier(self):
+        import logging
+
+        records = []
+
+        class Capture(logging.Logger):
+            def __init__(self):
+                super().__init__("capture")
+
+            def info(self, msg, *args, **kwargs):
+                records.append((logging.INFO, msg % args if args else msg))
+
+            def warning(self, msg, *args, **kwargs):
+                records.append((logging.WARNING, msg % args if args else msg))
+
+            def debug(self, *args, **kwargs):
+                return None
+
+        log_historian_link_issue(
+            Capture(),
+            RuntimeError("connection refused"),
+            where="BaseEngine",
+            action="set_tag",
+        )
+        self.assertEqual(records[0][0], logging.WARNING)
+        self.assertIn("No historical loss", records[0][1])
 
 
 class TestApplyRemoteDbKwargs(unittest.TestCase):

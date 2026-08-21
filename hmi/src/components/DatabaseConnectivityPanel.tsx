@@ -12,9 +12,9 @@ import { useDatabaseConnected, useDatabaseStatus } from "../hooks/useDatabaseSta
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
 
-type Engine = "postgres" | "mysql" | "sqlite";
+type Engine = "postgres" | "mysql";
 
-const DEFAULT_PORTS: Record<Exclude<Engine, "sqlite">, string> = {
+const DEFAULT_PORTS: Record<Engine, string> = {
   postgres: "5432",
   mysql: "3306",
 };
@@ -23,14 +23,12 @@ function mapEngine(dbtype?: string): Engine {
   const value = dbtype?.toLowerCase();
   if (value === "postgresql" || value === "postgres") return "postgres";
   if (value === "mysql") return "mysql";
-  if (value === "sqlite") return "sqlite";
   return "postgres";
 }
 
 function engineLabel(engine: Engine): string {
   if (engine === "postgres") return "PostgreSQL";
-  if (engine === "mysql") return "MySQL";
-  return "SQLite";
+  return "MySQL";
 }
 
 export function DatabaseConnectivityPanel({ showHead = true }: { showHead?: boolean }) {
@@ -55,9 +53,7 @@ export function DatabaseConnectivityPanel({ showHead = true }: { showHead?: bool
         if (!config || config.message) return;
         const engine = mapEngine(config.dbtype);
         setDbType(engine);
-        if (engine === "sqlite" && config.dbfile) {
-          setDbName(config.dbfile);
-        } else if (config.name) {
+        if (config.name) {
           setDbName(config.name);
         }
         if (config.host) setDbHost(config.host);
@@ -93,19 +89,13 @@ export function DatabaseConnectivityPanel({ showHead = true }: { showHead?: bool
   }, [healthConnected]);
 
   const fieldsLocked = dbConnected || isConnecting;
-  const canConnect =
-    dbType === "sqlite"
-      ? Boolean(dbName.trim())
-      : Boolean(dbName.trim() && dbHost.trim() && dbUser.trim() && dbPassword);
+  const canConnect = Boolean(dbName.trim() && dbHost.trim() && dbUser.trim() && dbPassword);
 
   const endpoint = useMemo(() => {
-    if (dbType === "sqlite") {
-      return dbName.trim() || "—";
-    }
     const host = dbHost.trim() || "—";
     const port = dbPort.trim() || DEFAULT_PORTS[dbType];
     return `${host}:${port}`;
-  }, [dbHost, dbName, dbPort, dbType]);
+  }, [dbHost, dbPort, dbType]);
 
   const tone = dbConnected ? "ok" : healthConnected === null ? "unknown" : "error";
   const statusLabel = dbConnected
@@ -116,11 +106,9 @@ export function DatabaseConnectivityPanel({ showHead = true }: { showHead?: bool
 
   const handleEngineChange = (next: Engine) => {
     if (fieldsLocked) return;
-    if (next !== "sqlite") {
-      const prevDefault = dbType !== "sqlite" ? DEFAULT_PORTS[dbType] : "";
-      if (!dbPort || dbPort === prevDefault) {
-        setDbPort(DEFAULT_PORTS[next]);
-      }
+    const prevDefault = DEFAULT_PORTS[dbType];
+    if (!dbPort || dbPort === prevDefault) {
+      setDbPort(DEFAULT_PORTS[next]);
     }
     setDbType(next);
   };
@@ -139,19 +127,16 @@ export function DatabaseConnectivityPanel({ showHead = true }: { showHead?: bool
       }
 
       const dbtype = dbType === "postgres" ? "postgresql" : dbType;
-      const payload: DatabaseConnectPayload = { dbtype };
-
-      if (dbtype === "sqlite") {
-        payload.dbfile = dbName.trim() || "app.db";
-      } else {
-        payload.user = dbUser.trim();
-        payload.password = dbPassword;
-        payload.host = dbHost.trim() || "127.0.0.1";
-        payload.port = dbPort
+      const payload: DatabaseConnectPayload = {
+        dbtype,
+        user: dbUser.trim(),
+        password: dbPassword,
+        host: dbHost.trim() || "127.0.0.1",
+        port: dbPort
           ? Number(dbPort)
-          : Number(dbType === "mysql" ? DEFAULT_PORTS.mysql : DEFAULT_PORTS.postgres);
-        payload.name = dbName.trim();
-      }
+          : Number(dbType === "mysql" ? DEFAULT_PORTS.mysql : DEFAULT_PORTS.postgres),
+        name: dbName.trim(),
+      };
 
       const response = await connectDatabase(payload);
       const isConnectionSuccessful = response?.connected === true;
@@ -181,7 +166,6 @@ export function DatabaseConnectivityPanel({ showHead = true }: { showHead?: bool
   const engines: Array<{ id: Engine; icon: string; nameKey: string; hintKey: string }> = [
     { id: "postgres", icon: "bi-database", nameKey: "database.enginePostgres", hintKey: "database.enginePostgresHint" },
     { id: "mysql", icon: "bi-hdd-network", nameKey: "database.engineMysql", hintKey: "database.engineMysqlHint" },
-    { id: "sqlite", icon: "bi-file-earmark", nameKey: "database.engineSqlite", hintKey: "database.engineSqliteHint" },
   ];
 
   return (
@@ -242,26 +226,7 @@ export function DatabaseConnectivityPanel({ showHead = true }: { showHead?: bool
         </div>
       </div>
 
-      {dbType === "sqlite" ? (
-        <div className="settings-form-grid">
-          <div className="settings-form-field settings-form-field--span">
-            <label htmlFor="db-file" className="form-label">
-              {t("database.file")}
-            </label>
-            <input
-              id="db-file"
-              className="form-control"
-              value={dbName}
-              onChange={(e) => setDbName(e.target.value)}
-              disabled={fieldsLocked}
-              autoComplete="off"
-              placeholder="app.db"
-            />
-            <small className="form-text text-muted">{t("database.fileHint")}</small>
-          </div>
-        </div>
-      ) : (
-        <div className="settings-form-grid">
+      <div className="settings-form-grid">
           <div className="settings-form-field">
             <label htmlFor="db-host" className="form-label">
               {t("database.host")}
@@ -334,7 +299,6 @@ export function DatabaseConnectivityPanel({ showHead = true }: { showHead?: bool
             />
           </div>
         </div>
-      )}
 
       {dbConnected ? (
         <p className="db-connect-lock">{t("database.lockedHint")}</p>

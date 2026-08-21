@@ -1,6 +1,7 @@
 import type { Alarm } from "./alarms";
 import api from "./api";
 import type { PerfAlarmCatalogEntry, PerfAlarmKey, PerfAlarmsCatalog } from "./performance";
+import { canViewOpsAdmin } from "../utils/access";
 
 export type PerformanceAlarmConfig = PerfAlarmsCatalog & {
   enabled?: boolean;
@@ -42,8 +43,7 @@ export function toneFromLifecycle(life: PerfAlarmLifecycle, fallback: TileTone =
 }
 
 export function canConfigurePerformanceAlarms(role?: string | null): boolean {
-  const normalized = String(role || "").toLowerCase();
-  return normalized === "admin" || normalized === "supervisor" || normalized === "sudo";
+  return canViewOpsAdmin(role);
 }
 
 export function formatThresholdLabel(threshold?: number | null, unit?: string): string {

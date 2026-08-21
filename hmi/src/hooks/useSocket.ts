@@ -1,20 +1,20 @@
 import { useEffect, useRef } from "react";
 import { useAppDispatch } from "./useAppDispatch";
 import { useDisplayTimezone } from "./useDisplayTimezone";
-import { socketService } from "../services/socket";
+import { socketService, type SocketConnectionSnapshot } from "../services/socket";
 import {
   appendTagHistoryPoints,
   HISTORY_POINTS_PER_FLUSH,
   isTagHistoryTracked,
   updateTagValuesBatch,
 } from "../store/slices/tagsSlice";
-import { updateAlarmsBatch } from "../store/slices/alarmsSlice";
-import { updateMachinesBatch } from "../store/slices/machinesSlice";
+import { loadAllAlarms, updateAlarmsBatch } from "../store/slices/alarmsSlice";
+import { loadAllMachines, updateMachinesBatch } from "../store/slices/machinesSlice";
 import { useAppSelector } from "./useAppSelector";
 import { store } from "../store/store";
 import { batch } from "react-redux";
 import type { Tag } from "../services/tags";
-import type { Alarm } from "../services/alarms";
+import { getAlarms, type Alarm } from "../services/alarms";
 import type { Machine } from "../services/machines";
 import { isPageHidden } from "./usePageHidden";
 import { isSystemUser } from "../utils/systemUser";
@@ -64,6 +64,42 @@ export function useSocket() {
       return;
     }
 
+    const hydrateFromSnapshot = (payload: SocketConnectionSnapshot) => {
+      const tags = Array.isArray(payload.tags) ? payload.tags : [];
+      const machines = Array.isArray(payload.machines) ? payload.machines : [];
+
+      batch(() => {
+        if (Array.isArray(payload.alarms)) {
+          // Full catalog snapshot (may be empty) replaces stale session state.
+          dispatch(loadAllAlarms(payload.alarms));
+        } else if (
+          Array.isArray(payload.last_active_alarms) &&
+          payload.last_active_alarms.length > 0
+        ) {
+          dispatch(updateAlarmsBatch(payload.last_active_alarms));
+        }
+        if (tags.length > 0) {
+          dispatch(updateTagValuesBatch(tags));
+        }
+        if (machines.length > 0) {
+          dispatch(loadAllMachines(machines));
+        }
+      });
+    };
+
+    const hydrateAlarmsFromRest = async () => {
+      try {
+        const response = await getAlarms(1, 10000);
+        if (Array.isArray(response?.data)) {
+          dispatch(loadAllAlarms(response.data));
+        }
+      } catch {
+        // Offline / historian-less nodes still get on_connection when available.
+      }
+    };
+
+    // Register snapshot listener before connect so we do not miss the first emit.
+    const cleanupSnapshot = socketService.onConnectionSnapshot(hydrateFromSnapshot);
     socketService.connect();
 
     const flushHistory = () => {
@@ -159,6 +195,9 @@ export function useSocket() {
         resetTagHistoryBackfillThrottle();
         return;
       }
+      // First connect + reconnect: ensure footer/active alarms reflect runtime state
+      // even if `on.alarm` deltas were emitted before this session subscribed.
+      void hydrateAlarmsFromRest();
       if (!reconnect) return;
       const { historySubscribers } = store.getState().tags;
       const names = Object.keys(historySubscribers).filter((n) => historySubscribers[n] > 0);
@@ -168,6 +207,7 @@ export function useSocket() {
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
+      cleanupSnapshot();
       cleanupTags();
       cleanupAlarms();
       cleanupMachines();

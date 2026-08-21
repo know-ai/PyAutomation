@@ -86,6 +86,7 @@
     "loggingOut": "Logging out...",
     "signOut": "Sign out",
     "invalidCredentials": "We couldn't verify those credentials. Check your username and password and try again.",
+    "invalidCredentialsHint": "Don't have an account yet?",
     "loginError": "Could not sign in. Please try again or contact the administrator.",
     "networkError": "Unable to reach the server. Check your network and try again.",
     "databaseUnavailable": "The authentication service is unavailable. Check the database connection.",
@@ -292,8 +293,8 @@
     "waveletLatency": "Latency",
     "waveletAdvanced": "Advanced parameters",
     "waveletFamilyHint": "db4 is the most robust choice for process signals.",
-    "waveletLevelHint": "More levels smooth more, with a little extra delay.",
-    "waveletThresholdHint": "1.0 mild, 3.0 standard, 5.0+ aggressive against noise.",
+    "waveletLevelHint": "More levels smooth more (1–10), with a little extra delay.",
+    "waveletThresholdHint": "1.0 mild, 3.0 standard, 5.0–10.0 aggressive against noise.",
     "waveletNumericOnly": "Wavelet filtering applies only to numeric (float) tags.",
     "waveletPublicationQuality": ".f quality",
     "waveletDropped": "Dropped",
@@ -501,7 +502,7 @@
     "statusIdle": "No link",
     "statusChecking": "Checking link",
     "lockedHint": "Disconnect to change parameters.",
-    "description": "Database connection configuration (PostgreSQL/MySQL/SQLite) using existing endpoints.",
+    "description": "Database connection configuration (PostgreSQL/MySQL) using existing endpoints.",
     "feature1": "Credentials form and connection test.",
     "feature2": "Connection status and reconnection.",
     "feature3": "Configuration Export/Import (already supported by backend)."
@@ -519,7 +520,8 @@
     "overlayBody": "Data is being stored locally and will synchronize automatically when the connection returns. Acquisition is not stopped.",
     "retryCount": "Probe attempts",
     "dataUnavailable": "Historical data temporarily unavailable",
-    "degradedModeBanner": "Degraded mode: no connection to the historian"
+    "degradedModeBanner": "For optimal performance, connect the production database.",
+    "degradedModeMove": "Drag to move banner"
   },
   "quality": {
     "good": "GOOD quality",
@@ -625,7 +627,7 @@
     "qualityPolicySaved": "Quality policy updated",
     "historianKicker": "Historian",
     "historianTitle": "Database connectivity",
-    "historianLede": "Service link to PostgreSQL, MySQL, or SQLite. The header LED reflects this state. Samples are stored first in the local SAF journal.",
+    "historianLede": "Service link to PostgreSQL or MySQL. The header LED reflects this state. Samples are stored first in the local SAF journal. The catalog mirror (catalog.db) is automatic.",
     "serviceKicker": "Service",
     "applicationSettings": "Replication and diagnostics",
     "runtimeLede": "Parameters the service actually applies. Log file rotation is owned by Docker and is not configured here.",
@@ -1045,9 +1047,23 @@
     "catalog": {
       "dbConnectionLost": "Historian database connection lost",
       "ntpOutOfSync": "Edge clock out of sync with plant NTP",
-      "opcuaConnectionLost": "OPC UA client '{{client}}' connection lost",
-      "performance": "System · {{title}}",
-      "performanceThreshold": "System · {{title}}. Triggers when {{field}} ≥ {{threshold}}."
+      "opcuaConnectionLost": "OPC UA client “{{client}}” disconnected",
+      "catalogSyncFailed": "Local catalog could not sync with the historian after several attempts",
+      "catalogConflict": "Unresolved catalog conflict with the historian (rare with auto-merge)",
+      "catalogConflictHint": "Auto-merged divergences no longer raise this alarm. Persistent SyncFailed means hard sync errors.",
+      "catalogLocalOnly": "Operating on the local catalog for over an hour without historian sync",
+      "qualityDegraded": "Signal quality bad or stale on tag “{{tag}}”",
+      "performance": "{{title}}",
+      "performanceThreshold": "{{title}} — triggers when {{field}} is ≥ {{threshold}}",
+      "fields": {
+        "cpu": "CPU usage",
+        "disk": "disk usage",
+        "safQueue": "SAF journal queue depth",
+        "safLag": "SAF replication lag",
+        "metricsAge": "metrics snapshot age",
+        "dbConn": "historian DB connections",
+        "http5xx": "HTTP 5xx errors per minute"
+      }
     }
   },
   "alarmsSummary": {
@@ -1198,7 +1214,7 @@
     "title": "Node performance",
     "lede": "Live edge snapshot. Bell tiles are alarmable: set thresholds, acknowledge and shelve without leaving this view.",
     "loadError": "Could not load node metrics.",
-    "forbidden": "This dashboard is limited to admin and supervisor roles.",
+    "forbidden": "This dashboard is limited to admin, supervisor, and sudo roles.",
     "identity": "Identity",
     "node": "Node",
     "area": "Area",

@@ -26,6 +26,7 @@ import {
 } from "../hooks/useScheduledQuery";
 import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp, type UiLocale } from "../utils/timezone";
 import { alarmStateBadgeClass } from "../utils/alarmState";
+import { translateAlarmDescription } from "../utils/alarmCatalog";
 
 type PresetDate = 
   | "Last Hour"
@@ -602,7 +603,7 @@ export function AlarmsSummary() {
           alarm.alarm_time ? formatAlarmTime(alarm.alarm_time, locale) : "",
           alarm.name || "",
           alarm.area || "",
-          alarm.description || "",
+          translateAlarmDescription(alarm.description, alarm.name, t),
           alarm.state || "",
           alarm.ack_time ? formatAlarmTime(alarm.ack_time, locale) : "",
           alarm.has_comments ? t("common.yes") : t("common.no"),
@@ -1085,7 +1086,13 @@ export function AlarmsSummary() {
                       <dd className="col-sm-8">{displayValue(selectedAlarmDetail.name)}</dd>
 
                       <dt className="col-sm-4">{t("tables.description")}</dt>
-                      <dd className="col-sm-8">{displayValue(selectedAlarmDetail.description)}</dd>
+                      <dd className="col-sm-8">
+                        {translateAlarmDescription(
+                          selectedAlarmDetail.description,
+                          selectedAlarmDetail.name,
+                          t
+                        )}
+                      </dd>
 
                       <dt className="col-sm-4">{t("tables.tag")}</dt>
                       <dd className="col-sm-8">{displayValue(selectedAlarmDetail.tag)}</dd>

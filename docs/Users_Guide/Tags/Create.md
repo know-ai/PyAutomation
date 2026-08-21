@@ -145,8 +145,8 @@ The **Wavelet RT filter** applies discrete wavelet transform (DWT) denoising off
 **Configuration Parameters:**
 - **filter_enabled**: Master switch
 - **filter_wavelet** (default: `db4`): PyWavelets family (`db4`, `db6`, `sym4`, …)
-- **filter_level** (default: 4): DWT decomposition levels (1–6)
-- **filter_threshold_factor** (default: 3.0): Soft-threshold multiplier (higher = smoother)
+- **filter_level** (default: 4): DWT decomposition levels (1–10)
+- **filter_threshold_factor** (default: 3.0): Soft-threshold multiplier (1.0–10.0; higher = smoother)
 - **filter_persist**: When enabled, the `.f` tag is registered in the historian (SAF)
 
 **Use Cases:**

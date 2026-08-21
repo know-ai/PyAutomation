@@ -24,7 +24,9 @@ class SettingsResource(Resource):
     @api.doc(security='apikey', description="Retrieves current application configuration settings.")
     @api.response(200, "Settings retrieved successfully")
     @api.response(401, "Unauthorized")
+    @api.response(403, "Role not allowed")
     @Api.token_required(auth=True)
+    @Api.auth_roles(["admin", "supervisor", "sudo"])
     def get(self):
         """
         Get settings.
@@ -43,7 +45,9 @@ class SettingsUpdateResource(Resource):
     @api.doc(security='apikey', description="Updates various application settings.")
     @api.response(200, "Settings updated successfully")
     @api.response(400, "Invalid parameter values")
+    @api.response(403, "Role not allowed")
     @Api.token_required(auth=True)
+    @Api.auth_roles(["admin", "supervisor", "sudo"])
     @ns.expect(settings_model)
     def put(self):
         """
@@ -173,7 +177,9 @@ class ExportConfigResource(Resource):
     @api.response(200, "Configuration exported successfully")
     @api.response(400, "Export failed")
     @api.response(401, "Unauthorized")
-    # @Api.token_required(auth=True)
+    @api.response(403, "Role not allowed")
+    @Api.token_required(auth=True)
+    @Api.auth_roles(["admin", "supervisor", "sudo"])
     def get(self):
         """
         Export configuration.
@@ -218,8 +224,10 @@ class ImportConfigResource(Resource):
     @api.response(200, "Configuration imported successfully")
     @api.response(400, "Import failed")
     @api.response(401, "Unauthorized")
+    @api.response(403, "Role not allowed")
     @ns.expect(import_config_parser)
-    # @Api.token_required(auth=True)
+    @Api.token_required(auth=True)
+    @Api.auth_roles(["admin", "supervisor", "sudo"])
     def post(self):
         """
         Import configuration.

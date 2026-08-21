@@ -9,6 +9,7 @@ from .core import BaseEngine, BaseLogger
 from ..utils.decorators import db_rollback
 from ..models import IntegerType, StringType, FloatType
 from ..tags.tag import Tag
+import logging
 
 
 class MachinesLogger(BaseLogger):
@@ -75,6 +76,16 @@ class MachinesLogger(BaseLogger):
             threshold=threshold,
             area=area,
         )
+        try:
+            from ..catalog.bootstrap import mirror_historian_row
+
+            row = Machines.get_or_none(Machines.name == name) or Machines.get_or_none(
+                Machines.identifier == identifier
+            )
+            if row is not None:
+                mirror_historian_row(row)
+        except Exception:
+            logging.getLogger("pyautomation").debug("catalog machine mirror skipped", exc_info=True)
 
     @db_rollback
     def put(
@@ -96,60 +107,85 @@ class MachinesLogger(BaseLogger):
         r"""
         Updates an existing State Machine definition.
 
-        **Parameters:**
-
-        * **name** (StringType): Machine name.
-        * **machine_interval** (IntegerType, optional): New interval.
-        * **description** (StringType, optional): New description.
-        * **classification** (StringType, optional): New classification.
-        * **buffer_size** (IntegerType, optional): New buffer size.
-        * **buffer_roll_type** (StringType, optional): New roll type.
-        * **criticity** (IntegerType, optional): New criticality.
-        * **priority** (IntegerType, optional): New priority.
-        * **on_delay** (IntegerType, optional): New on delay.
-        * **threshold** (FloatType, optional): New threshold.
+        Always mirrors into the local catalog so HMI attribute edits work offline.
+        Historian writes are best-effort when connectivity is available.
         """
 
-        if not self.check_connectivity():
-            
-            return None
+        def _unwrap(value):
+            if value is None:
+                return None
+            if hasattr(value, "value"):
+                inner = value.value
+                if hasattr(inner, "value"):
+                    return inner.value
+                return inner
+            return value
 
-        fields = dict()
-        machine = Machines.read_by_name(name=name.value)
-        if machine_interval:
-            
-            fields["interval"] = float(machine_interval.value)
-            fields["execution_interval"] = float(machine_interval.value)
+        machine_name = name.value if hasattr(name, "value") else name
+        fields = {}
+        if machine_interval is not None:
+            interval = float(_unwrap(machine_interval))
+            fields["interval"] = interval
+            fields["execution_interval"] = interval
         if execution_interval is not None:
             fields["execution_interval"] = float(execution_interval)
             fields["interval"] = float(execution_interval)
         if sample_interval_set:
             fields["sample_interval"] = sample_interval
-        if description:
-            fields["description"] = description.value
-        if classification:
-            fields["classification"] = classification.value
-        if buffer_size:
-            fields["buffer_size"] = buffer_size.value
-        if buffer_roll_type:
-            fields["buffer_roll_type"] = buffer_roll_type.value
-        if criticity:
-            fields["criticity"] = criticity.value
-        if priority:
-            fields["priority"] = priority.value
-        if on_delay:
-            fields["on_delay"] = on_delay.value
-        if threshold:
-            if hasattr(threshold.value, "value"):
-                threshold.value = threshold.value.value
-            fields["threshold"] = threshold.value
-            
-        query = Machines.put(
-            id=machine.id,
-            **fields
-        )
+        if description is not None:
+            fields["description"] = _unwrap(description)
+        if classification is not None:
+            fields["classification"] = _unwrap(classification)
+        if buffer_size is not None:
+            fields["buffer_size"] = _unwrap(buffer_size)
+        if buffer_roll_type is not None:
+            fields["buffer_roll_type"] = _unwrap(buffer_roll_type)
+        if criticity is not None:
+            fields["criticity"] = _unwrap(criticity)
+        if priority is not None:
+            fields["priority"] = _unwrap(priority)
+        if on_delay is not None:
+            fields["on_delay"] = _unwrap(on_delay)
+        if threshold is not None:
+            fields["threshold"] = _unwrap(threshold)
 
-        return query
+        local_ok = False
+        if fields:
+            try:
+                from ..catalog.mutations import persist_machine_fields_local
+
+                local_ok = bool(persist_machine_fields_local(name=str(machine_name), **fields))
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "local catalog machine put skipped", exc_info=True
+                )
+
+        if not self.check_connectivity():
+            return {"message": "updated local catalog", "data": fields} if local_ok or fields else None
+
+        try:
+            machine = Machines.read_by_name(name=str(machine_name))
+            if machine is None:
+                return {"message": "updated local catalog", "data": fields} if local_ok else None
+            query = Machines.put(id=machine.id, **fields)
+            try:
+                from ..catalog.bootstrap import mirror_historian_row
+
+                refreshed = Machines.read_by_name(name=str(machine_name))
+                if refreshed is not None:
+                    mirror_historian_row(refreshed)
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "catalog machine put mirror skipped", exc_info=True
+                )
+            return query
+        except Exception:
+            logging.getLogger("pyautomation").warning(
+                "historian machine put failed; local catalog retained name=%s",
+                machine_name,
+                exc_info=True,
+            )
+            return {"message": "updated local catalog (historian unreachable)", "data": fields}
     
     @db_rollback
     def read_all(self):
@@ -185,10 +221,33 @@ class MachinesLogger(BaseLogger):
         * **default_tag_name** (str, optional): Default tag alias within the machine.
         """
         if not self.check_connectivity():
+            try:
+                from ..catalog.mutations import persist_tagsmachines_bind
 
+                persist_tagsmachines_bind(
+                    tag_name=tag.name,
+                    machine_name=machine.name.value,
+                    default_tag_name=default_tag_name,
+                )
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "local catalog tagsmachines bind skipped", exc_info=True
+                )
             return None
             
         TagsMachines.create(tag_name=tag.name, machine_name=machine.name.value, default_tag_name=default_tag_name)
+        try:
+            from ..catalog.mutations import persist_tagsmachines_bind
+
+            persist_tagsmachines_bind(
+                tag_name=tag.name,
+                machine_name=machine.name.value,
+                default_tag_name=default_tag_name,
+            )
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "catalog tagsmachines bind mirror skipped", exc_info=True
+            )
 
     @db_rollback
     def unbind_tag(self, tag:Tag, machine):
@@ -196,23 +255,63 @@ class MachinesLogger(BaseLogger):
         Unbinds a Tag from a State Machine.
         """
         if not self.check_connectivity():
+            try:
+                from ..catalog.mutations import persist_tagsmachines_unbind
 
+                persist_tagsmachines_unbind(tag_name=tag.name, machine_name=machine.name.value)
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "local catalog tagsmachines unbind skipped", exc_info=True
+                )
             return None
 
         tag_from_db = Tags.get_or_none(name=tag.name)
         machine_from_db= Machines.get_or_none(name=machine.name.value)
         tags_machine = TagsMachines.get((TagsMachines.tag == tag_from_db) & (TagsMachines.machine == machine_from_db))
         tags_machine.delete_instance()
+        try:
+            from ..catalog.mutations import persist_tagsmachines_unbind
+
+            persist_tagsmachines_unbind(tag_name=tag.name, machine_name=machine.name.value)
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "catalog tagsmachines unbind mirror skipped", exc_info=True
+            )
 
     @db_rollback
     def put_sample_override(self, tag:Tag, machine, sample_override):
         if not self.check_connectivity():
+            try:
+                from ..catalog.mutations import persist_tagsmachines_sample_override
+
+                persist_tagsmachines_sample_override(
+                    tag_name=tag.name,
+                    machine_name=machine.name.value,
+                    sample_override=sample_override,
+                )
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "local catalog tagsmachines sample_override skipped", exc_info=True
+                )
             return None
-        return TagsMachines.put_sample_override(
+        row = TagsMachines.put_sample_override(
             tag_name=tag.name,
             machine_name=machine.name.value,
             sample_override=sample_override,
-        )    
+        )
+        try:
+            from ..catalog.mutations import persist_tagsmachines_sample_override
+
+            persist_tagsmachines_sample_override(
+                tag_name=tag.name,
+                machine_name=machine.name.value,
+                sample_override=sample_override,
+            )
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "catalog tagsmachines sample_override mirror skipped", exc_info=True
+            )
+        return row
 
 class MachinesLoggerEngine(BaseEngine):
     r"""

@@ -11,7 +11,7 @@ interface DatabaseConfigFormProps {
 
 export function DatabaseConfigForm({ onConnectionSuccess, onCancel, eventId }: DatabaseConfigFormProps) {
   const { t } = useTranslation();
-  const [dbType, setDbType] = useState<"postgres" | "mysql" | "sqlite">("postgres");
+  const [dbType, setDbType] = useState<"postgres" | "mysql">("postgres");
   const [dbName, setDbName] = useState("");
   const [dbHost, setDbHost] = useState("");
   const [dbPort, setDbPort] = useState<string>("");
@@ -37,14 +37,13 @@ export function DatabaseConfigForm({ onConnectionSuccess, onCancel, eventId }: D
           const dbtype = config.dbtype?.toLowerCase();
           if (dbtype === "postgresql") {
             setDbType("postgres");
-          } else if (dbtype === "mysql" || dbtype === "sqlite") {
-            setDbType(dbtype as "mysql" | "sqlite");
+          } else if (dbtype === "mysql") {
+            setDbType("mysql");
+          } else {
+            setDbType("postgres");
           }
           
-          // Para SQLite, usar dbfile; para otros, usar name
-          if (dbtype === "sqlite" && config.dbfile) {
-            setDbName(config.dbfile);
-          } else if (config.name) {
+          if (config.name) {
             setDbName(config.name);
           }
           
@@ -76,17 +75,12 @@ export function DatabaseConfigForm({ onConnectionSuccess, onCancel, eventId }: D
       
       const payload: DatabaseConnectPayload = {
         dbtype: dbtype,
+        user: dbUser,
+        password: dbPassword,
+        host: dbHost || "127.0.0.1",
+        port: dbPort ? Number(dbPort) : (dbtype === "mysql" ? 3306 : 5432),
+        name: dbName,
       };
-
-      if (dbtype === "sqlite") {
-        payload.dbfile = dbName || "app.db";
-      } else {
-        payload.user = dbUser;
-        payload.password = dbPassword;
-        payload.host = dbHost || "127.0.0.1";
-        payload.port = dbPort ? Number(dbPort) : (dbtype === "mysql" ? 3306 : 5432);
-        payload.name = dbName;
-      }
 
       const response = await connectDatabase(payload);
       // Solo considerar la conexión exitosa si response.connected es explícitamente true
@@ -154,31 +148,17 @@ export function DatabaseConfigForm({ onConnectionSuccess, onCancel, eventId }: D
             className="form-select"
             value={dbType}
             onChange={(e) =>
-              setDbType((e.target.value as "postgres" | "mysql" | "sqlite") ?? "postgres")
+              setDbType((e.target.value as "postgres" | "mysql") ?? "postgres")
             }
             disabled={isConnecting}
           >
             <option value="postgres">PostgreSQL</option>
             <option value="mysql">MySQL</option>
-            <option value="sqlite">SQLite</option>
           </select>
         </div>
 
-        {dbType === "sqlite" ? (
-          <div className="mb-3">
-            <label className="form-label">{t("communications.dbFile") || "Database File"}</label>
-            <input
-              className="form-control"
-              placeholder={t("communications.dbFile") || "Database File"}
-              value={dbName}
-              onChange={(e) => setDbName(e.target.value)}
-              disabled={isConnecting}
-            />
-          </div>
-        ) : (
-          <>
-            <div className="mb-3">
-              <label className="form-label">{t("communications.dbName") || "Database Name"}</label>
+        <div className="mb-3">
+          <label className="form-label">{t("communications.dbName") || "Database Name"}</label>
               <input
                 className="form-control"
                 placeholder={t("communications.dbName") || "Database Name"}
@@ -239,8 +219,6 @@ export function DatabaseConfigForm({ onConnectionSuccess, onCancel, eventId }: D
                 required
               />
             </div>
-          </>
-        )}
 
         {connectionError && (
           <div className="alert alert-danger py-2 mb-3">
@@ -253,7 +231,7 @@ export function DatabaseConfigForm({ onConnectionSuccess, onCancel, eventId }: D
             type="button"
             className="btn btn-primary"
             onClick={handleConnect}
-            disabled={isConnecting || (dbType !== "sqlite" && (!dbName || !dbHost || !dbPort || !dbUser || !dbPassword))}
+            disabled={isConnecting || (!dbName || !dbHost || !dbPort || !dbUser || !dbPassword)}
           >
             {isConnecting ? (
               <>

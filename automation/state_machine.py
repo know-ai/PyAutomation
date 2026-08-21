@@ -103,16 +103,38 @@ class Machine(Singleton):
         if hasattr(machine, "threshold"):
             threshold = machine.threshold.value
         
-        if self.machines_engine.get_db():
-            live = False
-            try:
-                from automation import PyAutomation
+        live = False
+        try:
+            from automation import PyAutomation
 
-                live = bool(PyAutomation().is_db_connected())
-            except Exception:
-                live = False
-            if live:
-                self.machines_engine.create(
+            live = bool(PyAutomation().is_db_connected())
+        except Exception:
+            live = False
+        area = None
+        try:
+            area = get_node_scope().area
+        except Exception:
+            area = None
+        if live and self.machines_engine.get_db():
+            self.machines_engine.create(
+                identifier=machine.identifier.value,
+                name=machine.name.value,
+                interval=interval.value,
+                description=machine.description.value,
+                classification=machine.classification.value,
+                buffer_size=machine.buffer_size.value,
+                buffer_roll_type=machine.buffer_roll_type.value,
+                criticity=machine.criticity.value,
+                priority=machine.priority.value,
+                on_delay=on_delay,
+                threshold=threshold,
+                area=area,
+            )
+        else:
+            try:
+                from .catalog.seed import persist_machine_to_local
+
+                persist_machine_to_local(
                     identifier=machine.identifier.value,
                     name=machine.name.value,
                     interval=interval.value,
@@ -124,9 +146,12 @@ class Machine(Singleton):
                     priority=machine.priority.value,
                     on_delay=on_delay,
                     threshold=threshold,
-                    area=get_node_scope().area,
+                    area=area,
                 )
-                self.create_tag_internal_process_type(machine=machine)
+            except Exception:
+                logging.debug("local catalog machine persist skipped", exc_info=True)
+        # Always bind CVT tags (and mirror to local catalog when historian is down).
+        self.create_tag_internal_process_type(machine=machine)
 
     def drop(self, machine:StateMachine):
         r"""
@@ -337,12 +362,11 @@ class Machine(Singleton):
                         segment=SEGMENT,
                         manufacturer=MANUFACTURER
                     )
-                    # Persist Tag on Database
+                    # Persist Tag on Database (or local catalog mirror)
                     tag = cvt.get_tag_by_name(name=tag_name)
                     attr = getattr(machine, _tag_name)
                     attr.tag = tag
-                    self.logger_engine.set_tag(tag=tag)
-                    self.db_manager.attach(tag_name=tag_name)
+                    self._persist_machine_tag(tag=tag, tag_name=tag_name)
                     break
 
         relationships = getattr(machine, "internal_tags_relationships", None)
@@ -380,11 +404,41 @@ class Machine(Singleton):
                     if not tag:
                         tag = cvt.get_tag_by_name(name=tag_name)
                     if tag:
-                        self.logger_engine.set_tag(tag=tag)
-                        self.db_manager.attach(tag_name=tag_name)
+                        self._persist_machine_tag(tag=tag, tag_name=tag_name)
                     break
 
         self.__define_iad_alarms()
+
+    def _persist_machine_tag(self, *, tag, tag_name: str) -> None:
+        """Persist machine tag to historian when live, else to local catalog.
+
+        Always attach the SAF TagObserver: history journal is local SQLite.
+        """
+        if tag is None:
+            return
+        try:
+            self.db_manager.attach(tag_name=tag_name)
+        except Exception:
+            logging.debug("SAF TagObserver attach skipped name=%s", tag_name, exc_info=True)
+        live = False
+        try:
+            from automation import PyAutomation
+
+            live = bool(PyAutomation().is_db_connected())
+        except Exception:
+            live = False
+        if live:
+            try:
+                self.logger_engine.set_tag(tag=tag)
+            except Exception:
+                logging.debug("historian machine tag persist skipped", exc_info=True)
+            return
+        try:
+            from .catalog.seed import persist_tag_to_local
+
+            persist_tag_to_local(tag)
+        except Exception:
+            logging.debug("local catalog machine tag persist skipped", exc_info=True)
              
     def create_alarm(
             self,
@@ -432,20 +486,28 @@ class Machine(Singleton):
 
         if alarm:
 
-            # Persist Tag on Database
+            # Persist alarm on historian or local catalog mirror
             if not reload:
-                if self.db_manager.get_db():
-                    
-                    alarm = self.alarm_manager.get_alarm_by_name(name=name)
-                    area = None
-                    try:
-                        from .node_scope import get_node_scope
+                live = False
+                try:
+                    from automation import PyAutomation
 
-                        area = get_node_scope().area
-                    except Exception:
-                        area = None
-                    payload = alarm.catalog_payload() if alarm is not None and hasattr(alarm, "catalog_payload") else {}
-                    
+                    live = bool(PyAutomation().is_db_connected())
+                except Exception:
+                    live = False
+                alarm = self.alarm_manager.get_alarm_by_name(name=name)
+                area = None
+                try:
+                    area = get_node_scope().area
+                except Exception:
+                    area = None
+                payload = (
+                    alarm.catalog_payload()
+                    if alarm is not None and hasattr(alarm, "catalog_payload")
+                    else {}
+                )
+                alarm_area = payload.get("area") or area
+                if live and self.db_manager.get_db():
                     self.alarms_engine.create(
                         id=alarm.identifier,
                         name=name,
@@ -453,8 +515,26 @@ class Machine(Singleton):
                         trigger_type=alarm_type,
                         trigger_value=trigger_value,
                         description=description,
-                        area=payload.get("area") or area,
+                        area=alarm_area,
                     )
+                elif alarm is not None:
+                    try:
+                        from .catalog.seed import persist_alarm_to_local, persist_tag_to_local
+                        from .tags.cvt import CVTEngine
+
+                        tag_obj = CVTEngine().get_tag_by_name(name=tag)
+                        persist_tag_to_local(tag_obj)
+                        persist_alarm_to_local(
+                            identifier=alarm.identifier,
+                            name=name,
+                            tag_name=tag,
+                            trigger_type=alarm_type,
+                            trigger_value=trigger_value,
+                            description=description,
+                            area=alarm_area,
+                        )
+                    except Exception:
+                        logging.debug("local catalog IAD alarm persist skipped", exc_info=True)
             
             return alarm, message
 

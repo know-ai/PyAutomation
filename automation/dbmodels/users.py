@@ -229,12 +229,18 @@ class Users(BaseModel):
 
         * **token** (str): Session token.
         """
-        user = cls.get_or_none(token=token)
+        user = None
+        try:
+            user = cls.get_or_none(token=token)
+        except Exception:
+            user = None
 
         if user:
-
-            user.token = None
-            user.save()
+            try:
+                user.token = None
+                user.save()
+            except Exception:
+                pass
             try:
                 users.logout(token=token)
             except Exception:
@@ -246,7 +252,8 @@ class Users(BaseModel):
             users.logout(token=token)
         except Exception:
             pass
-        return None, "Invalid Token"
+        # In-memory session may be the only source when the historian is down.
+        return None, "Logout successfull"
 
     @classmethod
     def read_by_username(cls, username:str):

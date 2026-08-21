@@ -8,7 +8,6 @@ from .models.users import signup_parser, login_parser, change_password_parser, r
 from .... import PyAutomation, TIMEZONE, _TIMEZONE
 from ....extensions.api import api
 from ....extensions import _api as Api
-from ...health.require_db import require_remote_db
 from ....modules.users.users import Users as CVTUsers
 from ....dbmodels.users import Users
 from ....utils.user_session_audit import record_user_session_event
@@ -40,15 +39,17 @@ class UsersCollection(Resource):
     @api.doc(security='apikey', description="Retrieves a list of all registered users with pagination support.")
     @api.response(200, "Success")
     @ns.expect(parser)
-    @api.response(503, "Remote database unavailable")
-    @require_remote_db
+    @api.response(403, "Role not allowed")
+    @api.response(503, "Authentication backend unavailable")
     @Api.token_required(auth=True)
+    @Api.auth_roles(["admin", "supervisor", "sudo"])
     def get(self):
         """
         Get all users.
 
         Retrieves a paginated list of all users currently registered in the system.
         Supports pagination via query parameters: page (default: 1) and limit (default: 20).
+        Works against the in-memory CVT / local catalog mirror when the historian is down.
         """
         args = self.parser.parse_args()
         page = args.get('page', 1)
@@ -59,6 +60,18 @@ class UsersCollection(Resource):
             return {'message': 'Page number must be greater than 0'}, 400
         if limit < 1:
             return {'message': 'Limit must be greater than 0'}, 400
+
+        if not app.is_db_connected():
+            try:
+                from ....catalog.hydrate import fill_roles_from_local, fill_users_from_local
+
+                fill_roles_from_local()
+                fill_users_from_local()
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "local catalog user list hydrate skipped",
+                    exc_info=True,
+                )
         
         # Get all users
         all_users = users.serialize()

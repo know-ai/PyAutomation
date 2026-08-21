@@ -9,6 +9,17 @@ import { showToast } from "../utils/toast";
 
 type FanoutHandler = (data: unknown) => void;
 
+/** Initial system snapshot emitted by the server as `on_connection` after auth. */
+export type SocketConnectionSnapshot = {
+  tags?: Tag[];
+  alarms?: Alarm[];
+  machines?: Machine[];
+  last_alarms?: unknown[];
+  last_active_alarms?: Alarm[];
+  last_events?: unknown[];
+  last_logs?: unknown[];
+};
+
 export type SocketConnectionState = {
   connected: boolean;
   connecting: boolean;
@@ -260,6 +271,16 @@ class SocketService {
 
   onAlarmUpdate(callback: (alarm: Alarm) => void): () => void {
     return this.subscribe<Alarm>("on.alarm", callback);
+  }
+
+  /**
+   * Full runtime snapshot sent once after each successful Socket.IO auth.
+   * Prefer this over waiting for `on.alarm` deltas (alarms may already be active).
+   */
+  onConnectionSnapshot(
+    callback: (payload: SocketConnectionSnapshot) => void
+  ): () => void {
+    return this.subscribe<SocketConnectionSnapshot>("on_connection", callback);
   }
 
   getSocket(): Socket | null {

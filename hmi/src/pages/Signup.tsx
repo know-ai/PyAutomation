@@ -66,17 +66,20 @@ export function Signup() {
         data?.error ??
         err?.message;
 
-      // Detectar errores de conexión a la base de datos
-      const isDatabaseError = backendMessage && (
-        backendMessage.includes("CONNECTING DATABASE ERROR") ||
-        backendMessage.includes("Database is not configured") ||
-        backendMessage.includes("Cannot connect to the database") ||
-        backendMessage.includes("Database connection") ||
-        backendMessage.includes("connection to server") ||
-        backendMessage.includes("cannot be persisted")
-      );
+      // Solo abrir config de historiador ante error explícito de BD remota.
+      // El registro offline usa catálogo local y no debe redirigir aquí.
+      const isDatabaseError =
+        data?.error_type === "database_connection_error" ||
+        (status === 503 &&
+          backendMessage &&
+          (backendMessage.includes("CONNECTING DATABASE ERROR") ||
+            backendMessage.includes("Database is not configured") ||
+            backendMessage.includes("Cannot connect to the database") ||
+            backendMessage.includes("Database connection") ||
+            backendMessage.includes("connection to server") ||
+            backendMessage.includes("cannot be persisted")));
 
-      if (isDatabaseError || status === 503) {
+      if (isDatabaseError) {
         const eventId =
           typeof data?.event_id === "string" && data.event_id.trim() ? data.event_id.trim() : null;
         setDatabaseEventId(eventId);

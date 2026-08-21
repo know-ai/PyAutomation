@@ -35,7 +35,18 @@ class OPCUAServerLogger(BaseLogger):
         * **access_type** (str): Access rights ("Read", "Write", "ReadWrite").
         """
         if not self.check_connectivity():
+            try:
+                from ..catalog.mutations import persist_opcua_server_local
 
+                persist_opcua_server_local(
+                    name=name, namespace=namespace, access_type=access_type
+                )
+            except Exception:
+                import logging
+
+                logging.getLogger("pyautomation").debug(
+                    "local catalog opcuaserver create skipped", exc_info=True
+                )
             return None
        
         OPCUAServer.create(
@@ -43,6 +54,23 @@ class OPCUAServerLogger(BaseLogger):
             namespace=namespace,
             access_type=access_type
         )
+        try:
+            from ..catalog.bootstrap import mirror_historian_row
+            from ..catalog.mutations import persist_opcua_server_local
+
+            row = OPCUAServer.read_by_namespace(namespace=namespace)
+            if row is not None:
+                mirror_historian_row(row)
+            else:
+                persist_opcua_server_local(
+                    name=name, namespace=namespace, access_type=access_type
+                )
+        except Exception:
+            import logging
+
+            logging.getLogger("pyautomation").debug(
+                "catalog opcuaserver create mirror skipped", exc_info=True
+            )
 
     @db_rollback
     def put(
@@ -63,7 +91,18 @@ class OPCUAServerLogger(BaseLogger):
         * **OPCUAServer**: The updated model instance.
         """
         if not self.check_connectivity():
-            
+            try:
+                from ..catalog.mutations import update_opcua_server_access_local
+
+                update_opcua_server_access_local(
+                    namespace=namespace, access_type=access_type
+                )
+            except Exception:
+                import logging
+
+                logging.getLogger("pyautomation").debug(
+                    "local catalog opcuaserver put skipped", exc_info=True
+                )
             return None    
         
         if access_type:
@@ -71,6 +110,17 @@ class OPCUAServerLogger(BaseLogger):
             OPCUAServer.update_access_type(namespace=namespace, access_type=access_type)
 
             obj = OPCUAServer.read_by_namespace(namespace=namespace)
+            try:
+                from ..catalog.bootstrap import mirror_historian_row
+
+                if obj is not None:
+                    mirror_historian_row(obj)
+            except Exception:
+                import logging
+
+                logging.getLogger("pyautomation").debug(
+                    "catalog opcuaserver put mirror skipped", exc_info=True
+                )
 
             return obj
     

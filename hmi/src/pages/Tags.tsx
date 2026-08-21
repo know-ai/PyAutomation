@@ -628,9 +628,19 @@ export function Tags() {
       data_type: tag.data_type || "float",
       description: tag.description || "",
       display_name: tag.display_name || "",
-      opcua_address: tag.opcua_client_name 
-        ? opcuaClientAddresses[tag.opcua_client_name] || ""
-        : tag.opcua_address || "",
+      opcua_address: (() => {
+        // Prefer resolved client URL; if the client map is not ready yet, keep the
+        // raw address so a save cannot wipe OPC with "".
+        if (tag.opcua_client_name) {
+          return (
+            opcuaClientAddresses[tag.opcua_client_name] ||
+            tag.opcua_address ||
+            tag.opcua_client_name ||
+            ""
+          );
+        }
+        return tag.opcua_address || "";
+      })(),
       node_namespace: tag.node_namespace || "",
       scan_time: tag.scan_time ? String(tag.scan_time) : "",
       dead_band: tag.dead_band !== undefined ? String(tag.dead_band) : "",
@@ -889,8 +899,13 @@ export function Tags() {
         payload.display_name = formData.display_name;
       }
       
-      // Comparar opcua_address
-      if (formData.opcua_address !== (original.opcua_address || "")) {
+      // Comparar opcua_address (never push empty — that wiped live OPC mappings).
+      const originalOpc =
+        (original.opcua_client_name && opcuaClientAddresses[original.opcua_client_name]) ||
+        original.opcua_address ||
+        original.opcua_client_name ||
+        "";
+      if (formData.opcua_address && formData.opcua_address !== originalOpc) {
         payload.opcua_address = formData.opcua_address;
       }
       

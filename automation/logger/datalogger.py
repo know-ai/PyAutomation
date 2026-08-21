@@ -142,6 +142,14 @@ class DataLogger(BaseLogger):
             filter_threshold_factor=filter_threshold_factor,
             filter_persist=filter_persist,
             )
+        try:
+            from ..catalog.bootstrap import mirror_historian_row
+
+            row = Tags.get_or_none(Tags.name == name) or Tags.get_or_none(Tags.identifier == id)
+            if row is not None:
+                mirror_historian_row(row)
+        except Exception:
+            logging.getLogger("pyautomation").debug("catalog tag mirror skipped", exc_info=True)
             
     @db_rollback
     def delete_tag(self, id:str):
@@ -158,6 +166,12 @@ class DataLogger(BaseLogger):
         
         tag, _ = Tags.get_or_create(identifier=id)
         Tags.put(id=tag.id, active=False)
+        try:
+            from ..catalog.mutations import soft_deactivate_tag_local
+
+            soft_deactivate_tag_local(identifier=id, name=getattr(tag, "name", None))
+        except Exception:
+            logging.getLogger("pyautomation").debug("catalog tag soft-delete mirror skipped", exc_info=True)
 
     @db_rollback
     def get_tag_by_name(self, name:str):
@@ -194,7 +208,16 @@ class DataLogger(BaseLogger):
         
         tag = Tags.get(identifier=id)
 
-        return Tags.put(id=tag.id, **kwargs)
+        result = Tags.put(id=tag.id, **kwargs)
+        try:
+            from ..catalog.bootstrap import mirror_historian_row
+
+            refreshed = Tags.get_or_none(Tags.identifier == id) or Tags.get_or_none(Tags.id == tag.id)
+            if refreshed is not None:
+                mirror_historian_row(refreshed)
+        except Exception:
+            logging.getLogger("pyautomation").debug("catalog tag update mirror skipped", exc_info=True)
+        return result
 
     @db_rollback
     def set_tags(self, tags):

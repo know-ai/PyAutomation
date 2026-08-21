@@ -100,6 +100,14 @@ class AlarmsLogger(BaseLogger):
             description=description,
             area=area,
         )
+        try:
+            from ..catalog.bootstrap import mirror_historian_row
+
+            row = Alarms.get_or_none(Alarms.name == name) or Alarms.get_or_none(Alarms.identifier == id)
+            if row is not None:
+                mirror_historian_row(row)
+        except Exception:
+            logging.getLogger("pyautomation").debug("catalog alarm mirror skipped", exc_info=True)
 
     @db_rollback
     def get_alarms(self):
@@ -266,6 +274,14 @@ class AlarmsLogger(BaseLogger):
                 id=alarm.id,
                 **fields
             )
+            try:
+                from ..catalog.bootstrap import mirror_historian_row
+
+                refreshed = Alarms.read_by_identifier(identifier=id)
+                if refreshed is not None:
+                    mirror_historian_row(refreshed)
+            except Exception:
+                logging.getLogger("pyautomation").debug("catalog alarm put mirror skipped", exc_info=True)
 
             return query
 
@@ -288,6 +304,12 @@ class AlarmsLogger(BaseLogger):
             id=alarm.id,
             state=alarm_state
         )
+        try:
+            from ..catalog.mutations import soft_delete_alarm_local
+
+            soft_delete_alarm_local(identifier=id)
+        except Exception:
+            logging.getLogger("pyautomation").debug("catalog alarm delete mirror skipped", exc_info=True)
 
     @db_rollback
     def create_record_on_alarm_summary(

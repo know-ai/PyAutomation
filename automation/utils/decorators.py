@@ -1,4 +1,4 @@
-import functools, logging, sys
+import functools, logging, re, sys
 from ..modules.users.users import User, Users
 from ..logger.events import EventsLoggerEngine
 
@@ -7,6 +7,70 @@ _logger = logging.getLogger("pyautomation")
 
 events_engine = EventsLoggerEngine()
 users = Users()
+
+_HOST_PORT_RE = re.compile(
+    r'(?:server at |host[= ]+)["\']?([\w.\-:]+)["\']?(?:,?\s*port\s+(\d+))?',
+    re.IGNORECASE,
+)
+
+
+def _humanize_logged_exception(ex: BaseException, func) -> tuple[str, int] | None:
+    """Operator-facing line + log level for common infra failures; None = use default dump.
+
+    Returns ``(message, level)``. Stale handles after reconnect are INFO (no data loss);
+    real outages are WARNING (edge continues on local catalog/SAF).
+    """
+    from .db_io import is_stale_historian_handle
+
+    name = type(ex).__name__
+    msg = str(ex).strip()
+    msg_lower = msg.lower()
+    where = getattr(func, "__qualname__", None) or getattr(func, "__name__", "call")
+
+    host = port = None
+    match = _HOST_PORT_RE.search(msg)
+    if match:
+        host, port = match.group(1), match.group(2)
+
+    if is_stale_historian_handle(ex):
+        return (
+            f"Historian socket replaced during reconnect (in {where}). "
+            f"No data loss — local catalog/SAF keep the truth; retry uses the new link.",
+            logging.INFO,
+        )
+
+    if name in {"OperationalError", "InterfaceError", "DatabaseError"} or any(
+        key in msg_lower
+        for key in (
+            "connection refused",
+            "could not connect",
+            "connection timed out",
+            "server closed the connection",
+            "password authentication failed",
+            "could not translate host name",
+        )
+    ):
+        endpoint = ""
+        if host:
+            endpoint = f" at {host}" + (f":{port}" if port else "")
+        if "connection refused" in msg_lower:
+            reason = "connection refused (server down or port closed)"
+        elif "timed out" in msg_lower or "timeout" in msg_lower:
+            reason = "connection timed out"
+        elif "password authentication failed" in msg_lower or "access denied" in msg_lower:
+            reason = "authentication failed (check user/password)"
+        elif "could not translate host name" in msg_lower or "name or service not known" in msg_lower:
+            reason = "hostname could not be resolved"
+        else:
+            reason = msg.split("\n", 1)[0][:180]
+        return (
+            f"Remote historian unreachable{endpoint}: {reason}. "
+            f"Edge keeps running on local catalog/SAF; will retry. "
+            f"No historical loss while journaled. (in {where})",
+            logging.WARNING,
+        )
+    return None
+
 
 def decorator(declared_decorator):
     """
@@ -185,6 +249,18 @@ def logging_error_handler(func, args, kwargs):
 
     except Exception as ex:
 
+        human = _humanize_logged_exception(ex, func)
+        if human:
+            message, level = human
+            _logger.log(level, message)
+            _logger.debug(
+                "Historian/DB exception detail type=%s message=%s",
+                type(ex).__name__,
+                str(ex),
+                exc_info=True,
+            )
+            return None
+
         trace = []
         tb = ex.__traceback__
         while tb is not None:
@@ -200,6 +276,7 @@ def logging_error_handler(func, args, kwargs):
             'trace': trace
         })
         _logger.error(msg)
+        return None
 
 @decorator
 def db_rollback(func, args, kwargs):
@@ -209,10 +286,22 @@ def db_rollback(func, args, kwargs):
         return result
 
     except Exception as e:
+        from .db_io import is_stale_historian_handle, log_historian_link_issue
+
         _, _, e_traceback = sys.exc_info()
         e_message = str(e)
         e_line_number = e_traceback.tb_lineno
-        _logger.warning(f"Rollback in [line {e_line_number}] {self.__class__.__name__}.{func.__name__} - {e_message}")
+        where = f"{self.__class__.__name__}.{func.__name__}:L{e_line_number}"
+        if is_stale_historian_handle(e):
+            log_historian_link_issue(_logger, e, where=where, action="rollback")
+        else:
+            _logger.warning(
+                "Rollback in [line %s] %s.%s - %s",
+                e_line_number,
+                self.__class__.__name__,
+                func.__name__,
+                e_message,
+            )
         conn = self._db.connection()
         conn.rollback()
         result = func(*args, **kwargs)

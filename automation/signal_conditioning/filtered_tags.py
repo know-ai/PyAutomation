@@ -172,16 +172,19 @@ def sync_filtered_tag_metadata(source_tag, derived) -> dict:
 
 
 def _persist_filtered_identity(app, derived, *, fields: dict) -> None:
-    """Write renamed/synced .f fields to the historian when connected."""
+    """Write renamed/synced .f fields to historian and/or local catalog."""
     if not fields or derived is None:
         return
     try:
-        if not app.is_db_connected():
-            return
         payload = {k: v for k, v in fields.items() if v is not None}
         if not payload:
             return
-        app.logger_engine.update_tag(id=derived.id, **payload)
+        if app.is_db_connected():
+            app.logger_engine.update_tag(id=derived.id, **payload)
+        else:
+            from ..catalog.seed import persist_tag_to_local
+
+            persist_tag_to_local(derived)
     except Exception:
         logging.getLogger("pyautomation").debug(
             "Filtered tag historian identity update skipped for %s",
@@ -373,6 +376,18 @@ def ensure_filtered_tag(
             except Exception:
                 logging.getLogger("pyautomation").debug(
                     "Filtered tag historian registration skipped for %s",
+                    derived.name,
+                    exc_info=True,
+                )
+        elif should_persist:
+            try:
+                from ..catalog.seed import persist_tag_to_local
+
+                persist_tag_to_local(derived)
+                app.db_manager.attach(tag_name=derived.name)
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "Filtered tag local catalog registration skipped for %s",
                     derived.name,
                     exc_info=True,
                 )

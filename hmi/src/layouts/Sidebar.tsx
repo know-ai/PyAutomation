@@ -7,7 +7,7 @@ import { useAppSelector } from "../hooks/useAppSelector";
 import { logout as logoutAction } from "../store/slices/authSlice";
 import { closeSidebarOnMobile } from "./sidebarDom";
 import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
-import { canViewPerformance } from "../services/performance";
+import { canViewPerformance, canViewSettings, canViewUserManagement } from "../utils/access";
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -325,7 +325,12 @@ export function Sidebar() {
             {/* Otros items del menú */}
             {(systemOnly
               ? navItems.filter((item) => item.to === SYSTEM_HOME_PATH)
-              : navItems.filter((item) => item.to !== "/performance" || canViewPerformance(user?.role))
+              : navItems.filter((item) => {
+                  if (item.to === "/performance") return canViewPerformance(user?.role);
+                  if (item.to === "/settings") return canViewSettings(user?.role);
+                  if (item.to === "/user-management") return canViewUserManagement(user?.role);
+                  return true;
+                })
             ).map((item) => (
               <li className="nav-item" key={item.to}>
                 <NavLink

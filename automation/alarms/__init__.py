@@ -288,13 +288,13 @@ class Alarm(StateMachine):
     @logging_error_handler
     @validate_types(
             tag=str, 
-            value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density|Percentage|Adimentional, 
+            value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|Volume|MassFlow|Density|Percentage|Adimentional, 
             timestamp=datetime, 
             output=None)
     def notify(
         self, 
         tag:str, 
-        value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|MassFlow|Density|Percentage|Adimentional, 
+        value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|Volume|MassFlow|Density|Percentage|Adimentional, 
         timestamp:datetime):
         r"""
         Callback triggered when the monitored Tag value changes (Observer pattern).

@@ -61,7 +61,18 @@ class Events(BaseModel):
 
             return None, f"User {user} - {type(user)} must be an User Object"
         
-        user = Users.read_by_username(username=user.username) 
+        db_user = Users.read_by_username(username=user.username)
+        if db_user is None:
+            # Offline edges often mint events as ``system`` before the historian
+            # user row exists. Ensure it (and its role) instead of inserting NULL user_id.
+            try:
+                from ..catalog.ensure_historian import ensure_historian_user
+
+                db_user = ensure_historian_user(user)
+            except Exception:
+                db_user = None
+        if db_user is None:
+            return None, f"User {getattr(user, 'username', user)} not found in historian"
 
         if not timestamp:
 
@@ -81,7 +92,7 @@ class Events(BaseModel):
 
         query = cls(
             message=message,
-            user=user,
+            user=db_user,
             description=description,
             classification=classification,
             priority=priority,

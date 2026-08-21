@@ -96,6 +96,49 @@ def mark_remote_db_live() -> None:
         _DEAD_UNTIL = 0.0
 
 
+# Peewee/psycopg2 surfaces these when reconnect closes another greenlet's socket.
+# Not data loss: local catalog + SAF journal remain source of truth until retry.
+_STALE_HANDLE_MARKERS = (
+    "connection already closed",
+    "cursor already closed",
+    "connection is closed",
+    "closed this connection",
+)
+
+
+def is_stale_historian_handle(exc: BaseException | str | None) -> bool:
+    """True when the remote handle died during reconnect/socket swap (safe to retry)."""
+    text = str(exc or "").lower()
+    return any(marker in text for marker in _STALE_HANDLE_MARKERS)
+
+
+def log_historian_link_issue(
+    logger: logging.Logger,
+    exc: BaseException | str | None,
+    *,
+    where: str,
+    action: str = "write",
+) -> None:
+    """Log link failures without implying data loss when the handle was only swapped."""
+    if is_stale_historian_handle(exc):
+        logger.info(
+            "Historian socket replaced during reconnect (%s in %s). "
+            "No data loss — local catalog/SAF keep the truth; retry uses the new link.",
+            action,
+            where,
+        )
+        logger.debug("stale historian handle detail: %s", exc, exc_info=isinstance(exc, BaseException))
+        return
+    reason = str(exc).split("\n", 1)[0][:180] if exc is not None else "unreachable"
+    logger.warning(
+        "Remote historian unreachable during %s (%s): %s. "
+        "Edge keeps running on local catalog/SAF; will retry. No historical loss while journaled.",
+        action,
+        where,
+        reason,
+    )
+
+
 def run_uncooperative_db_call(fn: Callable[[], _T], timeout_s: float | None = None) -> _T:
     """Run a libpq/MySQL call off the gevent hub.
 

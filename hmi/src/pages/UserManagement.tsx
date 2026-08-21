@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getUsers, changePassword, resetPassword, updateUserRole, getRoles, getAllRoles, createRole, type User, type UsersResponse, type Role, type CreateRolePayload } from "../services/users";
-import { axiosErrorMessage, isDbUnavailableError } from "../services/health";
+import { axiosErrorMessage } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 
 export function UserManagement() {
@@ -56,11 +56,6 @@ export function UserManagement() {
         pages: paging?.total_pages || 0,
       }));
     } catch (e: any) {
-      if (isDbUnavailableError(e)) {
-        setError(null);
-        setUsers([]);
-        return;
-      }
       setError(axiosErrorMessage(e, t("userManagement.loadUsersError")));
       setUsers([]);
     } finally {

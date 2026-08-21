@@ -45,6 +45,12 @@ class OPCUA(BaseModel):
                 owner_node=owner_node,
             )
             query.save()
+            try:
+                from ..catalog.bootstrap import mirror_historian_row
+
+                mirror_historian_row(query)
+            except Exception:
+                pass
 
             return query
         

@@ -49,6 +49,7 @@ from ..dbmodels import (
     BaseModel,
     Nodes,
     HMISession,
+    CatalogVersions,
 )
 
 
@@ -98,7 +99,8 @@ class DBManager(Singleton):
             TagsMachines,
             LinearReferencingGeospatial,
             AccessType,
-            OPCUAServer
+            OPCUAServer,
+            CatalogVersions,
         ]
 
         self._extra_tables = []
@@ -546,14 +548,41 @@ class DBManager(Singleton):
         r"""
         Creates a new user role in the database.
         """
-        return self.users_logger.set_role(name=name, level=level, identifier=identifier)
+        result = self.users_logger.set_role(name=name, level=level, identifier=identifier)
+        try:
+            from ..catalog.bootstrap import write_catalog_row
+
+            write_catalog_row(
+                "roles",
+                {"name": name, "level": level, "identifier": identifier},
+            )
+        except Exception:
+            logging.debug("catalog role mirror skipped", exc_info=True)
+        return result
 
     @logging_error_handler
     def set_user(self, user:User):
         r"""
         Creates a new user in the database.
         """
-        return self.users_logger.set_user(user=user)
+        result = self.users_logger.set_user(user=user)
+        try:
+            from ..catalog.bootstrap import write_catalog_row
+
+            write_catalog_row(
+                "users",
+                {
+                    "username": getattr(user, "username", None),
+                    "email": getattr(user, "email", None),
+                    "password": getattr(user, "password", None),
+                    "identifier": getattr(user, "identifier", None),
+                    "name": getattr(user, "name", None),
+                    "lastname": getattr(user, "lastname", None),
+                },
+            )
+        except Exception:
+            logging.debug("catalog user mirror skipped", exc_info=True)
+        return result
     
     @logging_error_handler
     def login(self, password:str, username:str="", email:str=""):

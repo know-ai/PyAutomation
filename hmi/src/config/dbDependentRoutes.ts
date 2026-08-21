@@ -1,11 +1,12 @@
-/** Screens that cannot render without the remote historian. */
+/** Screens that cannot render without the remote historian (time-series / audit).
+ * User management uses the local catalog mirror and must stay available offline.
+ */
 export const REMOTE_DB_DEPENDENT_PATHS = [
   "/tags/datalogger",
   "/tags/trends",
   "/alarms/summary",
   "/events",
   "/operational-logs",
-  "/user-management",
 ] as const;
 
 export function isRemoteDbDependentPath(pathname: string): boolean {

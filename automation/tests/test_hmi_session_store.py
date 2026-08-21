@@ -141,7 +141,8 @@ class TestHmiSocketAuditAplus(unittest.TestCase):
     @patch("automation.utils.hmi_socket_audit.persist_system_event", return_value=True)
     @patch("automation.utils.hmi_socket_audit.count_sessions", return_value=0)
     @patch("automation.utils.hmi_socket_audit.upsert_session", return_value=False)
-    def test_session_store_unavailable_rejects(self, _upsert, _count, persist):
+    def test_session_store_unavailable_still_accepts(self, _upsert, _count, persist):
+        """Local catalog autonomy: Socket.IO must not depend on historian sessions."""
         from automation.utils.hmi_socket_audit import attempt_hmi_socket_connect
 
         user = MagicMock(username="operator")
@@ -155,11 +156,11 @@ class TestHmiSocketAuditAplus(unittest.TestCase):
             "automation.utils.hmi_socket_audit._edge_label",
             return_value="Plant.Line1",
         ):
-            self.assertFalse(
+            self.assertTrue(
                 attempt_hmi_socket_connect(auth={"token": "abc"}, sid="sid-abc")
             )
         self.assertIn(
-            "session_store_unavailable",
+            "session_store_degraded",
             persist.call_args.kwargs["description"],
         )
 

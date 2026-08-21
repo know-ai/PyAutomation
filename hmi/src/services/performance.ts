@@ -89,10 +89,7 @@ export function pushRing(values: number[], next: number, max = SPARKLINE_POINTS)
   return out;
 }
 
-export function canViewPerformance(role?: string | null): boolean {
-  const normalized = String(role || "").toLowerCase();
-  return normalized === "admin" || normalized === "supervisor" || normalized === "sudo";
-}
+export { canViewPerformance } from "../utils/access";
 
 export async function getNodePerformance(): Promise<NodePerformanceSnapshot> {
   const { data } = await api.get("/health/node", { timeout: 4000 });

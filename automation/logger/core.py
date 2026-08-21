@@ -278,10 +278,16 @@ class BaseEngine(Singleton):
 
     def __log_error(self, e:Exception, msg:str):
         r"""
-        Logs an error to the application logger and sets a failure response.
+        Logs a historian I/O failure and sets a failure response.
+
+        Stale sockets during reconnect are INFO (no data loss). Real link
+        problems are WARNING — Edge continues on local catalog/SAF.
         """
+        from ..utils.db_io import log_historian_link_issue
+
         logger = logging.getLogger("pyautomation")
-        logger.error(f"{e} Message: {msg}")
+        action = msg.replace("Error in BaseEngine: ", "").strip() or "request"
+        log_historian_link_issue(logger, e, where="BaseEngine", action=action)
         self._response = {
             "result": False,
             "response": None

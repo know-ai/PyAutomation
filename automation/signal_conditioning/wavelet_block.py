@@ -37,6 +37,19 @@ class WaveletFilterResult:
     status: FilterStatus
 
 
+_MAX_DWT_LEVEL = 10
+_MAX_THRESHOLD_FACTOR = 10.0
+_MAX_WINDOW_SAMPLES = 8192
+
+
+def _clamp_level(level: int) -> int:
+    return max(1, min(int(level), _MAX_DWT_LEVEL))
+
+
+def _clamp_threshold_factor(value: float) -> float:
+    return max(1.0, min(float(value), _MAX_THRESHOLD_FACTOR))
+
+
 def _wavelet_filter_len(wavelet: str) -> int:
     try:
         return int(pywt.Wavelet(wavelet).dec_len)
@@ -46,12 +59,12 @@ def _wavelet_filter_len(wavelet: str) -> int:
 
 def _window_size(level: int, wavelet: str = "db4") -> int:
     """Power-of-two sample window large enough for the requested DWT level."""
-    level = max(1, min(int(level), 6))
+    level = _clamp_level(level)
     filter_len = max(2, _wavelet_filter_len(wavelet))
     # pywt: max_level ≈ floor(log2(n / (filter_len - 1)))
     min_samples = (filter_len - 1) * (1 << level)
     size = 16
-    while size < min_samples and size < 512:
+    while size < min_samples and size < _MAX_WINDOW_SAMPLES:
         size <<= 1
     return size
 
@@ -88,8 +101,8 @@ class WaveletBlockFilter:
         threshold_factor: float = 3.0,
     ):
         self.wavelet = str(wavelet or "db4")
-        self.level = max(1, min(int(level), 6))
-        self.threshold_factor = float(threshold_factor)
+        self.level = _clamp_level(level)
+        self.threshold_factor = _clamp_threshold_factor(threshold_factor)
         self._window = _window_size(self.level, self.wavelet)
         self._ring = SampleRing(capacity=self._window * 2)
         self._last_result: WaveletFilterResult | None = None
@@ -148,12 +161,12 @@ class WaveletBlockFilter:
                 self.wavelet = new_wavelet
                 changed["wavelet"] = True
         if threshold_factor is not None:
-            new_factor = float(threshold_factor)
+            new_factor = _clamp_threshold_factor(threshold_factor)
             if new_factor != self.threshold_factor:
                 self.threshold_factor = new_factor
                 changed["threshold_factor"] = True
         if level is not None:
-            new_level = max(1, min(int(level), 6))
+            new_level = _clamp_level(level)
             if new_level != self.level:
                 self.level = new_level
                 changed["level"] = True

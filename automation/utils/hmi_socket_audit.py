@@ -206,18 +206,25 @@ def attempt_hmi_socket_connect(*, auth=None, sid: str = "") -> bool:
             )
             return False
 
-        if not upsert_session(sid=sid, username=username, origin=origin):
+        session_ok = upsert_session(sid=sid, username=username, origin=origin)
+        if not session_ok:
+            # Do not refuse the socket: RT fan-out must work with local catalog
+            # autonomy when the historian (or session store) is unavailable.
+            logging.getLogger("pyautomation").warning(
+                "HMI session store unavailable; accepting Socket.IO without durable session row sid=%s",
+                sid,
+            )
             record_hmi_socket_event(
-                "CONNECTION_REJECTED",
+                "CONNECTED" if not _is_reconnect_auth(auth) else "RECONNECTED",
                 username=username,
                 origin=origin,
                 sid=sid,
                 edge=edge,
-                reason="session_store_unavailable",
-                active_clients=0,
+                reason="session_store_degraded",
+                active_clients=count_sessions(),
                 user=user,
             )
-            return False
+            return True
 
         action = "RECONNECTED" if _is_reconnect_auth(auth) else "CONNECTED"
         active = count_sessions()

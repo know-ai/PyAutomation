@@ -9,8 +9,7 @@ app = PyAutomation()
 
 # Modelo para la configuración de conexión a la base de datos
 db_connect_model = api.model("db_connect_model", {
-    'dbtype': fields.String(required=True, description='Database type: sqlite, mysql, or postgresql'),
-    'dbfile': fields.String(required=False, description='Database filename (for SQLite only)'),
+    'dbtype': fields.String(required=True, description='Database type: mysql or postgresql'),
     'user': fields.String(required=False, description='Database user (for MySQL/PostgreSQL)'),
     'password': fields.String(required=False, description='Database password (for MySQL/PostgreSQL)'),
     'host': fields.String(required=False, description='Database host (for MySQL/PostgreSQL)'),
@@ -67,13 +66,13 @@ class DatabaseConnectResource(Resource):
         Connect to database.
 
         Sets the database configuration and establishes a connection.
-        For SQLite, only 'dbtype' and 'dbfile' are required.
+        SQLite is rejected (400): use postgresql or mysql. The local catalog
+        mirror (./db/catalog.db) is automatic.
         For MySQL/PostgreSQL, 'dbtype', 'user', 'password', 'host', 'port', and 'name' are required.
         """
         try:
             # Extraer parámetros del payload
-            dbtype = api.payload.get('dbtype', 'sqlite')
-            dbfile = api.payload.get('dbfile', 'app.db')
+            dbtype = api.payload.get('dbtype', 'postgresql')
             user = api.payload.get('user')
             password = api.payload.get('password')
             host = api.payload.get('host', '127.0.0.1')
@@ -81,14 +80,11 @@ class DatabaseConnectResource(Resource):
             name = api.payload.get('name', 'app_db')
             reload = api.payload.get('reload', False)
 
-            # Validar parámetros según el tipo de base de datos
-            if dbtype.lower() == 'sqlite':
-                # Para SQLite solo necesitamos dbtype y dbfile
-                app.set_db_config(
-                    dbtype=dbtype,
-                    dbfile=dbfile
-                )
-            elif dbtype.lower() in ['mysql', 'postgresql']:
+            if str(dbtype).lower() == 'sqlite':
+                return {
+                    "message": "SQLite is not allowed as the central historian. Use postgresql or mysql. The local catalog (./db/catalog.db) is automatic."
+                }, 400
+            if dbtype.lower() in ['mysql', 'postgresql']:
                 # Para MySQL/PostgreSQL necesitamos todos los parámetros
                 if not user or not password or not name:
                     return {
@@ -105,7 +101,7 @@ class DatabaseConnectResource(Resource):
                 )
             else:
                 return {
-                    "message": f"Invalid database type: {dbtype}. Supported types: sqlite, mysql, postgresql"
+                    "message": f"Invalid database type: {dbtype}. Supported types: mysql, postgresql"
                 }, 400
 
             # Conectar a la base de datos

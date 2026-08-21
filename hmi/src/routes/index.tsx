@@ -21,6 +21,11 @@ import { OperationalLogs } from "../pages/OperationalLogs";
 import { Performance } from "../pages/Performance";
 import { MainLayout } from "../layouts/MainLayout";
 import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
+import {
+  canViewPerformance,
+  canViewSettings,
+  canViewUserManagement,
+} from "../utils/access";
 
 function ProtectedLayout() {
   const isAuth = useAppSelector((s) => !!s.auth.token);
@@ -29,6 +34,19 @@ function ProtectedLayout() {
   if (!isAuth) return <Navigate to="/login" replace />;
   if (isSystemUser(user) && location.pathname !== SYSTEM_HOME_PATH) {
     return <Navigate to={SYSTEM_HOME_PATH} replace />;
+  }
+  const role = user?.role;
+  const path = location.pathname;
+  if (!isSystemUser(user)) {
+    if (path === "/performance" || path.startsWith("/performance/")) {
+      if (!canViewPerformance(role)) return <Navigate to="/communications" replace />;
+    }
+    if (path === "/settings" || path.startsWith("/settings/")) {
+      if (!canViewSettings(role)) return <Navigate to="/communications" replace />;
+    }
+    if (path === "/user-management" || path.startsWith("/user-management/")) {
+      if (!canViewUserManagement(role)) return <Navigate to="/communications" replace />;
+    }
   }
   return (
     <MainLayout>

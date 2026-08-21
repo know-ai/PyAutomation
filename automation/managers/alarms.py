@@ -458,11 +458,9 @@ class AlarmManager(Singleton):
         original_list = [alarm.serialize() for _, alarm in self.get_alarms().items()]
         filtered_list = [elem for elem in original_list if elem['state']['alarm_status'].lower()=="active"]
         sorted_list = sorted(filtered_list, key=lambda x: x['timestamp'] if x['timestamp'] else '')
-        if lasts:
-
-            if len(sorted_list)>lasts:
-
-                sorted_list = sorted_list[0:lasts]
+        if lasts and len(sorted_list) > lasts:
+            # Newest active alarms for footer / on_connection hydrate.
+            sorted_list = sorted_list[-lasts:]
 
         return sorted_list
 

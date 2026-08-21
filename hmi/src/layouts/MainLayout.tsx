@@ -76,10 +76,10 @@ export function MainLayout({ children }: PropsWithChildren) {
     <DatabaseStatusProvider>
     <div className="app-wrapper">
       <Header />
-      <DegradedModeBanner />
       <Sidebar />
       <main className="app-main">
         <div className="app-main-stage">
+          <DegradedModeBanner />
           <DatabaseUnavailableOverlay />
           <div className="app-content pt-3">
             <div className="container-fluid">{children}</div>

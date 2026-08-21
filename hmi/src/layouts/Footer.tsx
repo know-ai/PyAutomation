@@ -5,10 +5,13 @@ import { acknowledgeAlarm, acknowledgeAllAlarms, type Alarm } from "../services/
 import { selectActiveAlarmsPreview } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { useTranslation } from "../hooks/useTranslation";
 import { formatTimestamp } from "../utils/timezone";
 import { isSystemUser } from "../utils/systemUser";
+import { translateAlarmDescription } from "../utils/alarmCatalog";
 
 export function Footer() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const user = useAppSelector((s) => s.auth.user);
   const preview = useAppSelector(selectActiveAlarmsPreview);
@@ -188,8 +191,8 @@ export function Footer() {
               >
                 <td style={{ backgroundColor: "#dc3545", color: "#fff" }}>
                   <span
-                    title={alarm.tag || undefined}
-                    style={{ cursor: alarm.tag ? "help" : "default", color: "#fff" }}
+                    title={translateAlarmDescription(alarm.description, alarm.name, t)}
+                    style={{ cursor: alarm.tag || alarm.description ? "help" : "default", color: "#fff" }}
                   >
                     {alarm.name || "-"}
                   </span>

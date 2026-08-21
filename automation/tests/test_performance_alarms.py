@@ -134,6 +134,35 @@ class TestPerformanceAlarmNames(unittest.TestCase):
         self.assertEqual(first["alarm_name"], "ALM.PERF.CPU")
         self.assertEqual(first["display_name"], "CPU High")
         self.assertIn("System", first["alarm_description"])
+        self.assertIn("≥ 85%", first["alarm_description"])
+        self.assertNotIn("None", first["alarm_description"])
+
+    def test_threshold_description_never_none(self):
+        from automation.utils.performance_alarms import threshold_description
+
+        spec = PERF_ALARM_SPECS[0]
+        self.assertIn("≥ 85%", threshold_description(spec, None))
+        self.assertIn("≥ 92%", threshold_description(spec, 92))
+        self.assertIn("≥ 90%", threshold_description(spec, "none"))
+        lag = next(s for s in PERF_ALARM_SPECS if s.key == "saf_lag")
+        self.assertIn("≥ 10000ms", threshold_description(lag, None))
+        http = next(s for s in PERF_ALARM_SPECS if s.key == "http_5xx")
+        self.assertIn("≥ 5/min", threshold_description(http, None))
+
+    def test_ensure_empty_config_still_has_numeric_thresholds(self):
+        from automation.utils import performance_alarms as mod
+
+        app = MagicMock()
+        app.is_db_connected.return_value = False
+        scope = MagicMock(enabled=False, is_valid=False)
+        with patch("automation.node_scope.get_node_scope", return_value=scope), patch.object(
+            mod, "_app", return_value=app
+        ), patch.object(mod, "_ensure_bool_alarm") as ensure:
+            mod.ensure_performance_alarms({})
+        for call in ensure.call_args_list:
+            desc = call.kwargs["alarm_description"]
+            self.assertNotIn("None", desc)
+            self.assertIn("≥", desc)
 
     def test_ensure_skips_historian_when_disconnected(self):
         from automation.utils import performance_alarms as mod

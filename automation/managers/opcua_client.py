@@ -36,6 +36,38 @@ def _scope_owns_node(owner_node) -> bool:
         return False
 
 
+def _persist_opcua_client_local(client_name: str, host: str, port: int, owner_node=None) -> None:
+    """Always mirror OPC UA client config into ./db/catalog.db (historian optional)."""
+    try:
+        from ..catalog.seed import persist_opcua_client_to_local
+
+        persist_opcua_client_to_local(
+            client_name=client_name,
+            host=host,
+            port=port,
+            owner_node=owner_node,
+        )
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "local catalog OPC UA client persist skipped name=%s",
+            client_name,
+            exc_info=True,
+        )
+
+
+def _delete_opcua_client_local(client_name: str) -> None:
+    try:
+        from ..catalog.seed import delete_opcua_client_from_local
+
+        delete_opcua_client_from_local(client_name)
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "local catalog OPC UA client delete skipped name=%s",
+            client_name,
+            exc_info=True,
+        )
+
+
 class OPCUAClientManager:
     r"""
     Manages multiple OPC UA Client connections and their subscriptions.
@@ -139,6 +171,7 @@ class OPCUAClientManager:
                         port=port,
                         owner_node=owner_node,
                     )
+            _persist_opcua_client_local(client_name, host, port, owner_node)
 
             from automation import PyAutomation
 
@@ -181,6 +214,7 @@ class OPCUAClientManager:
                         port=port,
                         owner_node=owner_node,
                     )
+            _persist_opcua_client_local(client_name, host, port, owner_node)
             
             # Retornar False para indicar que la conexión falló, pero el cliente está en memoria
             return False, message
@@ -217,6 +251,7 @@ class OPCUAClientManager:
                     if self.logger.get_db():
                         query = OPCUA.delete().where(OPCUA.client_name == client_name)
                         query.execute()
+                _delete_opcua_client_local(client_name)
 
                 return True
             except Exception as err:
@@ -347,6 +382,13 @@ class OPCUAClientManager:
                         port=old_port,
                         owner_node=getattr(old_client, "owner_node", None),
                     )
+            _delete_opcua_client_local(old_client_name)
+            _persist_opcua_client_local(
+                new_client_name,
+                old_host,
+                old_port,
+                getattr(old_client, "owner_node", None),
+            )
             
             # IMPORTANTE: Actualizar todos los tags que referencian este cliente por nombre
             # Buscar tags que usan el nombre antiguo del cliente (case-insensitive)
@@ -416,6 +458,14 @@ class OPCUAClientManager:
                     opcua.host = host
                     opcua.port = port
                     opcua.save()
+        if new_client_name != old_client_name:
+            _delete_opcua_client_local(old_client_name)
+        _persist_opcua_client_local(
+            new_client_name,
+            host,
+            port,
+            getattr(old_client, "owner_node", None),
+        )
         
         # Crear nuevo cliente con la nueva configuración
         endpoint_url = f"opc.tcp://{host}:{port}"

@@ -55,10 +55,12 @@ function resolveLoginError(err: unknown): { kind: "database" | "credentials"; ke
   const errorType = axiosErr?.response?.data?.error_type;
   const backendText = extractBackendText(err).toLowerCase();
 
+  // Only treat explicit historian-unavailable responses as DB config prompts.
+  // Offline catalog auth failures must stay on the login form (401/403).
   const isDatabaseError =
-    status === 503 ||
     errorType === "database_connection_error" ||
-    DATABASE_ERROR_HINTS.some((hint) => backendText.includes(hint));
+    (status === 503 &&
+      DATABASE_ERROR_HINTS.some((hint) => backendText.includes(hint)));
 
   if (isDatabaseError) {
     return { kind: "database", key: "auth.databaseUnavailable" };
@@ -214,7 +216,15 @@ export function Login() {
             {errorKey && (
               <div className="login-feedback" role="alert" aria-live="polite" id="loginError">
                 <i className="bi bi-exclamation-circle login-feedback__icon" aria-hidden="true" />
-                <p className="login-feedback__text">{t(errorKey)}</p>
+                <div className="login-feedback__body">
+                  <p className="login-feedback__text">{t(errorKey)}</p>
+                  {credentialsInvalid && (
+                    <p className="login-feedback__hint">
+                      {t("auth.invalidCredentialsHint")}{" "}
+                      <Link to="/signup">{t("auth.createNewAccount")}</Link>
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 

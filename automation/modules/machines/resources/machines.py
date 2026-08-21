@@ -48,7 +48,7 @@ def _apply_temporal_update(machine, new_execution, new_sample, overrides, user, 
         }
     machine.ensure_sample_buffers()
     machine._reconfigure_temporal_schedulers()
-    if persist and app.is_db_connected():
+    if persist:
         sample_set = new_sample is not Ellipsis
         app.machines_engine.put(
             name=StringType(machine.name.value),
@@ -312,7 +312,7 @@ class MachineByNameResource(Resource):
                     new_sample=Ellipsis,
                     overrides=None,
                     user=Api.get_current_user(),
-                    persist=app.is_db_connected(),
+                    persist=True,
                 )
             except MachineConfigError as err:
                 return {"message": str(err)}, 400
@@ -675,16 +675,15 @@ class MachineAttributesResource(Resource):
                         threshold_value = machine.set_active_detection_threshold_from_ui(
                             threshold_value
                         )
-                        if app.is_db_connected():
-                            # Columna legacy `threshold` = probabilidad %%; el estadístico vive en YAML.
-                            try:
-                                db_thr = float(machine.threshold.value.value)
-                            except Exception:
-                                db_thr = float(threshold_value)
-                            app.machines_engine.put(
-                                name=StringType(machine_name),
-                                threshold=FloatType(db_thr)
-                            )
+                        # Columna legacy `threshold` = probabilidad %%; el estadístico vive en YAML.
+                        try:
+                            db_thr = float(machine.threshold.value.value)
+                        except Exception:
+                            db_thr = float(threshold_value)
+                        app.machines_engine.put(
+                            name=StringType(machine_name),
+                            threshold=FloatType(db_thr)
+                        )
                         updated_attributes.append(f"threshold to {threshold_value}")
                     else:
                         # Validación especial para máquinas de leak detection tipo NPW
@@ -735,12 +734,10 @@ class MachineAttributesResource(Resource):
                                 user=user,
                             )
 
-                        # Actualizar en la base de datos si está conectada
-                        if app.is_db_connected():
-                            app.machines_engine.put(
-                                name=StringType(machine_name),
-                                threshold=FloatType(threshold_value)
-                            )
+                        app.machines_engine.put(
+                            name=StringType(machine_name),
+                            threshold=FloatType(threshold_value)
+                        )
 
                         yaml_persist["threshold"] = threshold_value
                         updated_attributes.append(f"threshold to {threshold_value}")
@@ -812,12 +809,10 @@ class MachineAttributesResource(Resource):
                     machine.set_buffer_size(size=buffer_size_value)
                     machine.transition(to="restart", user=user)
                     
-                    # Actualizar en la base de datos si está conectada
-                    if app.is_db_connected():
-                        app.machines_engine.put(
-                            name=StringType(machine_name),
-                            buffer_size=IntegerType(buffer_size_value)
-                        )
+                    app.machines_engine.put(
+                        name=StringType(machine_name),
+                        buffer_size=IntegerType(buffer_size_value)
+                    )
                     
                     # Volver al estado wait
                     machine.transition(to="wait", user=user)
@@ -843,12 +838,10 @@ class MachineAttributesResource(Resource):
                         machine._on_delay_from_plant_config = True
                     yaml_persist["on_delay"] = on_delay_value
                     
-                    # Actualizar en la base de datos si está conectada
-                    if app.is_db_connected():
-                        app.machines_engine.put(
-                            name=StringType(machine_name),
-                            on_delay=IntegerType(on_delay_value)
-                        )
+                    app.machines_engine.put(
+                        name=StringType(machine_name),
+                        on_delay=IntegerType(on_delay_value)
+                    )
                     
                     updated_attributes.append(f"on_delay to {on_delay_value}")
                     if user is not None:

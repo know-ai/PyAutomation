@@ -86,6 +86,7 @@
     "loggingOut": "Cerrando...",
     "signOut": "Cerrar sesión",
     "invalidCredentials": "No pudimos verificar esas credenciales. Revise usuario y contraseña e inténtelo de nuevo.",
+    "invalidCredentialsHint": "¿Aún no tiene una cuenta?",
     "loginError": "No se pudo iniciar sesión. Inténtelo de nuevo o contacte al administrador.",
     "networkError": "No hay conexión con el servidor. Compruebe la red e inténtelo de nuevo.",
     "databaseUnavailable": "El servicio de autenticación no está disponible. Verifique la conexión a la base de datos.",
@@ -292,8 +293,8 @@
     "waveletLatency": "Latencia",
     "waveletAdvanced": "Parámetros avanzados",
     "waveletFamilyHint": "db4 es la opción más robusta para señales de proceso.",
-    "waveletLevelHint": "Más niveles suavizan más, con un poco más de retardo.",
-    "waveletThresholdHint": "1.0 suave, 3.0 estándar, 5.0+ muy agresivo contra ruido.",
+    "waveletLevelHint": "Más niveles suavizan más (1–10), con un poco más de retardo.",
+    "waveletThresholdHint": "1.0 suave, 3.0 estándar, 5.0–10.0 agresivo contra ruido.",
     "waveletNumericOnly": "El filtro wavelet solo aplica a tags numéricos (float).",
     "waveletPublicationQuality": "Calidad .f",
     "waveletDropped": "Descartes",
@@ -501,7 +502,7 @@
     "statusIdle": "Sin enlace",
     "statusChecking": "Comprobando enlace",
     "lockedHint": "Desconecte para cambiar los parámetros.",
-    "description": "Configuración de conexión a base de datos (PostgreSQL/MySQL/SQLite) usando endpoints existentes.",
+    "description": "Configuración de conexión a base de datos (PostgreSQL/MySQL) usando endpoints existentes.",
     "feature1": "Form de credenciales y prueba de conexión.",
     "feature2": "Estado de conexión y reconexión.",
     "feature3": "Export/Import de configuración (ya soportado por backend)."
@@ -519,7 +520,8 @@
     "overlayBody": "Los datos se están guardando localmente y se sincronizarán automáticamente al reconectar. La adquisición no se detiene.",
     "retryCount": "Intentos de comprobación",
     "dataUnavailable": "Datos históricos no disponibles temporalmente",
-    "degradedModeBanner": "Modo degradado: sin conexión al historiador"
+    "degradedModeBanner": "Para asegurar un rendimiento óptimo, conecte la BD de producción.",
+    "degradedModeMove": "Arrastrar para mover el aviso"
   },
   "quality": {
     "good": "Calidad GOOD",
@@ -625,7 +627,7 @@
     "qualityPolicySaved": "Política de calidad actualizada",
     "historianKicker": "Historiador",
     "historianTitle": "Conectividad con la base de datos",
-    "historianLede": "Enlace del servicio con PostgreSQL, MySQL o SQLite. El LED del encabezado refleja este estado. Las muestras se guardan primero en el journal local (SAF).",
+    "historianLede": "Enlace del servicio con PostgreSQL o MySQL. El LED del encabezado refleja este estado. Las muestras se guardan primero en el journal local (SAF). El espejo de catálogo (catalog.db) es automático.",
     "serviceKicker": "Servicio",
     "applicationSettings": "Réplica y diagnóstico",
     "runtimeLede": "Parámetros que el servicio aplica de verdad. La rotación de archivos de log la gestiona Docker; no se configura aquí.",
@@ -1038,11 +1040,25 @@
     "seconds": "Segundos",
     "applyShelve": "Aplicar Shelve",
     "catalog": {
-      "dbConnectionLost": "Conexión al historiador perdida",
-      "ntpOutOfSync": "Reloj del nodo fuera de sincronización con NTP de planta",
-      "opcuaConnectionLost": "Conexión del cliente OPC UA '{{client}}' perdida",
-      "performance": "Sistema · {{title}}",
-      "performanceThreshold": "Sistema · {{title}}. Se dispara cuando {{field}} ≥ {{threshold}}."
+      "dbConnectionLost": "Se perdió la conexión con el historiador",
+      "ntpOutOfSync": "El reloj del nodo está desfasado respecto al NTP de planta",
+      "opcuaConnectionLost": "Cliente OPC UA “{{client}}” desconectado",
+      "catalogSyncFailed": "El catálogo local no pudo sincronizarse con el historiador tras varios intentos",
+      "catalogConflict": "Conflicto de catálogo sin resolver con el historiador (raro con auto-fusión)",
+      "catalogConflictHint": "Las divergencias auto-fusionadas ya no disparan esta alarma. SyncFailed indica errores duros de sincronización.",
+      "catalogLocalOnly": "Operando solo con catálogo local durante más de una hora sin sincronizar",
+      "qualityDegraded": "Calidad de señal mala o congelada en el tag “{{tag}}”",
+      "performance": "{{title}}",
+      "performanceThreshold": "{{title}} — se dispara cuando {{field}} es ≥ {{threshold}}",
+      "fields": {
+        "cpu": "uso de CPU",
+        "disk": "uso de disco",
+        "safQueue": "profundidad de cola SAF",
+        "safLag": "retraso de replicación SAF",
+        "metricsAge": "antigüedad del snapshot de métricas",
+        "dbConn": "conexiones a la BD historiador",
+        "http5xx": "errores HTTP 5xx por minuto"
+      }
     }
   },
   "alarmsSummary": {
@@ -1193,7 +1209,7 @@
     "title": "Rendimiento del nodo",
     "lede": "Snapshot en vivo del edge. Las tarjetas con campana son alarmables: configure umbrales, reconozca y silencie sin salir de esta vista.",
     "loadError": "No se pudieron cargar las métricas del nodo.",
-    "forbidden": "Este dashboard está limitado a roles admin y supervisor.",
+    "forbidden": "Este dashboard está limitado a roles admin, supervisor y sudo.",
     "identity": "Identidad",
     "node": "Nodo",
     "area": "Área",

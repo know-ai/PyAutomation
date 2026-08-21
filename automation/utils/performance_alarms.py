@@ -7,6 +7,7 @@ Ack / shelve / unshelve stay on the existing alarm endpoints.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,6 +21,11 @@ from .connection_alarms import (
 from .system_event_audit import clip, persist_system_event
 
 _LOGGER = logging.getLogger("pyautomation.metrics")
+
+# Debounce repeated "historian offline" warnings (sampler may call every few seconds).
+_HISTORIAN_OFFLINE_LOG_INTERVAL_S = 3600.0
+_last_historian_offline_log_mono: float = 0.0
+_historian_was_offline: bool = False
 
 
 @dataclass(frozen=True)
@@ -125,9 +131,36 @@ def perf_alarm_name(key: str) -> str:
     return _scoped_name(spec.alarm_suffix)
 
 
-def threshold_description(spec: PerfAlarmSpec, threshold: Any) -> str:
-    unit = f" {spec.unit}" if spec.unit else ""
-    return clip(f"{spec.alarm_description}. Triggers when {spec.snapshot_field} ≥ {threshold}{unit}.", 256)
+def _format_threshold_value(threshold: Any, unit: str) -> str:
+    """Render a numeric threshold for alarm text; never emit the literal 'None'."""
+    value = threshold
+    if value is None or (isinstance(value, str) and value.strip().lower() in ("", "none", "null")):
+        value = ""
+    try:
+        num = float(value)
+        text = str(int(num)) if num == int(num) else str(num)
+    except (TypeError, ValueError):
+        text = str(value).strip() if value is not None else ""
+    if not text or text.lower() in ("none", "null"):
+        text = "?"
+    unit = unit or ""
+    if unit and text.endswith(unit):
+        return text
+    return f"{text}{unit}" if unit else text
+
+
+def threshold_description(spec: PerfAlarmSpec, threshold: Any = None) -> str:
+    """Canonical English description; HMI translates by alarm name + this pattern."""
+    from .performance_alarm_config import _DEFAULTS
+
+    resolved = threshold
+    if resolved is None or (isinstance(resolved, str) and resolved.strip().lower() in ("", "none", "null")):
+        resolved = _DEFAULTS.get(f"perf_{spec.key}_threshold")
+    thresh = _format_threshold_value(resolved, spec.unit or "")
+    return clip(
+        f"{spec.alarm_description}. Triggers when {spec.snapshot_field} ≥ {thresh}.",
+        256,
+    )
 
 
 _DB_DATA_TYPES = {"bool": "boolean", "int": "integer", "str": "string"}
@@ -173,8 +206,23 @@ def _persist_performance_tag(app, tag) -> bool:
         app.logger_engine.set_tag(tag=tag)
         row = _unwrap_engine(app.logger_engine.get_tag_by_name(tag.name))
         return row is not None
-    except Exception:
-        _LOGGER.error("Failed to persist performance tag %s", getattr(tag, "name", "?"), exc_info=True)
+    except Exception as exc:
+        from .db_io import is_stale_historian_handle, log_historian_link_issue
+
+        if is_stale_historian_handle(exc):
+            log_historian_link_issue(
+                _LOGGER,
+                exc,
+                where="persist_performance_tag",
+                action=getattr(tag, "name", "?"),
+            )
+        else:
+            _LOGGER.warning(
+                "Performance tag %s not yet in historian Tags (will retry); "
+                "alarm stays active in CVT/local catalog — no operator impact",
+                getattr(tag, "name", "?"),
+            )
+            _LOGGER.debug("persist performance tag detail", exc_info=True)
         return False
     finally:
         try:
@@ -203,12 +251,26 @@ def performance_tags_persisted(app=None) -> bool:
 def ensure_performance_alarms(config: dict[str, Any] | None = None) -> bool:
     """Create BOOL tags/alarms in CVT and persist them to Tags when the historian is up.
 
+    Always refreshes alarm descriptions from the active thresholds so offline catalog
+    and remote historian stay aligned when operators change PERF settings.
+
     Returns True only if the 7 SYS.PERF.* rows exist in the central database.
     Never raises. Safe to call on every sampler tick until persisted.
     """
     try:
         app = _app()
-        cfg = config or {}
+        from .performance_alarm_config import load_performance_alarm_config
+
+        if config is None:
+            try:
+                raw = app.get_app_config() if hasattr(app, "get_app_config") else {}
+            except Exception:
+                raw = {}
+            cfg = load_performance_alarm_config(raw)
+        else:
+            # Merge partial/empty payloads with defaults (never leave threshold as None).
+            cfg = load_performance_alarm_config(config)
+        global _last_historian_offline_log_mono, _historian_was_offline
         for spec in PERF_ALARM_SPECS:
             threshold = cfg.get(f"perf_{spec.key}_threshold")
             tag_name = perf_tag_name(spec.key)
@@ -221,8 +283,21 @@ def ensure_performance_alarms(config: dict[str, Any] | None = None) -> bool:
                 display_name=scoped_display_name(spec.display_name),
             )
         if not _historian_connected(app):
-            _LOGGER.warning("Historian offline; performance tags will persist on reconnect")
+            now = time.monotonic()
+            if (
+                not _historian_was_offline
+                or (now - _last_historian_offline_log_mono) >= _HISTORIAN_OFFLINE_LOG_INTERVAL_S
+            ):
+                _LOGGER.warning(
+                    "Historian offline; performance tags will persist on reconnect "
+                    "(this reminder at most once per hour while still disconnected)"
+                )
+                _last_historian_offline_log_mono = now
+            _historian_was_offline = True
             return False
+        if _historian_was_offline:
+            _historian_was_offline = False
+            _last_historian_offline_log_mono = 0.0
         ok = True
         for spec in PERF_ALARM_SPECS:
             tag = app.cvt.get_tag_by_name(perf_tag_name(spec.key))
@@ -231,10 +306,14 @@ def ensure_performance_alarms(config: dict[str, Any] | None = None) -> bool:
         if ok:
             _LOGGER.info("Performance tags persisted to historian (%s)", len(PERF_ALARM_SPECS))
         else:
-            _LOGGER.error("Performance tag catalog incomplete in historian Tags")
+            # Sampler retries until complete. CVT + local catalog already hold the alarms.
+            _LOGGER.info(
+                "Performance tags not fully mirrored to historian Tags yet; "
+                "retrying on next sampler tick. No data loss — PERF alarms remain in CVT/local catalog."
+            )
         return ok
     except Exception:
-        _LOGGER.error("Failed to ensure performance alarms", exc_info=True)
+        _LOGGER.warning("Failed to ensure performance alarms; will retry", exc_info=True)
         return False
 
 

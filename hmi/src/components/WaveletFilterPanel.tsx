@@ -3,6 +3,11 @@ import { useTranslation } from "../hooks/useTranslation";
 import { getTagFilterStatus, type TagFilterStatus } from "../services/tags";
 
 const WAVELET_FAMILIES = ["db4", "db6", "sym4", "coif2", "bior2.2"];
+/** Operator-facing slider range (must match backend WaveletBlockFilter clamps). */
+const WAVELET_LEVEL_MIN = 1;
+const WAVELET_LEVEL_MAX = 10;
+const WAVELET_THRESHOLD_MIN = 1;
+const WAVELET_THRESHOLD_MAX = 10;
 
 export type WaveletFormFields = {
   filter_enabled: boolean;
@@ -134,12 +139,13 @@ export function WaveletFilterPanel({ formData, sourceName, dataType, onChange }:
                 <div className="col-md-4">
                   <label className="form-label">
                     {t("tags.waveletLevel")}: {formData.filter_level}
+                    <span className="text-muted fw-normal"> ({WAVELET_LEVEL_MIN}–{WAVELET_LEVEL_MAX})</span>
                   </label>
                   <input
                     type="range"
                     className="form-range"
-                    min={1}
-                    max={6}
+                    min={WAVELET_LEVEL_MIN}
+                    max={WAVELET_LEVEL_MAX}
                     step={1}
                     value={formData.filter_level}
                     onChange={(e) => onChange({ filter_level: Number(e.target.value) })}
@@ -149,12 +155,13 @@ export function WaveletFilterPanel({ formData, sourceName, dataType, onChange }:
                 <div className="col-md-4">
                   <label className="form-label">
                     {t("tags.waveletThreshold")}: {Number(formData.filter_threshold_factor).toFixed(1)}
+                    <span className="text-muted fw-normal"> ({WAVELET_THRESHOLD_MIN}–{WAVELET_THRESHOLD_MAX})</span>
                   </label>
                   <input
                     type="range"
                     className="form-range"
-                    min={1}
-                    max={6}
+                    min={WAVELET_THRESHOLD_MIN}
+                    max={WAVELET_THRESHOLD_MAX}
                     step={0.1}
                     value={formData.filter_threshold_factor}
                     onChange={(e) => onChange({ filter_threshold_factor: Number(e.target.value) })}
