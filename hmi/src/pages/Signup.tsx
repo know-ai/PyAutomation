@@ -22,6 +22,7 @@ export function Signup() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDatabaseConfig, setShowDatabaseConfig] = useState(false);
+  const [databaseEventId, setDatabaseEventId] = useState<string | null>(null);
 
   const onChange = (key: string, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -75,10 +76,15 @@ export function Signup() {
         backendMessage.includes("cannot be persisted")
       );
 
-      if (isDatabaseError) {
-        // Mostrar formulario de configuración de base de datos
+      if (isDatabaseError || status === 503) {
+        const eventId =
+          typeof data?.event_id === "string" && data.event_id.trim() ? data.event_id.trim() : null;
+        setDatabaseEventId(eventId);
         setShowDatabaseConfig(true);
         setError(backendMessage);
+        if (eventId) {
+          showToast(t("auth.databaseUnavailableWithEventId", { eventId }), "warning", 0);
+        }
       } else {
       let message: string;
       if (status === 400 && !backendMessage) {
@@ -100,8 +106,8 @@ export function Signup() {
   };
 
   const handleDatabaseConnectionSuccess = () => {
-    // Cuando la conexión a la base de datos sea exitosa, intentar signup nuevamente
     setShowDatabaseConfig(false);
+    setDatabaseEventId(null);
     setError(null);
     // Esperar un momento para que la conexión se establezca completamente
     setTimeout(() => {
@@ -114,7 +120,11 @@ export function Signup() {
       {showDatabaseConfig ? (
         <DatabaseConfigForm
           onConnectionSuccess={handleDatabaseConnectionSuccess}
-          onCancel={() => setShowDatabaseConfig(false)}
+          onCancel={() => {
+            setShowDatabaseConfig(false);
+            setDatabaseEventId(null);
+          }}
+          eventId={databaseEventId}
         />
       ) : (
       <Card title={t("auth.createAccount")}>

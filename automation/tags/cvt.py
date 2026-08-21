@@ -672,7 +672,7 @@ class CVT:
     # @iad_frozen_data
     # @iad_out_of_range
     # @iad_outlier
-    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0):
+    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0, opc_code:int|None=None, substatus:str|None=None):
         """
         Sets a new value for a tag.
 
@@ -684,6 +684,8 @@ class CVT:
         * **value**: New value.
         * **timestamp** (datetime): Timestamp of the value.
         * **quality** (float, optional): OPC-style quality code.
+        * **opc_code** (int, optional): Raw OPC UA StatusCode for forensics.
+        * **substatus** (str, optional): Human substatus (SensorFailure, LastUsable, …).
 
         **Returns:**
 
@@ -708,7 +710,13 @@ class CVT:
                 self.lock_contention += 1
         except Exception:
             pass
-        applied = tag.set_value(value=value, timestamp=timestamp, quality=quality)
+        applied = tag.set_value(
+            value=value,
+            timestamp=timestamp,
+            quality=quality,
+            opc_code=opc_code,
+            substatus=substatus,
+        )
         if applied is False:
             return value
         if self.sio:
@@ -1045,6 +1053,47 @@ class CVTEngine(Singleton):
         return matched
 
     @logging_error_handler
+    def mark_opcua_client_tags_stale(
+        self,
+        client_name: str,
+        server_url: str | None = None,
+        timestamp=None,
+        quality: float = 0.0,
+    ) -> int:
+        """Mark subscribed tags BAD/stale without overwriting last-good PV.
+
+        Called on OPC UA disconnect / connection-failed so HMI and process
+        alarms see degraded quality instead of a falsely GOOD held value.
+        """
+        from datetime import datetime, timezone
+
+        from ..signal_conditioning.quality import BAD
+        from ..timebase import ensure_utc
+
+        q = float(quality) if quality is not None else BAD
+        ts = ensure_utc(timestamp) if timestamp is not None else datetime.now(timezone.utc)
+        marked = 0
+        for tag in self.iter_tags_for_opcua_client(client_name, server_url):
+            try:
+                try:
+                    held = tag.value.value
+                except Exception:
+                    held = tag.get_value()
+                applied = self.set_value_fast(
+                    id=tag.id, value=held, timestamp=ts, quality=q
+                )
+                if applied is not None:
+                    marked += 1
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "OPC stale mark skipped tag=%s client=%s",
+                    getattr(tag, "name", None),
+                    client_name,
+                    exc_info=True,
+                )
+        return marked
+
+    @logging_error_handler
     def get_tags(self):
         r"""
         Thread-safe method to get all tags.
@@ -1178,21 +1227,30 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     @logging_error_handler
-    def set_value_fast(self, id:str, value, timestamp:datetime, quality:float=1.0):
+    def set_value_fast(self, id:str, value, timestamp:datetime, quality:float=1.0, opc_code:int|None=None, substatus:str|None=None):
         r"""
         Hot-path write: dict lookup O(1) + per-tag lock. Does not use the
         administrative request/response queue.
         """
         if timestamp is None:
             raise ValueError("set_value requires a timestamp from the producer")
-        return self._cvt.set_value(id=id, value=value, timestamp=timestamp, quality=quality)
+        return self._cvt.set_value(
+            id=id,
+            value=value,
+            timestamp=timestamp,
+            quality=quality,
+            opc_code=opc_code,
+            substatus=substatus,
+        )
 
     @logging_error_handler
-    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0):
+    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0, opc_code:int|None=None, substatus:str|None=None):
         r"""
         Tag value write. Acquisition uses the fast path; CRUD stays on __query.
         """
-        return self.set_value_fast(id, value, timestamp)
+        return self.set_value_fast(
+            id, value, timestamp, quality=quality, opc_code=opc_code, substatus=substatus
+        )
     
     @logging_error_handler
     def set_data_type(self, data_type):

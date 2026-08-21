@@ -112,6 +112,33 @@ class Client(OPCClient):
             set_opcua_disconnected(getattr(self, "name", "") or "", disconnected)
         except Exception:
             logging.debug("OPC UA connection alarm sync skipped", exc_info=True)
+        if disconnected:
+            self._mark_subscribed_tags_stale()
+
+    def _mark_subscribed_tags_stale(self) -> None:
+        """Hold-last + BAD/stale on every tag owned by this client."""
+        try:
+            from automation import PyAutomation
+
+            app = PyAutomation()
+            cvt = getattr(app, "cvt", None)
+            if cvt is None or not hasattr(cvt, "mark_opcua_client_tags_stale"):
+                return
+            marked = cvt.mark_opcua_client_tags_stale(
+                getattr(self, "name", "") or "",
+                getattr(self, "_server_url", None),
+            )
+            if marked:
+                logging.getLogger("pyautomation").info(
+                    "OPC UA client=%s marked %s tags BAD/stale",
+                    getattr(self, "name", None),
+                    marked,
+                )
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "OPC UA stale tag mark skipped",
+                exc_info=True,
+            )
 
     def connect(self):
         r"""

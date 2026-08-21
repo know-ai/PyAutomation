@@ -26,6 +26,7 @@ import {
 import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp, type UiLocale } from "../utils/timezone";
 import { readSessionTags, writeSessionTags } from "../utils/sessionFilters";
 import { buildHistorianTagOptionLabel, resolveTagDisplayLabel } from "../utils/tagDisplayLabel";
+import { HistoricalQualityLegend } from "../components/HistoricalQualityLegend";
 
 type PresetDate = 
   | "Last Minute"
@@ -588,6 +589,11 @@ export function DataLogger() {
                   </Button>
                 </div>
               </div>
+              {selectedTags.length > 0 ? (
+                <div className="card-header-stack__row pt-2 mt-1 border-top">
+                  <HistoricalQualityLegend tagNames={selectedTags} />
+                </div>
+              ) : null}
               {presetDate === "Custom" && (
                 <div className="card-header-stack__row d-flex align-items-center gap-2 flex-wrap pt-2 mt-1 border-top">
                   <input

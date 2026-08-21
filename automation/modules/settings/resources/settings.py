@@ -15,6 +15,7 @@ settings_model = api.model("settings_model", {
     'log_backup_count': fields.Integer(required=False, min=1, description='Number of backup log files to keep (>= 1)'),
     'log_level': fields.Integer(required=False, min=0, max=50, description='Logging level (0=NOTSET, 10=DEBUG, 20=INFO, 30=WARNING, 40=ERROR, 50=CRITICAL)'),
     'log_error_cooldown_seconds': fields.Float(required=False, min=0, description='Dedupe cooldown for ERROR logs in seconds (0 disables)'),
+    'alarm_inhibit_uncertain_quality': fields.Boolean(required=False, description='When true, UNCERTAIN PV quality inhibits process setpoints (ISA-18.2)'),
 })
 
 @ns.route('/')
@@ -89,6 +90,16 @@ class SettingsUpdateResource(Resource):
                 return "log_error_cooldown_seconds must be >= 0", 400
             app.update_log_error_cooldown(float(cooldown))
 
+        if 'alarm_inhibit_uncertain_quality' in data:
+            inhibit = bool(data['alarm_inhibit_uncertain_quality'])
+            app.set_app_config(alarm_inhibit_uncertain_quality=inhibit)
+            try:
+                from ....signal_conditioning.quality import set_inhibit_uncertain_quality
+
+                set_inhibit_uncertain_quality(inhibit)
+            except Exception:
+                pass
+
         try:
             from ....utils.system_event_audit import clip, persist_system_event
 
@@ -98,6 +109,7 @@ class SettingsUpdateResource(Resource):
                 "log_backup_count",
                 "log_level",
                 "log_error_cooldown_seconds",
+                "alarm_inhibit_uncertain_quality",
             ) if key in data]
             persist_system_event(
                 message="System settings updated",

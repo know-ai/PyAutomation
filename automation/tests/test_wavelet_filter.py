@@ -455,7 +455,9 @@ class TestCvtWaveletIngest(unittest.TestCase):
             cvt.set_value(id=tag.id, value=1.0, timestamp=ts, quality=GOOD)
             cvt.set_value(id=tag.id, value=2.0, timestamp=ts, quality=BAD)
         self.assertEqual(tag._bad_samples_dropped, 1)
-        self.assertEqual(tag.quality, UNCERTAIN)
+        self.assertEqual(tag.quality, BAD)
+        self.assertEqual(tag.get_value(), 1.0)
+        self.assertTrue(tag.stale)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import { StationAppearance } from "../components/StationAppearance";
 import { ClockSyncPanel } from "../components/ClockSyncPanel";
 import { DatabaseConnectivityPanel } from "../components/DatabaseConnectivityPanel";
 import { PerformanceAlarmConfig } from "../components/PerformanceAlarmConfig";
+import { QualityPolicyPanel } from "../components/QualityPolicyPanel";
 import { ServiceRuntimePanel } from "../components/ServiceRuntimePanel";
 import { SettingsChapter } from "../components/SettingsChapter";
 import { getSettings, updateSettings, exportConfig, importConfig, type AppConfig } from "../services/settings";
@@ -14,6 +15,7 @@ const TOC = [
   { href: "#settings-station", labelKey: "settings.navStation" },
   { href: "#settings-clock", labelKey: "settings.navClock" },
   { href: "#settings-performance", labelKey: "settings.navPerformance" },
+  { href: "#settings-quality", labelKey: "settings.qualityPolicyTitle" },
   { href: "#settings-historian", labelKey: "settings.navHistorian" },
   { href: "#settings-service", labelKey: "settings.navService" },
   { href: "#settings-backup", labelKey: "settings.navBackup" },
@@ -161,6 +163,8 @@ export function Settings() {
       <ClockSyncPanel />
 
       <PerformanceAlarmConfig />
+
+      <QualityPolicyPanel />
 
       <SettingsChapter
         id="settings-historian"

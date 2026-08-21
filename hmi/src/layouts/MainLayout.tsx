@@ -12,6 +12,7 @@ import { useMemoryWatchdog } from "../hooks/useMemoryWatchdog";
 import { socketService } from "../services/socket";
 import { DatabaseStatusProvider } from "../hooks/useDatabaseStatus";
 import { DatabaseUnavailableOverlay } from "../components/DatabaseUnavailableOverlay";
+import { DegradedModeBanner } from "../components/DegradedModeBanner";
 import {
   SIDEBAR_MOBILE_MQ,
   closeSidebarOnMobile,
@@ -75,6 +76,7 @@ export function MainLayout({ children }: PropsWithChildren) {
     <DatabaseStatusProvider>
     <div className="app-wrapper">
       <Header />
+      <DegradedModeBanner />
       <Sidebar />
       <main className="app-main">
         <div className="app-main-stage">

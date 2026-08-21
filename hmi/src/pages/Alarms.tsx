@@ -962,6 +962,10 @@ export function Alarms() {
                           alarm={alarm}
                           realTimeAlarm={realTimeAlarms[String(alarm.identifier || alarm.id || alarmName)]}
                           tagValue={alarm.tag ? tagValues[alarm.tag]?.value : undefined}
+                          tagQuality={alarm.tag ? tagValues[alarm.tag]?.quality : undefined}
+                          tagQualityLabel={alarm.tag ? tagValues[alarm.tag]?.quality_label : undefined}
+                          tagStale={alarm.tag ? Boolean(tagValues[alarm.tag]?.stale) : undefined}
+                          tagStaleAgeMs={alarm.tag ? tagValues[alarm.tag]?.stale_age_ms : undefined}
                           onEdit={handleEditAlarm}
                           onDelete={handleDeleteAlarm}
                           getStateBadgeClass={getStateBadgeClass}

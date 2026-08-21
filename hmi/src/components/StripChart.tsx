@@ -15,6 +15,7 @@ import { VirtualList } from "./VirtualList";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { toDisplayDate } from "../utils/timezone";
 import { resolveTagDisplayLabel } from "../utils/tagDisplayLabel";
+import { QualityBadge } from "./QualityBadge";
 
 export const BUFFER_SIZE_MIN = 120;
 export const BUFFER_SIZE_MAX = 360;
@@ -49,6 +50,7 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
     (left, right) =>
       left.length === right.length && left.every((item, index) => item === right[index])
   );
+  const liveTags = useAppSelector((state) => state.tags.tagValues);
   const historiesRef = useRef(histories);
   historiesRef.current = histories;
   const [throttledHistories, setThrottledHistories] = useState(histories);
@@ -322,7 +324,24 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
                   onClick={(e) => e.stopPropagation()}
                 />
               ) : (
-                <span>{config.title || t("stripChart.defaultTitle")}</span>
+                <span className="d-inline-flex align-items-center gap-2 flex-wrap">
+                  <span>{config.title || t("stripChart.defaultTitle")}</span>
+                  {config.tagNames.map((tagName) => {
+                    const live = liveTags[tagName];
+                    return (
+                      <span key={tagName} className="d-inline-flex align-items-center gap-1">
+                        <span className="small text-muted">{getTagLabel(tagName)}</span>
+                        <QualityBadge
+                          quality={live?.quality}
+                          qualityLabel={live?.quality_label}
+                          substatus={live?.quality_substatus}
+                          stale={Boolean(live?.stale)}
+                          staleAgeMs={typeof live?.stale_age_ms === "number" ? live.stale_age_ms : null}
+                        />
+                      </span>
+                    );
+                  })}
+                </span>
               )}
             </div>
             <div className="d-flex gap-2 position-relative" onClick={(e) => e.stopPropagation()}>

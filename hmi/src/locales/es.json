@@ -89,6 +89,7 @@
     "loginError": "No se pudo iniciar sesión. Inténtelo de nuevo o contacte al administrador.",
     "networkError": "No hay conexión con el servidor. Compruebe la red e inténtelo de nuevo.",
     "databaseUnavailable": "El servicio de autenticación no está disponible. Verifique la conexión a la base de datos.",
+    "databaseUnavailableWithEventId": "Modo degradado: sin historiador. Event ID: {{eventId}}",
     "tooManyAttempts": "Demasiados intentos. Espere un momento e inténtelo de nuevo.",
     "showPassword": "Mostrar contraseña",
     "hidePassword": "Ocultar contraseña",
@@ -517,7 +518,18 @@
     "overlayTitle": "Base de datos remota no disponible",
     "overlayBody": "Los datos se están guardando localmente y se sincronizarán automáticamente al reconectar. La adquisición no se detiene.",
     "retryCount": "Intentos de comprobación",
-    "dataUnavailable": "Datos históricos no disponibles temporalmente"
+    "dataUnavailable": "Datos históricos no disponibles temporalmente",
+    "degradedModeBanner": "Modo degradado: sin conexión al historiador"
+  },
+  "quality": {
+    "good": "Calidad GOOD",
+    "uncertain": "Calidad UNCERTAIN",
+    "bad": "Calidad BAD",
+    "stale": "Valor stale (hold-last)",
+    "staleAge": "Stale desde hace {{age}}",
+    "legend": "Calidad de señal",
+    "na": "N/A",
+    "historicalNone": "Histórico sin calidad registrada (calidad live del CVT)"
   },
   "tables": {
     "name": "Nombre",
@@ -605,6 +617,12 @@
     "perfAlarmsKicker": "Alarmas",
     "perfAlarmsTitle": "Alarmas de rendimiento del nodo",
     "perfAlarmsLede": "Umbrales ISA-18.2 (CPU, disco, SAF, HTTP, BD). Se aplican en caliente, sin reiniciar el sampler. Ack y shelve se hacen en el dashboard o en Alarmas.",
+    "qualityPolicyKicker": "Calidad de señal",
+    "qualityPolicyTitle": "Alarmas de proceso y calidad OPC",
+    "qualityPolicyLede": "Política ISA-18.2: si un PV está BAD no se evalúa el setpoint. UNCERTAIN se puede inhibir aquí; el cambio aplica en caliente.",
+    "qualityPolicyInhibitUncertain": "Inhibir setpoints con calidad UNCERTAIN",
+    "qualityPolicyHint": "Desactivado (planta): UNCERTAIN sigue evaluando umbrales. Activado: BAD y UNCERTAIN inhiben alarmas de proceso. No afecta ALM.QUALITY.* ni ALM.OPCUA.*.",
+    "qualityPolicySaved": "Política de calidad actualizada",
     "historianKicker": "Historiador",
     "historianTitle": "Conectividad con la base de datos",
     "historianLede": "Enlace del servicio con PostgreSQL, MySQL o SQLite. El LED del encabezado refleja este estado. Las muestras se guardan primero en el journal local (SAF).",

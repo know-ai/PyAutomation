@@ -10,6 +10,7 @@ import { showToast } from "../utils/toast";
 import { validateUserTagNameInput } from "../utils/tagNameValidation";
 import { VirtualizedCombobox, type ComboboxItem } from "../components/VirtualizedCombobox";
 import { WaveletFilterPanel } from "../components/WaveletFilterPanel";
+import { QualityBadge } from "../components/QualityBadge";
 import { isFilteredDerivativeName } from "../utils/filteredTags";
 
 // Memoized row component to prevent unnecessary re-renders
@@ -43,6 +44,10 @@ const TagTableRow = memo(({
       ? value ? "true" : "false"
       : String(value)
     : "-";
+  const quality = realTimeTag?.quality ?? tag.quality;
+  const qualityLabel = realTimeTag?.quality_label ?? tag.quality_label;
+  const stale = Boolean(realTimeTag?.stale ?? tag.stale);
+  const staleAgeMs = realTimeTag?.stale_age_ms ?? tag.stale_age_ms;
 
   return (
     <tr className={isFilteredRow ? "table-secondary" : undefined} title={isFilteredRow ? t("tags.filteredRowHint") : undefined}>
@@ -60,7 +65,18 @@ const TagTableRow = memo(({
         )}
       </td>
       <td>{tag.variable || "-"}</td>
-      <td>{displayValue}</td>
+      <td>
+        <span className="d-inline-flex align-items-center gap-1">
+          <span>{displayValue}</span>
+          <QualityBadge
+            quality={quality}
+            qualityLabel={qualityLabel}
+            substatus={realTimeTag?.quality_substatus ?? tag.quality_substatus}
+            stale={stale}
+            staleAgeMs={typeof staleAgeMs === "number" ? staleAgeMs : null}
+          />
+        </span>
+      </td>
       <td
         title={tag.unit || undefined}
         style={{ cursor: tag.unit ? "help" : "default" }}
@@ -119,15 +135,24 @@ const TagTableRow = memo(({
   
   const prevValue = prevRealTimeTag?.value ?? prevProps.tag.value;
   const nextValue = nextRealTimeTag?.value ?? nextProps.tag.value;
-  
+  const prevQuality = prevRealTimeTag?.quality ?? prevProps.tag.quality;
+  const nextQuality = nextRealTimeTag?.quality ?? nextProps.tag.quality;
+  const prevStale = Boolean(prevRealTimeTag?.stale ?? prevProps.tag.stale);
+  const nextStale = Boolean(nextRealTimeTag?.stale ?? nextProps.tag.stale);
+  const prevStaleAge = prevRealTimeTag?.stale_age_ms ?? prevProps.tag.stale_age_ms;
+  const nextStaleAge = nextRealTimeTag?.stale_age_ms ?? nextProps.tag.stale_age_ms;
+
   // Re-render if:
   // - Tag ID or name changed
-  // - Real-time value changed
+  // - Real-time value / quality / stale changed
   // - Tag properties changed
   return (
     prevProps.tag.id === nextProps.tag.id &&
     prevProps.tag.name === nextProps.tag.name &&
     prevValue === nextValue &&
+    prevQuality === nextQuality &&
+    prevStale === nextStale &&
+    prevStaleAge === nextStaleAge &&
     prevProps.tag.variable === nextProps.tag.variable &&
     prevProps.tag.unit === nextProps.tag.unit &&
     prevProps.tag.display_unit === nextProps.tag.display_unit &&

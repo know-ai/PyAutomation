@@ -89,6 +89,7 @@
     "loginError": "Could not sign in. Please try again or contact the administrator.",
     "networkError": "Unable to reach the server. Check your network and try again.",
     "databaseUnavailable": "The authentication service is unavailable. Check the database connection.",
+    "databaseUnavailableWithEventId": "Degraded mode: historian unavailable. Event ID: {{eventId}}",
     "tooManyAttempts": "Too many attempts. Wait a moment and try again.",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
@@ -517,7 +518,18 @@
     "overlayTitle": "Remote database unavailable",
     "overlayBody": "Data is being stored locally and will synchronize automatically when the connection returns. Acquisition is not stopped.",
     "retryCount": "Probe attempts",
-    "dataUnavailable": "Historical data temporarily unavailable"
+    "dataUnavailable": "Historical data temporarily unavailable",
+    "degradedModeBanner": "Degraded mode: no connection to the historian"
+  },
+  "quality": {
+    "good": "GOOD quality",
+    "uncertain": "UNCERTAIN quality",
+    "bad": "BAD quality",
+    "stale": "Stale value (hold-last)",
+    "staleAge": "Stale for {{age}}",
+    "legend": "Signal quality",
+    "na": "N/A",
+    "historicalNone": "Historian has no quality column (live CVT quality)"
   },
   "tables": {
     "name": "Name",
@@ -605,6 +617,12 @@
     "perfAlarmsKicker": "Alarms",
     "perfAlarmsTitle": "Node performance alarms",
     "perfAlarmsLede": "ISA-18.2 thresholds (CPU, disk, SAF, HTTP, DB). Applied hot, without restarting the sampler. Ack and shelve from the dashboard or Alarms.",
+    "qualityPolicyKicker": "Signal quality",
+    "qualityPolicyTitle": "Process alarms and OPC quality",
+    "qualityPolicyLede": "ISA-18.2 policy: BAD PV quality inhibits process setpoints. UNCERTAIN can be inhibited here; the change applies hot.",
+    "qualityPolicyInhibitUncertain": "Inhibit setpoints on UNCERTAIN quality",
+    "qualityPolicyHint": "Off (plant default): UNCERTAIN still evaluates thresholds. On: BAD and UNCERTAIN inhibit process alarms. Does not affect ALM.QUALITY.* or ALM.OPCUA.*.",
+    "qualityPolicySaved": "Quality policy updated",
     "historianKicker": "Historian",
     "historianTitle": "Database connectivity",
     "historianLede": "Service link to PostgreSQL, MySQL, or SQLite. The header LED reflects this state. Samples are stored first in the local SAF journal.",

@@ -9,6 +9,7 @@ from ..tags import Tag
 from ..buffer import Buffer
 from ..models import StringType
 from ..logger.datalogger import DataLoggerEngine
+from ..signal_conditioning.quality import GOOD, map_opc_status
 
 
 def _scope_owns_tag(tag) -> bool:
@@ -26,6 +27,46 @@ def _scope_owns_tag(tag) -> bool:
         return bool(scope.owns_tag(tag))
     except Exception:
         return False
+
+
+def _quality_write_kwargs(quality) -> dict:
+    """Accept Quality snapshot or legacy float."""
+    if hasattr(quality, "severity"):
+        return {
+            "quality": float(quality.severity),
+            "opc_code": getattr(quality, "opc_code", None),
+            "substatus": getattr(quality, "substatus", None),
+        }
+    return {"quality": quality if quality is not None else GOOD}
+
+
+def _extract_status_quality(data):
+    """Pull StatusCode from a datachange notification payload → Quality."""
+    try:
+        status = data.monitored_item.Value.StatusCode
+    except Exception:
+        return map_opc_status(None)
+    return map_opc_status(status)
+
+
+def _read_node_data_value(node_id):
+    """Initial subscribe read: value + Quality + SourceTimestamp."""
+    try:
+        data_value = node_id.get_data_value()
+    except Exception:
+        val = node_id.get_value()
+        return val, map_opc_status(None), None
+    try:
+        val = data_value.Value.Value
+    except Exception:
+        val = getattr(data_value, "Value", None)
+        if hasattr(val, "Value"):
+            val = val.Value
+    quality = map_opc_status(getattr(data_value, "StatusCode", None))
+    timestamp = getattr(data_value, "SourceTimestamp", None) or getattr(
+        data_value, "ServerTimestamp", None
+    )
+    return val, quality, timestamp
 
 
 class SubHandler(Singleton):
@@ -88,6 +129,7 @@ class SubHandler(Singleton):
         """
         pass
 
+
 class SubHandlerServer(Singleton):
 
     def __init__(self):
@@ -117,16 +159,19 @@ class SubHandlerServer(Singleton):
         else:
             from ..timebase import ensure_utc
             timestamp = ensure_utc(timestamp)
+        quality = _extract_status_quality(data)
         tag_name = node.get_display_name().Text
         
         tag = self.app.get_tag_by_name(name=tag_name)
         if tag:
             if not _scope_owns_tag(tag):
                 return
-            if tag.get_value()!=val:
+            if tag.get_value()!=val or getattr(tag, "quality", GOOD) != getattr(quality, "severity", quality):
 
                 val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-                self.app.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
+                self.app.cvt.set_value_fast(
+                    id=tag.id, value=val, timestamp=timestamp, **_quality_write_kwargs(quality)
+                )
         else:
             
             parent = node.get_parent()
@@ -270,8 +315,8 @@ class DAS(Singleton):
         
         ## Trying to get the value of the tag into OPCUA Client
         try:
-            val = node_id.get_value()
-            self.update_tag_value(node=node_id, val=val)
+            val, quality, timestamp = _read_node_data_value(node_id)
+            self.update_tag_value(node=node_id, val=val, timestamp=timestamp, quality=quality)
         except Exception:
             logging.getLogger("pyautomation").warning(
                 "DAS initial read failed node=%s tag=%s",
@@ -311,7 +356,7 @@ class DAS(Singleton):
                 subscription = monitored_item["subscription"] 
                 monitored_item["monitored_item"] = subscription.subscribe_data_change(client.get_node(node_id))
 
-    def update_tag_value(self, node, val, timestamp=None):
+    def update_tag_value(self, node, val, timestamp=None, quality=GOOD):
         r"""
         Update tag value in CVT and buffer
         """
@@ -325,7 +370,9 @@ class DAS(Singleton):
         if tag and _scope_owns_tag(tag):
             tag_name = tag.get_name()
             val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-            val = self.cvt.set_value_fast(id=tag.id, value=val, timestamp=timestamp)
+            val = self.cvt.set_value_fast(
+                id=tag.id, value=val, timestamp=timestamp, **_quality_write_kwargs(quality)
+            )
             if val is not None and tag_name in self.buffer:
                 self.buffer[tag_name]["timestamp"](timestamp)
                 self.buffer[tag_name]["values"](val)
@@ -335,6 +382,5 @@ class DAS(Singleton):
         Documentation here
         """
         timestamp = data.monitored_item.Value.SourceTimestamp
-        self.update_tag_value(node, val, timestamp)      
-        
-        
+        quality = _extract_status_quality(data)
+        self.update_tag_value(node, val, timestamp, quality=quality)

@@ -12,6 +12,18 @@ from ...health.require_db import require_remote_db
 from ....modules.users.users import Users as CVTUsers
 from ....dbmodels.users import Users
 from ....utils.user_session_audit import record_user_session_event
+from ....utils.db_audit import database_connection_auditor
+
+
+def _database_unavailable_payload(message: str, details: str) -> dict:
+    event_id = database_connection_auditor.ensure_degraded_event_id()
+    return {
+        "message": message,
+        "error_type": "database_connection_error",
+        "details": details,
+        "event_id": event_id,
+    }
+
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S"
 ns = Namespace('Users', description='User Management and Authentication')
@@ -112,11 +124,10 @@ class SignUpResource(Resource):
                 "cannot be persisted"
             ]):
                 # Errores de conexión/configuración de base de datos -> 503 Service Unavailable
-                return {
-                    "message": message,
-                    "error_type": "database_connection_error",
-                    "details": "The system cannot connect to the database. The user may have been created in memory but cannot be persisted. Please verify the database configuration and connection settings."
-                }, 503
+                return _database_unavailable_payload(
+                    message,
+                    "The system cannot connect to the database. The user may have been created in memory but cannot be persisted. Please verify the database configuration and connection settings.",
+                ), 503
             
             # Detectar errores de validación o duplicados (username/email ya existe, etc.)
             elif any(keyword in message_lower for keyword in [
@@ -209,11 +220,10 @@ class LoginResource(Resource):
                 "invalid response from database server"
             ]):
                 # Errores de conexión/configuración de base de datos -> 503 Service Unavailable
-                return {
-                    "message": message,
-                    "error_type": "database_connection_error",
-                    "details": "The system cannot connect to the database. Please verify the database configuration and connection settings."
-                }, 503
+                return _database_unavailable_payload(
+                    message,
+                    "The system cannot connect to the database. Please verify the database configuration and connection settings.",
+                ), 503
             
             # Detectar errores de autenticación (credenciales incorrectas del usuario)
             elif any(keyword in message_lower for keyword in [

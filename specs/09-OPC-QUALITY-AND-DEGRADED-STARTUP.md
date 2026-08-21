@@ -7,11 +7,12 @@
 | **Versión** | 1.0 |
 | **Fecha** | 2026-08-20 |
 | **Producto** | PyAutomationIO (`automation/` + HMI React) |
-| **Estado** | **Propuesta** — gaps P0/P1 pendientes de implementación |
-| **Auditoría** | [AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md](../audits/AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md) |
+| **Estado** | **Implementado** — P0/P1 cerrados (calidad OPC → CVT → alarmas → HMI; stale disconnect; Login `event_id`; banner degradado) |
+| **Auditoría** | [AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md](../audits/AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md) (verificación post-impl 2026-08-21) |
 | **Complementa** | [08-WAVELET-RPA-RT.md](./08-WAVELET-RPA-RT.md), [AUDIT_SIGNAL_CONDITIONING.md](../audits/AUDIT_SIGNAL_CONDITIONING.md), [AUDIT_DB.md](../audits/AUDIT_DB.md), [AUDIT_STORE_AND_FORWARD.md](../audits/AUDIT_STORE_AND_FORWARD.md) |
 | **Normas de referencia** | OPC UA Part 4 (StatusCodes), ISA-18.2, prácticas DCS (hold-last, inhibit, stale PV, degraded mode) |
-| **Veredicto baseline** | **B−** operativo / **D** en calidad de señal (grado nuclear-DCS) |
+| **Veredicto baseline** | **B−** operativo / **D** en calidad de señal (pre-impl) |
+| **Veredicto post-impl** | **A−** disponibilidad · **B+** calidad · **A−** Login/UX degradada |
 
 ---
 
@@ -213,10 +214,10 @@ Tests previstos: `automation/tests/test_opc_quality.py` (nuevo), extensión de t
 
 <a id="veredicto"></a>
 
-| Dimensión | Baseline | Meta post-Fase 1–3 |
-|---|---|---|
-| Disponibilidad (arranque / reconnect / SAF) | **A−** | Mantener |
-| Calidad de señal (StatusCode → CVT → alarmas → HMI) | **D** | **B+ / A−** |
-| Trazabilidad Login / modo degradado UX | **B** | **A−** |
+| Dimensión | Baseline | Meta post-Fase 1–3 | Veredicto auditoría 2026-08-21 |
+|---|---|---|---|
+| Disponibilidad (arranque / reconnect / SAF) | **A−** | Mantener | **A−** |
+| Calidad de señal (StatusCode → CVT → alarmas → HMI) | **D** | **B+ / A−** | **B+** |
+| Trazabilidad Login / modo degradado UX | **B** | **A−** | **A−** |
 
-**Siguiente paso:** implementar Fase 1 (P0) con pruebas unitarias e integración por cada CA-OQ-01…04.
+**Estado:** Fases 1–3 implementadas. Detalle y evidencia: [AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md](../audits/AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md).

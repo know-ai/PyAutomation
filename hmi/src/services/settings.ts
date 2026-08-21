@@ -5,6 +5,7 @@ export type AppConfig = {
   log_max_bytes?: number;
   log_backup_count?: number;
   log_level?: number;
+  alarm_inhibit_uncertain_quality?: boolean;
 };
 
 export type UpdateSettingsPayload = {
@@ -12,6 +13,7 @@ export type UpdateSettingsPayload = {
   log_max_bytes?: number;
   log_backup_count?: number;
   log_level?: number;
+  alarm_inhibit_uncertain_quality?: boolean;
 };
 
 export type ExportConfigResponse = {

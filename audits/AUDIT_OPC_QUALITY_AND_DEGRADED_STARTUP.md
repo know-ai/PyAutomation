@@ -1,270 +1,344 @@
-# Auditoría: calidad OPC UA, enlace OPC offline y historiador inalcanzable
+# Auditoría: calidad OPC UA y arranque degradado — verificación post-spec 09 + 10
 
 | Campo | Valor |
 |---|---|
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
-| **Alcance** | (1) Señales GOOD/BAD/UNCERTAIN/NaN y alarmas de proceso; (2) arranque con cliente OPC UA configurado y servidor inactivo; (3) arranque sin alcanzar el historiador/BD y trazabilidad en Login |
-| **Fecha** | 2026-08-20 |
-| **Evidencia de código** | Revisión estática 2026-08-20 |
-| **Complementa** | [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md), [docs/auditoria-modulo-alarmas-isa-18-2.md](../docs/auditoria-modulo-alarmas-isa-18-2.md) |
-| **Normas de referencia** | OPC UA Part 4 (StatusCodes), ISA-18.2 (alarm management), IEC 61508 / IEC 61511 (ciclo de vida SIS — contraste, no certificación), prácticas DCS/SCADA de clase mundial (hold-last, inhibit, stale PV, degraded mode) |
-| **Veredicto vigente** | **B− operativo** (sobrevive y reconecta) / **D nuclear-DCS** en calidad de señal. Enlace OPC y BD: resiliencia **A−**; semántica de calidad y trazabilidad de Login: **gaps críticos** |
-| **Clasificación** | Auditoría de disponibilidad · calidad de señal · degradación segura |
+| **Alcance** | Verificación de [specs/09-OPC-QUALITY-AND-DEGRADED-STARTUP.md](../specs/09-OPC-QUALITY-AND-DEGRADED-STARTUP.md) v1.0 (P0/P1) **y** [specs/10-OPC-QUALITY-A-PLUS.md](../specs/10-OPC-QUALITY-A-PLUS.md) v2.0 (A+) |
+| **Fecha** | 2026-08-21 |
+| **Evidencia** | Revisión estática del código + `automation/tests/test_opc_quality.py` — **19 OK / 3 skipped** (soak planta) |
+| **Baseline** | Auditoría gap 2026-08-20 (mismo archivo, § histórico): **B− operativo / D calidad de señal** |
+| **Complementa** | [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [docs/opc-quality-runbook.md](../docs/opc-quality-runbook.md) |
+| **Normas de referencia** | OPC UA Part 4 (StatusCodes), ISA-18.2, IEC 61508 (SIL-ready, sin certificación), prácticas DCS (hold-last, inhibit, stale PV, degraded mode) |
+| **Veredicto vigente** | **A− disponibilidad** · **A− calidad de señal** (A+ condicionado a soak 24 h) · **A Login / UX degradada** |
+| **Clasificación** | Auditoría de verificación · calidad de señal · degradación segura |
 
 ---
 
 ## 0. Respuesta directa
 
-| Escenario | ¿Qué hace hoy PyAutomation? | ¿Es grado nuclear / clase mundial? | Resultado esperado (norma / DCS) |
+| Escenario | ¿Qué hace PyAutomation **ahora** (2026-08-21)? | Spec | Grado nuclear / DCS |
 |---|---|---|---|
-| **Servidor OPC envía BAD / UNCERTAIN / NaN** | La suscripción **ignora `StatusCode`**. El CVT recibe valor con calidad **GOOD por defecto**. NaN/inf se marcan en el tag como UNCERTAIN solo si alguien pasa `quality=` o el valor no es finito en `Tag.set_value`. Las alarmas de proceso evalúan **solo el valor**. El wavelet `.f` sí hace HOLD+UNCERTAIN **si** la calidad llega al ingest | **No.** Falta mapeo Part 4 → quality, hold-last en PV raw, inhibición ISA-18.2 y alarma de calidad de señal | Ver §1.2 |
-| **Arranque con OPC configurado y servidor caído** | App **no bloquea**. Cliente queda en memoria; audit `CONNECTION_FAILED`; alarma BOOL `ALM.OPCUA.*`; reconnect en `LoggerWorker`. Tags de proceso **no** se ponen BAD | **Parcial (A− enlace).** Falta marcar PVs stale/BAD al perder enlace | Ver §2.2 |
-| **Arranque sin alcanzar BD/historiador** | App **no bloquea**. SAF journal local. Login API **503** + HMI abre `DatabaseConfigForm` con mensaje i18n. Sin catálogo (tags/OPC/usuarios) desde BD | **Parcial (A− disponibilidad, B trazabilidad Login).** Falta modo degradado operador claro y Events visibles sin sesión | Ver §3.2 |
+| **Servidor OPC publica BAD / UNCERTAIN / NaN** | StatusCode → `Quality` (severity + substatus); hold-last en PV; gate de proceso; `ALM.QUALITY.*`; badge G/U/B + tooltip substatus | 09+10 | **A−** (A+ pendiente soak/SIL) |
+| **Arranque / pérdida con OPC offline** | App no bloquea; `ALM.OPCUA.*`; reconnect; tags del cliente → **BAD/stale** sin pisar last-good; `ALM.QUALITY.*` | 09+10 | **A−** |
+| **Arranque sin historiador** | App no bloquea; SAF; Login/Signup **503 + `event_id` visible** en HMI; banner «modo degradado» | 09+10 | **A** |
+| **Operador cambia política UNCERTAIN** | Settings → checkbox; PUT `/settings/update`; caché hot path sin `json.load` | 10 | **A−** |
 
-Cadena real de adquisición (hot path):
+Cadena hot path **post-spec 10**:
 
 ```
 OPC UA datachange (subscription.py)
-  → lee SourceTimestamp
-  → NO lee StatusCode / Quality
-  → cvt.set_value_fast(id, val, timestamp)   # quality default = GOOD (1.0)
-  → Tag.set_value(..., quality=GOOD)
-  → deadband → notify → Alarm.notify(value)  # sin gate de calidad
-  → (si filter ON) ingest wavelet con quality del set_value
+  → SourceTimestamp + StatusCode
+  → map_opc_status() → Quality(severity, opc_code, substatus)
+  → cvt.set_value_fast(..., quality, opc_code, substatus)
+  → Tag.set_value: Bad/NaN/Inf → hold-last + stale; GOOD → actualiza PV
+  → QualityAlarmEngine → SYS.QUALITY.<tag> / ALM.QUALITY.<tag> (+ Event rate-limited)
+  → Alarm.notify: gate BAD; UNCERTAIN vía get_inhibit_uncertain_quality() (caché)
+  → serialize_socket { quality, quality_label, quality_substatus, stale, stale_age_ms }
+  → HMI QualityBadge G/U/B* (+ substatus tooltip)
 ```
 
 ---
 
-## 1. Calidad OPC UA (GOOD / BAD / UNCERTAIN / NaN) y alarmas
+## 1. Matriz de criterios de aceptación (CA-OQ)
 
-### 1.1. Inventario de código (hoy)
+| ID | Criterio | Resultado | Evidencia primaria | Test |
+|---|---|---|---|---|
+| **CA-OQ-01** | `CVTEngine.set_value(..., quality=BAD)` persiste quality | **PASS** | `cvt.py` `set_value` → `set_value_fast` | `TestCVTQualityPropagation` |
+| **CA-OQ-02** | StatusCode Bad → CVT quality ≠ GOOD | **PASS** | `subscription.py` `_extract_status_quality` + `datachange_notification` | `TestSubscriptionStatusCode` |
+| **CA-OQ-03** | Bad/NaN/Inf no modifica PV raw; sí quality/stale | **PASS** | `tag.py` `set_value` hold-last | `TestHoldLast` |
+| **CA-OQ-04** | `Alarm.notify` no evalúa setpoint en BAD | **PASS** | `alarms/__init__.py` `_quality_allows_process_evaluation` | `TestAlarmQualityGate` |
+| **CA-OQ-05** | Disconnect OPC → tags BAD/stale sin pisar last-good | **PASS** | `models.py` + `cvt.mark_opcua_client_tags_stale` | `TestOpcDisconnectStale` |
+| **CA-OQ-06** | HMI badge G/U/B + stale age (+ substatus) | **PASS** | `QualityBadge.tsx`, Tags, Alarms, StripChart | Revisión estática + suite |
+| **CA-OQ-07** | Login 503 incluye `event_id` (API) | **PASS** | `users.py` + `db_audit.ensure_degraded_event_id` | `TestLoginEventId` |
+| **CA-OQ-08** | Banner modo degradado si BD offline | **PASS** | `DegradedModeBanner.tsx` + `MainLayout.tsx` | Revisión estática HMI |
+| **CA-OQ-09** | `ALM.QUALITY.<tag>` ON en BAD/stale, OFF en GOOD | **PASS** | `quality_gate.py` + `quality_alarms.py` + hook `Tag` | `TestQualityAlarmEngine` |
+| **CA-OQ-10** | Login/Signup HMI muestra `event_id` | **PASS** | `Login.tsx` / `Signup.tsx` + `DatabaseConfigForm` | `TestHmiQualitySurfaces` |
+| **CA-OQ-11** | Toggle UNCERTAIN en caliente (caché) | **PASS** | `set_inhibit_uncertain_quality` + `QualityPolicyPanel.tsx` | `TestInhibitUncertainCache` |
+| **CA-OQ-12** | Trends históricos / DataLogger badge o «sin calidad» | **PASS** | `HistoricalQualityLegend.tsx` | `TestHmiQualitySurfaces` |
+| **CA-OQ-13…15** | Soak 24 h planta | **PENDIENTE** | [opc-quality-runbook.md](../docs/opc-quality-runbook.md) § 4 | `TestSoakDocumented` (3 skip) |
 
-| Pieza | Archivo | Comportamiento actual |
+**Suite:** `./venv/bin/python -m unittest automation.tests.test_opc_quality` — **22 tests: 19 OK, 3 skipped** (2026-08-21).
+
+---
+
+## 2. Inventario de código (evidencia)
+
+### 2.1 Mapeo StatusCode → Quality (borde OPC)
+
+| Artefacto | Rol | Estado |
 |---|---|---|
-| Suscripción DAS | `automation/opcua/subscription.py` → `datachange_notification` / `update_tag_value` | Solo `SourceTimestamp` + valor. **Sin `StatusCode`.** `set_value_fast` sin `quality` |
-| Códigos internos | `automation/signal_conditioning/quality.py` | `GOOD=1.0`, `UNCERTAIN=0.5`, `BAD=0.0`. `is_good_quality`: `quality > 0` → **UNCERTAIN se trata como “bueno”** para el anillo wavelet |
-| Tag | `automation/tags/tag.py` → `set_value` | Si muestra “mala” (`!is_good_sample`): incrementa `_bad_samples_dropped`, fija `self.quality = UNCERTAIN` (no conserva BAD), **sí sobrescribe `value`** (no hold-last en raw) |
-| CVT | `automation/tags/cvt.py` | `CVT.set_value` y `set_value_fast` propagan `quality`. **`CVTEngine.set_value` descarta `quality`** (`return self.set_value_fast(id, value, timestamp)` sin el 4.º arg) |
-| Wavelet `.f` | `wavelet_block.py` + `wavelet_worker.py` | BAD/NaN → no entran al ring; **HOLD** + publica último bueno con **UNCERTAIN**. Al recuperar GOOD → OK. Publicación vía `app.cvt.set_value(..., quality=...)` — afectada por el bug de `CVTEngine.set_value` |
-| Alarmas de proceso | `automation/alarms/__init__.py` → `Alarm.notify` | Compara valor vs setpoint. **Sin quality, sin inhibit, sin stale** |
-| Alarmas de enlace | `automation/utils/connection_alarms.py` | BOOL `SYS.OPCUA.*.Disconnected` / `SYS.DB.Disconnected` + ISA-18.2 lifecycle |
-| Wire HMI / SAF | `serialize_socket`, journal | Campo `quality` existe; en adquisición live casi siempre GOOD |
+| `automation/signal_conditioning/quality.py` | `Quality` frozen; `map_opc_status`; `status_code_to_quality` (bits 30–31); `status_code_substatus`; caché inhibit | ✅ |
+| `automation/opcua/subscription.py` | `_extract_status_quality` → `Quality`; `_quality_write_kwargs` propaga `opc_code`/`substatus` | ✅ |
 
-### 1.2. Qué dice el estándar / práctica industrial de clase mundial
+```42:50:automation/signal_conditioning/quality.py
+@dataclass(frozen=True)
+class Quality:
+    """Immutable quality snapshot at the OPC / CVT boundary."""
 
-Referencias operativas (no es una certificación SIL; es el contrato que un DCS nuclear/industrial espera):
+    severity: float = GOOD
+    opc_code: int | None = None
+    substatus: str | None = None
+    stale: bool = False
+    stale_age_ms: int | None = None
+```
 
-| Principio | Fuente típica | Requisito |
+```153:159:automation/signal_conditioning/quality.py
+def map_opc_status(status_code) -> Quality:
+    """OPC-edge mapper: StatusCode → immutable Quality (severity + forensics)."""
+    return Quality(
+        severity=status_code_to_quality(status_code),
+        opc_code=_status_int(status_code),
+        substatus=status_code_substatus(status_code),
+    )
+```
+
+```43:49:automation/opcua/subscription.py
+def _extract_status_quality(data):
+    """Pull StatusCode from a datachange notification payload → Quality."""
+    try:
+        status = data.monitored_item.Value.StatusCode
+    except Exception:
+        return map_opc_status(None)
+    return map_opc_status(status)
+```
+
+```380:386:automation/opcua/subscription.py
+    def datachange_notification(self, node, val, data):
+        ...
+        timestamp = data.monitored_item.Value.SourceTimestamp
+        quality = _extract_status_quality(data)
+        self.update_tag_value(node, val, timestamp, quality=quality)
+```
+
+El hot path del Tag sigue en **float** `1.0 / 0.5 / 0.0` (O(1), sin allocation extra en el camino GOOD).
+
+### 2.2 Propagación CVT (bug P0 cerrado + forense)
+
+| Artefacto | Antes (2026-08-20) | Ahora |
 |---|---|---|
-| **StatusCode → calidad de PV** | OPC UA Part 4 | `Good` / `Uncertain` / `Bad` (y subcódigos: sensor failure, last usable, etc.) deben llegar al sistema de control y a la HMI |
-| **Hold last good** | Práctica DCS (ABB, Emerson, Siemens, Honeywell) | Ante `Bad` o NaN: **congelar** último valor bueno válido; no alimentar control/alarmas con basura |
-| **Quality inhibit** | ISA-18.2 + guías de alarm management | Alarmas de proceso **no deben** dispararse / re-dispararse por un PV Bad/Uncertain salvo política explícita; o se genera alarma de **calidad/stale** separada |
-| **Separación connection vs process** | ISA-18.2 | Pérdida de enlace ≠ violación de umbral de proceso. Ambas deben ser visibles y trazables |
-| **Trazabilidad** | IEC 61511 mindset / NUREG alarm practices | Cada transición de calidad y cada inhibit debe poder auditarse (quién/qué/cuándo) |
-| **HMI** | EEMUA 191 / ISA-18.2 HMI | Operador ve badge de calidad (G/U/B), stale age, y no confunde “último valor bueno” con “medición viva” |
+| `CVTEngine.set_value` | Descartaba 4.º arg → siempre GOOD | Reenvía `quality`, `opc_code`, `substatus` |
 
-### 1.3. Contraste norma vs PyAutomation
+```1247:1253:automation/tags/cvt.py
+    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0, opc_code:int|None=None, substatus:str|None=None):
+        r"""
+        Tag value write. Acquisition uses the fast path; CRUD stays on __query.
+        """
+        return self.set_value_fast(
+            id, value, timestamp, quality=quality, opc_code=opc_code, substatus=substatus
+        )
+```
 
-| Requisito | Hoy | Gap |
+Impacto colateral: publicación wavelet `.f` vía `app.cvt.set_value(..., quality=UNCERTAIN)` ya no pierde calidad ([AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md)).
+
+### 2.3 Hold-last + stale + hook de calidad en Tag
+
+| Comportamiento | Evidencia |
+|---|---|
+| Bad / NaN / Inf → no `value.set_value`; sí `quality`, `stale`, `stale_timestamp` | `tag.py` `set_value` |
+| Persiste `opc_status_code` / `quality_substatus` | kwargs opcionales |
+| Transición degraded → `notify_quality_transition` **fuera del lock** | `_notify_quality_engine` |
+| Wire | `serialize` / `serialize_socket`: `quality`, `quality_label`, `quality_substatus`, `opc_status_code`, `stale`, `stale_age_ms` |
+
+```351:358:automation/tags/tag.py
+    def _notify_quality_engine(self, previous_degraded: bool, degraded: bool) -> None:
+        if bool(previous_degraded) == bool(degraded):
+            return
+        try:
+            from ..alarms.quality_gate import notify_quality_transition
+
+            notify_quality_transition(self, degraded=bool(degraded))
+```
+
+### 2.4 Gate ISA-18.2 en alarmas de proceso (caché, sin I/O)
+
+```350:363:automation/alarms/__init__.py
+    def _quality_allows_process_evaluation(self) -> bool:
+        """Gate process setpoints on PV quality (ISA-18.2 inhibit on Bad)."""
+        from ..signal_conditioning.quality import is_process_alarm_allowed
+        ...
+            from ..signal_conditioning.quality import get_inhibit_uncertain_quality
+
+            inhibit_uncertain = bool(get_inhibit_uncertain_quality())
+        ...
+        return is_process_alarm_allowed(quality, inhibit_uncertain=inhibit_uncertain)
+```
+
+| Política | Default | Configurable |
 |---|---|---|
-| Mapear `StatusCode` OPC → quality CVT | **No** | Crítico |
-| Hold-last en tag **raw** ante Bad/NaN | **No** (solo wavelet `.f`) | Crítico para control/alarmas |
-| Inhibir alarmas de proceso por Bad/Uncertain | **No** | Crítico ISA-18.2 |
-| Alarma dedicada “PV Bad / Stale / No Data” | **No** | Alto |
-| Distinguir BAD vs UNCERTAIN en el tag | Tag fuerza UNCERTAIN; UNCERTAIN≈good en wavelet | Medio |
-| Propagar quality a `.f` por `CVTEngine.set_value` | **Bug:** se pierde el 4.º argumento | Alto (rompe diseño auditado) |
-| Pérdida de enlace → Bad en tags suscritos | Solo alarma BOOL de cliente | Alto |
-| Certificación IEC 61508 SIL | Sin V&V / IAD / golden | Fuera de alcance actual (veredicto nuclear **D** en calidad) |
+| BAD | **Inhibe** setpoint | — |
+| UNCERTAIN | **Permite** evaluación | `alarm_inhibit_uncertain_quality=true` (Settings UI + API) |
+| GOOD | Evalúa | — |
 
-### 1.4. Recomendaciones priorizadas (para cumplir clase mundial)
+El shelve timeout permanece **fuera** del gate (lifecycle ISA-18.2 intacto).
 
-1. **P0 — Mapear StatusCode en `DAS.datachange_notification`**  
-   Extraer `data.monitored_item.Value.StatusCode` → `GOOD` / `UNCERTAIN` / `BAD` y pasar `quality=` a `set_value_fast`.
-2. **P0 — Hold-last en `Tag.set_value` para raw** cuando `!is_good_sample`: no sobrescribir valor de proceso; fijar quality BAD/UNCERTAIN; emitir evento/métrica.
-3. **P0 — Gate de calidad en `Alarm.notify`**: no evaluar setpoint si quality es BAD (o política configurable BAD+UNCERTAIN); opcional alarma `ALM.QUALITY.<tag>`.
-4. **P0 — Corregir `CVTEngine.set_value`** para propagar `quality` (una línea).
-5. **P1 — Al perder enlace OPC**: marcar tags del cliente como BAD/stale + `stale_age_ms` en status/HMI.
-6. **P1 — HMI**: badge G/U/B en Tags/Trends/Alarms; no mostrar NaN como número “normal”.
-7. **P2 — IAD** (outlier/OOR/frozen) enganchado al hot path ([AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md)).
+### 2.5 `ALM.QUALITY.<tag>` (spec 10 / CA-OQ-09)
 
----
-
-## 2. Arranque con Servidor OPC UA configurado e inactivo
-
-### 2.1. Comportamiento actual (evidencia)
-
-```
-connect_to_db / hydrate
-  → load_opcua_clients_from_db (si DB up)
-  → OPCUAClientManager.add → Client.connect()
-       · fallo → WARNING + audit CONNECTION_FAILED
-       · cliente **permanece** en _clients
-       · set_opcua_disconnected(True) → ALM.OPCUA.<client>
-  → App continúa (workers, HMI, Socket.IO)
-  → LoggerWorker.check_opcua_connection → Client.reconnect() periódico
-       · éxito → re-subscribe tags + socket on.opcua.connected
-```
-
-| Aspecto | Estado |
-|---|---|
-| ¿Bloquea el arranque? | **No** — correcto para edge |
-| ¿Alarma de conexión? | **Sí** — BOOL + ISA-18.2 |
-| ¿Audit trail? | **Sí** — `opcua_audit.py` → Events (fail-safe / SAF) |
-| ¿Reintento? | **Sí** — watchdog LoggerWorker + cooldown de spam audit |
-| ¿PV de proceso marcados Bad? | **No** — quedan en último valor o vacíos; quality sigue aparentando GOOD |
-| ¿HMI? | Toast/socket desconexión; alarma en lista si el catálogo de alarmas está hidratado |
-
-Archivos ancla: `automation/managers/opcua_client.py`, `automation/opcua/models.py`, `automation/utils/connection_alarms.py`, `automation/utils/opcua_audit.py`, `automation/workers/logger.py`, `automation/core.py` (`load_opcua_clients_from_db`, `_hydrate_runtime_from_db_body`).
-
-### 2.2. Resultado esperado (industrial)
-
-| Expectativa | Cumple hoy |
-|---|---|
-| El runtime edge **no debe caer** si un servidor OPC está down | **Sí** |
-| Debe existir alarma de **comunicación** separada de proceso | **Sí** |
-| Debe haber reconnect automático con backoff/trazabilidad | **Sí** (mejorable: backoff exponencial formal) |
-| Los tags suscritos deben pasar a **Bad/Stale** y no alimentar falsas alarmas de proceso | **No** |
-| El operador debe ver claramente “enlace perdido” vs “proceso en alarma” | **Parcial** (alarma BOOL sí; PVs engañosos) |
-| Fail-safe / fail-secure según política de planta | **Parcial** — no hay política de “fail position” por tag |
-
-### 2.3. Veredicto y brechas
-
-**Veredicto enlace OPC: A−** (robusto, no bloqueante, trazable a nivel de cliente).  
-**Veredicto efecto sobre PVs: D** (no nuclear-grade).
-
-Para clase mundial, además de lo actual:
-
-1. Al detectar disconnect: `for tag in client_tags: set_value(..., quality=BAD)` o flag `stale=True` sin pisar last-good.
-2. Suppress/inhibit alarmas de proceso de esos tags mientras el enlace esté Bad.
-3. Contador `stale_age_ms` en `/tags/.../status` y Performance.
-4. Runbook HMI: banner “OPC client X offline” persistente (no solo toast).
-
----
-
-## 3. Arranque sin alcanzar el servidor de base de datos (historiador)
-
-### 3.1. Comportamiento actual (evidencia)
-
-```
-__start_workers / run
-  → connect_to_db(source="core-startup")
-       · fallo → _fail_db_link
-            · _db_live=False
-            · database_connection_auditor.notify_connect_failure
-            · set_db_disconnected(True) → ALM.DB.Connection
-            · mark_remote_db_dead()
-       · App sigue: "App started successfully"
-  → SAF journal local operativo (si writers existen)
-  → Sin hydrate: no tags/alarmas/usuarios/OPC desde BD
-  → LoggerWorker.reconnect_to_db en watchdog
-```
-
-**Login / HMI**
-
-| Capa | Comportamiento |
-|---|---|
-| API `POST /users/login` | **503** + `error_type: database_connection_error` + mensaje de conexión |
-| HMI `Login.tsx` | Detecta 503 / hints → **no** muestra solo “credenciales inválidas”; abre **`DatabaseConfigForm`** |
-| i18n | `auth.databaseUnavailable`: *“El servicio de autenticación no está disponible. Verifique la conexión a la base de datos.”* |
-| Axios | 503 DB **no** fuerza logout de sesión previa |
-| Tras configurar BD | `DatabaseConfigForm` → connect → reintento de login |
-
-Archivos: `automation/core.py` (`connect_to_db`, `_fail_db_link`), `automation/utils/db_audit.py`, `automation/modules/users/resources/users.py`, `hmi/src/pages/Login.tsx`, `hmi/src/components/DatabaseConfigForm.tsx`, `hmi/src/locales/es.json` / `en.json`.
-
-### 3.2. Resultado esperado (industrial + trazabilidad)
-
-| Expectativa | Cumple hoy |
-|---|---|
-| Edge **no congela** el hub ni deja de adquirir si el journal SAF está listo | **Sí** ([AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) **A+**) |
-| Alarma de historiador desconectado | **Sí** (`ALM.DB.Connection`) |
-| Audit de fallo de conexión con cooldown (sin spam) | **Sí** (`db_audit`) |
-| Login **no** debe aparentar “password incorrecto” | **Sí** — 503 + formulario BD |
-| Mensaje claro al operador en Login | **Sí** — i18n `databaseUnavailable` + UI de reconfiguración |
-| Operador puede ver Events/bitácora **sin** sesión cuando solo falló el historiador | **No** (Login es la puerta; sin token no hay HMI operativa) |
-| Cold start sin BD: catálogo vacío es explícito en HMI (“sin configuración / degraded”) | **Parcial** — depende de si había estado en memoria |
-| Exactamente-una-vez y durabilidad de muestras durante outage | **Sí** — SAF journal |
-
-### 3.3. ¿Cumplimos trazabilidad?
-
-| Pregunta | Respuesta |
-|---|---|
-| ¿El fallo de BD queda registrado? | **Sí**, en audit de sistema / Events cuando el store lo permite; alarma BOOL activa |
-| ¿El Login muestra trazabilidad? | **Sí a nivel operador**: mensaje i18n + flujo de reconfiguración. **No** muestra el Event ID / correlation ID del fallo |
-| ¿Cómo debe funcionar el sistema? | Degraded mode: adquisición→SAF local; alarmas de enlace en memoria; Login bloquea autenticación hasta historiador reachable; reconnect automático; al recuperar → hydrate + flush SAF |
-
-### 3.4. Veredicto y brechas
-
-**Veredicto disponibilidad BD: A−.**  
-**Veredicto UX/trazabilidad Login: B.**
-
-Para clase mundial:
-
-1. Banner global “Historiador desconectado” post-login (ya hay overlay de DB en MainLayout — verificar cobertura cold-start).
-2. En Login: correlacionar con `ALM.DB.Connection` / último Event (timestamp, host) sin exigir sesión admin.
-3. Distinguir “BD no configurada” vs “BD inalcanzable” vs “credenciales BD inválidas” en el payload 503 (parcialmente existe).
-4. Modo read-only de emergencia con catálogo embebido/snapshot (opcional, plantas críticas).
-
----
-
-## 4. Matriz de veredictos
-
-| Dominio | Operativo planta | Nuclear / DCS clase mundial |
+| Pieza | Ruta | Comportamiento |
 |---|---|---|
-| Calidad de señal OPC → CVT → alarmas | **D** (invisible StatusCode) | **D** |
-| Wavelet `.f` HOLD (diseño) | **A−** (si quality llega) | **B** (depende de P0 CVTEngine + StatusCode) |
-| Enlace OPC offline al arranque | **A−** | **B−** (falta Bad/stale en PVs) |
-| Historiador offline + SAF | **A** | **A−** |
-| Login ante BD caída | **B+** (mensaje + form) | **B** (sin correlation ID / degraded ops) |
+| Engine | `automation/alarms/quality_gate.py` | Transición BAD/stale ↔ GOOD; `threading.local` anti-reentrada; Event rate-limited 5 s |
+| BOOL ISA | `automation/utils/quality_alarms.py` | Lazy `SYS.QUALITY.<tag>` / `ALM.QUALITY.<tag>`; excluye `SYS.*`, `ALM.*`, `.f` |
+| Fail-safe | Ambos | Nunca levantan excepción al hot path de adquisición |
 
-**Veredicto global de este documento: B− operativo / D en calidad de señal para grado nuclear.**
+```24:38:automation/alarms/quality_gate.py
+def notify_quality_transition(tag, *, degraded: bool) -> None:
+    """Drive ALM.QUALITY and a forensic Event. Never raises. Never re-enters."""
+    if getattr(_tls, "active", False):
+        return
+    if tag is None or not is_quality_subject(tag):
+        return
+    _tls.active = True
+    try:
+        name = getattr(tag, "name", "") or ""
+        set_quality_degraded(name, degraded)
+        _emit_quality_event(tag, degraded=degraded)
+    ...
+```
+
+Coexiste con `ALM.OPCUA.*` (enlace) y con setpoints de proceso (inhibidos, no sustituidos).
+
+### 2.6 Stale al disconnect OPC
+
+`_sync_connection_alarm(True)` en connect-fail / disconnect / lost-link → `mark_opcua_client_tags_stale` escribe valor held con `quality=BAD` → hold-last garantiza el PV y dispara `ALM.QUALITY.*`.
+
+### 2.7 Login 503 + `event_id` visible (CA-OQ-07 / 10)
+
+```18:25:automation/modules/users/resources/users.py
+def _database_unavailable_payload(message: str, details: str) -> dict:
+    event_id = database_connection_auditor.ensure_degraded_event_id()
+    return {
+        "message": message,
+        "error_type": "database_connection_error",
+        "details": details,
+        "event_id": event_id,
+    }
+```
+
+| Capa | Artefacto | Estado |
+|---|---|---|
+| API | `users.py` + `db_audit.ensure_degraded_event_id` | ✅ UUID hex estable por episodio |
+| HMI Login | `Login.tsx` `extractBackendEventId` | ✅ |
+| HMI Signup | `Signup.tsx` | ✅ |
+| Formulario | `DatabaseConfigForm.tsx` prop `eventId` + alert | ✅ |
+| i18n | `auth.databaseUnavailableWithEventId` ES/EN | ✅ |
+
+### 2.8 Settings — política UNCERTAIN (CA-OQ-11)
+
+```93:99:automation/modules/settings/resources/settings.py
+        if 'alarm_inhibit_uncertain_quality' in data:
+            inhibit = bool(data['alarm_inhibit_uncertain_quality'])
+            app.set_app_config(alarm_inhibit_uncertain_quality=inhibit)
+            try:
+                from ....signal_conditioning.quality import set_inhibit_uncertain_quality
+
+                set_inhibit_uncertain_quality(inhibit)
+```
+
+| Capa | Artefacto |
+|---|---|
+| API | PUT `/settings/update` campo `alarm_inhibit_uncertain_quality` |
+| Caché | `set_inhibit_uncertain_quality` / `get_inhibit_uncertain_quality` |
+| HMI | `QualityPolicyPanel.tsx` en Settings (capítulo `settings-quality`) |
+
+### 2.9 HMI — superficies de calidad
+
+| Superficie | Artefacto | Comportamiento |
+|---|---|---|
+| Tags | `Tags.tsx` + `QualityBadge` | Badge + tooltip substatus / stale age |
+| Alarmas | `AlarmTableRow.tsx` | Badge sobre valor del tag |
+| Trends RT | `StripChart.tsx` | Badge por tag + substatus |
+| Trends históricos | `Trends.tsx` + `HistoricalQualityLegend` | Live G/U/B o «N/A» |
+| DataLogger | `DataLogger.tsx` + misma leyenda | Idem |
+| Modo degradado | `DegradedModeBanner.tsx` en `MainLayout` | Visible si BD offline |
+| Settings | `QualityPolicyPanel.tsx` | Toggle UNCERTAIN en caliente |
 
 ---
 
-## 5. Plan mínimo para cerrar gaps P0 (orden sugerido)
+## 3. Contraste baseline → post-spec 09 → post-spec 10
 
-| # | Cambio | Archivos | Criterio de aceptación |
+| Requisito DCS / spec | Baseline 2026-08-20 | Post-09 | Post-10 (ahora) |
 |---|---|---|---|
-| 1 | Propagar `quality` en `CVTEngine.set_value` | `tags/cvt.py` | Test: `set_value(..., quality=BAD)` deja `tag.quality` BAD/UNCERTAIN |
-| 2 | Mapear `StatusCode` en suscripción | `opcua/subscription.py` | Servidor que publica Bad → CVT no queda GOOD |
-| 3 | Hold-last raw + no notify engañoso | `tags/tag.py` | Bad no cambia PV de proceso; sí cambia quality |
-| 4 | Inhibit alarmas de proceso por Bad | `alarms/__init__.py` | Setpoint no dispara en Bad |
-| 5 | Stale al disconnect OPC | `opcua/models.py` + connection path | Disconnect → tags del cliente quality BAD |
-| 6 | Tests de integración + soak 24 h | `automation/tests/` | Suite verde + evidencia soak |
+| StatusCode → quality CVT | No | Sí (severidad) | **Sí + substatus / opc_code** |
+| Hold-last PV raw | No (solo `.f`) | Sí | Sí |
+| Inhibit alarmas proceso en Bad | No | Sí | Sí (caché, no JSON) |
+| Toggle UNCERTAIN en Settings | No | Solo config archivo | **UI + API en caliente** |
+| Disconnect → Bad/stale | Solo BOOL enlace | BOOL + PVs | + `ALM.QUALITY.*` |
+| Badge HMI G/U/B | No | Tags/Alarms/StripChart | **+ Trends históricos / DataLogger** |
+| Login `event_id` | No | Solo API | **Visible al operador** |
+| Banner degradado | Overlay parcial | Persistente | Persistente |
+| `ALM.QUALITY.<tag>` | No | Residual OQ-R1 | **Implementado** |
+| Certificación SIL / soak 24 h | Fuera / no | Fuera / no | Procedimiento documentado; **runtime pendiente** |
 
 ---
 
-## 6. Cross-links
+## 4. Disponibilidad (no regresiones)
 
-| Tema | Documento |
-|---|---|
-| Wavelet / HOLD / `.f` | [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md) |
-| Conexiones Peewee / no freeze hub | [AUDIT_DB.md](./AUDIT_DB.md) |
-| Durabilidad sin historiador | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) |
-| Events / bitácora | [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) |
-| ISA-18.2 estados | [docs/auditoria-modulo-alarmas-isa-18-2.md](../docs/auditoria-modulo-alarmas-isa-18-2.md) |
-| Spec wavelet | [specs/08-WAVELET-RPA-RT.md](../specs/08-WAVELET-RPA-RT.md) |
+| Capacidad previa (A−) | ¿Intacta? | Notas |
+|---|---|---|
+| Arranque no bloqueante OPC down | **Sí** | Stale mark fail-safe |
+| Reconnect `LoggerWorker` + re-subscribe | **Sí** | GOOD limpia stale y `ALM.QUALITY.*` |
+| Arranque BD down + SAF | **Sí** | Sin cambios en journal/replicator |
+| Alarmas BOOL `ALM.OPCUA.*` / `ALM.DB.Connection` | **Sí** | Coexisten con `ALM.QUALITY.*` |
+| Hot path sin I/O de config | **Sí** | `get_inhibit_uncertain_quality()` O(1) tras primer load |
 
 ---
 
-## 7. Anclas de código (checklist de re-auditoría)
+## 5. Tests y cobertura
+
+| Suite | Cobertura vs CA | Resultado (2026-08-21) |
+|---|---|---|
+| `automation/tests/test_opc_quality.py` | CA-OQ-01…12 + helpers; 13–15 documentados/skipped | **19 OK, 3 skipped** |
+| `TestQualityAlarmEngine` | CA-OQ-09 (subject filter + ON/OFF) | OK |
+| `TestInhibitUncertainCache` | CA-OQ-11 | OK |
+| `TestHmiQualitySurfaces` | CA-OQ-10, 12 (artefactos HMI) | OK |
+| `TestSoakDocumented` | CA-OQ-13…15 runbook + skip runtime | 1 OK + 3 skip |
+| Wavelet hold-last BAD | Alineado a calidad BAD (no UNCERTAIN forzado) | OK (suite wavelet) |
+
+Pendiente de formalizar (bloquea **A+**, no **A−**):
+
+- Soak planta 24 h según [opc-quality-runbook.md](../docs/opc-quality-runbook.md) § 4.
+- E2E browser de badge/banner (hoy revisión estática + asserts de archivos HMI).
+- Persistencia de quality por muestra en historiador (fuera de alcance spec 10; badge histórico usa live CVT).
+
+---
+
+## 6. Hallazgos residuales (priorizados)
+
+| ID | Severidad | Hallazgo | Estado |
+|---|---|---|---|
+| **OQ-R1** | — | `ALM.QUALITY.<tag>` | **Cerrado** — `quality_gate.py` + `quality_alarms.py` |
+| **OQ-R2** | — | Toggle UNCERTAIN en Settings | **Cerrado** — `QualityPolicyPanel` + caché |
+| **OQ-R3** | — | Login HMI sin `event_id` | **Cerrado** — form + toast |
+| **OQ-R4** | — | Trends históricos sin badge | **Cerrado** — `HistoricalQualityLegend` |
+| **OQ-R5** | Info | Subcódigo Part 4 | **Cerrado en wire/tooltip**; no se historifica por muestra |
+| **OQ-R6** | Info | Sin V&V / IAD / certificación SIL | Fuera de alcance |
+| **OQ-R7** | Medio (V&V) | Soak 24 h CA-OQ-13…15 no ejecutado en planta | Procedimiento listo; bloquea veredicto **A+** |
+
+---
+
+## 7. Veredicto
+
+| Dimensión | Baseline | Meta 09 | Meta 10 | **Veredicto 2026-08-21** |
+|---|---|---|---|---|
+| Disponibilidad (arranque / reconnect / SAF) | **A−** | Mantener | Mantener | **A−** |
+| Calidad de señal (StatusCode → CVT → alarmas → HMI) | **D** | **B+ / A−** | **A− / A+** | **A−** (`ALM.QUALITY.*` + Settings + substatus; **A+** bloqueado por soak) |
+| Trazabilidad Login / modo degradado UX | **B** | **A−** | **A** | **A** (`event_id` visible) |
+
+**Conclusión:** las specs 09 y 10 están cerradas en código con evidencia unitaria y estática. El producto ya no engaña al operador con GOOD aparente: hold-last, inhibit, `ALM.QUALITY.*`, badge en RT e histórico, y correlación Login↔Events. El salto a **A+** en calidad de señal requiere completar el soak 24 h (CA-OQ-13…15).
+
+---
+
+## 8. Histórico
+
+### 8.1 Gap analysis 2026-08-20 (obsoleto)
+
+StatusCode ignorado, `CVTEngine.set_value` descartando quality, ausencia de hold-last en raw, alarmas sin gate, PVs no stale al disconnect OPC, Login 503 sin correlation id, ausencia de banner degradado.
+
+**Cadena pre-fix (obsoleta):**
 
 ```
-automation/opcua/subscription.py          # StatusCode ausente
-automation/tags/tag.py                    # set_value / quality / hold
-automation/tags/cvt.py                    # CVTEngine.set_value pierde quality
-automation/signal_conditioning/quality.py
-automation/signal_conditioning/wavelet_block.py
-automation/workers/wavelet_worker.py
-automation/alarms/__init__.py             # notify sin quality gate
-automation/utils/connection_alarms.py
-automation/utils/opcua_audit.py
-automation/utils/db_audit.py
-automation/opcua/models.py               # connect / reconnect
-automation/managers/opcua_client.py
-automation/core.py                       # connect_to_db / load_opcua / _fail_db_link
-automation/workers/logger.py              # reconnect OPC + DB
-automation/modules/users/resources/users.py  # login 503
-hmi/src/pages/Login.tsx
-hmi/src/components/DatabaseConfigForm.tsx
-hmi/src/locales/es.json                   # auth.databaseUnavailable
+OPC datachange → (NO StatusCode) → set_value_fast(quality=GOOD) → Alarm.notify sin gate
 ```
+
+### 8.2 Verificación post-spec 09 (misma fecha, supersedida por §0–7)
+
+Cerró CA-OQ-01…08 con veredicto **B+ calidad / A− Login**. Residuales OQ-R1…R4 motivaron la spec 10; quedan cerrados en esta revisión.

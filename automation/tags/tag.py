@@ -1,7 +1,14 @@
 import math
 import secrets, logging, threading, time
 from datetime import datetime
-from ..signal_conditioning.quality import GOOD, UNCERTAIN, is_good_quality, is_good_sample
+from ..signal_conditioning.quality import (
+    BAD,
+    GOOD,
+    is_good_quality,
+    is_good_sample,
+    normalize_sample_quality,
+    publication_quality_label,
+)
 from ..utils import Observer
 from ..utils.decorators import logging_error_handler
 from ..buffer import Buffer
@@ -211,6 +218,10 @@ class Tag:
         self.dead_band = dead_band
         self.timestamp = timestamp
         self.quality = GOOD
+        self.stale = False
+        self.stale_timestamp = None
+        self.opc_status_code = None
+        self.quality_substatus = None
         self._bad_samples_dropped = 0
         self._last_quality = GOOD
         self.filter_enabled = filter_enabled
@@ -245,12 +256,15 @@ class Tag:
         value: float | str | int | bool,
         timestamp: datetime = None,
         quality: float = GOOD,
+        opc_code: int | None = None,
+        substatus: str | None = None,
     ):
         r"""
         Updates the value of the tag.
 
         This method handles:
         * Deadband filtering (only updates if change > dead_band).
+        * Hold-last-good on Bad / NaN / Inf (quality and stale updated; PV frozen).
         * Updating internal value and timestamp buffers.
         * Notifying attached observers.
 
@@ -260,31 +274,112 @@ class Tag:
         * **timestamp** (datetime, optional): Time of the value change. Defaults to now.
         * **quality** (float, optional): OPC-style quality (1.0=GOOD, 0.5=UNCERTAIN, 0= BAD).
         """
-        q = float(quality) if quality is not None else GOOD
+        q = normalize_sample_quality(value, quality)
         self._last_quality = q
-        bad_sample = not is_good_sample(value, q) if isinstance(value, (int, float)) else not is_good_quality(q)
+        if opc_code is not None:
+            self.opc_status_code = opc_code
+        if substatus is not None:
+            self.quality_substatus = substatus
+        elif q >= 0.99:
+            self.quality_substatus = None
+        if isinstance(value, bool):
+            bad_sample = not is_good_quality(q)
+        elif isinstance(value, (int, float)):
+            bad_sample = not is_good_sample(value, q)
+        else:
+            bad_sample = not is_good_quality(q)
+
+        if not timestamp:
+            timestamp = datetime.now()
+
+        previous_degraded = bool(self.stale) or float(self.quality or GOOD) < 0.25
+
         if bad_sample:
             self._bad_samples_dropped += 1
+            with self._lock:
+                previous_quality = self.quality
+                previous_stale = bool(self.stale)
+                self.quality = q
+                self.stale = True
+                if self.stale_timestamp is None:
+                    self.stale_timestamp = timestamp
+                quality_changed = previous_quality != q or not previous_stale
+            if quality_changed:
+                held = None
+                try:
+                    held = self.value.value
+                except Exception:
+                    held = value
+                self._ingest_wavelet_sample(held, timestamp, quality=q)
+                self.notify()
+                self._notify_quality_engine(previous_degraded, True)
+                return True
+            return False
 
+        quality_refresh = False
         with self._lock:
             if self.dead_band and isinstance(value, (int, float)):
                 try:
                     current_value = self.value.value
                     if abs(value - current_value) < self.dead_band:
-                        return False
+                        if self.stale or self.quality != q:
+                            self.quality = q
+                            self.stale = False
+                            self.stale_timestamp = None
+                            self.timestamp = timestamp
+                            quality_refresh = True
+                        else:
+                            return False
                 except Exception as e:
                     logging.error(f"Error in deadband logic: {e}")
 
-            if not timestamp:
-                timestamp = datetime.now()
-            self.value.set_value(value=value, unit=self.display_unit)
-            self.timestamp = timestamp
-            self.quality = UNCERTAIN if bad_sample else GOOD
-            self.values(self.get_value())
-            self.timestamps(timestamp.strftime(DATETIME_FORMAT))
-        self._ingest_wavelet_sample(value, timestamp, quality=q)
+            if not quality_refresh:
+                self.value.set_value(value=value, unit=self.display_unit)
+                self.timestamp = timestamp
+                self.quality = q
+                self.stale = False
+                self.stale_timestamp = None
+                self.values(self.get_value())
+                self.timestamps(timestamp.strftime(DATETIME_FORMAT))
+
+        if not quality_refresh:
+            self._ingest_wavelet_sample(value, timestamp, quality=q)
         self.notify()
+        self._notify_quality_engine(previous_degraded, False)
         return True
+
+    def _notify_quality_engine(self, previous_degraded: bool, degraded: bool) -> None:
+        if bool(previous_degraded) == bool(degraded):
+            return
+        try:
+            from ..alarms.quality_gate import notify_quality_transition
+
+            notify_quality_transition(self, degraded=bool(degraded))
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "Quality engine notify skipped tag=%s",
+                getattr(self, "name", ""),
+                exc_info=True,
+            )
+
+    def get_stale_age_ms(self, now: datetime | None = None) -> int | None:
+        """Milliseconds since the PV became stale, or None when live."""
+        if not self.stale or self.stale_timestamp is None:
+            return None
+        try:
+            from datetime import timezone
+
+            from ..timebase import ensure_utc
+
+            stamp = ensure_utc(self.stale_timestamp)
+            if now is None:
+                ref = datetime.now(timezone.utc)
+            else:
+                ref = ensure_utc(now)
+            age_ms = int((ref - stamp).total_seconds() * 1000)
+            return max(0, age_ms)
+        except Exception:
+            return None
 
     def _ingest_wavelet_sample(self, value, timestamp: datetime, quality: float = GOOD) -> None:
         from ..signal_conditioning.filtered_tags import is_filtered_derivative_name, tag_filter_enabled
@@ -761,6 +856,14 @@ class Tag:
             "kp": self.get_kp(),
             "manufacturer": self.manufacturer,
             "quality": self.quality,
+            "quality_label": publication_quality_label(self.quality),
+            "quality_substatus": getattr(self, "quality_substatus", None),
+            "opc_status_code": getattr(self, "opc_status_code", None),
+            "stale": bool(self.stale),
+            "stale_timestamp": (
+                self.stale_timestamp.strftime(DATETIME_FORMAT) if self.stale_timestamp else None
+            ),
+            "stale_age_ms": self.get_stale_age_ms(),
             "bad_samples_dropped": self._bad_samples_dropped,
             "filter_enabled": self.filter_enabled,
             "filter_wavelet": self.filter_wavelet,
@@ -775,12 +878,17 @@ class Tag:
     def serialize_socket(self):
         from ..timebase import iso_millis
 
+        quality = getattr(self, "quality", GOOD)
         return {
             "name": self.name,
             "value": self.get_value(),
             "timestamp": iso_millis(self.get_timestamp()),
             "unit": self.get_display_unit(),
-            "quality": getattr(self, "quality", GOOD),
+            "quality": quality,
+            "quality_label": publication_quality_label(quality),
+            "quality_substatus": getattr(self, "quality_substatus", None),
+            "stale": bool(getattr(self, "stale", False)),
+            "stale_age_ms": self.get_stale_age_ms(),
         }
 
 

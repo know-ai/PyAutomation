@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, Optional
@@ -71,6 +72,7 @@ class PendingAuditEvent:
     action: str
     description: str
     timestamp: datetime
+    event_id: str = ""
 
 
 def summarize_db_config(config: Optional[dict]) -> str:
@@ -128,11 +130,26 @@ class DatabaseConnectionAuditor:
             self._last_error = ""
             self._target = "target=unknown"
             self._pending: list[PendingAuditEvent] = []
+            self._last_disconnect_event_id: str | None = None
 
     @property
     def state(self) -> str:
         with self._lock:
             return self._state
+
+    @property
+    def last_disconnect_event_id(self) -> str | None:
+        with self._lock:
+            return self._last_disconnect_event_id
+
+    def ensure_degraded_event_id(self) -> str:
+        """Return a stable correlation id for Login 503 / degraded mode."""
+        with self._lock:
+            if self._last_disconnect_event_id:
+                return self._last_disconnect_event_id
+            event_id = uuid.uuid4().hex
+            self._last_disconnect_event_id = event_id
+            return event_id
 
     @property
     def pending_actions(self) -> tuple[str, ...]:
@@ -306,12 +323,16 @@ class DatabaseConnectionAuditor:
         if action_key not in _RUNTIME_ACTIONS:
             return
         ts = timestamp or datetime.now(timezone.utc)
+        event_id = uuid.uuid4().hex
+        if action_key == "DISCONNECTED":
+            self._last_disconnect_event_id = event_id
+        description_with_id = clip(f"{description}; event_id={event_id}", DESCRIPTION_MAX)
         persisted = False
         try:
             persisted = bool(
                 persist_system_event(
                     message=_MESSAGE[action_key],
-                    description=description,
+                    description=description_with_id,
                     classification=_CLASSIFICATION,
                     priority=_PRIORITY[action_key],
                     criticity=_CRITICITY[action_key],
@@ -325,10 +346,21 @@ class DatabaseConnectionAuditor:
             )
         if persisted:
             return
-        self._enqueue_locked(action_key, description, ts)
+        self._enqueue_locked(action_key, description_with_id, ts, event_id=event_id)
 
-    def _enqueue_locked(self, action: str, description: str, timestamp: datetime) -> None:
-        item = PendingAuditEvent(action=action, description=description, timestamp=timestamp)
+    def _enqueue_locked(
+        self,
+        action: str,
+        description: str,
+        timestamp: datetime,
+        event_id: str = "",
+    ) -> None:
+        item = PendingAuditEvent(
+            action=action,
+            description=description,
+            timestamp=timestamp,
+            event_id=event_id,
+        )
         if action in _REPLACEABLE_ACTIONS:
             self._pending = [pending for pending in self._pending if pending.action != action]
         elif any(pending.action == action for pending in self._pending):

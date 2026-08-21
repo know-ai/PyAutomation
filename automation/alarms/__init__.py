@@ -300,6 +300,8 @@ class Alarm(StateMachine):
         Callback triggered when the monitored Tag value changes (Observer pattern).
         
         It evaluates the new value against alarm logic and triggers state transitions.
+        Process setpoints are inhibited while the PV quality is BAD (configurable
+        for UNCERTAIN via ``alarm_inhibit_uncertain_quality``).
 
         **Parameters:**
 
@@ -308,42 +310,58 @@ class Alarm(StateMachine):
         * **timestamp** (datetime): Time of the value change.
         """ 
         self.__timestamp = timestamp
-        if self.state not in (AlarmState.DSUPR, AlarmState.SHLVD, AlarmState.OOSRV):     
-            if self.alarm_setpoint.type in (TriggerType.HH, TriggerType.H):
+        if self.state not in (AlarmState.DSUPR, AlarmState.SHLVD, AlarmState.OOSRV):
+            if self._quality_allows_process_evaluation():
+                if self.alarm_setpoint.type in (TriggerType.HH, TriggerType.H):
 
-                if value.value > self.alarm_setpoint.value:
+                    if value.value > self.alarm_setpoint.value:
 
-                    self.abnormal_condition()
-                
-                else: 
-                    self.normal_condition()
+                        self.abnormal_condition()
+                    
+                    else: 
+                        self.normal_condition()
 
-            elif self.alarm_setpoint.type in (TriggerType.L, TriggerType.LL):
+                elif self.alarm_setpoint.type in (TriggerType.L, TriggerType.LL):
 
-                if value.value < self.alarm_setpoint.value:
+                    if value.value < self.alarm_setpoint.value:
 
-                    self.abnormal_condition()
+                        self.abnormal_condition()
 
-                else:
+                    else:
 
-                    self.normal_condition()
+                        self.normal_condition()
 
-            else: # Boolean Alarm
-                
-                if value.value == bool(self.alarm_setpoint.value):
+                else: # Boolean Alarm
+                    
+                    if value.value == bool(self.alarm_setpoint.value):
 
-                    self.abnormal_condition()
+                        self.abnormal_condition()
 
-                else:
+                    else:
 
-                    self.normal_condition()
+                        self.normal_condition()
 
         if self.state==AlarmState.SHLVD:
 
             if datetime.now(timezone.utc) >= self._shelved_until:
 
                 self.unshelve(current_value=value)
-        
+
+    def _quality_allows_process_evaluation(self) -> bool:
+        """Gate process setpoints on PV quality (ISA-18.2 inhibit on Bad)."""
+        from ..signal_conditioning.quality import is_process_alarm_allowed
+
+        subject = getattr(self, "tag", None)
+        quality = getattr(subject, "quality", None) if subject is not None else None
+        inhibit_uncertain = False
+        try:
+            from ..signal_conditioning.quality import get_inhibit_uncertain_quality
+
+            inhibit_uncertain = bool(get_inhibit_uncertain_quality())
+        except Exception:
+            inhibit_uncertain = False
+        return is_process_alarm_allowed(quality, inhibit_uncertain=inhibit_uncertain)
+
     @logging_error_handler
     def abnormal_condition(self):
         r"""

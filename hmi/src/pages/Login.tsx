@@ -28,6 +28,12 @@ type LoginErrorKey =
   | "auth.tooManyAttempts"
   | "auth.tokenNotReceived";
 
+function extractBackendEventId(err: unknown): string | null {
+  const data = (err as { response?: { data?: { event_id?: unknown } } })?.response?.data;
+  const eventId = data?.event_id;
+  return typeof eventId === "string" && eventId.trim() ? eventId.trim() : null;
+}
+
 function extractBackendText(err: unknown): string {
   const data = (err as { response?: { data?: unknown } })?.response?.data;
   if (typeof data === "string") return data;
@@ -87,6 +93,7 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(false);
   const [showDatabaseConfig, setShowDatabaseConfig] = useState(false);
+  const [databaseEventId, setDatabaseEventId] = useState<string | null>(null);
 
   const credentialsInvalid = errorKey === "auth.invalidCredentials";
 
@@ -149,9 +156,14 @@ export function Login() {
     } catch (err: unknown) {
       const resolved = resolveLoginError(err);
       if (resolved.kind === "database") {
+        const eventId = extractBackendEventId(err);
+        setDatabaseEventId(eventId);
         setShowDatabaseConfig(true);
         setErrorKey(null);
         dispatch(loginFailure(resolved.key));
+        if (eventId) {
+          showToast(t("auth.databaseUnavailableWithEventId", { eventId }), "warning", 0);
+        }
       } else {
         setErrorKey(resolved.key);
         dispatch(loginFailure(resolved.key));
@@ -171,6 +183,7 @@ export function Login() {
 
   const handleDatabaseConnectionSuccess = () => {
     setShowDatabaseConfig(false);
+    setDatabaseEventId(null);
     setErrorKey(null);
     setTimeout(() => {
       attemptLogin();
@@ -182,7 +195,11 @@ export function Login() {
       {showDatabaseConfig ? (
         <DatabaseConfigForm
           onConnectionSuccess={handleDatabaseConnectionSuccess}
-          onCancel={() => setShowDatabaseConfig(false)}
+          onCancel={() => {
+            setShowDatabaseConfig(false);
+            setDatabaseEventId(null);
+          }}
+          eventId={databaseEventId}
         />
       ) : (
       <div className="card card-outline card-primary">

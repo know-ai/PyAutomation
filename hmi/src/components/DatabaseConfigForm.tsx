@@ -6,9 +6,10 @@ import { showToast } from "../utils/toast";
 interface DatabaseConfigFormProps {
   onConnectionSuccess?: () => void;
   onCancel?: () => void;
+  eventId?: string | null;
 }
 
-export function DatabaseConfigForm({ onConnectionSuccess, onCancel }: DatabaseConfigFormProps) {
+export function DatabaseConfigForm({ onConnectionSuccess, onCancel, eventId }: DatabaseConfigFormProps) {
   const { t } = useTranslation();
   const [dbType, setDbType] = useState<"postgres" | "mysql" | "sqlite">("postgres");
   const [dbName, setDbName] = useState("");
@@ -141,6 +142,11 @@ export function DatabaseConfigForm({ onConnectionSuccess, onCancel }: DatabaseCo
         <p className="text-muted mb-3">
           {t("database.configureDatabaseMessage") || "The database connection is required to continue. Please configure the database connection below."}
         </p>
+        {eventId ? (
+          <div className="alert alert-warning py-2 mb-3" role="status">
+            {t("auth.databaseUnavailableWithEventId", { eventId })}
+          </div>
+        ) : null}
         
         <div className="mb-3">
           <label className="form-label">{t("communications.dbType") || "Database Type"}</label>

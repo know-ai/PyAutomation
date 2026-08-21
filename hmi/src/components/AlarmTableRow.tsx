@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { Button } from "./Button";
+import { QualityBadge } from "./QualityBadge";
 import { useTranslation } from "../hooks/useTranslation";
 import type { Alarm } from "../services/alarms";
 import type { Tag } from "../services/tags";
@@ -9,6 +10,10 @@ type AlarmTableRowProps = {
   alarm: Alarm;
   realTimeAlarm?: Alarm;
   tagValue?: Tag["value"];
+  tagQuality?: number | string | null;
+  tagQualityLabel?: string | null;
+  tagStale?: boolean;
+  tagStaleAgeMs?: number | null;
   onEdit: (alarm: Alarm) => void;
   onDelete: (alarm: Alarm) => void;
   getStateBadgeClass: (state: any) => string;
@@ -28,6 +33,10 @@ export const AlarmTableRow = memo(
     alarm,
     realTimeAlarm,
     tagValue,
+    tagQuality,
+    tagQualityLabel,
+    tagStale,
+    tagStaleAgeMs,
     onEdit,
     onDelete,
     getStateBadgeClass,
@@ -73,7 +82,19 @@ export const AlarmTableRow = memo(
         <td>
           <span className="badge bg-primary">{alarmType}</span>
         </td>
-        <td>{displayTagValue}</td>
+        <td>
+          <span className="d-inline-flex align-items-center gap-1">
+            <span>{displayTagValue}</span>
+            {currentAlarm.tag ? (
+              <QualityBadge
+                quality={tagQuality}
+                qualityLabel={tagQualityLabel}
+                stale={Boolean(tagStale)}
+                staleAgeMs={typeof tagStaleAgeMs === "number" ? tagStaleAgeMs : null}
+              />
+            ) : null}
+          </span>
+        </td>
         <td>{triggerValue}</td>
         <td>{translateAlarmDescription(currentAlarm.description, currentAlarm.name, t)}</td>
         <td>
@@ -172,6 +193,10 @@ export const AlarmTableRow = memo(
       prevAlarm.description === nextAlarm.description &&
       JSON.stringify(prevAlarm.state) === JSON.stringify(nextAlarm.state) &&
       prevProps.tagValue === nextProps.tagValue &&
+      prevProps.tagQuality === nextProps.tagQuality &&
+      prevProps.tagQualityLabel === nextProps.tagQualityLabel &&
+      prevProps.tagStale === nextProps.tagStale &&
+      prevProps.tagStaleAgeMs === nextProps.tagStaleAgeMs &&
       JSON.stringify(prevProps.actions) === JSON.stringify(nextProps.actions) &&
       prevProps.loadingActions === nextProps.loadingActions &&
       prevProps.executingAction === nextProps.executingAction &&
