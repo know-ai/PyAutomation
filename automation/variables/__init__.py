@@ -53,3 +53,39 @@ DATATYPES = [
     {'label': 'Boolean', 'value': 'boolean'},
     {'label': 'String', 'value': 'string'}
 ]
+
+
+def resolve_units_for_variable(
+    variable: str,
+    *,
+    requested_unit=None,
+    requested_display_unit=None,
+    current_unit=None,
+    current_display_unit=None,
+):
+    """
+    Pick engineering / display units when a tag's variable changes.
+
+    Prefer explicit request values when valid for ``variable``; otherwise keep
+    current values if still valid; otherwise fall back to the catalogue default
+    (first unit for that variable).
+
+    Returns ``(unit, display_unit)`` or raises ``KeyError`` if variable unknown.
+    """
+    units_dict = VARIABLES[variable]
+    allowed = set(units_dict.values())
+    default_unit = next(iter(units_dict.values()))
+
+    def _pick(requested, current):
+        if requested is not None and requested in allowed:
+            return requested
+        if (requested is None or requested == "") and current in allowed:
+            return current
+        return default_unit
+
+    unit = _pick(requested_unit, current_unit)
+    display = _pick(
+        requested_display_unit,
+        current_display_unit if current_display_unit is not None else current_unit,
+    )
+    return unit, display

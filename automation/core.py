@@ -42,7 +42,7 @@ from .utils.log_filters import (
 from .utils.history_query import optional_area
 from flask_socketio import SocketIO
 from geventwebsocket.handler import WebSocketHandler
-from .variables import VARIABLES
+from .variables import VARIABLES, resolve_units_for_variable
 from flask import Flask
 # DASH APP CONFIGURATION PAGES IMPORTATION
 # from .pages.main import ConfigView
@@ -1356,7 +1356,14 @@ class PyAutomation(Singleton):
                 return None, f"{tag_name} is subscribed into {machines_with_tags_subscribed}"
 
         previous_name = tag.get_name() if "name" in kwargs else None
-        identity_fields_changed = ("name" in kwargs) or ("display_name" in kwargs) or ("description" in kwargs)
+        identity_fields_changed = (
+            ("name" in kwargs)
+            or ("display_name" in kwargs)
+            or ("description" in kwargs)
+            or ("unit" in kwargs)
+            or ("display_unit" in kwargs)
+            or ("variable" in kwargs)
+        )
 
         filter_only_keys = {
             "filter_enabled",
@@ -1374,9 +1381,21 @@ class PyAutomation(Singleton):
 
         # Persist Tag on Database
         if "variable" in kwargs:
-            
-            kwargs["unit"] = list(VARIABLES[kwargs["variable"]].values())[0]
-            kwargs["display_unit"] = list(VARIABLES[kwargs["variable"]].values())[0]
+            var_name = kwargs["variable"]
+            if var_name not in VARIABLES:
+                return None, f'Variable "{var_name}" not found'
+            try:
+                unit, display_unit = resolve_units_for_variable(
+                    var_name,
+                    requested_unit=kwargs.get("unit"),
+                    requested_display_unit=kwargs.get("display_unit"),
+                    current_unit=getattr(tag, "unit", None),
+                    current_display_unit=getattr(tag, "display_unit", None),
+                )
+            except KeyError:
+                return None, f'Variable "{var_name}" not found'
+            kwargs["unit"] = unit
+            kwargs["display_unit"] = display_unit
 
         # Si se está actualizando opcua_address, intentar resolver el nombre del cliente
         if "opcua_address" in kwargs:

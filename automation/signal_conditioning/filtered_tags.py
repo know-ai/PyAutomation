@@ -99,11 +99,20 @@ def maybe_ensure_persistent_filtered_tag(source_tag) -> object | None:
 
 
 def sync_filtered_tag_metadata(source_tag, derived) -> dict:
-    """Keep ``.f`` display_name / description aligned with the raw source tag.
+    """Keep ``.f`` metadata aligned with the raw source tag.
 
-    Returns ``{"display_name": bool, "description": bool}`` for what changed.
+    Mirrors identity and engineering attributes that the UI cannot edit on the
+    filtered row: display_name, description, unit, display_unit, variable.
+
+    Returns a dict of bools for what changed.
     """
-    changed = {"display_name": False, "description": False}
+    changed = {
+        "display_name": False,
+        "description": False,
+        "unit": False,
+        "display_unit": False,
+        "variable": False,
+    }
     if source_tag is None or derived is None:
         return changed
     desired_display = filtered_display_name(source_tag)
@@ -123,6 +132,36 @@ def sync_filtered_tag_metadata(source_tag, derived) -> dict:
             else:
                 derived.description = desired_desc
             changed["description"] = True
+
+        src_unit = getattr(source_tag, "unit", None)
+        if src_unit is not None and getattr(derived, "unit", None) != src_unit:
+            if hasattr(derived, "set_unit"):
+                derived.set_unit(unit=src_unit)
+            else:
+                derived.unit = src_unit
+            changed["unit"] = True
+
+        src_display_unit = getattr(source_tag, "display_unit", None) or src_unit
+        if (
+            src_display_unit is not None
+            and getattr(derived, "display_unit", None) != src_display_unit
+        ):
+            if hasattr(derived, "set_display_unit"):
+                derived.set_display_unit(unit=src_display_unit)
+            else:
+                derived.display_unit = src_display_unit
+            changed["display_unit"] = True
+
+        src_variable = getattr(source_tag, "variable", None)
+        if (
+            src_variable is not None
+            and getattr(derived, "variable", None) != src_variable
+        ):
+            if hasattr(derived, "set_variable"):
+                derived.set_variable(variable=src_variable)
+            else:
+                derived.variable = src_variable
+            changed["variable"] = True
     except Exception:
         logging.getLogger("pyautomation").debug(
             "Filtered tag metadata sync skipped for %s",
@@ -198,11 +237,12 @@ def propagate_filtered_tag_identity(
     previous_name: str | None = None,
 ) -> object | None:
     """
-    Cascade source ``name`` / ``display_name`` onto an already-created ``.f`` tag.
+    Cascade source identity / engineering fields onto an already-created ``.f`` tag.
 
     - Renames ``old.f`` → ``new.f`` when the raw tag is renamed.
     - Always realigns ``display_name`` to ``{raw_display}.filtro``.
-    - Persists identity fields to the historian when connected.
+    - Mirrors ``unit``, ``display_unit`` and ``variable`` from the raw tag.
+    - Persists mirrored fields to the historian when connected.
     - Remaps wavelet worker + alarm indexes for the rename.
 
     Does **not** create a new ``.f``; use ``ensure_filtered_tag`` for that.
@@ -265,6 +305,15 @@ def propagate_filtered_tag_identity(
             persist_fields["display_name"] = filtered_display_name(source_tag)
         if meta.get("description"):
             persist_fields["description"] = filtered_description(source_tag)
+        if meta.get("unit"):
+            persist_fields["unit"] = getattr(source_tag, "unit", None)
+        if meta.get("display_unit"):
+            persist_fields["display_unit"] = (
+                getattr(source_tag, "display_unit", None)
+                or getattr(source_tag, "unit", None)
+            )
+        if meta.get("variable"):
+            persist_fields["variable"] = getattr(source_tag, "variable", None)
         _persist_filtered_identity(app, derived, fields=persist_fields)
         return derived
     except Exception:

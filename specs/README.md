@@ -2,7 +2,7 @@
 
 Índice maestro de especificaciones técnicas de PyAutomationIO (`automation/`).
 
-**Estructura actual (v1.0, 2026-08-19):** **7 documentos temáticos** en la raíz de `specs/`.
+**Estructura actual (v1.1, 2026-08-21):** **9 documentos temáticos** en la raíz de `specs/`.
 
 ---
 
@@ -17,6 +17,8 @@
 | **05** | [05-NODE-PERFORMANCE-DASHBOARD.md](./05-NODE-PERFORMANCE-DASHBOARD.md) | Dashboard de rendimiento del nodo O(1) — **implementado P0+P1** ([AUDIT_NODE_PERFORMANCE_DASHBOARD](../audits/AUDIT_NODE_PERFORMANCE_DASHBOARD.md)) |
 | **06** | [06-PERFORMANCE-ALARMS.md](./06-PERFORMANCE-ALARMS.md) | Alarmas ISA-18.2 de rendimiento; dashboard + Alarmas + Settings — **implementado** ([AUDIT_NODE_PERFORMANCE_DASHBOARD](../audits/AUDIT_NODE_PERFORMANCE_DASHBOARD.md)) |
 | **07** | [07-PERFORMANCE-DASHBOARD-UI.md](./07-PERFORMANCE-DASHBOARD-UI.md) | UI profesional `/performance`: gauges, umbrales en tarjeta, modales ISA-18.2 — **implementado** |
+| **08** | [08-WAVELET-RPA-RT.md](./08-WAVELET-RPA-RT.md) | Filtro wavelet DWT por bloques, tag `.f`, calidad OPC en pipeline — **implementado** ([AUDIT_SIGNAL_CONDITIONING](../audits/AUDIT_SIGNAL_CONDITIONING.md)) |
+| **09** | [09-OPC-QUALITY-AND-DEGRADED-STARTUP.md](./09-OPC-QUALITY-AND-DEGRADED-STARTUP.md) | Calidad OPC UA (StatusCode → CVT → alarmas), stale en disconnect, modo degradado BD — **propuesta v1.0** ([AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP](../audits/AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md)) |
 
 ---
 
@@ -24,7 +26,7 @@
 
 | Documento | Contenido |
 |-----------|-----------|
-| [Auditorías](../audits/) | Contrastes código vs. diseño (conexiones, SAF, multi-edge) |
+| [Auditorías](../audits/) | Contrastes código vs. diseño (conexiones, SAF, multi-edge, calidad OPC) |
 
 ---
 

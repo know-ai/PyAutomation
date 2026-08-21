@@ -100,6 +100,41 @@ class TestWaveletNaming(unittest.TestCase):
         self.assertEqual(derived.display_name, "Nuevo.filtro")
         self.assertNotIn("Area.Old.f", fake_app.das.buffer)
 
+    def test_sync_filtered_mirrors_unit_display_unit_variable(self):
+        from automation.signal_conditioning.filtered_tags import sync_filtered_tag_metadata
+
+        source = _TagStub(
+            name="Area.FI",
+            display_name="Flujo",
+            description="raw",
+            unit="bbl/hr",
+            display_unit="bbl/hr",
+            variable="VolumetricFlow",
+        )
+        source.get_display_name = lambda: "Flujo"
+        derived = _TagStub(
+            name="Area.FI.f",
+            display_name="Flujo.filtro",
+            description="Wavelet filtered · raw",
+            unit="bbl/day",
+            display_unit="bbl/day",
+            variable="MassFlow",
+        )
+        derived.get_display_name = lambda: derived.display_name
+        derived.set_display_name = lambda name: setattr(derived, "display_name", name)
+        derived.set_description = lambda description: setattr(derived, "description", description)
+        derived.set_unit = lambda unit: setattr(derived, "unit", unit)
+        derived.set_display_unit = lambda unit: setattr(derived, "display_unit", unit)
+        derived.set_variable = lambda variable: setattr(derived, "variable", variable)
+
+        changed = sync_filtered_tag_metadata(source, derived)
+        self.assertTrue(changed["unit"])
+        self.assertTrue(changed["display_unit"])
+        self.assertTrue(changed["variable"])
+        self.assertEqual(derived.unit, "bbl/hr")
+        self.assertEqual(derived.display_unit, "bbl/hr")
+        self.assertEqual(derived.variable, "VolumetricFlow")
+
 
 class TestSampleRing(unittest.TestCase):
     def test_append_is_bounded(self):

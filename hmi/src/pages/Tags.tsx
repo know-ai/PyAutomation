@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, memo } from "react";
+import { useEffect, useState, useMemo, memo, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getTags, createTag, updateTag, deleteTag, getVariables, getUnitsByVariable, type Tag, type TagsResponse } from "../services/tags";
@@ -160,6 +160,7 @@ export function Tags() {
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
   const [loadingVariables, setLoadingVariables] = useState(false);
   const [loadingUnits, setLoadingUnits] = useState(false);
+  const unitsRequestIdRef = useRef(0);
   const [opcuaClients, setOpcuaClients] = useState<OpcUaClient[]>([]);
   const [opcuaClientAddresses, setOpcuaClientAddresses] = useState<Record<string, string>>({});
   const [opcuaClientNamesByAddress, setOpcuaClientNamesByAddress] = useState<Record<string, string>>({});
@@ -421,22 +422,43 @@ export function Tags() {
       setAvailableUnits([]);
       return;
     }
+    const requestId = ++unitsRequestIdRef.current;
     setLoadingUnits(true);
     try {
       const units = await getUnitsByVariable(variableName);
+      // Ignorar respuestas obsoletas (cambio rápido de variable / cierre de modal).
+      if (requestId !== unitsRequestIdRef.current) {
+        return;
+      }
       setAvailableUnits(units);
-      // Si la unidad actual no está en las disponibles, limpiarla
-      if (formData.unit && !units.includes(formData.unit)) {
-        setFormData((prev) => ({ ...prev, unit: "" }));
-      }
-      if (formData.display_unit && !units.includes(formData.display_unit)) {
-        setFormData((prev) => ({ ...prev, display_unit: "" }));
-      }
+      // Validar contra el estado actual del form (no el closure stale de formData).
+      setFormData((prev) => {
+        if (prev.variable && prev.variable !== variableName) {
+          return prev;
+        }
+        let unit = prev.unit;
+        let display_unit = prev.display_unit;
+        if (unit && !units.includes(unit)) {
+          unit = "";
+        }
+        if (display_unit && !units.includes(display_unit)) {
+          display_unit = "";
+        }
+        if (unit === prev.unit && display_unit === prev.display_unit) {
+          return prev;
+        }
+        return { ...prev, unit, display_unit };
+      });
     } catch (e: any) {
+      if (requestId !== unitsRequestIdRef.current) {
+        return;
+      }
       console.error("Error loading units:", e);
       setAvailableUnits([]);
     } finally {
-      setLoadingUnits(false);
+      if (requestId === unitsRequestIdRef.current) {
+        setLoadingUnits(false);
+      }
     }
   };
 
