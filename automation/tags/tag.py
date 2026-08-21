@@ -258,6 +258,8 @@ class Tag:
         quality: float = GOOD,
         opc_code: int | None = None,
         substatus: str | None = None,
+        *,
+        notify_observers: bool = True,
     ):
         r"""
         Updates the value of the tag.
@@ -266,13 +268,15 @@ class Tag:
         * Deadband filtering (only updates if change > dead_band).
         * Hold-last-good on Bad / NaN / Inf (quality and stale updated; PV frozen).
         * Updating internal value and timestamp buffers.
-        * Notifying attached observers.
+        * Notifying attached observers (unless ``notify_observers=False`` so
+          CVT can emit ``on.tag`` to the HMI before SAF / machine observers).
 
         **Parameters:**
 
         * **value** (float|str|int|bool): New value.
         * **timestamp** (datetime, optional): Time of the value change. Defaults to now.
         * **quality** (float, optional): OPC-style quality (1.0=GOOD, 0.5=UNCERTAIN, 0= BAD).
+        * **notify_observers** (bool): When False, caller must invoke ``notify()``.
         """
         q = normalize_sample_quality(value, quality)
         self._last_quality = q
@@ -311,7 +315,8 @@ class Tag:
                 except Exception:
                     held = value
                 self._ingest_wavelet_sample(held, timestamp, quality=q)
-                self.notify()
+                if notify_observers:
+                    self.notify()
                 self._notify_quality_engine(previous_degraded, True)
                 return True
             return False
@@ -344,7 +349,8 @@ class Tag:
 
         if not quality_refresh:
             self._ingest_wavelet_sample(value, timestamp, quality=q)
-        self.notify()
+        if notify_observers:
+            self.notify()
         self._notify_quality_engine(previous_degraded, False)
         return True
 

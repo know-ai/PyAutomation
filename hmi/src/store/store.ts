@@ -58,23 +58,31 @@ export const store = configureStore({
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
 
+/** Never run localStorage stringify on every Redux tick — it freezes RT trends 1–3 s. */
+const HISTORY_PERSIST_INTERVAL_MS = 30_000;
+
 const persistHistoryNow = () => {
-  persistTagHistory(store.getState().tags.tagHistory);
+  const { tagHistory, historySubscribers } = store.getState().tags;
+  persistTagHistory(tagHistory, historySubscribers);
 };
 
-let persistHistoryTimer: ReturnType<typeof setTimeout> | null = null;
-store.subscribe(() => {
-  if (persistHistoryTimer != null) return;
-  persistHistoryTimer = setTimeout(() => {
-    persistHistoryTimer = null;
-    persistHistoryNow();
-  }, 2000);
-});
+const scheduleIdlePersist = () => {
+  const run = () => persistHistoryNow();
+  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+    (
+      window as Window & {
+        requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number;
+      }
+    ).requestIdleCallback(run, { timeout: 5000 });
+    return;
+  }
+  setTimeout(run, 0);
+};
 
 if (typeof window !== "undefined") {
+  window.setInterval(scheduleIdlePersist, HISTORY_PERSIST_INTERVAL_MS);
   window.addEventListener("beforeunload", persistHistoryNow);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) persistHistoryNow();
   });
 }
-

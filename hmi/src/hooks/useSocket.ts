@@ -20,8 +20,8 @@ import { isPageHidden } from "./usePageHidden";
 import { isSystemUser } from "../utils/systemUser";
 import { scheduleTagHistoryBackfill, resetTagHistoryBackfillThrottle } from "../utils/tagHistoryBackfill";
 
-const BUFFER_INTERVAL_MS = 1000;
-const HIDDEN_FLUSH_EVERY = 5;
+const BUFFER_INTERVAL_MS = 250;
+const HIDDEN_FLUSH_EVERY = 8;
 
 const enqueueHistorySample = (queues: Map<string, Tag[]>, tag: Tag): void => {
   if (!tag.name) return;

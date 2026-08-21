@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import math
 import time
 import unittest
 import warnings
@@ -229,6 +230,39 @@ class TestWaveletBlockFilter(unittest.TestCase):
         self.assertIsNotNone(after)
         self.assertEqual(after.status, FilterStatus.OK)
         self.assertEqual(after.quality, GOOD)
+
+    def test_flat_window_soft_threshold_emits_no_runtime_warning(self):
+        from automation.signal_conditioning.wavelet_block import (
+            WaveletBlockFilter,
+            _soft_threshold_safe,
+        )
+
+        flat = np.zeros(32, dtype=np.float64)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            out = _soft_threshold_safe(flat, 1.5)
+            self.assertTrue(np.allclose(out, 0.0))
+            self.assertFalse(
+                any(issubclass(w.category, RuntimeWarning) for w in caught),
+                msg=[str(w.message) for w in caught],
+            )
+
+        flt = WaveletBlockFilter(wavelet="db4", level=2, threshold_factor=3.0)
+        base = datetime(2026, 1, 1)
+        for i in range(flt._window):
+            flt.update(42.0, base + timedelta(milliseconds=50 * i), quality=GOOD)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = flt.process()
+            self.assertEqual(result.status, FilterStatus.OK)
+            self.assertTrue(math.isfinite(result.value))
+            divide_noise = [
+                w
+                for w in caught
+                if issubclass(w.category, RuntimeWarning)
+                and "invalid value encountered in divide" in str(w.message)
+            ]
+            self.assertEqual(divide_noise, [], msg=[str(w.message) for w in divide_noise])
 
     def test_reconfigure_level_up_may_need_warmup(self):
         flt = WaveletBlockFilter(wavelet="db4", level=1, threshold_factor=3.0)

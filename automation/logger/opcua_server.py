@@ -130,9 +130,20 @@ class OPCUAServerLogger(BaseLogger):
         Retrieves all OPC UA Server nodes.
         """
         if not self.check_connectivity():
+            try:
+                from ..catalog.local_provider import LocalCatalogProvider
+                from ..catalog.mutations import _LocalOpcuaServerView
 
-            return list()
-        
+                rows = LocalCatalogProvider().read_all("opcuaserver")
+                return [_LocalOpcuaServerView(row) for row in rows]
+            except Exception:
+                import logging
+
+                logging.getLogger("pyautomation").debug(
+                    "local catalog opcuaserver read_all skipped", exc_info=True
+                )
+                return []
+
         return OPCUAServer.read_all()
     
     @db_rollback
@@ -141,9 +152,18 @@ class OPCUAServerLogger(BaseLogger):
         Retrieves an OPC UA Server node by its namespace.
         """
         if not self.check_connectivity():
+            try:
+                from ..catalog.mutations import get_opcua_server_local
 
-            return list()
-        
+                return get_opcua_server_local(namespace=namespace)
+            except Exception:
+                import logging
+
+                logging.getLogger("pyautomation").debug(
+                    "local catalog opcuaserver read_by_namespace skipped", exc_info=True
+                )
+                return None
+
         return OPCUAServer.read_by_namespace(namespace=namespace)
      
 

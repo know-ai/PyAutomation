@@ -19,10 +19,41 @@ class LocalCatalogProvider:
         if model is None or get_catalog_database() is None:
             return []
         try:
-            return [row_to_raw(row) for row in model.select()]
+            return [row_to_raw(row) for row in model.select().iterator()]
         except Exception:
             _LOGGER.debug("local catalog read_all failed table=%s", table, exc_info=True)
             return []
+
+    def find_one(self, table: str, *, field: str, value) -> dict | None:
+        """Indexed lookup by field/column. Avoids full-table ``read_all`` scans."""
+        model = local_model(table)
+        if model is None or get_catalog_database() is None or value is None:
+            return None
+        attr = None
+        if hasattr(model, field):
+            attr = getattr(model, field)
+        else:
+            for name, fld in model._meta.fields.items():
+                if name == field or getattr(fld, "column_name", None) == field:
+                    attr = getattr(model, name)
+                    break
+        if attr is None:
+            return None
+        try:
+            row = model.get_or_none(attr == value)
+            if row is None and isinstance(value, str) and field in ("name", "username", "unit"):
+                # Case-insensitive fallback for small lookup tables only.
+                fname = getattr(attr, "name", field)
+                for candidate in model.select().iterator():
+                    raw = getattr(candidate, fname, None)
+                    if raw is not None and str(raw).upper() == value.upper():
+                        return row_to_raw(candidate)
+            return row_to_raw(row) if row is not None else None
+        except Exception:
+            _LOGGER.debug(
+                "local catalog find_one failed table=%s field=%s", table, field, exc_info=True
+            )
+            return None
 
     def read(self, table: str, row_id: str) -> dict | None:
         model = local_model(table)

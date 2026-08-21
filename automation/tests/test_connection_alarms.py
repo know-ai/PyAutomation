@@ -209,6 +209,23 @@ class TestConnectionAlarms(unittest.TestCase):
         self.assertEqual(self._alarm_state(alarm), "normal")
         self.assertEqual(alarm.state.alarm_status, "Not Active")
 
+    def test_healthy_probe_clears_sticky_disconnect_alarm_without_reconnect(self):
+        """Watchdog must clear ALM.DB.Connection when probe OK even if alarm was armed."""
+        conn_alarms.set_db_disconnected(True)
+        alarm = self.app.alarm_manager.get_alarm_by_name(conn_alarms.DB_ALARM_NAME)
+        self.assertEqual(self._alarm_state(alarm), "unacknowledged")
+        alarm.acknowledge()
+        self.assertEqual(self._alarm_state(alarm), "acknowledged")
+        self.assertEqual(alarm.state.alarm_status, "Active")
+
+        # Simulate LoggerWorker healthy branch: reachable + is_db_connected.
+        self.app._db_live = True
+        conn_alarms.set_db_disconnected(False)
+        self.assertEqual(self._alarm_state(alarm), "normal")
+        self.assertEqual(alarm.state.alarm_status, "Not Active")
+        tag = self.app.cvt.get_tag_by_name(conn_alarms.DB_TAG_NAME)
+        self.assertFalse(bool(getattr(tag.value, "value", True)))
+
     def test_ntp_sync_alarm_created_with_multi_edge_system_tag(self):
         from unittest.mock import MagicMock
 

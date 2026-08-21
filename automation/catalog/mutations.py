@@ -25,6 +25,10 @@ def _find(table: str, *, field: str, value: Any) -> dict | None:
     provider = _provider()
     if provider is None or value is None:
         return None
+    hit = provider.find_one(table, field=field, value=value)
+    if hit is not None:
+        return hit
+    # Legacy fallback for odd column aliases — keep rare.
     needle = str(value)
     for row in provider.read_all(table):
         if str(row.get(field) or "") == needle:
@@ -38,14 +42,12 @@ def _find_by_any(table: str, **candidates) -> dict | None:
     provider = _provider()
     if provider is None:
         return None
-    for row in provider.read_all(table):
-        for key, value in candidates.items():
-            if value is None:
-                continue
-            if str(row.get(key) or "") == str(value):
-                return row
-            if key in ("name", "username") and str(row.get(key) or "").upper() == str(value).upper():
-                return row
+    for key, value in candidates.items():
+        if value is None:
+            continue
+        hit = provider.find_one(table, field=key, value=value)
+        if hit is not None:
+            return hit
     return None
 
 
@@ -306,17 +308,62 @@ def persist_machine_fields_local(*, name: str, **fields) -> bool:
     return _upsert("machines", payload) is not None
 
 
+class _LocalOpcuaServerView:
+    """Duck-type for ``OPCUAServer.serialize()`` when the historian is offline."""
+
+    __slots__ = ("_row", "_access_name")
+
+    def __init__(self, row: dict, access_name: str = "Read"):
+        self._row = row
+        self._access_name = access_name or "Read"
+
+    def serialize(self) -> dict:
+        pk = self._row.get("id") or self._row.get("_pk")
+        return {
+            "id": pk,
+            "name": self._row.get("name"),
+            "namespace": self._row.get("namespace"),
+            "access_type": {"id": self._row.get("access_type_id") or self._row.get("access_type"), "name": self._access_name},
+        }
+
+
+def get_opcua_server_local(*, namespace: str):
+    """Return a serialize()-able view of a local opcuaserver row, or None."""
+    row = _find("opcuaserver", field="namespace", value=namespace)
+    if not row:
+        return None
+    access_name = "Read"
+    access_pk = row.get("access_type_id") or row.get("access_type")
+    if access_pk is not None:
+        access_row = _find("accesstype", field="id", value=access_pk) or _find(
+            "accesstype", field="_pk", value=access_pk
+        )
+        if not access_row:
+            # Integer PK lookup via provider.read
+            provider = _provider()
+            if provider is not None:
+                access_row = provider.read("accesstype", str(access_pk))
+        if access_row:
+            access_name = str(access_row.get("name") or "Read")
+    return _LocalOpcuaServerView(row, access_name=access_name)
+
+
 def persist_opcua_server_local(
     *,
     name: str,
     namespace: str,
     access_type: str = "Read",
 ) -> None:
-    access_row = ensure_named_row("accesstype", access_type)
-    access_pk = (access_row or {}).get("_pk") or (access_row or {}).get("id")
     existing = _find("opcuaserver", field="namespace", value=namespace) or _find(
         "opcuaserver", field="name", value=name
     )
+    access_row = ensure_named_row("accesstype", access_type)
+    access_pk = (access_row or {}).get("_pk") or (access_row or {}).get("id")
+    if existing is not None:
+        prev = existing.get("access_type_id") or existing.get("access_type")
+        if str(prev or "") == str(access_pk or "") and str(existing.get("name") or "") == str(name):
+            # Already mirrored — skip write (OPC UA address-space build hits this per node).
+            return
     payload = {
         "name": name,
         "namespace": namespace,

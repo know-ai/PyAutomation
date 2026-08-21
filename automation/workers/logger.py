@@ -202,9 +202,9 @@ class LoggerWorker(BaseWorker):
         if self.db_reconnection:
             logging.critical("Trying reconnect to DB...")
             database_connection_auditor.notify_link_lost(source="watchdog")
+            # Arm alarm only when we believed the link was previously up.
+            set_db_disconnected(True)
 
-        set_db_disconnected(True)
-        
         self.db_reconnection = False
         db_connected = app.reconnect_to_db(source="watchdog")
                 
@@ -212,6 +212,7 @@ class LoggerWorker(BaseWorker):
             
             logging.critical("Reconnection successfully")
             self.db_reconnection = True
+            set_db_disconnected(False)
             try:
                 from ..catalog.replicator import get_catalog_replicator
 
@@ -260,6 +261,9 @@ class LoggerWorker(BaseWorker):
                     self.reconnect_to_db()
                 else:
                     self.db_reconnection = True
+                    # Probe OK and bound handle live: always clear sticky disconnect
+                    # alarm (stale sockets / cooldown must not leave ALM.DB.Connection Active).
+                    set_db_disconnected(False)
             else:
                 set_db_disconnected(True)
                 self.db_reconnection = False

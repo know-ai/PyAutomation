@@ -9,6 +9,9 @@ export const MAX_HISTORY_TAGS = 64;
 export const HISTORY_STORAGE_KEY = "pyautomation.tagHistory";
 /** Tope de muestras encoladas por tag entre flushes (CA-RT-5). */
 export const HISTORY_POINTS_PER_FLUSH = 20;
+/** Persistencia: solo series suscritas / recientes, acotadas al buffer RT. */
+export const HISTORY_PERSIST_MAX_TAGS = 24;
+export const HISTORY_PERSIST_MAX_POINTS = 360;
 
 export interface TagHistoryPoint {
   timestamp: string;
@@ -89,12 +92,26 @@ export const loadPersistedTagHistory = (): Record<string, TagHistoryPoint[]> => 
   }
 };
 
-export const persistTagHistory = (history: Record<string, TagHistoryPoint[]>): void => {
+export const persistTagHistory = (
+  history: Record<string, TagHistoryPoint[]>,
+  subscribers: Record<string, number> = {}
+): void => {
   if (typeof localStorage === "undefined") return;
-  const bounded = evictExcessHistory(history);
+  const preferred = Object.keys(history)
+    .filter((name) => (subscribers[name] || 0) > 0)
+    .sort();
+  const others = Object.keys(history)
+    .filter((name) => !(subscribers[name] > 0))
+    .sort((a, b) => lastTimestamp(history[b]).localeCompare(lastTimestamp(history[a])));
+  const keepNames = [...preferred, ...others].slice(0, HISTORY_PERSIST_MAX_TAGS);
   const payload: Record<string, TagHistoryPoint[]> = {};
-  for (const [name, pts] of Object.entries(bounded)) {
-    payload[name] = trimHistory(pts);
+  for (const name of keepNames) {
+    const pts = history[name] || [];
+    payload[name] = trimHistory(
+      pts.length > HISTORY_PERSIST_MAX_POINTS
+        ? pts.slice(pts.length - HISTORY_PERSIST_MAX_POINTS)
+        : pts
+    );
   }
   try {
     localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(payload));
@@ -228,7 +245,7 @@ const tagsSlice = createSlice({
     extraReducers: (builder) => {
     builder.addCase(logout, (state) => {
       // Política de producto: tagHistory acotado (720×64) se persiste; no se vacía en logout.
-      persistTagHistory(state.tagHistory);
+      persistTagHistory(state.tagHistory, state.historySubscribers);
       state.tagValues = {};
       state.historySubscribers = {};
     });

@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Historian Peewee catalog provider (existing proxy — never rebound)."""
+"""Historian Peewee catalog provider (existing proxy — never rebound).
+
+Bulk reads prefer the dedicated replicator handle (``replica_db``) so interactive
+API traffic on the main proxy is not starved by full-table catalog scans.
+"""
 from __future__ import annotations
 
 import logging
 
+from .replica_db import replica_read_all
 from .rows import row_to_raw, upsert_model
 from .schema import historian_models, pk_as_str
 from .versions import edge_node_id, now_ms, touch_remote
@@ -12,12 +17,24 @@ _LOGGER = logging.getLogger("pyautomation")
 
 
 class RemoteCatalogProvider:
+    def __init__(self, *, prefer_replica_reads: bool = True):
+        self._prefer_replica_reads = bool(prefer_replica_reads)
+
     def read_all(self, table: str) -> list[dict]:
+        if self._prefer_replica_reads:
+            rows = replica_read_all(table)
+            if rows:
+                return rows
+            # Empty can mean empty table OR replica not ready — fall through once.
+            from .replica_db import ensure_replica_database
+
+            if ensure_replica_database() is not None:
+                return rows
         model = historian_models().get(table)
         if model is None:
             return []
         try:
-            return [row_to_raw(row) for row in model.select()]
+            return [row_to_raw(row) for row in model.select().iterator()]
         except Exception:
             _LOGGER.debug("remote catalog read_all failed table=%s", table, exc_info=True)
             return []

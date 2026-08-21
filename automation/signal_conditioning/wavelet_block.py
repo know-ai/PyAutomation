@@ -50,6 +50,39 @@ def _clamp_threshold_factor(value: float) -> float:
     return max(1.0, min(float(value), _MAX_THRESHOLD_FACTOR))
 
 
+def _soft_threshold_safe(data: np.ndarray, value: float) -> np.ndarray:
+    """Soft threshold without PyWavelets ``value/magnitude`` spam on zeros.
+
+    ``pywt.threshold(..., mode='soft')`` does ``1 - value/|x|`` and emits
+    ``RuntimeWarning: invalid value encountered in divide`` for every zero
+    coefficient — common on flat/warmup windows and flooding docker logs.
+    """
+    arr = np.asarray(data, dtype=np.float64)
+    if arr.size == 0:
+        return arr
+    thr = float(value)
+    if not math.isfinite(thr) or thr <= 0.0:
+        return arr.copy()
+    magnitude = np.abs(arr)
+    # Zeros stay zero; non-zeros get the classic soft shrink.
+    scale = np.ones_like(arr, dtype=np.float64)
+    nonzero = magnitude > 0.0
+    if np.any(nonzero):
+        scale[nonzero] = np.maximum(1.0 - (thr / magnitude[nonzero]), 0.0)
+    return arr * scale
+
+
+def _sanitize_wavelet_values(values: np.ndarray, fallback: float) -> np.ndarray:
+    """Replace non-finite samples so DWT/threshold never see NaN/Inf."""
+    out = np.asarray(values, dtype=np.float64)
+    if out.size == 0:
+        return out
+    fill = float(fallback) if math.isfinite(fallback) else 0.0
+    if not np.all(np.isfinite(out)):
+        out = np.nan_to_num(out, nan=fill, posinf=fill, neginf=fill)
+    return out
+
+
 def _wavelet_filter_len(wavelet: str) -> int:
     try:
         return int(pywt.Wavelet(wavelet).dec_len)
@@ -263,6 +296,14 @@ class WaveletBlockFilter:
 
         window = points[-self._window :]
         values = np.asarray([p.value for p in window], dtype=np.float64)
+        fill = (
+            float(self._last_good_value)
+            if self._last_good_value is not None and math.isfinite(self._last_good_value)
+            else float(window[-1].value)
+            if math.isfinite(window[-1].value)
+            else 0.0
+        )
+        values = _sanitize_wavelet_values(values, fill)
         effective_level = _safe_dwt_level(len(values), self.wavelet, self.level)
         self._effective_level = effective_level
         if effective_level < self.level:
@@ -270,6 +311,7 @@ class WaveletBlockFilter:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)
+                warnings.simplefilter("ignore", RuntimeWarning)
                 coeffs = pywt.wavedec(values, self.wavelet, level=effective_level)
         except ValueError:
             latest = window[-1]
@@ -290,13 +332,16 @@ class WaveletBlockFilter:
 
         detail = coeffs[-1]
         sigma = float(np.median(np.abs(detail))) / 0.6745 if detail.size else 0.0
+        if not math.isfinite(sigma):
+            sigma = 0.0
         threshold = sigma * self.threshold_factor
         coeffs_thresh = [coeffs[0]]
         for band in coeffs[1:]:
-            coeffs_thresh.append(pywt.threshold(band, threshold, mode="soft"))
+            coeffs_thresh.append(_soft_threshold_safe(band, threshold))
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", UserWarning)
+                warnings.simplefilter("ignore", RuntimeWarning)
                 reconstructed = pywt.waverec(coeffs_thresh, self.wavelet)
         except ValueError:
             latest = window[-1]

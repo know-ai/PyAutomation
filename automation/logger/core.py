@@ -63,9 +63,21 @@ class BaseLogger(Singleton):
                 return False
             probe_database(self._db, timeout_s=probe_timeout_s())
             mark_remote_db_live()
+            try:
+                from .. import PyAutomation
+
+                PyAutomation()._db_live = True
+            except Exception:
+                pass
             return True
         except Exception:
             mark_remote_db_dead()
+            try:
+                from .. import PyAutomation
+
+                PyAutomation()._db_live = False
+            except Exception:
+                pass
             return False
     
     def set_is_history_logged(self, value:bool=False):

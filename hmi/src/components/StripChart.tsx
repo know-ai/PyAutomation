@@ -20,6 +20,23 @@ import { QualityBadge } from "./QualityBadge";
 export const BUFFER_SIZE_MIN = 120;
 export const BUFFER_SIZE_MAX = 360;
 
+function bufferSliceRevision(
+  histories: Array<{ timestamp: string; value: number }[] | undefined>,
+  bufferSize: number
+): string {
+  const n = Math.min(
+    BUFFER_SIZE_MAX,
+    Math.max(BUFFER_SIZE_MIN, bufferSize || BUFFER_SIZE_MIN)
+  );
+  return histories
+    .map((h) => {
+      if (!h || h.length === 0) return "0";
+      const last = h[h.length - 1];
+      return `${h.length}:${last?.timestamp}:${last?.value}`;
+    })
+    .join("|") + `:${n}`;
+}
+
 export interface StripChartConfig {
   id: string;
   title: string;
@@ -57,7 +74,7 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
   useEffect(() => {
     const id = window.setInterval(() => {
       setThrottledHistories(historiesRef.current);
-    }, 300);
+    }, 200);
     return () => window.clearInterval(id);
   }, []);
   const [showTagConfig, setShowTagConfig] = useState(false);
@@ -187,8 +204,14 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
         )
       );
       const unit = getTagUnit(tagName);
+      // Prefer ISO strings for Plotly when display TZ == browser TZ (avoids
+      // per-point Intl.DateTimeFormat on every refresh — main RT jank source).
+      const x =
+        timeZone && timeZone !== (Intl.DateTimeFormat().resolvedOptions().timeZone || "")
+          ? bufferSlice.map((p) => toDisplayDate(p.timestamp, timeZone))
+          : bufferSlice.map((p) => p.timestamp);
       return {
-        x: bufferSlice.map((p) => toDisplayDate(p.timestamp, timeZone)),
+        x,
         y: bufferSlice.map((p) => p.value),
         type: "scatter",
         mode: "lines",
@@ -209,6 +232,8 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
 
     const layout: Partial<Layout> = {
       autosize: true,
+      uirevision: config.id,
+      datarevision: bufferSliceRevision(throttledHistories, config.bufferSize),
       margin: { l: 60, r: unitOrder.length > 1 ? 60 : 20, t: 40, b: 28 },
       paper_bgcolor: mode === "dark" ? "#212529" : "#ffffff",
       plot_bgcolor: mode === "dark" ? "#2c3034" : "#f8f9fa",
@@ -513,6 +538,7 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
             <Plot
               data={plotData.data}
               layout={plotData.layout}
+              revision={String((plotData.layout as { datarevision?: string }).datarevision || "")}
               style={{ width: "100%", height: "100%" }}
               config={{
                 displayModeBar: true,

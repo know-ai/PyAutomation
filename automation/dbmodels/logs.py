@@ -77,7 +77,12 @@ class Logs(BaseModel):
         if user is not None:
             if not isinstance(user, User):
                 return None, f"User {user} - {type(user)} must be an User Object"
-            _user = Users.read_by_username(username=user.username)
+            try:
+                from ..catalog.ensure_historian import resolve_historian_user_row
+
+                _user = resolve_historian_user_row(user)
+            except Exception:
+                _user = None
             author = clip_user_name(user.username) or author
 
         if not author:

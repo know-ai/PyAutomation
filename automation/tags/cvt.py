@@ -710,12 +710,15 @@ class CVT:
                 self.lock_contention += 1
         except Exception:
             pass
+        # Update PV without observers first so HMI ``on.tag`` is not delayed by
+        # SAF journal / machine observers on the same call stack.
         applied = tag.set_value(
             value=value,
             timestamp=timestamp,
             quality=quality,
             opc_code=opc_code,
             substatus=substatus,
+            notify_observers=False,
         )
         if applied is False:
             return value
@@ -724,6 +727,15 @@ class CVT:
 
         if payload is not None and self.sio:
             self.sio.emit("on.tag", data=payload)
+
+        try:
+            tag.notify()
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "tag observers after on.tag emit failed name=%s",
+                getattr(tag, "name", id),
+                exc_info=True,
+            )
 
         return value
 

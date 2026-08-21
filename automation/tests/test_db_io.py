@@ -449,12 +449,67 @@ class TestJournalThenRemoteCloses(unittest.TestCase):
         app = MagicMock()
         app._db = db
         with patch.object(outbox, "get_persistence_gateway", return_value=gateway), \
+             patch.object(outbox, "historian_write_ready", return_value=True), \
              patch("automation.PyAutomation", return_value=app), \
              patch("automation.utils.db_connections.keep_historian_socket", return_value=False):
             result, journaled = outbox.journal_then_remote(record, lambda: object(), True)
         self.assertTrue(journaled)
         self.assertIsNotNone(result)
         db.close.assert_called()
+
+    def test_skips_remote_when_link_not_ready_keeps_pending(self):
+        from datetime import datetime, timezone
+
+        from ..persistence import outbox
+        from ..persistence.records import PersistableRecord
+
+        record = PersistableRecord.event(
+            message="sync",
+            username="system",
+            timestamp=datetime.now(timezone.utc),
+        )
+        gateway = MagicMock()
+        gateway.enqueue.return_value = 42
+        remote = MagicMock(side_effect=AssertionError("must not call remote"))
+        with patch.object(outbox, "get_persistence_gateway", return_value=gateway), \
+             patch.object(outbox, "historian_write_ready", return_value=False):
+            result, journaled = outbox.journal_then_remote(record, remote, True)
+        self.assertTrue(journaled)
+        self.assertIsNone(result)
+        remote.assert_not_called()
+        gateway.mark_sent.assert_not_called()
+        gateway.mark_replicating.assert_not_called()
+
+    def test_stale_remote_write_keeps_pending_without_raising(self):
+        from datetime import datetime, timezone
+
+        from ..persistence import outbox
+        from ..persistence.records import PersistableRecord
+
+        record = PersistableRecord.event(
+            message="sync",
+            username="system",
+            timestamp=datetime.now(timezone.utc),
+        )
+        gateway = MagicMock()
+        gateway.enqueue.return_value = 7
+        app = MagicMock()
+        app._db = MagicMock()
+        app._db_live = True
+
+        def _boom():
+            raise RuntimeError("connection already closed")
+
+        with patch.object(outbox, "get_persistence_gateway", return_value=gateway), \
+             patch.object(outbox, "historian_write_ready", return_value=True), \
+             patch("automation.PyAutomation", return_value=app), \
+             patch("automation.utils.db_connections.keep_historian_socket", return_value=True):
+            result, journaled = outbox.journal_then_remote(record, _boom, True)
+        self.assertTrue(journaled)
+        self.assertIsNone(result)
+        gateway.mark_pending.assert_called_once()
+        # Stale ephemeral write must not flip global _db_live (avoids sticky ALM.DB).
+        self.assertTrue(app._db_live)
 
     def test_batch_enqueues_once_and_marks_sent(self):
         from datetime import datetime, timezone
@@ -477,6 +532,7 @@ class TestJournalThenRemoteCloses(unittest.TestCase):
         app = MagicMock()
         app._db = db
         with patch.object(outbox, "get_persistence_gateway", return_value=gateway), \
+             patch.object(outbox, "historian_write_ready", return_value=True), \
              patch("automation.PyAutomation", return_value=app), \
              patch("automation.utils.db_connections.keep_historian_socket", return_value=False):
             result, journaled = outbox.journal_then_remote_batch(records, lambda: 5, True)

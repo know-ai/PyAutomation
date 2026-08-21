@@ -1,3 +1,4 @@
+import logging
 import pytz
 from peewee import CharField, TimestampField, ForeignKeyField, IntegerField, fn
 from ..dbmodels.core import BaseModel
@@ -60,49 +61,64 @@ class Events(BaseModel):
         if not isinstance(user, User):
 
             return None, f"User {user} - {type(user)} must be an User Object"
-        
-        db_user = Users.read_by_username(username=user.username)
-        if db_user is None:
-            # Offline edges often mint events as ``system`` before the historian
-            # user row exists. Ensure it (and its role) instead of inserting NULL user_id.
-            try:
-                from ..catalog.ensure_historian import ensure_historian_user
 
-                db_user = ensure_historian_user(user)
-            except Exception:
-                db_user = None
-        if db_user is None:
-            return None, f"User {getattr(user, 'username', user)} not found in historian"
+        try:
+            from ..catalog.ensure_historian import resolve_historian_user_row
+            from ..utils.db_io import is_stale_historian_handle, log_historian_link_issue
 
-        if not timestamp:
+            db_user = resolve_historian_user_row(user)
+            if db_user is None:
+                return None, (
+                    f"User {getattr(user, 'username', user)} not available on historian "
+                    "(offline/reconnect — journal will retry)"
+                )
 
-            timestamp = datetime.now(pytz.UTC)
-        
-        if not isinstance(timestamp, datetime):
+            if not timestamp:
 
-            return None, f"Timestamp must be a datetime Object"
-        
-        # Ensure timestamp is timezone-aware and in UTC
-        if timestamp.tzinfo is None:
-            # If naive, assume it's UTC
-            timestamp = pytz.UTC.localize(timestamp)
-        else:
-            # If timezone-aware, convert to UTC
-            timestamp = timestamp.astimezone(pytz.UTC)
+                timestamp = datetime.now(pytz.UTC)
+            
+            if not isinstance(timestamp, datetime):
 
-        query = cls(
-            message=message,
-            user=db_user,
-            description=description,
-            classification=classification,
-            priority=priority,
-            criticity=criticity,
-            timestamp=timestamp,
-            area=area
-        )
-        query.save()
+                return None, f"Timestamp must be a datetime Object"
+            
+            # Ensure timestamp is timezone-aware and in UTC
+            if timestamp.tzinfo is None:
+                # If naive, assume it's UTC
+                timestamp = pytz.UTC.localize(timestamp)
+            else:
+                # If timezone-aware, convert to UTC
+                timestamp = timestamp.astimezone(pytz.UTC)
 
-        return query, f"Event creation successful"
+            query = cls(
+                message=message,
+                user=db_user,
+                description=description,
+                classification=classification,
+                priority=priority,
+                criticity=criticity,
+                timestamp=timestamp,
+                area=area
+            )
+            query.save()
+
+            return query, f"Event creation successful"
+        except Exception as exc:
+            from ..utils.db_io import is_stale_historian_handle, log_historian_link_issue
+
+            if is_stale_historian_handle(exc):
+                log_historian_link_issue(
+                    logging.getLogger("pyautomation"),
+                    exc,
+                    where="Events.create",
+                    action="write",
+                )
+                return None, "historian link stale during Events.create"
+            logging.getLogger("pyautomation").debug(
+                "Events.create failed",
+                exc_info=True,
+            )
+            return None, f"Event creation failed: {exc}"
+
     
     @classmethod
     def read_lasts(cls, lasts:int=1, area:str=None):

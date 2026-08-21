@@ -447,7 +447,18 @@ class JournalWriter:
 
     def _open(self) -> None:
         directory = os.path.dirname(os.path.abspath(self.config.journal_path))
-        os.makedirs(directory, exist_ok=True)
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except OSError as err:
+            raise JournalError(
+                f"Unable to create SAF journal directory {directory!r}: {err}. "
+                "Ensure ./db (Docker: /app/db volume) is writable by the process user."
+            ) from err
+        if not os.path.isdir(directory):
+            raise JournalError(
+                f"Unable to open SAF journal: directory {directory!r} is missing. "
+                "Ensure ./db (Docker: /app/db volume) is writable by the process user."
+            )
         self._ensure_open_locked()
 
     def _ensure_open_locked(self) -> None:

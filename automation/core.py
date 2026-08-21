@@ -4387,7 +4387,9 @@ class PyAutomation(Singleton):
             )
             from .utils.connection_alarms import set_db_disconnected, sync_opcua_connection_alarms
             from .utils.performance_alarms import ensure_performance_alarms
+            from .catalog.replica_db import reset_replica_database
             set_db_disconnected(False)
+            reset_replica_database()
             sync_opcua_connection_alarms()
             ensure_performance_alarms()
             worker = getattr(self, "metrics_worker", None)
@@ -4462,6 +4464,9 @@ class PyAutomation(Singleton):
 
         Must run before ``_sync_runtime_alarms_to_historian`` / performance
         dual-writes so remote ``Tags`` exist when ``Alarms.create`` resolves FKs.
+
+        After reconnect, wait a short settle window so the Peewee socket is
+        writable before the first push/pull (avoids InterfaceError races).
         """
         try:
             from .catalog.replicator import get_catalog_replicator
@@ -4470,7 +4475,17 @@ class PyAutomation(Singleton):
             if worker is None:
                 from .catalog.replicator import CatalogReplicatorWorker
 
-                worker = CatalogReplicatorWorker(sync_interval=30.0)
+                worker = CatalogReplicatorWorker(sync_interval=120.0)
+            if reason in ("reconnect", "connect"):
+                settle_s = 3.0 if reason == "reconnect" else 0.5
+                arm = getattr(worker, "arm_reconnect_grace", None)
+                if callable(arm):
+                    arm(settle_s)
+                # Consume reconnect-grace so the forced cycle can run on a settled link.
+                deadline = float(getattr(worker, "_reconnect_grace_until", 0.0) or 0.0)
+                remain = deadline - time.monotonic()
+                if remain > 0:
+                    time.sleep(min(remain, settle_s))
             result = worker.cycle(force=True)
             logging.info(
                 "Catalog sync before historian hydrate (%s): %s",
@@ -4654,7 +4669,10 @@ class PyAutomation(Singleton):
                 )
                 from .utils.connection_alarms import set_db_disconnected, sync_opcua_connection_alarms
                 from .utils.performance_alarms import ensure_performance_alarms
+                from .catalog.replica_db import reset_replica_database
+
                 set_db_disconnected(False)
+                reset_replica_database()
                 sync_opcua_connection_alarms()
                 ensure_performance_alarms()
                 worker = getattr(self, "metrics_worker", None)

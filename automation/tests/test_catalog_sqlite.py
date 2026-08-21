@@ -6,6 +6,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from werkzeug.security import generate_password_hash
 
@@ -630,11 +631,52 @@ class TestReplicatorStartupGrace(unittest.TestCase):
     def test_cycle_skips_during_grace_unless_forced(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
 
-        worker = CatalogReplicatorWorker(sync_interval=30.0, startup_grace_s=60.0)
+        worker = CatalogReplicatorWorker(sync_interval=120.0, startup_grace_s=60.0)
         skipped = worker.cycle()
         self.assertEqual(skipped.get("reason"), "startup-grace")
         forced = worker.cycle(force=True)
+        # force bypasses startup-grace; may still skip if remote is down / not ready
         self.assertNotEqual(forced.get("reason"), "startup-grace")
+
+    def test_reconnect_grace_blocks_even_force(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=120.0, startup_grace_s=0.0)
+        worker.arm_reconnect_grace(60.0)
+        self.assertEqual(worker.cycle(force=True).get("reason"), "reconnect-grace")
+
+    def test_online_wait_is_120_catchup_is_30(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=120.0, catchup_interval=30.0)
+        worker._catch_up = False
+        self.assertEqual(worker._wait_interval(), 120.0)
+        worker._catch_up = True
+        self.assertEqual(worker._wait_interval(), 30.0)
+
+    def test_divergence_events_are_aggregated_and_debounced(self):
+        from automation.catalog.conflict import VersionStamp
+        from automation.catalog.replicator import CatalogReplicatorWorker
+        from automation.utils import audit_metrics
+
+        audit_metrics.reset_audit_metrics()
+        worker = CatalogReplicatorWorker(sync_interval=120.0, startup_grace_s=0.0)
+        local = VersionStamp(10, "edge")
+        remote = VersionStamp(5, "central")
+        with patch("automation.catalog.replicator.persist_system_event") as persist:
+            worker._cycle_conflicts = []
+            worker._cycle_conflict_counts = {}
+            for i in range(8):
+                worker._note_conflict("tags", f"tag-{i}", local, remote, "remote")
+            self.assertEqual(worker._cycle_conflict_counts["tags"], 8)
+            self.assertEqual(len(worker._cycle_conflicts), 5)
+            worker._emit_divergence_summary(auto_resolved=8)
+            worker._emit_divergence_summary(auto_resolved=8)
+            self.assertEqual(persist.call_count, 1)
+            args = persist.call_args.kwargs
+            self.assertEqual(args["message"], "Catalog divergence auto-merged")
+            self.assertIn("8 rows auto-merged", args["description"])
+            self.assertIn("tags×8", args["description"])
 
 
 class TestHmiCatalogSurfaces(unittest.TestCase):

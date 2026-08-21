@@ -1741,28 +1741,53 @@ class OPCUAServer(StateMachineCore):
         Initializes the OPC UA Server, configures endpoints, creates namespaces, and populates the address space
         with CVT tags, Alarms, and Engines folders.
         """
-        self.server = Server()
-        self.server.set_endpoint(f'opc.tcp://0.0.0.0:{self.port}/OPCUAServer/')
-        
-        # setup our own namespace, not really necessary but should as spec
-        uri = "http://examples.freeopcua.github.io"
-        self.idx = self.server.register_namespace(uri)
-        # get Objects node, this is where we should put our node
-        self.objects = self.server.get_objects_node()
-        # populating our address space
-        self.my_folders['CVT'] = self.objects.add_folder(self.idx, "CVT")
-        self.my_folders['Alarms'] = self.objects.add_folder(self.idx, "Alarms")
-        self.my_folders['Engines'] = self.objects.add_folder(self.idx, "Engines")
+        import time as _time
 
-        # SET
-        self.server.start()
-        self.__set_cvt()
-        self.__set_alarms()
-        self.__set_engines()
-        
-        logging.getLogger('opcua').setLevel(logging.ERROR)
+        # Idempotent: a failed bind must not rebuild the UA standard address space
+        # every scheduler tick (that pegs a core and starves the HMI/gunicorn hub).
+        if getattr(self, "_opcua_ready", False):
+            self.send("start_to_wait")
+            return
 
-        self.send('start_to_wait')
+        if getattr(self, "server", None) is None:
+            self.server = Server()
+            self.server.set_endpoint(f"opc.tcp://0.0.0.0:{self.port}/OPCUAServer/")
+
+            # setup our own namespace, not really necessary but should as spec
+            uri = "http://examples.freeopcua.github.io"
+            self.idx = self.server.register_namespace(uri)
+            # get Objects node, this is where we should put our node
+            self.objects = self.server.get_objects_node()
+            # populating our address space
+            self.my_folders["CVT"] = self.objects.add_folder(self.idx, "CVT")
+            self.my_folders["Alarms"] = self.objects.add_folder(self.idx, "Alarms")
+            self.my_folders["Engines"] = self.objects.add_folder(self.idx, "Engines")
+
+        if not getattr(self, "_opcua_endpoint_up", False):
+            try:
+                self.server.start()
+                self._opcua_endpoint_up = True
+            except OSError as err:
+                busy = getattr(err, "errno", None) == 98 or "address already in use" in str(err).lower()
+                if busy:
+                    logging.getLogger("pyautomation").warning(
+                        "OPC UA server port %s busy; retrying without rebuilding address space",
+                        self.port,
+                    )
+                    _time.sleep(1.0)
+                    return
+                raise
+
+        if not getattr(self, "_opcua_space_loaded", False):
+            self.__set_cvt()
+            self.__set_alarms()
+            self.__set_engines()
+            self._opcua_space_loaded = True
+
+        logging.getLogger("opcua").setLevel(logging.ERROR)
+
+        self._opcua_ready = True
+        self.send("start_to_wait")
 
     def while_waiting(self):
         r"""
@@ -1784,9 +1809,16 @@ class OPCUAServer(StateMachineCore):
         r"""
         Executed in Reset state. Transitions back to Starting to restart the server.
         """
-        self.server.stop()
+        try:
+            if getattr(self, "server", None) is not None:
+                self.server.stop()
+        except Exception:
+            logging.getLogger("pyautomation").debug("OPC UA server stop on reset skipped", exc_info=True)
+        self.server = None
+        self._opcua_ready = False
+        self._opcua_endpoint_up = False
+        self._opcua_space_loaded = False
         self.send("reset_to_start")
-
     def __set_engines(self):
         r"""
         Initializes OPC UA nodes for all registered state machines (Engines).
