@@ -30,8 +30,8 @@ Con PostgreSQL compartido, **no** se usa un único `Users.token` global para inv
 
 | Aspecto | Comportamiento |
 |---|---|
-| Token API/HMI | Werkzeug hash persistido en `Users.token` **y** fila en `user_api_sessions` (`token`, `username`, `node_id`, `area`) |
-| Login en un edge | Revoca solo tokens previos del **mismo** `AUTOMATION_NODE_ID`; otras líneas conservan su sesión |
+| Token API/HMI | Hash de sesión en memoria + fila en `user_api_sessions` (`token`, `username`, `node_id`, `area`). En multi-edge **no** se sobrescribe `Users.token` en PostgreSQL al hacer login |
+| Login en un edge | Revoca solo tokens previos del **mismo** `AUTOMATION_NODE_ID` en `user_api_sessions`; otras líneas conservan su sesión |
 | Socket.IO | Valida token vía `Api._resolve_session_user` — **no** compara `node_id` del token con el edge |
 | `AUTOMATION_APP_SECRET_KEY` | Solo firmas TPT (integraciones); debe ser idéntica en todos los edges si se usan TPT |
 | TLS HMI | Fallos de handshake (`HMI TLS handshake failure`) son independientes de la sesión API; revisar certificado/clave en cada Moxa |

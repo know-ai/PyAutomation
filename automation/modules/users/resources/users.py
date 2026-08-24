@@ -340,11 +340,7 @@ class LogoutResource(Resource):
             
             token = request.headers['Authorization'].split('Token ')[-1]
         
-        session_user = users.get_active_user(token=token)
-        if session_user is None:
-            db_row = Users.get_or_none(token=token)
-            if db_row is not None:
-                session_user = users.get_by_username(username=getattr(db_row, "username", None))
+        session_user = Api.get_current_user()
 
         _, message = Users.logout(token=token)
         if session_user is not None:
@@ -372,18 +368,7 @@ class ChangePasswordResource(Resource):
         - Other roles can only change their own password
         - When changing own password, current password must be provided and validated
         """
-        # Get token from headers
-        token = None
-        if 'X-API-KEY' in request.headers:
-            token = request.headers['X-API-KEY']
-        elif 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split('Token ')[-1]
-        
-        if not token:
-            return {'message': 'Token is required'}, 401
-
-        # Get current user from token
-        current_user = users.get_active_user(token=token)
+        current_user = Api.get_current_user()
         if not current_user:
             return {'message': 'Invalid token or user not found'}, 401
 
@@ -465,18 +450,7 @@ class ResetPasswordResource(Resource):
         - Other roles can only reset their own password
         - No current password validation is required (forgotten password scenario)
         """
-        # Get token from headers
-        token = None
-        if 'X-API-KEY' in request.headers:
-            token = request.headers['X-API-KEY']
-        elif 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split('Token ')[-1]
-        
-        if not token:
-            return {'message': 'Token is required'}, 401
-
-        # Get current user from token
-        current_user = users.get_active_user(token=token)
+        current_user = Api.get_current_user()
         if not current_user:
             return {'message': 'Invalid token or user not found'}, 401
 
@@ -552,18 +526,7 @@ class UpdateRoleResource(Resource):
         - Admin users can change roles of users with role_level >= admin (admin, operator, supervisor, guest, etc.)
         - Users can only change roles of users with equal or higher role level than themselves
         """
-        # Get token from headers
-        token = None
-        if 'X-API-KEY' in request.headers:
-            token = request.headers['X-API-KEY']
-        elif 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split('Token ')[-1]
-        
-        if not token:
-            return {'message': 'Token is required'}, 401
-
-        # Get current user from token
-        current_user = users.get_active_user(token=token)
+        current_user = Api.get_current_user()
         if not current_user:
             return {'message': 'Invalid token or user not found'}, 401
 

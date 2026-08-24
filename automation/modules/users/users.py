@@ -273,14 +273,39 @@ class Users(Singleton):
     def rebind_sessions_from_db_tokens(self)->int:
         r"""After historian reconnect, restore active_users from persisted tokens."""
         restored = 0
+        seen: set[str] = set()
         try:
             from ...dbmodels.users import Users as DbUsers
+            from ...utils.user_api_session_store import (
+                list_api_sessions,
+                multi_edge_sessions_enabled,
+            )
+
+            if multi_edge_sessions_enabled():
+                for token, username in list_api_sessions():
+                    if not token or token in seen or token in self.active_users:
+                        continue
+                    db_user = None
+                    try:
+                        db_user = DbUsers.get_or_none(DbUsers.username == username)
+                    except Exception:
+                        db_user = None
+                    if db_user is None and self.get_by_username(username=username) is None:
+                        continue
+                    carrier = db_user if db_user is not None else type(
+                        "_SessionRow", (), {"username": username}
+                    )()
+                    if self.activate_session_from_db_record(carrier, token=token):
+                        restored += 1
+                        seen.add(token)
+
             for db_user in DbUsers.select():
                 token = getattr(db_user, "token", None)
-                if not token:
+                if not token or token in seen or token in self.active_users:
                     continue
                 if self.activate_session_from_db_record(db_user, token=token):
                     restored += 1
+                    seen.add(token)
         except Exception:
             return restored
         return restored

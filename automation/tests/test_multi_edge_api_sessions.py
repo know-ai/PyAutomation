@@ -105,5 +105,40 @@ class TestMultiEdgeApiSessions(unittest.TestCase):
         self.assertEqual(tokens, [token_new])
 
 
+    def test_login_on_edge_b_does_not_clear_edge_a_token_row(self):
+        token_a = "token-edge-a"
+        token_b = "token-edge-b"
+        self.assertTrue(self.register(token=token_a, username="op_edge"))
+        self.assertTrue(self.register(token=token_b, username="op_edge"))
+        self.assertEqual(UserApiSession.select().count(), 2)
+
+        rows = {
+            row.node_id: row.token
+            for row in UserApiSession.select().where(UserApiSession.username == "op_edge")
+        }
+        self.assertEqual(rows.get("edge-linea1"), token_a)
+        self.assertEqual(rows.get("edge-linea2"), token_b)
+
+    def test_rebind_restores_both_edge_tokens(self):
+        token_a = "token-edge-a"
+        token_b = "token-edge-b"
+        self.register(token=token_a, username="op_edge")
+        self.register(token=token_b, username="op_edge")
+        cvt_users.active_users.clear()
+
+        with patch(
+            "automation.utils.user_api_session_store.multi_edge_sessions_enabled",
+            return_value=True,
+        ), patch(
+            "automation.utils.user_api_session_store.list_api_sessions",
+            return_value=[(token_a, "op_edge"), (token_b, "op_edge")],
+        ):
+            restored = cvt_users.rebind_sessions_from_db_tokens()
+
+        self.assertEqual(restored, 2)
+        self.assertIn(token_a, cvt_users.active_users)
+        self.assertIn(token_b, cvt_users.active_users)
+
+
 if __name__ == "__main__":
     unittest.main()

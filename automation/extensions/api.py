@@ -130,10 +130,13 @@ class Api(Singleton):
                     exc_info=True,
                 )
             try:
-                db_user = Users.get_or_none(token=token)
-                if db_user:
-                    restored = users.activate_session_from_db_record(db_user, token=token)
-                    return restored or memory_user, None, None
+                from ..utils.user_api_session_store import multi_edge_sessions_enabled
+
+                if not multi_edge_sessions_enabled():
+                    db_user = Users.get_or_none(token=token)
+                    if db_user:
+                        restored = users.activate_session_from_db_record(db_user, token=token)
+                        return restored or memory_user, None, None
             except Exception:
                 db_reachable = False
                 logging.getLogger("pyautomation").debug(

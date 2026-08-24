@@ -206,18 +206,34 @@ class Users(BaseModel):
         if user:
 
             if user.decode_password(password):
-                
-                user.token = cls.encode(secrets.token_hex(4))
-                user.save()
-                
-                users.login(password=password, token=user.token, username=username, email=email)
+                session_token = cls.encode(secrets.token_hex(4))
+                user.token = session_token
 
                 try:
-                    from ..utils.user_api_session_store import register_api_session
+                    from ..utils.user_api_session_store import (
+                        multi_edge_sessions_enabled,
+                        register_api_session,
+                    )
 
-                    register_api_session(token=user.token, username=user.username)
+                    per_edge = multi_edge_sessions_enabled()
                 except Exception:
-                    pass
+                    per_edge = False
+
+                if not per_edge:
+                    user.save()
+
+                users.login(
+                    password=password,
+                    token=session_token,
+                    username=username,
+                    email=email,
+                )
+
+                if per_edge:
+                    try:
+                        register_api_session(token=session_token, username=user.username)
+                    except Exception:
+                        pass
 
                 return user, f"Login successful"
 
@@ -240,29 +256,45 @@ class Users(BaseModel):
         except Exception:
             user = None
 
-        if user:
+        if user is None:
+            try:
+                from ..utils.user_api_session_store import lookup_username
+
+                session_username = lookup_username(token)
+                if session_username:
+                    user = cls.get_or_none(username=session_username)
+            except Exception:
+                user = None
+
+        per_edge = False
+        try:
+            from ..utils.user_api_session_store import multi_edge_sessions_enabled
+
+            per_edge = multi_edge_sessions_enabled()
+        except Exception:
+            per_edge = False
+
+        if user and not per_edge:
             try:
                 user.token = None
                 user.save()
             except Exception:
                 pass
-            try:
-                from ..utils.user_api_session_store import revoke_api_session
 
-                revoke_api_session(token)
-            except Exception:
-                pass
-            try:
-                users.logout(token=token)
-            except Exception:
-                pass
+        try:
+            from ..utils.user_api_session_store import revoke_api_session
 
-            return user, "Logout successfull"
-        
+            revoke_api_session(token)
+        except Exception:
+            pass
         try:
             users.logout(token=token)
         except Exception:
             pass
+
+        if user is not None:
+            return user, "Logout successfull"
+
         # In-memory session may be the only source when the historian is down.
         return None, "Logout successfull"
 

@@ -15,13 +15,18 @@ from ..dbmodels.user_api_sessions import UserApiSession, utc_now
 _LOGGER = logging.getLogger("pyautomation.user_api_sessions")
 
 
-def _multi_edge_enabled() -> bool:
+def multi_edge_sessions_enabled() -> bool:
+    """True when API/HMI sessions are tracked per edge in ``user_api_sessions``."""
     try:
         from ..node_scope import get_node_scope
 
         return bool(get_node_scope().enabled)
     except Exception:
         return False
+
+
+def _multi_edge_enabled() -> bool:
+    return multi_edge_sessions_enabled()
 
 
 def _node_identity() -> tuple[str, str]:
@@ -84,6 +89,30 @@ def register_api_session(*, token: str, username: str) -> bool:
     except Exception:
         _LOGGER.debug("user_api_sessions register failed", exc_info=True)
         return False
+    finally:
+        try:
+            from .hmi_session_store import _close_historian_socket
+
+            _close_historian_socket()
+        except Exception:
+            pass
+
+
+def list_api_sessions() -> list[tuple[str, str]]:
+    """Return ``(token, username)`` pairs for all edges (session rebind after DB reconnect)."""
+    if not _multi_edge_enabled():
+        return []
+    db = _get_db()
+    if db is None:
+        return []
+    try:
+        return [
+            (str(row.token), str(row.username))
+            for row in UserApiSession.select(UserApiSession.token, UserApiSession.username)
+        ]
+    except Exception:
+        _LOGGER.debug("user_api_sessions list failed", exc_info=True)
+        return []
     finally:
         try:
             from .hmi_session_store import _close_historian_socket
