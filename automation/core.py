@@ -4475,7 +4475,7 @@ class PyAutomation(Singleton):
             if worker is None:
                 from .catalog.replicator import CatalogReplicatorWorker
 
-                worker = CatalogReplicatorWorker(sync_interval=120.0)
+                worker = CatalogReplicatorWorker(sync_interval=300.0)
             if reason in ("reconnect", "connect"):
                 settle_s = 3.0 if reason == "reconnect" else 0.5
                 arm = getattr(worker, "arm_reconnect_grace", None)

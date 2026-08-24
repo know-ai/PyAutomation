@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""O(1) catalog sync metrics snapshot."""
+"""O(1) catalog sync metrics snapshot (operator Events stay silent on success)."""
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .schema import CATALOG_TABLES_COUNT
 
@@ -17,6 +17,9 @@ class CatalogMetrics:
     tables_count: int = CATALOG_TABLES_COUNT
     consecutive_failures: int = 0
     local_only_since_utc: str | None = None
+    sync_cycles: int = 0
+    last_cycle_summary: str | None = None
+    last_auto_merged: int = 0
 
 
 _lock = threading.Lock()
@@ -31,6 +34,10 @@ def snapshot() -> dict:
             "CATALOG_SYNC_PENDING_ROWS": int(_metrics.pending_rows),
             "CATALOG_SYNC_CONFLICT_COUNT": int(_metrics.conflict_count),
             "CATALOG_TABLES_COUNT": int(_metrics.tables_count),
+            "CATALOG_SYNC_CYCLES": int(_metrics.sync_cycles),
+            "CATALOG_SYNC_LAST_SUMMARY": _metrics.last_cycle_summary,
+            "CATALOG_SYNC_LAST_AUTO_MERGED": int(_metrics.last_auto_merged),
+            "CATALOG_SYNC_CONSECUTIVE_FAILURES": int(_metrics.consecutive_failures),
         }
 
 

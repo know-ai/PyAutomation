@@ -627,11 +627,56 @@ class TestColdStartLocalSeed(unittest.TestCase):
         self.assertEqual(int(updated.get("role_id") or updated.get("role")), int(admin_pk))
 
 
+class TestCatalogContentHash(unittest.TestCase):
+    def test_ignores_updated_at_and_pk(self):
+        from automation.catalog.content_hash import content_hash, contents_equal
+
+        a = {
+            "id": 1,
+            "_pk": "1",
+            "name": "FI_01",
+            "identifier": "tag-fi-01",
+            "unit_id": 3,
+            "updated_at": "2026-01-01T00:00:00",
+        }
+        b = {
+            "id": 99,
+            "_pk": "99",
+            "name": "FI_01",
+            "identifier": "tag-fi-01",
+            "unit_id": 3,
+            "updated_at": "2026-08-21T15:41:17",
+        }
+        self.assertEqual(content_hash("tags", a), content_hash("tags", b))
+        self.assertTrue(contents_equal("tags", a, b))
+
+    def test_detects_business_field_change(self):
+        from automation.catalog.content_hash import contents_equal
+
+        a = {"name": "FI_01", "identifier": "tag-fi-01", "scan_time": 1000}
+        b = {"name": "FI_01", "identifier": "tag-fi-01", "scan_time": 500}
+        self.assertFalse(contents_equal("tags", a, b))
+
+    def test_fk_canonicalized_via_parent_identity(self):
+        from automation.catalog.content_hash import content_hash
+
+        unit_row = {"_pk": "1", "id": 1, "unit": "mm", "name": "millimeter"}
+        unit_row_r = {"_pk": "7", "id": 7, "unit": "mm", "name": "millimeter"}
+        local_index = {"units": {"mm": unit_row, "pk:1": unit_row}}
+        remote_index = {"units": {"mm": unit_row_r, "pk:7": unit_row_r}}
+        left = {"name": "FI_01", "identifier": "t1", "unit_id": 1}
+        right = {"name": "FI_01", "identifier": "t1", "unit_id": 7}
+        self.assertEqual(
+            content_hash("tags", left, table_index=local_index),
+            content_hash("tags", right, table_index=remote_index),
+        )
+
+
 class TestReplicatorStartupGrace(unittest.TestCase):
     def test_cycle_skips_during_grace_unless_forced(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
 
-        worker = CatalogReplicatorWorker(sync_interval=120.0, startup_grace_s=60.0)
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=60.0)
         skipped = worker.cycle()
         self.assertEqual(skipped.get("reason"), "startup-grace")
         forced = worker.cycle(force=True)
@@ -641,26 +686,27 @@ class TestReplicatorStartupGrace(unittest.TestCase):
     def test_reconnect_grace_blocks_even_force(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
 
-        worker = CatalogReplicatorWorker(sync_interval=120.0, startup_grace_s=0.0)
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
         worker.arm_reconnect_grace(60.0)
         self.assertEqual(worker.cycle(force=True).get("reason"), "reconnect-grace")
 
-    def test_online_wait_is_120_catchup_is_30(self):
+    def test_online_wait_is_300_catchup_is_30(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
 
-        worker = CatalogReplicatorWorker(sync_interval=120.0, catchup_interval=30.0)
+        worker = CatalogReplicatorWorker(sync_interval=300.0, catchup_interval=30.0)
         worker._catch_up = False
-        self.assertEqual(worker._wait_interval(), 120.0)
+        self.assertEqual(worker._wait_interval(), 300.0)
         worker._catch_up = True
         self.assertEqual(worker._wait_interval(), 30.0)
 
-    def test_divergence_events_are_aggregated_and_debounced(self):
+    def test_operational_silence_auto_merge_never_hits_events(self):
+        """Doctrina: auto-merge / sync-ok → app.log + metrics only, never Events."""
         from automation.catalog.conflict import VersionStamp
         from automation.catalog.replicator import CatalogReplicatorWorker
         from automation.utils import audit_metrics
 
         audit_metrics.reset_audit_metrics()
-        worker = CatalogReplicatorWorker(sync_interval=120.0, startup_grace_s=0.0)
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
         local = VersionStamp(10, "edge")
         remote = VersionStamp(5, "central")
         with patch("automation.catalog.replicator.persist_system_event") as persist:
@@ -670,13 +716,41 @@ class TestReplicatorStartupGrace(unittest.TestCase):
                 worker._note_conflict("tags", f"tag-{i}", local, remote, "remote")
             self.assertEqual(worker._cycle_conflict_counts["tags"], 8)
             self.assertEqual(len(worker._cycle_conflicts), 5)
-            worker._emit_divergence_summary(auto_resolved=8)
-            worker._emit_divergence_summary(auto_resolved=8)
+            worker._log_cycle_outcome(
+                pushed=0,
+                pulled=0,
+                auto_resolved=8,
+                row_errors=0,
+                summary="0 pushed, 0 pulled, 8 auto-merged, 0 errors",
+            )
+            worker._log_cycle_outcome(
+                pushed=0,
+                pulled=0,
+                auto_resolved=0,
+                row_errors=0,
+                summary="0 pushed, 0 pulled, 0 auto-merged, 0 errors",
+            )
+            self.assertEqual(persist.call_count, 0)
+
+    def test_exception_events_emit_on_rising_edge(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+        from automation.utils import audit_metrics
+
+        audit_metrics.reset_audit_metrics()
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._failures = 3
+        with patch("automation.catalog.replicator.set_sync_failed"), patch(
+            "automation.catalog.replicator.persist_system_event"
+        ) as persist:
+            worker._latch_sync_failed(True)
+            worker._latch_sync_failed(True)  # already latched
             self.assertEqual(persist.call_count, 1)
-            args = persist.call_args.kwargs
-            self.assertEqual(args["message"], "Catalog divergence auto-merged")
-            self.assertIn("8 rows auto-merged", args["description"])
-            self.assertIn("tags×8", args["description"])
+            self.assertEqual(persist.call_args.kwargs["message"], "Catalog sync failed")
+            worker._latch_sync_failed(False)
+            worker._latch_local_only(True)
+            worker._latch_local_only(True)
+            self.assertEqual(persist.call_count, 2)
+            self.assertEqual(persist.call_args.kwargs["message"], "Catalog local-only mode")
 
 
 class TestHmiCatalogSurfaces(unittest.TestCase):

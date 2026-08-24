@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """Bidirectional catalog replicator — OS thread, never on the acquisition hot path.
 
-Design constraints (HMI performance):
-- Default period 120 s while the historian is healthy (30 s only while catching up).
-- Full-table remote reads use a dedicated DB handle (``replica_db``), not the API proxy.
-- Each cycle reads each table once; indexes are updated in-memory after upserts.
-- Success is logged at DEBUG; Events rows only for failures / real conflicts / large deltas.
+Operational Silence Doctrine (operator Events table):
+- Never emit "Catalog sync completed" or "Catalog divergence auto-merged" to Events.
+  Those go to app.log (DEBUG / INFO) and CatalogMetrics only.
+- Emit Events only for exceptions the operator must act on:
+  sync failed, local-only mode, unresolved (manual) conflict.
+- Online period 300 s; compare business content via SHA-256, not audit timestamps.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from ..utils.audit_metrics import cooldown_allows
 from ..workers.worker import BaseWorker
 from .alarms import set_conflict, set_local_only, set_sync_failed
 from .conflict import VersionStamp, resolve
+from .content_hash import contents_equal
 from .identity import (
     identity_key,
     index_by_identity,
@@ -48,11 +50,10 @@ _LOGGER = logging.getLogger("pyautomation")
 _BATCH = 200
 _FAIL_THRESHOLD = 3
 _LOCAL_ONLY_S = 3600.0
-_ONLINE_INTERVAL_S = 120.0
+_ONLINE_INTERVAL_S = 300.0
 _CATCHUP_INTERVAL_S = 30.0
 _EVENT_DELTA_THRESHOLD = 50
-_SUCCESS_EVENT_EVERY = 10  # emit summary Event at most every N successful quiet cycles
-_CATALOG_EVENT_COOLDOWN_S = 120.0  # identical catalog audit fingerprints share one Events row
+_EXCEPTION_EVENT_COOLDOWN_S = 300.0
 _MAX_CONFLICT_SAMPLES = 5
 
 
@@ -66,13 +67,12 @@ class CatalogReplicatorWorker(BaseWorker):
         super().__init__()
         self.name = "CatalogReplicatorWorker"
         self.daemon = True
-        self.sync_interval = max(30.0, float(sync_interval))
+        self.sync_interval = max(60.0, float(sync_interval))
         self._catchup_interval = max(5.0, float(catchup_interval))
         self._startup_grace_s = max(0.0, float(startup_grace_s))
         self._startup_mono = time.monotonic()
         self._reconnect_grace_until = 0.0
         self._catch_up = False
-        self._quiet_successes = 0
         self._local = LocalCatalogProvider()
         self._remote = RemoteCatalogProvider(prefer_replica_reads=True)
         self._failures = 0
@@ -80,6 +80,9 @@ class CatalogReplicatorWorker(BaseWorker):
         self._unresolved = 0
         self._cycle_conflicts: list[tuple[str, str, str]] = []
         self._cycle_conflict_counts: dict[str, int] = {}
+        self._sync_failed_latched = False
+        self._local_only_latched = False
+        self._sync_cycles = 0
 
     def arm_reconnect_grace(self, seconds: float = 5.0) -> None:
         """Hold sync briefly after reconnect so the Peewee socket can settle."""
@@ -99,7 +102,7 @@ class CatalogReplicatorWorker(BaseWorker):
             except Exception:
                 _LOGGER.exception("catalog replicator cycle failed")
                 self._failures += 1
-                set_sync_failed(self._failures >= _FAIL_THRESHOLD)
+                self._latch_sync_failed(self._failures >= _FAIL_THRESHOLD)
                 update_metrics(consecutive_failures=self._failures)
             self.stop_event.wait(self._wait_interval())
 
@@ -132,7 +135,9 @@ class CatalogReplicatorWorker(BaseWorker):
             if self._local_only_since is None:
                 self._local_only_since = now
             elapsed = now - self._local_only_since
-            set_local_only(elapsed >= _LOCAL_ONLY_S)
+            local_only = elapsed >= _LOCAL_ONLY_S
+            set_local_only(local_only)
+            self._latch_local_only(local_only)
             update_metrics(local_only_since_utc=datetime.now(timezone.utc).isoformat())
             self._catch_up = True
             return {"skipped": True, "reason": "remote-down"}
@@ -140,6 +145,7 @@ class CatalogReplicatorWorker(BaseWorker):
             return {"skipped": True, "reason": "historian-not-ready"}
         self._local_only_since = None
         set_local_only(False)
+        self._latch_local_only(False)
         self._cycle_conflicts = []
         self._cycle_conflict_counts = {}
 
@@ -174,29 +180,35 @@ class CatalogReplicatorWorker(BaseWorker):
         self._unresolved = 0
         if row_errors:
             self._failures += 1
-            set_sync_failed(self._failures >= _FAIL_THRESHOLD)
+            self._latch_sync_failed(self._failures >= _FAIL_THRESHOLD)
             update_metrics(consecutive_failures=self._failures)
             self._catch_up = True
         else:
             self._failures = 0
-            set_sync_failed(False)
+            self._latch_sync_failed(False)
             update_metrics(consecutive_failures=0)
             if pending_count() == 0 and pushed + pulled < _EVENT_DELTA_THRESHOLD:
                 self._catch_up = False
+        # Auto-merge always picks a side today — sticky Conflict alarm is for
+        # future manual-merge paths only (kept cleared on successful cycles).
         set_conflict(False)
+        self._sync_cycles += 1
+        summary = f"{pushed} pushed, {pulled} pulled, {auto_resolved} auto-merged, {row_errors} errors"
         update_metrics(
             source="remote",
             last_success_utc=datetime.now(timezone.utc).isoformat(),
             pending_rows=pending_count(),
             conflict_count=auto_resolved,
+            sync_cycles=self._sync_cycles,
+            last_cycle_summary=summary,
+            last_auto_merged=auto_resolved,
         )
-        self._emit_divergence_summary(auto_resolved=auto_resolved)
-        self._emit_cycle_summary(
+        self._log_cycle_outcome(
             pushed=pushed,
             pulled=pulled,
             auto_resolved=auto_resolved,
             row_errors=row_errors,
-            force=force,
+            summary=summary,
         )
         close_replica_thread_connection()
         return {
@@ -206,39 +218,85 @@ class CatalogReplicatorWorker(BaseWorker):
             "errors": row_errors,
         }
 
-    def _emit_cycle_summary(
+    def _latch_sync_failed(self, active: bool) -> None:
+        """ISA alarm + edge-triggered operator Event on rising edge only."""
+        set_sync_failed(active)
+        if active and not self._sync_failed_latched:
+            self._emit_exception_event(
+                message="Catalog sync failed",
+                description=clip(
+                    f"Catalog replicator failed {self._failures} consecutive cycles",
+                    256,
+                ),
+                criticity=5,
+                cooldown_key="catalog:sync-failed",
+            )
+        self._sync_failed_latched = bool(active)
+
+    def _latch_local_only(self, active: bool) -> None:
+        """ISA alarm + edge-triggered operator Event when local-only persists."""
+        if active and not self._local_only_latched:
+            self._emit_exception_event(
+                message="Catalog local-only mode",
+                description=clip(
+                    "Remote historian unreachable; edge operating on local catalog only",
+                    256,
+                ),
+                criticity=4,
+                cooldown_key="catalog:local-only",
+            )
+        self._local_only_latched = bool(active)
+
+    def _emit_exception_event(
+        self,
+        *,
+        message: str,
+        description: str,
+        criticity: int,
+        cooldown_key: str,
+    ) -> None:
+        if not cooldown_allows(cooldown_key, _EXCEPTION_EVENT_COOLDOWN_S):
+            _LOGGER.debug("catalog exception event debounced key=%s", cooldown_key)
+            return
+        try:
+            persist_system_event(
+                message=message,
+                description=description,
+                classification="System",
+                priority=2,
+                criticity=criticity,
+            )
+        except Exception:
+            _LOGGER.debug("catalog exception event skipped message=%s", message, exc_info=True)
+
+    def _log_cycle_outcome(
         self,
         *,
         pushed: int,
         pulled: int,
         auto_resolved: int,
         row_errors: int,
-        force: bool,
+        summary: str,
     ) -> None:
-        delta = pushed + pulled
-        noisy = row_errors > 0 or auto_resolved > 0 or delta >= _EVENT_DELTA_THRESHOLD or force
-        summary = f"{pushed} pushed, {pulled} pulled, {auto_resolved} auto-merged, {row_errors} errors"
-        if not noisy:
-            self._quiet_successes += 1
-            _LOGGER.debug("Catalog sync completed (%s)", summary)
-            if self._quiet_successes % _SUCCESS_EVENT_EVERY != 0:
-                return
-        else:
-            self._quiet_successes = 0
-        # Idempotent across catch-up cycles that report the same outcome.
-        if not force and not cooldown_allows(f"catalog:sync:{summary}", _CATALOG_EVENT_COOLDOWN_S):
-            _LOGGER.debug("Catalog sync completed event debounced (%s)", summary)
+        """Operational silence: success / auto-merge never touch the Events table."""
+        if row_errors:
+            _LOGGER.warning("Catalog sync completed with errors (%s)", summary)
             return
-        try:
-            persist_system_event(
-                message="Catalog sync completed",
-                description=clip(summary, 256),
-                classification="System",
-                priority=2,
-                criticity=2 if row_errors == 0 else 4,
+        if auto_resolved > 0:
+            by_table = dict(self._cycle_conflict_counts)
+            table_bits = ",".join(
+                f"{name}×{count}" for name, count in sorted(by_table.items())
+            ) or "mixed"
+            samples = "; ".join(
+                f"{t}:{k}({d})" for t, k, d in self._cycle_conflicts[:_MAX_CONFLICT_SAMPLES]
             )
-        except Exception:
-            _LOGGER.debug("catalog sync event skipped", exc_info=True)
+            detail = clip(
+                f"{auto_resolved} rows auto-merged ({table_bits})"
+                + (f"; e.g. {samples}" if samples else ""),
+                256,
+            )
+            _LOGGER.info("Catalog divergence auto-merged (log-only): %s", detail)
+        _LOGGER.debug("Catalog sync completed (%s)", summary)
 
     def _note_conflict(
         self,
@@ -248,7 +306,7 @@ class CatalogReplicatorWorker(BaseWorker):
         remote: VersionStamp,
         winner: str,
     ) -> None:
-        """Accumulate counts + a few samples; never write Events here."""
+        """Accumulate samples for INFO logs / metrics — never Events."""
         table_s = str(table)
         self._cycle_conflict_counts[table_s] = self._cycle_conflict_counts.get(table_s, 0) + 1
         if len(self._cycle_conflicts) >= _MAX_CONFLICT_SAMPLES:
@@ -260,38 +318,6 @@ class CatalogReplicatorWorker(BaseWorker):
                 f"L{int(local.version)}/R{int(remote.version)}→{winner}",
             )
         )
-
-    def _emit_divergence_summary(self, *, auto_resolved: int) -> None:
-        """At most one divergence Events row per cycle, debounced by fingerprint."""
-        if auto_resolved <= 0:
-            return
-        by_table = dict(self._cycle_conflict_counts)
-        table_bits = ",".join(f"{name}×{count}" for name, count in sorted(by_table.items())) or "mixed"
-        samples = "; ".join(f"{t}:{k}({d})" for t, k, d in self._cycle_conflicts[:_MAX_CONFLICT_SAMPLES])
-        fingerprint = f"catalog:divergence:{auto_resolved}:{table_bits}"
-        if not cooldown_allows(fingerprint, _CATALOG_EVENT_COOLDOWN_S):
-            _LOGGER.debug(
-                "Catalog divergence event debounced count=%s tables=%s",
-                auto_resolved,
-                table_bits,
-            )
-            return
-        description = clip(
-            f"{auto_resolved} rows auto-merged ({table_bits})"
-            + (f"; e.g. {samples}" if samples else ""),
-            256,
-        )
-        try:
-            persist_system_event(
-                message="Catalog divergence auto-merged",
-                description=description,
-                classification="System",
-                priority=2,
-                criticity=2,
-            )
-        except Exception:
-            _LOGGER.debug("catalog divergence summary skipped", exc_info=True)
-        _LOGGER.info("Catalog divergence auto-merged: %s", description)
 
     def _sync_table(
         self,
@@ -397,6 +423,43 @@ class CatalogReplicatorWorker(BaseWorker):
                         pushed += 1
                         processed += 1
                     continue
+
+                # Both sides present: business content decides — not updated_at / version skew.
+                if contents_equal(
+                    table,
+                    local_row,
+                    remote_row,
+                    left_index=local_index,
+                    right_index=remote_index,
+                ):
+                    aligned = max(
+                        int(local_stamp.version) if local_stamp else 0,
+                        int(remote_stamp.version) if remote_stamp else 0,
+                        1,
+                    )
+                    if local_pk:
+                        touch_local(
+                            table,
+                            local_pk,
+                            version=aligned,
+                            node_id=(local_stamp.node_id if local_stamp else None)
+                            or (remote_stamp.node_id if remote_stamp else None)
+                            or edge,
+                            resolved=True,
+                        )
+                    if remote_pk:
+                        touch_remote(
+                            table,
+                            remote_pk,
+                            version=aligned,
+                            node_id=(remote_stamp.node_id if remote_stamp else None)
+                            or (local_stamp.node_id if local_stamp else None)
+                            or "central",
+                            resolved=True,
+                        )
+                    processed += 1
+                    continue
+
                 winner = resolve(
                     local_stamp,
                     remote_stamp,
@@ -437,9 +500,17 @@ class CatalogReplicatorWorker(BaseWorker):
                     remote_by_id[key] = payload
                     remote_index[table] = remote_by_id
                     pushed += 1
-                    if local_stamp and remote_stamp and local_stamp.version != remote_stamp.version:
-                        conflicts += 1
+                    conflicts += 1
+                    if local_stamp and remote_stamp:
                         self._note_conflict(table, key, local_stamp, remote_stamp, "local")
+                    else:
+                        self._note_conflict(
+                            table,
+                            key,
+                            local_stamp or VersionStamp(now_ms(), edge),
+                            remote_stamp or VersionStamp(0, "central"),
+                            "local",
+                        )
                 else:
                     if remote_row is not None:
                         ver = int(remote_stamp.version) if remote_stamp else now_ms()
@@ -457,9 +528,17 @@ class CatalogReplicatorWorker(BaseWorker):
                         local_by_id[key] = payload
                         local_index[table] = local_by_id
                         pulled += 1
-                        if local_stamp and remote_stamp and local_stamp.version != remote_stamp.version:
-                            conflicts += 1
+                        conflicts += 1
+                        if local_stamp and remote_stamp:
                             self._note_conflict(table, key, local_stamp, remote_stamp, "remote")
+                        else:
+                            self._note_conflict(
+                                table,
+                                key,
+                                local_stamp or VersionStamp(0, edge),
+                                remote_stamp or VersionStamp(ver, node),
+                                "remote",
+                            )
                 processed += 1
             except Exception:
                 errors += 1
