@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "../components/Button";
-import { StripChart, BUFFER_SIZE_MIN, type StripChartConfig } from "../components/StripChart";
+import { StripChart, DEFAULT_TIME_SPAN_MINUTES, type StripChartConfig } from "../components/StripChart";
 import { useTranslation } from "../hooks/useTranslation";
 import { useLongTaskObserver } from "../hooks/useLongTaskObserver";
 import { ResponsiveGridLayout, Layout as GridLayoutType } from "react-grid-layout";
@@ -23,6 +23,7 @@ export function RealTimeTrends() {
   const { t } = useTranslation();
   useLongTaskObserver(50, "real-time-trends");
   const [isEditMode, setIsEditMode] = useState(false);
+  const [showThresholds, setShowThresholds] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [stripCharts, setStripCharts] = useState<StripChartConfig[]>(
@@ -86,7 +87,7 @@ export function RealTimeTrends() {
         id: createStationChartId(),
         title: t("realTimeTrends.newChartTitle", { index: prev.length + 1 }),
         tagNames: [],
-        bufferSize: BUFFER_SIZE_MIN,
+        timeSpanMinutes: DEFAULT_TIME_SPAN_MINUTES,
         x: 0,
         y: maxY,
         w: 6,
@@ -156,6 +157,19 @@ export function RealTimeTrends() {
               <h3 className="card-title m-0">{t("navigation.realTimeTrends")}</h3>
             </div>
             <div className="d-flex gap-2 align-items-center">
+              <div className="form-check form-switch mb-0">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  id="realtime-trends-show-thresholds"
+                  checked={showThresholds}
+                  onChange={(e) => setShowThresholds(e.target.checked)}
+                />
+                <label className="form-check-label small" htmlFor="realtime-trends-show-thresholds">
+                  {t("realTimeTrends.showThresholds")}
+                </label>
+              </div>
               <span className="badge bg-warning text-dark">{t("realTimeTrends.editMode")}</span>
               <Button
                 variant="success"
@@ -218,6 +232,7 @@ export function RealTimeTrends() {
                   <StripChart
                     config={chart}
                     isEditMode={isEditMode}
+                    showThresholds={isEditMode && showThresholds}
                     onConfigChange={handleConfigChange}
                     onDelete={() => handleDeleteStripChart(chart.id)}
                   />

@@ -885,7 +885,7 @@ class Tag:
         from ..timebase import iso_millis
 
         quality = getattr(self, "quality", GOOD)
-        return {
+        payload = {
             "name": self.name,
             "value": self.get_value(),
             "timestamp": iso_millis(self.get_timestamp()),
@@ -896,6 +896,67 @@ class Tag:
             "stale": bool(getattr(self, "stale", False)),
             "stale_age_ms": self.get_stale_age_ms(),
         }
+        threshold = self._resolve_alarm_threshold_for_socket()
+        if threshold is not None:
+            payload["threshold"] = threshold
+        return payload
+
+    def _resolve_alarm_threshold_for_socket(self):
+        """Umbral de máquina asociada al tag (PPA/NPW/LDS). None si no aplica o es 0."""
+        try:
+            from .. import PyAutomation
+
+            tag_name = self.name
+            if not tag_name:
+                return None
+            app = PyAutomation()
+            for machine, _, _ in app.get_machines():
+                thr = _machine_threshold_value(machine)
+                if thr is None or thr == 0:
+                    continue
+                try:
+                    subscribed = machine.get_subscribed_tags()
+                except Exception:
+                    subscribed = {}
+                if tag_name in subscribed:
+                    return thr
+                machine_name = getattr(getattr(machine, "name", None), "value", None)
+                if not machine_name:
+                    machine_name = str(getattr(machine, "name", "") or "")
+                if machine_name and (
+                    tag_name == machine_name
+                    or tag_name.startswith(f"{machine_name}.")
+                    or tag_name.endswith(f".{machine_name}")
+                    or f".{machine_name}." in tag_name
+                ):
+                    return thr
+        except Exception:
+            return None
+        return None
+
+
+def _machine_threshold_value(machine) -> float | None:
+    """Extrae umbral activo de una máquina de estado (incl. PPA/NPW)."""
+    getter = getattr(machine, "get_active_detection_threshold", None)
+    if callable(getter):
+        try:
+            value = getter()
+            if value is not None:
+                numeric = float(value)
+                if numeric != 0:
+                    return numeric
+        except Exception:
+            pass
+    threshold = getattr(machine, "threshold", None)
+    if threshold is None:
+        return None
+    raw = getattr(threshold, "value", threshold)
+    inner = getattr(raw, "value", raw)
+    try:
+        numeric = float(inner)
+    except (TypeError, ValueError):
+        return None
+    return numeric if numeric != 0 else None
 
 
 class TagObserver(Observer):

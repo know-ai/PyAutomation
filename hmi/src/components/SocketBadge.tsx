@@ -7,13 +7,19 @@ export function SocketBadge() {
   const status = useSocketConnection();
 
   const level =
-    status === "connected" ? "ok" : status === "connecting" ? "warn" : "alarm";
+    status === "connected"
+      ? "ok"
+      : status === "reconnecting" || status === "connecting"
+        ? "warn"
+        : "alarm";
   const title =
     status === "connected"
       ? t("socket.badgeConnected")
-      : status === "connecting"
-        ? t("socket.badgeConnecting")
-        : t("socket.badgeDisconnected");
+      : status === "reconnecting"
+        ? t("socket.badgeReconnecting")
+        : status === "connecting"
+          ? t("socket.badgeConnecting")
+          : t("socket.badgeDisconnected");
 
   return (
     <span

@@ -17,6 +17,7 @@ import { isDbUnavailableError } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { usePlantAreas } from "../hooks/usePlantAreas";
+import { useDebounce } from "../hooks/useDebounce";
 import {
   FILTER_COMPOSE_MS,
   FILTER_DATE_MS,
@@ -154,6 +155,10 @@ export function Events() {
     return saved ? JSON.parse(saved) : [];
   });
   const [selectedArea, setSelectedArea] = useState("");
+  const [searchTerm, setSearchTerm] = useState(
+    () => localStorage.getItem("events_search") || ""
+  );
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("events_presetDate");
     return (saved as PresetDate) || "Last Hour";
@@ -205,6 +210,10 @@ export function Events() {
   useEffect(() => {
     schedule(FILTER_INSTANT_MS);
   }, [timeZone, selectedArea, schedule]);
+
+  useEffect(() => {
+    schedule(FILTER_INSTANT_MS);
+  }, [debouncedSearchTerm, schedule]);
 
   // Cerrar menú contextual al hacer click fuera
   useEffect(() => {
@@ -300,6 +309,10 @@ export function Events() {
       payload.timezone = timeZone;
       if (selectedArea) {
         payload.area = selectedArea;
+      }
+      const trimmedSearch = debouncedSearchTerm.trim();
+      if (trimmedSearch) {
+        payload.q = trimmedSearch;
       }
 
       const response: EventResponse = await filterEvents(payload, { signal });
@@ -573,6 +586,8 @@ export function Events() {
     localStorage.removeItem("events_selectedPriorities");
     localStorage.removeItem("events_selectedCriticities");
     setSelectedArea("");
+    setSearchTerm("");
+    localStorage.removeItem("events_search");
     setPresetDate("Last Hour");
     localStorage.setItem("events_presetDate", "Last Hour");
     const { start, end } = getPresetDateRange("Last Hour");
@@ -639,6 +654,10 @@ export function Events() {
       payload.timezone = timeZone;
       if (selectedArea) {
         payload.area = selectedArea;
+      }
+      const trimmedSearch = debouncedSearchTerm.trim();
+      if (trimmedSearch) {
+        payload.q = trimmedSearch;
       }
 
       const response: EventResponse = await filterEvents(payload);
@@ -733,6 +752,24 @@ export function Events() {
                       setSelectedArea(area);
                       resetToFirstPage();
                     }}
+                  />
+                  <input
+                    type="search"
+                    className="form-control form-control-sm"
+                    style={{ width: "200px", maxWidth: "100%" }}
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      localStorage.setItem("events_search", e.target.value);
+                      resetToFirstPage();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        schedule(FILTER_INSTANT_MS);
+                      }
+                    }}
+                    placeholder={t("events.searchPlaceholder")}
+                    aria-label={t("events.searchPlaceholder")}
                   />
                   <MultiSelectSearch
                     options={userOptions}

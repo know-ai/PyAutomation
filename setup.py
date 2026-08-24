@@ -35,7 +35,7 @@ if hmi_dist_path.exists() and (hmi_dist_path / "index.html").exists():
 
 # Configurar package_data
 package_data = {
-    'automation': ['pages/assets/*']
+    'automation': ['pages/assets/*', 'data/i18n_map.json']
 }
 
 # Agregar archivos del HMI si fueron copiados

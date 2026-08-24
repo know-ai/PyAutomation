@@ -182,6 +182,7 @@ class AlarmsLogger(BaseLogger):
             page:int=1,
             limit:int=20,
             area:str=None,
+            q:str="",
         ):
         r"""
         Filters alarm history based on various criteria.
@@ -196,6 +197,7 @@ class AlarmsLogger(BaseLogger):
         * **timezone** (str): IANA zone for serialize presentation.
         * **page** (int): Pagination page.
         * **limit** (int): Entries per page.
+        * **q** (str): Case-insensitive partial match on name or description.
 
         **Returns:**
 
@@ -223,6 +225,7 @@ class AlarmsLogger(BaseLogger):
             page=page,
             limit=limit,
             area=area,
+            q=q,
         )
     
     @db_rollback
@@ -690,6 +693,7 @@ class AlarmsLoggerEngine(BaseEngine):
         page:int=1,
         limit:int=20,
         area:str=None,
+        q:str="",
         ):
         r"""
         Thread-safe filtering of alarm summary.
@@ -711,6 +715,7 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["page"] = page
         _query["parameters"]["limit"] = limit
         _query["parameters"]["area"] = area
+        _query["parameters"]["q"] = q
         
         return self.query(_query)
     

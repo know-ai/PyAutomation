@@ -17,6 +17,7 @@ events_filter_model = api.model("events_filter_model",{
     'priorities': fields.List(fields.Integer(), required=False, description='List of priority levels to filter by'),
     'criticities': fields.List(fields.Integer(), required=False, description='List of criticality levels to filter by'),
     'message': fields.String(required=False, description='Partial message content to search for'),
+    'q': fields.String(required=False, description='Case-insensitive partial match on event message (HMI free-text)'),
     'classification': fields.String(required=False, description='Event classification/category'),
     'description': fields.String(required=False, description='Partial description content to search for'),
     'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description=f'Start time for filtering - DateTime Format: {app.cvt.DATETIME_FORMAT}'),

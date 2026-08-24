@@ -465,20 +465,22 @@ class PyAutomation(Singleton):
 
         install_request_connection_teardown(self.server)
         install_http_metrics(self.server)
+        socketio_kwargs = dict(
+            cors_allowed_origins='*',
+            ping_timeout=60,
+            ping_interval=25,
+            max_http_buffer_size=int(1e6),
+            async_mode='gevent',
+            handler_class=WebSocketHandler,
+        )
         if certfile and keyfile:
-
             self.sio = SocketIO(
-                self.server, 
-                cors_allowed_origins='*', 
-                ping_timeout=10, 
-                ping_interval=10, 
-                async_mode='gevent', 
-                ssl_context=(certfile, keyfile), 
-                handler_class=WebSocketHandler
+                self.server,
+                ssl_context=(certfile, keyfile),
+                **socketio_kwargs,
             )
-        
         else:
-            self.sio = SocketIO(self.server, cors_allowed_origins='*', ping_timeout=10, ping_interval=10, async_mode='gevent', handler_class=WebSocketHandler)
+            self.sio = SocketIO(self.server, **socketio_kwargs)
 
         self.cvt._cvt.set_socketio(sio=self.sio)
 
@@ -5745,7 +5747,9 @@ class PyAutomation(Singleton):
             timezone:str="UTC",
             page:int=1,
             limit:int=20,
-            area:str=None)->list:
+            area:str=None,
+            q:str="",
+        )->list:
         r"""
         Filters system events based on multiple criteria.
 
@@ -5755,6 +5759,7 @@ class PyAutomation(Singleton):
         * **priorities** (list[int]): Filter by priority level.
         * **criticities** (list[int]): Filter by criticity level.
         * **message** (str): Text search in message.
+        * **q** (str): Free-text partial match on message (HMI).
         * **classification** (str): Filter by event classification.
         * **timezone** (str): Timezone for timestamp filtering.
         * **page**, **limit**: Pagination parameters.
@@ -5777,6 +5782,7 @@ class PyAutomation(Singleton):
                 page=page,
                 limit=limit,
                 area=optional_area(area),
+                q=q,
             )
         
         return list()

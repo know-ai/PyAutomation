@@ -143,6 +143,15 @@ class BaseLogger(Singleton):
                 "AlarmSummary timestamp scale ensure skipped",
                 exc_info=True,
             )
+        try:
+            from ..dbmodels.events import Events
+
+            Events.ensure_schema()
+        except Exception:
+            logging.getLogger("pyautomation").warning(
+                "Events text-search schema ensure skipped",
+                exc_info=True,
+            )
         self.__init_default_variables_schema()
         self.__init_default_datatypes_schema()
         self.__init_default_roles_schema()

@@ -7,6 +7,7 @@ import { Footer } from "./Footer";
 import { useTheme } from "../hooks/useTheme";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { useSocket } from "../hooks/useSocket";
+import { useSocketConnectionNotifications } from "../hooks/useSocketConnectionNotifications";
 import { useTranslation } from "../hooks/useTranslation";
 import { useMemoryWatchdog } from "../hooks/useMemoryWatchdog";
 import { socketService } from "../services/socket";
@@ -23,6 +24,7 @@ export function MainLayout({ children }: PropsWithChildren) {
   useTheme();
   useDisplayTimezone();
   useSocket();
+  useSocketConnectionNotifications();
   useMemoryWatchdog(512);
 
   useEffect(() => {

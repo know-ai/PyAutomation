@@ -173,6 +173,17 @@ class Users(Singleton):
             
             # Intentar autenticar
             if self.__auth.login(user=user, password=password, token=token):
+                try:
+                    from ...node_scope import get_node_scope
+
+                    scope = get_node_scope()
+                    setattr(
+                        user,
+                        "_session_node_id",
+                        (scope.node_id if scope.is_valid else None) or "local",
+                    )
+                except Exception:
+                    setattr(user, "_session_node_id", "local")
                 replaced = self._revoke_other_sessions(user)
                 setattr(user, "_login_replaced_session", replaced)
                 self.active_users[user.token] = user
@@ -192,7 +203,20 @@ class Users(Singleton):
         Replacing a token after boot or a second login is **not** an operator
         logout. Do not persist ``User logged out`` here — that event is reserved
         for ``POST /users/logout``.
+
+        En multi-edge solo revoca sesiones del mismo ``node_id``; otras líneas
+        conservan su token en ``user_api_sessions``.
         """
+        try:
+            from ...node_scope import get_node_scope
+
+            scope = get_node_scope()
+            current_node = (scope.node_id if scope.is_valid else None) or "local"
+            multi_edge = bool(scope.enabled)
+        except Exception:
+            current_node = "local"
+            multi_edge = False
+
         stale = [
             session_token
             for session_token, session_user in list(self.active_users.items())
@@ -201,7 +225,19 @@ class Users(Singleton):
                 and session_token != getattr(user, "token", None)
             )
         ]
+        filtered: list[str] = []
         for session_token in stale:
+            if multi_edge:
+                session_node = getattr(
+                    self.active_users.get(session_token),
+                    "_session_node_id",
+                    None,
+                )
+                if session_node and session_node != current_node:
+                    continue
+            filtered.append(session_token)
+
+        for session_token in filtered:
             self.active_users.pop(session_token, None)
             if session_token:
                 self._revoked_tokens.add(session_token)
@@ -210,7 +246,7 @@ class Users(Singleton):
             excess = list(self._revoked_tokens)[: len(self._revoked_tokens) - 512]
             for item in excess:
                 self._revoked_tokens.discard(item)
-        return bool(stale)
+        return bool(filtered)
 
     def is_revoked_token(self, token:str)->bool:
         return bool(token) and token in getattr(self, "_revoked_tokens", set())

@@ -2,16 +2,25 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import type { Tag } from "../../services/tags";
 import { logout } from "./authSlice";
 
-/** ~12 min @ 1 Hz. Tope duro por tag: el buffer no crece sin límite. */
-export const MAX_HISTORY_POINTS = 720;
-/** Tope de tags con historial (LRU de no suscritos). ~64×720 pts ≈ 2 MB. */
+/** Opciones de ventana temporal en la HMI (minutos). */
+export const TIME_SPAN_OPTIONS_MINUTES = [1, 2, 3, 5] as const;
+export type TimeSpanMinutes = (typeof TIME_SPAN_OPTIONS_MINUTES)[number];
+export const DEFAULT_TIME_SPAN_MINUTES: TimeSpanMinutes = 2;
+/** Máximo time span seleccionable → retención de seguridad en Redux. */
+export const MAX_HISTORY_TIME_MS =
+  Math.max(...TIME_SPAN_OPTIONS_MINUTES) * 60 * 1000;
+/** Tope de tags con historial (LRU de no suscritos). */
 export const MAX_HISTORY_TAGS = 64;
 export const HISTORY_STORAGE_KEY = "pyautomation.tagHistory";
 /** Tope de muestras encoladas por tag entre flushes (CA-RT-5). */
 export const HISTORY_POINTS_PER_FLUSH = 20;
-/** Persistencia: solo series suscritas / recientes, acotadas al buffer RT. */
+/** Persistencia: solo series suscritas / recientes. */
 export const HISTORY_PERSIST_MAX_TAGS = 24;
-export const HISTORY_PERSIST_MAX_POINTS = 360;
+/** ~5 min @ 1 Hz (máximo time span de UI). */
+export const HISTORY_PERSIST_MAX_POINTS = 300;
+
+/** @deprecated Preferir poda por tiempo; alias de compatibilidad. */
+export const MAX_HISTORY_POINTS = HISTORY_PERSIST_MAX_POINTS;
 
 export interface TagHistoryPoint {
   timestamp: string;
@@ -27,19 +36,69 @@ interface TagsState {
 const isValidPoint = (pt: unknown): pt is TagHistoryPoint => {
   if (!pt || typeof pt !== "object") return false;
   const p = pt as TagHistoryPoint;
-  return typeof p.timestamp === "string" && typeof p.value === "number" && !Number.isNaN(p.value);
+  return (
+    typeof p.timestamp === "string" &&
+    typeof p.value === "number" &&
+    !Number.isNaN(p.value)
+  );
 };
 
-const trimHistory = (pts: TagHistoryPoint[]): TagHistoryPoint[] => {
-  if (pts.length <= MAX_HISTORY_POINTS) return pts;
-  return pts.slice(pts.length - MAX_HISTORY_POINTS);
+const pointTimeMs = (pt: TagHistoryPoint): number => {
+  const ms = Date.parse(pt.timestamp);
+  return Number.isFinite(ms) ? ms : NaN;
 };
+
+/**
+ * Descarta puntos anteriores a ``nowMs - timeSpanMs``.
+ * Ancla en reloj de pared para que tags inactivos vacíen el buffer.
+ * El array se asume ordenado por timestamp ascendente.
+ */
+export function pruneHistoryByTime(
+  history: TagHistoryPoint[],
+  timeSpanMs: number,
+  nowMs: number = Date.now()
+): TagHistoryPoint[] {
+  if (!history.length || timeSpanMs <= 0) return [];
+  const cutoff = nowMs - timeSpanMs;
+  let lo = 0;
+  let hi = history.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const t = pointTimeMs(history[mid]);
+    if (!Number.isFinite(t) || t < cutoff) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo === 0 ? history : history.slice(lo);
+}
+
+export const normalizeTimeSpanMinutes = (value: unknown): TimeSpanMinutes => {
+  const n = typeof value === "number" ? value : Number(value);
+  if (
+    TIME_SPAN_OPTIONS_MINUTES.includes(n as TimeSpanMinutes)
+  ) {
+    return n as TimeSpanMinutes;
+  }
+  return DEFAULT_TIME_SPAN_MINUTES;
+};
+
+/** Migra configs antiguas con bufferSize (puntos) a minutos. */
+export const timeSpanFromLegacyBufferSize = (bufferSize: unknown): TimeSpanMinutes => {
+  const n = typeof bufferSize === "number" ? bufferSize : Number(bufferSize);
+  if (!Number.isFinite(n)) return DEFAULT_TIME_SPAN_MINUTES;
+  if (n <= 90) return 1;
+  if (n <= 150) return 2;
+  if (n <= 240) return 3;
+  return 5;
+};
+
+const trimHistory = (pts: TagHistoryPoint[], nowMs: number = Date.now()): TagHistoryPoint[] =>
+  pruneHistoryByTime(pts, MAX_HISTORY_TIME_MS, nowMs);
 
 export const mergeHistoryPoints = (
   existing: TagHistoryPoint[],
   incoming: TagHistoryPoint[]
 ): TagHistoryPoint[] => {
-  if (incoming.length === 0) return existing;
+  if (incoming.length === 0) return trimHistory(existing);
   if (existing.length === 0) return trimHistory(incoming.filter(isValidPoint));
 
   const byTs = new Map<string, number>();
@@ -82,9 +141,10 @@ export const loadPersistedTagHistory = (): Record<string, TagHistoryPoint[]> => 
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const out: Record<string, TagHistoryPoint[]> = {};
+    const now = Date.now();
     for (const [name, pts] of Object.entries(parsed)) {
       if (typeof name !== "string" || !name || !Array.isArray(pts)) continue;
-      out[name] = trimHistory(pts.filter(isValidPoint));
+      out[name] = trimHistory(pts.filter(isValidPoint), now);
     }
     return evictExcessHistory(out);
   } catch (_e) {
@@ -104,14 +164,14 @@ export const persistTagHistory = (
     .filter((name) => !(subscribers[name] > 0))
     .sort((a, b) => lastTimestamp(history[b]).localeCompare(lastTimestamp(history[a])));
   const keepNames = [...preferred, ...others].slice(0, HISTORY_PERSIST_MAX_TAGS);
+  const now = Date.now();
   const payload: Record<string, TagHistoryPoint[]> = {};
   for (const name of keepNames) {
-    const pts = history[name] || [];
-    payload[name] = trimHistory(
+    const pts = trimHistory(history[name] || [], now);
+    payload[name] =
       pts.length > HISTORY_PERSIST_MAX_POINTS
         ? pts.slice(pts.length - HISTORY_PERSIST_MAX_POINTS)
-        : pts
-    );
+        : pts;
   }
   try {
     localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(payload));
@@ -161,10 +221,7 @@ const appendPointsToHistory = (state: TagsState, name: string, tags: Tag[]) => {
     if (!point) continue;
     history.push(point);
   }
-  if (history.length > MAX_HISTORY_POINTS) {
-    history.splice(0, history.length - MAX_HISTORY_POINTS);
-  }
-  state.tagHistory[name] = history;
+  state.tagHistory[name] = trimHistory(history);
   if (Object.keys(state.tagHistory).length > MAX_HISTORY_TAGS) {
     state.tagHistory = evictExcessHistory(state.tagHistory, state.historySubscribers);
   }
@@ -231,7 +288,6 @@ const tagsSlice = createSlice({
       const next = (state.historySubscribers[name] || 1) - 1;
       if (next <= 0) {
         delete state.historySubscribers[name];
-        // Conservar tagHistory: navegar o desmontar StripChart no vacía el buffer.
       } else {
         state.historySubscribers[name] = next;
       }
@@ -239,12 +295,10 @@ const tagsSlice = createSlice({
     clearTagValues: (state) => {
       state.tagValues = {};
       state.historySubscribers = {};
-      // tagHistory se conserva (tope MAX_HISTORY_POINTS / MAX_HISTORY_TAGS).
     },
   },
-    extraReducers: (builder) => {
+  extraReducers: (builder) => {
     builder.addCase(logout, (state) => {
-      // Política de producto: tagHistory acotado (720×64) se persiste; no se vacía en logout.
       persistTagHistory(state.tagHistory, state.historySubscribers);
       state.tagValues = {};
       state.historySubscribers = {};

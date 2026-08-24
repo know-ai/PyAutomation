@@ -33,6 +33,8 @@
     "searchPlaceholder": "Search...",
     "bufferSizeLabel": "Buffer size (points):",
     "bufferSizeRangeHelp": "Allowed range: {{min}}–{{max}} points. Adjust the value so it stays within this interval.",
+    "timeSpanLabel": "Window:",
+    "timeSpanOption": "{{minutes}} min",
     "selectedTags": "Selected tags:",
     "unitsCount": "Units: {{count}}/2",
     "availableTags": "Available tags:",
@@ -42,11 +44,15 @@
     "maxUnitsPerChart": "Maximum 2 units per chart",
     "titlePlaceholder": "Chart title",
     "defaultTitle": "Strip Chart",
-    "emptyState": "Select tags to visualize"
+    "emptyState": "Select tags to visualize",
+    "emptyTimeSpan": "No data in the selected interval",
+    "thresholdLine": "Threshold",
+    "thresholdLegend": "Threshold ({{tag}})"
   },
   "realTimeTrends": {
     "editMode": "Edit Mode",
     "addChart": "Add Chart",
+    "showThresholds": "Show thresholds",
     "newChartTitle": "Chart {{index}}",
     "emptyEdit": "Double-click the view and then 'Add Chart' to create your first real-time chart",
     "emptyProduction": "No charts configured. Double-click the view to enter edit mode."
@@ -126,6 +132,7 @@
     "usernames": "Users:",
     "selectUsersPlaceholder": "Select users...",
     "searchUsers": "Search user...",
+    "searchPlaceholder": "Search by message",
     "noUsersFound": "No users found",
     "selectPriorityPlaceholder": "Priority...",
     "searchPriority": "Search priority...",
@@ -751,8 +758,11 @@
   },
   "socket": {
     "badgeConnected": "HMI socket connected — real-time data active",
-    "badgeDisconnected": "HMI socket disconnected — reconnecting…",
-    "badgeConnecting": "HMI socket reconnecting…"
+    "badgeDisconnected": "HMI socket disconnected — retrying connection…",
+    "badgeConnecting": "HMI socket connecting…",
+    "badgeReconnecting": "HMI socket reconnecting…",
+    "toastLost": "Socket.IO connection lost — reconnecting…",
+    "toastRestored": "Socket.IO connection restored"
   },
   "timezone": {
     "title": "Time zone",
@@ -1082,6 +1092,7 @@
     "state": "State",
     "selectStatesPlaceholder": "Select states...",
     "searchStates": "Search state...",
+    "searchPlaceholder": "Search by name or description",
     "noStatesFound": "No states found",
     "selectAll": "Select filtered",
     "selectedCount": "{{count}} selected",

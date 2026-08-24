@@ -207,12 +207,17 @@ class Users(BaseModel):
 
             if user.decode_password(password):
                 
-                # if not user.token:
-                    
                 user.token = cls.encode(secrets.token_hex(4))
                 user.save()
                 
                 users.login(password=password, token=user.token, username=username, email=email)
+
+                try:
+                    from ..utils.user_api_session_store import register_api_session
+
+                    register_api_session(token=user.token, username=user.username)
+                except Exception:
+                    pass
 
                 return user, f"Login successful"
 
@@ -239,6 +244,12 @@ class Users(BaseModel):
             try:
                 user.token = None
                 user.save()
+            except Exception:
+                pass
+            try:
+                from ..utils.user_api_session_store import revoke_api_session
+
+                revoke_api_session(token)
             except Exception:
                 pass
             try:

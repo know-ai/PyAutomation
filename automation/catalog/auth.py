@@ -46,9 +46,27 @@ def login_local(password: str, username: str = "", email: str = ""):
         # Mint session token (same shape as Auth.login). Do not require historian.
         token = generate_password_hash(secrets.token_hex(4))
         mem.token = token
+        try:
+            from ..node_scope import get_node_scope
+
+            scope = get_node_scope()
+            setattr(
+                mem,
+                "_session_node_id",
+                (scope.node_id if scope.is_valid else None) or "local",
+            )
+        except Exception:
+            setattr(mem, "_session_node_id", "local")
         replaced = users._revoke_other_sessions(mem)
         setattr(mem, "_login_replaced_session", replaced)
         users.active_users[token] = mem
+
+        try:
+            from ..utils.user_api_session_store import register_api_session
+
+            register_api_session(token=token, username=uname or "")
+        except Exception:
+            pass
 
         try:
             pk = user_row.get("_pk") or user_row.get("id")

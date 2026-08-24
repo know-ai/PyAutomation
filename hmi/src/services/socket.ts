@@ -20,11 +20,14 @@ export type SocketConnectionSnapshot = {
   last_logs?: unknown[];
 };
 
+export type SocketConnectionPhase = "connected" | "connecting" | "reconnecting" | "disconnected";
+
 export type SocketConnectionState = {
   connected: boolean;
   connecting: boolean;
   /** true on connect after a prior disconnect in this session (not first connect). */
   reconnect: boolean;
+  phase: SocketConnectionPhase;
 };
 
 type ConnectionListener = (state: SocketConnectionState) => void;
@@ -38,17 +41,61 @@ class SocketService {
   private wasDisconnected: boolean = false;
   private hadSuccessfulConnection: boolean = false;
   private lastToken: string | null = null;
+  private disconnectedAt: number | null = null;
+  private phaseTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly listeners = new Map<string, Set<FanoutHandler>>();
   private readonly nativeBound = new Set<string>();
   private readonly connectionListeners = new Set<ConnectionListener>();
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly HEARTBEAT_MS = 30_000;
+  /** After this duration without socket, badge turns red (reconnect still runs). */
+  static readonly DISCONNECTED_PHASE_MS = 30_000;
+
+  private computePhase(): SocketConnectionPhase {
+    if (this.isConnected) {
+      return "connected";
+    }
+    if (!this.hadSuccessfulConnection) {
+      return this.isConnecting ? "connecting" : "disconnected";
+    }
+    const elapsed = this.disconnectedAt ? Date.now() - this.disconnectedAt : 0;
+    if (elapsed >= SocketService.DISCONNECTED_PHASE_MS) {
+      return "disconnected";
+    }
+    return "reconnecting";
+  }
+
+  private clearPhaseTimer(): void {
+    if (this.phaseTimer) {
+      clearTimeout(this.phaseTimer);
+      this.phaseTimer = null;
+    }
+  }
+
+  private schedulePhaseTimer(): void {
+    this.clearPhaseTimer();
+    if (!this.disconnectedAt || this.isConnected) {
+      return;
+    }
+    const elapsed = Date.now() - this.disconnectedAt;
+    const remaining = SocketService.DISCONNECTED_PHASE_MS - elapsed;
+    if (remaining <= 0) {
+      return;
+    }
+    this.phaseTimer = setTimeout(() => {
+      this.phaseTimer = null;
+      if (!this.isConnected) {
+        this.emitConnection(false);
+      }
+    }, remaining);
+  }
 
   private snapshot(reconnect = false): SocketConnectionState {
     return {
       connected: this.isConnected,
       connecting: this.isConnecting,
       reconnect,
+      phase: this.computePhase(),
     };
   }
 
@@ -65,6 +112,10 @@ class SocketService {
     return () => {
       this.connectionListeners.delete(listener);
     };
+  }
+
+  getConnectionPhase(): SocketConnectionPhase {
+    return this.computePhase();
   }
 
   private getToken(): string | null {
@@ -117,6 +168,32 @@ class SocketService {
     }
   }
 
+  private markDisconnected(): void {
+    this.wasDisconnected = true;
+    this.isConnected = false;
+    this.isConnecting = false;
+    if (!this.disconnectedAt) {
+      this.disconnectedAt = Date.now();
+    }
+    this.stopHeartbeat();
+    this.schedulePhaseTimer();
+    this.emitConnection(false);
+  }
+
+  private markConnected(): void {
+    const reconnect = this.wasDisconnected || this.hadSuccessfulConnection;
+    this.hadSuccessfulConnection = true;
+    this.wasDisconnected = false;
+    this.isConnected = true;
+    this.isConnecting = false;
+    this.reconnectAttempts = 0;
+    this.disconnectedAt = null;
+    this.clearPhaseTimer();
+    this.bindPendingNatives();
+    this.startHeartbeat();
+    this.emitConnection(reconnect);
+  }
+
   private handleConnectError(err: Error): void {
     this.reconnectAttempts++;
     this.isConnecting = false;
@@ -124,6 +201,8 @@ class SocketService {
     const message = String(err?.message || err || "");
     if (message.includes("Authentication failed")) {
       this.stopHeartbeat();
+      this.clearPhaseTimer();
+      this.disconnectedAt = null;
       store.dispatch(logout());
       showToast("Session expired or invalid. Please sign in again.", "error");
     }
@@ -200,36 +279,29 @@ class SocketService {
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000,
+      reconnectionDelayMax: 10000,
+      randomizationFactor: 0.5,
+      timeout: 30000,
       auth: (cb) => {
         cb(this.socketAuthPayload());
       },
     });
 
     this.socket.on("connect", () => {
-      const reconnect = this.wasDisconnected || this.hadSuccessfulConnection;
-      this.hadSuccessfulConnection = true;
-      this.wasDisconnected = false;
-      this.isConnected = true;
-      this.isConnecting = false;
-      this.reconnectAttempts = 0;
-      this.bindPendingNatives();
-      this.startHeartbeat();
-      this.emitConnection(reconnect);
+      this.markConnected();
     });
 
     this.socket.on("disconnect", () => {
-      this.wasDisconnected = true;
-      this.isConnected = false;
-      this.isConnecting = false;
-      this.stopHeartbeat();
-      this.emitConnection(false);
+      this.markDisconnected();
     });
 
     this.socket.on("connect_error", (err: Error) => {
       if (this.hadSuccessfulConnection) {
         this.wasDisconnected = true;
+        if (!this.disconnectedAt) {
+          this.disconnectedAt = Date.now();
+          this.schedulePhaseTimer();
+        }
       }
       this.handleConnectError(err);
     });
@@ -247,6 +319,8 @@ class SocketService {
 
   disconnect(): void {
     this.stopHeartbeat();
+    this.clearPhaseTimer();
+    this.disconnectedAt = null;
     if (this.socket) {
       this.socket.removeAllListeners();
       this.socket.disconnect();

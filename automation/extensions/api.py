@@ -115,6 +115,21 @@ class Api(Singleton):
 
         if db_reachable:
             try:
+                from ..utils.user_api_session_store import lookup_username
+
+                session_username = lookup_username(token)
+                if session_username:
+                    db_user = Users.get_or_none(Users.username == session_username)
+                    if db_user:
+                        restored = users.activate_session_from_db_record(db_user, token=token)
+                        if restored:
+                            return restored, None, None
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "user_api_sessions token lookup skipped",
+                    exc_info=True,
+                )
+            try:
                 db_user = Users.get_or_none(token=token)
                 if db_user:
                     restored = users.activate_session_from_db_record(db_user, token=token)

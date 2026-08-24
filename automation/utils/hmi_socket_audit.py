@@ -77,7 +77,11 @@ def _edge_label() -> str:
 
 
 def resolve_connect_user(auth: Any) -> Tuple[Optional[object], str, str]:
-    """Strict connect auth. Returns (user, username, reject_reason). Never logs token."""
+    """Strict connect auth. Returns (user, username, reject_reason). Never logs token.
+
+    No se valida ``node_id`` del token frente al edge local: los tokens API no son JWT
+    por nodo; en multi-edge la validez se resuelve vía ``user_api_sessions`` + firma.
+    """
     auth = auth if isinstance(auth, dict) else {}
     token = clip(auth.get("token") or "", 512)
     if not token:

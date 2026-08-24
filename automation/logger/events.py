@@ -130,6 +130,7 @@ class EventsLogger(BaseLogger):
         page:int=1,
         limit:int=20,
         area:str=None,
+        q:str="",
         ):
         r"""
         Filters events based on multiple criteria.
@@ -142,6 +143,7 @@ class EventsLogger(BaseLogger):
         * **message** (str): Partial match on message.
         * **description** (str): Partial match on description.
         * **classification** (str): Partial match on classification.
+        * **q** (str): Free-text partial match on message (HMI).
         * **greater_than_timestamp** (datetime): Start time.
         * **less_than_timestamp** (datetime): End time.
         * **timezone** (str): Timezone.
@@ -173,6 +175,7 @@ class EventsLogger(BaseLogger):
             page=page,
             limit=limit,
             area=area,
+            q=q,
             )
 
     def get_summary(self)->tuple[list, str]:
@@ -259,6 +262,7 @@ class EventsLoggerEngine(BaseEngine):
         page:int=1,
         limit:int=20,
         area:str=None,
+        q:str="",
         ):
         r"""
         Thread-safe event filtering.
@@ -278,6 +282,7 @@ class EventsLoggerEngine(BaseEngine):
         _query["parameters"]["page"] = page
         _query["parameters"]["limit"] = limit
         _query["parameters"]["area"] = area
+        _query["parameters"]["q"] = q
         
         return self.query(_query)
 

@@ -1,6 +1,9 @@
 import os
 import logging
 
+# Long-lived WebSocket/Socket.IO sessions must not be cut by the default 30s worker timeout.
+timeout = int(os.environ.get("GUNICORN_TIMEOUT", "120"))
+
 log_folder = os.path.join(".", "logs")
 if not os.path.exists(log_folder):
     os.makedirs(log_folder)

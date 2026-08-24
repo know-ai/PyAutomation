@@ -24,6 +24,8 @@ export type EventFilter = {
   priorities?: number[];
   criticities?: number[];
   message?: string;
+  /** Case-insensitive partial match on event message (HMI free-text) */
+  q?: string;
   classification?: string;
   description?: string;
   greater_than_timestamp?: string;

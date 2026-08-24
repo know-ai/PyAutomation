@@ -1,6 +1,6 @@
 import logging
 import pytz
-from peewee import CharField, FloatField, ForeignKeyField, TimestampField
+from peewee import CharField, FloatField, ForeignKeyField, TimestampField, fn
 from ..dbmodels.core import BaseModel 
 from datetime import datetime
 from .tags import Tags
@@ -536,6 +536,7 @@ class AlarmSummary(BaseModel):
         page:int=1,
         limit:int=20,
         area:str=None,
+        q:str="",
         ):
         r"""
         Filters alarm summary records with pagination.
@@ -548,6 +549,7 @@ class AlarmSummary(BaseModel):
         * **greater_than_timestamp** (datetime): Start time in UTC (naive or timezone-aware).
         * **less_than_timestamp** (datetime): End time in UTC (naive or timezone-aware).
         * **page**, **limit**: Pagination control.
+        * **q** (str): Case-insensitive partial match on alarm name or description.
 
         **Returns:**
 
@@ -579,6 +581,20 @@ class AlarmSummary(BaseModel):
             tag_ids = Tags.select(Tags.id).where(Tags.name.in_(tags))
             alarm_ids = Alarms.select(Alarms.id).where(Alarms.tag.in_(tag_ids))
             query = query.where(cls.alarm.in_(alarm_ids))
+
+        q_term = str(q or "").strip()
+        if q_term:
+            from ..i18n_search import expand_search_term, get_translation_map, icontains_any
+
+            terms = expand_search_term(q_term, get_translation_map())
+            name_cond = icontains_any(Alarms.name, terms)
+            desc_cond = icontains_any(Alarms.description, terms)
+            if name_cond is not None and desc_cond is not None:
+                query = query.join(Alarms).where(name_cond | desc_cond)
+            elif name_cond is not None:
+                query = query.join(Alarms).where(name_cond)
+            elif desc_cond is not None:
+                query = query.join(Alarms).where(desc_cond)
         
         if greater_than_timestamp:
             # Expect datetime object in UTC (already converted by endpoint)
@@ -751,6 +767,31 @@ class AlarmSummary(BaseModel):
                     exc_info=True,
                 )
         cls._backfill_area_from_alarm()
+        cls._ensure_text_search_indexes()
+
+    @classmethod
+    def _ensure_text_search_indexes(cls) -> None:
+        """Optional PostgreSQL trigram indexes for free-text ``q`` on Alarms catalog."""
+        database = cls._meta.database
+        if database is None:
+            return
+        vendor = (getattr(database, "vendor", "") or "").lower()
+        if vendor != "postgresql":
+            return
+        logger = logging.getLogger("pyautomation")
+        alarms_table = Alarms._meta.table_name
+        try:
+            database.execute_sql("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+            database.execute_sql(
+                f'CREATE INDEX IF NOT EXISTS idx_{alarms_table}_name_trgm '
+                f'ON "{alarms_table}" USING gin (name gin_trgm_ops)'
+            )
+            database.execute_sql(
+                f'CREATE INDEX IF NOT EXISTS idx_{alarms_table}_description_trgm '
+                f'ON "{alarms_table}" USING gin (description gin_trgm_ops)'
+            )
+        except Exception:
+            logger.warning("Alarms pg_trgm text-search indexes skipped", exc_info=True)
 
     @classmethod
     def _backfill_area_from_alarm(cls) -> None:

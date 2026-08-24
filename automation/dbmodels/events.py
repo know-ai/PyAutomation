@@ -155,6 +155,7 @@ class Events(BaseModel):
         page:int=1,
         limit:int=20,
         area:str=None,
+        q:str="",
         ):
         r"""
         Filters events based on criteria with pagination.
@@ -165,6 +166,7 @@ class Events(BaseModel):
         * **priorities** (list[int]): Filter by priority.
         * **criticities** (list[int]): Filter by criticity.
         * **message**, **description**, **classification**: Text search.
+        * **q** (str): Case-insensitive partial match on message (HMI free-text).
         * **greater_than_timestamp**, **less_than_timestamp**: Time range.
         * **page**, **limit**: Pagination.
 
@@ -190,9 +192,16 @@ class Events(BaseModel):
             
         if description:
             query = query.where(fn.LOWER(cls.description).contains(description.lower()))
-            
-        if message:
-            query = query.where(fn.LOWER(cls.message).contains(message.lower()))
+
+        # Free-text ``q`` (HMI) takes precedence over legacy ``message`` when both set.
+        message_term = str(q or "").strip() or str(message or "").strip()
+        if message_term:
+            from ..i18n_search import expand_search_term, get_translation_map, icontains_any
+
+            terms = expand_search_term(message_term, get_translation_map())
+            condition = icontains_any(cls.message, terms)
+            if condition is not None:
+                query = query.where(condition)
             
         if classification:
             query = query.where(fn.LOWER(cls.classification).contains(classification.lower()))
@@ -332,3 +341,23 @@ class Events(BaseModel):
             "manufacturer": MANUFACTURER,
             "has_comments": True if self.logs else False
         }
+
+    @classmethod
+    def ensure_schema(cls) -> None:
+        """Optional PostgreSQL trigram index for free-text ``q`` on message."""
+        database = cls._meta.database
+        if database is None:
+            return
+        vendor = (getattr(database, "vendor", "") or "").lower()
+        if vendor != "postgresql":
+            return
+        logger = logging.getLogger("pyautomation")
+        table = cls._meta.table_name
+        try:
+            database.execute_sql("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+            database.execute_sql(
+                f'CREATE INDEX IF NOT EXISTS idx_{table}_message_trgm '
+                f'ON "{table}" USING gin (message gin_trgm_ops)'
+            )
+        except Exception:
+            logger.warning("Events pg_trgm text-search indexes skipped", exc_info=True)

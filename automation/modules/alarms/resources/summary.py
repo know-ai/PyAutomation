@@ -15,6 +15,7 @@ alarms_summary_filter_model = api.model("alarms_summary_filter_model",{
     'names': fields.List(fields.String(), required=False, description='List of alarm names to filter by'),
     'states': fields.List(fields.String(), required=False, description='List of alarm states to filter by'),
     'tags': fields.List(fields.String(), required=False, description='List of tags to filter by'),
+    'q': fields.String(required=False, description='Case-insensitive partial match on alarm name or description'),
     'greater_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE) - timedelta(minutes=30), description=f'Start time for filtering - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
     'less_than_timestamp': fields.DateTime(required=False, default=datetime.now(pytz.utc).astimezone(TIMEZONE), description=f'End time for filtering - DateTime Format: {app.cvt.DATETIME_FORMAT}'),
     'timezone': fields.String(required=False, default=_TIMEZONE, description='Timezone for the query'),

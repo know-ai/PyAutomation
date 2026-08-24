@@ -32,6 +32,7 @@ SYNC_ORDER: tuple[CatalogTable, ...] = (
     CatalogTable("alarms"),
     CatalogTable("tagsmachines"),
     CatalogTable("hmi_sessions", replicate_rows=False),
+    CatalogTable("user_api_sessions", replicate_rows=False),
 )
 
 REPLICATED_TABLES: tuple[str, ...] = tuple(t.name for t in SYNC_ORDER if t.replicate_rows)
@@ -54,6 +55,7 @@ def historian_models():
         Alarms,
         DataTypes,
         HMISession,
+        UserApiSession,
         LinearReferencingGeospatial,
         Machines,
         Manufacturer,
@@ -89,6 +91,7 @@ def historian_models():
         "alarms": Alarms,
         "tagsmachines": TagsMachines,
         "hmi_sessions": HMISession,
+        "user_api_sessions": UserApiSession,
     }
 
 

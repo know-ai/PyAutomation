@@ -118,6 +118,8 @@ export type AlarmSummaryFilter = {
   names?: string[];
   states?: string[];
   tags?: string[];
+  /** Case-insensitive partial match on alarm name or description */
+  q?: string;
   greater_than_timestamp?: string;
   less_than_timestamp?: string;
   timezone?: string;

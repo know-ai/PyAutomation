@@ -9,71 +9,96 @@ import { useAppDispatch } from "../hooks/useAppDispatch";
 import { useTranslation } from "../hooks/useTranslation";
 import { getTagsList, type Tag } from "../services/tags";
 import { showToast } from "../utils/toast";
-import { subscribeTagHistory, unsubscribeTagHistory } from "../store/slices/tagsSlice";
+import {
+  DEFAULT_TIME_SPAN_MINUTES,
+  TIME_SPAN_OPTIONS_MINUTES,
+  normalizeTimeSpanMinutes,
+  pruneHistoryByTime,
+  subscribeTagHistory,
+  unsubscribeTagHistory,
+  type TagHistoryPoint,
+  type TimeSpanMinutes,
+} from "../store/slices/tagsSlice";
 import { usePageHidden } from "../hooks/usePageHidden";
 import { VirtualList } from "./VirtualList";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { toDisplayDate } from "../utils/timezone";
 import { resolveTagDisplayLabel } from "../utils/tagDisplayLabel";
+import { isDisplayableThreshold, resolveTagThreshold } from "../utils/tagThreshold";
 import { QualityBadge } from "./QualityBadge";
 
+/** @deprecated Usar timeSpanMinutes; conservado por compatibilidad de imports. */
 export const BUFFER_SIZE_MIN = 120;
+/** @deprecated Usar timeSpanMinutes. */
 export const BUFFER_SIZE_MAX = 360;
 
-function bufferSliceRevision(
-  histories: Array<{ timestamp: string; value: number }[] | undefined>,
-  bufferSize: number
+function historyRevision(
+  histories: Array<TagHistoryPoint[] | undefined>,
+  timeSpanMinutes: number,
+  nowMs: number
 ): string {
-  const n = Math.min(
-    BUFFER_SIZE_MAX,
-    Math.max(BUFFER_SIZE_MIN, bufferSize || BUFFER_SIZE_MIN)
+  return (
+    histories
+      .map((h) => {
+        if (!h || h.length === 0) return "0";
+        const last = h[h.length - 1];
+        return `${h.length}:${last?.timestamp}:${last?.value}`;
+      })
+      .join("|") + `:${timeSpanMinutes}:${Math.floor(nowMs / 1000)}`
   );
-  return histories
-    .map((h) => {
-      if (!h || h.length === 0) return "0";
-      const last = h[h.length - 1];
-      return `${h.length}:${last?.timestamp}:${last?.value}`;
-    })
-    .join("|") + `:${n}`;
 }
 
 export interface StripChartConfig {
   id: string;
   title: string;
   tagNames: string[];
-  bufferSize: number; // Tamaño del buffer en número de puntos
-  x: number; // Posición en grid
+  /** Ventana temporal visible (minutos): 1 | 2 | 3 | 5. */
+  timeSpanMinutes: TimeSpanMinutes;
+  x: number;
   y: number;
-  w: number; // Ancho en columnas (4-12)
-  h: number; // Alto en unidades de grid
+  w: number;
+  h: number;
 }
 
 interface StripChartProps {
   config: StripChartConfig;
   isEditMode: boolean;
+  showThresholds?: boolean;
   onConfigChange: (config: StripChartConfig) => void;
   onDelete: () => void;
 }
 
-function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: StripChartProps) {
+function StripChartInner({
+  config,
+  isEditMode,
+  showThresholds = false,
+  onConfigChange,
+  onDelete,
+}: StripChartProps) {
   const { mode } = useTheme();
   const { t } = useTranslation();
   const { timeZone } = useDisplayTimezone();
   const dispatch = useAppDispatch();
   const pageHidden = usePageHidden();
   const tagNamesKey = config.tagNames.join("|");
+  const timeSpanMinutes = normalizeTimeSpanMinutes(config.timeSpanMinutes);
+  const timeSpanMs = timeSpanMinutes * 60 * 1000;
+
   const histories = useAppSelector(
     (state) => config.tagNames.map((name) => state.tags.tagHistory[name]),
     (left, right) =>
       left.length === right.length && left.every((item, index) => item === right[index])
   );
   const liveTags = useAppSelector((state) => state.tags.tagValues);
+  const machines = useAppSelector((state) => state.machines.machines);
   const historiesRef = useRef(histories);
   historiesRef.current = histories;
   const [throttledHistories, setThrottledHistories] = useState(histories);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => {
       setThrottledHistories(historiesRef.current);
+      setNowMs(Date.now());
     }, 200);
     return () => window.clearInterval(id);
   }, []);
@@ -82,10 +107,8 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
   const [tagSearch, setTagSearch] = useState("");
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [loadingTags, setLoadingTags] = useState(false);
-  const [bufferDraft, setBufferDraft] = useState(String(config.bufferSize));
   const tagConfigRef = useRef<HTMLDivElement>(null);
 
-  // Cargar tags disponibles
   useEffect(() => {
     const loadTags = async () => {
       setLoadingTags(true);
@@ -102,7 +125,6 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
     loadTags();
   }, []);
 
-  // Cerrar dropdown al hacer click fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (tagConfigRef.current && !tagConfigRef.current.contains(event.target as Node)) {
@@ -120,10 +142,6 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
   }, [showTagConfig]);
 
   useEffect(() => {
-    setBufferDraft(String(config.bufferSize));
-  }, [config.bufferSize, showTagConfig]);
-
-  useEffect(() => {
     const names = config.tagNames.filter(Boolean);
     names.forEach((name) => dispatch(subscribeTagHistory(name)));
     return () => {
@@ -131,7 +149,6 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
     };
   }, [dispatch, tagNamesKey]);
 
-  // Filtrar tags por búsqueda
   const filteredTags = useMemo(() => {
     if (!tagSearch.trim()) {
       return availableTags;
@@ -166,6 +183,19 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
     [availableTags]
   );
 
+  const prunedHistories = useMemo(
+    () =>
+      throttledHistories.map((history) =>
+        pruneHistoryByTime(history || [], timeSpanMs, nowMs)
+      ),
+    [throttledHistories, timeSpanMs, nowMs]
+  );
+
+  const hasAnyPointsInSpan = useMemo(
+    () => prunedHistories.some((h) => h.length > 0),
+    [prunedHistories]
+  );
+
   const lastPlotRef = useRef<{ data: Data[]; layout: Partial<Layout> }>({ data: [], layout: {} });
 
   const plotData = useMemo(() => {
@@ -183,7 +213,6 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
       "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
     ];
 
-    // Orden de unidades según aparición de los tags seleccionados
     const unitOrder: string[] = [];
     config.tagNames.forEach((tagName) => {
       const unit = getTagUnit(tagName);
@@ -195,21 +224,20 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
       unitAxis[unit] = idx === 0 ? "y" : "y2";
     });
 
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    const useDisplayTz = Boolean(timeZone && timeZone !== browserTz);
+    const rangeStartIso = new Date(nowMs - timeSpanMs).toISOString();
+    const rangeEndIso = new Date(nowMs).toISOString();
+    const xRange = useDisplayTz
+      ? [toDisplayDate(rangeStartIso, timeZone!), toDisplayDate(rangeEndIso, timeZone!)]
+      : [rangeStartIso, rangeEndIso];
+
     const traces: Data[] = config.tagNames.map((tagName, index) => {
-      const history = throttledHistories[index] || [];
-      const bufferSlice = history.slice(
-        -Math.min(
-          BUFFER_SIZE_MAX,
-          Math.max(BUFFER_SIZE_MIN, config.bufferSize || BUFFER_SIZE_MIN)
-        )
-      );
+      const bufferSlice = prunedHistories[index] || [];
       const unit = getTagUnit(tagName);
-      // Prefer ISO strings for Plotly when display TZ == browser TZ (avoids
-      // per-point Intl.DateTimeFormat on every refresh — main RT jank source).
-      const x =
-        timeZone && timeZone !== (Intl.DateTimeFormat().resolvedOptions().timeZone || "")
-          ? bufferSlice.map((p) => toDisplayDate(p.timestamp, timeZone))
-          : bufferSlice.map((p) => p.timestamp);
+      const x = useDisplayTz
+        ? bufferSlice.map((p) => toDisplayDate(p.timestamp, timeZone!))
+        : bufferSlice.map((p) => p.timestamp);
       return {
         x,
         y: bufferSlice.map((p) => p.value),
@@ -221,25 +249,57 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
       } as Data;
     });
 
-    // Color de los ejes basado en el primer trazo de cada unidad
+    if (showThresholds) {
+      const thresholdColor = mode === "dark" ? "#adb5bd" : "#999999";
+      config.tagNames.forEach((tagName, index) => {
+        const threshold = resolveTagThreshold(tagName, machines, liveTags[tagName]);
+        if (!isDisplayableThreshold(threshold)) return;
+
+        const bufferSlice = prunedHistories[index] || [];
+        const unit = getTagUnit(tagName);
+        const x =
+          bufferSlice.length >= 2
+            ? useDisplayTz
+              ? [
+                  toDisplayDate(bufferSlice[0].timestamp, timeZone!),
+                  toDisplayDate(bufferSlice[bufferSlice.length - 1].timestamp, timeZone!),
+                ]
+              : [bufferSlice[0].timestamp, bufferSlice[bufferSlice.length - 1].timestamp]
+            : xRange;
+
+        traces.push({
+          x,
+          y: [threshold, threshold],
+          type: "scatter",
+          mode: "lines",
+          name: t("stripChart.thresholdLegend", { tag: getTagLabel(tagName) }),
+          line: { color: thresholdColor, width: 1, dash: "dash" },
+          opacity: 0.5,
+          yaxis: unitAxis[unit] || "y",
+          hovertemplate: `${t("stripChart.thresholdLine")}: ${threshold}<extra></extra>`,
+        } as Data);
+      });
+    }
+
     const axisColors: Record<string, string> = {};
-    traces.forEach((t) => {
-      const axis = (t as any).yaxis || "y";
+    traces.forEach((tr) => {
+      const axis = (tr as any).yaxis || "y";
       if (!axisColors[axis]) {
-        axisColors[axis] = (t as any).line?.color || "#6c757d";
+        axisColors[axis] = (tr as any).line?.color || "#6c757d";
       }
     });
 
     const layout: Partial<Layout> = {
       autosize: true,
       uirevision: config.id,
-      datarevision: bufferSliceRevision(throttledHistories, config.bufferSize),
+      datarevision: historyRevision(prunedHistories, timeSpanMinutes, nowMs),
       margin: { l: 60, r: unitOrder.length > 1 ? 60 : 20, t: 40, b: 28 },
       paper_bgcolor: mode === "dark" ? "#212529" : "#ffffff",
       plot_bgcolor: mode === "dark" ? "#2c3034" : "#f8f9fa",
       font: { color: mode === "dark" ? "#ffffff" : "#212529" },
       xaxis: {
         type: "date",
+        range: xRange,
         tickformat: "%H:%M:%S",
         hoverformat: "%H:%M:%S",
         color: mode === "dark" ? "#ffffff" : "#212529",
@@ -250,7 +310,7 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
         color: axisColors["y"] || (mode === "dark" ? "#ffffff" : "#212529"),
         gridcolor: mode === "dark" ? "#495057" : "#dee2e6",
       },
-      showlegend: config.tagNames.length > 1,
+      showlegend: config.tagNames.length > 1 || (showThresholds && traces.length > config.tagNames.length),
       legend: {
         x: 1.02,
         xanchor: "left",
@@ -272,14 +332,28 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
     const next = { data: traces, layout };
     lastPlotRef.current = next;
     return next;
-  }, [config.tagNames, config.title, config.bufferSize, mode, availableTags, getTagUnit, getTagLabel, throttledHistories, pageHidden, timeZone]);
+  }, [
+    config.tagNames,
+    config.id,
+    timeSpanMinutes,
+    timeSpanMs,
+    nowMs,
+    mode,
+    getTagUnit,
+    getTagLabel,
+    prunedHistories,
+    pageHidden,
+    timeZone,
+    showThresholds,
+    machines,
+    liveTags,
+    t,
+  ]);
 
-  // Máximo 2 unidades distintas; número de tags ilimitado mientras no se supere ese tope de unidades
   const handleTagToggle = (tagName: string) => {
     const isSelected = config.tagNames.includes(tagName);
     const unit = getTagUnit(tagName);
 
-    // Unidades actuales
     const currentUnits = new Set(config.tagNames.map(getTagUnit));
     const wouldAddNewUnit = !isSelected && !currentUnits.has(unit);
 
@@ -298,27 +372,13 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
     });
   };
 
-  const handleBufferDraftChange = (raw: string) => {
-    setBufferDraft(raw);
-    const parsed = Number(raw);
-    if (
-      Number.isFinite(parsed) &&
-      parsed >= BUFFER_SIZE_MIN &&
-      parsed <= BUFFER_SIZE_MAX
-    ) {
-      onConfigChange({
-        ...config,
-        bufferSize: Math.trunc(parsed),
-      });
-    }
+  const handleTimeSpanChange = (raw: string) => {
+    const next = normalizeTimeSpanMinutes(Number(raw));
+    onConfigChange({
+      ...config,
+      timeSpanMinutes: next,
+    });
   };
-
-  const parsedBuffer = Number(bufferDraft);
-  const isBufferOutOfRange =
-    bufferDraft.trim() === "" ||
-    !Number.isFinite(parsedBuffer) ||
-    parsedBuffer < BUFFER_SIZE_MIN ||
-    parsedBuffer > BUFFER_SIZE_MAX;
 
   const handleTitleChange = (newTitle: string) => {
     onConfigChange({
@@ -369,7 +429,29 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
                 </span>
               )}
             </div>
-            <div className="d-flex gap-2 position-relative" onClick={(e) => e.stopPropagation()}>
+            <div className="d-flex gap-2 align-items-center position-relative" onClick={(e) => e.stopPropagation()}>
+              {isEditMode && (
+                <>
+                  <label className="small text-muted mb-0 d-none d-sm-inline" htmlFor={`time-span-${config.id}`}>
+                    {t("stripChart.timeSpanLabel")}
+                  </label>
+                  <select
+                    id={`time-span-${config.id}`}
+                    className="form-select form-select-sm"
+                    style={{ width: "auto", minWidth: "5.5rem" }}
+                    value={timeSpanMinutes}
+                    onChange={(e) => handleTimeSpanChange(e.target.value)}
+                    title={t("stripChart.timeSpanLabel")}
+                    aria-label={t("stripChart.timeSpanLabel")}
+                  >
+                    {TIME_SPAN_OPTIONS_MINUTES.map((mins) => (
+                      <option key={mins} value={mins}>
+                        {t("stripChart.timeSpanOption", { minutes: mins })}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
               {isEditMode && (
                 <>
                   <Button
@@ -466,36 +548,6 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
                         )}
                       </div>
                       <div className="mb-2">
-                        <label className="form-label small" htmlFor={`buffer-size-${config.id}`}>
-                          {t("stripChart.bufferSizeLabel")}
-                        </label>
-                        <input
-                          id={`buffer-size-${config.id}`}
-                          type="number"
-                          className={`form-control form-control-sm${isBufferOutOfRange ? " is-invalid" : ""}`}
-                          value={bufferDraft}
-                          onChange={(e) => handleBufferDraftChange(e.target.value)}
-                          min={BUFFER_SIZE_MIN}
-                          max={BUFFER_SIZE_MAX}
-                          step={1}
-                          aria-invalid={isBufferOutOfRange}
-                          aria-describedby={
-                            isBufferOutOfRange ? `buffer-size-help-${config.id}` : undefined
-                          }
-                        />
-                        {isBufferOutOfRange && (
-                          <div
-                            id={`buffer-size-help-${config.id}`}
-                            className="invalid-feedback d-block"
-                          >
-                            {t("stripChart.bufferSizeRangeHelp", {
-                              min: BUFFER_SIZE_MIN,
-                              max: BUFFER_SIZE_MAX,
-                            })}
-                          </div>
-                        )}
-                      </div>
-                      <div className="mb-2">
                         <label className="form-label small d-flex justify-content-between align-items-center">
                           <span>{t("stripChart.selectedTags")}</span>
                           <span className="badge bg-secondary">
@@ -527,12 +579,16 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
           </div>
         }
       >
-        {/* Gráfico */}
         <div style={{ width: "100%", flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }}>
           {config.tagNames.length === 0 ? (
             <div className="text-center py-5 text-muted" style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <i className="bi bi-graph-up" style={{ fontSize: "3rem" }}></i>
               <p className="mt-3">{t("stripChart.emptyState")}</p>
+            </div>
+          ) : !hasAnyPointsInSpan ? (
+            <div className="text-center py-5 text-muted" style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+              <i className="bi bi-clock-history" style={{ fontSize: "3rem" }}></i>
+              <p className="mt-3">{t("stripChart.emptyTimeSpan")}</p>
             </div>
           ) : (
             <Plot
@@ -558,3 +614,4 @@ function StripChartInner({ config, isEditMode, onConfigChange, onDelete }: Strip
 export const StripChart = memo(StripChartInner);
 StripChart.displayName = "StripChart";
 
+export { DEFAULT_TIME_SPAN_MINUTES, TIME_SPAN_OPTIONS_MINUTES };

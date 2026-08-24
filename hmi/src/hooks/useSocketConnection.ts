@@ -1,21 +1,19 @@
 import { useEffect, useState } from "react";
-import { socketService } from "../services/socket";
+import {
+  socketService,
+  type SocketConnectionPhase,
+} from "../services/socket";
 
-export type SocketConnectionStatus = "connected" | "disconnected" | "connecting";
-
-function resolveStatus(connected: boolean, connecting: boolean): SocketConnectionStatus {
-  if (connecting) return "connecting";
-  return connected ? "connected" : "disconnected";
-}
+export type SocketConnectionStatus = SocketConnectionPhase;
 
 export function useSocketConnection(): SocketConnectionStatus {
   const [status, setStatus] = useState<SocketConnectionStatus>(() =>
-    resolveStatus(socketService.getIsConnected(), false)
+    socketService.getConnectionPhase()
   );
 
   useEffect(() => {
-    return socketService.onConnectionChange(({ connected, connecting }) => {
-      setStatus(resolveStatus(connected, connecting));
+    return socketService.onConnectionChange(({ phase }) => {
+      setStatus(phase);
     });
   }, []);
 

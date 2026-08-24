@@ -1,12 +1,13 @@
+import { type StripChartConfig } from "../components/StripChart";
 import {
-  BUFFER_SIZE_MAX,
-  BUFFER_SIZE_MIN,
-  type StripChartConfig,
-} from "../components/StripChart";
+  DEFAULT_TIME_SPAN_MINUTES,
+  normalizeTimeSpanMinutes,
+  timeSpanFromLegacyBufferSize,
+} from "../store/slices/tagsSlice";
 import api from "./api";
 
 export const REALTIME_TRENDS_KIND = "real-time-trends" as const;
-export const REALTIME_TRENDS_SCHEMA_VERSION = 1;
+export const REALTIME_TRENDS_SCHEMA_VERSION = 2;
 export const REALTIME_TRENDS_STORAGE_KEY = "pyautomation.workspace.realtime-trends.v1";
 const LEGACY_STORAGE_KEY = "realTimeTrends_layout";
 
@@ -61,11 +62,17 @@ function sanitizeChart(raw: unknown, index: number): StripChartConfig | null {
     typeof row.id === "string" && row.id.trim()
       ? row.id.trim().slice(0, 80)
       : `stripchart-${index + 1}`;
+  const timeSpanMinutes =
+    row.timeSpanMinutes != null
+      ? normalizeTimeSpanMinutes(row.timeSpanMinutes)
+      : row.bufferSize != null
+        ? timeSpanFromLegacyBufferSize(row.bufferSize)
+        : DEFAULT_TIME_SPAN_MINUTES;
   return {
     id,
     title: sanitizeTitle(row.title, `Chart ${index + 1}`),
     tagNames: sanitizeTagNames(row.tagNames),
-    bufferSize: clampInt(row.bufferSize, BUFFER_SIZE_MIN, BUFFER_SIZE_MAX, BUFFER_SIZE_MIN),
+    timeSpanMinutes,
     x: clampInt(row.x, 0, MAX_GRID_W - MIN_GRID_W, 0),
     y: clampInt(row.y, 0, 10_000, 0),
     w: clampInt(row.w, MIN_GRID_W, MAX_GRID_W, 6),

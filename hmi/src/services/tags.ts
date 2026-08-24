@@ -28,6 +28,7 @@ export type Tag = {
   manufacturer?: string;
   area?: string | null;
   owner_node?: string | null;
+  threshold?: number | null;
   [key: string]: any; // Para campos adicionales que puedan venir del backend
 };
 

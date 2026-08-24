@@ -49,6 +49,7 @@ from ..dbmodels import (
     BaseModel,
     Nodes,
     HMISession,
+    UserApiSession,
     CatalogVersions,
 )
 
@@ -79,6 +80,7 @@ class DBManager(Singleton):
         self._tables = [
             Nodes,
             HMISession,
+            UserApiSession,
             Manufacturer,
             Segment,
             Variables, 

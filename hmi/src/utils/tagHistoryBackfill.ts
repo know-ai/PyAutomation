@@ -3,8 +3,8 @@ import type { AppDispatch } from "../store/store";
 import { backfillTagHistory, type TagHistoryPoint } from "../store/slices/tagsSlice";
 import { formatInstantForBackend } from "./timezone";
 
-/** Ventana de backfill al reconectar (alineada con BUFFER_SIZE_MIN del StripChart: 120 s). */
-export const BACKFILL_WINDOW_SECONDS = 120;
+/** Ventana de backfill al reconectar (máximo time span de UI: 5 min). */
+export const BACKFILL_WINDOW_SECONDS = 300;
 const MIN_INTERVAL_MS = 5000;
 const DEBOUNCE_MS = 300;
 
