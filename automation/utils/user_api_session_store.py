@@ -4,6 +4,9 @@
 Con historiador compartido, ``Users.token`` solo puede guardar un valor global.
 Esta tabla permite una sesión activa por usuario **y por nodo**, de modo que el
 login en Linea1 no invalide el socket de Linea2.
+
+Cada edge también espeja sesiones activas en el catálogo SQLite local para que
+Socket.IO y la API sigan autenticando cuando PostgreSQL está caído.
 """
 from __future__ import annotations
 
@@ -47,18 +50,85 @@ def _get_db():
         return None
 
 
+def _mirror_local_session(*, token: str, username: str, node_id: str, area: str) -> bool:
+    """Persist active token in edge-local catalog.db (survives historian outage)."""
+    try:
+        from ..catalog.local_provider import LocalCatalogProvider
+
+        provider = LocalCatalogProvider()
+        for row in provider.read_all("user_api_sessions"):
+            if (
+                row.get("username") == username
+                and row.get("node_id") == node_id
+                and row.get("token") != token
+            ):
+                try:
+                    provider.delete("user_api_sessions", str(row.get("token") or row.get("_pk")))
+                except Exception:
+                    pass
+        provider.upsert(
+            "user_api_sessions",
+            {
+                "token": token,
+                "username": username,
+                "node_id": node_id,
+                "area": area,
+            },
+            node_id=node_id,
+        )
+        return True
+    except Exception:
+        _LOGGER.debug("local user_api_sessions mirror failed", exc_info=True)
+        return False
+
+
+def _lookup_local_username(token: str) -> Optional[str]:
+    token = (token or "").strip()
+    if not token:
+        return None
+    try:
+        from ..catalog.local_provider import LocalCatalogProvider
+
+        provider = LocalCatalogProvider()
+        row = provider.find_one("user_api_sessions", field="token", value=token)
+        if row and row.get("username"):
+            return str(row["username"])
+        user_row = provider.find_one("users", field="token", value=token)
+        if user_row and user_row.get("username"):
+            return str(user_row["username"])
+    except Exception:
+        _LOGGER.debug("local session lookup failed", exc_info=True)
+    return None
+
+
+def _revoke_local_session(token: str) -> None:
+    token = (token or "").strip()
+    if not token:
+        return
+    try:
+        from ..catalog.local_provider import LocalCatalogProvider
+
+        LocalCatalogProvider().delete("user_api_sessions", token)
+    except Exception:
+        _LOGGER.debug("local user_api_sessions revoke failed", exc_info=True)
+
+
 def register_api_session(*, token: str, username: str) -> bool:
     """Persiste el token del edge actual; revoca otros del mismo user+node."""
-    if not _multi_edge_enabled():
-        return False
     token = (token or "").strip()
     username = (username or "").strip()
     if not token or not username:
         return False
+    node_id, area = _node_identity()
+    local_ok = _mirror_local_session(
+        token=token, username=username, node_id=node_id, area=area
+    )
+    pg_ok = False
+    if not _multi_edge_enabled():
+        return local_ok
     db = _get_db()
     if db is None:
-        return False
-    node_id, area = _node_identity()
+        return local_ok
     now = utc_now()
     try:
         (
@@ -85,10 +155,9 @@ def register_api_session(*, token: str, username: str) -> bool:
                 UserApiSession.created_at: now,
             },
         ).execute()
-        return True
+        pg_ok = True
     except Exception:
         _LOGGER.debug("user_api_sessions register failed", exc_info=True)
-        return False
     finally:
         try:
             from .hmi_session_store import _close_historian_socket
@@ -96,55 +165,68 @@ def register_api_session(*, token: str, username: str) -> bool:
             _close_historian_socket()
         except Exception:
             pass
+    return local_ok or pg_ok
 
 
 def list_api_sessions() -> list[tuple[str, str]]:
     """Return ``(token, username)`` pairs for all edges (session rebind after DB reconnect)."""
-    if not _multi_edge_enabled():
-        return []
-    db = _get_db()
-    if db is None:
-        return []
-    try:
-        return [
-            (str(row.token), str(row.username))
-            for row in UserApiSession.select(UserApiSession.token, UserApiSession.username)
-        ]
-    except Exception:
-        _LOGGER.debug("user_api_sessions list failed", exc_info=True)
-        return []
-    finally:
-        try:
-            from .hmi_session_store import _close_historian_socket
+    pairs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    if _multi_edge_enabled():
+        db = _get_db()
+        if db is not None:
+            try:
+                for row in UserApiSession.select(
+                    UserApiSession.token, UserApiSession.username
+                ):
+                    token = str(row.token)
+                    if token not in seen:
+                        pairs.append((token, str(row.username)))
+                        seen.add(token)
+            except Exception:
+                _LOGGER.debug("user_api_sessions list failed", exc_info=True)
+            finally:
+                try:
+                    from .hmi_session_store import _close_historian_socket
 
-            _close_historian_socket()
-        except Exception:
-            pass
+                    _close_historian_socket()
+                except Exception:
+                    pass
+    try:
+        from ..catalog.local_provider import LocalCatalogProvider
+
+        for row in LocalCatalogProvider().read_all("user_api_sessions"):
+            token = str(row.get("token") or "")
+            username = str(row.get("username") or "")
+            if token and token not in seen:
+                pairs.append((token, username))
+                seen.add(token)
+    except Exception:
+        pass
+    return pairs
 
 
 def lookup_username(token: str) -> Optional[str]:
-    """Devuelve el username asociado al token en este historiador, o None."""
-    if not _multi_edge_enabled():
-        return None
+    """Devuelve el username asociado al token (historiador o catálogo local)."""
     token = (token or "").strip()
     if not token:
         return None
     db = _get_db()
-    if db is None:
-        return None
-    try:
-        row = UserApiSession.get_or_none(UserApiSession.token == token)
-        return row.username if row else None
-    except Exception:
-        _LOGGER.debug("user_api_sessions lookup failed", exc_info=True)
-        return None
-    finally:
+    if db is not None:
         try:
-            from .hmi_session_store import _close_historian_socket
-
-            _close_historian_socket()
+            row = UserApiSession.get_or_none(UserApiSession.token == token)
+            if row:
+                return row.username
         except Exception:
-            pass
+            _LOGGER.debug("user_api_sessions lookup failed", exc_info=True)
+        finally:
+            try:
+                from .hmi_session_store import _close_historian_socket
+
+                _close_historian_socket()
+            except Exception:
+                pass
+    return _lookup_local_username(token)
 
 
 def revoke_api_session(token: str) -> None:
@@ -152,6 +234,7 @@ def revoke_api_session(token: str) -> None:
     token = (token or "").strip()
     if not token:
         return
+    _revoke_local_session(token)
     db = _get_db()
     if db is None:
         return
@@ -166,3 +249,25 @@ def revoke_api_session(token: str) -> None:
             _close_historian_socket()
         except Exception:
             pass
+
+
+def activate_user_from_offline_token(token: str):
+    """Restore in-memory user from local session registry when historian is down."""
+    username = _lookup_local_username(token)
+    if not username:
+        return None
+    try:
+        from ..catalog.hydrate import fill_roles_from_local, fill_users_from_local
+        from ..modules.users.users import Users
+
+        users = Users()
+        fill_roles_from_local()
+        fill_users_from_local()
+        mem = users.get_by_username(username=username)
+        if mem is None:
+            return None
+        carrier = type("_SessionRow", (), {"username": username})()
+        return users.activate_session_from_db_record(carrier, token=token)
+    except Exception:
+        _LOGGER.debug("offline session activate failed", exc_info=True)
+        return None

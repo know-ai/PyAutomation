@@ -55,7 +55,9 @@
     "showThresholds": "Mostrar umbrales",
     "newChartTitle": "Gráfico {{index}}",
     "emptyEdit": "Haga doble clic en la vista y luego en 'Agregar Gráfico' para crear su primer gráfico en tiempo real",
-    "emptyProduction": "No hay gráficos configurados. Haga doble clic en la vista para entrar en modo edición."
+    "emptyProduction": "No hay gráficos configurados. Haga doble clic en la vista para entrar en modo edición.",
+    "waitingSocket": "Esperando conexión Socket.IO — las tendencias se reanudarán al reconectar.",
+    "socketReconnecting": "Reconectando Socket.IO — los datos en tiempo real pueden pausarse brevemente."
   },
   "scada": {
     "editMode": "Modo Edición",
@@ -516,9 +518,12 @@
   },
   "dbHealth": {
     "title": "Base de datos remota",
+    "indicatorLabel": "Base de datos",
+    "indicatorShort": "BD",
     "status": "Estado",
     "connected": "Conectado",
     "disconnected": "Desconectado",
+    "unknown": "Desconocido",
     "checking": "Comprobando",
     "latency": "Latencia",
     "lastCheck": "Última comprobación",
@@ -528,7 +533,8 @@
     "retryCount": "Intentos de comprobación",
     "dataUnavailable": "Datos históricos no disponibles temporalmente",
     "degradedModeBanner": "Para asegurar un rendimiento óptimo, conecte la BD de producción.",
-    "degradedModeMove": "Arrastrar para mover el aviso"
+    "degradedModeMove": "Arrastrar para mover el aviso",
+    "staleWhileSocketDown": "Estado de BD conservado — no se puede verificar mientras el socket tiempo real está caído."
   },
   "quality": {
     "good": "Calidad GOOD",
@@ -757,6 +763,8 @@
     "badgeUnknown": "Estado NTP desconocido"
   },
   "socket": {
+    "indicatorLabel": "Tiempo real",
+    "indicatorShort": "RT",
     "badgeConnected": "Socket HMI conectado — datos en tiempo real activos",
     "badgeDisconnected": "Socket HMI desconectado — reintentando conexión…",
     "badgeConnecting": "Socket HMI conectando…",

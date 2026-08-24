@@ -187,6 +187,12 @@ class Users(Singleton):
                 replaced = self._revoke_other_sessions(user)
                 setattr(user, "_login_replaced_session", replaced)
                 self.active_users[user.token] = user
+                try:
+                    from ...utils.user_api_session_store import register_api_session
+
+                    register_api_session(token=user.token, username=user.username)
+                except Exception:
+                    pass
 
                 return user, f"Login successful"
             else:

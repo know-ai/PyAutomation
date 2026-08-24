@@ -55,7 +55,9 @@
     "showThresholds": "Show thresholds",
     "newChartTitle": "Chart {{index}}",
     "emptyEdit": "Double-click the view and then 'Add Chart' to create your first real-time chart",
-    "emptyProduction": "No charts configured. Double-click the view to enter edit mode."
+    "emptyProduction": "No charts configured. Double-click the view to enter edit mode.",
+    "waitingSocket": "Waiting for Socket.IO connection — trends will resume when reconnected.",
+    "socketReconnecting": "Reconnecting Socket.IO — real-time data may pause briefly."
   },
   "scada": {
     "editMode": "Edit Mode",
@@ -516,9 +518,12 @@
   },
   "dbHealth": {
     "title": "Remote database",
+    "indicatorLabel": "Database",
+    "indicatorShort": "DB",
     "status": "Status",
     "connected": "Connected",
     "disconnected": "Disconnected",
+    "unknown": "Unknown",
     "checking": "Checking",
     "latency": "Latency",
     "lastCheck": "Last check",
@@ -528,7 +533,8 @@
     "retryCount": "Probe attempts",
     "dataUnavailable": "Historical data temporarily unavailable",
     "degradedModeBanner": "For optimal performance, connect the production database.",
-    "degradedModeMove": "Drag to move banner"
+    "degradedModeMove": "Drag to move banner",
+    "staleWhileSocketDown": "DB status held — cannot verify while the real-time socket is down."
   },
   "quality": {
     "good": "GOOD quality",
@@ -757,6 +763,8 @@
     "badgeUnknown": "NTP status unknown"
   },
   "socket": {
+    "indicatorLabel": "Real time",
+    "indicatorShort": "RT",
     "badgeConnected": "HMI socket connected — real-time data active",
     "badgeDisconnected": "HMI socket disconnected — retrying connection…",
     "badgeConnecting": "HMI socket connecting…",

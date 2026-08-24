@@ -6,7 +6,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type PropsWithChildren,
+  type SetStateAction,
 } from "react";
 import {
   DB_HEALTH_EVENT,
@@ -16,52 +18,54 @@ import {
   type DatabaseHealthResponse,
 } from "../services/health";
 
-export const DB_HEALTH_POLL_MS = 8000;
+/** Poll interval for /api/health/db (spec: ~10 s). */
+export const DB_HEALTH_POLL_MS = 10_000;
 
-export type DatabaseStatusState = {
+export type DatabaseProbeState = {
+  /** Last known `connected` from a reachable probe; null before first successful HTTP response. */
   connected: boolean | null;
+  /** False when the last probe could not reach the HTTP API (network/backend down). */
+  reachable: boolean;
   latencyMs: number | null;
   message: string;
   lastCheckedAt: number | null;
+};
+
+export type DatabaseStatusState = DatabaseProbeState & {
   reconnecting: boolean;
   retryCount: number;
   reconnect: () => Promise<void>;
 };
 
-const DatabaseConnectedContext = createContext<Pick<
-  DatabaseStatusState,
-  "connected" | "reconnecting" | "retryCount" | "reconnect"
-> | null>(null);
+const DatabaseProbeContext = createContext<DatabaseStatusState | null>(null);
 
-const DatabaseMetricsContext = createContext<Pick<
-  DatabaseStatusState,
-  "latencyMs" | "message" | "lastCheckedAt"
-> | null>(null);
-
-function applySnapshot(
+function applySuccessfulProbe(
   data: DatabaseHealthResponse,
-  setConnected: (v: boolean) => void,
-  setLatencyMs: (v: number | null) => void,
-  setMessage: (v: string) => void,
-  setLastCheckedAt: (v: number) => void,
-  setRetryCount: (fn: (n: number) => number) => void
+  setProbe: Dispatch<SetStateAction<DatabaseProbeState>>,
+  setRetryCount: Dispatch<SetStateAction<number>>
 ) {
-  setConnected(Boolean(data.connected));
-  setLatencyMs(data.latency_ms ?? null);
-  setMessage(data.message || "");
-  setLastCheckedAt(Date.now());
+  setProbe({
+    connected: Boolean(data.connected),
+    reachable: true,
+    latencyMs: data.latency_ms ?? null,
+    message: data.message || "",
+    lastCheckedAt: Date.now(),
+  });
   if (data.connected) {
-    setRetryCount(() => 0);
+    setRetryCount(0);
   } else {
     setRetryCount((n) => n + 1);
   }
 }
 
 export function DatabaseStatusProvider({ children }: PropsWithChildren) {
-  const [connected, setConnected] = useState<boolean | null>(null);
-  const [latencyMs, setLatencyMs] = useState<number | null>(null);
-  const [message, setMessage] = useState("");
-  const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
+  const [probe, setProbe] = useState<DatabaseProbeState>({
+    connected: null,
+    reachable: false,
+    latencyMs: null,
+    message: "",
+    lastCheckedAt: null,
+  });
   const [reconnecting, setReconnecting] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const inFlight = useRef(false);
@@ -71,11 +75,13 @@ export function DatabaseStatusProvider({ children }: PropsWithChildren) {
     inFlight.current = true;
     try {
       const data = await getDatabaseHealth();
-      applySnapshot(data, setConnected, setLatencyMs, setMessage, setLastCheckedAt, setRetryCount);
+      applySuccessfulProbe(data, setProbe, setRetryCount);
     } catch {
-      setConnected(false);
-      setLatencyMs(null);
-      setLastCheckedAt(Date.now());
+      setProbe((prev) => ({
+        ...prev,
+        reachable: false,
+        lastCheckedAt: Date.now(),
+      }));
       setRetryCount((n) => n + 1);
     } finally {
       inFlight.current = false;
@@ -86,13 +92,15 @@ export function DatabaseStatusProvider({ children }: PropsWithChildren) {
     setReconnecting(true);
     try {
       const data = await reconnectRemoteDatabase();
-      applySnapshot(data, setConnected, setLatencyMs, setMessage, setLastCheckedAt, setRetryCount);
+      applySuccessfulProbe(data, setProbe, setRetryCount);
       emitDatabaseHealth(Boolean(data.connected));
     } catch {
-      setConnected(false);
-      setLastCheckedAt(Date.now());
+      setProbe((prev) => ({
+        ...prev,
+        reachable: false,
+        lastCheckedAt: Date.now(),
+      }));
       setRetryCount((n) => n + 1);
-      emitDatabaseHealth(false);
     } finally {
       setReconnecting(false);
     }
@@ -111,9 +119,15 @@ export function DatabaseStatusProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     const onHealth = (event: Event) => {
-      const connectedNow = Boolean((event as CustomEvent<{ connected?: boolean }>).detail?.connected);
-      setConnected(connectedNow);
-      setLastCheckedAt(Date.now());
+      const connectedNow = Boolean(
+        (event as CustomEvent<{ connected?: boolean }>).detail?.connected
+      );
+      setProbe((prev) => ({
+        ...prev,
+        connected: connectedNow,
+        reachable: true,
+        lastCheckedAt: Date.now(),
+      }));
       if (connectedNow) {
         setRetryCount(0);
       }
@@ -122,50 +136,60 @@ export function DatabaseStatusProvider({ children }: PropsWithChildren) {
     return () => window.removeEventListener(DB_HEALTH_EVENT, onHealth);
   }, []);
 
-  const connectedValue = useMemo(
+  const value = useMemo<DatabaseStatusState>(
     () => ({
-      connected,
+      ...probe,
       reconnecting,
       retryCount,
       reconnect,
     }),
-    [connected, reconnecting, retryCount, reconnect]
-  );
-
-  const metricsValue = useMemo(
-    () => ({
-      latencyMs,
-      message,
-      lastCheckedAt,
-    }),
-    [latencyMs, message, lastCheckedAt]
+    [probe, reconnecting, retryCount, reconnect]
   );
 
   return (
-    <DatabaseConnectedContext.Provider value={connectedValue}>
-      <DatabaseMetricsContext.Provider value={metricsValue}>{children}</DatabaseMetricsContext.Provider>
-    </DatabaseConnectedContext.Provider>
+    <DatabaseProbeContext.Provider value={value}>{children}</DatabaseProbeContext.Provider>
   );
 }
 
+export function useDatabaseProbe(): DatabaseProbeState {
+  const ctx = useContext(DatabaseProbeContext);
+  if (!ctx) {
+    throw new Error("useDatabaseProbe must be used within DatabaseStatusProvider");
+  }
+  const { connected, reachable, latencyMs, message, lastCheckedAt } = ctx;
+  return { connected, reachable, latencyMs, message, lastCheckedAt };
+}
+
+/** @deprecated Prefer useSystemHealth().dbStatus for indicator tone. */
 export function useDatabaseConnected() {
-  const ctx = useContext(DatabaseConnectedContext);
+  const ctx = useContext(DatabaseProbeContext);
   if (!ctx) {
     throw new Error("useDatabaseConnected must be used within DatabaseStatusProvider");
   }
-  return ctx;
+  return {
+    connected: ctx.connected,
+    reconnecting: ctx.reconnecting,
+    retryCount: ctx.retryCount,
+    reconnect: ctx.reconnect,
+  };
 }
 
 export function useDatabaseMetrics() {
-  const ctx = useContext(DatabaseMetricsContext);
+  const ctx = useContext(DatabaseProbeContext);
   if (!ctx) {
     throw new Error("useDatabaseMetrics must be used within DatabaseStatusProvider");
   }
-  return ctx;
+  return {
+    latencyMs: ctx.latencyMs,
+    message: ctx.message,
+    lastCheckedAt: ctx.lastCheckedAt,
+  };
 }
 
 export function useDatabaseStatus(): DatabaseStatusState {
-  const connected = useDatabaseConnected();
-  const metrics = useDatabaseMetrics();
-  return { ...connected, ...metrics };
+  const ctx = useContext(DatabaseProbeContext);
+  if (!ctx) {
+    throw new Error("useDatabaseStatus must be used within DatabaseStatusProvider");
+  }
+  return ctx;
 }

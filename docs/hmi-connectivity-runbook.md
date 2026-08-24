@@ -6,7 +6,8 @@ Guía operativa para diagnosticar clientes HMI desconectados, reconexiones y fal
 
 | Síntoma | Badge header | Adquisición / SAF | Causa probable |
 |---|---|---|---|
-| Gráficos RT congelados | Rojo / amarillo | OK | Socket.IO caído; revisar Events `HMI client disconnected` |
+| Gráficos RT congelados | SKT rojo / amarillo | OK | Socket.IO caído; revisar Events `HMI client disconnected` |
+| BD roja pero SKT verde | BD rojo, SKT verde | OK | Historiador caído; tiempo real (CVT) sigue; SAF acumula |
 | No carga HMI / certificado | — | OK | TLS; revisar `HMI TLS handshake failure` |
 | Login OK pero vuelve al login | — | OK | Token rechazado en connect; evento `HMI client connection rejected` |
 | Curva con hueco breve | Verde tras pausa | OK | Reconnect + backfill historiador (120 s) |
@@ -26,7 +27,10 @@ Guía operativa para diagnosticar clientes HMI desconectados, reconexiones y fal
    - `edge=` línea/nodo
    - `active_clients=` conteo global (PostgreSQL `hmi_sessions`)
    - `reason=` motivo (disconnect / rechazo)
-3. **Badge Socket** (header HMI) — estado **local** del navegador; no sustituye Events del servidor.
+3. **Indicadores header** — independientes:
+   - **SKT** (Socket.IO): conexión WebSocket con **este edge**; alimenta CVT, alarmas activas y tendencias RT.
+   - **BD** (Base de datos): sonda `GET /api/health/db` al historiador remoto; no debe apagarse el SKT cuando solo falla la BD.
+4. **Badge Socket** (header HMI) — estado **local** del navegador; no sustituye Events del servidor.
 
 ## Conteo global de clientes
 

@@ -1,14 +1,20 @@
 import { useLocation } from "react-router-dom";
 import { isRemoteDbDependentPath } from "../config/dbDependentRoutes";
-import { useDatabaseConnected } from "../hooks/useDatabaseStatus";
+import { useSystemHealth } from "../hooks/useSystemHealth";
+import { useDatabaseStatus } from "../hooks/useDatabaseStatus";
 import { useTranslation } from "../hooks/useTranslation";
 
 export function DatabaseUnavailableOverlay() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
-  const { connected, reconnecting, retryCount, reconnect } = useDatabaseConnected();
+  const { dbStatus, socketHealth } = useSystemHealth();
+  const { reconnecting, retryCount, reconnect } = useDatabaseStatus();
 
-  if (connected !== false || !isRemoteDbDependentPath(pathname)) {
+  if (
+    dbStatus !== "disconnected" ||
+    socketHealth === "disconnected" ||
+    !isRemoteDbDependentPath(pathname)
+  ) {
     return null;
   }
 

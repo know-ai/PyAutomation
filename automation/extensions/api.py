@@ -147,6 +147,17 @@ class Api(Singleton):
             logging.getLogger("pyautomation").debug(
                 "Token DB lookup skipped; historian marked disconnected"
             )
+            try:
+                from ..utils.user_api_session_store import activate_user_from_offline_token
+
+                offline_user = activate_user_from_offline_token(token)
+                if offline_user:
+                    return offline_user, None, None
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "Offline session restore skipped",
+                    exc_info=True,
+                )
 
         if Api.verify_tpt(tpt=token):
             return None, None, None

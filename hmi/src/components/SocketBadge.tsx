@@ -1,23 +1,23 @@
 import clsx from "clsx";
-import { useSocketConnection } from "../hooks/useSocketConnection";
+import { useSystemHealth } from "../hooks/useSystemHealth";
 import { useTranslation } from "../hooks/useTranslation";
 
 export function SocketBadge() {
   const { t } = useTranslation();
-  const status = useSocketConnection();
+  const { socketStatus, socketHealth } = useSystemHealth();
 
   const level =
-    status === "connected"
+    socketHealth === "connected"
       ? "ok"
-      : status === "reconnecting" || status === "connecting"
+      : socketHealth === "reconnecting"
         ? "warn"
         : "alarm";
   const title =
-    status === "connected"
+    socketStatus === "connected"
       ? t("socket.badgeConnected")
-      : status === "reconnecting"
+      : socketStatus === "reconnecting"
         ? t("socket.badgeReconnecting")
-        : status === "connecting"
+        : socketStatus === "connecting"
           ? t("socket.badgeConnecting")
           : t("socket.badgeDisconnected");
 
@@ -25,8 +25,11 @@ export function SocketBadge() {
     <span
       className={clsx("socket-badge", `socket-badge--${level}`)}
       title={title}
-      aria-label={title}
+      aria-label={`${t("socket.indicatorLabel")}: ${title}`}
     >
+      <span className="socket-badge__tag" aria-hidden="true">
+        {t("socket.indicatorShort")}
+      </span>
       <i className="bi bi-broadcast-pin" aria-hidden="true" />
     </span>
   );

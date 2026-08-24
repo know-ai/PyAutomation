@@ -39,11 +39,33 @@ class TestSessionAuthDuringDbOutage(unittest.TestCase):
         self.assertIsNotNone(user)
         self.assertEqual(user.username, "op_session")
 
-    def test_missing_memory_session_with_db_down_is_503_not_invalid_token(self):
+    def test_missing_memory_session_with_db_down_restores_from_local_mirror(self):
         cvt_users.active_users.pop(self.token, None)
         fake_app = MagicMock()
         fake_app.is_db_connected.return_value = False
-        with patch("automation.PyAutomation", return_value=fake_app):
+        with patch("automation.PyAutomation", return_value=fake_app), patch(
+            "automation.utils.user_api_session_store._lookup_local_username",
+            return_value="op_session",
+        ), patch(
+            "automation.utils.user_api_session_store.activate_user_from_offline_token",
+            side_effect=lambda tok: cvt_users.activate_session_from_db_record(
+                type("_Row", (), {"username": "op_session"})(), token=tok
+            ),
+        ):
+            user, err, status = Api._resolve_session_user(self.token)
+        self.assertIsNone(err)
+        self.assertIsNone(status)
+        self.assertIsNotNone(user)
+        self.assertEqual(user.username, "op_session")
+
+    def test_missing_memory_session_with_db_down_and_no_local_mirror_is_503(self):
+        cvt_users.active_users.pop(self.token, None)
+        fake_app = MagicMock()
+        fake_app.is_db_connected.return_value = False
+        with patch("automation.PyAutomation", return_value=fake_app), patch(
+            "automation.utils.user_api_session_store.activate_user_from_offline_token",
+            return_value=None,
+        ):
             user, err, status = Api._resolve_session_user(self.token)
         self.assertIsNone(user)
         self.assertEqual(status, 503)

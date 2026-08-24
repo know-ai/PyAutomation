@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSystemHealth } from "../hooks/useSystemHealth";
 import { useTranslation } from "../hooks/useTranslation";
-import { useDatabaseConnected } from "../hooks/useDatabaseStatus";
 
 const POSITION_KEY = "pya.degradedBanner.pos";
 
@@ -34,7 +34,7 @@ function writeStoredPos(pos: BannerPos): void {
  */
 export function DegradedModeBanner() {
   const { t } = useTranslation();
-  const { connected } = useDatabaseConnected();
+  const { dbStatus, socketHealth } = useSystemHealth();
   const bannerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     startX: number;
@@ -58,7 +58,7 @@ export function DegradedModeBanner() {
   }, []);
 
   useEffect(() => {
-    if (connected !== false || pos !== null) return;
+    if (dbStatus !== "disconnected" || socketHealth === "disconnected" || pos !== null) return;
     const el = bannerRef.current;
     const stage = el?.offsetParent as HTMLElement | null;
     if (!el || !stage) return;
@@ -67,7 +67,7 @@ export function DegradedModeBanner() {
     const initial = clampToStage({ x, y });
     setPos(initial);
     writeStoredPos(initial);
-  }, [connected, pos, clampToStage]);
+  }, [dbStatus, socketHealth, pos, clampToStage]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -101,7 +101,7 @@ export function DegradedModeBanner() {
     };
   }, [dragging, clampToStage]);
 
-  if (connected !== false) {
+  if (dbStatus !== "disconnected" || socketHealth === "disconnected") {
     return null;
   }
 
