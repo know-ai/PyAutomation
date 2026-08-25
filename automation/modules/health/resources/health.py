@@ -105,7 +105,7 @@ class HealthNodeResource(Resource):
     @api.response(401, "Authentication required")
     @api.response(403, "Role not allowed")
     @Api.token_required(auth=True)
-    @Api.auth_roles(["admin", "supervisor", "sudo"])
+    @Api.auth_roles(["admin", "supervisor", "sudo", "operator"])
     def get(self):
         """Read-only copy of the sampler dict. No historian, OPC or psutil on this path."""
         return node_metrics_payload(), 200, {"Cache-Control": "max-age=1"}

@@ -90,9 +90,23 @@ class Machine(Singleton):
         * **interval** (FloatType): Execution interval in seconds.
         * **mode** (str): Execution mode ('async' or 'sync'). Default is 'async'.
         """
-        if isinstance(machine, DAQ):
-            
-            machine.name = StringType(f"DAQ-{int(interval.value * 1000)}")
+        from .catalog.partition import daq_machine_name, normalize_area
+        from .node_scope import get_node_scope
+
+        area = None
+        try:
+            area = get_node_scope().area
+        except Exception:
+            area = None
+        classification = ""
+        try:
+            classification = str(getattr(machine.classification, "value", machine.classification) or "")
+        except Exception:
+            classification = ""
+        if isinstance(machine, DAQ) or classification == "Data Acquisition System":
+            machine.name = StringType(daq_machine_name(interval.value * 1000, area))
+            if normalize_area(area):
+                machine.area = normalize_area(area)
         
         machine.set_interval(interval)
         self.machine_manager.append_machine((machine, interval, mode))
@@ -110,11 +124,6 @@ class Machine(Singleton):
             live = bool(PyAutomation().is_db_connected())
         except Exception:
             live = False
-        area = None
-        try:
-            area = get_node_scope().area
-        except Exception:
-            area = None
         if live and self.machines_engine.get_db():
             self.machines_engine.create(
                 identifier=machine.identifier.value,
@@ -1071,6 +1080,18 @@ class StateMachineCore(StateMachine):
         if worker is not None and source is not None:
             worker.unregister_tag(source.name, machine_name=self.name.value)
 
+    def _ensure_bind_partition(self, tag: Tag) -> None:
+        """Refuse to attach a tag whose area differs from this machine's area."""
+        from .catalog.partition import bind_areas_from_objects, ensure_same_partition
+
+        tag_area, machine_area = bind_areas_from_objects(tag, self)
+        ensure_same_partition(
+            tag_area,
+            machine_area,
+            tag_name=getattr(tag, "name", None),
+            machine_name=getattr(getattr(self, "name", None), "value", None),
+        )
+
     def subscribe_to(self, tag:Tag, default_tag_name:str=None):
         r"""
         Subscribes the machine to a tag.
@@ -1087,7 +1108,13 @@ class StateMachineCore(StateMachine):
 
         * **tuple**: (Success bool, Message str) or True/False.
         """
+        from .catalog.partition import CrossAreaBindError
+
         if tag is not None:
+            try:
+                self._ensure_bind_partition(tag)
+            except CrossAreaBindError as exc:
+                return False, str(exc)
             tag = self._register_wavelet_tag(tag)
 
         if default_tag_name and tag:    # Designed to default tags into State Machine
@@ -1103,7 +1130,10 @@ class StateMachineCore(StateMachine):
                         process_type.tag = tag
                         self.attach(machine=self, tag=tag)
                         self.restart_buffer()
-                        self.machine_engine.bind_tag(tag=tag, machine=self, default_tag_name=default_tag_name)
+                        try:
+                            self.machine_engine.bind_tag(tag=tag, machine=self, default_tag_name=default_tag_name)
+                        except CrossAreaBindError as exc:
+                            return False, str(exc)
                         return True, f"successful subscription"
                     
                     return False, f"{default_tag_name} already has a subscription"
@@ -1123,7 +1153,10 @@ class StateMachineCore(StateMachine):
                     setattr(self, tag_name, ProcessType(tag=tag, default=tag.value, read_only=True))
                     self.attach(machine=self, tag=tag)
                     self.restart_buffer()
-                    self.machine_engine.bind_tag(tag=tag, machine=self)
+                    try:
+                        self.machine_engine.bind_tag(tag=tag, machine=self)
+                    except CrossAreaBindError as exc:
+                        return False, str(exc)
                     return True
                 
                 else:
@@ -1133,7 +1166,10 @@ class StateMachineCore(StateMachine):
                     if not process_type.tag:
 
                         process_type.tag = tag
-                        self.machine_engine.bind_tag(tag=tag, machine=self)
+                        try:
+                            self.machine_engine.bind_tag(tag=tag, machine=self)
+                        except CrossAreaBindError as exc:
+                            return False, str(exc)
                         return True
 
     @validate_types(tag=Tag, output=None|bool)

@@ -6,10 +6,11 @@
 | **Alcance** | N equipos edge, cada uno con una instancia de PyAutomation + un servidor OPC UA de línea, historiador PostgreSQL **compartido** |
 | **Premisa de planta** | 2 secciones / líneas; ~20 puntos por línea (P, T, Q, ρ); persistencia en la misma BD; el cliente exige un edge por línea |
 | **Fecha original** | 2026-08-18 (baseline: hidratación `read_all()`, sin identidad de nodo) |
+| **Planta 2-edge** | 2026-08-25 — consistencia de catálogo: [AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md](./AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md) |
 | **Compactación** | 2026-08-18 — este archivo ya era el documento único del dominio; se actualizaron enlaces y el contraste con specs |
 | **Tipo** | Auditoría de contraste · arquitectura · nomenclatura industrial · backlog de grado nuclear |
 | **Complementa** | `specs/01-MULTI-EDGE-ARCHITECTURE.md`, `docs/multi-edge.md`, [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_DB.md](./AUDIT_DB.md) |
-| **Veredicto** | **Fase 1 está en código y pasó laboratorio de 1 edge** (iDetectFugas, `NODE_ID=edge-linea1`, `SEGMENT=Linea1`). Identidad con alias, fail-closed, hidratación acotada, single-writer O(1), SAF aislado, API/HMI acotados y contrato de alarmas de aplicación existen, con suite `test_multi_edge_*`. **No es un producto de grado nuclear:** faltan unique compuesto, RLS, consola/heartbeat operativo, migración de BD poblada, soak 24 h con **dos** edges reales y las defensas de §5. La spec `01` aún se titula «propuesta no implementado»: **el contraste de implementación es este archivo**, no el encabezado de la spec |
+| **Veredicto** | **Fase 1 está en código.** Prevención de binds cruzados **CA-CODE-01…05 PASS**. DAQ por área **CA-DAQ-01** (`LineaN.DAQ-{ms}`). `opcuaserver` **push-only** **CA-OPC-PUSH-01**. Planta 2-edge: wipe+redeploy pendiente (**CA-CODE-06**) |
 | **Clasificación** | Confidencialidad interna · grado de diseño (ISA-95 / IEC 62264) |
 
 ---
@@ -174,6 +175,8 @@ Supuesto: Edge A `NODE_ID=edge-linea1` `SEGMENT=Linea1`, Edge B `NODE_ID=edge-li
 | Health | `ACQUISITION_READY` y `NODE_*` visibles | El `healthcheck` Docker de iDetectFugas **no** exige `ACQUISITION_READY` |
 
 **Conclusión de escenario:** el aislamiento de **aplicación** está. El aislamiento de **planta** (red, BD, tiempo, operación 24/7, evidencia 2-edge) no.
+
+El Bulkhead de 2026-08-25 ([AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) §3.4, [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md) CA-ISOLATION-02…04) aísla **fallos de entidad** (tag ausente, fila huérfana, FK) para que no bloqueen otros flujos del mismo edge. **No** sustituye VLAN, RLS ni soak 2-edge.
 
 ---
 

@@ -27,7 +27,7 @@ NATURAL_KEYS: dict[str, tuple[tuple[str, ...], ...]] = {
     "opcua": (("client_name",),),
     "opcuaserver": (("namespace",), ("name",)),
     "nodes": (("id",),),
-    "machines": (("identifier",), ("name",)),
+    "machines": (("identifier",), ("area", "name"), ("name",)),
     "linearreferencinggeospatial": (("segment", "kp"), ("segment_id", "kp")),
     "alarms": (("identifier",), ("name", "area"), ("name",)),
     "tagsmachines": (("tag", "machine"), ("tag_id", "machine_id")),
@@ -135,6 +135,40 @@ def _parent_identity_from_source(
         # Sometimes fk_value already is a natural key string
         return identity_key(parent_table, {lookup_fields[0]: fk_value}) if lookup_fields else None
     return identity_key(parent_table, parent)
+
+
+def lookup_fk_parent(
+    table: str,
+    row: dict,
+    field: str,
+    *,
+    local_index: dict[str, dict[str, dict]],
+    remote_index: dict[str, dict[str, dict]],
+) -> dict | None:
+    """Return the parent catalog row for ``row[field]``, or None if unknown."""
+    specs = FK_SPECS.get(table) or ()
+    parent_table = None
+    lookup_fields: tuple[str, ...] = ()
+    for spec_field, spec_parent, spec_lookup in specs:
+        if spec_field == field:
+            parent_table = spec_parent
+            lookup_fields = spec_lookup
+            break
+    if not parent_table:
+        return None
+    fk_value = _fk_value(row, field)
+    if fk_value is None or fk_value == "":
+        return None
+    for index in (remote_index.get(parent_table) or {}, local_index.get(parent_table) or {}):
+        found = index.get(f"pk:{fk_value}") or index.get(f"pk:{str(fk_value)}")
+        if found:
+            return found
+        parent_key = _parent_identity_from_source(
+            parent_table, fk_value, index, lookup_fields
+        )
+        if parent_key and parent_key in index:
+            return index[parent_key]
+    return None
 
 
 def parent_fk_known(

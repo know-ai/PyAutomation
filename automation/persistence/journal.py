@@ -306,6 +306,26 @@ class JournalWriter:
             self._commit_locked()
             return int(deleted)
 
+    def drop_unsent(self, *, confirm: bool) -> int:
+        """Operator-authorized drop of PENDING/REPLICATING rows and the RAM ring.
+
+        PENDING is sacred on the hot path. This method is the only intentional
+        discard, and it requires an explicit confirm flag from the admin API.
+        """
+        if not confirm:
+            raise ValueError("confirm required")
+        with self._lock:
+            self._ensure_open_locked()
+            dropped_ring = len(self._ring)
+            self._ring.clear()
+            cur = self._conn.execute(
+                "DELETE FROM persistence_journal WHERE status IN (?, ?)",
+                (STATUS_PENDING, STATUS_REPLICATING),
+            )
+            deleted = int(cur.rowcount if cur.rowcount is not None else 0)
+            self._commit_locked()
+            return deleted + dropped_ring
+
     def evict_sent_oldest(self, limit: int) -> int:
         """Controlled eviction: SENT only. PENDING is sacred."""
         with self._lock:

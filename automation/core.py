@@ -3532,13 +3532,20 @@ class PyAutomation(Singleton):
         >>> # This will create/update a DAQ machine
         >>> app.subscribe_tag("Tag_Poll", 1000)
         >>> machines = app.get_machines()
-        >>> any(m[0].name.value == "DAQ-1000" for m in machines)
+        >>> any(m[0].name.value.endswith("DAQ-1000") for m in machines)
         True
 
         ```
         """
         scan_time = float(scan_time)
-        daq_name = StringType(f"DAQ-{int(scan_time)}")
+        from .catalog.partition import daq_machine_name
+
+        area = None
+        try:
+            area = self._refresh_node_scope().area
+        except Exception:
+            area = None
+        daq_name = StringType(daq_machine_name(scan_time, area))
         daq = self.machine_manager.get_machine(name=daq_name)
         tag = self.cvt.get_tag_by_name(name=tag_name)
         if not daq:
@@ -5031,8 +5038,7 @@ class PyAutomation(Singleton):
         Loads OPC UA client configurations from the database and initializes them.
         """
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        logging.info(f"Loading OPC UA clients from database")
-        print(_colorize_message(f"[{str_date}] [INFO] Loading OPC UA clients from database", "INFO"))
+        logging.debug("Loading OPC UA clients from database")
         if self.is_db_connected():
             scope = self._refresh_node_scope()
             clients = (
@@ -5044,12 +5050,17 @@ class PyAutomation(Singleton):
             from .catalog.hydrate import local_opcua_clients
 
             clients = local_opcua_clients()
-        logging.info(f"{len(clients)} OPC UA clients found in database")
         if len(clients)>0:
-                
+            logging.info(f"{len(clients)} OPC UA clients found in database")
             print(_colorize_message(f"[{str_date}] [INFO] {len(clients)} OPC UA clients found in database", "INFO"))
+            self._opcua_empty_warned = False
         else:
-            print(_colorize_message(f"[{str_date}] [WARNING] No OPC UA clients found in database", "WARNING"))
+            if not getattr(self, "_opcua_empty_warned", False):
+                print(_colorize_message(f"[{str_date}] [WARNING] No OPC UA clients found in database", "WARNING"))
+                logging.warning("No OPC UA clients found in database; LoggerWorker will retry with backoff")
+                self._opcua_empty_warned = True
+            else:
+                logging.debug("No OPC UA clients found in database")
             
         for client in clients:
             client_name = client.get('client_name')

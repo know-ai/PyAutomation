@@ -9,7 +9,7 @@ class Machines(BaseModel):
     """
     
     identifier = CharField(unique=True)
-    name = CharField(unique=True)
+    name = CharField(max_length=128)
     area = CharField(max_length=64, null=True, index=True)
     interval = FloatField()
     execution_interval = FloatField(null=True)
@@ -65,7 +65,7 @@ class Machines(BaseModel):
         result = dict()
         data = dict()
 
-        if not cls.name_exist(name):
+        if not cls.name_exist(name, area=area):
 
             query = cls(
                 identifier=identifier,
@@ -134,17 +134,16 @@ class Machines(BaseModel):
         return {query.name: query.serialize() for query in cls.scoped(area=area)}
 
     @classmethod
-    def name_exist(cls, name:str)->bool:
+    def name_exist(cls, name:str, area:str=None)->bool:
         r"""
-        Checks if a machine name exists.
+        True if this (area, name) pair already exists. Area-null matches area-null.
         """
-        query = cls.get_or_none(name=name)
-        
-        if query is not None:
-
-            return True
-        
-        return False
+        query = cls.select().where(cls.name == name)
+        if area is None or str(area).strip() == "":
+            query = query.where((cls.area.is_null()) | (cls.area == ""))
+        else:
+            query = query.where(cls.area == area)
+        return query.get_or_none() is not None
     
     def get_tags(self):
         r"""
@@ -208,6 +207,17 @@ class TagsMachines(BaseModel):
 
         tag = Tags.get_or_none(name=tag_name)
         machine = Machines.get_or_none(name=machine_name)
+        if tag is None or machine is None:
+            return None
+
+        from ..catalog.partition import ensure_same_partition
+
+        ensure_same_partition(
+            getattr(tag, "area", None),
+            getattr(machine, "area", None),
+            tag_name=tag_name,
+            machine_name=machine_name,
+        )
 
         if not cls.get_or_none(tag=tag, machine=machine):
 

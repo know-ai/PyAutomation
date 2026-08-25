@@ -10,6 +10,7 @@ from typing import Any
 
 from .local_db import get_catalog_database
 from .local_provider import LocalCatalogProvider
+from .partition import areas_compatible
 from .versions import edge_node_id, now_ms
 
 _LOGGER = logging.getLogger("pyautomation")
@@ -187,6 +188,15 @@ def persist_tagsmachines_bind(
             "tagsmachines bind skipped missing parents tag=%s machine=%s",
             tag_name,
             machine_name,
+        )
+        return
+    if not areas_compatible(tag_row.get("area"), machine_row.get("area")):
+        _LOGGER.warning(
+            "tagsmachines bind refused cross-area tag=%s area=%s machine=%s area=%s",
+            tag_name,
+            tag_row.get("area"),
+            machine_name,
+            machine_row.get("area"),
         )
         return
     tag_pk = tag_row.get("_pk") or tag_row.get("id")

@@ -153,6 +153,32 @@ class TestMetricsSampler(unittest.TestCase):
         self.assertEqual(payload["CATALOG_SYNC_ERRORS"], 1)
         self.assertTrue(payload["CATALOG_ORPHAN_ALARM"])
 
+    def test_sample_db_txn_rate_uses_process_local_commits(self):
+        from automation.utils.db_connections import note_local_commit, reset_local_txn_commit_count
+
+        reset_local_txn_commit_count()
+        worker = MetricsSamplerWorker(interval_seconds=5)
+        worker._txn_prev = (0, 0)
+        worker._txn_prev_at = __import__("time").monotonic() - 60.0
+        for _ in range(10):
+            note_local_commit()
+        payload = {}
+        with patch("automation.PyAutomation") as app_cls, patch(
+            "automation.health.get_database_health_service"
+        ) as health, patch(
+            "automation.utils.db_connections.snapshot_connection_metrics",
+            return_value={},
+        ), patch(
+            "automation.utils.db_connections.query_pg_txn_counters",
+            return_value=None,
+        ):
+            app_cls.return_value.is_db_connected.return_value = True
+            app_cls.return_value._db = None
+            health.return_value.snapshot.return_value.latency_ms = 4.0
+            worker._sample_db(payload)
+        self.assertEqual(payload["DB_TXN_PER_MIN"], 10.0)
+        reset_local_txn_commit_count()
+
 
 class TestHealthNodeEndpoint(unittest.TestCase):
     def test_node_endpoint_reads_snapshot_only(self):

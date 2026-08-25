@@ -64,6 +64,9 @@ export function translateAlarmDescription(
   if (endsWithAlarmSuffix(name, "ALM.CATALOG.SyncFailed")) {
     return t("alarms.catalog.catalogSyncFailed");
   }
+  if (endsWithAlarmSuffix(name, "ALM.CATALOG.OrphanRows")) {
+    return t("alarms.catalog.catalogOrphanRows");
+  }
   if (endsWithAlarmSuffix(name, "ALM.CATALOG.Conflict")) {
     return t("alarms.catalog.catalogConflict");
   }
@@ -127,6 +130,9 @@ export function translateAlarmDescription(
   }
   if (desc === "Catalog sync failed") {
     return t("alarms.catalog.catalogSyncFailed");
+  }
+  if (desc === "Catalog orphan rows") {
+    return t("alarms.catalog.catalogOrphanRows");
   }
   if (desc === "Catalog sync conflict") {
     return t("alarms.catalog.catalogConflict");

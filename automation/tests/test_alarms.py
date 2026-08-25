@@ -2,7 +2,7 @@ import unittest
 from automation.alarms import Alarm
 from automation.tags.tag import Tag
 from automation.tags.cvt import CVTEngine
-from automation.models import StringType, FloatType
+from automation.models import StringType, FloatType, IntegerType
 
 cvt = CVTEngine()
 
@@ -101,6 +101,31 @@ class TestAlarms(unittest.TestCase):
         with self.subTest("Test alarm Normal status"):
             tag.set_value(value=45)
             self.assertEqual(alarm.current_state.value.lower(), "normal")
+
+    def test_bool_rtn_unack_stays_until_operator_ack(self):
+        """ISA-18.2: RTN Unacknowledged is stable; only the operator acks to Normal."""
+        cvt.set_tag(
+            name="tag_bool_isa",
+            variable="Adimentional",
+            unit="adim",
+            data_type="boolean",
+            description="isa bool",
+        )
+        tag = cvt.get_tag_by_name(name="tag_bool_isa")
+        alarm = Alarm(
+            name="alm_bool_isa",
+            tag=tag,
+            alarm_type=StringType("BOOL"),
+            alarm_setpoint=IntegerType(1),
+        )
+        tag.set_value(value=True)
+        self.assertEqual(alarm.current_state.value.lower(), "unack_alarm")
+        tag.set_value(value=False)
+        self.assertEqual(alarm.current_state.value.lower(), "rtn_unack")
+        tag.set_value(value=False)
+        self.assertEqual(alarm.current_state.value.lower(), "rtn_unack")
+        alarm.acknowledge()
+        self.assertEqual(alarm.current_state.value.lower(), "normal")
 
     
 

@@ -1,0 +1,491 @@
+{
+  "audit_timestamp": "2026-08-25T19:15:50.579927+00:00",
+  "schema_notes": {
+    "pending_table": "pending_rows (not tagsmachines_pending)",
+    "nodes_pk": "nodes.id (not nodes.node_id)",
+    "opcua_has_tag_id": false,
+    "local_counts_are_area_scoped": true
+  },
+  "remote_database": {
+    "name": "idetect_db",
+    "host": "192.168.1.95",
+    "port": 5432,
+    "nodes": [
+      {
+        "id": "edge-linea1",
+        "area": "Linea1",
+        "site": "Supe",
+        "hostname": "455aa0deb63c",
+        "version": null
+      },
+      {
+        "id": "edge-linea2",
+        "area": "Linea2",
+        "site": "Supe",
+        "hostname": "b69ea7260fb8",
+        "version": null
+      }
+    ],
+    "row_counts": {
+      "tags": 160,
+      "machines": 12,
+      "tagsmachines": 6,
+      "alarms": 49,
+      "opcua": 2,
+      "nodes": 2,
+      "users": 3,
+      "units": 172,
+      "catalog_versions": 4154
+    },
+    "row_counts_scoped_by_node": {
+      "edge-linea1": {
+        "area": "Linea1",
+        "tags": 80,
+        "machines": 7,
+        "tagsmachines": 3,
+        "alarms": 25
+      },
+      "edge-linea2": {
+        "area": "Linea2",
+        "tags": 80,
+        "machines": 5,
+        "tagsmachines": 3,
+        "alarms": 24
+      }
+    },
+    "inconsistencies": {
+      "tagsmachines_tag_id_null": 0,
+      "tagsmachines_tag_id_orphan": 0,
+      "tagsmachines_tag_id_zero": 0,
+      "tagsmachines_machine_id_null": 0,
+      "tagsmachines_machine_id_orphan": 0,
+      "tagsmachines_machine_id_zero": 0,
+      "tagsmachines_cross_area": 3,
+      "tagsmachines_duplicate_pairs": 0,
+      "alarms_tag_id_null": 0,
+      "alarms_tag_id_orphan": 0,
+      "alarms_tag_id_zero": 0,
+      "tags_area_vs_owner_node": 0,
+      "tags_owner_node_missing": 0,
+      "tags_unit_id_orphan": 0,
+      "opcua_owner_node_missing": 0
+    },
+    "details": {
+      "tagsmachines_tag_id_null": [],
+      "tagsmachines_tag_id_orphan": [],
+      "tagsmachines_tag_id_zero": [],
+      "tagsmachines_machine_id_null": [],
+      "tagsmachines_machine_id_orphan": [],
+      "tagsmachines_machine_id_zero": [],
+      "tagsmachines_cross_area": [
+        {
+          "id": 4,
+          "tag_id": 104,
+          "tag_name": "Supe.Linea2.FI_02",
+          "tag_area": "Linea2",
+          "owner_node": "edge-linea2",
+          "machine_id": 12,
+          "machine_name": "DAQ-1000",
+          "machine_area": "Linea1"
+        },
+        {
+          "id": 8,
+          "tag_id": 122,
+          "tag_name": "Supe.Linea2.PI_02",
+          "tag_area": "Linea2",
+          "owner_node": "edge-linea2",
+          "machine_id": 12,
+          "machine_name": "DAQ-1000",
+          "machine_area": "Linea1"
+        },
+        {
+          "id": 9,
+          "tag_id": 106,
+          "tag_name": "Supe.Linea2.DI_02",
+          "tag_area": "Linea2",
+          "owner_node": "edge-linea2",
+          "machine_id": 12,
+          "machine_name": "DAQ-1000",
+          "machine_area": "Linea1"
+        }
+      ],
+      "tagsmachines_duplicate_pairs": [],
+      "alarms_tag_id_null": [],
+      "alarms_tag_id_orphan": [],
+      "alarms_tag_id_zero": [],
+      "tags_area_vs_owner_node": [],
+      "tags_owner_node_missing": [],
+      "tags_unit_id_orphan": [],
+      "opcua_owner_node_missing": []
+    },
+    "truncated": {}
+  },
+  "local_databases": {
+    "edge-linea1": {
+      "path": "/tmp/catalog-audit/edge-192.168.1.80/catalog.db",
+      "sqlite_tables": [
+        "accesstype",
+        "alarms",
+        "alarmstates",
+        "alarmtypes",
+        "catalog_versions",
+        "datatypes",
+        "hmi_sessions",
+        "linearreferencinggeospatial",
+        "machines",
+        "manufacturer",
+        "nodes",
+        "opcua",
+        "opcuaserver",
+        "pending_rows",
+        "roles",
+        "segment",
+        "tags",
+        "tagsmachines",
+        "units",
+        "user_api_sessions",
+        "users",
+        "variables"
+      ],
+      "identity": {
+        "nodes": [
+          {
+            "id": "edge-linea1",
+            "area": "Linea1",
+            "site": "Supe",
+            "hostname": "455aa0deb63c",
+            "version": null
+          },
+          {
+            "id": "edge-linea2",
+            "area": "Linea2",
+            "site": "Supe",
+            "hostname": "b69ea7260fb8",
+            "version": null
+          }
+        ]
+      },
+      "wal_bytes": 4140632,
+      "row_counts": {
+        "tags": 80,
+        "machines": 7,
+        "tagsmachines": 3,
+        "alarms": 25,
+        "opcua": 1,
+        "nodes": 2,
+        "users": 3,
+        "units": 172,
+        "pending_rows": 0,
+        "catalog_versions": 2246
+      },
+      "inconsistencies": {
+        "tagsmachines_tag_id_null": 0,
+        "tagsmachines_tag_id_orphan": 0,
+        "tagsmachines_tag_id_zero": 0,
+        "tagsmachines_machine_id_null": 0,
+        "tagsmachines_machine_id_orphan": 0,
+        "tagsmachines_machine_id_zero": 0,
+        "tagsmachines_cross_area": 0,
+        "alarms_tag_id_null": 0,
+        "alarms_tag_id_orphan": 0,
+        "alarms_tag_id_zero": 0,
+        "pending_rows_all": 0,
+        "pending_rows_tagsmachines": 0,
+        "pending_rows_orphan_fk": 0,
+        "tagsmachines_pending_orphan": 0
+      },
+      "details": {
+        "tagsmachines_tag_id_null": [],
+        "tagsmachines_tag_id_orphan": [],
+        "tagsmachines_tag_id_zero": [],
+        "tagsmachines_machine_id_null": [],
+        "tagsmachines_machine_id_orphan": [],
+        "tagsmachines_machine_id_zero": [],
+        "tagsmachines_cross_area": [],
+        "alarms_tag_id_null": [],
+        "alarms_tag_id_orphan": [],
+        "alarms_tag_id_zero": [],
+        "pending_rows_all": [],
+        "pending_rows_tagsmachines": [],
+        "pending_rows_orphan_fk": [],
+        "tagsmachines_pending_orphan": []
+      },
+      "truncated": {},
+      "host": "192.168.1.80",
+      "remote_path": "/home/intelcon/idetectfugas_backend/compose/temp/db/catalog.db",
+      "copied_files": [
+        "app_config.json",
+        "catalog.db",
+        "catalog.db-shm",
+        "catalog.db-wal",
+        "db_config.json"
+      ],
+      "node_id": "edge-linea1",
+      "area": "Linea1"
+    },
+    "edge-linea2": {
+      "path": "/tmp/catalog-audit/edge-192.168.1.81/catalog.db",
+      "sqlite_tables": [
+        "accesstype",
+        "alarms",
+        "alarmstates",
+        "alarmtypes",
+        "catalog_versions",
+        "datatypes",
+        "hmi_sessions",
+        "linearreferencinggeospatial",
+        "machines",
+        "manufacturer",
+        "nodes",
+        "opcua",
+        "opcuaserver",
+        "pending_rows",
+        "roles",
+        "segment",
+        "tags",
+        "tagsmachines",
+        "units",
+        "user_api_sessions",
+        "users",
+        "variables"
+      ],
+      "identity": {
+        "nodes": [
+          {
+            "id": "edge-linea2",
+            "area": "Linea2",
+            "site": "Supe",
+            "hostname": "b69ea7260fb8",
+            "version": null
+          },
+          {
+            "id": "edge-linea1",
+            "area": "Linea1",
+            "site": "Supe",
+            "hostname": "455aa0deb63c",
+            "version": null
+          }
+        ]
+      },
+      "wal_bytes": 4161232,
+      "row_counts": {
+        "tags": 80,
+        "machines": 7,
+        "tagsmachines": 0,
+        "alarms": 24,
+        "opcua": 1,
+        "nodes": 2,
+        "users": 3,
+        "units": 172,
+        "pending_rows": 1,
+        "catalog_versions": 2649
+      },
+      "inconsistencies": {
+        "tagsmachines_tag_id_null": 0,
+        "tagsmachines_tag_id_orphan": 0,
+        "tagsmachines_tag_id_zero": 0,
+        "tagsmachines_machine_id_null": 0,
+        "tagsmachines_machine_id_orphan": 0,
+        "tagsmachines_machine_id_zero": 0,
+        "tagsmachines_cross_area": 0,
+        "alarms_tag_id_null": 0,
+        "alarms_tag_id_orphan": 0,
+        "alarms_tag_id_zero": 0,
+        "pending_rows_all": 1,
+        "pending_rows_tagsmachines": 1,
+        "pending_rows_orphan_fk": 1,
+        "tagsmachines_pending_orphan": 0
+      },
+      "details": {
+        "tagsmachines_tag_id_null": [],
+        "tagsmachines_tag_id_orphan": [],
+        "tagsmachines_tag_id_zero": [],
+        "tagsmachines_machine_id_null": [],
+        "tagsmachines_machine_id_orphan": [],
+        "tagsmachines_machine_id_zero": [],
+        "tagsmachines_cross_area": [],
+        "alarms_tag_id_null": [],
+        "alarms_tag_id_orphan": [],
+        "alarms_tag_id_zero": [],
+        "pending_rows_all": [
+          {
+            "table_name": "tagsmachines",
+            "row_id": "104|12",
+            "retries": 1,
+            "first_seen": "2026-08-25 19:15:22.053823+00:00"
+          }
+        ],
+        "pending_rows_tagsmachines": [
+          {
+            "table_name": "tagsmachines",
+            "row_id": "104|12",
+            "retries": 1,
+            "first_seen": "2026-08-25 19:15:22.053823+00:00"
+          }
+        ],
+        "pending_rows_orphan_fk": [
+          {
+            "table_name": "tagsmachines",
+            "row_id": "104|12",
+            "retries": 1,
+            "first_seen": "2026-08-25 19:15:22.053823+00:00",
+            "row_data": "{\"id\": 4, \"tag_id\": 104, \"machine_id\": 12, \"default_tag_name\": null, \"sample_override\": null, \"_pk\": \"4\"}"
+          }
+        ],
+        "tagsmachines_pending_orphan": []
+      },
+      "truncated": {},
+      "host": "192.168.1.81",
+      "remote_path": "/home/intelcon/idetectfugas_backend/compose/temp/db/catalog.db",
+      "copied_files": [
+        "app_config.json",
+        "catalog.db",
+        "catalog.db-shm",
+        "catalog.db-wal",
+        "db_config.json"
+      ],
+      "node_id": "edge-linea2",
+      "area": "Linea2"
+    }
+  },
+  "sync_comparison": [
+    {
+      "node_id": "edge-linea1",
+      "host": "192.168.1.80",
+      "area": "Linea1",
+      "remote_scoped": {
+        "area": "Linea1",
+        "tags": 80,
+        "machines": 7,
+        "tagsmachines": 3,
+        "alarms": 25
+      },
+      "local": {
+        "tags": 80,
+        "machines": 7,
+        "tagsmachines": 3,
+        "alarms": 25,
+        "opcua": 1,
+        "pending_rows": 0
+      },
+      "delta": {
+        "tags": 0,
+        "machines": 0,
+        "tagsmachines": 0,
+        "alarms": 0
+      }
+    },
+    {
+      "node_id": "edge-linea2",
+      "host": "192.168.1.81",
+      "area": "Linea2",
+      "remote_scoped": {
+        "area": "Linea2",
+        "tags": 80,
+        "machines": 5,
+        "tagsmachines": 3,
+        "alarms": 24
+      },
+      "local": {
+        "tags": 80,
+        "machines": 7,
+        "tagsmachines": 0,
+        "alarms": 24,
+        "opcua": 1,
+        "pending_rows": 1
+      },
+      "delta": {
+        "tags": 0,
+        "machines": 2,
+        "tagsmachines": -3,
+        "alarms": 0
+      }
+    }
+  ],
+  "summary": {
+    "total_inconsistencies": 6,
+    "action_required": true,
+    "remote_inconsistencies": 3,
+    "local_inconsistencies": {
+      "edge-linea1": 0,
+      "edge-linea2": 3
+    }
+  },
+  "findings": [
+    {
+      "id": "CAT-XAREA-01",
+      "severity": "high",
+      "check": "AUD-01/AUD-02 (semantic, not NULL FK)",
+      "title": "tagsmachines cruzan Linea2 tags con m\u00e1quina Linea1 DAQ-1000",
+      "count": 3,
+      "rows": [
+        {
+          "id": 4,
+          "tag_id": 104,
+          "tag_name": "Supe.Linea2.FI_02",
+          "tag_area": "Linea2",
+          "owner_node": "edge-linea2",
+          "machine_id": 12,
+          "machine_name": "DAQ-1000",
+          "machine_area": "Linea1"
+        },
+        {
+          "id": 8,
+          "tag_id": 122,
+          "tag_name": "Supe.Linea2.PI_02",
+          "tag_area": "Linea2",
+          "owner_node": "edge-linea2",
+          "machine_id": 12,
+          "machine_name": "DAQ-1000",
+          "machine_area": "Linea1"
+        },
+        {
+          "id": 9,
+          "tag_id": 106,
+          "tag_name": "Supe.Linea2.DI_02",
+          "tag_area": "Linea2",
+          "owner_node": "edge-linea2",
+          "machine_id": 12,
+          "machine_name": "DAQ-1000",
+          "machine_area": "Linea1"
+        }
+      ],
+      "action": "Crear DAQ-1000 de Linea2 (o rebind a m\u00e1quina Linea2) y reescribir ids 4, 8, 9."
+    },
+    {
+      "id": "CAT-SCOPE-01",
+      "severity": "medium",
+      "check": "AUD-05",
+      "title": "edge-linea2 catalog.db contiene 2 m\u00e1quinas de Linea1",
+      "machines": [
+        "DAQ-1000",
+        "OPCUAServer"
+      ],
+      "action": "Eliminar del cat\u00e1logo local de Linea2 las m\u00e1quinas area=Linea1 y forzar sync."
+    },
+    {
+      "id": "CAT-PENDING-01",
+      "severity": "medium",
+      "check": "AUD-01 local pending",
+      "title": "edge-linea2 pending_rows tagsmachines 104|12 (bind remoto id=4)",
+      "retries": 1,
+      "first_seen": "2026-08-25 19:15:22Z",
+      "action": "Se resuelve al corregir el bind cruzado; no vaciar pending a ciegas."
+    },
+    {
+      "id": "CAT-VER-01",
+      "severity": "medium",
+      "check": "catalog_versions",
+      "title": "Remoto: tagsmachines ids 1,2,3 sin fila en catalog_versions; ids 4,8,9 s\u00ed. Local Linea2 versiona row_id 1,2,3 con los timestamps de 4,8,9.",
+      "action": "Tras corregir binds, reconstruir sidecar catalog_versions de tagsmachines."
+    }
+  ],
+  "ca_audit": {
+    "CA-AUDIT-01": "PASS \u2014 tagsmachines, alarms, pending_rows",
+    "CA-AUDIT-02": "PASS \u2014 0 filas tag_id NULL",
+    "CA-AUDIT-03": "PASS \u2014 0 FK hu\u00e9rfanas; 3 binds cross-area (FK v\u00e1lidas, partici\u00f3n rota)",
+    "CA-AUDIT-04": "PASS \u2014 conteos remoto vs local por \u00e1rea",
+    "CA-AUDIT-05": "PASS \u2014 JSON generado",
+    "CA-AUDIT-06": "PASS \u2014 < 5 min"
+  }
+}

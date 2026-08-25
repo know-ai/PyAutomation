@@ -36,6 +36,7 @@ def ensure_replica_database():
                 TrackedPostgresqlDatabase,
                 TrackedMySQLDatabase,
                 force_historian_connect,
+                historian_application_name,
                 REGISTRY,
             )
             from ..utils.db_io import apply_remote_db_kwargs
@@ -50,7 +51,7 @@ def ensure_replica_database():
             kwargs.pop("max_connections", None)
             kwargs.pop("stale_timeout", None)
             kwargs.pop("timeout", None)
-            kwargs["application_name"] = "PyAutomationIO-catalog-replicator"
+            kwargs["application_name"] = historian_application_name("catalog")
             with force_historian_connect():
                 if dbtype in ("postgresql", "postgres"):
                     db_name = kwargs.pop("name", None) or kwargs.pop("database", None)

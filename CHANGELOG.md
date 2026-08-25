@@ -9,3 +9,4 @@
 - Socket HMI: reconexión Peewee en `hmi_sessions` (`ensure_bound_connection`) para no rechazar connect con `session_store_unavailable`.
 - Alarmas de sistema (NTP OutOfSync): `create_tag(..., skip_validation=True)` para nombres internos multi-edge.
 - HMI: layout del card NTP contenido dentro del tile.
+- Controles operativos en `/performance`: widgets de workers, catálogo y tags derivados; `POST /api/admin/workers/restart`, `/saf/retry`, `/saf/reset`, `/catalog/sync`, `/catalog/clean-orphans`, `/tags/rebuild-derived`. Roles admin/supervisor (destructivo admin); auditoría en Events. Runbook actualizado.

@@ -248,6 +248,7 @@ class DBManager(Singleton):
         for model in {model for model, _ in scoped_fields}:
             model._schema.create_indexes(safe=True)
         self._ensure_machine_temporal_schema(db, migrator)
+        self._ensure_machine_name_partition(db)
         self._ensure_nodes_clock_schema(db, migrator)
         self._ensure_tag_filter_schema(db, migrator)
 
@@ -372,6 +373,12 @@ class DBManager(Singleton):
                     cloned,
                 )
             )
+
+    def _ensure_machine_name_partition(self, db) -> None:
+        """Drop global UNIQUE(machines.name); uniqueness is (area, name) when area is set."""
+        from ..catalog.partition import ensure_machine_name_partition
+
+        ensure_machine_name_partition(db)
 
     @logging_error_handler
     def drop_tables(self):

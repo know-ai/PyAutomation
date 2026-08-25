@@ -167,30 +167,40 @@ class DataLogger(BaseLogger):
 
         existing = _lookup_tag_row(name, id)
         if existing is not None:
-            Tags.put(
-                id=existing.id,
-                **_tag_put_fields(
-                    name=name,
-                    unit=unit,
-                    data_type=data_type,
-                    description=description,
-                    display_name=display_name,
-                    display_unit=display_unit,
-                    opcua_address=opcua_address,
-                    opcua_client_name=opcua_client_name,
-                    node_namespace=node_namespace,
-                    scan_time=scan_time,
-                    dead_band=dead_band,
-                    kp=kp,
-                    area=area,
-                    owner_node=owner_node,
-                    filter_enabled=filter_enabled,
-                    filter_wavelet=filter_wavelet,
-                    filter_level=filter_level,
-                    filter_threshold_factor=filter_threshold_factor,
-                    filter_persist=filter_persist,
-                ),
-            )
+            try:
+                Tags.put(
+                    id=existing.id,
+                    **_tag_put_fields(
+                        name=name,
+                        unit=unit,
+                        data_type=data_type,
+                        description=description,
+                        display_name=display_name,
+                        display_unit=display_unit,
+                        opcua_address=opcua_address,
+                        opcua_client_name=opcua_client_name,
+                        node_namespace=node_namespace,
+                        scan_time=scan_time,
+                        dead_band=dead_band,
+                        kp=kp,
+                        area=area,
+                        owner_node=owner_node,
+                        filter_enabled=filter_enabled,
+                        filter_wavelet=filter_wavelet,
+                        filter_level=filter_level,
+                        filter_threshold_factor=filter_threshold_factor,
+                        filter_persist=filter_persist,
+                    ),
+                )
+            except Exception as exc:
+                if not _is_unique_violation(exc) and not isinstance(exc, IntegrityError):
+                    raise
+                logging.getLogger("pyautomation").warning(
+                    "Failed to set tag %s: %s. Continuing with next tag.",
+                    name,
+                    exc,
+                )
+                return None
             _mirror_historian_tag_row(name, id)
             return existing
 
@@ -228,35 +238,50 @@ class DataLogger(BaseLogger):
                 pass
             existing = _lookup_tag_row(name, id, display_name)
             if existing is None:
-                raise
+                logging.getLogger("pyautomation").warning(
+                    "Failed to set tag %s: %s. Continuing with next tag.",
+                    name,
+                    exc,
+                )
+                return None
             logging.getLogger("pyautomation").warning(
                 "Tag %s already exists with a unique-constraint conflict; updating",
                 name,
             )
-            Tags.put(
-                id=existing.id,
-                **_tag_put_fields(
-                    name=name,
-                    unit=unit,
-                    data_type=data_type,
-                    description=description,
-                    display_name=display_name,
-                    display_unit=display_unit,
-                    opcua_address=opcua_address,
-                    opcua_client_name=opcua_client_name,
-                    node_namespace=node_namespace,
-                    scan_time=scan_time,
-                    dead_band=dead_band,
-                    kp=kp,
-                    area=area,
-                    owner_node=owner_node,
-                    filter_enabled=filter_enabled,
-                    filter_wavelet=filter_wavelet,
-                    filter_level=filter_level,
-                    filter_threshold_factor=filter_threshold_factor,
-                    filter_persist=filter_persist,
-                ),
-            )
+            try:
+                Tags.put(
+                    id=existing.id,
+                    **_tag_put_fields(
+                        name=name,
+                        unit=unit,
+                        data_type=data_type,
+                        description=description,
+                        display_name=display_name,
+                        display_unit=display_unit,
+                        opcua_address=opcua_address,
+                        opcua_client_name=opcua_client_name,
+                        node_namespace=node_namespace,
+                        scan_time=scan_time,
+                        dead_band=dead_band,
+                        kp=kp,
+                        area=area,
+                        owner_node=owner_node,
+                        filter_enabled=filter_enabled,
+                        filter_wavelet=filter_wavelet,
+                        filter_level=filter_level,
+                        filter_threshold_factor=filter_threshold_factor,
+                        filter_persist=filter_persist,
+                    ),
+                )
+            except Exception as put_exc:
+                if not _is_unique_violation(put_exc) and not isinstance(put_exc, IntegrityError):
+                    raise
+                logging.getLogger("pyautomation").warning(
+                    "Failed to set tag %s: %s. Continuing with next tag.",
+                    name,
+                    put_exc,
+                )
+                return None
             _mirror_historian_tag_row(name, id)
             return existing
         _mirror_historian_tag_row(name, id)
@@ -344,8 +369,16 @@ class DataLogger(BaseLogger):
             return None
         
         for tag in tags:
-
-            self.set_tag(tag)
+            try:
+                if isinstance(tag, dict):
+                    self.set_tag(**tag)
+                else:
+                    self.set_tag(tag)
+            except Exception as exc:
+                logging.getLogger("pyautomation").warning(
+                    "Failed to set tag in batch: %s. Continuing with next tag.",
+                    exc,
+                )
 
     @db_rollback
     def get_tags(self):

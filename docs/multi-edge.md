@@ -46,7 +46,9 @@ Tras desplegar esta versión, reiniciar cada edge para crear la tabla `user_api_
 2. Un proceso (o contenedor) por línea, con `AUTOMATION_NODE_ID` y `AUTOMATION_SEGMENT` únicos.
 3. Journal SAF local por nodo: `./db/saf/<node_id>/journal.db`.
 4. Clientes OPC UA con `owner_node` igual al `NODE_ID` del edge que los abre.
-5. Comprobar `/api/health/system`: `ACQUISITION_READY=true`, `NODE_ID`, `NODE_AREA`, `SAF_QUEUE_DEPTH` y `DB_CONNECTIONS_COUNT` ≤ 4 idle por edge.
+5. Pollers DAQ: un ejemplar por `(SEGMENT, scan_time)` — nombre `Linea1.DAQ-1000`, `Linea2.DAQ-1000`. Ya no hay una sola fila global `DAQ-1000`.
+6. Address space `opcuaserver`: cada edge **empuja** su copia al historiador (backup) y **nunca hace pull** de la otra línea.
+7. Comprobar `/api/health/system`: `ACQUISITION_READY=true`, `NODE_ID`, `NODE_AREA`, `SAF_QUEUE_DEPTH` y `DB_CONNECTIONS_COUNT` ≤ 4 idle por edge.
 
 Ejemplo:
 

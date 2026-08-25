@@ -13,6 +13,7 @@ type PerfPanelProps = {
   canConfigure?: boolean;
   spark?: number[];
   children: ReactNode;
+  actions?: ReactNode;
   onOpen?: () => void;
   onConfigure?: () => void;
 };
@@ -26,6 +27,7 @@ export function PerfPanel({
   canConfigure = false,
   spark,
   children,
+  actions,
   onOpen,
   onConfigure,
 }: PerfPanelProps) {
@@ -88,6 +90,11 @@ export function PerfPanel({
         </span>
       </header>
       <div className="perf-panel__body">{children}</div>
+      {actions ? (
+        <div className="perf-panel__actions" onClick={(event) => event.stopPropagation()}>
+          {actions}
+        </div>
+      ) : null}
       {thresholdLabel ? <p className="perf-tile__threshold">{t("performance.thresholdLine", { value: thresholdLabel })}</p> : null}
       {spark && spark.length > 1 ? <Sparkline values={spark} tone={tone} /> : null}
     </section>

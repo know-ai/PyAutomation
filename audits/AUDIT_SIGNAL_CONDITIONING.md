@@ -8,6 +8,7 @@
 | **Fecha original** | 2026-08-16 |
 | **Revisión wavelet** | 2026-08-19 — implementación `feature/wavelet-rt`: DWT por bloques en `WaveletWorker`, hot path O(1), tag derivado `.f`, sync a `sample_interval` SM |
 | **Revisión A+** | 2026-08-19 — propagación calidad OPC al tag `.f`, eliminación definitiva de legado (`gaussian_filter*`, `process_filter`, Kalman), HMI observabilidad |
+| **Controles ops** | 2026-08-25 — `POST /api/admin/tags/rebuild-derived` y métrica `DERIVED_TAGS_COUNT` en `/performance` |
 | **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_HMI.md](./AUDIT_HMI.md), [specs/08-WAVELET-RPA-RT.md](../specs/08-WAVELET-RPA-RT.md) |
 | **Veredicto estático** | **A− (wavelet RT operativo)** / **C (nuclear/DCS)**. Pipeline wavelet completo: calidad OPC, deadband único, persistencia eager, API/HMI observabilidad, esquema BD limpio. Pendiente: IAD, soak 24 h, golden trace, integración SM en CI |
 | **Clasificación** | Auditoría de acondicionamiento de señal |
@@ -25,7 +26,7 @@
 | **Deadband** | **Sí** | Puerta única en `Tag.set_value`; CVT respeta `False` y no re-emite |
 | **Outlier / OOR / frozen (IAD)** | **No en hot path** | Decoradores IAD **comentados**. Stubs sin enganche |
 
-**Mensaje operativo:** el filtrado de señal para control de proceso es **wavelet RT** vía tag `{nombre}.f`. Raw permanece en el tag source. Ante datos inválidos, el operador ve calidad **UNCERTAIN** en `.f` y estado **hold** en HMI/Performance.
+**Mensaje operativo:** el filtrado de señal para control de proceso es **wavelet RT** vía tag `{nombre}.f`. Raw permanece en el tag source. Ante datos inválidos, el operador ve calidad **UNCERTAIN** en `.f` y estado **hold** en HMI/Performance. Admin/supervisor pueden **Reconstruir derivados** en `/performance` (`POST /api/admin/tags/rebuild-derived`): asegura `.f` si el filtro está ON y elimina `.f` cuyo source ya no existe.
 
 Cadena con wavelet ON y SM suscrita:
 
@@ -143,6 +144,7 @@ Hot path OPC: O(1) con wavelet ON. DWT solo en `WaveletWorker`. Deadband único 
 | **NF-8** | Media | Abierto | IAD comentado |
 | **WF-1** | Media | **Cerrado** | Calidad OPC propagada a `.f` + API + HMI |
 | **WF-5** | Baja | **Cerrado** | Panel Wavelet RT + widget Performance |
+| **OPS-F** | Baja | **Cerrado (código)** | Reconstruir `.f` huérfanos desde `/performance` (`rebuild_derived_tags`) |
 
 ---
 

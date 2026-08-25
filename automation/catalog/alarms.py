@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""ISA-18.2 BOOL alarms for catalog sync (fail-safe, never raises)."""
+"""ISA-18.2 BOOL alarms for catalog sync (fail-safe, never raises).
+
+Acknowledgment is operator-only. Clearing the BOOL moves Unacknowledged →
+RTN Unacknowledged and stays there until the operator acks. Repeating the
+same BOOL value must not re-annunciate.
+"""
 from __future__ import annotations
 
 import logging
@@ -69,6 +74,7 @@ def _ensure(tag_name: str, alarm_name: str, tag_description: str, alarm_descript
 
 
 def _write(tag_name: str, value: bool) -> None:
+    """Edge-trigger only. Same value must not call set_value (no re-annunciate)."""
     app = _app()
     tag = app.cvt.get_tag_by_name(tag_name)
     if tag is None:
@@ -77,9 +83,10 @@ def _write(tag_name: str, value: bool) -> None:
         current = _as_bool(getattr(tag.value, "value", False))
     except Exception:
         current = False
-    if current is bool(value):
+    desired = bool(value)
+    if current == desired:
         return
-    app.cvt.set_value(id=tag.id, value=bool(value), timestamp=datetime.now(timezone.utc))
+    app.cvt.set_value(id=tag.id, value=desired, timestamp=datetime.now(timezone.utc))
 
 
 def set_sync_failed(active: bool) -> None:
@@ -128,6 +135,22 @@ def set_orphan_rows(active: bool) -> None:
         _write(tag, bool(active))
     except Exception:
         _LOGGER.debug("ALM.CATALOG.OrphanRows skipped", exc_info=True)
+
+
+def set_remote_inconsistency(active: bool) -> None:
+    try:
+        tag = _scoped("SYS.CATALOG.RemoteInconsistency")
+        alarm = _scoped("ALM.CATALOG.RemoteInconsistency")
+        _ensure(
+            tag,
+            alarm,
+            "True when remote tagsmachines rows bind a tag to a machine in another area",
+            "Catalog remote inconsistency",
+            scoped_display_name("Catalog remote inconsistency"),
+        )
+        _write(tag, bool(active))
+    except Exception:
+        _LOGGER.debug("ALM.CATALOG.RemoteInconsistency skipped", exc_info=True)
 
 
 def set_local_only(active: bool) -> None:

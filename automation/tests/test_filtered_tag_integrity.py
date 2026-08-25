@@ -60,6 +60,35 @@ class TestDataLoggerSetTagIntegrity(unittest.TestCase):
         logger._db.connection.return_value.rollback.assert_called()
         tags.put.assert_called_once()
 
+    def test_set_tag_integrity_error_does_not_raise_and_allows_next_tag(self):
+        """CA-ISOLATION-03: FK/IntegrityError on one tag must not stop the batch."""
+        logger = DataLogger.__new__(DataLogger)
+        logger.check_connectivity = lambda: True
+        logger._db = MagicMock()
+        with patch("automation.logger.datalogger.Tags") as tags, patch(
+            "automation.logger.datalogger._mirror_historian_tag_row"
+        ):
+            tags.get_or_none.return_value = None
+            tags.create.side_effect = [
+                IntegrityError("FOREIGN KEY constraint failed"),
+                None,
+            ]
+            first = logger.set_tag(
+                id="bad",
+                name="orphan.tag",
+                unit="adim",
+                data_type="float",
+            )
+            second = logger.set_tag(
+                id="good",
+                name="healthy.tag",
+                unit="adim",
+                data_type="float",
+            )
+        self.assertIsNone(first)
+        self.assertEqual(tags.create.call_count, 2)
+        self.assertIsNone(second)
+
 
 class TestMachinesBindTagIntegrity(unittest.TestCase):
     def test_bind_tag_skips_when_tag_missing(self):
@@ -116,3 +145,50 @@ class TestMachinesBindTagIntegrity(unittest.TestCase):
             logger.bind_tag(tag, machine)
         logger._db.connection.return_value.rollback.assert_called()
         binds.create.assert_called_once()
+
+    def test_bind_tag_integrity_error_does_not_raise_and_allows_next_bind(self):
+        """CA-ISOLATION-04: FK missing on one bind must not stop the rest."""
+        logger = MachinesLogger.__new__(MachinesLogger)
+        logger.check_connectivity = lambda: True
+        logger._db = MagicMock()
+        tag_a = SimpleNamespace(name="orphan.tag")
+        tag_b = SimpleNamespace(name="healthy.tag")
+        machine = SimpleNamespace(name=SimpleNamespace(value="M1"))
+        with patch("automation.logger.machines.Tags") as tags, patch(
+            "automation.logger.machines.Machines"
+        ) as machines, patch("automation.logger.machines.TagsMachines") as binds, patch(
+            "automation.catalog.mutations.persist_tagsmachines_bind"
+        ):
+            tags.get_or_none.return_value = MagicMock()
+            machines.get_or_none.return_value = MagicMock()
+            binds.get_or_none.return_value = None
+            binds.create.side_effect = [
+                IntegrityError("FOREIGN KEY constraint failed"),
+                MagicMock(),
+            ]
+            first = logger.bind_tag(tag_a, machine)
+            second = logger.bind_tag(tag_b, machine)
+        self.assertIsNone(first)
+        self.assertEqual(binds.create.call_count, 2)
+        self.assertIsNone(second)
+
+    def test_bind_tag_rejects_cross_area(self):
+        """CA-CODE-01: tag.area != machine.area raises CrossAreaBindError."""
+        from automation.catalog.partition import CrossAreaBindError
+
+        logger = MachinesLogger.__new__(MachinesLogger)
+        logger.check_connectivity = lambda: True
+        tag = SimpleNamespace(name="Supe.Linea2.FI_02", area="Linea2")
+        machine = SimpleNamespace(name=SimpleNamespace(value="DAQ-1000"), area="Linea1")
+        tag_row = SimpleNamespace(area="Linea2", name="Supe.Linea2.FI_02")
+        machine_row = SimpleNamespace(area="Linea1", name="DAQ-1000")
+        with patch("automation.logger.machines.Tags") as tags, patch(
+            "automation.logger.machines.Machines"
+        ) as machines, patch("automation.logger.machines.TagsMachines") as binds:
+            tags.get_or_none.return_value = tag_row
+            machines.get_or_none.return_value = machine_row
+            with self.assertRaises(CrossAreaBindError) as caught:
+                logger.bind_tag(tag, machine, default_tag_name="inlet_flow")
+        self.assertIn("does not match", str(caught.exception))
+        self.assertIn("cross-area", str(caught.exception))
+        binds.create.assert_not_called()

@@ -19,6 +19,9 @@ def bootstrap_local_catalog(path: str | None = None):
     """Always-on local mirror. Safe if called more than once."""
     db = open_catalog_db(path)
     db.create_tables(all_local_tables(), safe=True)
+    from .partition import ensure_machine_name_partition
+
+    ensure_machine_name_partition(db)
     refresh_catalog_source()
     return db
 

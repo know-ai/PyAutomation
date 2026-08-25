@@ -4,6 +4,7 @@
 This module implements the Logger Worker, responsible for persisting data to the database.
 """
 import logging, time, datetime, os
+from threading import Event as ThreadEvent
 from .worker import BaseWorker
 from ..managers import DBManager
 from ..opcua.models import Client
@@ -11,6 +12,10 @@ from ..logger.datalogger import DataLoggerEngine
 from ..tags.cvt import CVTEngine
 import sqlite3
 from peewee import SqliteDatabase
+
+# An unconfigured edge must stay idle. Do not hit PG every logger period
+# looking for a PLC that the operator has not created yet.
+_EMPTY_OPC_RETRY_S = (60.0, 180.0, 300.0)
 
 
 def _scope_owns_node(owner_node) -> bool:
@@ -70,6 +75,8 @@ class LoggerWorker(BaseWorker):
 
         super(LoggerWorker, self).__init__()
         self.name = "LoggerWorker"
+        self._wake = ThreadEvent()
+        self.last_cycle_utc = None
         
         self._manager = manager
         self._period = period
@@ -77,6 +84,16 @@ class LoggerWorker(BaseWorker):
         self.cvt = CVTEngine()
         self.sqlite_db = None
         self.sqlite_db_name = None
+        self._opcua_empty_until = 0.0
+        self._opcua_empty_step = 0
+
+    def stop(self):
+        super(LoggerWorker, self).stop()
+        self._wake.set()
+
+    def request_cycle(self) -> None:
+        """Wake the loop so SAF retry does not wait for logger_period."""
+        self._wake.set()
 
     def sqlite_db_backup(self):
         r"""
@@ -125,10 +142,16 @@ class LoggerWorker(BaseWorker):
     def check_opcua_connection(self):
         r"""
         Checks the status of OPC UA clients and attempts reconnection if necessary.
+
+        With zero clients this is a no-op for the logger period: the edge is
+        unconfigured, not degraded. Reload from catalog uses a long backoff so
+        a later HMI/API create still appears without a 10 s PG poll.
         """
         from automation import PyAutomation
         app = PyAutomation()
         if app.opcua_client_manager._clients:
+            self._opcua_empty_until = 0.0
+            self._opcua_empty_step = 0
             # Crear una copia de los items para evitar RuntimeError si el diccionario cambia durante la iteración
             # Esto puede ocurrir si reconnect() o alguna otra operación modifica _clients
             clients_snapshot = list(app.opcua_client_manager._clients.items())
@@ -154,9 +177,20 @@ class LoggerWorker(BaseWorker):
                     except Exception as e:
                         # Si hay un error durante la reconexión, registrar pero continuar con otros clientes
                         logging.error(f"Error reconnecting OPC UA client '{client_name}': {e}")
-        else:
-            if app.is_db_connected():
-                app.load_opcua_clients_from_db()
+            return
+        now = time.monotonic()
+        if now < self._opcua_empty_until:
+            return
+        if not app.is_db_connected():
+            return
+        app.load_opcua_clients_from_db()
+        if app.opcua_client_manager._clients:
+            self._opcua_empty_until = 0.0
+            self._opcua_empty_step = 0
+            return
+        delay = _EMPTY_OPC_RETRY_S[min(self._opcua_empty_step, len(_EMPTY_OPC_RETRY_S) - 1)]
+        self._opcua_empty_step += 1
+        self._opcua_empty_until = now + delay
 
     def get_tags_from_queue(self, _queue):
         r"""
@@ -248,7 +282,7 @@ class LoggerWorker(BaseWorker):
         log = logging.getLogger("pyautomation")
 
         while True:
-
+            self._wake.clear()
             cycle_started = time.monotonic()
             watchdog_started = time.monotonic()
             from automation import PyAutomation
@@ -284,6 +318,7 @@ class LoggerWorker(BaseWorker):
                     from ..persistence import get_persistence_gateway
 
                     get_persistence_gateway().replicate_once()
+                    self.last_cycle_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
                 except Exception as exc:
                     text = str(exc).lower()
                     if "tag not in remote" in text or (
@@ -313,14 +348,13 @@ class LoggerWorker(BaseWorker):
 
             self.check_opcua_connection()
 
+            elapsed = time.monotonic() - cycle_started
+            remaining = self._period - elapsed
+            if remaining > 0:
+                self._wake.wait(timeout=remaining)
             if self.stop_event.is_set():
                 from ..utils.db_connections import close_current_greenlet_connection
 
                 close_current_greenlet_connection(self.logger.logger.get_db())
                 logging.critical("Alarm worker shutdown successfully!")
                 break
-
-            elapsed = time.monotonic() - cycle_started
-            remaining = self._period - elapsed
-            if remaining > 0:
-                time.sleep(remaining)

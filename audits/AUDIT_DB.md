@@ -331,6 +331,7 @@ Signup/login timeout 15 s / 503 @ ~30 s con arranque OK → **BE-H4** (pool), no
 | DB-R3 | `gevent.Timeout` + libpq sigue siendo inútil |
 | ET-R1 | Si un motor escribe SQL fuera de `loop()`, reaparece un idle `SM-*` |
 | BE-H4 | Sin pool = riesgo de escalado (muchos workers/hilos), no bug activo a 1 worker |
+| ISO-R1 | Catálogo local: `atomic()` por fila (Bulkhead). No rollback de tabla; soak Txn/min = CA-ISOLATION-05 |
 
 **Cierre:** el circulatorio de PyAutomation es **un handle, sockets con dueño, probes desechables, reconexión que los modelos pueden usar, hub que no espera a libpq**. El día 1 y el día 1000 deben mostrar el mismo número de backends `PyAutomationIO` en idle.
 

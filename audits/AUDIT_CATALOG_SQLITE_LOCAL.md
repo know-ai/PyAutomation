@@ -4,12 +4,12 @@
 |---|---|
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
 | **Alcance** | Verificación de [specs/11-CATALOG-SQLITE-LOCAL.md](../specs/11-CATALOG-SQLITE-LOCAL.md) v1.3 + **paridad CRUD offline** + **integridad P0 units/tags al reinicio** (2026-08-21) |
-| **Fecha** | 2026-08-21 (rev. integridad P0: seed vacío-only, dirty conflict, FK unit, startup grace) |
+| **Fecha** | 2026-08-21 (rev. integridad P0) · **aislamiento Bulkhead 2026-08-25** (sync por fila, sin rollback de tabla) · **controles `/performance` 2026-08-25** · **planta 2-edge 2026-08-25** ([AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md](./AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md)) |
 | **Evidencia** | Revisión estática + `automation.tests.test_catalog_sqlite` — **31 OK / 2 skipped** (soak planta) · PR [#16](https://github.com/know-ai/PyAutomation/pull/16) |
 | **Baseline** | Spec 11 «propuesta»; historiador Peewee único; sin espejo de catálogo; SQLite configurable como motor central en HMI |
 | **Complementa** | [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), [AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md](./AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md), [docs/catalog-sqlite.md](../docs/catalog-sqlite.md), [docs/catalog-sqlite-runbook.md](../docs/catalog-sqlite-runbook.md) |
 | **Normas de referencia** | ISA-95 · ISA-18.2 · IEC 61508 (SIL-ready, sin certificación) · IEC 62443 |
-| **Veredicto vigente** | **A autonomía de catálogo (CRUD offline)** · **A separación SAF/historiador** · **A integridad units/tags al reinicio (código)** · **A− sync planta** (A+ condicionado a soak 24 h / multi-edge) · **A HMI/API (sin SQLite central)** |
+| **Veredicto vigente** | **A autonomía de catálogo (CRUD offline)** · **A separación SAF/historiador** · **A integridad units/tags al reinicio (código)** · **A aislamiento de filas (Bulkhead, código)** · **A prevención binds cruzados (CA-CODE-01…05)** · **A DAQ por área (CA-DAQ-01)** · **A opcuaserver push-only (CA-OPC-PUSH-01)** · **C datos de partición tagsmachines en planta** (CA-CODE-06 pendiente de wipe+redeploy) · **A− sync planta** · **A HMI/API (sin SQLite central)** |
 | **Clasificación** | Auditoría de verificación · catálogo edge · modo degradado · sync bidireccional · paridad offline · no-regresión de metadatos |
 
 ---
@@ -75,6 +75,10 @@ API / HMI / core / loggers
 | **CA-CATALOG-16** *(nuevo P0)* | Seed no sobrescribe units/datatypes/roles poblados | **PASS** | `seed_*` early-return si `count()>0` | `test_seed_does_not_overwrite_existing_units` |
 | **CA-CATALOG-17** *(nuevo P0)* | Tag upsert no blanquea `unit_id` con NULL/0 | **PASS** | `rows._resolve_tag_unit_fks` + `_update_instance` | `test_tag_upsert_does_not_blank_unit_fk` |
 | **CA-CATALOG-18** *(nuevo P0)* | Startup grace 15 s en replicator de fondo | **PASS** | `CatalogReplicatorWorker._startup_grace_s`; `force=True` en connect | `TestReplicatorStartupGrace` |
+| **CA-ISOLATION-02** | Fila huérfana / `IntegrityError` no impide sync de hermanas ni de otras tablas | **PASS** (código) | `_sync_table`: `atomic()` **por fila**; error de tabla no revierte las demás | `test_integrity_error_continues_and_does_not_latch_sync_failed`; `test_mid_pull_error_isolates_other_tables` |
+| **CA-ISOLATION-03** | `DataLogger.set_tag` `IntegrityError` no detiene el resto del lote | **PASS** | Warning + `return None`; no relanza | `test_set_tag_integrity_error_does_not_raise_and_allows_next_tag` |
+| **CA-ISOLATION-04** | `MachinesLogger.bind_tag` FK missing no detiene otros binds | **PASS** | Warning + `return None`; no relanza | `test_bind_tag_integrity_error_does_not_raise_and_allows_next_bind` |
+| **CA-OPS-01/03** *(dashboard)* | Sync forzada y limpieza de huérfanos desde `/performance` | **PASS** (código) | `POST /api/admin/catalog/sync` y `/clean-orphans`; `drop_orphans_older_than` | `test_ops_controls.py`; HMI planta pendiente |
 
 **Suite:** `python3 -m unittest automation.tests.test_catalog_sqlite -v` — **31 tests: 31 OK, 2 skipped** (2026-08-21 P0).
 
@@ -94,7 +98,7 @@ API / HMI / core / loggers
 | `provider.py` | `get_active()` = remoto si `is_db_connected()` else local | ✅ |
 | `local_provider.py` / `remote_provider.py` | CRUD dict por tabla | ✅ |
 | `conflict.py` | **Limpio → remoto**; dirty + timestamp; empate → remoto | ✅ |
-| `replicator.py` | `BaseWorker` OS thread; batch 200; interval 30 s; **`startup_grace_s=15`**; `cycle(force=)` | ✅ |
+| `replicator.py` | `BaseWorker` OS thread; batch 200; interval 30 s; **`startup_grace_s=15`**; `cycle(force=)`; **`_sync_table` transacción por fila**; `drop_orphans_older_than` (ops) | ✅ |
 | `hydrate.py` / `auth.py` | Hidratación CVT/users/OPC/alarmas; login local; skip tags `active=False` y alarmas OOS | ✅ |
 | `bootstrap.py` | `bootstrap_local_catalog`, `mirror_historian_row`, `write_catalog_row` | ✅ |
 | `seed.py` | Seed frío **vacío-only** para units/datatypes/roles; `ensure_unit_symbol`; `persist_*` (merge OPC) | ✅ |
@@ -184,6 +188,7 @@ API / HMI / core / loggers
 | **CAT-R5** | Históricos (TagValue / AlarmSummary / Events) **no** son catálogo — siguen requiriendo PG o SAF | Info | Fuera de alcance spec 11 |
 | **CAT-R6** | CA planta P0 (10 reinicios / conflicto alfa-beta en vivo) aún no firmados en iDetectFugas | Media | Checklist §6; wheel desde `fix/catalog-integrity-p0` / PR #16 |
 | **CAT-R7** | Identidad natural de `units` sigue siendo `(unit, name)` sin `variable` — colisión cross-variable posible en sync | Baja | Mitigado: no reasignar `variable_id` en update; evolución futura de identity key |
+| **CAT-R8** | `atomic()` por fila es más commits SQLite que un wrap de tabla | Baja | Filas/ciclo = cambios recientes; CA-ISOLATION-05 (Txn/min) es soak de planta |
 
 ---
 
@@ -198,7 +203,7 @@ API / HMI / core / loggers
 | tags | sí | sí (FK unit seguro) | soft `active=False` | skip inactive | dirty |
 | alarms | sí | sí | soft OOS | skip OOS | dirty |
 | opcua | sí | sí | hard local | sí | dirty |
-| opcuaserver | sí | access_type | — | vía logger/API | dirty |
+| opcuaserver | sí (local) | access_type | — | **push-only** al remoto; **nunca pull** | dirty local |
 | nodes | register local | — | — | — | dirty |
 | machines | sí | attrs | — | payloads | dirty |
 | tagsmachines | bind | sample_override | unbind | (runtime) | dirty |
@@ -214,6 +219,7 @@ API / HMI / core / loggers
 | Autonomía de catálogo (arranque + login + **CRUD offline**) | **A** | Soak CA-01 en planta con catálogo poblado y mutaciones reales |
 | Integridad metadatos al reinicio (units/tags/OPC) | **A** (código) | Firmar CA planta §6 (10 reinicios + offline baz) |
 | Sync bidireccional / conflictos | **A** (código) / **A−** (planta) | Soak CA-02/03/04/14 |
+| Aislamiento de fallos (fila huérfana / FK) | **A** (código) | CA-ISOLATION-02…04 unitarios; soak Txn/min CA-ISOLATION-05 |
 | Separación SAF / historiador / espejo | **A** | — |
 | HMI + API sin SQLite central | **A** | — |
 | Observabilidad (`CATALOG_*`, `ALM.CATALOG.*`) | **A−** | Validar alarmas en soak |
@@ -241,6 +247,8 @@ Tests clave de esta revisión (P0):
 - `TestConflictResolver.test_clean_local_defers_to_remote_even_if_newer`
 - `TestConflictResolver.test_dirty_newer_local_wins`
 - `TestReplicatorStartupGrace.test_cycle_skips_during_grace_unless_forced`
+- `TestReplicatorScopeAndIntegrity.test_integrity_error_continues_and_does_not_latch_sync_failed` (CA-ISOLATION-02)
+- `TestCatalogSyncNuclear.test_mid_pull_error_isolates_other_tables`
 - `TestHmiCatalogSurfaces.test_user_management_not_remote_db_gated`
 
 ### Checklist CA planta (integridad P0)
@@ -252,4 +260,5 @@ Tests clave de esta revisión (P0):
 
 Documentación de producto: [docs/catalog-sqlite.md](../docs/catalog-sqlite.md).  
 Operación: [docs/catalog-sqlite-runbook.md](../docs/catalog-sqlite-runbook.md).  
+Controles en caliente (forzar sync / limpiar huérfanos): [docs/node-performance-runbook.md](../docs/node-performance-runbook.md) y vista `/performance`.  
 PR: [know-ai/PyAutomation#16](https://github.com/know-ai/PyAutomation/pull/16).

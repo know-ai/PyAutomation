@@ -49,11 +49,13 @@ class TestSchemaOrder(unittest.TestCase):
         self.assertIn("units", LOOKUP_TABLES)
         self.assertIn("tags", PARTITIONED_TABLES)
         self.assertIn("alarms", PARTITIONED_TABLES)
-        from automation.catalog.schema import CHILD_TABLES, PARENT_TABLES
+        from automation.catalog.schema import CHILD_TABLES, PARENT_TABLES, PUSH_ONLY_TABLES
 
         self.assertLess(names.index("tags"), names.index("alarms"))
         self.assertEqual(PARENT_TABLES, frozenset({"tags", "machines"}))
         self.assertEqual(CHILD_TABLES, frozenset({"alarms", "tagsmachines"}))
+        self.assertIn("opcuaserver", PARTITIONED_TABLES)
+        self.assertEqual(PUSH_ONLY_TABLES, frozenset({"opcuaserver"}))
         self.assertIn("hmi_sessions", names)
         self.assertNotIn("hmi_sessions", REPLICATED_TABLES)
         self.assertNotIn("user_api_sessions", REPLICATED_TABLES)
@@ -864,7 +866,8 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
         self.assertIsNone(worker._last_sync)
         self.assertTrue(worker._catch_up)
 
-    def test_orphan_rows_latches_on_fifth_deferred_cycle(self):
+    def test_orphan_rows_does_not_latch_on_deferred_fk_remap(self):
+        """CA-CATALOG-NOISE-01: local-owned remap retries are not orphans / SyncFailed."""
         from automation.catalog.replicator import CatalogReplicatorWorker
 
         worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
@@ -888,19 +891,72 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
             worker._remote, "read_changed", return_value=[]
         ), patch.object(
             worker, "_sync_table", side_effect=_sync
-        ), patch("automation.catalog.replicator.set_sync_failed"), patch(
+        ), patch("automation.catalog.replicator.set_sync_failed") as set_sync_failed, patch(
             "automation.catalog.replicator.set_orphan_rows"
         ) as set_orphan_rows, patch(
             "automation.catalog.replicator.persist_system_event"
         ):
-            for _ in range(4):
+            for _ in range(5):
                 worker.cycle(force=True)
                 self.assertFalse(worker._orphan_latched)
-            worker.cycle(force=True)
-        self.assertTrue(worker._orphan_latched)
-        self.assertEqual(worker._consecutive_integrity_cycles, 5)
-        self.assertEqual(set_orphan_rows.call_args.args[0], True)
-        self.assertIsNone(worker._last_sync)
+                self.assertFalse(worker._sync_failed_latched)
+        self.assertEqual(worker._consecutive_errors, 0)
+        self.assertIsNotNone(worker._last_sync)
+        self.assertEqual(set_sync_failed.call_args.args[0], False)
+        self.assertEqual(set_orphan_rows.call_args.args[0], False)
+        self.assertFalse(worker._catch_up)
+
+    def test_deferred_fk_logs_one_info_summary(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        with self.assertLogs("pyautomation", level="DEBUG") as cm:
+            worker._note_deferred_row("tagsmachines", "108|11", direction="push")
+            worker._note_deferred_row("tagsmachines", "108|7", direction="push")
+            worker._note_deferred_row("alarms", "f21940d9", direction="push")
+            worker._log_deferred_summary()
+        joined = "\n".join(cm.output)
+        self.assertIn("Catalog sync deferred 3 row(s) (alarms×1,tagsmachines×2)", joined)
+        self.assertIn("runtime catalog unchanged", joined)
+        self.assertIn("push tagsmachines:108|11", joined)
+        self.assertNotIn("Skipping push of", joined)
+        self.assertNotIn("WARNING:pyautomation:Skipping", joined)
+
+    def test_push_only_connection_skip_does_not_latch_sync_failed(self):
+        """CA-CATALOG-NOISE-02: opcuaserver backup blips must not raise SyncFailed."""
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+
+        def _sync(table, **_k):
+            if table == "opcuaserver":
+                worker._transient_remote_errors += 1
+                worker._cycle_backup_skips += 1
+            return (0, 0, 0, 0)
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_changed", return_value=[]
+        ), patch.object(
+            worker, "_sync_table", side_effect=_sync
+        ), patch("automation.catalog.replicator.set_sync_failed") as set_sync_failed, patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ), patch("automation.catalog.replicator.persist_system_event"):
+            for _ in range(5):
+                worker.cycle(force=True)
+                self.assertFalse(worker._sync_failed_latched)
+        self.assertEqual(worker._consecutive_errors, 0)
+        self.assertEqual(set_sync_failed.call_args.args[0], False)
+        self.assertIsNotNone(worker._last_sync)
 
     def test_sync_failed_latches_on_fifth_consecutive_error_cycle(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
@@ -935,10 +991,47 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
             for _ in range(4):
                 worker.cycle(force=True)
                 self.assertFalse(worker._sync_failed_latched)
+            worker._hard_fail_since = time.monotonic() - 301.0
             worker.cycle(force=True)
         self.assertTrue(worker._sync_failed_latched)
         self.assertEqual(worker._consecutive_errors, 5)
         self.assertEqual(set_sync_failed.call_args.args[0], True)
+
+    def test_sync_failed_does_not_latch_before_five_minute_dwell(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+
+        class InterfaceError(Exception):
+            pass
+
+        def boom(*_a, **_k):
+            raise InterfaceError("connection already closed")
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_changed", return_value=[]
+        ), patch.object(
+            worker, "_sync_table", side_effect=boom
+        ), patch("automation.catalog.replicator.set_sync_failed") as set_sync_failed, patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ), patch(
+            "automation.catalog.replicator.persist_system_event"
+        ):
+            for _ in range(5):
+                worker.cycle(force=True)
+        self.assertFalse(worker._sync_failed_latched)
+        self.assertEqual(worker._consecutive_errors, 5)
+        self.assertEqual(set_sync_failed.call_args.args[0], False)
 
 
 class TestReplicatorIsolation(unittest.TestCase):
@@ -1077,6 +1170,137 @@ class TestReplicatorScopeAndIntegrity(unittest.TestCase):
             sql, params = worker._build_area_filter("tags")
             self.assertIn("area", sql)
             self.assertEqual(params[0], "Linea1")
+            machine_sql, machine_params = worker._build_area_filter("machines")
+            self.assertEqual(machine_sql, "area = %s")
+            self.assertEqual(machine_params, ("Linea1",))
+            self.assertNotIn("IS NULL", machine_sql)
+            self.assertTrue(worker._row_in_node_scope("machines", {"id": 1, "area": "Linea1"}))
+            self.assertFalse(worker._row_in_node_scope("machines", {"id": 2, "area": "Linea2"}))
+            self.assertFalse(worker._row_in_node_scope("machines", {"id": 3, "area": None}))
+            tm_sql, tm_params = worker._build_area_filter("tagsmachines")
+            self.assertIn("tag_id IN", tm_sql)
+            self.assertEqual(tm_params, ("Linea1", "edge-1", "Linea1"))
+            opc_sql, opc_params = worker._build_area_filter("opcuaserver")
+            self.assertEqual(opc_sql, "name LIKE %s")
+            self.assertEqual(opc_params, ("Linea1_%",))
+            self.assertTrue(
+                worker._row_in_node_scope(
+                    "opcuaserver", {"name": "Linea1_Supe.Linea1.FI_02", "namespace": "ns=2;s=abc"}
+                )
+            )
+            self.assertFalse(
+                worker._row_in_node_scope(
+                    "opcuaserver", {"name": "Linea2_Supe.Linea2.FI_02", "namespace": "ns=2;s=def"}
+                )
+            )
+
+    def test_opcuaserver_is_push_only_never_pulled(self):
+        """CA-OPC-PUSH-01: remote address-space rows never hydrate local catalog.db."""
+        from automation.catalog.replicator import CatalogReplicatorWorker
+        from automation.catalog.schema import PUSH_ONLY_TABLES
+
+        self.assertIn("opcuaserver", PUSH_ONLY_TABLES)
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        local_row = {
+            "id": 1,
+            "name": "Linea1_Supe.Linea1.FI_02",
+            "namespace": "ns=2;s=own",
+        }
+        remote_foreign = {
+            "id": 99,
+            "name": "Linea2_Supe.Linea2.FI_02",
+            "namespace": "ns=2;s=foreign",
+        }
+        with patch.object(worker, "_scope_identity", return_value=("Linea1", "edge-1")):
+            p, u, c = worker._sync_one_key(
+                "opcuaserver",
+                key="ns=2;s=foreign",
+                local_row=None,
+                remote_row=remote_foreign,
+                local_pk="",
+                remote_pk="99",
+                local_by_id={},
+                remote_by_id={"ns=2;s=foreign": remote_foreign},
+                local_index={"opcuaserver": {}},
+                remote_index={"opcuaserver": {"ns=2;s=foreign": remote_foreign}},
+                edge="edge-1",
+            )
+        self.assertEqual((p, u, c), (0, 0, 0))
+        self.assertTrue(worker._row_in_node_scope("opcuaserver", local_row))
+
+    def test_opcuaserver_push_only_never_lets_remote_win_lww(self):
+        """Even if a remote row is present, Option 2 pushes local and never hydrates."""
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        local_row = {
+            "id": 1,
+            "name": "Linea1_Supe.Linea1.FI_02",
+            "namespace": "ns=2;s=own",
+        }
+        remote_row = {
+            "id": 99,
+            "name": "Linea2_Supe.Linea2.FI_02",
+            "namespace": "ns=2;s=own",
+        }
+        pushed = []
+
+        def _upsert(table, payload, **_kw):
+            pushed.append((table, payload))
+            return "99"
+
+        worker._remote.upsert = _upsert
+        worker._local.upsert = lambda *a, **k: self.fail("opcuaserver must not pull")
+        with patch("automation.catalog.replicator.get_local", return_value=None), patch(
+            "automation.catalog.replicator.touch_local"
+        ), patch("automation.catalog.replicator.touch_remote"), patch.object(
+            worker, "_scope_identity", return_value=("Linea1", "edge-1")
+        ):
+            p, u, c = worker._sync_one_key(
+                "opcuaserver",
+                key="ns=2;s=own",
+                local_row=local_row,
+                remote_row=remote_row,
+                local_pk="1",
+                remote_pk="99",
+                local_by_id={"ns=2;s=own": local_row},
+                remote_by_id={"ns=2;s=own": remote_row},
+                local_index={"opcuaserver": {"ns=2;s=own": local_row}},
+                remote_index={"opcuaserver": {"ns=2;s=own": remote_row}},
+                edge="edge-1",
+            )
+        self.assertEqual(u, 0)
+        self.assertEqual(p, 1)
+        self.assertEqual(pushed[0][0], "opcuaserver")
+
+    def test_cycle_never_loads_opcuaserver_from_remote(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        loaded = []
+
+        def _load(table, **_k):
+            loaded.append(table)
+            return []
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker, "_load_remote_rows", side_effect=_load
+        ), patch.object(
+            worker, "_sync_table", return_value=(0, 0, 0, 0)
+        ), patch("automation.catalog.replicator.set_sync_failed"), patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ), patch("automation.catalog.replicator.ensure_replica_database", return_value=None):
+            worker.cycle(force=True)
+        self.assertNotIn("opcuaserver", loaded)
+        self.assertTrue(loaded)
 
     def test_child_rows_require_this_edge_parent(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
@@ -1105,6 +1329,84 @@ class TestReplicatorScopeAndIntegrity(unittest.TestCase):
             remote_index,
         )
         self.assertEqual(reason, "foreign")
+
+    def test_cross_area_tagsmachines_are_ignored_not_deferred(self):
+        """CA-CODE-03: crossed binds are omitted; they must not enter pending_rows."""
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._cycle_cross_area_count = 0
+        local_index = {"tags": {}, "machines": {}}
+        remote_index = {
+            "tags": {
+                "pk:104": {"_pk": "104", "name": "Supe.Linea2.FI_02", "area": "Linea2"},
+                "pk:1": {"_pk": "1", "name": "Supe.Linea1.FI_02", "area": "Linea1"},
+            },
+            "machines": {
+                "pk:12": {"_pk": "12", "name": "DAQ-1000", "area": "Linea1"},
+                "pk:20": {"_pk": "20", "name": "DAQ-2000", "area": "Linea2"},
+            },
+        }
+        own = {"id": 1, "tag": 1, "tag_id": 1, "machine": 12, "machine_id": 12}
+        crossed = {"id": 4, "tag": 104, "tag_id": 104, "machine": 12, "machine_id": 12}
+        other_area = {"id": 5, "tag": 104, "tag_id": 104, "machine": 20, "machine_id": 20}
+        with patch.object(worker, "_scope_identity", return_value=("Linea1", "edge-1")):
+            with self.assertLogs("pyautomation", level="WARNING") as captured:
+                kept = worker._filter_child_rows(
+                    "tagsmachines",
+                    [own, crossed, other_area],
+                    local_index=local_index,
+                    remote_index=remote_index,
+                )
+            reason = worker._skip_pull_reason(
+                "tagsmachines",
+                crossed,
+                {"tag": 104, "tag_id": 104, "machine": 12, "machine_id": 12},
+                local_index,
+                remote_index,
+            )
+        self.assertEqual(kept, [own])
+        self.assertEqual(reason, "foreign")
+        self.assertEqual(worker._cycle_cross_area_count, 1)
+        self.assertTrue(
+            any("Ignoring 1 cross-area tagsmachines rows" in line for line in captured.output)
+        )
+
+    def test_cross_area_rows_latch_remote_inconsistency_alarm(self):
+        """CA-CODE-05: ALM.CATALOG.RemoteInconsistency on crossed remote binds."""
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._cycle_cross_area_count = 2
+        with patch("automation.catalog.replicator.set_remote_inconsistency") as alarm, patch.object(
+            worker, "_emit_exception_event"
+        ) as emit:
+            worker._latch_remote_inconsistency(True)
+        alarm.assert_called_once_with(True)
+        emit.assert_called_once()
+        self.assertTrue(worker._inconsistency_latched)
+        self.assertTrue(worker.sync_status()["CATALOG_REMOTE_INCONSISTENCY"])
+
+    def test_parent_tables_do_not_fallback_to_unscoped_read(self):
+        """CA-CODE-04: empty filtered machines must not pull every remote machine."""
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        reads = []
+
+        def read_all(table, where=None, params=None):
+            reads.append((table, where, params))
+            return []
+
+        with patch.object(worker, "_scope_identity", return_value=("Linea1", "edge-1")), patch.object(
+            worker._remote, "read_all", side_effect=read_all
+        ):
+            rows = worker._load_remote_rows("machines", full_scan=True, since_ms=0)
+        self.assertEqual(rows, [])
+        self.assertEqual(len(reads), 1)
+        self.assertEqual(reads[0][0], "machines")
+        self.assertEqual(reads[0][1], "area = %s")
+        self.assertEqual(reads[0][2], ("Linea1",))
 
     def test_missing_fk_with_known_parent_is_deferred(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
@@ -1148,13 +1450,13 @@ class TestReplicatorScopeAndIntegrity(unittest.TestCase):
         list(worker._pending_orphans.values())[0].first_seen_mono = time.monotonic() - 301.0
         deleted = []
         worker._local.delete = lambda table, pk: deleted.append((table, pk))
-        with self.assertLogs("pyautomation", level="ERROR") as captured:
+        with self.assertLogs("pyautomation", level="INFO") as captured:
             expired = worker._cleanup_pending_orphans({"tagsmachines": {}})
         self.assertEqual(expired, 1)
         self.assertFalse(worker._pending_orphans)
-        self.assertEqual(deleted, [("tagsmachines", "7")])
+        self.assertEqual(deleted, [])
         self.assertTrue(
-            any("orphan tagsmachines rows unresolved after 5 minutes" in line for line in captured.output)
+            any("not an operator OrphanRows alarm" in line for line in captured.output)
         )
 
     def test_pending_orphans_drop_after_five_retries(self):
@@ -1164,11 +1466,13 @@ class TestReplicatorScopeAndIntegrity(unittest.TestCase):
         worker._note_deferred_orphan("tagsmachines", "pk:7", {"id": 7, "tag_id": 1, "machine_id": 10})
         for _ in range(5):
             worker._bump_pending_retries()
-        with self.assertLogs("pyautomation", level="ERROR") as captured:
+        with self.assertLogs("pyautomation", level="INFO") as captured:
             expired = worker._cleanup_pending_orphans({"tagsmachines": {}})
         self.assertEqual(expired, 1)
         self.assertFalse(worker._pending_orphans)
-        self.assertTrue(any("Dropping orphan tagsmachines row pk:7" in line for line in captured.output))
+        self.assertTrue(
+            any("Giving up catalog pull retry of tagsmachines row pk:7" in line for line in captured.output)
+        )
 
     def test_sync_full_resets_watermark(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
@@ -1252,6 +1556,7 @@ class TestReplicatorScopeAndIntegrity(unittest.TestCase):
         self.assertIn("tags", synced)
 
     def test_integrity_error_continues_and_does_not_latch_sync_failed(self):
+        """CA-ISOLATION-02: one orphan/IntegrityError row must not block siblings."""
         from peewee import IntegrityError
 
         from automation.catalog.replicator import CatalogReplicatorWorker
@@ -1631,7 +1936,7 @@ class TestCatalogSyncNuclear(unittest.TestCase):
         other._ensure_pending_loaded()
         self.assertIn(("tagsmachines", "pk:7"), other._pending_orphans)
 
-    def test_mid_pull_error_rolls_back_local_writes(self):
+    def test_mid_pull_error_isolates_other_tables(self):
         from automation.catalog.local_provider import LocalCatalogProvider
         from automation.catalog.replicator import CatalogReplicatorWorker
 
@@ -1670,7 +1975,7 @@ class TestCatalogSyncNuclear(unittest.TestCase):
         ):
             result = worker.cycle(force=True)
         self.assertGreater(result.get("errors", 0), 0)
-        self.assertIsNone(provider.find_one("roles", field="name", value="OPERATOR"))
+        self.assertIsNotNone(provider.find_one("roles", field="name", value="OPERATOR"))
 
 
 class TestSoakDocumented(unittest.TestCase):
@@ -1693,8 +1998,20 @@ class TestSoakDocumented(unittest.TestCase):
     def test_ca_catalog_sync_09_saf_backpressure(self):
         self.fail("plant soak")
 
-    @unittest.skip("Soak 24 h de planta — CA-CATALOG-SYNC-10 Txn/min < 50")
-    def test_ca_catalog_sync_10_incremental_txn(self):
+    @unittest.skip("Soak 24 h de planta — CA-SYNC-GLOBAL-02 Txn/min < 50 en reposo")
+    def test_ca_sync_global_02_incremental_txn(self):
+        self.fail("plant soak")
+
+    @unittest.skip("Soak de planta — CA-SYNC-GLOBAL-05 backends PG ≤ 4")
+    def test_ca_sync_global_05_backends(self):
+        self.fail("plant soak")
+
+    @unittest.skip("Soak de planta — CA-SYNC-GLOBAL-06 latencia < 10 ms")
+    def test_ca_sync_global_06_latency(self):
+        self.fail("plant soak")
+
+    @unittest.skip("Soak de planta — CA-SYNC-GLOBAL-07 escala 5 edges")
+    def test_ca_sync_global_07_five_edges(self):
         self.fail("plant soak")
 
 

@@ -41,7 +41,8 @@ Gana el timestamp más reciente (`catalog_versions.version`). Empate → gana el
 
 | Alarma | Acción |
 |---|---|
-| `ALM.CATALOG.SyncFailed` | 3 ciclos fallidos **con remoto alcanzable** — revisar red/PG; no debe activarse en outages cortos (< 5 min) |
+| `ALM.CATALOG.SyncFailed` | Fallos **duros** (PG alcanzable) ≥ 5 min. El operador **reconoce** (ISA-18.2). Si el bit ya bajó, queda en RTN Unack hasta el ack; no se re-anuncia sola. |
+| `ALM.CATALOG.OrphanRows` | **No** se enciende por reintentos de remap. Si alguna vez estuvo activa, el operador reconoce el RTN Unack. Cola restante: Rendimiento del nodo. |
 | `ALM.CATALOG.Conflict` | Revisar Events; el central es la verdad |
 | `ALM.CATALOG.LocalOnly` | Más de 1 h sin remoto — planificar reconexión |
 
@@ -59,3 +60,14 @@ Métricas: `GET /api/health/system` → `CATALOG_SOURCE`, `CATALOG_SYNC_*`.
 | **CA-CATALOG-14** | Dos edges editan la misma entidad offline | Central resuelve por timestamp; ambos convergen |
 
 Sin soak formal el veredicto de autonomía permanece **A−** (código verificado); **A+** pendiente de planta. Ver [AUDIT_CATALOG_SQLITE_LOCAL.md](../audits/AUDIT_CATALOG_SQLITE_LOCAL.md).
+
+## 6. Controles desde Rendimiento del nodo
+
+Si el sync se atasca o hay huérfanos de `tagsmachines`, no hace falta una vista de administración aparte:
+
+| Síntoma | Acción en `/performance` | Notas |
+|---|---|---|
+| `CATALOG_LAST_SYNC` viejo / worker de catálogo caído | **Forzar sincronización** o **Reiniciar** CatalogReplicator | Admin/supervisor; cooldown 30 s en sync |
+| `CATALOG_ORPHAN_ROWS > 0` sostenido | **Limpiar huérfanos** (edad 5/10/30/60 min) | Solo admin; pide checkbox. Puede borrar relaciones que aún se están resolviendo |
+
+Detalle de roles, confirmación y Events: [node-performance-runbook.md](./node-performance-runbook.md).

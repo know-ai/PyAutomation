@@ -7,7 +7,7 @@ import tempfile
 import time
 import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from ..persistence import reset_persistence_gateway
 from ..persistence.config import SafConfig
@@ -591,6 +591,38 @@ class TestTagValuePayloadMapper(unittest.TestCase):
         self.assertEqual(rows, [])
         worker.request_full_sync.assert_called()
 
+    def test_missing_remote_tag_drops_after_three_retries(self):
+        from unittest.mock import Mock, patch
+
+        from ..persistence.remote import (
+            PeeweeRemoteDB,
+            TagValuePayloadMapper,
+            reset_missing_tag_tries,
+        )
+
+        reset_missing_tag_tries()
+        remote = PeeweeRemoteDB(
+            tag_mapper=TagValuePayloadMapper(
+                resolve_tag=lambda _name: None,
+                resolve_unit=lambda _tag: None,
+            )
+        )
+        remote._tag_inserter = Mock()
+        payload = {
+            "tag": "ghost.FI",
+            "value": 1.0,
+            "timestamp": "2026-08-13T14:19:02+00:00",
+        }
+        with patch("automation.catalog.replicator.get_catalog_replicator", return_value=Mock()):
+            first = remote.write_batch_outcomes("tag", [payload])
+            second = remote.write_batch_outcomes("tag", [payload])
+            third = remote.write_batch_outcomes("tag", [payload])
+        self.assertEqual(first, [False])
+        self.assertEqual(second, [False])
+        self.assertEqual(third, [True])
+        remote._tag_inserter.insert_tag_values.assert_not_called()
+        reset_missing_tag_tries()
+
 
 class TestReplicatorDomainIsolation(unittest.TestCase):
     def setUp(self):
@@ -605,8 +637,14 @@ class TestReplicatorDomainIsolation(unittest.TestCase):
         )
         self.journal = JournalWriter(self.config)
         self.journal.start()
+        self._scope_patch = patch(
+            "automation.persistence.replicator._node_scope",
+            return_value=None,
+        )
+        self._scope_patch.start()
 
     def tearDown(self):
+        self._scope_patch.stop()
         self.journal.stop()
         self.tmp.cleanup()
         reset_persistence_gateway()
@@ -629,6 +667,54 @@ class TestReplicatorDomainIsolation(unittest.TestCase):
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0]["domain"], DOMAIN.EVENT)
         self.assertEqual({item[0] for item in remote.written}, {DOMAIN.TAG})
+
+    def test_missing_tag_does_not_block_events_or_alarms(self):
+        """CA-ISOLATION-01: a missing remote tag must not stall events/alarms."""
+        from unittest.mock import Mock, patch
+
+        from ..persistence.remote import (
+            PeeweeRemoteDB,
+            TagValuePayloadMapper,
+            reset_missing_tag_tries,
+        )
+
+        reset_missing_tag_tries()
+
+        class IsolationRemote(FakeRemote):
+            def write_batch_outcomes(self, domain, payloads):
+                if domain == DOMAIN.TAG:
+                    inner = PeeweeRemoteDB(
+                        tag_mapper=TagValuePayloadMapper(
+                            resolve_tag=lambda _name: None,
+                            resolve_unit=lambda _tag: None,
+                        )
+                    )
+                    return inner.write_batch_outcomes(domain, payloads)
+                return super().write_batch_outcomes(domain, payloads)
+
+        now = datetime.now(timezone.utc)
+        self.journal.append(PersistableRecord.event(message="ok-event", username="system"))
+        self.journal.append(
+            PersistableRecord.alarm_create(name="A1", state="Unacknowledged", timestamp=now)
+        )
+        self.journal.append(PersistableRecord.tag_sample("ghost.FI", 1.0, now))
+        self.journal.flush_sync()
+        remote = IsolationRemote()
+        replicator = RemoteReplicator(self.journal, remote, self.config)
+        with patch(
+            "automation.catalog.replicator.get_catalog_replicator",
+            return_value=Mock(),
+        ):
+            replicated = replicator.replicate_once()
+        self.assertGreaterEqual(replicated, 2)
+        domains = {item[0] for item in remote.written}
+        self.assertIn(DOMAIN.EVENT, domains)
+        self.assertIn(DOMAIN.ALARM_SUMMARY, domains)
+        self.assertNotIn(DOMAIN.TAG, domains)
+        pending = self.journal.fetch_pending(10)
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["domain"], DOMAIN.TAG)
+        reset_missing_tag_tries()
 
 
 class TestAlarmSummarySafIdempotency(unittest.TestCase):

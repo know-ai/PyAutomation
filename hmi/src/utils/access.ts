@@ -16,7 +16,19 @@ export function canViewOpsAdmin(role?: string | null): boolean {
 
 /** Alias kept for existing performance imports. */
 export function canViewPerformance(role?: string | null): boolean {
+  const normalized = normalizeRoleName(role);
+  return Boolean(normalized) && normalized !== "guest";
+}
+
+/** Restart workers, force SAF/catalog sync, rebuild derived tags. */
+export function canControlOps(role?: string | null): boolean {
   return canViewOpsAdmin(role);
+}
+
+/** Empty SAF queue / clean catalog orphans (admin/sudo). */
+export function canDestroyOps(role?: string | null): boolean {
+  const normalized = normalizeRoleName(role);
+  return normalized === "admin" || normalized === "sudo";
 }
 
 export function canViewSettings(role?: string | null): boolean {

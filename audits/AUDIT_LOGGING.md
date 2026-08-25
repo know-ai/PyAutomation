@@ -6,6 +6,8 @@
 | **Alcance** | L1 `logs/app.log`; L2 tabla `Logs` / `/operational-logs`; L3 tabla `Events` y anti-flood; relación con SAF |
 | **Fecha original** | 2026-08-16 (Log Eterno + Trazabilidad Eterna + Bitácora Eterna) |
 | **Compactación** | 2026-08-18 |
+| **Aislamiento Bulkhead** | 2026-08-25 — Events/Logs por muestra; `set_tag`/`bind_tag` no relanzan IntegrityError |
+| **Controles `/performance`** | 2026-08-25 — acciones admin auditan en Events (CA-OPS-04) |
 | **Fuentes absorbidas** | `AUDIT_LOGGING`, `AUDIT_USER_EVENTS`, `AUDIT_OPERATIONAL_LOGS` |
 | **Complementa** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) §4.5, `docs/Developments_Guide/logs.md`, `docs/Users_Guide/OperationalLogs/index.md` |
 | **Veredicto** | L1 archivo **A+**. Events **A−** (caja negra industrial; residual idle-timeout / delete user). Bitácora **A+** (CA-OL). Retención PG/backups SQLite = política de planta |
@@ -105,6 +107,8 @@ Control: `Tag value forced` (`from=`/`to=`); ack / ack-all; shelve/unshelve; sup
 
 Casi siempre FK `system`. Boot: `System started` **sin** `Database connected`. Outage en caliente: un `DISCONNECTED` + un `RECONNECTED` (fallos de reconnect **resumidos**). OPC fallos cooldown 60 s. SAF backpressure/disk cooldown 60 s. `System stopped` solo parada limpia (`safe_stop`); kill -9 no lo deja.
 
+Controles de `/performance` (usuario real, no `system`): `Worker restarted: …`, `SAF retry requested`, `SAF queue emptied` (criticity 5), `Catalog sync requested`, `Catalog orphans cleaned`, `Derived tags rebuilt`, `Runtime settings updated`. Fallo de restart: `Worker restart failed: …`. Evidencia: `automation/utils/ops_controls.py` → `persist_system_event`; CA-OPS-04 en [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](./AUDIT_NODE_PERFORMANCE_DASHBOARD.md).
+
 Anti-spam: operador **sin** debounce. DB boot silencioso; buffer auditor DB ≤ 8. Tasa `EVENTS_RATE_PER_MIN`; alerta > 30/min.
 
 ### 2.3 Qué no va a Events
@@ -173,6 +177,12 @@ Vistas: notebook (default) General+Operational − watchdog; comments Event+Alar
 | **CA-OL-8** | Guía = implementación | **Cumple** |
 
 Tests: `test_operational_logs` + `test_audit_metrics` (11 OK en la corrida original). Residual de producto fuera de CA: firma electrónica, PDF 21 CFR.
+
+### 3.1 Bulkhead L2/L3 (2026-08-25)
+
+La replicación SAF de Events y Logs es **por muestra**. Un evento que no inserta (usuario ausente, `IntegrityError`) queda PENDING; el resto del lote y los demás dominios (tags, alarmas) siguen. Evidencia: CA-ISOLATION-01 en [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md).
+
+Hidratación de metadatos: `DataLogger.set_tag` / `MachinesLogger.bind_tag` no relanzan `IntegrityError` (CA-ISOLATION-03/04). Un tag o bind huérfano no corta el resto de la carga.
 
 ---
 
@@ -247,4 +257,5 @@ Verificación planta Events: login/logout/superseded/ack/CRUD tag/force value/in
 | HTTP logs | `modules/events/resources/logs.py` |
 | HTTP users | `modules/users/resources/users.py` |
 | HMI Events / Bitácora | `hmi/src/pages/Events.tsx`, `OperationalLogs.tsx` |
-| Tests | `test_log_filters`, `test_user_session_audit`, `test_operational_logs`, `test_audit_metrics`, `test_db_connection_audit`, `test_system_lifecycle_audit` |
+| Controles ops | `automation/utils/ops_controls.py` · `POST /api/admin/…` |
+| Tests | `test_log_filters`, `test_user_session_audit`, `test_operational_logs`, `test_audit_metrics`, `test_db_connection_audit`, `test_system_lifecycle_audit`, `test_ops_controls` |

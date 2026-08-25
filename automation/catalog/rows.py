@@ -11,7 +11,7 @@ from .schema import pk_as_str
 # historian row before INSERT (avoids unique collisions after offline PK drift).
 _UNIQUE_LOOKUP_ORDER: dict[str, tuple[str, ...]] = {
     "opcuaserver": ("namespace", "name"),
-    "machines": ("identifier", "name"),
+    "machines": ("identifier",),
     "tags": ("identifier", "name"),
     "alarms": ("identifier", "name"),
     "users": ("username", "identifier"),
@@ -200,6 +200,18 @@ def _find_by_unique_lookup(model_cls: type[Model], payload: dict) -> Model | Non
         found = model_cls.get_or_none(getattr(model_cls, name) == value)
         if found is not None:
             return found
+    if table == "machines" and hasattr(model_cls, "name") and hasattr(model_cls, "area"):
+        name = payload.get("name")
+        if name:
+            area = payload.get("area")
+            query = model_cls.select().where(model_cls.name == name)
+            if area is None or str(area).strip() == "":
+                query = query.where((model_cls.area.is_null()) | (model_cls.area == ""))
+            else:
+                query = query.where(model_cls.area == area)
+            found = query.get_or_none()
+            if found is not None:
+                return found
     # tagsmachines: composite natural key without a single unique column
     if table == "tagsmachines":
         tag = payload.get("tag")

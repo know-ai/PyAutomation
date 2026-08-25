@@ -475,6 +475,10 @@ class MachineSubscribeResource(Resource):
                 "message": message or "Tag subscribed successfully",
                 "data": machine.serialize()
             }, 200
+        except ValueError as e:
+            return {
+                "message": str(e)
+            }, 400
         except Exception as e:
             return {
                 "message": f"Failed to subscribe tag: {str(e)}"

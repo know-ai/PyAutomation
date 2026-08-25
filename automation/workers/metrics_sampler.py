@@ -57,9 +57,12 @@ class MetricsSamplerWorker(BaseWorker):
         self._started_at = time.monotonic()
         self._txn_prev: tuple[int, int] | None = None
         self._txn_prev_at = 0.0
+        self._txn_cluster_prev: int | None = None
+        self._txn_cluster_prev_at = 0.0
         self._cpu_primed = False
         self._alarms_ready = False
         self._tags_persisted = False
+        self.last_cycle_utc = None
         self._evaluator = PerfAlarmEvaluator(config_provider=self._app_config)
         self._trend_buffers: dict[str, deque] = {key: deque() for key, _field in TREND_FIELDS}
 
@@ -97,6 +100,13 @@ class MetricsSamplerWorker(BaseWorker):
                 self._publish(snap)
             except Exception:
                 _LOGGER.warning("Performance alarm reconfigure evaluate skipped", exc_info=True)
+
+    def request_sample(self) -> None:
+        """Refresh the snapshot immediately (operator action, not the HTTP poll)."""
+        try:
+            self._publish(self._sample())
+        except Exception:
+            _LOGGER.debug("metrics request_sample skipped", exc_info=True)
 
     def _ensure_alarms(self) -> None:
         if self._alarms_ready and self._tags_persisted:
@@ -140,6 +150,9 @@ class MetricsSamplerWorker(BaseWorker):
             merged["status"] = "ok"
             self._snapshot = merged
             self._sampled_at = time.monotonic()
+            from datetime import datetime, timezone
+
+            self.last_cycle_utc = datetime.now(timezone.utc).isoformat()
 
     def _sample(self) -> dict[str, Any]:
         payload: dict[str, Any] = {}
@@ -151,6 +164,7 @@ class MetricsSamplerWorker(BaseWorker):
         self._sample_saf(payload)
         self._sample_catalog(payload)
         self._sample_acquisition(payload)
+        self._sample_workers(payload)
         self._sample_clock(payload)
         self._sample_perf_alarms(payload)
         self._record_trends(payload)
@@ -252,7 +266,11 @@ class MetricsSamplerWorker(BaseWorker):
         try:
             from .. import PyAutomation
             from ..health import get_database_health_service
-            from ..utils.db_connections import query_pg_txn_counters, snapshot_connection_metrics
+            from ..utils.db_connections import (
+                local_txn_commit_count,
+                query_pg_txn_counters,
+                snapshot_connection_metrics,
+            )
 
             app = PyAutomation()
             payload["DB_CONNECTED"] = bool(app.is_db_connected())
@@ -263,20 +281,30 @@ class MetricsSamplerWorker(BaseWorker):
             payload["DB_ACTIVE_CONNECTIONS"] = conn.get("DB_ACTIVE_CONNECTIONS")
             payload["DB_CONNECTIONS_LOCAL"] = conn.get("DB_CONNECTIONS_COUNT")
             payload["DB_DISK_FREE_GB"] = None
-            counters = query_pg_txn_counters(db)
             now = time.monotonic()
-            if counters is None:
-                return
-            commits, rollbacks = counters
-            total = commits + rollbacks
+            local_commits = local_txn_commit_count()
             if self._txn_prev is not None and self._txn_prev_at > 0:
                 elapsed = max(0.001, now - self._txn_prev_at)
-                delta = max(0, total - (self._txn_prev[0] + self._txn_prev[1]))
+                delta = max(0, local_commits - self._txn_prev[0])
                 payload["DB_TXN_PER_MIN"] = round(delta * (60.0 / elapsed), 1)
             else:
                 payload["DB_TXN_PER_MIN"] = None
-            self._txn_prev = (commits, rollbacks)
+            self._txn_prev = (local_commits, 0)
             self._txn_prev_at = now
+            counters = query_pg_txn_counters(db)
+            if counters is not None:
+                cluster = int(counters[0] or 0) + int(counters[1] or 0)
+                prev_cluster = getattr(self, "_txn_cluster_prev", None)
+                prev_cluster_at = getattr(self, "_txn_cluster_prev_at", 0.0)
+                if prev_cluster is not None and prev_cluster_at > 0:
+                    elapsed_c = max(0.001, now - prev_cluster_at)
+                    payload["DB_TXN_PER_MIN_CLUSTER"] = round(
+                        max(0, cluster - prev_cluster) * (60.0 / elapsed_c), 1
+                    )
+                else:
+                    payload["DB_TXN_PER_MIN_CLUSTER"] = None
+                self._txn_cluster_prev = cluster
+                self._txn_cluster_prev_at = now
         except Exception:
             _LOGGER.debug("metrics db skipped", exc_info=True)
 
@@ -302,17 +330,19 @@ class MetricsSamplerWorker(BaseWorker):
             worker = get_catalog_replicator()
             if worker is not None:
                 payload.update(worker.sync_status())
-                return
-            snap = catalog_snapshot()
-            payload["CATALOG_PENDING_ROWS"] = int(snap.get("CATALOG_PENDING_ROWS") or 0)
-            payload["CATALOG_LAST_SYNC"] = snap.get("CATALOG_LAST_SYNC")
-            payload["CATALOG_SYNC_ERRORS"] = int(snap.get("CATALOG_SYNC_ERRORS") or 0)
-            payload["CATALOG_ORPHAN_ALARM"] = bool(snap.get("CATALOG_ORPHAN_ALARM"))
+            else:
+                snap = catalog_snapshot()
+                payload["CATALOG_PENDING_ROWS"] = int(snap.get("CATALOG_PENDING_ROWS") or 0)
+                payload["CATALOG_LAST_SYNC"] = snap.get("CATALOG_LAST_SYNC")
+                payload["CATALOG_SYNC_ERRORS"] = int(snap.get("CATALOG_SYNC_ERRORS") or 0)
+                payload["CATALOG_ORPHAN_ALARM"] = bool(snap.get("CATALOG_ORPHAN_ALARM"))
+            payload["CATALOG_ORPHAN_ROWS"] = int(payload.get("CATALOG_PENDING_ROWS") or 0)
         except Exception:
             payload.setdefault("CATALOG_PENDING_ROWS", 0)
             payload.setdefault("CATALOG_LAST_SYNC", None)
             payload.setdefault("CATALOG_SYNC_ERRORS", 0)
             payload.setdefault("CATALOG_ORPHAN_ALARM", False)
+            payload.setdefault("CATALOG_ORPHAN_ROWS", 0)
 
     def _sample_acquisition(self, payload: dict[str, Any]) -> None:
         try:
@@ -333,8 +363,26 @@ class MetricsSamplerWorker(BaseWorker):
                 payload["CVT_LOCK_CONTENTION"] = 0
             timing = snapshot_timing_metrics()
             payload["SAMPLE_LAG_MS"] = timing.get("SAMPLE_LAG_MS")
+            derived = 0
+            try:
+                for row in app.cvt.get_tags() or []:
+                    name = str((row or {}).get("name") or "")
+                    if name.endswith(".f"):
+                        derived += 1
+            except Exception:
+                derived = 0
+            payload["DERIVED_TAGS_COUNT"] = derived
         except Exception:
             _LOGGER.debug("metrics acquisition skipped", exc_info=True)
+            payload.setdefault("DERIVED_TAGS_COUNT", 0)
+
+    def _sample_workers(self, payload: dict[str, Any]) -> None:
+        try:
+            from ..utils.ops_controls import worker_snapshot
+
+            payload["WORKERS"] = worker_snapshot()
+        except Exception:
+            payload.setdefault("WORKERS", {})
 
     def _sample_clock(self, payload: dict[str, Any]) -> None:
         try:

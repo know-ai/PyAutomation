@@ -137,6 +137,9 @@ class PersistenceOrchestrator:
     def replicate_once(self) -> int:
         return self.replicator.flush()
 
+    def drop_unsent(self, *, confirm: bool) -> int:
+        return self.journal.drop_unsent(confirm=confirm)
+
     def snapshot(self) -> dict:
         snap = dict(self.health.snapshot())
         snap["SAF_CYCLE_DUPES_DROPPED"] = self.cycle_cache.dropped

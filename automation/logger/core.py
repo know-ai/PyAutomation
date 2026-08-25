@@ -6,6 +6,7 @@ from ..dbmodels import (
     DataTypes
     )
 from ..variables import VARIABLES, DATATYPES
+from ..catalog.partition import CrossAreaBindError
 
 class BaseLogger(Singleton):
     r"""
@@ -291,11 +292,24 @@ class BaseEngine(Singleton):
 
             self.__true_response(resp)
 
+        except CrossAreaBindError as e:
+            logging.getLogger("pyautomation").warning(
+                "Catalog bind refused (%s): %s",
+                action,
+                e,
+            )
+            self._response = {"result": False, "response": None}
+            raised = e
         except Exception as e:
 
             self.__log_error(e, error_msg)
+            raised = None
+        else:
+            raised = None
 
         self._response_lock.release()
+        if raised is not None:
+            raise raised
 
     def __log_error(self, e:Exception, msg:str):
         r"""

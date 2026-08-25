@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { MetricTile } from "../components/MetricTile";
+import { OpsConfirmModal } from "../components/OpsConfirmModal";
 import { PerfPanel, PerfStat } from "../components/PerfPanel";
 import { PerformanceAlarmModal } from "../components/PerformanceAlarmModal";
 import { PerformanceThresholdModal } from "../components/PerformanceThresholdModal";
@@ -10,6 +11,8 @@ import { usePerformanceAlarms, type PerfAlarmBinding } from "../hooks/usePerform
 import { usePerformanceTrends } from "../hooks/usePerformanceTrends";
 import { useTranslation } from "../hooks/useTranslation";
 import {
+  canControlOps,
+  canDestroyOps,
   canViewPerformance,
   type NodePerformanceSnapshot,
   type PerfAlarmKey,
@@ -23,6 +26,15 @@ import {
 } from "../services/performanceAlarms";
 import { patchPerformanceCatalog, refreshPerformanceTrends, valuesOf } from "../services/performanceTrends";
 import { getWaveletFilterStatuses, type TagFilterStatus } from "../services/tags";
+import {
+  cleanCatalogOrphans,
+  rebuildDerivedTags,
+  resetSaf,
+  restartWorker,
+  retrySaf,
+  syncCatalog,
+} from "../services/opsControls";
+import { showToast } from "../utils/toast";
 
 function formatNumber(value: number | null | undefined, digits = 1, unit = ""): string {
   if (value == null || Number.isNaN(Number(value))) return "—";
@@ -77,6 +89,33 @@ function formatUptime(seconds: number | null | undefined): string {
   return `${h} h ${m} min`;
 }
 
+function formatCycle(value?: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
+function workerLabel(state: string | undefined, t: TranslateFn): string {
+  if (state === "alive") return t("performance.opsWorkerAlive");
+  if (state === "inactive") return t("performance.opsWorkerInactive");
+  if (state === "restarting") return t("performance.opsWorkerRestarting");
+  if (state === "error") return t("performance.opsWorkerError");
+  return state || "—";
+}
+
+const WORKER_KEYS = ["LoggerWorker", "CatalogReplicator", "MetricsSampler"] as const;
+
+function worstWorkerTone(
+  workers: NodePerformanceSnapshot["WORKERS"]
+): TileTone {
+  const states = WORKER_KEYS.map((name) => workers?.[name]?.state);
+  if (states.some((state) => state === "error" || state === "inactive")) return "error";
+  if (states.some((state) => state === "restarting")) return "warn";
+  if (states.every((state) => state === "alive")) return "ok";
+  return "unknown";
+}
+
 function cpuTone(value: number | null | undefined): TileTone {
   if (value == null) return "unknown";
   if (value >= 90) return "error";
@@ -121,12 +160,26 @@ export function Performance() {
   const role = useAppSelector((state) => state.auth.user?.role);
   const allowed = canViewPerformance(role);
   const canConfigure = canConfigurePerformanceAlarms(role);
+  const canControl = canControlOps(role);
+  const canDestroy = canDestroyOps(role);
   const { snapshot, series, errorStatus, errorMessage } = usePerformanceTrends();
   const [openKey, setOpenKey] = useState<PerfAlarmKey | null>(null);
   const [configKey, setConfigKey] = useState<PerfAlarmKey | null>(null);
   const [trendsOpen, setTrendsOpen] = useState(true);
   const [waveletRows, setWaveletRows] = useState<TagFilterStatus[]>([]);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState<Record<string, number>>({});
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [restartName, setRestartName] = useState<string | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [orphanOpen, setOrphanOpen] = useState(false);
+  const [orphanAge, setOrphanAge] = useState(10);
+  const [rebuildOpen, setRebuildOpen] = useState(false);
   const bindings = usePerformanceAlarms(snapshot.PERF_ALARMS);
+  const queue = Number(snapshot.SAF_QUEUE_DEPTH || 0);
+  const orphanRows = Number(snapshot.CATALOG_ORPHAN_ROWS ?? snapshot.CATALOG_PENDING_ROWS ?? 0);
+  const workers = snapshot.WORKERS || {};
+  const cooldownLeft = (key: string) => Math.max(0, Math.ceil(((cooldownUntil[key] || 0) - nowMs) / 1000));
   const error =
     errorStatus === 403
       ? t("performance.forbidden")
@@ -161,9 +214,41 @@ export function Performance() {
     return "—";
   };
 
+  const runOps = async (
+    key: string,
+    action: () => Promise<unknown>,
+    success: string | ((result: unknown) => string)
+  ): Promise<boolean> => {
+    if (busyKey) return false;
+    setBusyKey(key);
+    try {
+      const result = await action();
+      showToast(typeof success === "function" ? success(result) : success, "success");
+      window.setTimeout(() => {
+        void refreshPerformanceTrends();
+      }, 800);
+      return true;
+    } catch (error: any) {
+      showToast(error?.response?.data?.message || t("performance.opsActionError"), "error");
+      return false;
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const armCooldown = (key: string) => {
+    setCooldownUntil((prev) => ({ ...prev, [key]: Date.now() + 30000 }));
+  };
+
   const openBinding = openKey ? bindings[openKey] : undefined;
   const configBinding = configKey ? bindings[configKey] : undefined;
   const safMax = Math.max(Number(bindings.saf_queue.catalog?.threshold || 5000) * 1.25, Number(snapshot.SAF_QUEUE_DEPTH || 0), 1);
+
+  useEffect(() => {
+    if (!Object.values(cooldownUntil).some((until) => until > Date.now())) return undefined;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldownUntil]);
 
   useEffect(() => {
     let cancelled = false;
@@ -368,12 +453,147 @@ export function Performance() {
             canConfigure={canConfigure}
             onOpen={() => setOpenKey("saf_lag")}
             onConfigure={() => setConfigKey("saf_lag")}
+            actions={
+              canControl && (queue > 1000 || (canDestroy && queue > 5000)) ? (
+                <>
+                  {queue > 1000 ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary"
+                      disabled={busyKey != null || cooldownLeft("saf-retry") > 0}
+                      onClick={() =>
+                        void runOps(
+                          "saf-retry",
+                          async () => {
+                            await retrySaf();
+                            armCooldown("saf-retry");
+                          },
+                          t("performance.opsRetryOk")
+                        )
+                      }
+                    >
+                      {busyKey === "saf-retry"
+                        ? t("performance.opsExecuting")
+                        : cooldownLeft("saf-retry") > 0
+                          ? t("performance.opsCooldown", { seconds: cooldownLeft("saf-retry") })
+                          : t("performance.opsForceReplicate")}
+                    </button>
+                  ) : null}
+                  {canDestroy && queue > 5000 ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-danger"
+                      disabled={busyKey != null}
+                      onClick={() => setResetOpen(true)}
+                    >
+                      {t("performance.opsEmptyQueue")}
+                    </button>
+                  ) : null}
+                </>
+              ) : null
+            }
           >
             <PerfStat label={t("performance.safQueue")} value={formatNumber(snapshot.SAF_QUEUE_DEPTH, 0)} />
             <PerfStat label={t("performance.safLag")} value={formatNumber(snapshot.SAF_REPLICATION_LAG_MS, 0, "ms")} />
             <PerfStat
               label={t("performance.safDisk")}
               value={formatNumber((snapshot.SAF_DISK_BYTES || 0) / (1024 * 1024), 1, "MB")}
+            />
+            <div className="perf-ops-bar" aria-hidden="true">
+              <span style={{ width: `${Math.min(100, (queue / safMax) * 100)}%` }} />
+            </div>
+          </PerfPanel>
+
+          <PerfPanel title={t("performance.opsWorkers")} tone={worstWorkerTone(workers)}>
+            {WORKER_KEYS.map((name) => {
+              const row = workers[name] || {};
+              const state = row.state;
+              const restarting = state === "restarting" || busyKey === `restart-${name}`;
+              return (
+                <div key={name} className="perf-ops-worker">
+                  <div className="perf-ops-worker__meta">
+                    <PerfStat label={name} value={restarting ? t("performance.opsRestarting") : workerLabel(state, t)} />
+                    <PerfStat label={t("performance.opsLastCycle")} value={formatCycle(row.last_cycle_utc)} />
+                  </div>
+                  {canControl ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary"
+                      disabled={busyKey != null || restarting}
+                      onClick={() => setRestartName(name)}
+                    >
+                      {t("performance.opsRestart")}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </PerfPanel>
+
+          <PerfPanel
+            title={t("performance.opsCatalog")}
+            tone={orphanRows > 0 ? "warn" : "ok"}
+            actions={
+              canControl ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-primary"
+                    disabled={busyKey != null || cooldownLeft("catalog-sync") > 0}
+                    onClick={() =>
+                      void runOps(
+                        "catalog-sync",
+                        async () => {
+                          await syncCatalog();
+                          armCooldown("catalog-sync");
+                        },
+                        t("performance.opsSyncOk")
+                      )
+                    }
+                  >
+                    {busyKey === "catalog-sync"
+                      ? t("performance.opsExecuting")
+                      : cooldownLeft("catalog-sync") > 0
+                        ? t("performance.opsCooldown", { seconds: cooldownLeft("catalog-sync") })
+                        : t("performance.opsForceSync")}
+                  </button>
+                  {canDestroy && orphanRows > 0 ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger"
+                      disabled={busyKey != null}
+                      onClick={() => setOrphanOpen(true)}
+                    >
+                      {t("performance.opsCleanOrphans")}
+                    </button>
+                  ) : null}
+                </>
+              ) : null
+            }
+          >
+            <PerfStat label={t("performance.opsOrphanRows")} value={formatNumber(orphanRows, 0)} />
+            <PerfStat label={t("performance.opsLastCycle")} value={formatCycle(snapshot.CATALOG_LAST_SYNC)} />
+          </PerfPanel>
+
+          <PerfPanel
+            title={t("performance.opsDerived")}
+            tone="ok"
+            actions={
+              canControl ? (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-primary"
+                  disabled={busyKey != null}
+                  onClick={() => setRebuildOpen(true)}
+                >
+                  {t("performance.opsRebuildDerived")}
+                </button>
+              ) : null
+            }
+          >
+            <PerfStat
+              label={t("performance.opsDerivedCount")}
+              value={formatNumber(snapshot.DERIVED_TAGS_COUNT, 0)}
             />
           </PerfPanel>
 
@@ -534,6 +754,103 @@ export function Performance() {
         debounceCount={snapshot.PERF_ALARMS?.debounce_count}
         onClose={() => setConfigKey(null)}
         onSaved={mergeCatalog}
+      />
+      <OpsConfirmModal
+        open={Boolean(restartName)}
+        title={t("performance.opsRestartTitle", { name: restartName || "" })}
+        body={t("performance.opsRestartBody", { name: restartName || "" })}
+        busy={Boolean(restartName) && busyKey === `restart-${restartName}`}
+        onCancel={() => setRestartName(null)}
+        onConfirm={async () => {
+          const name = restartName;
+          if (!name) return;
+          const ok = await runOps(
+            `restart-${name}`,
+            () => restartWorker(name),
+            t("performance.opsRestartOk", { name })
+          );
+          if (ok) setRestartName(null);
+        }}
+      />
+      <OpsConfirmModal
+        open={resetOpen}
+        title={t("performance.opsResetTitle")}
+        body={t("performance.opsResetBody")}
+        danger
+        requireCheckbox
+        checkboxLabel={t("performance.opsResetCheck")}
+        requireTypedConfirm
+        typedToken="CONFIRMAR"
+        busy={busyKey === "saf-reset"}
+        onCancel={() => setResetOpen(false)}
+        onConfirm={async () => {
+          const ok = await runOps(
+            "saf-reset",
+            () => resetSaf(),
+            (result) =>
+              t("performance.opsResetOk", {
+                count: Number((result as { dropped?: number } | null)?.dropped || 0),
+              })
+          );
+          if (ok) setResetOpen(false);
+        }}
+      />
+      <OpsConfirmModal
+        open={orphanOpen}
+        title={t("performance.opsOrphanTitle")}
+        body={t("performance.opsOrphanBody")}
+        requireCheckbox
+        checkboxLabel={t("performance.opsOrphanCheck")}
+        extra={
+          <label className="perf-ops-typed">
+            <span>{t("performance.opsOrphanAge")}</span>
+            <select
+              className="form-select"
+              value={orphanAge}
+              onChange={(event) => setOrphanAge(Number(event.target.value))}
+            >
+              {[5, 10, 30, 60].map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes} min
+                </option>
+              ))}
+            </select>
+          </label>
+        }
+        busy={busyKey === "catalog-orphans"}
+        onCancel={() => setOrphanOpen(false)}
+        onConfirm={async () => {
+          const ok = await runOps(
+            "catalog-orphans",
+            () => cleanCatalogOrphans(orphanAge),
+            (result) =>
+              t("performance.opsOrphansOk", {
+                count: Number((result as { dropped?: number } | null)?.dropped || 0),
+              })
+          );
+          if (ok) setOrphanOpen(false);
+        }}
+      />
+      <OpsConfirmModal
+        open={rebuildOpen}
+        title={t("performance.opsRebuildTitle")}
+        body={t("performance.opsRebuildBody")}
+        busy={busyKey === "rebuild-derived"}
+        onCancel={() => setRebuildOpen(false)}
+        onConfirm={async () => {
+          const ok = await runOps(
+            "rebuild-derived",
+            () => rebuildDerivedTags(),
+            (result) => {
+              const payload = result as { ensured?: number; removed?: number } | null;
+              return t("performance.opsRebuildOk", {
+                ensured: Number(payload?.ensured || 0),
+                removed: Number(payload?.removed || 0),
+              });
+            }
+          );
+          if (ok) setRebuildOpen(false);
+        }}
       />
     </div>
   );

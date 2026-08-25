@@ -41,6 +41,13 @@ export type NodePerformanceSnapshot = {
   CVT_LOCK_CONTENTION?: number | null;
   SAMPLE_LAG_MS?: number | null;
   ACQUISITION_READY?: boolean | null;
+  CATALOG_PENDING_ROWS?: number | null;
+  CATALOG_ORPHAN_ROWS?: number | null;
+  CATALOG_LAST_SYNC?: string | null;
+  CATALOG_SYNC_ERRORS?: number | null;
+  CATALOG_ORPHAN_ALARM?: boolean | null;
+  DERIVED_TAGS_COUNT?: number | null;
+  WORKERS?: Record<string, { name?: string; state?: string; last_cycle_utc?: string | null }>;
   clock?: NodeClockMetrics;
   PERF_ALARMS?: PerfAlarmsCatalog;
   TRENDS?: Partial<Record<"cpu" | "rss" | "disk" | "http" | "saf", { t: number; v: number }[]>>;
@@ -89,7 +96,7 @@ export function pushRing(values: number[], next: number, max = SPARKLINE_POINTS)
   return out;
 }
 
-export { canViewPerformance } from "../utils/access";
+export { canViewPerformance, canControlOps, canDestroyOps } from "../utils/access";
 
 export async function getNodePerformance(): Promise<NodePerformanceSnapshot> {
   const { data } = await api.get("/health/node", { timeout: 4000 });

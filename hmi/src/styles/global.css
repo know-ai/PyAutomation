@@ -3193,6 +3193,76 @@ button.perf-chip {
   gap: 0.55rem 0.7rem;
 }
 
+.perf-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.perf-panel__actions .btn {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.perf-ops-warn {
+  color: var(--bs-danger);
+  font-weight: 600;
+}
+
+.perf-ops-check,
+.perf-ops-typed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.85rem;
+}
+
+.perf-ops-check {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.perf-ops-busy {
+  font-size: 0.85rem;
+  color: var(--bs-secondary-color);
+}
+
+.perf-ops-worker {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem 0.75rem;
+  align-items: center;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.perf-ops-worker:last-child {
+  border-bottom: 0;
+}
+
+.perf-ops-worker__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.perf-ops-bar {
+  height: 0.4rem;
+  margin-top: 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bs-secondary-color) 18%, transparent);
+  overflow: hidden;
+}
+
+.perf-ops-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--bs-primary);
+}
+
 .perf-stat__label {
   display: block;
   font-size: 0.68rem;

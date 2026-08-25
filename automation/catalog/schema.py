@@ -72,9 +72,13 @@ PARTITIONED_TABLES: frozenset[str] = frozenset(
         "alarms",
         "machines",
         "opcua",
+        "opcuaserver",
         "tagsmachines",
     }
 )
+
+# Push to the historian (disaster backup) but never pull into another edge.
+PUSH_ONLY_TABLES: frozenset[str] = frozenset({"opcuaserver"})
 
 # Always full-read (area-filtered) so child FK remap can resolve remote parent PKs.
 PARENT_TABLES: frozenset[str] = frozenset({"tags", "machines"})

@@ -4,11 +4,11 @@
 |---|---|
 | **Producto** | PyAutomationIO (`automation/`) + HMI React (`hmi/src/`) |
 | **Alcance** | Visibilidad en tiempo real del rendimiento por edge/nodo — sin degradar el hot path de adquisición ni el consumo del propio nodo al mostrar métricas |
-| **Fecha** | 2026-08-19 (dashboard P0+P1 + alarmas ISA-18.2 + UI profesional spec 07) |
-| **Spec** | [specs/05-NODE-PERFORMANCE-DASHBOARD.md](../specs/05-NODE-PERFORMANCE-DASHBOARD.md) v1.0 · [specs/06-PERFORMANCE-ALARMS.md](../specs/06-PERFORMANCE-ALARMS.md) v1.0 · [specs/07-PERFORMANCE-DASHBOARD-UI.md](../specs/07-PERFORMANCE-DASHBOARD-UI.md) v3.0 |
+| **Fecha** | 2026-08-19 (dashboard P0+P1 + alarmas ISA-18.2 + UI spec 07) · **controles ops 2026-08-25** |
+| **Spec** | [specs/05-NODE-PERFORMANCE-DASHBOARD.md](../specs/05-NODE-PERFORMANCE-DASHBOARD.md) v1.0 · [specs/06-PERFORMANCE-ALARMS.md](../specs/06-PERFORMANCE-ALARMS.md) v1.0 · [specs/07-PERFORMANCE-DASHBOARD-UI.md](../specs/07-PERFORMANCE-DASHBOARD-UI.md) v3.0 · spec complementaria de controles en `/performance` |
 | **Runbook** | [docs/node-performance-runbook.md](../docs/node-performance-runbook.md) · índice [docs/runbook.md](../docs/runbook.md) |
 | **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) |
-| **Veredicto vigente** | **A−** — Dashboard O(1) + alarmas ISA-18.2 + UI profesional en fuente. **A+** tras soak 24 h, prueba 2-edge y prueba manual de gauges/modales en planta (CA-UI-06…10, CA-PERF-09/10/13/14) |
+| **Veredicto vigente** | **A−** — Dashboard O(1) + alarmas ISA-18.2 + controles ops en fuente (CA-OPS-01…04). **A+** tras soak 24 h, prueba 2-edge, gauges/modales en planta (CA-UI-06…10, CA-PERF-09/10/13/14) y prueba HMI de botones/roles (CA-OPS-02/05) |
 | **Clasificación** | Auditoría operativa · observabilidad · dashboard edge |
 
 ---
@@ -17,12 +17,13 @@
 
 | Pregunta | Respuesta (código 2026-08-19) |
 |---|---|
-| ¿Existe una pantalla HMI para medir performance del nodo en tiempo real? | **Sí** — `/performance` (`Performance.tsx`), ítem sidebar speedometer, i18n `es`/`en`, roles **admin / supervisor / sudo** |
+| ¿Existe una pantalla HMI para medir performance del nodo en tiempo real? | **Sí** — `/performance` (`Performance.tsx`), ítem sidebar speedometer, i18n `es`/`en`. **Métricas:** cualquier rol autenticado excepto `guest`. **Controles:** admin/supervisor/sudo |
+| ¿Se puede actuar sobre workers/SAF/catálogo desde la misma vista? | **Sí en código** — widgets Workers / Historiador / Catálogo / Derivados; `POST /api/admin/…`; JWT + roles; Events de auditoría. Prueba HMI en planta **pendiente** (CA-OPS-02/05) |
 | ¿Hay API lista para alimentar ese dashboard sin matar el nodo? | **Sí** — `GET /api/health/node` copia un dict precomputado (`Cache-Control: max-age=1`). **`/health/system` no se tocó** — sigue recalculando OPC/PG/SAF; no usarlo para poll 3 s |
 | ¿Clientes HMI visibles? | **Sí** — `HMI_ACTIVE_CLIENTS` = `count_sessions()` filtrado por `node_id` del edge local |
 | ¿Contadores HTTP (req/min, 5xx, in-flight)? | **Sí** — `automation/utils/http_metrics.py` (lock + deque 60 s); middleware Flask con `teardown_request` anti-fuga |
 | ¿RAM / CPU / disco del host? | **Sí** — `psutil` en el sampler (`HOST_CPU_PERCENT`, `HOST_RSS_MB`, `HOST_DISK_*`); fallback `resource`/`threading` si psutil falla |
-| ¿Métricas BD (txn/min, conexiones)? | **Parcial A** — `DB_TXN_PER_MIN` vía `pg_stat_database` throwaway; `DB_ACTIVE_CONNECTIONS` en sampler; `DB_DISK_FREE_GB` siempre `null` (P2 opcional) |
+| ¿Métricas BD (txn/min, conexiones)? | **Parcial A** — `DB_TXN_PER_MIN` = commits de **este proceso** (`note_local_commit`); clúster en `DB_TXN_PER_MIN_CLUSTER`. `DB_ACTIVE_CONNECTIONS` en sampler; `DB_DISK_FREE_GB` siempre `null` (P2 opcional) |
 | ¿Poll 3 s desde N HMIs es seguro? | **Diseño sí** — GET es O(1). Soak 10 clientes × 24 h **pendiente** (CA-NPD-02) |
 | ¿El observador cuesta más que lo observado? | **No en el request path.** El coste vive en `MetricsSamplerWorker` (hilo daemon, default 5 s) |
 | ¿Hay alarmas de rendimiento gestionables desde el dashboard y Alarmas? | **Sí** — 7 BOOL ISA-18.2 (`ALM.PERF.*`). Campana + umbral en tarjeta; clic → modal ack/shelve/unshelve; engranaje → umbral. Misma instancia en `/alarms`. |
@@ -46,6 +47,7 @@
 | 2026-08-19 (tarde) | **A−** | P0+P1+P2 txn/min en código; 14 unit tests OK; HMI y docs en fuente; soak planta pendiente |
 | 2026-08-19 (alarmas) | **A−** | Alarmas ISA-18.2 unificadas; evaluador debounce; Settings hot-reload; modal HMI; 13 tests CA-PERF |
 | 2026-08-19 (UI v3.0) | **A−** | Spec 07: gauges, paneles, umbral en tarjeta, modal de configuración; CA-UI-06…10 en código fuente (build HMI pendiente en este host) |
+| 2026-08-25 (ops) | **A−** | Controles en caliente en `/performance` (CA-OPS-01…04 unitarios; CA-OPS-05 HMI planta); no se declara A+ |
 
 ---
 
@@ -85,7 +87,7 @@
 | Conectado + latencia | ✅ `/health/db` (cache 1.5 s) | ✅ `DB_CONNECTED`, `DB_LATENCY_MS` | sampler + `DatabaseHealthService` |
 | Conexiones activas PG | ✅ en `/health/system` (costoso) | ✅ `DB_ACTIVE_CONNECTIONS` | sampler (throwaway) |
 | Sockets libpq locales | ✅ | ✅ `DB_CONNECTIONS_LOCAL` | `snapshot_connection_metrics` |
-| Txn / min | ❌ | ✅ `DB_TXN_PER_MIN` | `query_pg_txn_counters` + delta |
+| Txn / min | ❌ | ✅ `DB_TXN_PER_MIN` (proceso) + `DB_TXN_PER_MIN_CLUSTER` | `note_local_commit` + `query_pg_txn_counters` |
 | Disco servidor PG | ❌ | ❌ `DB_DISK_FREE_GB=null` | P2 opcional |
 
 ### 1.5 Adquisición, SAF, reloj
@@ -279,7 +281,7 @@ Ejemplo representativo (~35 campos):
 | Campo clave | Interpretación operativa |
 |---|---|
 | `METRICS_AGE_MS` | Confianza del operador. Warning UI ≥ 15 s; crítico ≥ 60 s |
-| `DB_TXN_PER_MIN` | `null` en primer tick o si PG no responde; no invalida el resto |
+| `DB_TXN_PER_MIN` | Commits de **este** proceso; `null` en primer tick. Clúster → `DB_TXN_PER_MIN_CLUSTER`. Soak CA-ISOLATION-05: reposo &lt; 50 aun con IntegrityError persistentes |
 | `DB_DISK_FREE_GB` | Reservado P2; siempre `null` hoy |
 | `HTTP_*` | Ventana deslizante 60 s; no incluye latencia por ruta |
 
@@ -331,12 +333,13 @@ Ejemplo representativo (~35 campos):
 | CA-NPD-03 | `HMI_ACTIVE_CLIENTS` = COUNT store | `test_hmi_active_clients_uses_store_count`; SQL real: `WHERE node_id = :edge` |
 | CA-NPD-04 | `HTTP_REQUESTS_1M` tras tráfico | `test_request_window_increments` + `test_flask_middleware_counts` |
 | CA-NPD-05 | CPU y disco si psutil | `test_psutil_fields_when_available` |
-| CA-NPD-06 | `/performance` admin/supervisor; 403 otro | `@auth_roles` + `canViewPerformance` + redirect Events; **manual** |
+| CA-NPD-06 | `/performance` visible a operador autenticado; guest no | `canViewPerformance` (no guest); `GET /health/node` incluye `operator`; **manual** guest |
 | CA-NPD-07 | Sparklines 60 pts sin leak 1 h | `pushRing` acota; **manual** DevTools |
 | CA-NPD-08 | Poll 30 s si pestaña oculta | `pollIntervalMs` + `usePerformancePoll`; `test_hmi_poll_hidden_contract` |
 | CA-NPD-09 | `/health/system` sin regresión | `test_system_endpoint_still_present` |
 | CA-NPD-10 | Sampler sobrevive BD down | `test_survives_db_outage` |
 | CA-NPD-11 | txn/min visible o null sin error | `_sample_db` + `_publish` last-value |
+| CA-ISOLATION-05 | Txn/min reposo &lt; 50 con errores de integridad persistentes | **Pendiente** soak 1 h planta; ver [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) §3.4 |
 | CA-NPD-12 | Sin pool Peewee reintroducido | `test_sampler_does_not_use_peewee_pool` |
 | CA-NPD-13 | Runbook performance | `docs/node-performance-runbook.md`, `docs/runbook.md`, § multi-edge |
 | CA-NPD-14 | Multi-edge: solo métricas locales | `count_sessions(node_id)`; **manual** 2-edge |
@@ -354,14 +357,15 @@ Ejemplo representativo (~35 campos):
 | Contadores HTTP | **A** | Lock + ventana 60 s; `teardown_request` evita in-flight leak |
 | Sampler | **A** | Daemon; last-value on fault; intervalo 5–30 s configurable |
 | Métricas host | **A** | psutil; fallback `resource` |
-| HMI dashboard | **A** | Tarjetas + canvas + modal ISA-18.2; poll hidden; RBAC |
+| HMI dashboard | **A** | Tarjetas + canvas + modal ISA-18.2; poll hidden; RBAC de vista (operator) vs control (admin/supervisor) |
 | Alarmas de rendimiento | **A** | 7 BOOL; debounce; Settings hot-reload; misma fuente que `/alarms` |
+| Controles ops | **A−** | API + HMI en fuente; CA-OPS-01…04 unitarios; CA-OPS-02/05 HMI planta |
 | BD txn/min | **A−** | Throwaway OK; disco PG remoto no implementado |
 | Multi-edge scope | **A** (diseño) / **manual pendiente** | Filtro `node_id` en código |
 | Prometheus | **N/A** | P3 explícito |
 | Soak planta | **Pendiente** | CA-NPD-02, 14, 15 |
 
-**Veredicto global: A−.** Observabilidad operativa + alarmas ISA-18.2 unificadas, sin tocar el hot path. **A+** cuando soaks 24 h, 2-edge y prueba manual CA-PERF-09/10/13/14 en planta estén cerrados.
+**Veredicto global: A−.** Observabilidad + acción en la misma vista, sin tocar el hot path. **A+** cuando soaks 24 h, 2-edge, prueba manual CA-PERF-09/10/13/14 y CA-OPS-02/05 en planta estén cerrados.
 
 ---
 
@@ -393,7 +397,8 @@ Ejemplo representativo (~35 campos):
 | HTTP metrics | `automation/utils/http_metrics.py` |
 | Txn PG | `automation/utils/db_connections.py` → `query_pg_txn_counters` |
 | HMI sessions | `automation/utils/hmi_session_store.py` → `count_sessions` |
-| Tests | `automation/tests/test_node_performance.py` (14) + `test_performance_alarms.py` (13) |
+| Tests | `automation/tests/test_node_performance.py` + `test_performance_alarms.py` + `test_ops_controls.py` |
+| Controles ops | `automation/utils/ops_controls.py` · `automation/modules/admin/` · `hmi/src/pages/Performance.tsx` |
 | Spec alarmas | [specs/06-PERFORMANCE-ALARMS.md](../specs/06-PERFORMANCE-ALARMS.md) |
 | Hot path (contraste) | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) |
 
@@ -477,6 +482,36 @@ Layout: header (nodo, área, uptime, edad del snapshot, NTP) → fila gauges (CP
 
 ---
 
+## 12. Controles operativos en `/performance` (2026-08-25)
+
+Observabilidad y acción en el mismo lugar. No hay vista de administración separada.
+
+| Principio | Implementación |
+|---|---|
+| Contextualidad | Forzar réplica si cola > 1000; vaciar cola si > 5000 y admin; limpiar huérfanos si `CATALOG_ORPHAN_ROWS > 0` |
+| Roles | Vista: no guest. Control: admin/supervisor/sudo. Destructivo (vaciar SAF, huérfanos): admin/sudo. Backend `@auth_roles` + `require_*_role` |
+| Confirmación | Restart / rebuild: modal. Vaciar SAF: checkbox + `CONFIRMAR`. Huérfanos: checkbox + edad 5/10/30/60 |
+| Auditoría | `persist_system_event` → Events `classification=System`; usuario + razón; criticity 2/3/5 |
+| No bloqueante | Restart/retry/sync/rebuild → HTTP 202; restart en hilo daemon; UI poll 3 s |
+
+Endpoints: `POST /api/admin/workers/restart`, `/saf/retry`, `/saf/reset`, `/catalog/sync`, `/catalog/clean-orphans`, `/tags/rebuild-derived`, `/settings/update`.
+
+Métricas nuevas en el snapshot: `WORKERS`, `CATALOG_ORPHAN_ROWS`, `DERIVED_TAGS_COUNT`. PENDING del journal sigue sagrado en el hot path; `JournalWriter.drop_unsent(confirm=True)` es el único discard intencional.
+
+Los IDs de la spec complementaria (**CA-PERF-01…05**) se registran aquí como **CA-OPS-01…05** para no chocar con CA-PERF-09…14 (alarmas ISA-18.2).
+
+| ID | Criterio | Evidencia |
+|---|---|---|
+| CA-OPS-01 | Estado de LoggerWorker, CatalogReplicator, MetricsSampler | `worker_snapshot()`; widget Workers en `Performance.tsx`; `test_ca_ops_01_three_workers` |
+| CA-OPS-02 | Botones de control no visibles a operator | `canControlOps` / `canDestroyOps`; `require_control_role` 403; `test_ca_ops_02_operator_cannot_control`. **HMI planta pendiente** |
+| CA-OPS-03 | Vaciar cola solo si profundidad > 5000, admin, modal CONFIRMAR | HMI `queue > 5000 && canDestroy`; `saf_reset(confirm=False)` → `OpsControlError`; `test_ca_ops_03_reset_requires_confirm` |
+| CA-OPS-04 | Toda acción en Events con usuario y razón | `_audit` → `persist_system_event`; `test_ca_ops_04_reset_audits_and_drops` + restart/retry/orphans |
+| CA-OPS-05 | Poll refleja restarting → alive | Flag `_RESTARTING`; `test_ca_ops_05_restarting_state`. Transición HMI **pendiente** de planta |
+
+**Veredicto de esta capa: A−.** Código y unit tests. No A+ hasta evidencia HMI (roles operator vs admin, modal CONFIRMAR, toast, estado Reiniciando…) y soak de planta.
+
+---
+
 ## 10. Changelog
 
 | Fecha | Cambio |
@@ -487,3 +522,4 @@ Layout: header (nodo, área, uptime, edad del snapshot, NTP) → fila gauges (CP
 | 2026-08-19 | Alarmas de rendimiento unificadas (spec 06); CA-PERF-09…14; veredicto **A−** se mantiene (soaks + prueba manual de modal pendientes para A+) |
 | 2026-08-19 | UI profesional `/performance` (spec 07); CA-UI-06…10; umbrales PUT para supervisor; veredicto **A−** |
 | 2026-08-19 | Catálogo `SYS.PERF.*` persistido en `Tags` al conectar/reconectar (CA-SAF-TAGS-01…02); evita PENDING eterno de `alarm_summary` |
+| 2026-08-25 | Controles ops en `/performance` (`/api/admin/…`, roles, modales, Events); CA-OPS-01…05. Los IDs de la spec (CA-PERF-01…05) se aliasan a CA-OPS para no chocar con CA-PERF-09…14 de alarmas ISA-18.2 |

@@ -287,6 +287,10 @@ def db_rollback(func, args, kwargs):
 
     except Exception as e:
         from .db_io import is_stale_historian_handle, log_historian_link_issue
+        from ..catalog.partition import CrossAreaBindError
+
+        if isinstance(e, CrossAreaBindError):
+            raise
 
         _, _, e_traceback = sys.exc_info()
         e_message = str(e)

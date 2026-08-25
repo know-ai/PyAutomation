@@ -7,9 +7,11 @@
 | **Fecha baseline** | 2026-08-13 (cola RAM = C+ / B−) |
 | **Re-auditoría** | 2026-08-13 (Directiva Fénix + Exact-Once + Ciclo Atómico + Milisegundo Exacto) |
 | **Compactación** | 2026-08-18 |
+| **Aislamiento Bulkhead** | 2026-08-25 — replicación por dominio y por muestra; drop de tags ausentes a 3 reintentos |
+| **Controles ops** | 2026-08-25 — `POST /api/admin/saf/retry` y `/saf/reset` desde `/performance`; `drop_unsent(confirm=True)` es el único discard intencional de PENDING |
 | **Fuentes absorbidas** | `STORE_AND_FORWARD`, `PERSISTENCE_FLOW`, `T01_SOAK_LAST_RUN` |
-| **Complementa** | [AUDIT_DB.md](./AUDIT_DB.md) (hub/reconnect no revocan A+), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) (journal por `node_id`) |
-| **Veredicto** | **A+** durabilidad. Outbox WAL + exact-once remoto. Residual: particionado temporal del historiador a años; soak planta 30 min / 24 h |
+| **Complementa** | [AUDIT_DB.md](./AUDIT_DB.md) (hub/reconnect no revocan A+), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) (journal por `node_id`), [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md) (sync por fila) |
+| **Veredicto** | **A+** durabilidad. **A** aislamiento de fallos en código (CA-ISOLATION-01…04). **A−** planta: CA-ISOLATION-05 (Txn/min 1 h) pendiente |
 | **Clasificación** | Auditoría de arquitectura de datos |
 
 ---
@@ -85,6 +87,8 @@ Scorecard de clase mundial (hoy todos ✅ salvo residual de retención a años):
 
 Nota ponderada ≈ 4.8 / 5 → **A+**.
 
+**Descartar PENDING** no forma parte del hot path. `JournalWriter.drop_unsent(confirm=True)` (API `POST /api/admin/saf/reset`, rol admin/sudo, modal `CONFIRMAR` en `/performance`) es la única vía operativa. Forzar un ciclo: `POST /api/admin/saf/retry`. Auditoría: Events `SAF queue emptied` / `SAF retry requested`. Runbook: [docs/node-performance-runbook.md](../docs/node-performance-runbook.md). Tests: `test_ops_controls.py`.
+
 ### Hallazgos cerrados
 
 | ID | Original | Cierre |
@@ -124,6 +128,24 @@ El histórico refleja el valor por ciclo de procesamiento, no cada `set_value`.
 ### 3.3 Milisegundo Exacto
 
 Payload journal de tags en ms (`timebase.TAGVALUE_TIMESTAMP_RESOLUTION = 3`). Residuos 73–403 µs caen en el mismo tick. Events / AlarmSummary / Logs: resolución por defecto Peewee (AlarmSummary ya escala a ms en `ensure_schema`). Lecturas HMI aceptan ticks legacy s / ms / µs (`DataLogger._as_epoch_seconds`).
+
+### 3.4 Bulkhead — aislamiento de fallos (2026-08-25)
+
+Un tag inexistente en el remoto, un evento fallido o un `IntegrityError` de alarma **no** deben detener los demás dominios ni las demás muestras del mismo ciclo.
+
+| Principio | Implementación |
+|---|---|
+| Aislamiento por dominio | `RemoteReplicator.replicate_once` itera `_ordered_domain_batches` (`tag` → alarmas → events → logs). Excepción o PENDING de un dominio no aborta los demás |
+| Aislamiento por muestra | `write_batch_outcomes` devuelve `list[bool]` por elemento; `mark_sent` / `mark_pending` son por id. Insert de TagValue: lote, y si falla, reintento **por fila** |
+| Degradación controlada | Tag ausente en `Tags` remoto: PENDING hasta 3 misses, luego ACK + log `Dropping sample for missing tag … after 3 retries` + `request_full_sync` (no bloquea el hot path) |
+| Eventos / alarmas / logs | `_write_*_outcomes` captura excepción **por muestra**; no hay transacción global del lote |
+
+| ID | Criterio | Resultado | Evidencia |
+|---|---|---|---|
+| **CA-ISOLATION-01** | Tag inexistente no bloquea eventos ni alarmas del mismo ciclo | **PASS** | `TestReplicatorDomainIsolation.test_missing_tag_does_not_block_events_or_alarms` |
+| **CA-ISOLATION-05** | Txn/min en reposo < 50 con errores de integridad persistentes | **PENDIENTE** | Soak planta 1 h + dashboard `DB_TXN_PER_MIN` (proceso, no clúster) |
+
+**No A+ de aislamiento de planta** hasta CA-ISOLATION-05. El A+ de durabilidad (T-01 / exact-once) no se revoca.
 
 ---
 
@@ -218,7 +240,10 @@ Soak planta sugerido: `SAF_SOAK_SECONDS=1800 python -m unittest automation.tests
 
 ```bash
 python -m unittest automation.tests.test_store_and_forward -v
+python -m unittest automation.tests.test_store_and_forward.TestReplicatorDomainIsolation -v
 ```
+
+Aislamiento: `test_missing_tag_does_not_block_events_or_alarms` (CA-ISOLATION-01). DataLogger/Machines: `automation.tests.test_filtered_tag_integrity` (CA-ISOLATION-03/04).
 
 Outage de cable: HMI viva + PENDING creciente + replica al volver = [AUDIT_DB.md](./AUDIT_DB.md) (timeout). `connection already closed` post-CRITICAL = handle muerto, no fallo de journal.
 
@@ -248,4 +273,5 @@ Outage de cable: HMI viva + PENDING creciente + replica al volver = [AUDIT_DB.md
 | Attach | `automation/managers/db.py` |
 | Worker | `automation/workers/logger.py` |
 | Health | `GET /api/health/saf` |
-| Tests | `automation/tests/test_store_and_forward.py` |
+| Controles ops | `POST /api/admin/saf/retry`, `POST /api/admin/saf/reset` · `ops_controls.py` |
+| Tests | `automation/tests/test_store_and_forward.py` + `test_ops_controls.py` |

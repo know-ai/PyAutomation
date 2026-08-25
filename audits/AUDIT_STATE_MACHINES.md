@@ -58,7 +58,7 @@ Machine (singleton)  →  StateMachineManager  →  StateMachineWorker
 |---|---|
 | `StateMachineCore` | Estados `start → wait → run` (+ `restart` / `reset`). Buffers, suscripción a tags, `notify`, `loop` |
 | `AutomationStateMachine` | Añade `test` y `sleep` |
-| `DAQ` | SM de **sondeo** OPC UA; un ejemplar por `scan_time` (`DAQ-200`, `DAQ-1000`, …) |
+| `DAQ` | SM de **sondeo** OPC UA; un ejemplar por `(área, scan_time)` (`Linea1.DAQ-1000`, `Linea2.DAQ-200`, …). Sin área: legado `DAQ-1000` |
 | `OPCUAServer` | SM que publica CVT/alarmas/engines al address space |
 | `ProcessType` | Variable de proceso. `read_only=True` + `tag` = **entrada** de campo. `read_only=False` = **salida** que escribe CVT (`create_tag_internal_process_type`) |
 
@@ -178,7 +178,7 @@ DAQ y `OPCUAServer` **saltan** ese contrato (`while_waiting` → `wait_to_run` i
 Campo / PLC
     │  scan_time del tag (ms)
     ├─ ≤ 100 ms o None  →  DAS (suscripción OPC UA, datachange)
-    └─ > 100 ms         →  DAQ-<scan_time>  (poll, intervalo = scan_time/1000 s)
+    └─ > 100 ms         →  {area}.DAQ-<scan_time>  (poll; un poller por línea y ms)
             │
             ▼
          CVT  (1 Hz…N Hz según scan_time y deadband)
@@ -253,7 +253,7 @@ No es un muestreo configurable de la SM. Cada `set_value` de campo que pasa dead
 
 ## 5. Ejemplo numérico — OPC UA 200 ms, SM 1 s, `buffer_size=40`
 
-1. Tag con `scan_time=200` → se crea/reutiliza `DAQ-200`, `interval=0.2` s, modo async.
+1. Tag con `scan_time=200` en Linea1 → se crea/reutiliza `Linea1.DAQ-200` (`DAQ-200` en modo monolítico).
 2. Cada 200 ms DAQ lee el nodo, `cvt.set_value` → `MachineObserver` → `notify` → `inlet_flow.value` = último caudal.
 3. LDS (ejemplo) con `machine_interval=1.0` y `buffer_size=40`:
    - cada 1 s `verify_inputs()` hace `self.buffer['inlet_mass_flow'](valor_actual)`;
@@ -279,7 +279,7 @@ machine.subscribe_to(tag, default_tag_name=?)
     → ProcessType.tag = tag
     → attach MachineObserver
     → restart_buffer()     # core C, vacío
-    → machines_engine.bind_tag
+    → machines_engine.bind_tag   # IntegrityError/FK missing: log + continue (CA-ISOLATION-04)
 ```
 
 Unsubscribe: `tag.detach_machine(self)` **antes** de limpiar `ProcessType.tag` (evita notify a SM fantasma). Si un DAQ se queda sin tags, el manager lo **elimina** del registro.

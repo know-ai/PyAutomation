@@ -8,6 +8,7 @@ from ..dbmodels import Machines, TagsMachines, Tags
 from .core import BaseEngine, BaseLogger
 from ..utils.decorators import db_rollback
 from ..models import IntegerType, StringType, FloatType
+from ..catalog.partition import CrossAreaBindError, bind_areas_from_objects, ensure_same_partition
 from ..tags.tag import Tag
 import logging
 from peewee import IntegrityError
@@ -231,6 +232,16 @@ class MachinesLogger(BaseLogger):
         """
         if not self.check_connectivity():
             try:
+                tag_area, machine_area = bind_areas_from_objects(tag, machine)
+                ensure_same_partition(
+                    tag_area,
+                    machine_area,
+                    tag_name=getattr(tag, "name", None),
+                    machine_name=getattr(getattr(machine, "name", None), "value", None),
+                )
+            except CrossAreaBindError:
+                raise
+            try:
                 from ..catalog.mutations import persist_tagsmachines_bind
 
                 persist_tagsmachines_bind(
@@ -256,11 +267,30 @@ class MachinesLogger(BaseLogger):
             )
             return None
 
+        tag_area, machine_area = bind_areas_from_objects(
+            tag, machine, tag_row=tag_row, machine_row=machine_row
+        )
+        ensure_same_partition(
+            tag_area,
+            machine_area,
+            tag_name=getattr(tag, "name", None),
+            machine_name=getattr(getattr(machine, "name", None), "value", None),
+        )
+
         existing_bind = TagsMachines.get_or_none(tag=tag_row, machine=machine_row)
         if existing_bind is not None:
             if default_tag_name is not None and existing_bind.default_tag_name != default_tag_name:
-                existing_bind.default_tag_name = default_tag_name
-                existing_bind.save()
+                try:
+                    existing_bind.default_tag_name = default_tag_name
+                    existing_bind.save()
+                except IntegrityError as exc:
+                    logging.getLogger("pyautomation").warning(
+                        "Failed to bind tag %s to machine %s: %s. Continuing with next bind.",
+                        tag.name,
+                        machine.name.value,
+                        exc,
+                    )
+                    return None
         else:
             try:
                 TagsMachines.create(
@@ -277,7 +307,13 @@ class MachinesLogger(BaseLogger):
                     pass
                 existing_bind = TagsMachines.get_or_none(tag=tag_row, machine=machine_row)
                 if existing_bind is None:
-                    raise
+                    logging.getLogger("pyautomation").warning(
+                        "Failed to bind tag %s to machine %s: %s. Continuing with next bind.",
+                        tag.name,
+                        machine.name.value,
+                        exc,
+                    )
+                    return None
                 logging.getLogger("pyautomation").warning(
                     "tagsmachines bind %s ↔ %s already exists; reusing",
                     tag.name,

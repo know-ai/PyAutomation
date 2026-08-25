@@ -27,6 +27,26 @@ APPLICATION_NAME = "PyAutomationIO"
 APPLICATION_NAME_PREFIX = "PyAutomationIO"
 DEFAULT_CONNECTIONS_ALERT = 6
 _CONNECT_GATE = threading.local()
+_TXN_LOCK = threading.Lock()
+_TXN_COMMITS = 0
+
+
+def note_local_commit() -> None:
+    """Count a commit on this process's tracked historian sockets (per-edge Txn/min)."""
+    global _TXN_COMMITS
+    with _TXN_LOCK:
+        _TXN_COMMITS += 1
+
+
+def local_txn_commit_count() -> int:
+    with _TXN_LOCK:
+        return _TXN_COMMITS
+
+
+def reset_local_txn_commit_count() -> None:
+    global _TXN_COMMITS
+    with _TXN_LOCK:
+        _TXN_COMMITS = 0
 
 
 def historian_connect_forced() -> bool:
@@ -293,6 +313,10 @@ class TrackedPostgresqlDatabase(PostgresqlDatabase):
         REGISTRY.unregister(conn, owner=self)
         return super()._close(conn)
 
+    def commit(self):
+        super().commit()
+        note_local_commit()
+
     def close_all(self):
         try:
             if not self.is_closed():
@@ -310,6 +334,10 @@ class TrackedMySQLDatabase(MySQLDatabase):
     def _close(self, conn):
         REGISTRY.unregister(conn, owner=self)
         return super()._close(conn)
+
+    def commit(self):
+        super().commit()
+        note_local_commit()
 
     def close_all(self):
         try:

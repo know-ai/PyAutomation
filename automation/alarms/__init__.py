@@ -366,8 +366,12 @@ class Alarm(StateMachine):
     def abnormal_condition(self):
         r"""
         Triggers transition to an alarm state (abnormal).
+
+        Already Unacknowledged: no-op (ISA-18.2 does not re-annunciate).
         """
         current_state = self.current_state.name.lower()
+        if current_state == "unack_alarm":
+            return
         transition_name = f'{current_state}_to_unack_alarm'
         self.__transition(transition_name=transition_name)
 
@@ -375,6 +379,9 @@ class Alarm(StateMachine):
     def normal_condition(self):
         r"""
         Triggers transition to normal or return-to-normal states.
+
+        RTN Unacknowledged with condition still normal: no-op. The operator
+        must acknowledge to reach Normal (ISA-18.2).
         """
         current_state = self.current_state.name.lower()
 
