@@ -149,9 +149,7 @@ class CVT:
             scope = get_node_scope()
         except (ImportError, AttributeError):
             scope = None
-        if scope is not None and getattr(scope, "enabled", False):
-            if not getattr(scope, "is_valid", False):
-                return None, "Invalid node scope"
+        if scope is not None and getattr(scope, "enabled", False) and getattr(scope, "is_valid", False):
             area = area or getattr(scope, "area", None)
             owner_node = owner_node or getattr(scope, "node_id", None)
             owns_area = getattr(scope, "owns_area", None)

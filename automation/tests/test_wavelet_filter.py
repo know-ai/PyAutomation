@@ -53,7 +53,24 @@ class TestWaveletNaming(unittest.TestCase):
     def test_filtered_display_name_suffix(self):
         tag = _TagStub(name="Supe.Linea1.FI_01", display_name="Flujo 01")
         tag.get_display_name = lambda: "Flujo 01"
-        self.assertEqual(filtered_display_name(tag), "Flujo 01.filtro")
+        self.assertEqual(filtered_display_name(tag), "Supe.Linea1.FI_01.f")
+
+    def test_filtered_display_name_raw_from_qualified(self):
+        tag = _TagStub(name="Supe.Linea1.FI_01", display_name="Supe.Linea1.FI_01")
+        tag.get_display_name = lambda: "Supe.Linea1.FI_01"
+        self.assertEqual(filtered_display_name(tag), "Supe.Linea1.FI_01.f")
+
+    def test_filtered_display_name_strips_scoped_prefix(self):
+        tag = _TagStub(name="Supe.Linea1.FI_01", display_name="Linea1 · Flujo 01")
+        tag.get_display_name = lambda: "Linea1 · Flujo 01"
+        self.assertEqual(filtered_display_name(tag), "Supe.Linea1.FI_01.f")
+
+    def test_filtered_display_name_unique_across_areas(self):
+        linea1 = _TagStub(name="Linea1.FI_02", display_name="FI_02")
+        linea2 = _TagStub(name="Linea2.FI_02", display_name="FI_02")
+        self.assertEqual(filtered_display_name(linea1), "Linea1.FI_02.f")
+        self.assertEqual(filtered_display_name(linea2), "Linea2.FI_02.f")
+        self.assertNotEqual(filtered_display_name(linea1), filtered_display_name(linea2))
 
     def test_propagate_renames_filtered_tag_and_display(self):
         from automation.signal_conditioning.filtered_tags import propagate_filtered_tag_identity
@@ -65,7 +82,7 @@ class TestWaveletNaming(unittest.TestCase):
         derived = _TagStub(
             id="f1",
             name="Area.Old.f",
-            display_name="Viejo.filtro",
+            display_name="Viejo.f",
             description="old",
         )
         derived.get_display_name = lambda: derived.display_name
@@ -98,7 +115,7 @@ class TestWaveletNaming(unittest.TestCase):
 
         self.assertIs(result, derived)
         self.assertEqual(derived.name, "Area.New.f")
-        self.assertEqual(derived.display_name, "Nuevo.filtro")
+        self.assertEqual(derived.display_name, "Area.New.f")
         self.assertNotIn("Area.Old.f", fake_app.das.buffer)
 
     def test_sync_filtered_mirrors_unit_display_unit_variable(self):
@@ -115,7 +132,7 @@ class TestWaveletNaming(unittest.TestCase):
         source.get_display_name = lambda: "Flujo"
         derived = _TagStub(
             name="Area.FI.f",
-            display_name="Flujo.filtro",
+            display_name="Flujo.f",
             description="Wavelet filtered · raw",
             unit="bbl/day",
             display_unit="bbl/day",
@@ -129,9 +146,11 @@ class TestWaveletNaming(unittest.TestCase):
         derived.set_variable = lambda variable: setattr(derived, "variable", variable)
 
         changed = sync_filtered_tag_metadata(source, derived)
+        self.assertTrue(changed["display_name"])
         self.assertTrue(changed["unit"])
         self.assertTrue(changed["display_unit"])
         self.assertTrue(changed["variable"])
+        self.assertEqual(derived.display_name, "Area.FI.f")
         self.assertEqual(derived.unit, "bbl/hr")
         self.assertEqual(derived.display_unit, "bbl/hr")
         self.assertEqual(derived.variable, "VolumetricFlow")

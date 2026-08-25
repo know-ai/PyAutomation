@@ -9,13 +9,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 WORKSPACE_KIND = "real-time-trends"
-WORKSPACE_SCHEMA_VERSION = 1
+WORKSPACE_SCHEMA_VERSION = 2
 WORKSPACE_SCOPE = "station"
 MAX_STATION_CHARTS = 24
 TITLE_MAX_LEN = 80
 MAX_TAGS_PER_CHART = 16
-BUFFER_SIZE_MIN = 120
-BUFFER_SIZE_MAX = 360
+TIME_SPAN_OPTIONS_MINUTES = (1, 2, 3, 5)
+DEFAULT_TIME_SPAN_MINUTES = 2
 MIN_GRID_W = 4
 MAX_GRID_W = 12
 MIN_GRID_H = 6
@@ -58,6 +58,35 @@ def _sanitize_tag_names(value: Any) -> list[str]:
     return names
 
 
+def _time_span_from_legacy_buffer(buffer_size: Any) -> int:
+    """Migrate old point-count buffers (120–360 @ ~1 Hz) to minutes."""
+    try:
+        parsed = int(buffer_size)
+    except (TypeError, ValueError):
+        return DEFAULT_TIME_SPAN_MINUTES
+    if parsed <= 90:
+        return 1
+    if parsed <= 150:
+        return 2
+    if parsed <= 240:
+        return 3
+    return 5
+
+
+def _sanitize_time_span_minutes(raw: dict[str, Any]) -> int:
+    value = raw.get("timeSpanMinutes")
+    if value is not None:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            parsed = None
+        if parsed in TIME_SPAN_OPTIONS_MINUTES:
+            return parsed
+    if raw.get("bufferSize") is not None:
+        return _time_span_from_legacy_buffer(raw.get("bufferSize"))
+    return DEFAULT_TIME_SPAN_MINUTES
+
+
 def _sanitize_chart(raw: Any, index: int) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
@@ -70,7 +99,7 @@ def _sanitize_chart(raw: Any, index: int) -> dict[str, Any] | None:
         "id": chart_id,
         "title": _sanitize_title(raw.get("title"), f"Chart {index + 1}"),
         "tagNames": _sanitize_tag_names(raw.get("tagNames")),
-        "bufferSize": _clamp_int(raw.get("bufferSize"), BUFFER_SIZE_MIN, BUFFER_SIZE_MAX, BUFFER_SIZE_MIN),
+        "timeSpanMinutes": _sanitize_time_span_minutes(raw),
         "x": _clamp_int(raw.get("x"), 0, MAX_GRID_W - MIN_GRID_W, 0),
         "y": _clamp_int(raw.get("y"), 0, 10_000, 0),
         "w": _clamp_int(raw.get("w"), MIN_GRID_W, MAX_GRID_W, 6),

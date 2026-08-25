@@ -125,12 +125,13 @@ export function formatTimestamp(value: string | Date | null | undefined, timeZon
   }
 }
 
-/** Date whose local wall-clock equals the instant in ``timeZone`` (Plotly). */
+/** Date whose local wall-clock equals the instant in ``timeZone`` (Plotly).
+ * Always rewrite components so Plotly (UTC date axis) shows plant/local time
+ * instead of the OPC UA / ISO-UTC clock.
+ */
 export function toDisplayDate(value: string | Date, timeZone: string): Date {
   const date = parseTimestamp(value);
   if (Number.isNaN(date.getTime()) || !timeZone) return date;
-  const browserTz = getBrowserTimeZone();
-  if (!browserTz || timeZone === browserTz) return date;
   const parts = getTimeZoneParts(date, timeZone);
   return new Date(
     parts.year,

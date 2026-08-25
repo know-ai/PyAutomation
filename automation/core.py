@@ -750,9 +750,10 @@ class PyAutomation(Singleton):
 
         scope = self._refresh_node_scope()
         skip_name_rules = bool(skip_validation or reload or tag_name_validation_skipped())
-        if scope.enabled:
-            if not scope.is_valid:
+        if scope.enabled and not scope.is_valid:
+            if not skip_name_rules:
                 return None, "Multi-edge acquisition identity is not configured"
+        elif scope.enabled:
             if reload and (not area or not owner_node):
                 return None, f"Tag '{name}' is missing area/owner_node"
             area = area or scope.area
@@ -5306,7 +5307,7 @@ class PyAutomation(Singleton):
 
         scope = self._refresh_node_scope()
         skip_name_rules = bool(skip_validation or reload or alarm_name_validation_skipped())
-        if scope.enabled and not scope.is_valid:
+        if scope.enabled and not scope.is_valid and not skip_name_rules:
             return None, "Multi-edge node identity is not configured"
 
         if not skip_name_rules and scope.enabled:

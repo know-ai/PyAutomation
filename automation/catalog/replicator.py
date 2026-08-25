@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from ..utils.system_event_audit import clip, persist_system_event
 from ..utils.audit_metrics import cooldown_allows
 from ..workers.worker import BaseWorker
-from .alarms import set_conflict, set_local_only, set_sync_failed
+from .alarms import set_conflict, set_local_only, set_orphan_rows, set_sync_failed
 from .conflict import VersionStamp, resolve
 from .content_hash import contents_equal
 from .identity import (
@@ -53,13 +53,14 @@ from .versions import (
 
 _LOGGER = logging.getLogger("pyautomation")
 _BATCH = 200
-_FAIL_THRESHOLD = 3
+_FAIL_THRESHOLD = 5
+_ORPHAN_THRESHOLD = 5
 _LOCAL_ONLY_S = 3600.0
 _ONLINE_INTERVAL_S = 300.0
 # User rows also invalidate via PG NOTIFY / Redis Pub/Sub (user_cache).
 # This worker is disaster-recovery catch-up, not the <2s login path.
 _CATCHUP_INTERVAL_S = 30.0
-_CYCLE_TIMEOUT_S = 5.0
+_CYCLE_TIMEOUT_S = 10.0
 _FULL_SCAN_INTERVAL_S = 300.0
 _EVENT_DELTA_THRESHOLD = 50
 _EXCEPTION_EVENT_COOLDOWN_S = 300.0
@@ -157,6 +158,8 @@ class CatalogReplicatorWorker(BaseWorker):
         self._cycle_integrity_errors = 0
         self._cycle_deferred_errors = 0
         self._consecutive_integrity_cycles = 0
+        self._consecutive_errors = 0
+        self._orphan_latched = False
 
     def stop(self):
         super().stop()
@@ -226,6 +229,7 @@ class CatalogReplicatorWorker(BaseWorker):
         set_sync_failed(False)
         self._sync_failed_latched = False
         self._failures = 0
+        self._consecutive_errors = 0
         self._transient_remote_errors = 0
         self._catch_up = True
         self._increment_backoff()
@@ -263,23 +267,32 @@ class CatalogReplicatorWorker(BaseWorker):
         while not self.stop_event.is_set():
             future = self._thread_pool_executor().submit(self._cycle_in_thread, False)
             try:
-                future.result(timeout=5.0)
+                future.result(timeout=_CYCLE_TIMEOUT_S)
             except FuturesTimeoutError:
                 _LOGGER.warning(
                     "Catalog sync thread timeout, skipping cycle. (limit=%.1fs)",
                     _CYCLE_TIMEOUT_S,
                 )
+                cancel = getattr(future, "cancel", None)
+                if callable(cancel):
+                    cancel()
             except TimeoutError:
                 _LOGGER.warning(
                     "Catalog sync thread timeout, skipping cycle. (limit=%.1fs)",
                     _CYCLE_TIMEOUT_S,
                 )
+                cancel = getattr(future, "cancel", None)
+                if callable(cancel):
+                    cancel()
             except BaseException as exc:
                 if type(exc).__name__ in ("Timeout", "TimeoutError"):
                     _LOGGER.warning(
                         "Catalog sync thread timeout, skipping cycle. (limit=%.1fs)",
                         _CYCLE_TIMEOUT_S,
                     )
+                    cancel = getattr(future, "cancel", None)
+                    if callable(cancel):
+                        cancel()
                 elif isinstance(exc, Exception):
                     _LOGGER.exception("Catalog sync thread exception.")
                     self._failures += 1
@@ -383,10 +396,21 @@ class CatalogReplicatorWorker(BaseWorker):
 
         since_ms = int(self._last_remote_version_ms or 0)
         local_rows_by_table = {table: self._local.read_all(table) for table in REPLICATED_TABLES}
-        remote_rows_by_table = {
-            table: self._load_remote_rows(table, full_scan=full_scan, since_ms=since_ms)
-            for table in REPLICATED_TABLES
-        }
+        remote_rows_by_table: dict[str, list] = {}
+        row_errors = 0
+        for table in REPLICATED_TABLES:
+            try:
+                remote_rows_by_table[table] = self._load_remote_rows(
+                    table, full_scan=full_scan, since_ms=since_ms
+                )
+            except Exception as exc:
+                remote_rows_by_table[table] = []
+                if _is_transient_connection_error(exc):
+                    self._transient_remote_errors += 1
+                    _LOGGER.warning("catalog load skipped (remote connection) table=%s", table)
+                else:
+                    row_errors += 1
+                    _LOGGER.exception("catalog load failed table=%s", table)
         local_index = {
             table: index_by_identity(table, local_rows_by_table[table]) for table in REPLICATED_TABLES
         }
@@ -402,7 +426,7 @@ class CatalogReplicatorWorker(BaseWorker):
             )
             remote_index[child] = index_by_identity(child, remote_rows_by_table[child])
 
-        pushed = pulled = auto_resolved = row_errors = 0
+        pushed = pulled = auto_resolved = 0
         for table in REPLICATED_TABLES:
             try:
                 table_pending = pending_pks.get(table) or set()
@@ -426,64 +450,49 @@ class CatalogReplicatorWorker(BaseWorker):
                 auto_resolved += c
                 row_errors += e
             except Exception as exc:
-                row_errors += 1
                 if _is_transient_connection_error(exc):
                     self._transient_remote_errors += 1
                     _LOGGER.warning("catalog sync table skipped (remote connection) table=%s", table)
                 else:
+                    row_errors += 1
                     _LOGGER.exception("catalog sync table failed table=%s", table)
 
         self._unresolved = 0
-        if self._transient_remote_errors:
-            reset_replica_database()
-            from .provider import set_catalog_source
-
-            set_catalog_source("local")
-            self._remote_available = False
-            if self._remote_outage_since is None:
-                self._remote_outage_since = time.monotonic()
+        connection_errors = self._transient_remote_errors
+        deferred = self._cycle_deferred_errors + self._cycle_integrity_errors
+        if connection_errors:
+            _LOGGER.warning(
+                "Catalog sync had %s remote connection error(s); remaining tables continued, retry next cycle",
+                connection_errors,
+            )
+            self._catch_up = True
+        if connection_errors or row_errors or deferred:
+            self._consecutive_errors += 1
+            self._catch_up = True
+            update_metrics(consecutive_failures=self._consecutive_errors)
+            if self._consecutive_errors >= _FAIL_THRESHOLD:
+                self._latch_sync_failed(True)
+            else:
+                self._latch_sync_failed(False)
+        else:
+            self._consecutive_errors = 0
             self._failures = 0
             self._latch_sync_failed(False)
-            self._increment_backoff()
-            self._catch_up = True
-            _LOGGER.warning(
-                "Catalog sync aborted after %s remote connection error(s); will retry with backoff",
-                self._transient_remote_errors,
-            )
-            close_replica_thread_connection()
-            return {
-                "skipped": True,
-                "reason": "remote-connection-lost",
-                "errors": self._transient_remote_errors,
-            }
-        if row_errors:
-            self._failures += 1
-            latch = self._failures >= _FAIL_THRESHOLD
-            self._latch_sync_failed(latch)
-            update_metrics(consecutive_failures=self._failures)
-            self._catch_up = True
-            self._consecutive_integrity_cycles = 0
-        else:
-            self._failures = 0
             update_metrics(consecutive_failures=0)
-            deferred = self._cycle_deferred_errors + self._cycle_integrity_errors
-            if deferred:
-                self._catch_up = True
-                self._consecutive_integrity_cycles += 1
-                _LOGGER.warning(
-                    "Catalog sync deferred %s integrity error(s); retrying next cycle",
-                    deferred,
-                )
-                if self._consecutive_integrity_cycles >= _FAIL_THRESHOLD:
-                    self._latch_sync_failed(True)
-                    update_metrics(consecutive_failures=self._consecutive_integrity_cycles)
-                else:
-                    self._latch_sync_failed(False)
-            else:
+            if pending_count() == 0 and pushed + pulled < _EVENT_DELTA_THRESHOLD:
+                self._catch_up = False
+        if deferred and not connection_errors:
+            self._consecutive_integrity_cycles += 1
+            _LOGGER.warning(
+                "Catalog sync deferred %s integrity error(s); retrying next cycle",
+                deferred,
+            )
+            self._latch_orphan_rows(self._consecutive_integrity_cycles >= _ORPHAN_THRESHOLD)
+        else:
+            if not deferred:
                 self._consecutive_integrity_cycles = 0
-                self._latch_sync_failed(False)
-                if pending_count() == 0 and pushed + pulled < _EVENT_DELTA_THRESHOLD:
-                    self._catch_up = False
+                self._latch_orphan_rows(False)
+        self._failures = self._consecutive_errors
         # Auto-merge always picks a side today — sticky Conflict alarm is for
         # future manual-merge paths only (kept cleared on successful cycles).
         set_conflict(False)
@@ -505,7 +514,12 @@ class CatalogReplicatorWorker(BaseWorker):
             row_errors=row_errors,
             summary=summary,
         )
-        if not row_errors and not self._cycle_integrity_errors and not self._cycle_deferred_errors:
+        if (
+            not row_errors
+            and not connection_errors
+            and not self._cycle_integrity_errors
+            and not self._cycle_deferred_errors
+        ):
             self._last_sync = datetime.now(timezone.utc)
             watermark = replica_watermark_ms()
             self._last_remote_version_ms = watermark or now_ms()
@@ -516,7 +530,9 @@ class CatalogReplicatorWorker(BaseWorker):
             "pushed": pushed,
             "pulled": pulled,
             "conflicts": auto_resolved,
-            "errors": row_errors,
+            "errors": row_errors + connection_errors,
+            "connection_errors": connection_errors,
+            "deferred": deferred,
             "incremental": not full_scan,
         }
 
@@ -538,6 +554,20 @@ class CatalogReplicatorWorker(BaseWorker):
                 cooldown_key="catalog:sync-failed",
             )
         self._sync_failed_latched = bool(active)
+
+    def _latch_orphan_rows(self, active: bool) -> None:
+        set_orphan_rows(active)
+        if active and not self._orphan_latched:
+            self._emit_exception_event(
+                message="Catalog orphan rows",
+                description=clip(
+                    f"Child catalog rows missing parent FKs for {self._consecutive_integrity_cycles} cycles",
+                    256,
+                ),
+                criticity=3,
+                cooldown_key="catalog:orphan-rows",
+            )
+        self._orphan_latched = bool(active)
 
     def _latch_local_only(self, active: bool) -> None:
         """ISA alarm + edge-triggered operator Event when local-only persists."""
@@ -845,7 +875,6 @@ class CatalogReplicatorWorker(BaseWorker):
                             exc,
                         )
                         continue
-                    errors += 1
                     if _is_transient_connection_error(exc):
                         self._transient_remote_errors += 1
                         _LOGGER.warning(
@@ -853,8 +882,9 @@ class CatalogReplicatorWorker(BaseWorker):
                             table,
                             key,
                         )
-                    else:
-                        _LOGGER.exception("catalog sync row failed table=%s key=%s", table, key)
+                        break
+                    errors += 1
+                    _LOGGER.exception("catalog sync row failed table=%s key=%s", table, key)
         return pushed, pulled, conflicts, errors
 
     def _sync_one_key(

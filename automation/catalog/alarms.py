@@ -114,6 +114,22 @@ def set_conflict(active: bool) -> None:
         _LOGGER.debug("ALM.CATALOG.Conflict skipped", exc_info=True)
 
 
+def set_orphan_rows(active: bool) -> None:
+    try:
+        tag = _scoped("SYS.CATALOG.OrphanRows")
+        alarm = _scoped("ALM.CATALOG.OrphanRows")
+        _ensure(
+            tag,
+            alarm,
+            "True when catalog child rows keep missing parent FKs after repeated sync cycles",
+            "Catalog orphan rows",
+            scoped_display_name("Catalog orphan rows"),
+        )
+        _write(tag, bool(active))
+    except Exception:
+        _LOGGER.debug("ALM.CATALOG.OrphanRows skipped", exc_info=True)
+
+
 def set_local_only(active: bool) -> None:
     try:
         tag = _scoped("SYS.CATALOG.LocalOnly")

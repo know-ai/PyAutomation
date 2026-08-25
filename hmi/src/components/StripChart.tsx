@@ -24,6 +24,7 @@ import { VirtualList } from "./VirtualList";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { toDisplayDate } from "../utils/timezone";
 import { resolveTagDisplayLabel } from "../utils/tagDisplayLabel";
+import { isFilteredDerivativeName, sourceTagName } from "../utils/filteredTags";
 import { isDisplayableThreshold, resolveTagThreshold } from "../utils/tagThreshold";
 import { QualityBadge } from "./QualityBadge";
 
@@ -193,20 +194,35 @@ function StripChartInner({
     [filteredTags, config.tagNames]
   );
 
-  const getTagUnit = useCallback(
+  const getTagMeta = useCallback(
     (tagName: string) => {
-      const tag = availableTags.find((t) => t.name === tagName);
-      return tag?.display_unit || tag?.unit || "—";
+      const tag = availableTags.find((item) => item.name === tagName);
+      if (!isFilteredDerivativeName(tagName)) return tag;
+      const source = availableTags.find((item) => item.name === sourceTagName(tagName));
+      if (!source) return tag;
+      return {
+        ...tag,
+        ...source,
+        name: tag?.name ?? tagName,
+        display_name: source.display_name,
+        display_unit: source.display_unit || tag?.display_unit,
+        unit: source.unit || tag?.unit,
+      } as Tag;
     },
     [availableTags]
   );
 
-  const getTagLabel = useCallback(
+  const getTagUnit = useCallback(
     (tagName: string) => {
-      const tag = availableTags.find((t) => t.name === tagName);
-      return resolveTagDisplayLabel(tag, tagName);
+      const tag = getTagMeta(tagName);
+      return tag?.display_unit || tag?.unit || "—";
     },
-    [availableTags]
+    [getTagMeta]
+  );
+
+  const getTagLabel = useCallback(
+    (tagName: string) => resolveTagDisplayLabel(getTagMeta(tagName), tagName),
+    [getTagMeta]
   );
 
   const prunedHistories = useMemo(
@@ -250,19 +266,18 @@ function StripChartInner({
       unitAxis[unit] = idx === 0 ? "y" : "y2";
     });
 
-    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-    const useDisplayTz = Boolean(timeZone && timeZone !== browserTz);
+    const displayTz = timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "";
     const rangeStartIso = new Date(nowMs - timeSpanMs).toISOString();
     const rangeEndIso = new Date(nowMs).toISOString();
-    const xRange = useDisplayTz
-      ? [toDisplayDate(rangeStartIso, timeZone!), toDisplayDate(rangeEndIso, timeZone!)]
+    const xRange = displayTz
+      ? [toDisplayDate(rangeStartIso, displayTz), toDisplayDate(rangeEndIso, displayTz)]
       : [rangeStartIso, rangeEndIso];
 
     const traces: Data[] = config.tagNames.map((tagName, index) => {
       const bufferSlice = prunedHistories[index] || [];
       const unit = getTagUnit(tagName);
-      const x = useDisplayTz
-        ? bufferSlice.map((p) => toDisplayDate(p.timestamp, timeZone!))
+      const x = displayTz
+        ? bufferSlice.map((p) => toDisplayDate(p.timestamp, displayTz))
         : bufferSlice.map((p) => p.timestamp);
       return {
         x,
@@ -285,10 +300,10 @@ function StripChartInner({
         const unit = getTagUnit(tagName);
         const x =
           bufferSlice.length >= 2
-            ? useDisplayTz
+            ? displayTz
               ? [
-                  toDisplayDate(bufferSlice[0].timestamp, timeZone!),
-                  toDisplayDate(bufferSlice[bufferSlice.length - 1].timestamp, timeZone!),
+                  toDisplayDate(bufferSlice[0].timestamp, displayTz),
+                  toDisplayDate(bufferSlice[bufferSlice.length - 1].timestamp, displayTz),
                 ]
               : [bufferSlice[0].timestamp, bufferSlice[bufferSlice.length - 1].timestamp]
             : xRange;

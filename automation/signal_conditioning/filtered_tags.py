@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 
 _FILTER_SUFFIX = ".f"
-_FILTER_DISPLAY_SUFFIX = ".filtro"
+_FILTER_DISPLAY_SUFFIX = ".f"
+_LEGACY_FILTER_DISPLAY_SUFFIX = ".filtro"
+_SCOPED_DISPLAY_SEP = " · "
 
 
 def filtered_tag_name(source_name: str) -> str:
@@ -28,7 +30,17 @@ def source_tag_name(filtered_name: str) -> str:
     return name
 
 
+def _strip_filter_display_suffix(value: str) -> str:
+    base = (value or "").strip()
+    if base.endswith(_LEGACY_FILTER_DISPLAY_SUFFIX):
+        return base[: -len(_LEGACY_FILTER_DISPLAY_SUFFIX)]
+    if base.endswith(_FILTER_DISPLAY_SUFFIX):
+        return base[: -len(_FILTER_DISPLAY_SUFFIX)]
+    return base
+
+
 def _source_display_base(source_tag) -> str:
+    """DisplayNameRaw: friendly label without Site/Area prefix."""
     base = ""
     getter = getattr(source_tag, "get_display_name", None)
     if callable(getter):
@@ -38,17 +50,27 @@ def _source_display_base(source_tag) -> str:
             base = ""
     if not base:
         base = str(getattr(source_tag, "display_name", None) or "").strip()
+    if _SCOPED_DISPLAY_SEP in base:
+        base = base.split(_SCOPED_DISPLAY_SEP, 1)[-1].strip()
+    base = _strip_filter_display_suffix(base)
+    if base and "." in base and not any(ch.isspace() for ch in base):
+        parts = [part for part in base.split(".") if part]
+        if parts:
+            base = parts[-1]
     if not base:
-        name = str(getattr(source_tag, "name", "") or "")
+        name = source_tag_name(str(getattr(source_tag, "name", "") or ""))
         base = name.split(".")[-1] if name else "tag"
-    if base.endswith(_FILTER_DISPLAY_SUFFIX):
-        return base[: -len(_FILTER_DISPLAY_SUFFIX)]
     return base
 
 
 def filtered_display_name(source_tag) -> str:
-    """UI display name for a ``.f`` tag: raw display name + ``.filtro``."""
-    return f"{_source_display_base(source_tag)}{_FILTER_DISPLAY_SUFFIX}"
+    """Globally unique ``Tags.display_name``: qualified ``{source.name}.f``.
+
+    ``tags_display_name`` is unique across the plant. Using only DisplayNameRaw
+    (e.g. ``FI_02.f``) collides between areas. The HMI still renders the raw
+    suffix via ``resolveTagDisplayLabel``.
+    """
+    return filtered_tag_name(str(getattr(source_tag, "name", "") or ""))
 
 
 def filtered_description(source_tag) -> str:
@@ -243,7 +265,7 @@ def propagate_filtered_tag_identity(
     Cascade source identity / engineering fields onto an already-created ``.f`` tag.
 
     - Renames ``old.f`` → ``new.f`` when the raw tag is renamed.
-    - Always realigns ``display_name`` to ``{raw_display}.filtro``.
+    - Always realigns ``display_name`` to the qualified ``{source.name}.f``.
     - Mirrors ``unit``, ``display_unit`` and ``variable`` from the raw tag.
     - Persists mirrored fields to the historian when connected.
     - Remaps wavelet worker + alarm indexes for the rename.

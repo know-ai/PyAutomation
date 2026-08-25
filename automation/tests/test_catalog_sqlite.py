@@ -813,11 +813,97 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
         worker._backoff_step = 2
         self.assertEqual(worker._wait_interval(), _BACKOFF_INTERVALS_S[2])
 
-    def test_transient_row_errors_abort_without_sync_failed_alarm(self):
-        from automation.catalog.replicator import CatalogReplicatorWorker
+    def test_transient_row_errors_do_not_abort_remaining_tables(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker, REPLICATED_TABLES
 
         worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
         worker._remote_available = True
+
+        class InterfaceError(Exception):
+            pass
+
+        synced = []
+
+        def _sync(table, **_k):
+            if table == "alarms":
+                raise InterfaceError("connection already closed")
+            synced.append(table)
+            return (0, 0, 0, 0)
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch(
+            "automation.catalog.replicator.replica_watermark_ms", return_value=1
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_changed", return_value=[]
+        ), patch.object(
+            worker, "_sync_table", side_effect=_sync
+        ), patch("automation.catalog.replicator.set_sync_failed") as set_sync_failed, patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ):
+            result = worker.cycle(force=True)
+        self.assertNotEqual(result.get("reason"), "remote-connection-lost")
+        self.assertGreater(result.get("connection_errors", 0), 0)
+        self.assertIn("tags", synced)
+        self.assertIn("tagsmachines", synced)
+        self.assertNotIn("alarms", synced)
+        self.assertGreater(len(synced), 1)
+        self.assertLess(len(synced), len(REPLICATED_TABLES))
+        set_sync_failed.assert_called_with(False)
+        self.assertEqual(worker._consecutive_errors, 1)
+        self.assertIsNone(worker._last_sync)
+        self.assertTrue(worker._catch_up)
+
+    def test_orphan_rows_latches_on_fifth_deferred_cycle(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+
+        def _sync(table, **_k):
+            if table == "tagsmachines":
+                worker._cycle_deferred_errors += 1
+            return (0, 0, 0, 0)
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_changed", return_value=[]
+        ), patch.object(
+            worker, "_sync_table", side_effect=_sync
+        ), patch("automation.catalog.replicator.set_sync_failed"), patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ) as set_orphan_rows, patch(
+            "automation.catalog.replicator.persist_system_event"
+        ):
+            for _ in range(4):
+                worker.cycle(force=True)
+                self.assertFalse(worker._orphan_latched)
+            worker.cycle(force=True)
+        self.assertTrue(worker._orphan_latched)
+        self.assertEqual(worker._consecutive_integrity_cycles, 5)
+        self.assertEqual(set_orphan_rows.call_args.args[0], True)
+        self.assertIsNone(worker._last_sync)
+
+    def test_sync_failed_latches_on_fifth_consecutive_error_cycle(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
 
         class InterfaceError(Exception):
             pass
@@ -827,14 +913,30 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
 
         with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
             worker, "_historian_ready", return_value=True
-        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch.object(
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch.object(
             worker._local, "read_all", return_value=[]
-        ), patch.object(worker._remote, "read_all", return_value=[]), patch.object(
+        ), patch.object(
+            worker._remote, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_changed", return_value=[]
+        ), patch.object(
             worker, "_sync_table", side_effect=boom
-        ), patch("automation.catalog.replicator.set_sync_failed") as set_sync_failed:
-            result = worker.cycle(force=True)
-            self.assertEqual(result.get("reason"), "remote-connection-lost")
-            set_sync_failed.assert_called_with(False)
+        ), patch("automation.catalog.replicator.set_sync_failed") as set_sync_failed, patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ), patch(
+            "automation.catalog.replicator.persist_system_event"
+        ):
+            for _ in range(4):
+                worker.cycle(force=True)
+                self.assertFalse(worker._sync_failed_latched)
+            worker.cycle(force=True)
+        self.assertTrue(worker._sync_failed_latched)
+        self.assertEqual(worker._consecutive_errors, 5)
+        self.assertEqual(set_sync_failed.call_args.args[0], True)
 
 
 class TestReplicatorIsolation(unittest.TestCase):
@@ -871,18 +973,28 @@ class TestReplicatorIsolation(unittest.TestCase):
         with patch.object(worker.stop_event, "wait", side_effect=_stop):
             worker.run()
         self.assertEqual(len(worker._executor.submitted), 1)
-        self.assertEqual(worker._executor.future.timeout, 5.0)
+        self.assertEqual(worker._executor.future.timeout, 10.0)
 
     def test_run_skips_cycle_on_timeout(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
 
         class TimeoutFuture:
+            def __init__(self):
+                self.cancelled = False
+
             def result(self, timeout=None):
                 raise TimeoutError()
 
+            def cancel(self):
+                self.cancelled = True
+                return True
+
         class FakeExecutor:
+            def __init__(self):
+                self.future = TimeoutFuture()
+
             def submit(self, fn, *args):
-                return TimeoutFuture()
+                return self.future
 
             def shutdown(self, **_kw):
                 return None
@@ -899,6 +1011,7 @@ class TestReplicatorIsolation(unittest.TestCase):
         ) as metrics:
             worker.run()
         metrics.assert_not_called()
+        self.assertTrue(worker._executor.future.cancelled)
 
     def test_incremental_pull_skips_full_remote_read(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
@@ -990,6 +1103,20 @@ class TestReplicatorScopeAndIntegrity(unittest.TestCase):
             remote_index,
         )
         self.assertEqual(reason, "foreign")
+
+    def test_missing_fk_with_known_parent_is_deferred(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        remote_index = {"tags": {"pk:1": {"_pk": "1", "name": "Linea1.FI", "area": "Linea1"}}}
+        reason = worker._skip_pull_reason(
+            "alarms",
+            {"id": 9, "tag_id": 1, "name": "ALM.X"},
+            {"name": "ALM.X"},
+            {"tags": {}},
+            remote_index,
+        )
+        self.assertEqual(reason, "deferred")
 
     def test_integrity_error_continues_and_does_not_latch_sync_failed(self):
         from peewee import IntegrityError

@@ -1,4 +1,5 @@
 import type { Tag } from "../services/tags";
+import { isFilteredDerivativeName, sourceTagName } from "./filteredTags";
 
 /** True when the value looks like Site.Area.Base (dotted identifier path). */
 function looksLikeQualifiedTagName(value: string): boolean {
@@ -28,23 +29,41 @@ export function stripErroneousAreaPrefix(name: string, area?: string | null): st
   return parts.length >= 2 ? rest : trimmed;
 }
 
+export function stripFilterDisplaySuffix(value: string): string {
+  const trimmed = (value || "").trim();
+  if (trimmed.endsWith(".filtro") && trimmed.length > ".filtro".length) {
+    return trimmed.slice(0, -".filtro".length);
+  }
+  if (trimmed.endsWith(".f") && trimmed.length > ".f".length) {
+    return trimmed.slice(0, -".f".length);
+  }
+  return trimmed;
+}
+
+function withFilterSuffix(base: string, filtered: boolean): string {
+  const raw = stripFilterDisplaySuffix(base);
+  return filtered ? `${raw}.f` : raw;
+}
+
 /** Friendly segment for historian filters and table headers. */
 export function historianFriendlyTagLabel(qualifiedName: string): string {
-  const normalized = stripErroneousAreaPrefix(qualifiedName);
+  const filtered = isFilteredDerivativeName(qualifiedName);
+  const source = filtered ? sourceTagName(qualifiedName) : qualifiedName;
+  const normalized = stripErroneousAreaPrefix(source);
   const parts = normalized.split(".").filter(Boolean);
-  if (!parts.length) return qualifiedName;
+  if (!parts.length) return withFilterSuffix(qualifiedName, filtered);
 
   const sysIndex = parts.findIndex((part) => part === "SYS" || part.startsWith("SYS."));
   if (sysIndex >= 0) {
-    return parts.slice(sysIndex).join(".");
+    return withFilterSuffix(parts.slice(sysIndex).join("."), filtered);
   }
   if (parts.length === 3) {
-    return parts[2];
+    return withFilterSuffix(parts[2], filtered);
   }
   if (parts.length > 3) {
-    return parts.slice(-3).join(".");
+    return withFilterSuffix(parts.slice(-3).join("."), filtered);
   }
-  return parts[parts.length - 1];
+  return withFilterSuffix(parts[parts.length - 1], filtered);
 }
 
 /** Strip multi-edge display prefix ``Area · Friendly``. */
@@ -60,21 +79,26 @@ function stripScopedFriendlyPrefix(value: string): string {
 /**
  * Label for chart legends and compact tag chips.
  * Uses DB display_name when it is a friendly label; never repeats Site.Area prefixes.
+ * Filtered (.f) tags always render as ``{DisplayNameRaw}.f``.
  */
 export function resolveTagDisplayLabel(tag: Tag | undefined, qualifiedName: string): string {
   const name = stripErroneousAreaPrefix(tag?.name ?? qualifiedName, tag?.area);
   if (!name) return qualifiedName;
+  const filtered = isFilteredDerivativeName(name);
+  const sourceName = filtered ? sourceTagName(name) : name;
 
-  const displayName = stripScopedFriendlyPrefix((tag?.display_name ?? "").trim());
-  if (displayName && looksLikeFriendlyLabel(displayName) && displayName !== name) {
-    return displayName;
+  const displayName = stripFilterDisplaySuffix(
+    stripScopedFriendlyPrefix((tag?.display_name ?? "").trim())
+  );
+  if (displayName && looksLikeFriendlyLabel(displayName) && displayName !== sourceName && displayName !== name) {
+    return withFilterSuffix(displayName, filtered);
   }
 
-  if (looksLikeQualifiedTagName(name)) {
-    return historianFriendlyTagLabel(name);
+  if (looksLikeQualifiedTagName(sourceName) || looksLikeQualifiedTagName(name)) {
+    return historianFriendlyTagLabel(filtered ? `${sourceName}.f` : sourceName);
   }
 
-  return name;
+  return withFilterSuffix(sourceName || name, filtered);
 }
 
 /** MultiSelect option label for historian catalog tags (DataLogger / Trends). */

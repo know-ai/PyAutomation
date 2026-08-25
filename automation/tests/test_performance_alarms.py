@@ -143,7 +143,7 @@ class TestPerformanceAlarmNames(unittest.TestCase):
         spec = PERF_ALARM_SPECS[0]
         self.assertIn("≥ 85%", threshold_description(spec, None))
         self.assertIn("≥ 92%", threshold_description(spec, 92))
-        self.assertIn("≥ 90%", threshold_description(spec, "none"))
+        self.assertIn("≥ 85%", threshold_description(spec, "none"))
         lag = next(s for s in PERF_ALARM_SPECS if s.key == "saf_lag")
         self.assertIn("≥ 10000ms", threshold_description(lag, None))
         http = next(s for s in PERF_ALARM_SPECS if s.key == "http_5xx")
@@ -175,6 +175,39 @@ class TestPerformanceAlarmNames(unittest.TestCase):
         ), patch.object(mod, "_ensure_bool_alarm"):
             self.assertFalse(mod.ensure_performance_alarms({}))
         app.logger_engine.set_tag.assert_not_called()
+
+    def test_historian_offline_silent_during_startup_grace(self):
+        from automation.utils import performance_alarms as mod
+
+        mod.reset_startup_grace_for_tests()
+        self.addCleanup(mod.reset_startup_grace_for_tests)
+        app = MagicMock()
+        app.is_db_connected.return_value = False
+        scope = MagicMock(enabled=False, is_valid=False)
+        with patch("automation.node_scope.get_node_scope", return_value=scope), patch.object(
+            mod, "_app", return_value=app
+        ), patch.object(mod, "_ensure_bool_alarm"), self.assertLogs(
+            "pyautomation.metrics", level="DEBUG"
+        ) as captured:
+            self.assertFalse(mod.ensure_performance_alarms({}))
+        self.assertTrue(any("startup grace" in line.lower() for line in captured.output))
+        self.assertFalse(any("Historian offline" in line for line in captured.output))
+
+    def test_historian_offline_warns_after_startup_grace(self):
+        from automation.utils import performance_alarms as mod
+
+        mod.reset_startup_grace_for_tests(elapsed_s=20)
+        self.addCleanup(mod.reset_startup_grace_for_tests)
+        app = MagicMock()
+        app.is_db_connected.return_value = False
+        scope = MagicMock(enabled=False, is_valid=False)
+        with patch("automation.node_scope.get_node_scope", return_value=scope), patch.object(
+            mod, "_app", return_value=app
+        ), patch.object(mod, "_ensure_bool_alarm"), self.assertLogs(
+            "pyautomation.metrics", level="WARNING"
+        ) as captured:
+            self.assertFalse(mod.ensure_performance_alarms({}))
+        self.assertTrue(any("Historian offline" in line for line in captured.output))
 
     def test_ensure_persists_seven_tags_when_connected(self):
         from automation.utils import performance_alarms as mod

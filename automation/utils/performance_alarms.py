@@ -24,6 +24,8 @@ _LOGGER = logging.getLogger("pyautomation.metrics")
 
 # Debounce repeated "historian offline" warnings (sampler may call every few seconds).
 _HISTORIAN_OFFLINE_LOG_INTERVAL_S = 3600.0
+_STARTUP_GRACE_S = 15.0
+_process_start_mono: float = time.monotonic()
 _last_historian_offline_log_mono: float = 0.0
 _historian_was_offline: bool = False
 
@@ -115,6 +117,22 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
 )
 
 _SPECS_BY_KEY = {spec.key: spec for spec in PERF_ALARM_SPECS}
+
+
+def _in_startup_grace() -> bool:
+    return (time.monotonic() - _process_start_mono) < _STARTUP_GRACE_S
+
+
+def reset_startup_grace_for_tests(*, elapsed_s: float | None = None) -> None:
+    """Test helper: restart grace, or pretend ``elapsed_s`` already passed."""
+    global _process_start_mono, _last_historian_offline_log_mono, _historian_was_offline
+    now = time.monotonic()
+    if elapsed_s is None:
+        _process_start_mono = now
+    else:
+        _process_start_mono = now - max(0.0, float(elapsed_s))
+    _last_historian_offline_log_mono = 0.0
+    _historian_was_offline = False
 
 
 def spec_for(key: str) -> PerfAlarmSpec | None:
@@ -283,6 +301,13 @@ def ensure_performance_alarms(config: dict[str, Any] | None = None) -> bool:
                 display_name=scoped_display_name(spec.display_name),
             )
         if not _historian_connected(app):
+            if _in_startup_grace():
+                _LOGGER.debug(
+                    "Historian not ready during startup grace (%.0fs); "
+                    "performance tags deferred without operator warning",
+                    _STARTUP_GRACE_S,
+                )
+                return False
             now = time.monotonic()
             if (
                 not _historian_was_offline

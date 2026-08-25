@@ -15,6 +15,7 @@ from ..tags.cvt import CVTEngine
 from .core import BaseLogger, BaseEngine
 from ..variables import *
 from ..utils.decorators import db_rollback
+from peewee import IntegrityError
 
 
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
@@ -54,6 +55,52 @@ def _as_utc_datetime(value):
             return pytz.UTC.localize(value)
         return value.astimezone(pytz.UTC)
     return datetime.fromtimestamp(_as_epoch_seconds(value), pytz.UTC)
+
+
+def _is_unique_violation(exc: BaseException) -> bool:
+    name = type(exc).__name__
+    if name in ("IntegrityError", "UniqueViolation"):
+        return True
+    text = str(exc).lower()
+    return "duplicate key" in text or "unique constraint" in text
+
+
+_FK_TAG_FIELDS = ("unit", "display_unit", "data_type")
+
+
+def _tag_put_fields(**fields) -> dict:
+    """Drop None / empty FK values so an update cannot wipe required columns."""
+    payload = {}
+    for key, value in fields.items():
+        if value is None:
+            continue
+        if key in _FK_TAG_FIELDS and value == "":
+            continue
+        payload[key] = value
+    return payload
+
+
+def _lookup_tag_row(name: str, identifier: str | None = None, display_name: str | None = None):
+    row = Tags.get_or_none(Tags.name == name) if name else None
+    if row is None and identifier:
+        row = Tags.get_or_none(Tags.identifier == identifier)
+    if row is None and display_name:
+        row = Tags.get_or_none(Tags.display_name == display_name)
+    return row
+
+
+def _mirror_historian_tag_row(name: str, identifier: str | None = None) -> None:
+    try:
+        from ..catalog.bootstrap import mirror_historian_row
+
+        row = Tags.get_or_none(Tags.name == name)
+        if row is None and identifier:
+            row = Tags.get_or_none(Tags.identifier == identifier)
+        if row is not None:
+            mirror_historian_row(row)
+    except Exception:
+        logging.getLogger("pyautomation").debug("catalog tag mirror skipped", exc_info=True)
+
 
 class DataLogger(BaseLogger):
     """
@@ -117,39 +164,103 @@ class DataLogger(BaseLogger):
         if not self.check_connectivity():
 
             return None
-            
-        Tags.create(
-            id=id,
-            name=name, 
-            unit=unit,
-            data_type=data_type,
-            description=description,
-            display_name=display_name,
-            display_unit=display_unit,
-            opcua_address=opcua_address,
-            opcua_client_name=opcua_client_name,
-            node_namespace=node_namespace,
-            scan_time=scan_time,
-            dead_band=dead_band,
-            manufacturer=manufacturer,
-            segment=segment,
-            kp=kp,
-            area=area,
-            owner_node=owner_node,
-            filter_enabled=filter_enabled,
-            filter_wavelet=filter_wavelet,
-            filter_level=filter_level,
-            filter_threshold_factor=filter_threshold_factor,
-            filter_persist=filter_persist,
-            )
-        try:
-            from ..catalog.bootstrap import mirror_historian_row
 
-            row = Tags.get_or_none(Tags.name == name) or Tags.get_or_none(Tags.identifier == id)
-            if row is not None:
-                mirror_historian_row(row)
-        except Exception:
-            logging.getLogger("pyautomation").debug("catalog tag mirror skipped", exc_info=True)
+        existing = _lookup_tag_row(name, id)
+        if existing is not None:
+            Tags.put(
+                id=existing.id,
+                **_tag_put_fields(
+                    name=name,
+                    unit=unit,
+                    data_type=data_type,
+                    description=description,
+                    display_name=display_name,
+                    display_unit=display_unit,
+                    opcua_address=opcua_address,
+                    opcua_client_name=opcua_client_name,
+                    node_namespace=node_namespace,
+                    scan_time=scan_time,
+                    dead_band=dead_band,
+                    kp=kp,
+                    area=area,
+                    owner_node=owner_node,
+                    filter_enabled=filter_enabled,
+                    filter_wavelet=filter_wavelet,
+                    filter_level=filter_level,
+                    filter_threshold_factor=filter_threshold_factor,
+                    filter_persist=filter_persist,
+                ),
+            )
+            _mirror_historian_tag_row(name, id)
+            return existing
+
+        try:
+            Tags.create(
+                id=id,
+                name=name, 
+                unit=unit,
+                data_type=data_type,
+                description=description,
+                display_name=display_name,
+                display_unit=display_unit,
+                opcua_address=opcua_address,
+                opcua_client_name=opcua_client_name,
+                node_namespace=node_namespace,
+                scan_time=scan_time,
+                dead_band=dead_band,
+                manufacturer=manufacturer,
+                segment=segment,
+                kp=kp,
+                area=area,
+                owner_node=owner_node,
+                filter_enabled=filter_enabled,
+                filter_wavelet=filter_wavelet,
+                filter_level=filter_level,
+                filter_threshold_factor=filter_threshold_factor,
+                filter_persist=filter_persist,
+            )
+        except Exception as exc:
+            if not _is_unique_violation(exc) and not isinstance(exc, IntegrityError):
+                raise
+            try:
+                self._db.connection().rollback()
+            except Exception:
+                pass
+            existing = _lookup_tag_row(name, id, display_name)
+            if existing is None:
+                raise
+            logging.getLogger("pyautomation").warning(
+                "Tag %s already exists with a unique-constraint conflict; updating",
+                name,
+            )
+            Tags.put(
+                id=existing.id,
+                **_tag_put_fields(
+                    name=name,
+                    unit=unit,
+                    data_type=data_type,
+                    description=description,
+                    display_name=display_name,
+                    display_unit=display_unit,
+                    opcua_address=opcua_address,
+                    opcua_client_name=opcua_client_name,
+                    node_namespace=node_namespace,
+                    scan_time=scan_time,
+                    dead_band=dead_band,
+                    kp=kp,
+                    area=area,
+                    owner_node=owner_node,
+                    filter_enabled=filter_enabled,
+                    filter_wavelet=filter_wavelet,
+                    filter_level=filter_level,
+                    filter_threshold_factor=filter_threshold_factor,
+                    filter_persist=filter_persist,
+                ),
+            )
+            _mirror_historian_tag_row(name, id)
+            return existing
+        _mirror_historian_tag_row(name, id)
+        return _lookup_tag_row(name, id)
             
     @db_rollback
     def delete_tag(self, id:str):

@@ -513,7 +513,7 @@ class Tags(BaseModel):
         
         if not cls.name_exist(name):
 
-            if not cls.display_name_exist(name):
+            if not cls.display_name_exist(display_name):
                 
                 if _unit is not None and _display_unit is not None:
 
@@ -688,8 +688,9 @@ class Tags(BaseModel):
                 if isinstance(unit, str):
                     query = Units.read_by_unit(unit=unit)
                     if query:
-
                         fields["unit"] = query
+                    else:
+                        fields.pop("unit", None)
 
             if "display_unit" in fields:
 
@@ -697,8 +698,9 @@ class Tags(BaseModel):
                 if isinstance(display_unit, str):
                     query = Units.read_by_unit(unit=display_unit)
                     if query:
-
                         fields["display_unit"] = query
+                    else:
+                        fields.pop("display_unit", None)
 
             if "data_type" in fields:
 
@@ -706,8 +708,9 @@ class Tags(BaseModel):
                 if isinstance(data_type, str):
                     query = DataTypes.read_by_name(name=data_type)
                     if query:
-
                         fields["data_type"] = query
+                    else:
+                        fields.pop("data_type", None)
 
             if "segment" in fields:
 
@@ -760,7 +763,7 @@ class Tags(BaseModel):
         r"""
         Checks if a display name exists.
         """
-        tag = cls.get_or_none(name=name)
+        tag = cls.get_or_none(display_name=name)
         if tag is not None:
 
             return True

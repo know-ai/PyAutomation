@@ -10,6 +10,15 @@ from ..utils.decorators import db_rollback
 from ..models import IntegerType, StringType, FloatType
 from ..tags.tag import Tag
 import logging
+from peewee import IntegrityError
+
+
+def _is_unique_violation(exc: BaseException) -> bool:
+    name = type(exc).__name__
+    if name in ("IntegrityError", "UniqueViolation"):
+        return True
+    text = str(exc).lower()
+    return "duplicate key" in text or "unique constraint" in text
 
 
 class MachinesLogger(BaseLogger):
@@ -234,8 +243,46 @@ class MachinesLogger(BaseLogger):
                     "local catalog tagsmachines bind skipped", exc_info=True
                 )
             return None
-            
-        TagsMachines.create(tag_name=tag.name, machine_name=machine.name.value, default_tag_name=default_tag_name)
+
+        tag_row = Tags.get_or_none(name=tag.name)
+        machine_row = Machines.get_or_none(name=machine.name.value)
+        if tag_row is None or machine_row is None:
+            logging.getLogger("pyautomation").warning(
+                "Skipping tagsmachines bind: tag=%s present=%s machine=%s present=%s",
+                getattr(tag, "name", None),
+                tag_row is not None,
+                getattr(getattr(machine, "name", None), "value", None),
+                machine_row is not None,
+            )
+            return None
+
+        existing_bind = TagsMachines.get_or_none(tag=tag_row, machine=machine_row)
+        if existing_bind is not None:
+            if default_tag_name is not None and existing_bind.default_tag_name != default_tag_name:
+                existing_bind.default_tag_name = default_tag_name
+                existing_bind.save()
+        else:
+            try:
+                TagsMachines.create(
+                    tag_name=tag.name,
+                    machine_name=machine.name.value,
+                    default_tag_name=default_tag_name,
+                )
+            except Exception as exc:
+                if not _is_unique_violation(exc) and not isinstance(exc, IntegrityError):
+                    raise
+                try:
+                    self._db.connection().rollback()
+                except Exception:
+                    pass
+                existing_bind = TagsMachines.get_or_none(tag=tag_row, machine=machine_row)
+                if existing_bind is None:
+                    raise
+                logging.getLogger("pyautomation").warning(
+                    "tagsmachines bind %s ↔ %s already exists; reusing",
+                    tag.name,
+                    machine.name.value,
+                )
         try:
             from ..catalog.mutations import persist_tagsmachines_bind
 

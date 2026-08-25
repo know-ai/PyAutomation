@@ -32,7 +32,31 @@ class TestRealtimeTrendsWorkspace(unittest.TestCase):
         self.assertEqual(len(doc["charts"][0]["tagNames"]), 16)
         self.assertEqual(doc["charts"][0]["w"], 4)
         self.assertEqual(doc["charts"][0]["h"], 6)
-        self.assertEqual(doc["charts"][0]["bufferSize"], 360)
+        self.assertEqual(doc["charts"][0]["timeSpanMinutes"], 5)
+        self.assertNotIn("bufferSize", doc["charts"][0])
+
+    def test_sanitize_persists_time_span_minutes(self):
+        doc = sanitize_workspace(
+            {
+                "kind": "real-time-trends",
+                "charts": [
+                    {
+                        "id": "span",
+                        "title": "Span",
+                        "tagNames": ["FI_01"],
+                        "timeSpanMinutes": 5,
+                    }
+                ],
+            }
+        )
+        self.assertEqual(doc["schemaVersion"], 2)
+        self.assertEqual(doc["charts"][0]["timeSpanMinutes"], 5)
+
+    def test_sanitize_rejects_invalid_time_span(self):
+        doc = sanitize_workspace(
+            {"charts": [{"id": "x", "title": "x", "tagNames": [], "timeSpanMinutes": 7}]}
+        )
+        self.assertEqual(doc["charts"][0]["timeSpanMinutes"], 2)
 
     def test_save_roundtrip(self):
         cwd = os.getcwd()
