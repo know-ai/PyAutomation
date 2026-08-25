@@ -87,3 +87,19 @@ class LocalCatalogProvider:
             q.execute()
         except Exception:
             model.delete().where(getattr(model, pk.name) == int(row_id)).execute()
+
+    def delete_where(self, table: str, field: str, value) -> int:
+        """Delete rows matching field=value. Returns deleted count."""
+        model = local_model(table)
+        if model is None or get_catalog_database() is None or value is None:
+            return 0
+        attr = getattr(model, field, None)
+        if attr is None:
+            return 0
+        try:
+            return int(model.delete().where(attr == value).execute() or 0)
+        except Exception:
+            _LOGGER.debug(
+                "local catalog delete_where failed table=%s field=%s", table, field, exc_info=True
+            )
+            return 0

@@ -238,9 +238,12 @@ class MetricsSamplerWorker(BaseWorker):
         started = time.monotonic()
         try:
             from ..utils.hmi_session_store import count_sessions
+            from ..utils.redis_client import get_redis, redis_url
 
             payload["HMI_ACTIVE_CLIENTS"] = int(count_sessions())
             payload["HMI_SESSIONS_SAMPLE_AGE_MS"] = round((time.monotonic() - started) * 1000.0, 1)
+            payload["REDIS_CONFIGURED"] = bool(redis_url())
+            payload["REDIS_AVAILABLE"] = get_redis() is not None
         except Exception:
             _LOGGER.debug("metrics hmi sessions skipped", exc_info=True)
 

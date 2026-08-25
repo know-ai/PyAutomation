@@ -11,7 +11,7 @@ from .dbmodels.users import Roles, Users
 from .dbmodels.machines import Machines
 # PYAUTOMATION MODULES IMPORTATION
 from .singleton import Singleton
-from .workers import LoggerWorker, NtpMonitorWorker, HmiSessionCleanupWorker, MetricsSamplerWorker
+from .workers import LoggerWorker, NtpMonitorWorker, HmiSessionCleanupWorker, HmiSessionSyncWorker, UserInvalidateWorker, MetricsSamplerWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .opcua.models import Client
 from .tags import CVTEngine, Tag
@@ -1886,66 +1886,61 @@ class PyAutomation(Singleton):
                     # Verificar que la conexión realmente funciona haciendo una consulta simple
                     db = self.db_manager.get_db()
                     if db is None:
-                        # Intentar obtener el error real de conexión
-                        conn_error = self._try_get_database_connection_error()
-                        if conn_error:
-                            return None, self._format_database_error(conn_error, "during login")
-                        return None, "Database is not configured correctly. Please configure the database connection first."
+                        return self._login_local_catalog(
+                            password=password, username=username, email=email
+                        )
                     
                     # Intentar una consulta simple para verificar la conexión real
                     try:
                         db.execute_sql('SELECT 1;')
-                    except (OperationalError, InterfaceError, DatabaseError) as db_conn_error:
-                        # Error de conexión real (conexión perdida, servidor caído, etc.)
-                        return None, self._format_database_error(db_conn_error, "during login")
-                    except Exception as db_conn_error:
-                        # Otro tipo de error de base de datos
-                        return None, self._format_database_error(db_conn_error, "during login")
+                    except (OperationalError, InterfaceError, DatabaseError):
+                        return self._login_local_catalog(
+                            password=password, username=username, email=email
+                        )
+                    except Exception:
+                        return self._login_local_catalog(
+                            password=password, username=username, email=email
+                        )
                     
                     # Si llegamos aquí, la conexión funciona, intentar hacer login
                     result = self.db_manager.login(password=password, username=username, email=email)
                     
                     # Verificar el resultado
                     if result is None:
-                        # Si result es None, puede ser porque BaseEngine.query() retornó None (error interno)
-                        # Esto indica que hubo un error durante la consulta a la base de datos
-                        # Puede ser que la conexión se haya perdido o que haya un problema con la base de datos
-                        return None, "Could not process authentication in the database. The connection may have been lost during the query or there is a problem with the database configuration."
+                        return self._login_local_catalog(
+                            password=password, username=username, email=email
+                        )
                     
                     # Verificar que sea una tupla válida
                     if isinstance(result, tuple) and len(result) == 2:
                         user, message = result
-                        # Si el usuario es None pero hay un mensaje, puede ser error de credenciales
-                        if user is None and message:
-                            # Distinguir entre error de autenticación y otros errores
-                            if "Invalid" in message or "invalid" in message.lower() or "credentials" in message.lower() or "password" in message.lower():
-                                # Error de autenticación (credenciales incorrectas)
-                                return None, f"Authentication error: {message}"
-                            else:
-                                # Otro tipo de error
-                                return None, f"Authentication error: {message}"
+                        if user is None:
+                            return None, f"Authentication error: {message or 'Invalid credentials'}"
+                        try:
+                            from .catalog.user_cache import cache_user_locally
+
+                            cache_user_locally(user)
+                        except Exception:
+                            logging.debug("login write-through cache skipped", exc_info=True)
                         return result
                     else:
                         return None, "Error: Invalid response from database server."
                         
-                except (OperationalError, InterfaceError, DatabaseError) as db_error:
-                    # Error específico de base de datos al intentar acceder
-                    return None, self._format_database_error(db_error, "during login")
+                except (OperationalError, InterfaceError, DatabaseError):
+                    return self._login_local_catalog(
+                        password=password, username=username, email=email
+                    )
                 except Exception as db_error:
-                    # Otro tipo de error inesperado
+                    error_lower = str(db_error or "").lower()
+                    if "connection" in error_lower or "connect" in error_lower:
+                        return self._login_local_catalog(
+                            password=password, username=username, email=email
+                        )
                     return None, self._format_database_error(db_error, "during login")
             else:
-                from .catalog.auth import login_local
-
-                # Historian down: local catalog is the auth source of truth.
-                # Never coerce a failed local login into a "configure database" response.
-                local_user, local_msg = login_local(
+                return self._login_local_catalog(
                     password=password, username=username, email=email
                 )
-                if local_user is not None:
-                    return local_user, local_msg
-                msg = (local_msg or "").strip() or "Invalid credentials"
-                return None, f"Authentication error: {msg}"
                     
         except Exception as e:
             # En caso de cualquier excepción no prevista, retornar una tupla válida con mensaje descriptivo
@@ -1958,6 +1953,49 @@ class PyAutomation(Singleton):
                     return None, self._format_database_error(e, "during login") if hasattr(e, '__class__') else f"Database connection error: {error_msg}"
                 else:
                     return None, f"Unexpected error during authentication: {error_msg}"
+
+    def _login_local_catalog(self, password: str, username: str = "", email: str = ""):
+        """SQLite/CVT fallback used only when the historian is unreachable."""
+        from .catalog.auth import login_local
+
+        local_user, local_msg = login_local(
+            password=password, username=username, email=email
+        )
+        if local_user is not None:
+            return local_user, local_msg
+        msg = (local_msg or "").strip() or "Invalid credentials"
+        return None, f"Authentication error: {msg}"
+
+    def _notify_user_peers(self, username: str) -> None:
+        try:
+            from .catalog.user_cache import notify_user_invalidated
+
+            notify_user_invalidated(username)
+        except Exception:
+            logging.debug("user invalidate notify skipped", exc_info=True)
+
+    def _resolve_managed_user(self, target_username: str):
+        """CVT user, hydrating from PostgreSQL when the local cache missed."""
+        target_user = users.get_by_username(username=target_username)
+        if target_user is not None:
+            return target_user
+        if not self.is_db_connected():
+            return None
+        try:
+            from .catalog.user_cache import refresh_user_from_remote
+
+            refresh_user_from_remote(target_username)
+        except Exception:
+            logging.debug("hydrate user from historian skipped", exc_info=True)
+        return users.get_by_username(username=target_username)
+
+    def _user_exists_remote(self, target_username: str) -> bool:
+        if not self.is_db_connected():
+            return False
+        try:
+            return Users.get_or_none(username=target_username) is not None
+        except Exception:
+            return False
 
     @logging_error_handler
     @validate_types(
@@ -2109,6 +2147,8 @@ class PyAutomation(Singleton):
                     logging.debug("local catalog signup mirror skipped", exc_info=True)
                 return user, message or "User created in local catalog"
 
+            if user is not None:
+                self._notify_user_peers(getattr(user, "username", username) or username)
             return user, message
             
         except Exception as e:
@@ -2250,8 +2290,8 @@ class PyAutomation(Singleton):
         ```
         """
         # Get target user
-        target_user = users.get_by_username(username=target_username)
-        if not target_user:
+        target_user = self._resolve_managed_user(target_username)
+        if not target_user and not self._user_exists_remote(target_username):
             return None, f"User {target_username} not found"
 
         # If current_password is provided, validate it
@@ -2291,6 +2331,7 @@ class PyAutomation(Singleton):
                         break
             except Exception:
                 logging.debug("local catalog password dual-write skipped", exc_info=True)
+            self._notify_user_peers(target_username)
         else:
             # Update CVT user password + local catalog mirror
             if target_user:
@@ -2349,8 +2390,8 @@ class PyAutomation(Singleton):
         ```
         """
         # Get target user
-        target_user = users.get_by_username(username=target_username)
-        if not target_user:
+        target_user = self._resolve_managed_user(target_username)
+        if not target_user and not self._user_exists_remote(target_username):
             return None, f"User {target_username} not found"
 
         # Update password (no current password validation)
@@ -2377,6 +2418,7 @@ class PyAutomation(Singleton):
                         break
             except Exception:
                 logging.debug("local catalog password reset dual-write skipped", exc_info=True)
+            self._notify_user_peers(target_username)
         else:
             # Update CVT user password
             if target_user:
@@ -2435,8 +2477,8 @@ class PyAutomation(Singleton):
         ```
         """
         # Get target user
-        target_user = users.get_by_username(username=target_username)
-        if not target_user:
+        target_user = self._resolve_managed_user(target_username)
+        if not target_user and not self._user_exists_remote(target_username):
             return None, f"User {target_username} not found"
 
         # Update role
@@ -2471,6 +2513,7 @@ class PyAutomation(Singleton):
                         break
             except Exception:
                 logging.debug("local catalog role dual-write skipped", exc_info=True)
+            self._notify_user_peers(target_username)
         else:
             # Update CVT user role + local catalog mirror
             updated_user, message = users.update_role(username=target_username, new_role_name=new_role_name)
@@ -6189,8 +6232,21 @@ class PyAutomation(Singleton):
             self.ntp_worker = NtpMonitorWorker(config_provider=self.get_app_config)
             self.ntp_worker.start()
 
+            try:
+                from .utils.redis_client import warn_if_redis_unconfigured
+
+                warn_if_redis_unconfigured()
+            except Exception:
+                logging.debug("redis configuration check skipped", exc_info=True)
+
             self.hmi_session_worker = HmiSessionCleanupWorker()
             self.hmi_session_worker.start()
+
+            self.hmi_session_sync_worker = HmiSessionSyncWorker()
+            self.hmi_session_sync_worker.start()
+
+            self.user_invalidate_worker = UserInvalidateWorker()
+            self.user_invalidate_worker.start()
 
             self.metrics_worker = MetricsSamplerWorker()
             self.metrics_worker.start()
@@ -6230,6 +6286,10 @@ class PyAutomation(Singleton):
             self.ntp_worker.stop()
         if hasattr(self, "hmi_session_worker") and self.hmi_session_worker is not None:
             self.hmi_session_worker.stop()
+        if hasattr(self, "hmi_session_sync_worker") and self.hmi_session_sync_worker is not None:
+            self.hmi_session_sync_worker.stop()
+        if hasattr(self, "user_invalidate_worker") and self.user_invalidate_worker is not None:
+            self.user_invalidate_worker.stop()
         if hasattr(self, "metrics_worker") and self.metrics_worker is not None:
             self.metrics_worker.stop()
         if hasattr(self, "wavelet_worker") and self.wavelet_worker is not None:

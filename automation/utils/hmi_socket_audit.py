@@ -2,7 +2,8 @@
 """Audit trail for HMI Socket.IO client lifecycle.
 
 Connect, disconnect, reconnect and rejected connections are persisted in Events.
-Session rows live in PostgreSQL (``hmi_sessions``) for global multi-worker counts.
+Live session counts live in Redis (or in-memory fallback). PostgreSQL
+``hmi_sessions`` is a background snapshot only — never on the Socket.IO hot path.
 Fail-safe: never raises into the Socket.IO path.
 """
 from __future__ import annotations
@@ -282,7 +283,7 @@ def register_hmi_socket_disconnect(*, sid: str = "", reason: str = "") -> None:
 
 
 def register_hmi_socket_heartbeat(*, sid: str = "") -> None:
-    """Refresh session heartbeat in PostgreSQL. Never raises."""
+    """Refresh session TTL in Redis/RAM. Never raises. Never hits PostgreSQL."""
     from .hmi_session_store import touch_heartbeat
 
     touch_heartbeat(sid)

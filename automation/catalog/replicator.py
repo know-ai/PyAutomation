@@ -51,6 +51,8 @@ _BATCH = 200
 _FAIL_THRESHOLD = 3
 _LOCAL_ONLY_S = 3600.0
 _ONLINE_INTERVAL_S = 300.0
+# User rows also invalidate via PG NOTIFY / Redis Pub/Sub (user_cache).
+# This worker is disaster-recovery catch-up, not the <2s login path.
 _CATCHUP_INTERVAL_S = 30.0
 _EVENT_DELTA_THRESHOLD = 50
 _EXCEPTION_EVENT_COOLDOWN_S = 300.0

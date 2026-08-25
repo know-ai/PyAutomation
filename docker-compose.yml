@@ -37,6 +37,8 @@ services:
       AUTOMATION_DB_NAME: ${AUTOMATION_DB_NAME:-app_db}
       AUTOMATION_DB_USER: ${AUTOMATION_DB_USER:-postgres}
       AUTOMATION_DB_PASSWORD: ${AUTOMATION_DB_PASSWORD:-postgres}
+      AUTOMATION_REDIS_URL: ${AUTOMATION_REDIS_URL:-redis://redis-session:6379/0}
+      AUTOMATION_REDIS_SESSION_TTL: ${AUTOMATION_REDIS_SESSION_TTL:-60}
       # Variables de entorno para el HMI (se inyectan en tiempo de ejecución)
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
       VITE_USE_HTTPS: ${VITE_USE_HTTPS:-}
@@ -54,6 +56,33 @@ services:
       interval: 15s
       timeout: 10s
       retries: 3
+    depends_on:
+      - redis-session
+    networks:
+      - default
+      - backend
+
+  redis-session:
+    image: redis:7-alpine
+    command: redis-server --appendonly no --maxmemory 64mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+    internal: true
 
 volumes:
   automation_db:

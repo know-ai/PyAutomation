@@ -439,6 +439,25 @@ class Users(Singleton):
 
             return self.__by_email[email]
 
+    def drop_cached_user(self, username: str) -> bool:
+        """Remove a user from in-memory indexes (local cache invalidation)."""
+        username = (username or "").strip()
+        if not username:
+            return False
+        user = self.__by_username.pop(username, None)
+        if user is None:
+            return False
+        self.__by_email.pop(getattr(user, "email", None), None)
+        self.__by_identifier.pop(getattr(user, "identifier", None), None)
+        stale = [
+            token
+            for token, session_user in list(self.active_users.items())
+            if getattr(session_user, "username", None) == username
+        ]
+        for token in stale:
+            self.active_users.pop(token, None)
+        return True
+
     def check_username(self, username:str)->bool:
         r"""
         Documentation here

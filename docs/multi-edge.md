@@ -32,7 +32,9 @@ Con PostgreSQL compartido, **no** se usa un único `Users.token` global para inv
 |---|---|
 | Token API/HMI | Hash de sesión en memoria + fila en `user_api_sessions` (`token`, `username`, `node_id`, `area`). En multi-edge **no** se sobrescribe `Users.token` en PostgreSQL al hacer login |
 | Login en un edge | Revoca solo tokens previos del **mismo** `AUTOMATION_NODE_ID` en `user_api_sessions`; otras líneas conservan su sesión |
-| Socket.IO | Valida token vía `Api._resolve_session_user` — **no** compara `node_id` del token con el edge |
+| Login de usuarios | Read-Through al historiador si está vivo; `catalog.db` solo es fallback offline. Tras signup/password/rol se emite `pg_notify(pya_user_invalidate)` (y Redis Pub/Sub si hay `AUTOMATION_REDIS_URL`) para que los otros edges borren su fila local en <2 s |
+| Socket.IO | Valida token vía `Api._resolve_session_user` — **no** compara `node_id` del token con el edge. El hot path connect/disconnect usa Redis (`hmi:sess:{sid}`) o memoria; PostgreSQL `hmi_sessions` es snapshot en background |
+| `AUTOMATION_REDIS_URL` | URL del sidecar Redis **local al edge** (`redis://redis-session:6379/0`). Jamás un Redis de planta. Si falta o el sidecar cae, las sesiones HMI siguen en RAM |
 | `AUTOMATION_APP_SECRET_KEY` | Solo firmas TPT (integraciones); debe ser idéntica en todos los edges si se usan TPT |
 | TLS HMI | Fallos de handshake (`HMI TLS handshake failure`) son independientes de la sesión API; revisar certificado/clave en cada Moxa |
 
@@ -124,6 +126,6 @@ Runbook detallado: [ntp-deployment.md](./ntp-deployment.md). Auditoría: [audits
 
 ## Dashboard de rendimiento por edge
 
-Cada proceso tiene su propio `MetricsSamplerWorker` y su propio `GET /api/health/node`. El snapshot es **local al nodo**: CPU, disco, HTTP, cola SAF, clientes HMI (`hmi_sessions` filtrado por `node_id`) y adquisición de esa instancia. Linea1 no muestra métricas de Linea2.
+Cada proceso tiene su propio `MetricsSamplerWorker` y su propio `GET /api/health/node`. El snapshot es **local al nodo**: CPU, disco, HTTP, cola SAF, clientes HMI (`HMI_ACTIVE_CLIENTS` = `SCARD` de Redis o conteo en memoria, filtrado por `node_id`) y adquisición de esa instancia. Linea1 no muestra métricas de Linea2.
 
 La pantalla HMI `/performance` (roles admin/supervisor/sudo) hace poll de 3 s contra el edge al que está conectada. Runbook: [node-performance-runbook.md](./node-performance-runbook.md). Spec: [05-NODE-PERFORMANCE-DASHBOARD.md](../specs/05-NODE-PERFORMANCE-DASHBOARD.md).

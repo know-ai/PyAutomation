@@ -1,21 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Background cleanup of stale HMI Socket.IO sessions in PostgreSQL."""
+"""Prune stale HMI Socket.IO sessions from Redis sidecar / RAM.
+
+PostgreSQL snapshots are owned by HmiSessionSyncWorker — this worker never
+writes hmi_sessions.
+"""
 from __future__ import annotations
 
 import logging
-import time
 
 from .worker import BaseWorker
 from ..utils.hmi_session_store import cleanup_stale_sessions
 
 _LOGGER = logging.getLogger("pyautomation.hmi_sessions")
 
-_CLEANUP_INTERVAL_S = 60
+_CLEANUP_INTERVAL_S = 60.0
 _STALE_SECONDS = 120
 
 
 class HmiSessionCleanupWorker(BaseWorker):
-    """Daemon thread; deletes hmi_sessions rows with expired heartbeat."""
+    """Daemon thread; prunes Redis/RAM TTL. Never on the Socket.IO hot path."""
 
     def __init__(
         self,
@@ -33,7 +36,7 @@ class HmiSessionCleanupWorker(BaseWorker):
             try:
                 removed = cleanup_stale_sessions(stale_seconds=self._stale_seconds)
                 if removed:
-                    _LOGGER.debug("HMI session cleanup removed %s stale rows", removed)
+                    _LOGGER.debug("HMI session cleanup removed %s stale sids", removed)
             except Exception:
                 _LOGGER.debug("HMI session cleanup worker tick failed", exc_info=True)
             self.stop_event.wait(self._interval_s)

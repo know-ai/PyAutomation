@@ -99,7 +99,7 @@ Cada ~30 s, si hay remoto:
 
 ## 5. Autenticación degradada
 
-- `core.login`: si no hay historiador → `catalog.auth.login_local` (werkzeug `check_password_hash` sobre filas del espejo; rellena CVT users/roles).
+- `core.login`: si el historiador está vivo, autentica contra PostgreSQL (Read-Through) y rellena el espejo local. Si el historiador está caído → `catalog.auth.login_local` (werkzeug `check_password_hash` sobre filas del espejo; rellena CVT users/roles).
 - `core.signup` offline: usuario en memoria + fila en espejo (se push-ea al reconectar).
 
 No se cambia el algoritmo de hash.
