@@ -23,20 +23,54 @@ SYNC_ORDER: tuple[CatalogTable, ...] = (
     CatalogTable("units"),
     CatalogTable("segment"),
     CatalogTable("users"),
+    CatalogTable("nodes"),
     CatalogTable("tags"),
+    CatalogTable("machines"),
     CatalogTable("opcua"),
     CatalogTable("opcuaserver"),
-    CatalogTable("nodes"),
-    CatalogTable("machines"),
-    CatalogTable("linearreferencinggeospatial"),
     CatalogTable("alarms"),
     CatalogTable("tagsmachines"),
+    CatalogTable("linearreferencinggeospatial"),
     CatalogTable("hmi_sessions", replicate_rows=False),
     CatalogTable("user_api_sessions", replicate_rows=False),
 )
 
 REPLICATED_TABLES: tuple[str, ...] = tuple(t.name for t in SYNC_ORDER if t.replicate_rows)
 ALL_TABLES: tuple[str, ...] = tuple(t.name for t in SYNC_ORDER)
+
+# Small shared dictionaries. Always full-read so FK remap can resolve parent PKs
+# even when the incremental pull of child tables (tags, alarms) has no parent diffs.
+LOOKUP_TABLES: frozenset[str] = frozenset(
+    {
+        "datatypes",
+        "alarmtypes",
+        "alarmstates",
+        "roles",
+        "manufacturer",
+        "variables",
+        "accesstype",
+        "units",
+        "segment",
+        "users",
+    }
+)
+
+# Line-owned rows. Each edge pulls only its area / owner_node (plus unscoped globals).
+PARTITIONED_TABLES: frozenset[str] = frozenset(
+    {
+        "tags",
+        "alarms",
+        "machines",
+        "opcua",
+        "tagsmachines",
+    }
+)
+
+# Always full-read (area-filtered) so child FK remap can resolve remote parent PKs.
+PARENT_TABLES: frozenset[str] = frozenset({"tags", "machines"})
+
+# Depend on tags/machines. Never pull a child whose parent is not this edge.
+CHILD_TABLES: frozenset[str] = frozenset({"alarms", "tagsmachines"})
 
 CATALOG_TABLES_COUNT = len(REPLICATED_TABLES)
 HISTORIAN_DBTYPES = ("postgresql", "mysql")

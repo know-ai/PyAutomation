@@ -14,6 +14,8 @@ from werkzeug.security import generate_password_hash
 from automation.catalog.conflict import VersionStamp, resolve
 from automation.catalog.schema import (
     CATALOG_TABLES_COUNT,
+    LOOKUP_TABLES,
+    PARTITIONED_TABLES,
     REPLICATED_TABLES,
     SYNC_ORDER,
     historian_dbtype_allowed,
@@ -35,8 +37,23 @@ class TestSchemaOrder(unittest.TestCase):
     def test_parents_before_children(self):
         names = [t.name for t in SYNC_ORDER]
         self.assertLess(names.index("roles"), names.index("users"))
+        self.assertLess(names.index("units"), names.index("tags"))
         self.assertLess(names.index("datatypes"), names.index("tags"))
+        self.assertLess(names.index("tags"), names.index("machines"))
         self.assertLess(names.index("tags"), names.index("alarms"))
+        self.assertLess(names.index("machines"), names.index("alarms"))
+        self.assertLess(names.index("tags"), names.index("tagsmachines"))
+        self.assertLess(names.index("machines"), names.index("tagsmachines"))
+        self.assertEqual(list(REPLICATED_TABLES), [t.name for t in SYNC_ORDER if t.replicate_rows])
+        self.assertTrue(LOOKUP_TABLES.isdisjoint(PARTITIONED_TABLES))
+        self.assertIn("units", LOOKUP_TABLES)
+        self.assertIn("tags", PARTITIONED_TABLES)
+        self.assertIn("alarms", PARTITIONED_TABLES)
+        from automation.catalog.schema import CHILD_TABLES, PARENT_TABLES
+
+        self.assertLess(names.index("tags"), names.index("alarms"))
+        self.assertEqual(PARENT_TABLES, frozenset({"tags", "machines"}))
+        self.assertEqual(CHILD_TABLES, frozenset({"alarms", "tagsmachines"}))
         self.assertIn("hmi_sessions", names)
         self.assertNotIn("hmi_sessions", REPLICATED_TABLES)
         self.assertGreaterEqual(CATALOG_TABLES_COUNT, 17)
@@ -908,7 +925,12 @@ class TestReplicatorIsolation(unittest.TestCase):
         ) as sync_table:
             result = worker.cycle(force=True)
         self.assertTrue(result.get("incremental"))
-        read_all.assert_not_called()
+        read_all_tables = {call.args[0] for call in read_all.call_args_list}
+        self.assertTrue(read_all_tables)
+        self.assertIn("units", read_all_tables)
+        self.assertIn("tags", read_all_tables)
+        self.assertNotIn("alarms", read_all_tables)
+        self.assertNotIn("tagsmachines", read_all_tables)
         self.assertGreater(read_changed.call_count, 0)
         sync_table.assert_not_called()
 
@@ -922,6 +944,113 @@ class TestReplicatorIsolation(unittest.TestCase):
             rows = worker._fetch_modified_rows("tags", 123)
         self.assertEqual(rows[0]["id"], 1)
         changed.assert_called_once_with("tags", 123)
+
+
+class TestReplicatorScopeAndIntegrity(unittest.TestCase):
+    def test_pull_skips_other_area_rows(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        with patch.object(worker, "_scope_identity", return_value=("Linea1", "edge-1")):
+            own = {"id": 1, "name": "Linea1.FI", "area": "Linea1", "owner_node": "edge-1"}
+            foreign = {"id": 2, "name": "Linea2.FI", "area": "Linea2", "owner_node": "edge-2"}
+            self.assertTrue(worker._row_in_node_scope("tags", own))
+            self.assertFalse(worker._row_in_node_scope("tags", foreign))
+            filtered = worker._filter_scope_rows("tags", [own, foreign])
+            self.assertEqual(filtered, [own])
+            self.assertTrue(worker._row_in_node_scope("units", {"name": "bar"}))
+            sql, params = worker._build_area_filter("tags")
+            self.assertIn("area", sql)
+            self.assertEqual(params[0], "Linea1")
+
+    def test_child_rows_require_this_edge_parent(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        local_index = {"tags": {}, "machines": {}}
+        remote_index = {
+            "tags": {"pk:1": {"_pk": "1", "name": "Linea1.FI", "area": "Linea1"}},
+            "machines": {"pk:10": {"_pk": "10", "name": "M1", "area": "Linea1"}},
+        }
+        own = {"id": 1, "tag": 1, "tag_id": 1, "machine": 10, "machine_id": 10}
+        foreign = {"id": 2, "tag": 99, "tag_id": 99, "machine": 10, "machine_id": 10}
+        kept = worker._filter_child_rows(
+            "tagsmachines",
+            [own, foreign],
+            local_index=local_index,
+            remote_index=remote_index,
+        )
+        self.assertEqual(kept, [own])
+        payload = {"name": "ALM.X"}
+        reason = worker._skip_pull_reason(
+            "alarms",
+            {"id": 9, "tag_id": 99, "name": "ALM.X"},
+            payload,
+            local_index,
+            remote_index,
+        )
+        self.assertEqual(reason, "foreign")
+
+    def test_integrity_error_continues_and_does_not_latch_sync_failed(self):
+        from peewee import IntegrityError
+
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._cycle_integrity_errors = 0
+        calls = []
+
+        def _upsert(table, payload, **_kw):
+            calls.append(payload.get("name"))
+            if payload.get("name") == "bad":
+                raise IntegrityError("NOT NULL constraint failed: tags.unit_id")
+            return "1"
+
+        worker._local.upsert = _upsert
+
+        class _Atomic:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        worker._local.atomic = lambda: _Atomic()
+        with patch("automation.catalog.replicator._pull_has_required_fks", return_value=True):
+            pushed, pulled, conflicts, errors = worker._sync_table(
+                "tags",
+                local_rows=[],
+                remote_rows=[
+                    {"id": 1, "name": "bad", "identifier": "bad", "unit": 1, "unit_id": 1},
+                    {"id": 2, "name": "good", "identifier": "good", "unit": 1, "unit_id": 1},
+                ],
+                local_index={},
+                remote_index={},
+            )
+        self.assertEqual(errors, 0)
+        self.assertGreaterEqual(worker._cycle_integrity_errors, 1)
+        self.assertIn("good", calls)
+
+    def test_equal_content_does_not_touch_remote(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        row = {"id": 1, "name": "bar", "unit": "C"}
+        with patch("automation.catalog.replicator.contents_equal", return_value=True), patch(
+            "automation.catalog.replicator.touch_remote"
+        ) as touch_remote, patch(
+            "automation.catalog.replicator.get_remote"
+        ) as get_remote:
+            pushed, pulled, conflicts, errors = worker._sync_table(
+                "units",
+                local_rows=[dict(row, _pk="1")],
+                remote_rows=[dict(row, _pk="1")],
+                local_index={},
+                remote_index={},
+            )
+        self.assertEqual((pushed, pulled, conflicts, errors), (0, 0, 0, 0))
+        touch_remote.assert_not_called()
+        get_remote.assert_not_called()
 
 
 class TestHmiCatalogSurfaces(unittest.TestCase):

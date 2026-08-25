@@ -25,6 +25,7 @@ from .content_hash import contents_equal
 from .identity import (
     identity_key,
     index_by_identity,
+    parent_fk_known,
     prepare_pull_row,
     prepare_push_row,
 )
@@ -38,7 +39,7 @@ from .replica_db import (
     replica_watermark_ms,
     reset_replica_database,
 )
-from .schema import REPLICATED_TABLES
+from .schema import CHILD_TABLES, LOOKUP_TABLES, PARENT_TABLES, PARTITIONED_TABLES, REPLICATED_TABLES
 from .versions import (
     edge_node_id,
     get_local,
@@ -79,6 +80,44 @@ def _is_transient_connection_error(exc: BaseException) -> bool:
     return False
 
 
+def _is_integrity_error(exc: BaseException) -> bool:
+    name = type(exc).__name__
+    if name in ("IntegrityError",):
+        return True
+    text = str(exc).lower()
+    return (
+        "not null constraint" in text
+        or "constraint failed" in text
+        or "foreign key constraint" in text
+        or "unique constraint" in text
+    )
+
+
+_REQUIRED_PULL_FKS: dict[str, tuple[tuple[str, str], ...]] = {
+    "tags": (("unit", "unit_id"),),
+    "alarms": (("tag", "tag_id"),),
+    "tagsmachines": (("tag", "tag_id"), ("machine", "machine_id")),
+}
+
+
+def _fk_missing(value) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and not value.strip():
+        return True
+    if isinstance(value, (int, float)) and int(value) == 0:
+        return True
+    return False
+
+
+def _pull_has_required_fks(table: str, payload: dict) -> bool:
+    for field, column in _REQUIRED_PULL_FKS.get(table) or ():
+        if not _fk_missing(payload.get(field)) or not _fk_missing(payload.get(column)):
+            continue
+        return False
+    return True
+
+
 class CatalogReplicatorWorker(BaseWorker):
     def __init__(
         self,
@@ -115,6 +154,9 @@ class CatalogReplicatorWorker(BaseWorker):
         self._last_full_scan_mono = 0.0
         self._cycle_lock = threading.Lock()
         self._executor = None
+        self._cycle_integrity_errors = 0
+        self._cycle_deferred_errors = 0
+        self._consecutive_integrity_cycles = 0
 
     def stop(self):
         super().stop()
@@ -327,6 +369,8 @@ class CatalogReplicatorWorker(BaseWorker):
         self._latch_local_only(False)
         self._cycle_conflicts = []
         self._cycle_conflict_counts = {}
+        self._cycle_integrity_errors = 0
+        self._cycle_deferred_errors = 0
 
         full_scan = self._should_full_scan()
         try:
@@ -337,20 +381,26 @@ class CatalogReplicatorWorker(BaseWorker):
         for item in pending:
             pending_pks.setdefault(str(item.table_name), set()).add(str(item.row_id))
 
+        since_ms = int(self._last_remote_version_ms or 0)
         local_rows_by_table = {table: self._local.read_all(table) for table in REPLICATED_TABLES}
-        if full_scan:
-            remote_rows_by_table = {table: self._remote.read_all(table) for table in REPLICATED_TABLES}
-        else:
-            since_ms = int(self._last_remote_version_ms or 0)
-            remote_rows_by_table = {
-                table: self._fetch_modified_rows(table, since_ms) for table in REPLICATED_TABLES
-            }
+        remote_rows_by_table = {
+            table: self._load_remote_rows(table, full_scan=full_scan, since_ms=since_ms)
+            for table in REPLICATED_TABLES
+        }
         local_index = {
             table: index_by_identity(table, local_rows_by_table[table]) for table in REPLICATED_TABLES
         }
         remote_index = {
             table: index_by_identity(table, remote_rows_by_table[table]) for table in REPLICATED_TABLES
         }
+        for child in CHILD_TABLES:
+            remote_rows_by_table[child] = self._filter_child_rows(
+                child,
+                remote_rows_by_table.get(child) or [],
+                local_index=local_index,
+                remote_index=remote_index,
+            )
+            remote_index[child] = index_by_identity(child, remote_rows_by_table[child])
 
         pushed = pulled = auto_resolved = row_errors = 0
         for table in REPLICATED_TABLES:
@@ -412,12 +462,28 @@ class CatalogReplicatorWorker(BaseWorker):
             self._latch_sync_failed(latch)
             update_metrics(consecutive_failures=self._failures)
             self._catch_up = True
+            self._consecutive_integrity_cycles = 0
         else:
             self._failures = 0
-            self._latch_sync_failed(False)
             update_metrics(consecutive_failures=0)
-            if pending_count() == 0 and pushed + pulled < _EVENT_DELTA_THRESHOLD:
-                self._catch_up = False
+            deferred = self._cycle_deferred_errors + self._cycle_integrity_errors
+            if deferred:
+                self._catch_up = True
+                self._consecutive_integrity_cycles += 1
+                _LOGGER.warning(
+                    "Catalog sync deferred %s integrity error(s); retrying next cycle",
+                    deferred,
+                )
+                if self._consecutive_integrity_cycles >= _FAIL_THRESHOLD:
+                    self._latch_sync_failed(True)
+                    update_metrics(consecutive_failures=self._consecutive_integrity_cycles)
+                else:
+                    self._latch_sync_failed(False)
+            else:
+                self._consecutive_integrity_cycles = 0
+                self._latch_sync_failed(False)
+                if pending_count() == 0 and pushed + pulled < _EVENT_DELTA_THRESHOLD:
+                    self._catch_up = False
         # Auto-merge always picks a side today — sticky Conflict alarm is for
         # future manual-merge paths only (kept cleared on successful cycles).
         set_conflict(False)
@@ -439,7 +505,7 @@ class CatalogReplicatorWorker(BaseWorker):
             row_errors=row_errors,
             summary=summary,
         )
-        if not row_errors:
+        if not row_errors and not self._cycle_integrity_errors and not self._cycle_deferred_errors:
             self._last_sync = datetime.now(timezone.utc)
             watermark = replica_watermark_ms()
             self._last_remote_version_ms = watermark or now_ms()
@@ -564,6 +630,129 @@ class CatalogReplicatorWorker(BaseWorker):
             return True
         return (time.monotonic() - self._last_full_scan_mono) >= _FULL_SCAN_INTERVAL_S
 
+    def _scope_identity(self) -> tuple[str, str] | None:
+        try:
+            from ..node_scope import get_node_scope
+
+            scope = get_node_scope()
+        except Exception:
+            return None
+        if not getattr(scope, "enabled", False) or not getattr(scope, "is_valid", False):
+            return None
+        area = str(getattr(scope, "area", "") or "").strip()
+        node_id = str(getattr(scope, "node_id", "") or "").strip()
+        if not area or not node_id:
+            return None
+        return area, node_id
+
+    def _row_in_node_scope(self, table: str, row: dict | None) -> bool:
+        """True if this edge may pull/push the row. Lookup tables are always in scope."""
+        if not row:
+            return False
+        if table not in PARTITIONED_TABLES:
+            return True
+        identity = self._scope_identity()
+        if identity is None:
+            return True
+        area, node_id = identity
+        row_area = str(row.get("area") or "").strip()
+        row_owner = str(row.get("owner_node") or "").strip()
+        if table == "opcua":
+            return (not row_owner) or row_owner == node_id
+        if table == "tagsmachines":
+            return True
+        if row_area == area or row_owner == node_id:
+            return True
+        if not row_area and not row_owner:
+            return True
+        return False
+
+    def _build_area_filter(self, table: str) -> tuple[str, tuple] | None:
+        """SQL WHERE for this edge. Lookup tables are unfiltered (shared)."""
+        if table in LOOKUP_TABLES or table in ("nodes", "opcuaserver", "linearreferencinggeospatial"):
+            return None
+        identity = self._scope_identity()
+        if identity is None:
+            return None
+        area, node_id = identity
+        if table == "opcua":
+            return ("(owner_node IS NULL OR owner_node = %s)", (node_id,))
+        if table == "tags":
+            return (
+                "(area = %s OR owner_node = %s OR ((area IS NULL OR area = '') AND (owner_node IS NULL OR owner_node = '')))",
+                (area, node_id),
+            )
+        if table in ("machines", "alarms"):
+            return ("(area IS NULL OR area = %s)", (area,))
+        return None
+
+    def _filter_scope_rows(self, table: str, rows: list[dict]) -> list[dict]:
+        if table not in PARTITIONED_TABLES:
+            return list(rows or [])
+        return [row for row in (rows or []) if self._row_in_node_scope(table, row)]
+
+    def _filter_child_rows(
+        self,
+        table: str,
+        rows: list[dict],
+        *,
+        local_index: dict,
+        remote_index: dict,
+    ) -> list[dict]:
+        """Drop alarms/tagsmachines whose tag/machine is not this edge's catalog."""
+        if table not in CHILD_TABLES:
+            return list(rows or [])
+        kept: list[dict] = []
+        for row in rows or []:
+            if parent_fk_known(table, row, local_index=local_index, remote_index=remote_index):
+                kept.append(row)
+            else:
+                _LOGGER.debug(
+                    "Omitting %s row %s: parent tag/machine not in this edge catalog",
+                    table,
+                    identity_key(table, row) or row.get("id"),
+                )
+        return kept
+
+    def _load_remote_rows(self, table: str, *, full_scan: bool, since_ms: int) -> list[dict]:
+        """Lookup + parent tables: full read. Partitioned: this area only."""
+        where = None
+        params = None
+        scoped = self._build_area_filter(table)
+        if scoped:
+            where, params = scoped
+        if table in LOOKUP_TABLES or table in PARENT_TABLES:
+            rows = self._remote.read_all(table, where=where, params=params)
+            if not rows and where:
+                rows = self._remote.read_all(table)
+            return self._filter_scope_rows(table, rows)
+        if full_scan:
+            rows = self._remote.read_all(table, where=where, params=params)
+            if not rows and where:
+                rows = self._remote.read_all(table)
+        else:
+            rows = self._fetch_modified_rows(table, since_ms)
+        return self._filter_scope_rows(table, rows)
+
+    def _skip_pull_reason(
+        self,
+        table: str,
+        remote_row: dict,
+        payload: dict,
+        local_index: dict,
+        remote_index: dict,
+    ) -> str | None:
+        """None = upsert. 'foreign' = omit. 'deferred' = retry next cycle."""
+        if _pull_has_required_fks(table, payload):
+            return None
+        if table in CHILD_TABLES:
+            if parent_fk_known(
+                table, remote_row, local_index=local_index, remote_index=remote_index
+            ):
+                return "deferred"
+            return "foreign"
+        return "deferred"
+
     def _fetch_modified_rows(self, table_name: str, since: int) -> list[dict]:
         """Return only rows modified since the catalog_versions / updated_at watermark."""
         return self._remote.read_changed(table_name, int(since or 0))
@@ -596,6 +785,8 @@ class CatalogReplicatorWorker(BaseWorker):
                     keys.add(key)
             pending = pending_pks or set()
             for row in local_rows:
+                if not self._row_in_node_scope(table, row):
+                    continue
                 pk = str(row.get("_pk") or row.get("id") or "")
                 if pk in pending:
                     key = identity_key(table, row)
@@ -603,6 +794,8 @@ class CatalogReplicatorWorker(BaseWorker):
                         keys.add(key)
         else:
             for row in local_rows:
+                if not self._row_in_node_scope(table, row):
+                    continue
                 key = identity_key(table, row)
                 if key:
                     keys.add(key)
@@ -611,212 +804,245 @@ class CatalogReplicatorWorker(BaseWorker):
                 if key:
                     keys.add(key)
 
-        for key in keys:
-            if processed >= _BATCH:
-                break
-            local_row = local_by_id.get(key)
-            remote_row = remote_by_id.get(key)
-            local_pk = str((local_row or {}).get("_pk") or (local_row or {}).get("id") or "")
-            remote_pk = str((remote_row or {}).get("_pk") or (remote_row or {}).get("id") or "")
-            local_ver = get_local(table, local_pk) if local_pk else None
-            remote_ver = get_remote(table, remote_pk) if remote_pk else None
-            local_stamp = (
-                VersionStamp(int(local_ver.version), local_ver.node_id) if local_ver is not None else None
-            )
-            remote_stamp = (
-                VersionStamp(int(remote_ver.version), remote_ver.node_id) if remote_ver is not None else None
-            )
-            try:
-                if local_row is None and remote_row is not None:
-                    payload = prepare_pull_row(
-                        table,
-                        remote_row,
-                        local_index=local_index,
-                        remote_index=remote_index,
-                    )
-                    new_pk = self._local.upsert(
-                        table,
-                        payload,
-                        node_id=getattr(remote_ver, "node_id", None) or "central",
-                        version=getattr(remote_ver, "version", None) or now_ms(),
-                    )
-                    touch_remote(
-                        table,
-                        str(remote_pk or new_pk),
-                        version=getattr(remote_ver, "version", None) or now_ms(),
-                        node_id=getattr(remote_ver, "node_id", None) or "central",
-                        resolved=True,
-                    )
-                    payload["_pk"] = str(new_pk)
-                    local_by_id[key] = payload
-                    local_index[table] = local_by_id
-                    pulled += 1
+        with self._local.atomic():
+            for key in keys:
+                if processed >= _BATCH:
+                    break
+                local_row = local_by_id.get(key)
+                remote_row = remote_by_id.get(key)
+                if remote_row is not None and not self._row_in_node_scope(table, remote_row):
                     processed += 1
                     continue
-                if remote_row is None and local_row is not None:
-                    if local_ver is None or local_ver.node_id == edge:
-                        payload = prepare_push_row(
+                local_pk = str((local_row or {}).get("_pk") or (local_row or {}).get("id") or "")
+                remote_pk = str((remote_row or {}).get("_pk") or (remote_row or {}).get("id") or "")
+                try:
+                    with self._local.atomic():
+                        p, u, c = self._sync_one_key(
                             table,
-                            local_row,
+                            key=key,
+                            local_row=local_row,
+                            remote_row=remote_row,
+                            local_pk=local_pk,
+                            remote_pk=remote_pk,
+                            local_by_id=local_by_id,
+                            remote_by_id=remote_by_id,
                             local_index=local_index,
                             remote_index=remote_index,
+                            edge=edge,
                         )
-                        new_pk = self._remote.upsert(
-                            table,
-                            payload,
-                            node_id=edge,
-                            version=int(local_ver.version) if local_ver else now_ms(),
-                        )
-                        touch_local(
-                            table,
-                            local_pk or str(new_pk),
-                            version=int(local_ver.version) if local_ver else now_ms(),
-                            node_id=edge,
-                            resolved=True,
-                        )
-                        touch_remote(
-                            table,
-                            str(new_pk),
-                            version=int(local_ver.version) if local_ver else now_ms(),
-                            node_id=edge,
-                            resolved=True,
-                        )
-                        payload["_pk"] = str(new_pk)
-                        remote_by_id[key] = payload
-                        remote_index[table] = remote_by_id
-                        pushed += 1
-                        processed += 1
-                    continue
-
-                # Both sides present: business content decides — not updated_at / version skew.
-                if contents_equal(
-                    table,
-                    local_row,
-                    remote_row,
-                    left_index=local_index,
-                    right_index=remote_index,
-                ):
-                    aligned = max(
-                        int(local_stamp.version) if local_stamp else 0,
-                        int(remote_stamp.version) if remote_stamp else 0,
-                        1,
-                    )
-                    if local_pk:
-                        touch_local(
-                            table,
-                            local_pk,
-                            version=aligned,
-                            node_id=(local_stamp.node_id if local_stamp else None)
-                            or (remote_stamp.node_id if remote_stamp else None)
-                            or edge,
-                            resolved=True,
-                        )
-                    if remote_pk:
-                        touch_remote(
-                            table,
-                            remote_pk,
-                            version=aligned,
-                            node_id=(remote_stamp.node_id if remote_stamp else None)
-                            or (local_stamp.node_id if local_stamp else None)
-                            or "central",
-                            resolved=True,
-                        )
+                    pushed += p
+                    pulled += u
+                    conflicts += c
                     processed += 1
-                    continue
-
-                winner = resolve(
-                    local_stamp,
-                    remote_stamp,
-                    local_dirty=bool(
-                        local_ver is not None
-                        and not bool(getattr(local_ver, "conflict_resolved", True))
-                        and str(getattr(local_ver, "node_id", "") or "") == edge
-                    ),
-                )
-                if winner == "local" and local_row is not None:
-                    payload = prepare_push_row(
-                        table,
-                        local_row,
-                        local_index=local_index,
-                        remote_index=remote_index,
-                    )
-                    new_pk = self._remote.upsert(
-                        table,
-                        payload,
-                        node_id=edge,
-                        version=int(local_stamp.version) if local_stamp else now_ms(),
-                    )
-                    touch_local(
-                        table,
-                        local_pk,
-                        version=int(local_stamp.version) if local_stamp else now_ms(),
-                        node_id=edge,
-                        resolved=True,
-                    )
-                    touch_remote(
-                        table,
-                        str(new_pk),
-                        version=int(local_stamp.version) if local_stamp else now_ms(),
-                        node_id=edge,
-                        resolved=True,
-                    )
-                    payload["_pk"] = str(new_pk)
-                    remote_by_id[key] = payload
-                    remote_index[table] = remote_by_id
-                    pushed += 1
-                    conflicts += 1
-                    if local_stamp and remote_stamp:
-                        self._note_conflict(table, key, local_stamp, remote_stamp, "local")
-                    else:
-                        self._note_conflict(
+                except Exception as exc:
+                    processed += 1
+                    if _is_integrity_error(exc):
+                        self._cycle_integrity_errors += 1
+                        _LOGGER.warning(
+                            "IntegrityError syncing %s row %s: %s",
                             table,
                             key,
-                            local_stamp or VersionStamp(now_ms(), edge),
-                            remote_stamp or VersionStamp(0, "central"),
-                            "local",
+                            exc,
                         )
-                else:
-                    if remote_row is not None:
-                        ver = int(remote_stamp.version) if remote_stamp else now_ms()
-                        node = remote_stamp.node_id if remote_stamp else "central"
-                        payload = prepare_pull_row(
+                        continue
+                    errors += 1
+                    if _is_transient_connection_error(exc):
+                        self._transient_remote_errors += 1
+                        _LOGGER.warning(
+                            "catalog sync row skipped (remote connection) table=%s key=%s",
                             table,
-                            remote_row,
-                            local_index=local_index,
-                            remote_index=remote_index,
+                            key,
                         )
-                        new_pk = self._local.upsert(table, payload, node_id=node, version=ver)
-                        touch_remote(table, remote_pk or str(new_pk), version=ver, node_id=node, resolved=True)
-                        touch_local(table, str(new_pk), version=ver, node_id=node, resolved=True)
-                        payload["_pk"] = str(new_pk)
-                        local_by_id[key] = payload
-                        local_index[table] = local_by_id
-                        pulled += 1
-                        conflicts += 1
-                        if local_stamp and remote_stamp:
-                            self._note_conflict(table, key, local_stamp, remote_stamp, "remote")
-                        else:
-                            self._note_conflict(
-                                table,
-                                key,
-                                local_stamp or VersionStamp(0, edge),
-                                remote_stamp or VersionStamp(ver, node),
-                                "remote",
-                            )
-                processed += 1
-            except Exception as exc:
-                errors += 1
-                if _is_transient_connection_error(exc):
-                    self._transient_remote_errors += 1
-                    _LOGGER.warning(
-                        "catalog sync row skipped (remote connection) table=%s key=%s",
-                        table,
-                        key,
-                    )
-                else:
-                    _LOGGER.exception("catalog sync row failed table=%s key=%s", table, key)
-                processed += 1
+                    else:
+                        _LOGGER.exception("catalog sync row failed table=%s key=%s", table, key)
         return pushed, pulled, conflicts, errors
+
+    def _sync_one_key(
+        self,
+        table: str,
+        *,
+        key: str,
+        local_row,
+        remote_row,
+        local_pk: str,
+        remote_pk: str,
+        local_by_id: dict,
+        remote_by_id: dict,
+        local_index: dict,
+        remote_index: dict,
+        edge: str,
+    ) -> tuple[int, int, int]:
+        if local_row is None and remote_row is not None:
+            payload = prepare_pull_row(
+                table,
+                remote_row,
+                local_index=local_index,
+                remote_index=remote_index,
+            )
+            reason = self._skip_pull_reason(
+                table, remote_row, payload, local_index, remote_index
+            )
+            if reason == "foreign":
+                return 0, 0, 0
+            if reason == "deferred":
+                self._cycle_deferred_errors += 1
+                _LOGGER.warning(
+                    "Skipping pull of %s row %s: required FK missing (will retry)",
+                    table,
+                    key,
+                )
+                return 0, 0, 0
+            new_pk = self._local.upsert(
+                table,
+                payload,
+                node_id="central",
+                version=now_ms(),
+            )
+            payload["_pk"] = str(new_pk)
+            local_by_id[key] = payload
+            local_index[table] = local_by_id
+            return 0, 1, 0
+        if remote_row is None and local_row is not None:
+            local_ver = get_local(table, local_pk) if local_pk else None
+            if local_ver is None or local_ver.node_id == edge:
+                payload = prepare_push_row(
+                    table,
+                    local_row,
+                    local_index=local_index,
+                    remote_index=remote_index,
+                )
+                new_pk = self._remote.upsert(
+                    table,
+                    payload,
+                    node_id=edge,
+                    version=int(local_ver.version) if local_ver else now_ms(),
+                )
+                touch_local(
+                    table,
+                    local_pk or str(new_pk),
+                    version=int(local_ver.version) if local_ver else now_ms(),
+                    node_id=edge,
+                    resolved=True,
+                )
+                touch_remote(
+                    table,
+                    str(new_pk),
+                    version=int(local_ver.version) if local_ver else now_ms(),
+                    node_id=edge,
+                    resolved=True,
+                )
+                payload["_pk"] = str(new_pk)
+                remote_by_id[key] = payload
+                remote_index[table] = remote_by_id
+                return 1, 0, 0
+            return 0, 0, 0
+
+        if contents_equal(
+            table,
+            local_row,
+            remote_row,
+            left_index=local_index,
+            right_index=remote_index,
+        ):
+            return 0, 0, 0
+
+        local_ver = get_local(table, local_pk) if local_pk else None
+        remote_ver = get_remote(table, remote_pk) if remote_pk else None
+        local_stamp = (
+            VersionStamp(int(local_ver.version), local_ver.node_id) if local_ver is not None else None
+        )
+        remote_stamp = (
+            VersionStamp(int(remote_ver.version), remote_ver.node_id) if remote_ver is not None else None
+        )
+        winner = resolve(
+            local_stamp,
+            remote_stamp,
+            local_dirty=bool(
+                local_ver is not None
+                and not bool(getattr(local_ver, "conflict_resolved", True))
+                and str(getattr(local_ver, "node_id", "") or "") == edge
+            ),
+        )
+        if winner == "local" and local_row is not None:
+            payload = prepare_push_row(
+                table,
+                local_row,
+                local_index=local_index,
+                remote_index=remote_index,
+            )
+            new_pk = self._remote.upsert(
+                table,
+                payload,
+                node_id=edge,
+                version=int(local_stamp.version) if local_stamp else now_ms(),
+            )
+            touch_local(
+                table,
+                local_pk,
+                version=int(local_stamp.version) if local_stamp else now_ms(),
+                node_id=edge,
+                resolved=True,
+            )
+            touch_remote(
+                table,
+                str(new_pk),
+                version=int(local_stamp.version) if local_stamp else now_ms(),
+                node_id=edge,
+                resolved=True,
+            )
+            payload["_pk"] = str(new_pk)
+            remote_by_id[key] = payload
+            remote_index[table] = remote_by_id
+            if local_stamp and remote_stamp:
+                self._note_conflict(table, key, local_stamp, remote_stamp, "local")
+            else:
+                self._note_conflict(
+                    table,
+                    key,
+                    local_stamp or VersionStamp(now_ms(), edge),
+                    remote_stamp or VersionStamp(0, "central"),
+                    "local",
+                )
+            return 1, 0, 1
+        if remote_row is not None:
+            ver = int(remote_stamp.version) if remote_stamp else now_ms()
+            node = remote_stamp.node_id if remote_stamp else "central"
+            payload = prepare_pull_row(
+                table,
+                remote_row,
+                local_index=local_index,
+                remote_index=remote_index,
+            )
+            reason = self._skip_pull_reason(
+                table, remote_row, payload, local_index, remote_index
+            )
+            if reason == "foreign":
+                return 0, 0, 0
+            if reason == "deferred":
+                self._cycle_deferred_errors += 1
+                _LOGGER.warning(
+                    "Skipping pull of %s row %s: required FK missing (will retry)",
+                    table,
+                    key,
+                )
+                return 0, 0, 0
+            new_pk = self._local.upsert(table, payload, node_id=node, version=ver)
+            touch_local(table, str(new_pk), version=ver, node_id=node, resolved=True)
+            payload["_pk"] = str(new_pk)
+            local_by_id[key] = payload
+            local_index[table] = local_by_id
+            if local_stamp and remote_stamp:
+                self._note_conflict(table, key, local_stamp, remote_stamp, "remote")
+            else:
+                self._note_conflict(
+                    table,
+                    key,
+                    local_stamp or VersionStamp(0, edge),
+                    remote_stamp or VersionStamp(ver, node),
+                    "remote",
+                )
+            return 0, 1, 1
+        return 0, 0, 0
 
 
 _worker: CatalogReplicatorWorker | None = None

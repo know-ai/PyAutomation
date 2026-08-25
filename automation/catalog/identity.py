@@ -137,6 +137,38 @@ def _parent_identity_from_source(
     return identity_key(parent_table, parent)
 
 
+def parent_fk_known(
+    table: str,
+    row: dict,
+    *,
+    local_index: dict[str, dict[str, dict]],
+    remote_index: dict[str, dict[str, dict]],
+    parents: tuple[str, ...] = ("tags", "machines"),
+) -> bool:
+    """True if every tags/machines FK on ``row`` resolves in local or remote indexes."""
+    specs = FK_SPECS.get(table) or ()
+    for field, parent_table, lookup_fields in specs:
+        if parent_table not in parents:
+            continue
+        fk_value = _fk_value(row, field)
+        if fk_value is None or fk_value == "":
+            return False
+        found = False
+        for index in (remote_index.get(parent_table) or {}, local_index.get(parent_table) or {}):
+            if f"pk:{fk_value}" in index or f"pk:{str(fk_value)}" in index:
+                found = True
+                break
+            parent_key = _parent_identity_from_source(
+                parent_table, fk_value, index, lookup_fields
+            )
+            if parent_key and parent_key in index:
+                found = True
+                break
+        if not found:
+            return False
+    return True
+
+
 def remap_row_fks(
     table: str,
     row: dict,

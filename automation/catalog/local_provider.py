@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 
 from .local_db import get_catalog_database
 from .models import local_model
@@ -68,6 +69,12 @@ class LocalCatalogProvider:
                 row = None
         return row_to_raw(row) if row is not None else None
 
+    def exists(self, table: str, row_id) -> bool:
+        """True if the local catalog has this primary key."""
+        if row_id is None or row_id == "":
+            return False
+        return self.read(table, str(row_id)) is not None
+
     def upsert(self, table: str, row: dict, *, node_id: str | None = None, version: int | None = None) -> str:
         model = local_model(table)
         if model is None:
@@ -76,6 +83,13 @@ class LocalCatalogProvider:
         pk = pk_as_str(inst)
         touch_local(table, pk, version=version or now_ms(), node_id=node_id or edge_node_id())
         return pk
+
+    def atomic(self):
+        """One SQLite transaction (nested calls become savepoints)."""
+        db = get_catalog_database()
+        if db is None:
+            return nullcontext()
+        return db.atomic()
 
     def delete(self, table: str, row_id: str) -> None:
         model = local_model(table)

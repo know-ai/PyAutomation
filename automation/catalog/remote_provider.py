@@ -38,9 +38,9 @@ class RemoteCatalogProvider:
         except Exception:
             return False
 
-    def read_all(self, table: str) -> list[dict]:
+    def read_all(self, table: str, *, where: str | None = None, params=None) -> list[dict]:
         if self._prefer_replica_reads:
-            rows = replica_read_all(table)
+            rows = replica_read_all(table, where=where, params=params)
             if rows:
                 return rows
             # Empty can mean empty table OR replica not ready — fall through once.

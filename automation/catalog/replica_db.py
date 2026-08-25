@@ -96,15 +96,17 @@ def reset_replica_database() -> None:
         _LOGGER.debug("catalog replica database reset skipped", exc_info=True)
 
 
-def replica_read_all(table: str) -> list[dict]:
-    """SELECT * via the dedicated handle. Falls back to [] on error."""
+def replica_read_all(table: str, where: str | None = None, params=None) -> list[dict]:
+    """SELECT * via the dedicated handle. Optional WHERE for area scoping."""
     db = ensure_replica_database()
     if db is None:
         return []
     dialect = "mysql" if "mysql" in type(db).__name__.lower() else "postgresql"
     sql = f"SELECT * FROM {_quote_ident(str(table), dialect)}"
+    if where:
+        sql = f"{sql} WHERE {where}"
     try:
-        return _fetch_dicts(db, sql)
+        return _fetch_dicts(db, sql, params)
     except Exception:
         _LOGGER.debug("replica_read_all failed table=%s", table, exc_info=True)
         return []
