@@ -132,6 +132,19 @@ class NodeScope:
             return True
         return self.is_valid and bool(owner_node) and str(owner_node) == self.node_id
 
+    def owns_area(self, area: object) -> bool:
+        """This edge owns its line area, plus unscoped/system events it created."""
+        if not self.multi_edge_enabled:
+            return True
+        if not self.is_valid:
+            return False
+        if area is None:
+            return True
+        text = str(area).strip()
+        if not text or text == "System":
+            return True
+        return text == self.area
+
     def owns_tag(self, tag: object) -> bool:
         if not self.multi_edge_enabled:
             return True

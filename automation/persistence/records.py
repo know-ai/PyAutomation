@@ -68,14 +68,14 @@ def _scope_metadata(
 
         scope = get_node_scope()
     except (ImportError, AttributeError):
-        return (None if plant_wide else area), owner_node
+        return (area or "System"), owner_node
     if getattr(scope, "enabled", False) and getattr(scope, "is_valid", False):
-        if area is None and not plant_wide:
+        if area is None:
             area = getattr(scope, "area", None)
         if owner_node is None:
             owner_node = getattr(scope, "node_id", None)
-    if plant_wide:
-        area = None
+    if area is None:
+        area = "System"
     return area, owner_node
 
 

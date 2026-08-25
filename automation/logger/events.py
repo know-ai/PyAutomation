@@ -45,8 +45,9 @@ class EventsLogger(BaseLogger):
         * **priority** (int, optional): Priority level.
         * **criticity** (int, optional): Criticality level.
         * **timestamp** (datetime, optional): Time of the event.
-        * **area** (str, optional): Line/segment. Omitted for plant-wide actions.
-        * **plant_wide** (bool): If True, persist with ``area=None``.
+        * **area** (str, optional): Line/segment. Defaults to the node area.
+        * **plant_wide** (bool): Identity action; still stamped with the node area
+          (never ``None``) so SAF accepts the journal row.
         """
         if not self.is_history_logged:
 

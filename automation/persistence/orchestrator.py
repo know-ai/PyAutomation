@@ -36,15 +36,16 @@ def _scope_owns_persistable(persistable: IPersistable) -> bool:
         return False
     payload = persistable.payload()
     try:
+        owner_node = payload.get("owner_node")
+        area = payload.get("area")
         owns_area = getattr(scope, "owns_area", None)
-        area_owned = (
-            bool(owns_area(payload.get("area")))
-            if callable(owns_area)
-            else payload.get("area") == getattr(scope, "area", None)
-        )
-        return bool(
-            area_owned and scope.owns_node(payload.get("owner_node"))
-        )
+        if callable(owns_area):
+            area_owned = bool(owns_area(area))
+        elif area is None or str(area).strip() in ("", "System"):
+            area_owned = True
+        else:
+            area_owned = area == getattr(scope, "area", None)
+        return bool(area_owned and scope.owns_node(owner_node))
     except Exception:
         return False
 

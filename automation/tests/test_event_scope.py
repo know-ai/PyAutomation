@@ -17,10 +17,18 @@ class FakeScope:
 
 
 class TestResolveEventArea(unittest.TestCase):
-    def test_plant_wide_always_empty(self):
+    def test_plant_wide_stamps_node_area(self):
         tag = types.SimpleNamespace(area="Linea2")
         with patch("automation.utils.event_scope.node_area", return_value="Linea1"):
-            self.assertIsNone(resolve_event_area(plant_wide=True, source=tag, area="Linea3"))
+            self.assertEqual(
+                resolve_event_area(plant_wide=True, source=tag, area="Linea3"),
+                "Linea1",
+            )
+
+    def test_never_none_falls_back_to_system(self):
+        with patch("automation.utils.event_scope.node_area", return_value=None):
+            self.assertEqual(resolve_event_area(), "System")
+            self.assertEqual(resolve_event_area(plant_wide=True), "System")
 
     def test_explicit_area_wins(self):
         tag = types.SimpleNamespace(area="Linea2")
@@ -41,14 +49,14 @@ class TestPersistableEventArea(unittest.TestCase):
             record = PersistableRecord.event(message="Tag updated", username="op")
         self.assertEqual(record.payload()["area"], "Linea1")
 
-    def test_plant_wide_event_has_no_area(self):
+    def test_plant_wide_event_stamps_node_area(self):
         with patch("automation.node_scope.get_node_scope", return_value=FakeScope()):
             record = PersistableRecord.event(
                 message="User account created",
                 username="admin",
                 plant_wide=True,
             )
-        self.assertIsNone(record.payload()["area"])
+        self.assertEqual(record.payload()["area"], "Linea1")
         self.assertEqual(record.payload()["owner_node"], "edge-a")
 
 
@@ -84,7 +92,7 @@ class TestEventsLoggerArea(unittest.TestCase):
         self.assertEqual(captured["journal_area"], "Linea1")
         self.assertEqual(create.call_args.kwargs["area"], "Linea1")
 
-    def test_plant_wide_create_does_not_stamp_node_area(self):
+    def test_plant_wide_create_stamps_node_area(self):
         from ..logger.events import EventsLogger
 
         logger = EventsLogger()
@@ -114,5 +122,5 @@ class TestEventsLoggerArea(unittest.TestCase):
                 plant_wide=True,
             )
 
-        self.assertIsNone(captured["journal_area"])
-        self.assertIsNone(create.call_args.kwargs["area"])
+        self.assertEqual(captured["journal_area"], "Linea1")
+        self.assertEqual(create.call_args.kwargs["area"], "Linea1")

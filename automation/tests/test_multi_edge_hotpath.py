@@ -28,6 +28,8 @@ class FakeScope:
     site = "Plant"
 
     def owns_area(self, area):
+        if area is None or str(area).strip() in ("", "System"):
+            return True
         return area == self.area
 
     def owns_node(self, owner_node):
@@ -208,6 +210,27 @@ class TestMultiEdgeSaf(unittest.TestCase):
                 )
                 self.assertEqual(orchestrator.enqueue(record), 0)
                 self.assertEqual(orchestrator.pending_count(), 0)
+            finally:
+                orchestrator.close()
+
+    def test_orchestrator_accepts_this_edge_event_without_area(self):
+        with tempfile.TemporaryDirectory() as tmp, installed_scope():
+            config = SafConfig(journal_path=os.path.join(tmp, "journal.db"))
+            orchestrator = PersistenceOrchestrator(config=config, remote=FakeRemote())
+            try:
+                record = PersistableRecord.event(
+                    message="legacy",
+                    username="system",
+                    area=None,
+                    owner_node="edge-a",
+                )
+                object.__setattr__(
+                    record,
+                    "body",
+                    {**dict(record.payload()), "area": None, "owner_node": "edge-a"},
+                )
+                self.assertGreater(orchestrator.enqueue(record), 0)
+                self.assertGreater(orchestrator.pending_count(), 0)
             finally:
                 orchestrator.close()
 

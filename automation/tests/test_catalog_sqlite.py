@@ -820,6 +820,110 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
             set_sync_failed.assert_called_with(False)
 
 
+class TestReplicatorIsolation(unittest.TestCase):
+    def test_run_uses_threadpool_timeout(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        class FakeFuture:
+            def __init__(self):
+                self.timeout = None
+
+            def result(self, timeout=None):
+                self.timeout = timeout
+                return {"pushed": 0}
+
+        class FakeExecutor:
+            def __init__(self):
+                self.submitted = []
+                self.future = FakeFuture()
+
+            def submit(self, fn, *args):
+                self.submitted.append((fn, args))
+                return self.future
+
+            def shutdown(self, **_kw):
+                return None
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._executor = FakeExecutor()
+
+        def _stop(_timeout=None):
+            worker.stop_event.set()
+            return True
+
+        with patch.object(worker.stop_event, "wait", side_effect=_stop):
+            worker.run()
+        self.assertEqual(len(worker._executor.submitted), 1)
+        self.assertEqual(worker._executor.future.timeout, 5.0)
+
+    def test_run_skips_cycle_on_timeout(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        class TimeoutFuture:
+            def result(self, timeout=None):
+                raise TimeoutError()
+
+        class FakeExecutor:
+            def submit(self, fn, *args):
+                return TimeoutFuture()
+
+            def shutdown(self, **_kw):
+                return None
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._executor = FakeExecutor()
+
+        def _stop(_timeout=None):
+            worker.stop_event.set()
+            return True
+
+        with patch.object(worker.stop_event, "wait", side_effect=_stop), patch(
+            "automation.catalog.replicator.update_metrics"
+        ) as metrics:
+            worker.run()
+        metrics.assert_not_called()
+
+    def test_incremental_pull_skips_full_remote_read(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._last_remote_version_ms = 1_700_000_000_000
+        worker._last_full_scan_mono = time.monotonic()
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch(
+            "automation.catalog.replicator.replica_watermark_ms", return_value=1_700_000_000_100
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_all", return_value=[]
+        ) as read_all, patch.object(
+            worker._remote, "read_changed", return_value=[]
+        ) as read_changed, patch.object(
+            worker, "_sync_table", return_value=(0, 0, 0, 0)
+        ) as sync_table:
+            result = worker.cycle(force=True)
+        self.assertTrue(result.get("incremental"))
+        read_all.assert_not_called()
+        self.assertGreater(read_changed.call_count, 0)
+        sync_table.assert_not_called()
+
+    def test_fetch_modified_rows_uses_updated_at_path(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        with patch.object(
+            worker._remote, "read_changed", return_value=[{"id": 1, "updated_at": "now"}]
+        ) as changed:
+            rows = worker._fetch_modified_rows("tags", 123)
+        self.assertEqual(rows[0]["id"], 1)
+        changed.assert_called_once_with("tags", 123)
+
+
 class TestHmiCatalogSurfaces(unittest.TestCase):
     """CA-CATALOG-05 / 11 static HMI"""
 

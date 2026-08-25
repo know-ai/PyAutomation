@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import datetime, timezone
 from typing import Any
 
 _LOGGER = logging.getLogger("pyautomation")
@@ -103,22 +104,137 @@ def replica_read_all(table: str) -> list[dict]:
     dialect = "mysql" if "mysql" in type(db).__name__.lower() else "postgresql"
     sql = f"SELECT * FROM {_quote_ident(str(table), dialect)}"
     try:
-        if getattr(db, "is_closed", lambda: True)():
-            db.connect(reuse_if_open=True)
-        cursor = db.execute_sql(sql)
-        description = cursor.description or ()
-        columns = [col[0] for col in description]
-        rows: list[dict] = []
-        for raw in cursor.fetchall():
-            item = {columns[i]: raw[i] for i in range(len(columns))}
-            pk = item.get("id")
-            if pk is not None:
-                item["_pk"] = str(pk)
-            rows.append(item)
-        return rows
+        return _fetch_dicts(db, sql)
     except Exception:
         _LOGGER.debug("replica_read_all failed table=%s", table, exc_info=True)
         return []
+
+
+def replica_watermark_ms() -> int:
+    """MAX(catalog_versions.version). 0 if empty/unavailable."""
+    db = ensure_replica_database()
+    if db is None:
+        return 0
+    try:
+        _ensure_connected(db)
+        cursor = db.execute_sql("SELECT COALESCE(MAX(version), 0) FROM catalog_versions")
+        row = cursor.fetchone()
+        return int((row[0] if row else 0) or 0)
+    except Exception:
+        _LOGGER.debug("replica watermark query failed", exc_info=True)
+        return 0
+
+
+def replica_modified_row_ids(table: str, since_ms: int) -> list[str] | None:
+    """Row ids in catalog_versions with version > since_ms. None = must full-scan."""
+    db = ensure_replica_database()
+    if db is None:
+        return None
+    try:
+        _ensure_connected(db)
+        cursor = db.execute_sql(
+            "SELECT row_id FROM catalog_versions WHERE table_name = %s AND version > %s",
+            (str(table), int(since_ms)),
+        )
+        return [str(row[0]) for row in cursor.fetchall() if row and row[0] is not None]
+    except Exception:
+        _LOGGER.debug("replica modified ids failed table=%s", table, exc_info=True)
+        return None
+
+
+def replica_read_pks(table: str, pks: list[str]) -> list[dict]:
+    """SELECT * WHERE pk IN (...). Empty list if no ids."""
+    if not pks:
+        return []
+    db = ensure_replica_database()
+    if db is None:
+        return []
+    dialect = "mysql" if "mysql" in type(db).__name__.lower() else "postgresql"
+    pk_col = "id"
+    try:
+        from .schema import historian_models
+
+        model = historian_models().get(table)
+        if model is not None:
+            field = model._meta.primary_key
+            pk_col = getattr(field, "column_name", None) or getattr(field, "name", None) or "id"
+    except Exception:
+        pass
+    qtable = _quote_ident(str(table), dialect)
+    qpk = _quote_ident(str(pk_col), dialect)
+    chunk_rows: list[dict] = []
+    try:
+        _ensure_connected(db)
+        for offset in range(0, len(pks), 200):
+            chunk = pks[offset : offset + 200]
+            placeholders = ",".join(["%s"] * len(chunk))
+            sql = f"SELECT * FROM {qtable} WHERE {qpk} IN ({placeholders})"
+            chunk_rows.extend(_fetch_dicts(db, sql, tuple(chunk)))
+        return chunk_rows
+    except Exception:
+        _LOGGER.debug("replica_read_pks failed table=%s", table, exc_info=True)
+        return []
+
+
+def replica_read_updated_at_since(table: str, since_ms: int) -> list[dict]:
+    """SELECT * WHERE updated_at/created_at > watermark. Missing columns → []."""
+    db = ensure_replica_database()
+    if db is None:
+        return []
+    dialect = "mysql" if "mysql" in type(db).__name__.lower() else "postgresql"
+    qtable = _quote_ident(str(table), dialect)
+    ts = datetime.fromtimestamp(max(0, int(since_ms)) / 1000.0, tz=timezone.utc)
+    rows: list[dict] = []
+    for column in ("updated_at", "created_at"):
+        qcol = _quote_ident(column, dialect)
+        sql = f"SELECT * FROM {qtable} WHERE {qcol} > %s"
+        try:
+            rows.extend(_fetch_dicts(db, sql, (ts,)))
+        except Exception:
+            _LOGGER.debug(
+                "replica updated_at/created_at filter skipped table=%s col=%s",
+                table,
+                column,
+                exc_info=True,
+            )
+    return rows
+
+
+def replica_read_incremental(table: str, since_ms: int) -> list[dict]:
+    """Changed rows since watermark: catalog_versions.version plus updated_at."""
+    by_pk: dict[str, dict] = {}
+    ids = replica_modified_row_ids(table, since_ms)
+    if ids is None:
+        return replica_read_all(table)
+    for row in replica_read_pks(table, ids):
+        pk = str(row.get("_pk") or row.get("id") or "")
+        if pk:
+            by_pk[pk] = row
+    for row in replica_read_updated_at_since(table, since_ms):
+        pk = str(row.get("_pk") or row.get("id") or "")
+        if pk:
+            by_pk[pk] = row
+    return list(by_pk.values())
+
+
+def _ensure_connected(db) -> None:
+    if getattr(db, "is_closed", lambda: True)():
+        db.connect(reuse_if_open=True)
+
+
+def _fetch_dicts(db, sql: str, params=None) -> list[dict]:
+    _ensure_connected(db)
+    cursor = db.execute_sql(sql, params) if params is not None else db.execute_sql(sql)
+    description = cursor.description or ()
+    columns = [col[0] for col in description]
+    rows: list[dict] = []
+    for raw in cursor.fetchall():
+        item = {columns[i]: raw[i] for i in range(len(columns))}
+        pk = item.get("id")
+        if pk is not None:
+            item["_pk"] = str(pk)
+        rows.append(item)
+    return rows
 
 
 def close_replica_thread_connection() -> None:

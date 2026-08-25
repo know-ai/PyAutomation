@@ -11,7 +11,9 @@ Operational Silence Doctrine (operator Events table):
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 
 from ..utils.system_event_audit import clip, persist_system_event
@@ -33,6 +35,7 @@ from .remote_provider import RemoteCatalogProvider
 from .replica_db import (
     close_replica_thread_connection,
     ensure_replica_database,
+    replica_watermark_ms,
     reset_replica_database,
 )
 from .schema import REPLICATED_TABLES
@@ -40,6 +43,7 @@ from .versions import (
     edge_node_id,
     get_local,
     get_remote,
+    list_local_pending,
     now_ms,
     pending_count,
     touch_local,
@@ -54,6 +58,8 @@ _ONLINE_INTERVAL_S = 300.0
 # User rows also invalidate via PG NOTIFY / Redis Pub/Sub (user_cache).
 # This worker is disaster-recovery catch-up, not the <2s login path.
 _CATCHUP_INTERVAL_S = 30.0
+_CYCLE_TIMEOUT_S = 5.0
+_FULL_SCAN_INTERVAL_S = 300.0
 _EVENT_DELTA_THRESHOLD = 50
 _EXCEPTION_EVENT_COOLDOWN_S = 300.0
 _BACKOFF_INTERVALS_S = (30.0, 60.0, 120.0, 300.0)
@@ -104,6 +110,54 @@ class CatalogReplicatorWorker(BaseWorker):
         self._remote_down_logged = False
         self._transient_remote_errors = 0
         self._remote_outage_since: float | None = None
+        self._last_sync = None
+        self._last_remote_version_ms: int | None = None
+        self._last_full_scan_mono = 0.0
+        self._cycle_lock = threading.Lock()
+        self._executor = None
+
+    def stop(self):
+        super().stop()
+        executor = self._executor
+        self._executor = None
+        if executor is None:
+            return
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            executor.shutdown(wait=False)
+        except Exception:
+            _LOGGER.debug("catalog replicator executor shutdown skipped", exc_info=True)
+
+    def _make_executor(self):
+        """Native OS threads. gevent.monkey.patch_all() does not apply here."""
+        try:
+            from gevent.threadpool import ThreadPoolExecutor
+        except ImportError:
+            from concurrent.futures import ThreadPoolExecutor
+        return ThreadPoolExecutor(max_workers=1)
+
+    def _thread_pool_executor(self):
+        if self._executor is None:
+            self._executor = self._make_executor()
+        return self._executor
+
+    def _cycle_in_thread(self, force: bool = False):
+        """Executed on an OS thread. Never touches the gevent hub event-loop."""
+        if not self._cycle_lock.acquire(blocking=False):
+            _LOGGER.warning("Catalog sync still running in OS thread; skip overlapping cycle")
+            return {"skipped": True, "reason": "overlap"}
+        try:
+            from ..utils.db_connections import ephemeral_historian
+
+            db = ensure_replica_database()
+            with ephemeral_historian(db):
+                return self.cycle(force=force)
+        except Exception:
+            _LOGGER.exception("Catalog sync in thread failed")
+            raise
+        finally:
+            self._cycle_lock.release()
 
     def _is_remote_available(self) -> bool:
         """Historian reachable on the dedicated replica handle (never the hot API proxy)."""
@@ -165,13 +219,32 @@ class CatalogReplicatorWorker(BaseWorker):
 
     def run(self):
         while not self.stop_event.is_set():
+            future = self._thread_pool_executor().submit(self._cycle_in_thread, False)
             try:
-                self.cycle()
-            except Exception:
-                _LOGGER.exception("catalog replicator cycle failed")
-                self._failures += 1
-                self._latch_sync_failed(self._failures >= _FAIL_THRESHOLD)
-                update_metrics(consecutive_failures=self._failures)
+                future.result(timeout=5.0)
+            except FuturesTimeoutError:
+                _LOGGER.warning(
+                    "Catalog sync thread timeout, skipping cycle. (limit=%.1fs)",
+                    _CYCLE_TIMEOUT_S,
+                )
+            except TimeoutError:
+                _LOGGER.warning(
+                    "Catalog sync thread timeout, skipping cycle. (limit=%.1fs)",
+                    _CYCLE_TIMEOUT_S,
+                )
+            except BaseException as exc:
+                if type(exc).__name__ in ("Timeout", "TimeoutError"):
+                    _LOGGER.warning(
+                        "Catalog sync thread timeout, skipping cycle. (limit=%.1fs)",
+                        _CYCLE_TIMEOUT_S,
+                    )
+                elif isinstance(exc, Exception):
+                    _LOGGER.exception("Catalog sync thread exception.")
+                    self._failures += 1
+                    self._latch_sync_failed(self._failures >= _FAIL_THRESHOLD)
+                    update_metrics(consecutive_failures=self._failures)
+                else:
+                    raise
             self.stop_event.wait(self._wait_interval())
 
     def _historian_ready(self) -> bool:
@@ -221,6 +294,8 @@ class CatalogReplicatorWorker(BaseWorker):
             self._reset_backoff()
             self._remote_down_logged = False
             self._catch_up = True
+            self._last_remote_version_ms = None
+            self._last_full_scan_mono = 0.0
             reset_replica_database()
             outage_s = (
                 (now - self._remote_outage_since) if self._remote_outage_since is not None else 0.0
@@ -253,9 +328,23 @@ class CatalogReplicatorWorker(BaseWorker):
         self._cycle_conflicts = []
         self._cycle_conflict_counts = {}
 
-        # One full scan per side per cycle (no per-table re-read).
+        full_scan = self._should_full_scan()
+        try:
+            pending = list_local_pending()
+        except Exception:
+            pending = []
+        pending_pks: dict[str, set[str]] = {}
+        for item in pending:
+            pending_pks.setdefault(str(item.table_name), set()).add(str(item.row_id))
+
         local_rows_by_table = {table: self._local.read_all(table) for table in REPLICATED_TABLES}
-        remote_rows_by_table = {table: self._remote.read_all(table) for table in REPLICATED_TABLES}
+        if full_scan:
+            remote_rows_by_table = {table: self._remote.read_all(table) for table in REPLICATED_TABLES}
+        else:
+            since_ms = int(self._last_remote_version_ms or 0)
+            remote_rows_by_table = {
+                table: self._fetch_modified_rows(table, since_ms) for table in REPLICATED_TABLES
+            }
         local_index = {
             table: index_by_identity(table, local_rows_by_table[table]) for table in REPLICATED_TABLES
         }
@@ -266,12 +355,21 @@ class CatalogReplicatorWorker(BaseWorker):
         pushed = pulled = auto_resolved = row_errors = 0
         for table in REPLICATED_TABLES:
             try:
+                table_pending = pending_pks.get(table) or set()
+                if (
+                    not full_scan
+                    and not remote_rows_by_table[table]
+                    and not table_pending
+                ):
+                    continue
                 p, u, c, e = self._sync_table(
                     table,
                     local_rows=local_rows_by_table[table],
                     remote_rows=remote_rows_by_table[table],
                     local_index=local_index,
                     remote_index=remote_index,
+                    partial_remote=not full_scan,
+                    pending_pks=table_pending,
                 )
                 pushed += p
                 pulled += u
@@ -341,12 +439,19 @@ class CatalogReplicatorWorker(BaseWorker):
             row_errors=row_errors,
             summary=summary,
         )
+        if not row_errors:
+            self._last_sync = datetime.now(timezone.utc)
+            watermark = replica_watermark_ms()
+            self._last_remote_version_ms = watermark or now_ms()
+            if full_scan:
+                self._last_full_scan_mono = time.monotonic()
         close_replica_thread_connection()
         return {
             "pushed": pushed,
             "pulled": pulled,
             "conflicts": auto_resolved,
             "errors": row_errors,
+            "incremental": not full_scan,
         }
 
     def _latch_sync_failed(self, active: bool) -> None:
@@ -454,6 +559,15 @@ class CatalogReplicatorWorker(BaseWorker):
             )
         )
 
+    def _should_full_scan(self) -> bool:
+        if self._last_remote_version_ms is None or self._last_full_scan_mono <= 0.0:
+            return True
+        return (time.monotonic() - self._last_full_scan_mono) >= _FULL_SCAN_INTERVAL_S
+
+    def _fetch_modified_rows(self, table_name: str, since: int) -> list[dict]:
+        """Return only rows modified since the catalog_versions / updated_at watermark."""
+        return self._remote.read_changed(table_name, int(since or 0))
+
     def _sync_table(
         self,
         table: str,
@@ -462,6 +576,8 @@ class CatalogReplicatorWorker(BaseWorker):
         remote_rows: list,
         local_index: dict,
         remote_index: dict,
+        partial_remote: bool = False,
+        pending_pks: set | None = None,
     ) -> tuple[int, int, int, int]:
         remote_by_id = index_by_identity(table, remote_rows)
         local_by_id = index_by_identity(table, local_rows)
@@ -473,14 +589,27 @@ class CatalogReplicatorWorker(BaseWorker):
         processed = 0
 
         keys = set()
-        for row in local_rows:
-            key = identity_key(table, row)
-            if key:
-                keys.add(key)
-        for row in remote_rows:
-            key = identity_key(table, row)
-            if key:
-                keys.add(key)
+        if partial_remote:
+            for row in remote_rows:
+                key = identity_key(table, row)
+                if key:
+                    keys.add(key)
+            pending = pending_pks or set()
+            for row in local_rows:
+                pk = str(row.get("_pk") or row.get("id") or "")
+                if pk in pending:
+                    key = identity_key(table, row)
+                    if key:
+                        keys.add(key)
+        else:
+            for row in local_rows:
+                key = identity_key(table, row)
+                if key:
+                    keys.add(key)
+            for row in remote_rows:
+                key = identity_key(table, row)
+                if key:
+                    keys.add(key)
 
         for key in keys:
             if processed >= _BATCH:

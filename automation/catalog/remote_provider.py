@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from .replica_db import replica_read_all
+from .replica_db import replica_read_all, replica_read_incremental
 from .rows import row_to_raw, upsert_model
 from .schema import historian_models, pk_as_str
 from .versions import edge_node_id, now_ms, touch_remote
@@ -55,6 +55,19 @@ class RemoteCatalogProvider:
             return [row_to_raw(row) for row in model.select().iterator()]
         except Exception:
             _LOGGER.debug("remote catalog read_all failed table=%s", table, exc_info=True)
+            return []
+
+    def read_changed(self, table: str, since_ms: int) -> list[dict]:
+        """Incremental pull: catalog_versions.version and updated_at/created_at."""
+        if self._prefer_replica_reads:
+            return replica_read_incremental(table, int(since_ms or 0))
+        model = historian_models().get(table)
+        if model is None:
+            return []
+        try:
+            return replica_read_incremental(table, int(since_ms or 0))
+        except Exception:
+            _LOGGER.debug("remote catalog read_changed failed table=%s", table, exc_info=True)
             return []
 
     def read(self, table: str, row_id: str) -> dict | None:

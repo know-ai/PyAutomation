@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """Resolve the Area/Segment stamp for events and alarm-history rows.
 
-Line/edge actions inherit the node area (or the source object's area). Plant-wide
-identity actions — user create, password, role — must keep ``area=None``.
+Line/edge actions inherit the node area (or the source object's area). SAF
+rejects ``area=None``; plant-wide identity actions still receive the node
+area (or ``"System"``) so the journal is never dropped.
 """
 from __future__ import annotations
 
@@ -63,25 +64,31 @@ def node_area() -> str | None:
     return None
 
 
+SYSTEM_AREA = "System"
+
+
 def resolve_event_area(
     *,
     area: Any = None,
     plant_wide: bool = False,
     source: Any = None,
-) -> str | None:
+) -> str:
     """Pick the area that should be persisted with an event.
 
-    * ``plant_wide=True`` → always ``None`` (whole-plant identity actions).
-    * else explicit ``area``, then ``source.area`` / ``source.tag.area``,
-      then the current node scope.
+    Never returns ``None``. Explicit ``area`` wins unless ``plant_wide=True``,
+    then source.area / source.tag.area, then the current node scope, then
+    ``"System"``.
     """
-    if plant_wide:
-        return None
-    explicit = _clean(area)
-    if explicit:
-        return explicit
-    for item in _iter_sources(source):
-        found = _area_from_obj(item)
-        if found:
-            return found
-    return node_area()
+    if not plant_wide:
+        explicit = _clean(area)
+        if explicit:
+            return explicit
+        for item in _iter_sources(source):
+            found = _area_from_obj(item)
+            if found:
+                return found
+    node = node_area()
+    if node:
+        return node
+    fallback = _clean(area)
+    return fallback or SYSTEM_AREA
