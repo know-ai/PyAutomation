@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -751,6 +752,72 @@ class TestReplicatorStartupGrace(unittest.TestCase):
             worker._latch_local_only(True)
             self.assertEqual(persist.call_count, 2)
             self.assertEqual(persist.call_args.kwargs["message"], "Catalog local-only mode")
+
+
+class TestReplicatorRemoteOutage(unittest.TestCase):
+    def test_transient_connection_error_detection(self):
+        from automation.catalog.replicator import _is_transient_connection_error
+
+        class InterfaceError(Exception):
+            pass
+
+        exc = InterfaceError("connection already closed")
+        self.assertTrue(_is_transient_connection_error(exc))
+
+    def test_cycle_skips_remote_when_unavailable(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        with patch.object(worker, "_is_remote_available", return_value=False), patch(
+            "automation.catalog.replicator.set_sync_failed"
+        ) as set_sync_failed, patch.object(worker._remote, "read_all") as read_all:
+            result = worker.cycle(force=True)
+            self.assertEqual(result.get("reason"), "remote-down")
+            read_all.assert_not_called()
+            set_sync_failed.assert_called_with(False)
+
+    def test_sync_failed_suppressed_during_short_outage(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._remote_outage_since = time.monotonic()
+        worker._failures = 3
+        with patch("automation.catalog.replicator.set_sync_failed") as set_sync_failed, patch(
+            "automation.catalog.replicator.persist_system_event"
+        ):
+            worker._latch_sync_failed(True)
+            set_sync_failed.assert_called_with(False)
+
+    def test_backoff_interval_when_remote_down(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker, _BACKOFF_INTERVALS_S
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, catchup_interval=30.0)
+        worker._remote_available = False
+        worker._backoff_step = 2
+        self.assertEqual(worker._wait_interval(), _BACKOFF_INTERVALS_S[2])
+
+    def test_transient_row_errors_abort_without_sync_failed_alarm(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._remote_available = True
+
+        class InterfaceError(Exception):
+            pass
+
+        def boom(*_a, **_k):
+            raise InterfaceError("connection already closed")
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(worker._remote, "read_all", return_value=[]), patch.object(
+            worker, "_sync_table", side_effect=boom
+        ), patch("automation.catalog.replicator.set_sync_failed") as set_sync_failed:
+            result = worker.cycle(force=True)
+            self.assertEqual(result.get("reason"), "remote-connection-lost")
+            set_sync_failed.assert_called_with(False)
 
 
 class TestHmiCatalogSurfaces(unittest.TestCase):

@@ -25,7 +25,9 @@ SQLite **ya no** es un motor de historiador central.
 1. Si el LED de BD está en rojo, el edge opera con `catalog.db`.
 2. Aviso flotante en la **parte superior del contenedor de la vista** (no empuja el layout). Se puede **arrastrar** por el asa (grip) si tapa un control; **no** se puede cerrar — desaparece solo al recuperar el historiador.
 3. Login usa hashes del espejo local (CA-CATALOG-06).
-4. Al reconectar, `CatalogReplicatorWorker` hace push/pull cada 30 s.
+4. Al reconectar, `CatalogReplicatorWorker` hace push/pull con catch-up cada 30 s y backoff progresivo (30→60→120→300 s) mientras el remoto sigue caído.
+5. Durante outages **transitorios** (< 5 min) **no** debe aparecer `ALM.CATALOG.SyncFailed`; el catálogo local es la fuente de verdad y las operaciones CRUD siguen en el edge.
+6. Logs esperados: `INFO Catalog sync skipped: remote historian unavailable` (una vez por outage), no `ERROR … connection already closed` en bucle.
 
 ---
 
@@ -39,7 +41,7 @@ Gana el timestamp más reciente (`catalog_versions.version`). Empate → gana el
 
 | Alarma | Acción |
 |---|---|
-| `ALM.CATALOG.SyncFailed` | 3 ciclos fallidos — revisar red/PG |
+| `ALM.CATALOG.SyncFailed` | 3 ciclos fallidos **con remoto alcanzable** — revisar red/PG; no debe activarse en outages cortos (< 5 min) |
 | `ALM.CATALOG.Conflict` | Revisar Events; el central es la verdad |
 | `ALM.CATALOG.LocalOnly` | Más de 1 h sin remoto — planificar reconexión |
 

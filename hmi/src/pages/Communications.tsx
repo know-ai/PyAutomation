@@ -348,6 +348,7 @@ export function Communications() {
   const [selectedTreeNodes, setSelectedTreeNodes] = useState<string[]>([]); // Para selección múltiple en el árbol
   const [polling, setPolling] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isConnectingClient, setIsConnectingClient] = useState(false);
 
   const namespacesToPoll = useMemo(
     () => selectedNodes.map((n) => n.namespace),
@@ -875,8 +876,10 @@ export function Communications() {
       setError(t("common.error"));
       return;
     }
+    if (isConnectingClient) return;
     try {
       setError(null);
+      setIsConnectingClient(true);
       const clientName = form.name;
       await addClient({ name: clientName, host: form.host, port: Number(form.port) });
       setForm({ name: "", host: "127.0.0.1", port: 4840 });
@@ -885,8 +888,13 @@ export function Communications() {
       setSelectedClient(clientName);
       localStorage.setItem(SELECTED_CLIENT_STORAGE_KEY, clientName);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || t("communications.title");
+      const errorMsg =
+        e?.code === "ECONNABORTED" || e?.message?.includes?.("timeout")
+          ? t("communications.connectTimeout")
+          : e?.response?.data?.message || e?.message || t("communications.title");
       setError(errorMsg);
+    } finally {
+      setIsConnectingClient(false);
     }
   };
 
@@ -962,8 +970,10 @@ export function Communications() {
       setError(t("common.error"));
       return;
     }
+    if (isConnectingClient) return;
     try {
       setError(null);
+      setIsConnectingClient(true);
       // Solo enviar los campos que tienen valores
       const newName = form.name && form.name.trim() !== "" ? form.name : undefined;
       const newHost = form.host && form.host.trim() !== "" ? form.host : undefined;
@@ -1001,14 +1011,18 @@ export function Communications() {
     } catch (e: any) {
       const errorMsg = e?.response?.data?.message || e?.message || t("communications.title");
       setError(errorMsg);
+    } finally {
+      setIsConnectingClient(false);
     }
   };
 
   return (
     <div className="row">
       <div className="col-lg-4">
+        <div className="position-relative opcua-client-card-wrap">
         <Card
           title={t("communications.title")}
+          className={isConnectingClient ? "opcua-client-card--busy" : undefined}
           footer={
             <div className="d-flex gap-2">
               {editingClient ? (
@@ -1016,13 +1030,21 @@ export function Communications() {
                   <Button 
                     variant="primary" 
                     onClick={handleUpdateClient}
-                    disabled={!isFormComplete}
+                    disabled={!isFormComplete || isConnectingClient}
                   >
-                    {t("common.update")}
+                    {isConnectingClient ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                        {t("communications.connecting")}
+                      </>
+                    ) : (
+                      t("common.update")
+                    )}
                   </Button>
                   <Button
                     variant="secondary"
                     onClick={handleCancelEdit}
+                    disabled={isConnectingClient}
                   >
                     {t("common.cancel")}
                   </Button>
@@ -1032,14 +1054,22 @@ export function Communications() {
               <Button 
                 variant="primary" 
                 onClick={handleAddClient}
-                disabled={!isFormComplete}
+                disabled={!isFormComplete || isConnectingClient}
               >
-                {t("communications.create")}
+                {isConnectingClient ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                    {t("communications.connecting")}
+                  </>
+                ) : (
+                  t("communications.create")
+                )}
               </Button>
                   {selectedClient && (
                     <Button
                       variant="warning"
                       onClick={() => handleEditClient(selectedClient)}
+                      disabled={isConnectingClient}
                     >
                       {t("common.edit")}
                     </Button>
@@ -1047,7 +1077,7 @@ export function Communications() {
               <Button
                 variant="danger"
                 onClick={() => selectedClient && handleRemoveClient(selectedClient)}
-                disabled={!selectedClient}
+                disabled={!selectedClient || isConnectingClient}
               >
                 {t("communications.remove")}
               </Button>
@@ -1056,6 +1086,7 @@ export function Communications() {
             </div>
           }
         >
+          <fieldset disabled={isConnectingClient} className="opcua-client-fieldset">
           <div className="mb-2">
             <label className="form-label mb-1">{t("communications.selectedClient")}</label>
             <div className="d-flex align-items-center gap-2">
@@ -1063,7 +1094,7 @@ export function Communications() {
                 className="form-select flex-grow-1"
               value={selectedClient}
               onChange={(e) => setSelectedClient(e.target.value)}
-                disabled={loadingClients || editingClient !== null}
+                disabled={loadingClients || editingClient !== null || isConnectingClient}
             >
               <option value="">{loadingClients ? t("communications.loading") : t("communications.selectClient")}</option>
                 {clients.map((client) => {
@@ -1134,7 +1165,25 @@ export function Communications() {
             </div>
           </div>
           {error && <div className="alert alert-danger mt-2 mb-0 py-2">{error}</div>}
+          </fieldset>
         </Card>
+        {isConnectingClient && (
+          <div
+            className="opcua-connect-overlay"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div className="opcua-connect-overlay__panel">
+              <div className="spinner-border text-primary mb-2" role="status">
+                <span className="visually-hidden">{t("communications.connecting")}</span>
+              </div>
+              <div className="fw-semibold">{t("communications.connecting")}</div>
+              <div className="small text-muted mt-1">{t("communications.connectingHint")}</div>
+            </div>
+          </div>
+        )}
+        </div>
 
         <Card title={`${t("communications.explorer")} ${selectedClient ? `(${selectedClient})` : ""}`}>
           {!selectedClient && (

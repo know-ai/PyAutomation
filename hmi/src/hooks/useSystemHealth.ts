@@ -3,16 +3,27 @@ import {
   useDatabaseProbe,
   type DatabaseProbeState,
 } from "./useDatabaseStatus";
+import { useDataFreshness } from "./useDataFreshness";
 import { useSocketConnection, type SocketConnectionStatus } from "./useSocketConnection";
 
 export type DbHealthStatus = "connected" | "disconnected" | "unknown";
 
 export type SocketHealthStatus = "connected" | "disconnected" | "reconnecting";
 
+/** Why the RT LED is not green (transport vs data-plane stall). */
+export type RtIndicatorReason = "transport" | "data-stale" | null;
+
 export type SystemHealthState = {
   socketStatus: SocketConnectionStatus;
-  /** Socket status normalized for indicators (connecting → reconnecting). */
+  /**
+   * Combined RT indicator: transport phase, or "reconnecting" (warn) when
+   * socket is up but on.tag freshness watchdog tripped.
+   */
   socketHealth: SocketHealthStatus;
+  /** Transport-only phase (ignores data freshness). */
+  transportHealth: SocketHealthStatus;
+  dataStale: boolean;
+  rtReason: RtIndicatorReason;
   dbStatus: DbHealthStatus;
   socketConnected: boolean;
   /** Raw probe: last HTTP result when reachable; null before first success. */
@@ -52,11 +63,31 @@ export function deriveDbStatus(
   return "unknown";
 }
 
+/** Combine transport phase with data-freshness watchdog for the RT LED. */
+export function deriveRtSocketHealth(
+  socketStatus: SocketConnectionStatus,
+  dataStale: boolean
+): { socketHealth: SocketHealthStatus; rtReason: RtIndicatorReason } {
+  const transportHealth = normalizeSocketHealth(socketStatus);
+  if (transportHealth !== "connected") {
+    return { socketHealth: transportHealth, rtReason: "transport" };
+  }
+  if (dataStale) {
+    return { socketHealth: "reconnecting", rtReason: "data-stale" };
+  }
+  return { socketHealth: "connected", rtReason: null };
+}
+
 export function useSystemHealth(): SystemHealthState {
   const socketStatus = useSocketConnection();
   const dbProbe = useDatabaseProbe();
+  const { dataStale } = useDataFreshness();
 
-  const socketHealth = normalizeSocketHealth(socketStatus);
+  const transportHealth = normalizeSocketHealth(socketStatus);
+  const { socketHealth, rtReason } = useMemo(
+    () => deriveRtSocketHealth(socketStatus, dataStale),
+    [socketStatus, dataStale]
+  );
   const dbStatus = useMemo(
     () => deriveDbStatus(socketStatus, dbProbe),
     [socketStatus, dbProbe.connected, dbProbe.reachable]
@@ -65,6 +96,9 @@ export function useSystemHealth(): SystemHealthState {
   return {
     socketStatus,
     socketHealth,
+    transportHealth,
+    dataStale,
+    rtReason,
     dbStatus,
     socketConnected: socketStatus === "connected",
     dbProbe,

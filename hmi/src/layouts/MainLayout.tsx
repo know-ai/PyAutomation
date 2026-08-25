@@ -14,6 +14,7 @@ import { socketService } from "../services/socket";
 import { DatabaseStatusProvider } from "../hooks/useDatabaseStatus";
 import { DatabaseUnavailableOverlay } from "../components/DatabaseUnavailableOverlay";
 import { DegradedModeBanner } from "../components/DegradedModeBanner";
+import { SocketConnectivityBanner } from "../components/SocketConnectivityBanner";
 import {
   SIDEBAR_MOBILE_MQ,
   closeSidebarOnMobile,
@@ -82,6 +83,7 @@ export function MainLayout({ children }: PropsWithChildren) {
       <main className="app-main">
         <div className="app-main-stage">
           <DegradedModeBanner />
+          <SocketConnectivityBanner />
           <DatabaseUnavailableOverlay />
           <div className="app-content pt-3">
             <div className="container-fluid">{children}</div>

@@ -10,7 +10,8 @@ Guía operativa para diagnosticar clientes HMI desconectados, reconexiones y fal
 | BD roja pero SKT verde | BD rojo, SKT verde | OK | Historiador caído; tiempo real (CVT) sigue; SAF acumula |
 | No carga HMI / certificado | — | OK | TLS; revisar `HMI TLS handshake failure` |
 | Login OK pero vuelve al login | — | OK | Token rechazado en connect; evento `HMI client connection rejected` |
-| Curva con hueco breve | Verde tras pausa | OK | Reconnect + backfill historiador (120 s) |
+| Curva con hueco breve | Verde tras pausa | OK | Reconnect + `GET /history/backfill` (ventana del strip-chart, def. 2 min, máx. 5) |
+| Curva con hueco y LED verde | Verde | Revisar | Historiador sin datos del hueco (SAF pendiente) o tags no suscritos |
 
 ## Dónde mirar
 
@@ -62,7 +63,7 @@ ORDER BY last_heartbeat DESC;
 ### B. Red intermitente (VPN, Wi‑Fi OT)
 
 - **Events:** pareja `disconnected` → `reconnected` mismo `username` + `origin`
-- **HMI:** badge amarillo → verde; StripChart rellena ~120 s si historiador responde
+- **HMI:** badge amarillo → verde; StripChart solicita `GET /api/history/backfill` con `from=max(último punto, now−ventana)` y `to=now` (ventana = time span del gráfico, 2–5 min). Puntos en ISO UTC (mismo formato que `on.tag`), merge sin duplicados por epoch ms.
 - **Acción:** revisar latencia/red; adquisición no se detiene
 
 ### C. Token inválido o sesión superseded

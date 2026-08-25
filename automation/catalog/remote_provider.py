@@ -20,6 +20,24 @@ class RemoteCatalogProvider:
     def __init__(self, *, prefer_replica_reads: bool = True):
         self._prefer_replica_reads = bool(prefer_replica_reads)
 
+    def is_available(self) -> bool:
+        """Lightweight historian reachability check on the replica handle."""
+        from .provider import refresh_catalog_source
+        from .replica_db import ensure_replica_database
+
+        if refresh_catalog_source() != "remote":
+            return False
+        try:
+            db = ensure_replica_database()
+            if db is None:
+                return False
+            if getattr(db, "is_closed", lambda: True)():
+                db.connect(reuse_if_open=True)
+            db.execute_sql("SELECT 1")
+            return True
+        except Exception:
+            return False
+
     def read_all(self, table: str) -> list[dict]:
         if self._prefer_replica_reads:
             rows = replica_read_all(table)

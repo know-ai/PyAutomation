@@ -47,7 +47,9 @@
     "emptyState": "Select tags to visualize",
     "emptyTimeSpan": "No data in the selected interval",
     "thresholdLine": "Threshold",
-    "thresholdLegend": "Threshold ({{tag}})"
+    "thresholdLegend": "Threshold ({{tag}})",
+    "hideSearchList": "Hide list",
+    "searchDismissHint": "Click outside the list or press Escape to hide it and manage selected tags."
   },
   "realTimeTrends": {
     "editMode": "Edit Mode",
@@ -57,7 +59,8 @@
     "emptyEdit": "Double-click the view and then 'Add Chart' to create your first real-time chart",
     "emptyProduction": "No charts configured. Double-click the view to enter edit mode.",
     "waitingSocket": "Waiting for Socket.IO connection — trends will resume when reconnected.",
-    "socketReconnecting": "Reconnecting Socket.IO — real-time data may pause briefly."
+    "socketReconnecting": "Reconnecting Socket.IO — real-time data may pause briefly.",
+    "dataStalled": "Data stalled — socket is connected but no tag updates are arriving."
   },
   "scada": {
     "editMode": "Edit Mode",
@@ -471,6 +474,11 @@
     "create": "Create",
     "remove": "Remove",
     "loading": "Loading...",
+    "connecting": "Connecting to OPC UA server…",
+    "connectingHint": "Validating the connection. Please wait; do not click again until it finishes or times out.",
+    "connectTimeout": "Could not connect to the OPC UA server (timed out).",
+    "clientConnected": "Client connected",
+    "clientDisconnected": "Client disconnected",
     "dbFile": "dbFile",
     "dbName": "dbName",
     "dbHostName": "dbHostName (IP)",
@@ -769,6 +777,8 @@
     "badgeDisconnected": "HMI socket disconnected — retrying connection…",
     "badgeConnecting": "HMI socket connecting…",
     "badgeReconnecting": "HMI socket reconnecting…",
+    "badgeDataStale": "Socket connected — data stalled (no on.tag)",
+    "bannerMove": "Drag to move banner",
     "toastLost": "Socket.IO connection lost — reconnecting…",
     "toastRestored": "Socket.IO connection restored"
   },

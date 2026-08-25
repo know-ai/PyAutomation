@@ -266,11 +266,16 @@ export const getClientVariablesWithOptions = async (
  * Agrega un nuevo cliente OPC UA
  */
 export const addClient = async (client: { name: string; host: string; port: number }) => {
-  const { data } = await api.post("/opcua/clients/add", {
-    client_name: client.name,
-    host: client.host,  
-    port: client.port,
-  });
+  // Connection attempt can hang until server timeout; keep UI loader until settle.
+  const { data } = await api.post(
+    "/opcua/clients/add",
+    {
+      client_name: client.name,
+      host: client.host,
+      port: client.port,
+    },
+    { timeout: 60_000 }
+  );
   return data;
 };
 

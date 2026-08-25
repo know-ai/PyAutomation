@@ -4,7 +4,7 @@ import { useTranslation } from "../hooks/useTranslation";
 
 export function SocketBadge() {
   const { t } = useTranslation();
-  const { socketStatus, socketHealth } = useSystemHealth();
+  const { socketStatus, socketHealth, rtReason } = useSystemHealth();
 
   const level =
     socketHealth === "connected"
@@ -12,14 +12,19 @@ export function SocketBadge() {
       : socketHealth === "reconnecting"
         ? "warn"
         : "alarm";
-  const title =
-    socketStatus === "connected"
-      ? t("socket.badgeConnected")
-      : socketStatus === "reconnecting"
-        ? t("socket.badgeReconnecting")
-        : socketStatus === "connecting"
-          ? t("socket.badgeConnecting")
-          : t("socket.badgeDisconnected");
+
+  let title: string;
+  if (rtReason === "data-stale") {
+    title = t("socket.badgeDataStale");
+  } else if (socketStatus === "connected") {
+    title = t("socket.badgeConnected");
+  } else if (socketStatus === "reconnecting") {
+    title = t("socket.badgeReconnecting");
+  } else if (socketStatus === "connecting") {
+    title = t("socket.badgeConnecting");
+  } else {
+    title = t("socket.badgeDisconnected");
+  }
 
   return (
     <span

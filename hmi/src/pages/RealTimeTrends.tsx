@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "../components/Button";
 import { StripChart, DEFAULT_TIME_SPAN_MINUTES, type StripChartConfig } from "../components/StripChart";
 import { useTranslation } from "../hooks/useTranslation";
-import { useSystemHealth } from "../hooks/useSystemHealth";
 import { useLongTaskObserver } from "../hooks/useLongTaskObserver";
 import { ResponsiveGridLayout, Layout as GridLayoutType } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
@@ -22,7 +21,6 @@ const SAVE_DEBOUNCE_MS = 300;
 
 export function RealTimeTrends() {
   const { t } = useTranslation();
-  const { socketStatus } = useSystemHealth();
   useLongTaskObserver(50, "real-time-trends");
   const [isEditMode, setIsEditMode] = useState(false);
   const [showThresholds, setShowThresholds] = useState(true);
@@ -153,16 +151,6 @@ export function RealTimeTrends() {
   return (
     <div className="row" onDoubleClick={handleToggleEditMode} style={{ cursor: "default" }}>
       <div className="col-12">
-        {socketStatus !== "connected" && (
-          <div
-            className={`alert py-2 mb-3 ${socketStatus === "disconnected" ? "alert-danger" : "alert-warning"}`}
-            role="status"
-          >
-            {socketStatus === "disconnected"
-              ? t("realTimeTrends.waitingSocket")
-              : t("realTimeTrends.socketReconnecting")}
-          </div>
-        )}
         {isEditMode && (
           <div className="d-flex justify-content-between align-items-center mb-3">
             <div className="d-flex align-items-center gap-2">

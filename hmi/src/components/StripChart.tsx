@@ -108,6 +108,8 @@ function StripChartInner({
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [loadingTags, setLoadingTags] = useState(false);
   const tagConfigRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const loadTags = async () => {
@@ -126,20 +128,44 @@ function StripChartInner({
   }, []);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (tagConfigRef.current && !tagConfigRef.current.contains(event.target as Node)) {
+    if (!showTagConfig) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (tagConfigRef.current && !tagConfigRef.current.contains(target)) {
         setShowTagConfig(false);
+        setShowSearchDropdown(false);
+        return;
+      }
+      // Inside panel: close only the search list when clicking selected tags / elsewhere.
+      if (
+        showSearchDropdown &&
+        searchDropdownRef.current &&
+        !searchDropdownRef.current.contains(target) &&
+        searchInputRef.current &&
+        !searchInputRef.current.contains(target)
+      ) {
+        setShowSearchDropdown(false);
       }
     };
 
-    if (showTagConfig) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (showSearchDropdown) {
+        setShowSearchDropdown(false);
+        event.preventDefault();
+        return;
+      }
+      setShowTagConfig(false);
     };
-  }, [showTagConfig]);
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showTagConfig, showSearchDropdown]);
 
   useEffect(() => {
     const names = config.tagNames.filter(Boolean);
@@ -461,8 +487,11 @@ function StripChartInner({
                       setShowTagConfig((open) => {
                         const next = !open;
                         if (next) {
-                          setShowSearchDropdown(true);
+                          // If tags already selected, keep list closed so chips stay reachable.
+                          setShowSearchDropdown(config.tagNames.length === 0);
                           setTagSearch("");
+                        } else {
+                          setShowSearchDropdown(false);
                         }
                         return next;
                       });
@@ -483,20 +512,24 @@ function StripChartInner({
                   {showTagConfig && (
                     <div
                       ref={tagConfigRef}
-                      className="position-absolute bg-body border rounded shadow-lg p-3"
-                      style={{
-                        zIndex: 10000,
-                        top: "calc(100% + 4px)",
-                        right: 0,
-                        minWidth: "300px",
-                        maxHeight: "400px",
-                        overflowY: "auto",
-                      }}
+                      className="stripchart-tag-config position-absolute bg-body border rounded shadow-lg p-3"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="mb-2 position-relative">
-                        <label className="form-label small">{t("stripChart.searchTag")}</label>
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <label className="form-label small mb-0">{t("stripChart.searchTag")}</label>
+                          {showSearchDropdown && (
+                            <button
+                              type="button"
+                              className="btn btn-link btn-sm p-0 text-decoration-none"
+                              onClick={() => setShowSearchDropdown(false)}
+                            >
+                              {t("stripChart.hideSearchList")}
+                            </button>
+                          )}
+                        </div>
                         <input
+                          ref={searchInputRef}
                           type="text"
                           className="form-control form-control-sm"
                           value={tagSearch}
@@ -506,18 +539,21 @@ function StripChartInner({
                           }}
                           placeholder={t("stripChart.searchPlaceholder")}
                           onFocus={() => setShowSearchDropdown(true)}
+                          aria-expanded={showSearchDropdown}
+                          aria-controls="stripchart-tag-search-list"
                         />
                         {showSearchDropdown && (
                           <div
-                            className="position-absolute bg-body border rounded shadow-sm w-100"
-                            style={{ zIndex: 10001, maxHeight: "200px", overflowY: "auto", top: "100%", left: 0 }}
+                            id="stripchart-tag-search-list"
+                            ref={searchDropdownRef}
+                            className="stripchart-tag-search-list position-absolute bg-body border rounded shadow-sm w-100"
                           >
                             {unselectedFilteredTags.length === 0 ? (
                               <div className="text-muted small p-2">{t("stripChart.noTagsAvailable")}</div>
                             ) : (
                               <VirtualList
                                 items={unselectedFilteredTags}
-                                height={200}
+                                height={280}
                                 itemHeight={52}
                                 getKey={(tag) => tag.name}
                                 renderItem={(tag) => (
@@ -546,8 +582,16 @@ function StripChartInner({
                             )}
                           </div>
                         )}
+                        <div className="form-text small text-muted mt-1">
+                          {t("stripChart.searchDismissHint")}
+                        </div>
                       </div>
-                      <div className="mb-2">
+                      <div
+                        className="mb-0"
+                        onMouseDown={() => {
+                          if (showSearchDropdown) setShowSearchDropdown(false);
+                        }}
+                      >
                         <label className="form-label small d-flex justify-content-between align-items-center">
                           <span>{t("stripChart.selectedTags")}</span>
                           <span className="badge bg-secondary">

@@ -465,10 +465,11 @@ class PyAutomation(Singleton):
 
         install_request_connection_teardown(self.server)
         install_http_metrics(self.server)
+        # Engine.IO heartbeat (seconds): detect dead peers in ≤ ping_interval+ping_timeout (~45s).
         socketio_kwargs = dict(
             cors_allowed_origins='*',
-            ping_timeout=60,
-            ping_interval=25,
+            ping_timeout=30,
+            ping_interval=15,
             max_http_buffer_size=int(1e6),
             async_mode='gevent',
             handler_class=WebSocketHandler,

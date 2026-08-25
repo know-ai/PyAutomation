@@ -54,7 +54,21 @@ _ONLINE_INTERVAL_S = 300.0
 _CATCHUP_INTERVAL_S = 30.0
 _EVENT_DELTA_THRESHOLD = 50
 _EXCEPTION_EVENT_COOLDOWN_S = 300.0
+_BACKOFF_INTERVALS_S = (30.0, 60.0, 120.0, 300.0)
+_SYNC_FAIL_MIN_OUTAGE_S = 300.0  # do not latch sync-failed alarm during short outages
 _MAX_CONFLICT_SAMPLES = 5
+
+
+def _is_transient_connection_error(exc: BaseException) -> bool:
+    name = type(exc).__name__
+    if name in ("InterfaceError", "OperationalError", "ConnectionError", "ConnectionDoesNotExist"):
+        return True
+    mod = (type(exc).__module__ or "").lower()
+    text = str(exc).lower()
+    if "psycopg2" in mod or "peewee" in mod or "mysql" in mod:
+        if "connection" in text or "closed" in text or "server closed" in text:
+            return True
+    return False
 
 
 class CatalogReplicatorWorker(BaseWorker):
@@ -83,6 +97,56 @@ class CatalogReplicatorWorker(BaseWorker):
         self._sync_failed_latched = False
         self._local_only_latched = False
         self._sync_cycles = 0
+        self._remote_available: bool | None = None
+        self._backoff_step = 0
+        self._remote_down_logged = False
+        self._transient_remote_errors = 0
+        self._remote_outage_since: float | None = None
+
+    def _is_remote_available(self) -> bool:
+        """Historian reachable on the dedicated replica handle (never the hot API proxy)."""
+        if refresh_catalog_source() != "remote":
+            return False
+        return self._historian_ready()
+
+    def _increment_backoff(self) -> None:
+        self._backoff_step = min(self._backoff_step + 1, len(_BACKOFF_INTERVALS_S) - 1)
+
+    def _reset_backoff(self) -> None:
+        self._backoff_step = 0
+
+    def _handle_remote_unavailable(self, now: float) -> dict:
+        """Offline mode: local catalog is source of truth; no remote I/O or sync-failed alarm."""
+        from .provider import set_catalog_source
+
+        if self._local_only_since is None:
+            self._local_only_since = now
+        elapsed = now - self._local_only_since
+        local_only = elapsed >= _LOCAL_ONLY_S
+        set_local_only(local_only)
+        self._latch_local_only(local_only)
+        set_sync_failed(False)
+        self._sync_failed_latched = False
+        self._failures = 0
+        self._transient_remote_errors = 0
+        self._catch_up = True
+        self._increment_backoff()
+        set_catalog_source("local")
+        reset_replica_database()
+        update_metrics(
+            source="local",
+            pending_rows=pending_count(),
+            conflict_count=self._unresolved,
+            consecutive_failures=0,
+            local_only_since_utc=datetime.now(timezone.utc).isoformat(),
+        )
+        if not self._remote_down_logged:
+            _LOGGER.info(
+                "Catalog sync skipped: remote historian unavailable (local catalog active)"
+            )
+            self._remote_down_logged = True
+        close_replica_thread_connection()
+        return {"skipped": True, "reason": "remote-down"}
 
     def arm_reconnect_grace(self, seconds: float = 5.0) -> None:
         """Hold sync briefly after reconnect so the Peewee socket can settle."""
@@ -91,6 +155,8 @@ class CatalogReplicatorWorker(BaseWorker):
         reset_replica_database()
 
     def _wait_interval(self) -> float:
+        if self._remote_available is False:
+            return _BACKOFF_INTERVALS_S[self._backoff_step]
         if self._catch_up or pending_count() > 0:
             return self._catchup_interval
         return self.sync_interval
@@ -129,18 +195,54 @@ class CatalogReplicatorWorker(BaseWorker):
             and (now - self._startup_mono) < self._startup_grace_s
         ):
             return {"skipped": True, "reason": "startup-grace"}
+
+        remote_available = self._is_remote_available()
+        was_available = self._remote_available
+        self._remote_available = remote_available
+        self._transient_remote_errors = 0
+
+        if not remote_available:
+            if was_available is not False:
+                self._remote_outage_since = now
+                self._emit_exception_event(
+                    message="Catalog offline mode",
+                    description=clip(
+                        "Remote historian unreachable; edge catalog operating locally until sync resumes",
+                        256,
+                    ),
+                    criticity=3,
+                    cooldown_key="catalog:offline-mode",
+                )
+            return self._handle_remote_unavailable(now)
+
+        if was_available is False:
+            self._reset_backoff()
+            self._remote_down_logged = False
+            self._catch_up = True
+            reset_replica_database()
+            outage_s = (
+                (now - self._remote_outage_since) if self._remote_outage_since is not None else 0.0
+            )
+            _LOGGER.info(
+                "Remote historian available; catalog sync resuming (outage %.0fs)",
+                outage_s,
+            )
+            if outage_s >= 1.0:
+                self._emit_exception_event(
+                    message="Catalog online sync resumed",
+                    description=clip(
+                        f"Remote historian restored after {int(outage_s)}s; replicating pending catalog rows",
+                        256,
+                    ),
+                    criticity=2,
+                    cooldown_key="catalog:online-resumed",
+                )
+            self._remote_outage_since = None
+
         source = refresh_catalog_source()
         update_metrics(source=source, pending_rows=pending_count(), conflict_count=self._unresolved)
         if source != "remote":
-            if self._local_only_since is None:
-                self._local_only_since = now
-            elapsed = now - self._local_only_since
-            local_only = elapsed >= _LOCAL_ONLY_S
-            set_local_only(local_only)
-            self._latch_local_only(local_only)
-            update_metrics(local_only_since_utc=datetime.now(timezone.utc).isoformat())
-            self._catch_up = True
-            return {"skipped": True, "reason": "remote-down"}
+            return self._handle_remote_unavailable(now)
         if not self._historian_ready():
             return {"skipped": True, "reason": "historian-not-ready"}
         self._local_only_since = None
@@ -173,14 +275,41 @@ class CatalogReplicatorWorker(BaseWorker):
                 pulled += u
                 auto_resolved += c
                 row_errors += e
-            except Exception:
+            except Exception as exc:
                 row_errors += 1
-                _LOGGER.exception("catalog sync table failed table=%s", table)
+                if _is_transient_connection_error(exc):
+                    self._transient_remote_errors += 1
+                    _LOGGER.warning("catalog sync table skipped (remote connection) table=%s", table)
+                else:
+                    _LOGGER.exception("catalog sync table failed table=%s", table)
 
         self._unresolved = 0
+        if self._transient_remote_errors:
+            reset_replica_database()
+            from .provider import set_catalog_source
+
+            set_catalog_source("local")
+            self._remote_available = False
+            if self._remote_outage_since is None:
+                self._remote_outage_since = time.monotonic()
+            self._failures = 0
+            self._latch_sync_failed(False)
+            self._increment_backoff()
+            self._catch_up = True
+            _LOGGER.warning(
+                "Catalog sync aborted after %s remote connection error(s); will retry with backoff",
+                self._transient_remote_errors,
+            )
+            close_replica_thread_connection()
+            return {
+                "skipped": True,
+                "reason": "remote-connection-lost",
+                "errors": self._transient_remote_errors,
+            }
         if row_errors:
             self._failures += 1
-            self._latch_sync_failed(self._failures >= _FAIL_THRESHOLD)
+            latch = self._failures >= _FAIL_THRESHOLD
+            self._latch_sync_failed(latch)
             update_metrics(consecutive_failures=self._failures)
             self._catch_up = True
         else:
@@ -220,6 +349,10 @@ class CatalogReplicatorWorker(BaseWorker):
 
     def _latch_sync_failed(self, active: bool) -> None:
         """ISA alarm + edge-triggered operator Event on rising edge only."""
+        if active and self._remote_outage_since is not None:
+            elapsed = time.monotonic() - self._remote_outage_since
+            if elapsed < _SYNC_FAIL_MIN_OUTAGE_S:
+                active = False
         set_sync_failed(active)
         if active and not self._sync_failed_latched:
             self._emit_exception_event(
@@ -540,9 +673,17 @@ class CatalogReplicatorWorker(BaseWorker):
                                 "remote",
                             )
                 processed += 1
-            except Exception:
+            except Exception as exc:
                 errors += 1
-                _LOGGER.exception("catalog sync row failed table=%s key=%s", table, key)
+                if _is_transient_connection_error(exc):
+                    self._transient_remote_errors += 1
+                    _LOGGER.warning(
+                        "catalog sync row skipped (remote connection) table=%s key=%s",
+                        table,
+                        key,
+                    )
+                else:
+                    _LOGGER.exception("catalog sync row failed table=%s key=%s", table, key)
                 processed += 1
         return pushed, pulled, conflicts, errors
 

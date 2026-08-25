@@ -7,12 +7,12 @@ import { useTranslation } from "../hooks/useTranslation";
 export function DatabaseUnavailableOverlay() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
-  const { dbStatus, socketHealth } = useSystemHealth();
+  const { dbStatus, transportHealth } = useSystemHealth();
   const { reconnecting, retryCount, reconnect } = useDatabaseStatus();
 
   if (
     dbStatus !== "disconnected" ||
-    socketHealth === "disconnected" ||
+    transportHealth === "disconnected" ||
     !isRemoteDbDependentPath(pathname)
   ) {
     return null;

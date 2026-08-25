@@ -47,7 +47,9 @@
     "emptyState": "Seleccione tags para visualizar",
     "emptyTimeSpan": "Sin datos en el intervalo seleccionado",
     "thresholdLine": "Umbral",
-    "thresholdLegend": "Umbral ({{tag}})"
+    "thresholdLegend": "Umbral ({{tag}})",
+    "hideSearchList": "Ocultar lista",
+    "searchDismissHint": "Clic fuera de la lista u Escape para ocultarla y gestionar tags seleccionados."
   },
   "realTimeTrends": {
     "editMode": "Modo Edición",
@@ -57,7 +59,8 @@
     "emptyEdit": "Haga doble clic en la vista y luego en 'Agregar Gráfico' para crear su primer gráfico en tiempo real",
     "emptyProduction": "No hay gráficos configurados. Haga doble clic en la vista para entrar en modo edición.",
     "waitingSocket": "Esperando conexión Socket.IO — las tendencias se reanudarán al reconectar.",
-    "socketReconnecting": "Reconectando Socket.IO — los datos en tiempo real pueden pausarse brevemente."
+    "socketReconnecting": "Reconectando Socket.IO — los datos en tiempo real pueden pausarse brevemente.",
+    "dataStalled": "Datos detenidos — el socket está conectado pero no llegan actualizaciones de tags."
   },
   "scada": {
     "editMode": "Modo Edición",
@@ -471,6 +474,11 @@
     "create": "Crear",
     "remove": "Remover",
     "loading": "Cargando...",
+    "connecting": "Conectando al servidor OPC UA…",
+    "connectingHint": "Validando la conexión. Espere; no pulse de nuevo hasta que termine o expire el tiempo de espera.",
+    "connectTimeout": "No se pudo conectar al servidor OPC UA (tiempo de espera agotado).",
+    "clientConnected": "Cliente conectado",
+    "clientDisconnected": "Cliente desconectado",
     "dbFile": "dbFile",
     "dbName": "dbName",
     "dbHostName": "dbHostName (IP)",
@@ -769,6 +777,8 @@
     "badgeDisconnected": "Socket HMI desconectado — reintentando conexión…",
     "badgeConnecting": "Socket HMI conectando…",
     "badgeReconnecting": "Socket HMI reconectando…",
+    "badgeDataStale": "Socket conectado — datos detenidos (sin on.tag)",
+    "bannerMove": "Arrastrar para mover el aviso",
     "toastLost": "Conexión Socket.IO perdida — reconectando…",
     "toastRestored": "Conexión Socket.IO recuperada"
   },

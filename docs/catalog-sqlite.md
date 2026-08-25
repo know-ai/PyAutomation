@@ -130,6 +130,8 @@ No se cambia el algoritmo de hash.
 
 Banner de modo degradado (historiador down): texto i18n indica **catálogo local, cambios no sincronizados**. Settings solo ofrece PostgreSQL/MySQL.
 
+**Resiliencia ante outage:** si el historiador remoto cae, `CatalogReplicatorWorker` deja de leer/escribir el remoto, usa solo `catalog.db`, aplica backoff en reintentos y suprime `ALM.CATALOG.SyncFailed` durante los primeros 5 minutos. Al recuperarse la BD, sincroniza filas pendientes (push → pull) con resolución por timestamp.
+
 ---
 
 ## 7. Configuración

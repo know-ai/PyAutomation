@@ -11,7 +11,7 @@ function formatCheckedAt(ts: number | null, locale: string): string {
 
 export function DatabaseStatus({ compact = false }: { compact?: boolean }) {
   const { t, locale } = useTranslation();
-  const { dbStatus, socketHealth } = useSystemHealth();
+  const { dbStatus, transportHealth } = useSystemHealth();
   const { latencyMs, message, lastCheckedAt, reconnecting, reconnect } = useDatabaseStatus();
   const [open, setOpen] = useState(false);
 
@@ -31,11 +31,11 @@ export function DatabaseStatus({ compact = false }: { compact?: boolean }) {
         ? `${t("dbHealth.latency")}: ${latencyMs != null ? `${Math.round(latencyMs)} ms` : "—"}`
         : null,
       `${t("dbHealth.lastCheck")}: ${formatCheckedAt(lastCheckedAt, locale)}`,
-      socketHealth === "disconnected" ? t("dbHealth.staleWhileSocketDown") : null,
+      transportHealth === "disconnected" ? t("dbHealth.staleWhileSocketDown") : null,
       message || null,
     ];
     return lines.filter(Boolean).join("\n");
-  }, [dbStatus, label, lastCheckedAt, latencyMs, locale, message, socketHealth, t]);
+  }, [dbStatus, label, lastCheckedAt, latencyMs, locale, message, transportHealth, t]);
 
   return (
     <div
@@ -72,11 +72,11 @@ export function DatabaseStatus({ compact = false }: { compact?: boolean }) {
           <div>
             {t("dbHealth.lastCheck")}: {formatCheckedAt(lastCheckedAt, locale)}
           </div>
-          {socketHealth === "disconnected" && dbStatus !== "disconnected" && (
+          {transportHealth === "disconnected" && dbStatus !== "disconnected" && (
             <div className="text-muted small mt-1">{t("dbHealth.staleWhileSocketDown")}</div>
           )}
           {message && <div className="text-muted small mt-1">{message}</div>}
-          {dbStatus === "disconnected" && socketHealth !== "disconnected" && (
+          {dbStatus === "disconnected" && transportHealth !== "disconnected" && (
             <button
               type="button"
               className="btn btn-sm btn-warning mt-2"

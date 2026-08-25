@@ -809,7 +809,8 @@ html.light .app-sidebar .brand-text {
   height: 100%;
 }
 
-/* Floating degraded-mode notice: overlay inside the view stage (no layout shift). */
+/* Floating stage notices (DB / Socket): overlay inside the view stage (no layout shift). */
+.floating-status-banner,
 .degraded-mode-banner {
   position: absolute;
   top: 0.75rem;
@@ -834,11 +835,19 @@ html.light .app-sidebar .brand-text {
   white-space: nowrap;
 }
 
+.floating-status-banner--danger {
+  border-color: rgba(148, 54, 54, 0.4);
+  background: var(--bs-danger-bg-subtle, #f8d7da);
+  color: var(--bs-danger-text-emphasis, #842029);
+}
+
+.floating-status-banner.is-dragging,
 .degraded-mode-banner.is-dragging {
   opacity: 0.95;
   cursor: grabbing;
 }
 
+.floating-status-banner__handle,
 .degraded-mode-banner__handle {
   display: inline-flex;
   align-items: center;
@@ -855,15 +864,19 @@ html.light .app-sidebar .brand-text {
   flex-shrink: 0;
 }
 
+.floating-status-banner__handle:active,
+.floating-status-banner.is-dragging .floating-status-banner__handle,
 .degraded-mode-banner__handle:active,
 .degraded-mode-banner.is-dragging .degraded-mode-banner__handle {
   cursor: grabbing;
 }
 
+.floating-status-banner__icon,
 .degraded-mode-banner__icon {
   flex-shrink: 0;
 }
 
+.floating-status-banner__text,
 .degraded-mode-banner__text {
   flex: 0 1 auto;
   min-width: 0;
@@ -874,12 +887,23 @@ html.light .app-sidebar .brand-text {
   text-overflow: ellipsis;
 }
 
+[data-bs-theme="dark"] .floating-status-banner,
+.dark .floating-status-banner,
+.dark-mode .floating-status-banner,
 [data-bs-theme="dark"] .degraded-mode-banner,
 .dark .degraded-mode-banner,
 .dark-mode .degraded-mode-banner {
   border-color: rgba(255, 193, 7, 0.55);
   background: rgba(255, 193, 7, 0.18);
   color: #ffe69c;
+}
+
+[data-bs-theme="dark"] .floating-status-banner--danger,
+.dark .floating-status-banner--danger,
+.dark-mode .floating-status-banner--danger {
+  border-color: rgba(220, 53, 69, 0.55);
+  background: rgba(220, 53, 69, 0.2);
+  color: #f1aeb5;
 }
 
 .db-health {
@@ -3384,6 +3408,57 @@ html[data-hmi-density="control"] .card > .card-header {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
 }
+
+/* OPC UA client card — connect overlay */
+.opcua-client-card-wrap {
+  margin-bottom: 1rem;
+}
+
+.opcua-client-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.opcua-connect-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--bs-border-radius, 0.375rem);
+  background: color-mix(in srgb, var(--bs-body-bg, #fff) 72%, transparent);
+  backdrop-filter: blur(2px);
+  pointer-events: all;
+}
+
+.opcua-connect-overlay__panel {
+  text-align: center;
+  max-width: 16rem;
+  padding: 0.75rem 1rem;
+}
+
+/* StripChart tag picker — wider panel + dismissible search list */
+.stripchart-tag-config {
+  z-index: 10000;
+  top: calc(100% + 4px);
+  right: 0;
+  width: min(28rem, calc(100vw - 1.5rem));
+  min-width: min(22rem, calc(100vw - 1.5rem));
+  max-height: min(70vh, 32rem);
+  overflow-y: auto;
+}
+
+.stripchart-tag-search-list {
+  z-index: 10001;
+  top: calc(100% - 0.15rem);
+  left: 0;
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
 
 
 

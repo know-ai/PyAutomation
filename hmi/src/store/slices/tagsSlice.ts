@@ -43,10 +43,19 @@ const isValidPoint = (pt: unknown): pt is TagHistoryPoint => {
   );
 };
 
-const pointTimeMs = (pt: TagHistoryPoint): number => {
+/** Epoch ms from a history point timestamp (NaN if unparseable). */
+export function pointTimeMs(pt: TagHistoryPoint): number {
   const ms = Date.parse(pt.timestamp);
   return Number.isFinite(ms) ? ms : NaN;
-};
+}
+
+/** Normalize any parseable timestamp string to UTC ISO millis (matches on.tag). */
+export function normalizeHistoryTimestamp(raw: string): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
 
 /**
  * Descarta puntos anteriores a ``nowMs - timeSpanMs``.
@@ -99,15 +108,31 @@ export const mergeHistoryPoints = (
   incoming: TagHistoryPoint[]
 ): TagHistoryPoint[] => {
   if (incoming.length === 0) return trimHistory(existing);
-  if (existing.length === 0) return trimHistory(incoming.filter(isValidPoint));
-
-  const byTs = new Map<string, number>();
-  for (const p of existing) byTs.set(p.timestamp, p.value);
-  for (const p of incoming) {
-    if (isValidPoint(p)) byTs.set(p.timestamp, p.value);
+  if (existing.length === 0) {
+    return trimHistory(
+      incoming
+        .filter(isValidPoint)
+        .map((p) => {
+          const ts = normalizeHistoryTimestamp(p.timestamp) || p.timestamp;
+          return { timestamp: ts, value: p.value };
+        })
+    );
   }
-  const merged = Array.from(byTs, ([timestamp, value]) => ({ timestamp, value }));
-  merged.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+  // Dedupe by epoch ms so ISO (socket) and legacy display formats collapse.
+  const byMs = new Map<number, TagHistoryPoint>();
+  const ingest = (p: TagHistoryPoint) => {
+    if (!isValidPoint(p)) return;
+    const iso = normalizeHistoryTimestamp(p.timestamp);
+    const ms = iso ? Date.parse(iso) : pointTimeMs(p);
+    if (!Number.isFinite(ms)) return;
+    byMs.set(ms, { timestamp: iso || p.timestamp, value: p.value });
+  };
+  for (const p of existing) ingest(p);
+  for (const p of incoming) ingest(p);
+  const merged = Array.from(byMs.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([, point]) => point);
   return trimHistory(merged);
 };
 

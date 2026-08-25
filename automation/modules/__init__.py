@@ -14,6 +14,7 @@ def init_app(app):
     from ..modules.health.resources import init_app as init_health
     from ..modules.system.resources import init_app as init_system
     from ..modules.linear_referencing.resources import init_app as init_linear_referencing
+    from ..modules.history.resources import init_app as init_history
 
     init_tags()
     init_alarms()
@@ -26,3 +27,4 @@ def init_app(app):
     init_health()
     init_system()
     init_linear_referencing()
+    init_history()

@@ -471,6 +471,84 @@ class DataLogger(BaseLogger):
         return result
 
     @db_rollback
+    def read_backfill(
+        self,
+        tags: list,
+        start_ms: int,
+        stop_ms: int,
+        *,
+        limit_per_tag: int = 1000,
+    ) -> dict:
+        r"""
+        Raw TagValue samples for Socket.IO reconnect backfill (ISO UTC timestamps).
+
+        Returns ``{tag_name: [{"timestamp": ISO-8601, "value": float}, ...]}``
+        ordered ascending per tag. Caps each series at ``limit_per_tag``.
+        """
+        from ..timebase import iso_millis
+
+        if not self.is_history_logged:
+            return {}
+        if not self.check_connectivity():
+            return {}
+        if not tags:
+            return {}
+
+        try:
+            start_ms = int(start_ms)
+            stop_ms = int(stop_ms)
+            limit_per_tag = max(1, min(int(limit_per_tag), 5000))
+        except (TypeError, ValueError):
+            return {}
+
+        if stop_ms < start_ms:
+            start_ms, stop_ms = stop_ms, start_ms
+
+        # Guardrail: never wider than 5 minutes (max HMI strip-chart span).
+        max_span_ms = 5 * 60 * 1000
+        if stop_ms - start_ms > max_span_ms:
+            start_ms = stop_ms - max_span_ms
+
+        start_dt = datetime.fromtimestamp(start_ms / 1000.0, pytz.UTC)
+        stop_dt = datetime.fromtimestamp(stop_ms / 1000.0, pytz.UTC)
+        start_db = _tagvalue_bound(start_dt)
+        stop_db = _tagvalue_bound(stop_dt)
+        ts_epoch = TagValue.timestamp
+
+        query = (
+            TagValue.select(
+                Tags.name.alias("name"),
+                TagValue.value,
+                TagValue.timestamp,
+            )
+            .join(Tags)
+            .where((ts_epoch.between(start_db, stop_db)) & (Tags.name.in_(list(tags))))
+            .order_by(ts_epoch.asc())
+            .dicts()
+        )
+
+        out: dict[str, list] = {str(name): [] for name in tags}
+        counts: dict[str, int] = {str(name): 0 for name in tags}
+        for entry in query:
+            name = str(entry.get("name") or "")
+            if name not in out:
+                continue
+            if counts[name] >= limit_per_tag:
+                continue
+            ts = iso_millis(_as_utc_datetime(entry.get("timestamp")))
+            if not ts:
+                continue
+            try:
+                value = float(entry.get("value"))
+            except (TypeError, ValueError):
+                continue
+            if value != value:  # NaN
+                continue
+            out[name].append({"timestamp": ts, "value": value})
+            counts[name] += 1
+        return out
+
+    @db_rollback
     def read_table(self, start:str, stop:str, timezone:str, tags:list, page:int=1, limit:int=20):
         r"""
         Retrieves historical data in a paginated table format.

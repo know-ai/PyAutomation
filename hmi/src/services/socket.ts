@@ -31,6 +31,7 @@ export type SocketConnectionState = {
 };
 
 type ConnectionListener = (state: SocketConnectionState) => void;
+type TagActivityListener = (at: number) => void;
 
 class SocketService {
   private socket: Socket | null = null;
@@ -46,10 +47,19 @@ class SocketService {
   private readonly listeners = new Map<string, Set<FanoutHandler>>();
   private readonly nativeBound = new Set<string>();
   private readonly connectionListeners = new Set<ConnectionListener>();
+  private readonly tagActivityListeners = new Set<TagActivityListener>();
+  private lastOnTagAt: number | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private static readonly HEARTBEAT_MS = 30_000;
-  /** After this duration without socket, badge turns red (reconnect still runs). */
-  static readonly DISCONNECTED_PHASE_MS = 30_000;
+  /** App-level session heartbeat (hmi_sessions); independent of Engine.IO ping. */
+  private static readonly HEARTBEAT_MS = 15_000;
+  /**
+   * After transport disconnect, stay on "reconnecting" (yellow) this long before red.
+   * With server ping_interval=15s + ping_timeout=30s, dead-peer detection is ≤45s;
+   * 15s yellow grace keeps red within the overall 45s budget in typical cases.
+   */
+  static readonly DISCONNECTED_PHASE_MS = 15_000;
+  /** Watchdog: no on.tag while socket is up → data-stale (yellow). */
+  static readonly DATA_STALE_MS = 5_000;
 
   private computePhase(): SocketConnectionPhase {
     if (this.isConnected) {
@@ -112,6 +122,28 @@ class SocketService {
     return () => {
       this.connectionListeners.delete(listener);
     };
+  }
+
+  onTagActivity(listener: TagActivityListener): () => void {
+    this.tagActivityListeners.add(listener);
+    if (this.lastOnTagAt !== null) {
+      listener(this.lastOnTagAt);
+    }
+    return () => {
+      this.tagActivityListeners.delete(listener);
+    };
+  }
+
+  getLastOnTagAt(): number | null {
+    return this.lastOnTagAt;
+  }
+
+  private noteTagActivity(): void {
+    const at = Date.now();
+    this.lastOnTagAt = at;
+    for (const listener of this.tagActivityListeners) {
+      listener(at);
+    }
   }
 
   getConnectionPhase(): SocketConnectionPhase {
@@ -181,7 +213,8 @@ class SocketService {
   }
 
   private markConnected(): void {
-    const reconnect = this.wasDisconnected || this.hadSuccessfulConnection;
+    // Only treat as reconnect when we had a prior disconnect in this session.
+    const reconnect = this.wasDisconnected;
     this.hadSuccessfulConnection = true;
     this.wasDisconnected = false;
     this.isConnected = true;
@@ -189,9 +222,18 @@ class SocketService {
     this.reconnectAttempts = 0;
     this.disconnectedAt = null;
     this.clearPhaseTimer();
+    this.ensureTagActivityBinding();
     this.bindPendingNatives();
     this.startHeartbeat();
     this.emitConnection(reconnect);
+  }
+
+  /** Always listen for on.tag so the freshness watchdog arms even before UI subscribers. */
+  private ensureTagActivityBinding(): void {
+    if (!this.listeners.has("on.tag")) {
+      this.listeners.set("on.tag", new Set());
+    }
+    this.bindNative("on.tag");
   }
 
   private handleConnectError(err: Error): void {
@@ -213,6 +255,9 @@ class SocketService {
       return;
     }
     this.socket.on(event, (data: unknown) => {
+      if (event === "on.tag") {
+        this.noteTagActivity();
+      }
       const callbacks = this.listeners.get(event);
       if (!callbacks || callbacks.size === 0) {
         return;
@@ -274,14 +319,15 @@ class SocketService {
     this.emitConnection(false);
 
     this.socket = io(SOCKET_IO_URL, {
+      // Keep false: connect() only after auth token is available.
       autoConnect: false,
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 10000,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5000,
       randomizationFactor: 0.5,
-      timeout: 30000,
+      timeout: 15000,
       auth: (cb) => {
         cb(this.socketAuthPayload());
       },
@@ -321,6 +367,7 @@ class SocketService {
     this.stopHeartbeat();
     this.clearPhaseTimer();
     this.disconnectedAt = null;
+    this.lastOnTagAt = null;
     if (this.socket) {
       this.socket.removeAllListeners();
       this.socket.disconnect();
