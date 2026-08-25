@@ -20,6 +20,9 @@ class CatalogMetrics:
     sync_cycles: int = 0
     last_cycle_summary: str | None = None
     last_auto_merged: int = 0
+    orphan_pending_rows: int = 0
+    last_sync_utc: str | None = None
+    orphan_alarm: bool = False
 
 
 _lock = threading.Lock()
@@ -38,6 +41,10 @@ def snapshot() -> dict:
             "CATALOG_SYNC_LAST_SUMMARY": _metrics.last_cycle_summary,
             "CATALOG_SYNC_LAST_AUTO_MERGED": int(_metrics.last_auto_merged),
             "CATALOG_SYNC_CONSECUTIVE_FAILURES": int(_metrics.consecutive_failures),
+            "CATALOG_PENDING_ROWS": int(_metrics.orphan_pending_rows),
+            "CATALOG_LAST_SYNC": _metrics.last_sync_utc,
+            "CATALOG_SYNC_ERRORS": int(_metrics.consecutive_failures),
+            "CATALOG_ORPHAN_ALARM": bool(_metrics.orphan_alarm),
         }
 
 

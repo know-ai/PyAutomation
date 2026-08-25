@@ -133,6 +133,26 @@ class TestMetricsSampler(unittest.TestCase):
             worker._sample_hmi(payload)
         self.assertEqual(payload["HMI_ACTIVE_CLIENTS"], 3)
 
+    def test_sample_catalog_exposes_pending_and_last_sync(self):
+        worker = MetricsSamplerWorker(interval_seconds=5)
+        payload = {}
+        catalog = {
+            "CATALOG_PENDING_ROWS": 3,
+            "CATALOG_LAST_SYNC": "2026-08-25T12:00:00+00:00",
+            "CATALOG_SYNC_ERRORS": 1,
+            "CATALOG_ORPHAN_ALARM": True,
+        }
+        fake = type("W", (), {"sync_status": lambda self: catalog})()
+        with patch(
+            "automation.catalog.replicator.get_catalog_replicator",
+            return_value=fake,
+        ):
+            worker._sample_catalog(payload)
+        self.assertEqual(payload["CATALOG_PENDING_ROWS"], 3)
+        self.assertEqual(payload["CATALOG_LAST_SYNC"], "2026-08-25T12:00:00+00:00")
+        self.assertEqual(payload["CATALOG_SYNC_ERRORS"], 1)
+        self.assertTrue(payload["CATALOG_ORPHAN_ALARM"])
+
 
 class TestHealthNodeEndpoint(unittest.TestCase):
     def test_node_endpoint_reads_snapshot_only(self):

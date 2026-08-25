@@ -2,11 +2,13 @@
 """Local SQLite catalog provider."""
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import nullcontext
+from datetime import datetime, timezone
 
 from .local_db import get_catalog_database
-from .models import local_model
+from .models import CatalogPendingRows, local_model
 from .rows import row_to_raw, upsert_model
 from .schema import pk_as_str
 from .versions import edge_node_id, now_ms, touch_local
@@ -116,4 +118,101 @@ class LocalCatalogProvider:
             _LOGGER.debug(
                 "local catalog delete_where failed table=%s field=%s", table, field, exc_info=True
             )
+            return 0
+
+    def init_pending_table(self) -> None:
+        """Ensure pending_rows exists (bootstrap create_tables is the normal path)."""
+        db = get_catalog_database()
+        if db is None:
+            return
+        try:
+            db.create_tables([CatalogPendingRows], safe=True)
+        except Exception:
+            _LOGGER.debug("pending_rows create skipped", exc_info=True)
+
+    def save_pending_row(
+        self,
+        table_name: str,
+        row_id: str,
+        row_data: dict,
+        retries: int = 0,
+        first_seen: datetime | None = None,
+    ) -> None:
+        if get_catalog_database() is None:
+            return
+        seen = first_seen or datetime.now(timezone.utc)
+        payload = json.dumps(row_data, default=str)
+        try:
+            existing = CatalogPendingRows.get_or_none(
+                (CatalogPendingRows.table_name == table_name)
+                & (CatalogPendingRows.row_id == str(row_id))
+            )
+            if existing is None:
+                CatalogPendingRows.create(
+                    table_name=table_name,
+                    row_id=str(row_id),
+                    row_data=payload,
+                    retries=int(retries),
+                    first_seen=seen,
+                )
+                return
+            existing.row_data = payload
+            existing.retries = int(retries)
+            existing.save()
+        except Exception:
+            _LOGGER.debug(
+                "pending_rows save skipped table=%s row=%s", table_name, row_id, exc_info=True
+            )
+
+    def delete_pending_row(self, table_name: str, row_id: str) -> None:
+        if get_catalog_database() is None:
+            return
+        try:
+            CatalogPendingRows.delete().where(
+                (CatalogPendingRows.table_name == table_name)
+                & (CatalogPendingRows.row_id == str(row_id))
+            ).execute()
+        except Exception:
+            _LOGGER.debug(
+                "pending_rows delete skipped table=%s row=%s", table_name, row_id, exc_info=True
+            )
+
+    def clear_pending_rows(self) -> None:
+        if get_catalog_database() is None:
+            return
+        try:
+            CatalogPendingRows.delete().execute()
+        except Exception:
+            _LOGGER.debug("pending_rows clear skipped", exc_info=True)
+
+    def load_pending_rows(self) -> list[dict]:
+        if get_catalog_database() is None:
+            return []
+        try:
+            out: list[dict] = []
+            for row in CatalogPendingRows.select().iterator():
+                try:
+                    data = json.loads(row.row_data) if row.row_data else {}
+                except (TypeError, ValueError):
+                    data = {}
+                out.append(
+                    {
+                        "table_name": row.table_name,
+                        "row_id": row.row_id,
+                        "row_data": data,
+                        "retries": int(row.retries or 0),
+                        "first_seen": row.first_seen,
+                    }
+                )
+            return out
+        except Exception:
+            _LOGGER.debug("pending_rows load skipped", exc_info=True)
+            return []
+
+    def count_pending_rows(self) -> int:
+        if get_catalog_database() is None:
+            return 0
+        try:
+            return int(CatalogPendingRows.select().count())
+        except Exception:
             return 0

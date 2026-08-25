@@ -7,10 +7,12 @@ from peewee import (
     BooleanField,
     CharField,
     CompositeKey,
+    DateTimeField,
     Field,
     ForeignKeyField,
     IntegerField,
     Model,
+    TextField,
 )
 
 from .local_db import catalog_proxy
@@ -35,6 +37,21 @@ class CatalogVersionsLocal(CatalogBase):
         table_name = "catalog_versions"
         primary_key = CompositeKey("table_name", "row_id")
         indexes = ((("table_name", "version"), False),)
+
+
+class CatalogPendingRows(CatalogBase):
+    """Child catalog rows waiting for a parent FK. Survives edge restarts."""
+
+    table_name = CharField(max_length=64)
+    row_id = CharField(max_length=64)
+    row_data = TextField()
+    retries = IntegerField(default=0)
+    first_seen = DateTimeField(null=True)
+
+    class Meta:
+        database = catalog_proxy
+        table_name = "pending_rows"
+        primary_key = CompositeKey("table_name", "row_id")
 
 
 def _clone_field(field: Field) -> Field:
@@ -80,4 +97,5 @@ def local_model(table: str) -> type[Model] | None:
 def all_local_tables() -> list[type[Model]]:
     models = list(build_local_models().values())
     models.append(CatalogVersionsLocal)
+    models.append(CatalogPendingRows)
     return models

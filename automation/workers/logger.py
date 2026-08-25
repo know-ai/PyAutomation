@@ -218,7 +218,7 @@ class LoggerWorker(BaseWorker):
 
                 worker = get_catalog_replicator()
                 if worker is not None:
-                    worker.cycle(force=True)
+                    worker._sync_full()
             except Exception:
                 logging.getLogger("pyautomation").debug(
                     "catalog sync after reconnect skipped",
@@ -284,11 +284,31 @@ class LoggerWorker(BaseWorker):
                     from ..persistence import get_persistence_gateway
 
                     get_persistence_gateway().replicate_once()
-                except Exception:
-                    log.error(
-                        "SAF replication cycle failed; journal preserved",
-                        exc_info=True,
-                    )
+                except Exception as exc:
+                    text = str(exc).lower()
+                    if "tag not in remote" in text or (
+                        "tag" in text and "not found" in text
+                    ):
+                        log.warning(
+                            "Tag not found in remote; forcing full catalog sync"
+                        )
+                        try:
+                            from ..catalog.replicator import get_catalog_replicator
+
+                            worker = get_catalog_replicator()
+                            if worker is not None:
+                                worker.request_full_sync(
+                                    reason="tag not in remote Tags"
+                                )
+                        except Exception:
+                            log.debug(
+                                "catalog full-sync request skipped", exc_info=True
+                            )
+                    else:
+                        log.error(
+                            "SAF replication cycle failed; journal preserved",
+                            exc_info=True,
+                        )
                 self.sqlite_db_backup()
 
             self.check_opcua_connection()

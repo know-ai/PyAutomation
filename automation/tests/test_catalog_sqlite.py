@@ -56,7 +56,9 @@ class TestSchemaOrder(unittest.TestCase):
         self.assertEqual(CHILD_TABLES, frozenset({"alarms", "tagsmachines"}))
         self.assertIn("hmi_sessions", names)
         self.assertNotIn("hmi_sessions", REPLICATED_TABLES)
+        self.assertNotIn("user_api_sessions", REPLICATED_TABLES)
         self.assertGreaterEqual(CATALOG_TABLES_COUNT, 17)
+        self.assertTrue(set(REPLICATED_TABLES) <= {t.name for t in SYNC_ORDER})
 
 
 class TestConflictResolver(unittest.TestCase):
@@ -1118,6 +1120,137 @@ class TestReplicatorScopeAndIntegrity(unittest.TestCase):
         )
         self.assertEqual(reason, "deferred")
 
+    def test_pending_tagsmachines_resolves_when_parent_appears(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        remote_row = {"id": 7, "tag_id": 1, "machine_id": 10, "tag": 1, "machine": 10}
+        worker._note_deferred_orphan("tagsmachines", "pk:7", remote_row)
+        worker._local.upsert = lambda *_a, **_k: "99"
+        local_index = {
+            "tags": {"pk:1": {"_pk": "1", "name": "Linea1.FI"}},
+            "machines": {"pk:10": {"_pk": "10", "name": "M1"}},
+            "tagsmachines": {},
+        }
+        with patch.object(worker, "_skip_pull_reason", return_value=None), self.assertLogs(
+            "pyautomation", level="INFO"
+        ) as captured:
+            resolved = worker._resolve_pending_orphans(local_index, local_index)
+        self.assertEqual(resolved, 1)
+        self.assertFalse(worker._pending_orphans)
+        self.assertTrue(any("Resolved pending tagsmachines row" in line for line in captured.output))
+
+    def test_pending_orphans_expire_after_five_minutes(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._note_deferred_orphan("tagsmachines", "pk:7", {"id": 7, "tag_id": 1, "machine_id": 10})
+        list(worker._pending_orphans.values())[0].first_seen_mono = time.monotonic() - 301.0
+        deleted = []
+        worker._local.delete = lambda table, pk: deleted.append((table, pk))
+        with self.assertLogs("pyautomation", level="ERROR") as captured:
+            expired = worker._cleanup_pending_orphans({"tagsmachines": {}})
+        self.assertEqual(expired, 1)
+        self.assertFalse(worker._pending_orphans)
+        self.assertEqual(deleted, [("tagsmachines", "7")])
+        self.assertTrue(
+            any("orphan tagsmachines rows unresolved after 5 minutes" in line for line in captured.output)
+        )
+
+    def test_pending_orphans_drop_after_five_retries(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._note_deferred_orphan("tagsmachines", "pk:7", {"id": 7, "tag_id": 1, "machine_id": 10})
+        for _ in range(5):
+            worker._bump_pending_retries()
+        with self.assertLogs("pyautomation", level="ERROR") as captured:
+            expired = worker._cleanup_pending_orphans({"tagsmachines": {}})
+        self.assertEqual(expired, 1)
+        self.assertFalse(worker._pending_orphans)
+        self.assertTrue(any("Dropping orphan tagsmachines row pk:7" in line for line in captured.output))
+
+    def test_sync_full_resets_watermark(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._last_remote_version_ms = 99
+        worker._last_full_scan_mono = 12.0
+        worker._last_sync = object()
+        worker.request_full_sync(reason="reconnect/version change")
+        self.assertIsNone(worker._last_remote_version_ms)
+        self.assertEqual(worker._last_full_scan_mono, 0.0)
+        self.assertIsNone(worker._last_sync)
+        self.assertTrue(worker._catch_up)
+        self.assertTrue(worker._should_full_scan())
+
+    def test_sync_status_pending_rows_metric(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        self.assertEqual(worker.sync_status()["CATALOG_PENDING_ROWS"], 0)
+        worker._note_deferred_orphan("tagsmachines", "pk:7", {"id": 7, "tag_id": 1})
+        status = worker.sync_status()
+        self.assertEqual(status["CATALOG_PENDING_ROWS"], 1)
+        self.assertFalse(status["CATALOG_ORPHAN_ALARM"])
+        worker._orphan_latched = True
+        self.assertTrue(worker.sync_status()["CATALOG_ORPHAN_ALARM"])
+
+    def test_tables_this_cycle_prioritizes_tags_after_connection_error(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._tags_sync_pending = True
+        with self.assertLogs("pyautomation", level="INFO") as captured:
+            order = worker._tables_this_cycle()
+        self.assertLess(order.index("units"), order.index("tags"))
+        self.assertLess(order.index("tags"), order.index("machines"))
+        self.assertLess(order.index("tags"), order.index("opcua"))
+        self.assertLess(order.index("tags"), order.index("tagsmachines"))
+        self.assertTrue(any("Prioritizing tags catalog sync" in line for line in captured.output))
+
+    def test_skips_tagsmachines_when_tags_load_fails(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._remote_available = True
+
+        class InterfaceError(Exception):
+            pass
+
+        synced = []
+
+        def _load(table, **_k):
+            if table == "tags":
+                raise InterfaceError("connection already closed")
+            return []
+
+        def _sync(table, **_k):
+            synced.append(table)
+            return (0, 0, 0, 0)
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker, "_load_remote_rows", side_effect=_load
+        ), patch.object(
+            worker, "_sync_table", side_effect=_sync
+        ), patch("automation.catalog.replicator.set_sync_failed"), patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ):
+            result = worker.cycle(force=True)
+        self.assertGreater(result.get("connection_errors", 0), 0)
+        self.assertTrue(worker._tags_sync_pending)
+        self.assertNotIn("tagsmachines", synced)
+        self.assertNotIn("alarms", synced)
+        self.assertIn("tags", synced)
+
     def test_integrity_error_continues_and_does_not_latch_sync_failed(self):
         from peewee import IntegrityError
 
@@ -1462,6 +1595,84 @@ class TestCatalogIdentity(unittest.TestCase):
             db.close()
 
 
+class TestCatalogSyncNuclear(unittest.TestCase):
+    """CA-CATALOG-SYNC-01..08. CA-09/10 remain plant soak."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self._tmp.name, "catalog.db")
+        from automation.catalog.bootstrap import bootstrap_local_catalog
+        from automation.catalog.local_db import close_catalog_db
+
+        close_catalog_db()
+        bootstrap_local_catalog(self.path)
+
+    def tearDown(self):
+        from automation.catalog.local_db import close_catalog_db
+
+        close_catalog_db()
+        self._tmp.cleanup()
+
+    def test_pending_rows_survive_restart(self):
+        from automation.catalog.local_provider import LocalCatalogProvider
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        worker._note_deferred_orphan(
+            "tagsmachines", "pk:7", {"id": 7, "tag_id": 99, "machine_id": 10}
+        )
+        worker._flush_pending_to_disk()
+        stored = LocalCatalogProvider().load_pending_rows()
+        self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[0]["table_name"], "tagsmachines")
+        self.assertEqual(stored[0]["row_id"], "pk:7")
+
+        other = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        other._ensure_pending_loaded()
+        self.assertIn(("tagsmachines", "pk:7"), other._pending_orphans)
+
+    def test_mid_pull_error_rolls_back_local_writes(self):
+        from automation.catalog.local_provider import LocalCatalogProvider
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        provider = LocalCatalogProvider()
+
+        def _sync(table, **_k):
+            if table == "datatypes":
+                provider.upsert(
+                    "roles",
+                    {"name": "OPERATOR", "level": 10, "identifier": "r-sync"},
+                    node_id="central",
+                    version=1,
+                )
+                return (0, 1, 0, 0)
+            if table == "alarmtypes":
+                raise RuntimeError("mid-pull failure")
+            return (0, 0, 0, 0)
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker, "_load_remote_rows", return_value=[{"id": 1}]
+        ), patch.object(
+            worker, "_sync_table", side_effect=_sync
+        ), patch("automation.catalog.replicator.set_sync_failed"), patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ), patch("automation.catalog.replicator.set_conflict"), patch(
+            "automation.catalog.replicator.set_local_only"
+        ):
+            result = worker.cycle(force=True)
+        self.assertGreater(result.get("errors", 0), 0)
+        self.assertIsNone(provider.find_one("roles", field="name", value="OPERATOR"))
+
+
 class TestSoakDocumented(unittest.TestCase):
     def test_runbook_exists(self):
         runbook = Path(__file__).resolve().parents[2] / "docs" / "catalog-sqlite-runbook.md"
@@ -1476,6 +1687,14 @@ class TestSoakDocumented(unittest.TestCase):
 
     @unittest.skip("Soak 24 h de planta — docs/catalog-sqlite-runbook.md")
     def test_ca_catalog_14_multi_edge(self):
+        self.fail("plant soak")
+
+    @unittest.skip("Soak 24 h de planta — CA-CATALOG-SYNC-09 SAF_QUEUE_DEPTH < 1000")
+    def test_ca_catalog_sync_09_saf_backpressure(self):
+        self.fail("plant soak")
+
+    @unittest.skip("Soak 24 h de planta — CA-CATALOG-SYNC-10 Txn/min < 50")
+    def test_ca_catalog_sync_10_incremental_txn(self):
         self.fail("plant soak")
 
 

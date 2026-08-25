@@ -25,7 +25,7 @@ class SafConfig:
     journal_path: str = field(default_factory=_default_journal_path)
     max_disk_bytes: int = 10 * 1024 * 1024 * 1024
     max_pending_rows: int = 5_000_000
-    ring_maxsize: int = 50_000
+    ring_maxsize: int = 100_000
     tag_batch_size: int = 256
     tag_flush_interval_s: float = 0.010
     replicate_batch_size: int = 1_000

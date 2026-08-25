@@ -99,6 +99,7 @@ class JournalWriter:
         self.pending_cap_hits = 0
         self.backpressure = False
         self.last_error = ""
+        self._force_flush_hook = None
 
     def start(self) -> None:
         with self._lock:
@@ -127,6 +128,41 @@ class JournalWriter:
                 self._conn = None
             self._started = False
 
+    def set_force_flush_hook(self, hook) -> None:
+        """Optional callback (LoggerWorker / RemoteReplicator) after a ring drain."""
+        self._force_flush_hook = hook
+
+    def _invoke_force_flush_hook(self) -> None:
+        hook = self._force_flush_hook
+        if not callable(hook):
+            return
+        try:
+            hook()
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "SAF force flush hook failed", exc_info=True
+            )
+
+    def _drain_ring_for_backpressure_locked(self) -> bool:
+        """Persist the in-memory ring to SQLite so enqueue can continue.
+
+        Returns True when the caller should kick remote replication.
+        """
+        if len(self._ring) < self.config.ring_maxsize:
+            return False
+        logging.getLogger("pyautomation").warning(
+            "SAF ring full; forcing LoggerWorker flush"
+        )
+        try:
+            self._drain_ring_locked()
+            self._commit_locked()
+        except Exception:
+            logging.getLogger("pyautomation").error(
+                "SAF ring drain during backpressure failed",
+                exc_info=True,
+            )
+        return True
+
     def append(self, persistable: IPersistable) -> int:
         """Durable enqueue. Critical records wait for COMMIT; tags use the ring."""
         self.start()
@@ -149,9 +185,12 @@ class JournalWriter:
         if not items:
             return 0
         try:
+            kick = False
             with self._lock:
                 self._ensure_open_locked()
                 self._guard_pending_locked()
+                if len(self._ring) + len(items) > self.config.ring_maxsize:
+                    kick = self._drain_ring_for_backpressure_locked()
                 if len(self._ring) + len(items) > self.config.ring_maxsize:
                     self.backpressure = True
                     self.dropped_full += len(items)
@@ -160,6 +199,8 @@ class JournalWriter:
                     )
                 self._ring.extend(items)
                 self.backpressure = False
+            if kick:
+                self._invoke_force_flush_hook()
         except JournalBackpressureError:
             _notify_saf_capacity_event("backpressure")
             raise
@@ -215,7 +256,7 @@ class JournalWriter:
                 SELECT id, domain, entity_id, idempotency_key, payload, created_at, attempts
                 FROM persistence_journal
                 WHERE status = ?
-                ORDER BY id ASC
+                ORDER BY CASE domain WHEN 'tag' THEN 0 ELSE 1 END, id ASC
                 LIMIT ?
                 """,
                 (STATUS_PENDING, int(limit)),
@@ -342,9 +383,12 @@ class JournalWriter:
         )
 
     def _enqueue_ring(self, persistable: IPersistable) -> int:
+        kick = False
         with self._lock:
             self._ensure_open_locked()
             self._guard_pending_locked()
+            if len(self._ring) >= self.config.ring_maxsize:
+                kick = self._drain_ring_for_backpressure_locked()
             if len(self._ring) >= self.config.ring_maxsize:
                 self.backpressure = True
                 self.dropped_full += 1
@@ -354,6 +398,8 @@ class JournalWriter:
             self._ring.append(persistable)
             self.backpressure = False
         self._ring_event.set()
+        if kick:
+            self._invoke_force_flush_hook()
         return 0
 
     def _flush_loop(self) -> None:

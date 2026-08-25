@@ -64,7 +64,27 @@ class PersistenceOrchestrator:
         self.replicator = RemoteReplicator(self.journal, self.remote, self.config)
         self.health = SafHealthProbe(self.journal, self.replicator)
         self.cycle_cache = CycleSampleCache()
+        self._kick_running = False
+        self.journal.set_force_flush_hook(self._kick_replicate)
         self.journal.start()
+
+    def _kick_replicate(self) -> None:
+        """Non-blocking remote drain after the SAF ring spills to SQLite."""
+        if self._kick_running:
+            return
+        self._kick_running = True
+
+        def _run() -> None:
+            try:
+                self.replicate_once()
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "SAF force flush replicate failed", exc_info=True
+                )
+            finally:
+                self._kick_running = False
+
+        threading.Thread(target=_run, name="SafForceFlush", daemon=True).start()
 
     def enqueue(self, persistable: IPersistable) -> int:
         if not _scope_owns_persistable(persistable):

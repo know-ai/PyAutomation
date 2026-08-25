@@ -17,6 +17,10 @@ def _catalog_metrics() -> dict:
             "CATALOG_SYNC_PENDING_ROWS": 0,
             "CATALOG_SYNC_CONFLICT_COUNT": 0,
             "CATALOG_TABLES_COUNT": 0,
+            "CATALOG_PENDING_ROWS": 0,
+            "CATALOG_LAST_SYNC": None,
+            "CATALOG_SYNC_ERRORS": 0,
+            "CATALOG_ORPHAN_ALARM": False,
         }
 
 

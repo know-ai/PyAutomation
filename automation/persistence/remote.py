@@ -19,6 +19,20 @@ VALUE_KEYS = ("value", "val", "v", "magnitude", "value_str")
 TIMESTAMP_KEYS = ("timestamp", "ts", "time")
 
 
+def _request_catalog_full_sync(reason: str) -> None:
+    """Ask the catalog worker for a full pull. Never blocks the SAF hot path."""
+    try:
+        from ..catalog.replicator import get_catalog_replicator
+
+        worker = get_catalog_replicator()
+        if worker is not None:
+            worker.request_full_sync(reason=reason)
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "catalog full-sync request skipped", exc_info=True
+        )
+
+
 def _partition_kwargs(model, item: Mapping[str, Any]) -> dict[str, Any]:
     """Forward-compatible: emit partition fields only when the model accepts them."""
     fields = getattr(getattr(model, "_meta", None), "fields", {}) or {}
@@ -120,6 +134,7 @@ class TagValuePayloadMapper:
         tag = self._lookup_tag(tag_name, tag_cache)
         if not tag:
             logger.warning("SAF skip tag payload: tag %s not in remote Tags", tag_name)
+            _request_catalog_full_sync("tag not in remote Tags")
             return None
         unit = self._lookup_unit(tag, unit_cache)
         if unit is None:

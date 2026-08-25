@@ -14,6 +14,7 @@ import logging
 import threading
 import time
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ..utils.system_event_audit import clip, persist_system_event
@@ -55,6 +56,8 @@ _LOGGER = logging.getLogger("pyautomation")
 _BATCH = 200
 _FAIL_THRESHOLD = 5
 _ORPHAN_THRESHOLD = 5
+_ORPHAN_TTL_S = 300.0  # drop unresolved child rows after 5 minutes
+_MAX_RETRIES = 5  # drop unresolved child rows after 5 sync cycles
 _LOCAL_ONLY_S = 3600.0
 _ONLINE_INTERVAL_S = 300.0
 # User rows also invalidate via PG NOTIFY / Redis Pub/Sub (user_cache).
@@ -94,11 +97,26 @@ def _is_integrity_error(exc: BaseException) -> bool:
     )
 
 
+class CatalogPullAborted(Exception):
+    """Hard local-apply error: roll back this cycle's SQLite catalog writes."""
+
+
 _REQUIRED_PULL_FKS: dict[str, tuple[tuple[str, str], ...]] = {
     "tags": (("unit", "unit_id"),),
     "alarms": (("tag", "tag_id"),),
     "tagsmachines": (("tag", "tag_id"), ("machine", "machine_id")),
 }
+
+
+@dataclass
+class _PendingOrphan:
+    """Child catalog row waiting for a parent tag/machine to appear locally."""
+
+    table: str
+    key: str
+    remote_row: dict
+    first_seen_mono: float
+    retry_count: int = 0
 
 
 def _fk_missing(value) -> bool:
@@ -160,6 +178,12 @@ class CatalogReplicatorWorker(BaseWorker):
         self._consecutive_integrity_cycles = 0
         self._consecutive_errors = 0
         self._orphan_latched = False
+        self._pending_orphans: dict[tuple[str, str], _PendingOrphan] = {}
+        self._pending_loaded = False
+        self._max_retries = _MAX_RETRIES
+        self._full_sync_log_mono = 0.0
+        self._tags_sync_pending = False
+        self._parent_load_failed = False
 
     def stop(self):
         super().stop()
@@ -256,10 +280,38 @@ class CatalogReplicatorWorker(BaseWorker):
         self._catch_up = True
         reset_replica_database()
 
+    def request_full_sync(self, *, reason: str = "reconnect/version change") -> None:
+        """Non-blocking: next cycle pulls the full remote catalog (no watermark)."""
+        now = time.monotonic()
+        if reason.startswith("reconnect") or (now - self._full_sync_log_mono) >= 30.0:
+            _LOGGER.info("Performing full catalog sync (%s)", reason)
+            self._full_sync_log_mono = now
+        self._last_sync = None
+        self._last_remote_version_ms = None
+        self._last_full_scan_mono = 0.0
+        self._catch_up = True
+
+    def _sync_full(self) -> dict:
+        """Full catalog pull, e.g. after historian reconnect. Safe outside cycle()."""
+        self.request_full_sync(reason="reconnect/version change")
+        result = self.cycle(force=True)
+        if not result.get("skipped"):
+            _LOGGER.info("Full catalog sync completed")
+        return result
+
+    def sync_status(self) -> dict:
+        last = self._last_sync
+        return {
+            "CATALOG_PENDING_ROWS": len(self._pending_orphans),
+            "CATALOG_LAST_SYNC": last.isoformat() if last else None,
+            "CATALOG_SYNC_ERRORS": int(self._consecutive_errors),
+            "CATALOG_ORPHAN_ALARM": bool(self._orphan_latched),
+        }
+
     def _wait_interval(self) -> float:
         if self._remote_available is False:
             return _BACKOFF_INTERVALS_S[self._backoff_step]
-        if self._catch_up or pending_count() > 0:
+        if self._catch_up or pending_count() > 0 or self._pending_orphans:
             return self._catchup_interval
         return self.sync_interval
 
@@ -326,6 +378,8 @@ class CatalogReplicatorWorker(BaseWorker):
         ):
             return {"skipped": True, "reason": "startup-grace"}
 
+        self._ensure_pending_loaded()
+
         remote_available = self._is_remote_available()
         was_available = self._remote_available
         self._remote_available = remote_available
@@ -348,9 +402,7 @@ class CatalogReplicatorWorker(BaseWorker):
         if was_available is False:
             self._reset_backoff()
             self._remote_down_logged = False
-            self._catch_up = True
-            self._last_remote_version_ms = None
-            self._last_full_scan_mono = 0.0
+            self.request_full_sync(reason="reconnect/version change")
             reset_replica_database()
             outage_s = (
                 (now - self._remote_outage_since) if self._remote_outage_since is not None else 0.0
@@ -384,6 +436,8 @@ class CatalogReplicatorWorker(BaseWorker):
         self._cycle_conflict_counts = {}
         self._cycle_integrity_errors = 0
         self._cycle_deferred_errors = 0
+        self._parent_load_failed = False
+        self._ensure_pending_loaded()
 
         full_scan = self._should_full_scan()
         try:
@@ -398,7 +452,16 @@ class CatalogReplicatorWorker(BaseWorker):
         local_rows_by_table = {table: self._local.read_all(table) for table in REPLICATED_TABLES}
         remote_rows_by_table: dict[str, list] = {}
         row_errors = 0
-        for table in REPLICATED_TABLES:
+        tables = self._tables_this_cycle()
+        for table in tables:
+            if table in CHILD_TABLES and self._parent_load_failed:
+                remote_rows_by_table[table] = []
+                _LOGGER.warning(
+                    "Skipping pull of %s this cycle: tags/machines connection error; "
+                    "retrying next cycle with tags prioritized",
+                    table,
+                )
+                continue
             try:
                 remote_rows_by_table[table] = self._load_remote_rows(
                     table, full_scan=full_scan, since_ms=since_ms
@@ -407,10 +470,15 @@ class CatalogReplicatorWorker(BaseWorker):
                 remote_rows_by_table[table] = []
                 if _is_transient_connection_error(exc):
                     self._transient_remote_errors += 1
+                    if table in PARENT_TABLES:
+                        self._parent_load_failed = True
+                        self._tags_sync_pending = True
                     _LOGGER.warning("catalog load skipped (remote connection) table=%s", table)
                 else:
                     row_errors += 1
                     _LOGGER.exception("catalog load failed table=%s", table)
+        for table in REPLICATED_TABLES:
+            remote_rows_by_table.setdefault(table, [])
         local_index = {
             table: index_by_identity(table, local_rows_by_table[table]) for table in REPLICATED_TABLES
         }
@@ -427,39 +495,76 @@ class CatalogReplicatorWorker(BaseWorker):
             remote_index[child] = index_by_identity(child, remote_rows_by_table[child])
 
         pushed = pulled = auto_resolved = 0
-        for table in REPLICATED_TABLES:
-            try:
-                table_pending = pending_pks.get(table) or set()
-                if (
-                    not full_scan
-                    and not remote_rows_by_table[table]
-                    and not table_pending
-                ):
-                    continue
-                p, u, c, e = self._sync_table(
-                    table,
-                    local_rows=local_rows_by_table[table],
-                    remote_rows=remote_rows_by_table[table],
-                    local_index=local_index,
-                    remote_index=remote_index,
-                    partial_remote=not full_scan,
-                    pending_pks=table_pending,
-                )
-                pushed += p
-                pulled += u
-                auto_resolved += c
-                row_errors += e
-            except Exception as exc:
-                if _is_transient_connection_error(exc):
-                    self._transient_remote_errors += 1
-                    _LOGGER.warning("catalog sync table skipped (remote connection) table=%s", table)
-                else:
-                    row_errors += 1
-                    _LOGGER.exception("catalog sync table failed table=%s", table)
+        tags_connection_error = False
+        try:
+            with self._local.atomic():
+                for table in tables:
+                    if table in CHILD_TABLES and self._parent_load_failed:
+                        continue
+                    try:
+                        table_pending = pending_pks.get(table) or set()
+                        if (
+                            not full_scan
+                            and not remote_rows_by_table[table]
+                            and not table_pending
+                        ):
+                            continue
+                        p, u, c, e = self._sync_table(
+                            table,
+                            local_rows=local_rows_by_table[table],
+                            remote_rows=remote_rows_by_table[table],
+                            local_index=local_index,
+                            remote_index=remote_index,
+                            partial_remote=not full_scan,
+                            pending_pks=table_pending,
+                        )
+                        pushed += p
+                        pulled += u
+                        auto_resolved += c
+                        row_errors += e
+                        if e:
+                            raise CatalogPullAborted(table)
+                    except CatalogPullAborted:
+                        raise
+                    except Exception as exc:
+                        if _is_transient_connection_error(exc):
+                            self._transient_remote_errors += 1
+                            if table in PARENT_TABLES:
+                                self._parent_load_failed = True
+                                self._tags_sync_pending = True
+                            if table == "tags":
+                                tags_connection_error = True
+                            _LOGGER.warning(
+                                "catalog sync table skipped (remote connection) table=%s", table
+                            )
+                        else:
+                            row_errors += 1
+                            _LOGGER.warning(
+                                "catalog sync table failed table=%s: %s", table, exc
+                            )
+                            raise CatalogPullAborted(table) from exc
+
+                resolved_pending = 0
+                if not self._parent_load_failed:
+                    resolved_pending = self._resolve_pending_orphans(local_index, remote_index)
+                    pulled += resolved_pending
+        except CatalogPullAborted:
+            _LOGGER.warning(
+                "Catalog pull failed; rolling back local catalog writes this cycle"
+            )
+            self._catch_up = True
+
+        self._bump_pending_retries()
+        expired = self._cleanup_pending_orphans(local_index)
+        self._flush_pending_to_disk()
+        if expired:
+            self._latch_orphan_rows(True)
 
         self._unresolved = 0
         connection_errors = self._transient_remote_errors
         deferred = self._cycle_deferred_errors + self._cycle_integrity_errors
+        if not self._parent_load_failed and not tags_connection_error:
+            self._tags_sync_pending = False
         if connection_errors:
             _LOGGER.warning(
                 "Catalog sync had %s remote connection error(s); remaining tables continued, retry next cycle",
@@ -487,33 +592,19 @@ class CatalogReplicatorWorker(BaseWorker):
                 "Catalog sync deferred %s integrity error(s); retrying next cycle",
                 deferred,
             )
-            self._latch_orphan_rows(self._consecutive_integrity_cycles >= _ORPHAN_THRESHOLD)
+            self._latch_orphan_rows(
+                bool(expired) or self._consecutive_integrity_cycles >= _ORPHAN_THRESHOLD
+            )
         else:
             if not deferred:
                 self._consecutive_integrity_cycles = 0
-                self._latch_orphan_rows(False)
+                if not expired:
+                    self._latch_orphan_rows(False)
         self._failures = self._consecutive_errors
         # Auto-merge always picks a side today — sticky Conflict alarm is for
         # future manual-merge paths only (kept cleared on successful cycles).
         set_conflict(False)
         self._sync_cycles += 1
-        summary = f"{pushed} pushed, {pulled} pulled, {auto_resolved} auto-merged, {row_errors} errors"
-        update_metrics(
-            source="remote",
-            last_success_utc=datetime.now(timezone.utc).isoformat(),
-            pending_rows=pending_count(),
-            conflict_count=auto_resolved,
-            sync_cycles=self._sync_cycles,
-            last_cycle_summary=summary,
-            last_auto_merged=auto_resolved,
-        )
-        self._log_cycle_outcome(
-            pushed=pushed,
-            pulled=pulled,
-            auto_resolved=auto_resolved,
-            row_errors=row_errors,
-            summary=summary,
-        )
         if (
             not row_errors
             and not connection_errors
@@ -525,6 +616,27 @@ class CatalogReplicatorWorker(BaseWorker):
             self._last_remote_version_ms = watermark or now_ms()
             if full_scan:
                 self._last_full_scan_mono = time.monotonic()
+        summary = f"{pushed} pushed, {pulled} pulled, {auto_resolved} auto-merged, {row_errors} errors"
+        update_metrics(
+            source="remote",
+            last_success_utc=datetime.now(timezone.utc).isoformat(),
+            pending_rows=pending_count(),
+            conflict_count=auto_resolved,
+            sync_cycles=self._sync_cycles,
+            last_cycle_summary=summary,
+            last_auto_merged=auto_resolved,
+            orphan_pending_rows=len(self._pending_orphans),
+            last_sync_utc=self._last_sync.isoformat() if self._last_sync else None,
+            orphan_alarm=self._orphan_latched,
+            consecutive_failures=self._consecutive_errors,
+        )
+        self._log_cycle_outcome(
+            pushed=pushed,
+            pulled=pulled,
+            auto_resolved=auto_resolved,
+            row_errors=row_errors,
+            summary=summary,
+        )
         close_replica_thread_connection()
         return {
             "pushed": pushed,
@@ -654,6 +766,182 @@ class CatalogReplicatorWorker(BaseWorker):
                 f"L{int(local.version)}/R{int(remote.version)}→{winner}",
             )
         )
+
+    def _tables_this_cycle(self) -> list[str]:
+        """Lookups first, then tags when a previous tags pull failed."""
+        tables = list(REPLICATED_TABLES)
+        if not self._tags_sync_pending:
+            return tables
+        lookups = [name for name in tables if name in LOOKUP_TABLES]
+        rest = [name for name in tables if name not in LOOKUP_TABLES and name != "tags"]
+        _LOGGER.info("Prioritizing tags catalog sync after previous connection error")
+        return lookups + ["tags"] + rest
+
+    def _note_deferred_orphan(self, table: str, key: str, remote_row: dict | None) -> None:
+        if table not in CHILD_TABLES or not key or remote_row is None:
+            return
+        pending_key = (table, str(key))
+        existing = self._pending_orphans.get(pending_key)
+        if existing is None:
+            self._pending_orphans[pending_key] = _PendingOrphan(
+                table=table,
+                key=str(key),
+                remote_row=dict(remote_row),
+                first_seen_mono=time.monotonic(),
+            )
+            _LOGGER.warning(
+                "Deferred %s row %s: FK missing, pending resolution",
+                table,
+                key,
+            )
+            return
+        existing.remote_row = dict(remote_row)
+
+    def _forget_pending_orphan(self, table: str, key: str) -> None:
+        self._pending_orphans.pop((table, str(key)), None)
+
+    def _ensure_pending_loaded(self) -> None:
+        if self._pending_loaded:
+            return
+        self._pending_loaded = True
+        try:
+            self._local.init_pending_table()
+            now_wall = datetime.now(timezone.utc)
+            now_mono = time.monotonic()
+            for item in self._local.load_pending_rows():
+                table = str(item.get("table_name") or "")
+                key = str(item.get("row_id") or "")
+                if not table or not key:
+                    continue
+                seen = item.get("first_seen")
+                age = 0.0
+                if isinstance(seen, datetime):
+                    if seen.tzinfo is None:
+                        seen = seen.replace(tzinfo=timezone.utc)
+                    age = max(0.0, (now_wall - seen).total_seconds())
+                self._pending_orphans[(table, key)] = _PendingOrphan(
+                    table=table,
+                    key=key,
+                    remote_row=dict(item.get("row_data") or {}),
+                    first_seen_mono=now_mono - age,
+                    retry_count=int(item.get("retries") or 0),
+                )
+        except Exception:
+            _LOGGER.debug("pending_rows load skipped", exc_info=True)
+
+    def _flush_pending_to_disk(self) -> None:
+        try:
+            self._local.init_pending_table()
+            live = {(pending.table, pending.key) for pending in self._pending_orphans.values()}
+            for item in self._local.load_pending_rows():
+                pair = (str(item.get("table_name") or ""), str(item.get("row_id") or ""))
+                if pair not in live:
+                    self._local.delete_pending_row(pair[0], pair[1])
+            now_mono = time.monotonic()
+            wall_now = time.time()
+            for pending in self._pending_orphans.values():
+                age = max(0.0, now_mono - pending.first_seen_mono)
+                first_seen = datetime.fromtimestamp(wall_now - age, tz=timezone.utc)
+                self._local.save_pending_row(
+                    pending.table,
+                    pending.key,
+                    pending.remote_row,
+                    retries=pending.retry_count,
+                    first_seen=first_seen,
+                )
+        except Exception:
+            _LOGGER.debug("pending_rows flush skipped", exc_info=True)
+
+    def _resolve_pending_orphans(self, local_index: dict, remote_index: dict) -> int:
+        """Upsert child rows whose parent FKs appeared in a later cycle."""
+        resolved = 0
+        for pending_key, pending in list(self._pending_orphans.items()):
+            table, key = pending_key
+            payload = prepare_pull_row(
+                table,
+                pending.remote_row,
+                local_index=local_index,
+                remote_index=remote_index,
+            )
+            if self._skip_pull_reason(
+                table, pending.remote_row, payload, local_index, remote_index
+            ):
+                continue
+            try:
+                new_pk = self._local.upsert(
+                    table, payload, node_id="central", version=now_ms()
+                )
+            except Exception as exc:
+                if _is_integrity_error(exc):
+                    _LOGGER.warning(
+                        "IntegrityError syncing %s row %s: %s",
+                        table,
+                        key,
+                        exc,
+                    )
+                    continue
+                _LOGGER.warning(
+                    "Pending %s row %s still unresolved: %s", table, key, exc
+                )
+                continue
+            payload["_pk"] = str(new_pk)
+            local_index.setdefault(table, {})[key] = payload
+            self._pending_orphans.pop(pending_key, None)
+            resolved += 1
+            _LOGGER.info("Resolved pending %s row %s", table, key)
+        return resolved
+
+    def _bump_pending_retries(self) -> None:
+        for pending in self._pending_orphans.values():
+            pending.retry_count += 1
+
+    def _cleanup_pending_orphans(self, local_index: dict) -> int:
+        """Drop child rows that stayed orphaned for 5 cycles or 5 minutes."""
+        now = time.monotonic()
+        expired = [
+            item
+            for item in self._pending_orphans.items()
+            if item[1].retry_count >= self._max_retries
+            or (now - item[1].first_seen_mono) >= _ORPHAN_TTL_S
+        ]
+        if not expired:
+            return 0
+        tagsmachines = [item for item in expired if item[1].table == "tagsmachines"]
+        count = len(tagsmachines) or len(expired)
+        _LOGGER.error(
+            "Found %s orphan tagsmachines rows unresolved after 5 minutes",
+            count,
+        )
+        for pending_key, pending in expired:
+            local_row = (local_index.get(pending.table) or {}).get(pending.key)
+            pk = None
+            if local_row:
+                pk = local_row.get("_pk") or local_row.get("id")
+            if pk is None:
+                pk = pending.remote_row.get("_pk") or pending.remote_row.get("id")
+            if pk is not None:
+                try:
+                    self._local.delete(pending.table, str(pk))
+                    _LOGGER.warning(
+                        "Removing orphan %s row %s: FK missing",
+                        pending.table,
+                        pending.key,
+                    )
+                except Exception:
+                    _LOGGER.debug(
+                        "orphan delete skipped table=%s key=%s",
+                        pending.table,
+                        pending.key,
+                        exc_info=True,
+                    )
+            _LOGGER.error(
+                "Dropping orphan %s row %s after %s retries",
+                pending.table,
+                pending.key,
+                pending.retry_count,
+            )
+            self._pending_orphans.pop(pending_key, None)
+        return len(expired)
 
     def _should_full_scan(self) -> bool:
         if self._last_remote_version_ms is None or self._last_full_scan_mono <= 0.0:
@@ -916,6 +1204,7 @@ class CatalogReplicatorWorker(BaseWorker):
                 return 0, 0, 0
             if reason == "deferred":
                 self._cycle_deferred_errors += 1
+                self._note_deferred_orphan(table, key, remote_row)
                 _LOGGER.warning(
                     "Skipping pull of %s row %s: required FK missing (will retry)",
                     table,
@@ -931,6 +1220,7 @@ class CatalogReplicatorWorker(BaseWorker):
             payload["_pk"] = str(new_pk)
             local_by_id[key] = payload
             local_index[table] = local_by_id
+            self._forget_pending_orphan(table, key)
             return 0, 1, 0
         if remote_row is None and local_row is not None:
             local_ver = get_local(table, local_pk) if local_pk else None
@@ -1050,6 +1340,7 @@ class CatalogReplicatorWorker(BaseWorker):
                 return 0, 0, 0
             if reason == "deferred":
                 self._cycle_deferred_errors += 1
+                self._note_deferred_orphan(table, key, remote_row)
                 _LOGGER.warning(
                     "Skipping pull of %s row %s: required FK missing (will retry)",
                     table,
@@ -1061,6 +1352,7 @@ class CatalogReplicatorWorker(BaseWorker):
             payload["_pk"] = str(new_pk)
             local_by_id[key] = payload
             local_index[table] = local_by_id
+            self._forget_pending_orphan(table, key)
             if local_stamp and remote_stamp:
                 self._note_conflict(table, key, local_stamp, remote_stamp, "remote")
             else:

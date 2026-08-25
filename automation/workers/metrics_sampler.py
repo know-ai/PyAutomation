@@ -149,6 +149,7 @@ class MetricsSamplerWorker(BaseWorker):
         self._sample_hmi(payload)
         self._sample_db(payload)
         self._sample_saf(payload)
+        self._sample_catalog(payload)
         self._sample_acquisition(payload)
         self._sample_clock(payload)
         self._sample_perf_alarms(payload)
@@ -292,6 +293,26 @@ class MetricsSamplerWorker(BaseWorker):
             payload["SAF_DISK_BYTES"] = int(snap.get("SAF_DISK_BYTES") or 0)
         except Exception:
             _LOGGER.debug("metrics saf skipped", exc_info=True)
+
+    def _sample_catalog(self, payload: dict[str, Any]) -> None:
+        try:
+            from ..catalog.metrics import snapshot as catalog_snapshot
+            from ..catalog.replicator import get_catalog_replicator
+
+            worker = get_catalog_replicator()
+            if worker is not None:
+                payload.update(worker.sync_status())
+                return
+            snap = catalog_snapshot()
+            payload["CATALOG_PENDING_ROWS"] = int(snap.get("CATALOG_PENDING_ROWS") or 0)
+            payload["CATALOG_LAST_SYNC"] = snap.get("CATALOG_LAST_SYNC")
+            payload["CATALOG_SYNC_ERRORS"] = int(snap.get("CATALOG_SYNC_ERRORS") or 0)
+            payload["CATALOG_ORPHAN_ALARM"] = bool(snap.get("CATALOG_ORPHAN_ALARM"))
+        except Exception:
+            payload.setdefault("CATALOG_PENDING_ROWS", 0)
+            payload.setdefault("CATALOG_LAST_SYNC", None)
+            payload.setdefault("CATALOG_SYNC_ERRORS", 0)
+            payload.setdefault("CATALOG_ORPHAN_ALARM", False)
 
     def _sample_acquisition(self, payload: dict[str, Any]) -> None:
         try:

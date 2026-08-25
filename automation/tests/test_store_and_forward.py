@@ -6,7 +6,7 @@ import os
 import tempfile
 import time
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 from ..persistence import reset_persistence_gateway
@@ -131,7 +131,36 @@ class TestSafJournal(unittest.TestCase):
         self.journal.flush_sync()
         self.assertEqual(len(self.journal.fetch_pending(10)), 1)
 
-    def test_t07_ring_backpressure(self):
+    def test_t07_ring_full_force_flush_drains(self):
+        tight = SafConfig(
+            journal_path=self.path,
+            ring_maxsize=2,
+            tag_batch_size=50,
+            tag_flush_interval_s=60.0,
+        )
+        writer = JournalWriter(tight)
+        writer.start()
+        kicks = []
+        writer.set_force_flush_hook(lambda: kicks.append(1))
+        try:
+            writer._stop.set()
+            writer._ring_event.set()
+            if writer._flusher:
+                writer._flusher.join(timeout=1)
+            writer._ring.clear()
+            t0 = datetime.now(timezone.utc)
+            writer.append(PersistableRecord.tag_sample("t", 1.0, t0))
+            writer.append(PersistableRecord.tag_sample("t", 2.0, t0 + timedelta(milliseconds=2)))
+            writer.append(PersistableRecord.tag_sample("t", 3.0, t0 + timedelta(milliseconds=4)))
+            self.assertEqual(len(kicks), 1)
+            self.assertLessEqual(len(writer._ring), 2)
+            pending = writer.fetch_pending(10)
+            self.assertGreaterEqual(len(pending) + len(writer._ring), 3)
+        finally:
+            writer._stop.set()
+            writer.stop()
+
+    def test_t07_ring_backpressure_when_drain_cannot_free_space(self):
         tight = SafConfig(
             journal_path=self.path,
             ring_maxsize=2,
@@ -146,11 +175,14 @@ class TestSafJournal(unittest.TestCase):
             if writer._flusher:
                 writer._flusher.join(timeout=1)
             writer._ring.clear()
+            original = writer._drain_ring_locked
+            writer._drain_ring_locked = lambda: None
             writer.append(PersistableRecord.tag_sample("t", 1.0, datetime.now(timezone.utc)))
             writer.append(PersistableRecord.tag_sample("t", 2.0, datetime.now(timezone.utc)))
             with self.assertRaises(JournalBackpressureError):
                 writer.append(PersistableRecord.tag_sample("t", 3.0, datetime.now(timezone.utc)))
             self.assertGreaterEqual(writer.dropped_full, 1)
+            writer._drain_ring_locked = original
         finally:
             writer._stop.set()
             writer.stop()
@@ -168,6 +200,21 @@ class TestSafJournal(unittest.TestCase):
         for key in ("SAF_QUEUE_DEPTH", "SAF_REPLICATION_LAG", "SAF_DROPPED_FULL", "SAF_CYCLE_DUPES_DROPPED"):
             self.assertIn(key, snap)
         orch.close()
+
+    def test_default_ring_is_100k(self):
+        self.assertEqual(SafConfig().ring_maxsize, 100_000)
+
+    def test_fetch_pending_prioritizes_tag_domain(self):
+        self.journal.append(PersistableRecord.event(message="later-event", username="system"))
+        self.journal.append(
+            PersistableRecord.tag_sample("FI_01", 1.0, datetime.now(timezone.utc))
+        )
+        self.journal.flush_sync()
+        pending = self.journal.fetch_pending(10)
+        domains = [row["domain"] for row in pending]
+        self.assertIn("tag", domains)
+        self.assertIn("event", domains)
+        self.assertLess(domains.index("tag"), domains.index("event"))
 
 
 class TestSafReplicatorControls(unittest.TestCase):
@@ -519,6 +566,30 @@ class TestTagValuePayloadMapper(unittest.TestCase):
         self.assertEqual(rows[0]["value"], 23.5)
         self.assertEqual(rows[0]["timestamp"].microsecond % 1000, 0)
         self.assertEqual(rows[0]["timestamp"].tzinfo is not None, True)
+
+    def test_missing_remote_tag_requests_full_catalog_sync(self):
+        from unittest.mock import Mock, patch
+
+        from ..persistence.remote import TagValuePayloadMapper
+
+        worker = Mock()
+        mapper = TagValuePayloadMapper(
+            resolve_tag=lambda _name: None,
+            resolve_unit=lambda _tag: None,
+        )
+        with patch(
+            "automation.catalog.replicator.get_catalog_replicator",
+            return_value=worker,
+        ):
+            rows = mapper.to_rows(
+                [{
+                    "tag": "missing.FI",
+                    "value": 1.0,
+                    "timestamp": "2026-08-13T14:19:02+00:00",
+                }]
+            )
+        self.assertEqual(rows, [])
+        worker.request_full_sync.assert_called()
 
 
 class TestReplicatorDomainIsolation(unittest.TestCase):

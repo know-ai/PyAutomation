@@ -18,6 +18,29 @@ from .exceptions import ReplicationError
 from .journal import JournalWriter
 from .records import DOMAIN
 
+_DOMAIN_FLUSH_ORDER = (
+    DOMAIN.TAG,
+    DOMAIN.ALARM_SUMMARY,
+    DOMAIN.ALARM_SUMMARY_UPDATE,
+    DOMAIN.EVENT,
+    DOMAIN.LOG,
+)
+
+
+def _ordered_domain_batches(grouped: dict[str, list]) -> list[tuple[str, list]]:
+    """Flush tag samples before events/logs so history drains under backpressure."""
+    ordered: list[tuple[str, list]] = []
+    seen: set[str] = set()
+    for domain in _DOMAIN_FLUSH_ORDER:
+        rows = grouped.get(domain)
+        if rows:
+            ordered.append((domain, rows))
+            seen.add(domain)
+    for domain, rows in grouped.items():
+        if domain not in seen:
+            ordered.append((domain, rows))
+    return ordered
+
 
 def _node_scope():
     try:
@@ -148,7 +171,7 @@ class RemoteReplicator:
         replicated = 0
         failed_ids: list[int] = []
         last_err = ""
-        for domain, domain_rows in grouped.items():
+        for domain, domain_rows in _ordered_domain_batches(grouped):
             ids = [int(item["id"]) for item in domain_rows]
             payloads = [_payload(item) for item in domain_rows]
             for payload, source in zip(payloads, domain_rows):

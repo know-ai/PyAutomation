@@ -12,6 +12,8 @@ class CatalogTable:
 
 
 # Parents before children. Names are SQL table names.
+# Do not reorder to a "units first" list: variables→units, roles→users,
+# alarmtypes/alarmstates→alarms and accesstype→opcuaserver would break FKs.
 SYNC_ORDER: tuple[CatalogTable, ...] = (
     CatalogTable("datatypes"),
     CatalogTable("alarmtypes"),
@@ -37,6 +39,14 @@ SYNC_ORDER: tuple[CatalogTable, ...] = (
 
 REPLICATED_TABLES: tuple[str, ...] = tuple(t.name for t in SYNC_ORDER if t.replicate_rows)
 ALL_TABLES: tuple[str, ...] = tuple(t.name for t in SYNC_ORDER)
+
+# Session tables stay in SYNC_ORDER for schema clones but are never pulled.
+_SESSION_TABLES = frozenset({"hmi_sessions", "user_api_sessions"})
+assert set(REPLICATED_TABLES) <= {t.name for t in SYNC_ORDER}
+assert all(t in {c.name for c in SYNC_ORDER} for t in REPLICATED_TABLES)
+assert _SESSION_TABLES.isdisjoint(REPLICATED_TABLES), (
+    "REPLICATED_TABLES must be a subset of SYNC_ORDER (except hmi_sessions)"
+)
 
 # Small shared dictionaries. Always full-read so FK remap can resolve parent PKs
 # even when the incremental pull of child tables (tags, alarms) has no parent diffs.
