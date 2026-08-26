@@ -121,6 +121,7 @@ class TestDomainConfigHelpers(unittest.TestCase):
         self.assertEqual(domain_config_action({"gain": 1}), "save")
         self.assertEqual(domain_config_action({"_reset": True}), "reset")
         self.assertEqual(domain_config_action({"gain": 1, "_set_factory": True}), "set_factory")
+        self.assertEqual(domain_config_action({"_restart": True}), "restart")
         schema = ConfigurableMotor().get_ui_schema()
         changes = diff_domain_config({"gain": 1.5}, {"gain": 3.0, "_warnings": "x"}, schema)
         self.assertEqual(len(changes), 1)

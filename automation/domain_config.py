@@ -58,6 +58,7 @@ INTERNAL_CONFIG_KEYS = frozenset(
     {
         "_reset",
         "_set_factory",
+        "_restart",
         "_warnings",
         "_effective_pressure_mode",
         "_pressure_tags_status",
@@ -73,6 +74,8 @@ def domain_config_action(payload: Mapping[str, Any] | None) -> str:
         return "reset"
     if payload.get("_set_factory") is True:
         return "set_factory"
+    if payload.get("_restart") is True:
+        return "restart"
     return "save"
 
 

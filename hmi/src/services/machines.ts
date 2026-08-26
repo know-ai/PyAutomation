@@ -136,7 +136,7 @@ export type DomainConfigField = {
   min?: number;
   max?: number;
   step?: number;
-  options?: Array<{ value: string; label: string }>;
+  options?: Array<{ value: string; label: string } | string>;
   depends_on?: { field: string; equals?: unknown };
   help?: string;
   read_only?: boolean;
@@ -148,6 +148,11 @@ export type DomainConfigField = {
   label_display?: DomainLabelDisplay;
   help_display?: DomainHelpDisplay;
   fields?: DomainConfigField[];
+  items?: {
+    type?: string;
+    properties?: Record<string, DomainConfigField | (Partial<DomainConfigField> & { type?: string })>;
+    fields?: DomainConfigField[];
+  };
   columns?: number;
   dwt_bounds?: {
     role?: "level" | "length";

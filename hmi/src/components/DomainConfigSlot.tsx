@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Card } from "./Card";
 import { Button } from "./Button";
+import { OpsConfirmModal } from "./OpsConfirmModal";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
 import {
@@ -197,7 +198,7 @@ function warningList(raw: unknown): string[] {
 }
 
 function applyBannerClass(status: unknown): string {
-  if (status === "pending") return "alert alert-warning py-2 small mb-3";
+  if (status === "pending" || status === "restarting") return "alert alert-warning py-2 small mb-3";
   return "alert alert-info py-2 small mb-3";
 }
 
@@ -207,6 +208,7 @@ const INTERNAL_COMPARE_KEYS = new Set([
   "_warnings",
   "_apply_status",
   "_apply_message",
+  "_restart_available",
   "_buffer_filled",
   "_buffer_need",
   "_sm_state",
@@ -219,6 +221,13 @@ function normalizeCompareValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "1" : "0";
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (value == null || value === "") return "";
+  if (Array.isArray(value) || (typeof value === "object" && value !== null)) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
   const asNumber = Number(value);
   if (value !== "" && Number.isFinite(asNumber) && String(value).trim() !== "") {
     return String(asNumber);
@@ -235,7 +244,6 @@ function visibleEditableKeys(fields: DomainConfigField[], values: Record<string,
       keys.push(...visibleEditableKeys(field.fields, values));
       continue;
     }
-    if (field.type === "array") continue;
     keys.push(field.key);
   }
   return keys;
@@ -251,6 +259,40 @@ function valuesDiffer(
     if (normalizeCompareValue(left[key]) !== normalizeCompareValue(right[key])) return true;
   }
   return false;
+}
+
+function selectOptions(field: DomainConfigField): Array<{ value: string; label: string }> {
+  return (field.options || []).map((opt) =>
+    typeof opt === "string" ? { value: opt, label: opt } : { value: String(opt.value), label: opt.label }
+  );
+}
+
+function itemFields(field: DomainConfigField): DomainConfigField[] {
+  if (Array.isArray(field.items?.fields) && field.items.fields.length) {
+    return field.items.fields;
+  }
+  const properties = field.items?.properties;
+  if (properties && typeof properties === "object") {
+    return Object.entries(properties).map(([key, spec]) => ({
+      key,
+      type: "string",
+      ...(spec as DomainConfigField),
+    }));
+  }
+  return [];
+}
+
+function emptyItem(fields: DomainConfigField[]): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (field.type === "number") row[field.key] = field.min ?? 0;
+    else if (field.type === "boolean") row[field.key] = false;
+    else if (field.type === "select") {
+      const opts = selectOptions(field);
+      row[field.key] = opts[0]?.value ?? "";
+    } else row[field.key] = "";
+  }
+  return row;
 }
 
 function parseNumberInput(raw: string, fallback: unknown): unknown {
@@ -402,7 +444,7 @@ function FieldControl({
         disabled={locked}
         onChange={(e) => onChange(e.target.value)}
       >
-        {(field.options || []).map((opt) => (
+        {(selectOptions(field) || []).map((opt) => (
           <option key={String(opt.value)} value={String(opt.value)}>
             {opt.label}
           </option>
@@ -450,6 +492,101 @@ function FieldControl({
         onChange={(e) => onChange(e.target.value)}
       />
     </ControlShell>
+  );
+}
+
+function ArrayTableEditor({
+  field,
+  value,
+  onChange,
+  disabled,
+  readOnly,
+  presentation,
+}: {
+  field: DomainConfigField;
+  value: unknown;
+  onChange: (next: unknown) => void;
+  disabled: boolean;
+  readOnly: boolean;
+  presentation: Presentation;
+}) {
+  const { t } = useTranslation();
+  const columns = itemFields(field);
+  const rows = Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
+  const locked = disabled || readOnly;
+  const updateRow = (index: number, key: string, next: unknown) => {
+    const copy = rows.map((row) => ({ ...(row || {}) }));
+    copy[index] = { ...(copy[index] || {}), [key]: next };
+    onChange(copy);
+  };
+  const addRow = () => onChange([...rows, emptyItem(columns)]);
+  const removeRow = (index: number) => onChange(rows.filter((_, i) => i !== index));
+  return (
+    <div title={fieldTooltip(field, presentation)}>
+      {presentation.labelDisplay === "visible" && field.label ? (
+        <div className="form-label">{field.label}</div>
+      ) : null}
+      <div className="table-responsive">
+        <table className="table table-sm align-middle mb-2">
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th key={col.key} className="small fw-semibold">
+                  {col.label || col.key}
+                  {col.unit ? ` (${col.unit})` : ""}
+                </th>
+              ))}
+              {!locked ? <th className="small fw-semibold" /> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length + (locked ? 0 : 1)} className="text-muted small">
+                  —
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, index) => (
+                <tr key={`${field.key}-${index}`}>
+                  {columns.map((col) => (
+                    <td key={col.key}>
+                      <FieldControl
+                        field={{ ...col, label: undefined, help: col.help, unit: undefined }}
+                        value={row?.[col.key]}
+                        onChange={(next) => updateRow(index, col.key, next)}
+                        disabled={locked}
+                        readOnly={locked}
+                        presentation={{ ...presentation, labelDisplay: "hidden", helpDisplay: "tooltip" }}
+                      />
+                    </td>
+                  ))}
+                  {!locked ? (
+                    <td className="text-end" style={{ width: 1 }}>
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger btn-sm"
+                        onClick={() => removeRow(index)}
+                      >
+                        {t("machines.domainConfigRemoveRow")}
+                      </button>
+                    </td>
+                  ) : null}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      {!locked ? (
+        <button type="button" className="btn btn-outline-secondary btn-sm" onClick={addRow}>
+          {t("machines.domainConfigAddRow")}
+        </button>
+      ) : null}
+      {field.help && (presentation.helpDisplay === "text" || presentation.helpDisplay === "both") ? (
+        <div className="form-text">{field.help}</div>
+      ) : null}
+    </div>
   );
 }
 
@@ -501,13 +638,16 @@ function NestedFields({
           );
         }
         if (field.type === "array") {
-          const arr = Array.isArray(getByPath(values, path)) ? (getByPath(values, path) as unknown[]) : [];
           return (
-            <div key={path} className={`col-md-${col} mb-2`} title={fieldTooltip(field, fieldPres)}>
-              {fieldPres.labelDisplay === "visible" && field.label ? (
-                <div className="form-label">{field.label}</div>
-              ) : null}
-              <pre className="small bg-light p-2 rounded mb-0">{JSON.stringify(arr, null, 2)}</pre>
+            <div key={path} className={`col-md-${col} mb-2`}>
+              <ArrayTableEditor
+                field={field}
+                value={getByPath(values, path)}
+                onChange={(next) => onChange(path, next)}
+                disabled={disabled}
+                readOnly={readOnly}
+                presentation={fieldPres}
+              />
             </div>
           );
         }
@@ -538,6 +678,15 @@ function validateLocal(fields: DomainConfigField[], values: Record<string, unkno
       if (nested) return nested;
       continue;
     }
+    if (field.type === "array") {
+      const items = itemFields(field);
+      const arr = Array.isArray(getByPath(values, path)) ? (getByPath(values, path) as Record<string, unknown>[]) : [];
+      for (const row of arr) {
+        const nested = validateLocal(items, row || {});
+        if (nested) return nested;
+      }
+      continue;
+    }
     if (field.type !== "number") continue;
     const raw = getByPath(values, path);
     if (raw === "" || raw == null) continue;
@@ -561,6 +710,8 @@ export function DomainConfigSlot({
   const { t } = useTranslation();
   const [values, setValues] = useState<Record<string, unknown>>(config || {});
   const [saving, setSaving] = useState(false);
+  const [restartOpen, setRestartOpen] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     setValues(config || {});
@@ -587,10 +738,14 @@ export function DomainConfigSlot({
         const applyKeys = [
           "_apply_status",
           "_apply_message",
+          "_restart_available",
           "_buffer_filled",
           "_buffer_need",
           "_sm_state",
           "_warnings",
+          "_operation_state",
+          "_active_engines",
+          "_posterior",
         ];
         setValues((prev) => {
           const merged = { ...prev };
@@ -713,6 +868,29 @@ export function DomainConfigSlot({
     }
   };
 
+  const handleRestart = async () => {
+    setRestarting(true);
+    try {
+      const result = await putMachineDomainConfig(machineName, { _restart: true });
+      const next = result.config || { ...values, _apply_status: "restarting" };
+      setValues(next);
+      onConfigUpdated?.(next);
+      setRestartOpen(false);
+      showToast(t("machines.domainConfigRestartQueued"), "success");
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const message =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        err?.message ??
+        t("machines.domainConfigRestartError");
+      showToast(message, "error");
+    } finally {
+      setRestarting(false);
+    }
+  };
+
   if (!sections.length) return null;
 
   const hasFactoryDefaults = Boolean(
@@ -737,7 +915,20 @@ export function DomainConfigSlot({
       ) : null}
       {typeof values._apply_message === "string" && values._apply_message ? (
         <div className={applyBannerClass(values._apply_status)} role="status">
-          {values._apply_message}
+          <div>{values._apply_message}</div>
+          {values._restart_available === true ? (
+            <div className="mt-2">
+              <Button
+                type="button"
+                variant="danger"
+                loading={restarting}
+                disabled={saving || restarting}
+                onClick={() => setRestartOpen(true)}
+              >
+                {t("machines.domainConfigRestart")}
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
       {warningList(values._warnings).map((warning) => (
@@ -745,7 +936,7 @@ export function DomainConfigSlot({
           {warning}
         </div>
       ))}
-      <fieldset disabled={saving}>
+      <fieldset disabled={saving || restarting}>
         {sections.map((section, index) => {
           if (section.depends_on?.field) {
             if (!conditionMatches(section.depends_on, values)) {
@@ -766,7 +957,7 @@ export function DomainConfigSlot({
                   fields={section.fields || []}
                   values={values}
                   onChange={handleChange}
-                  disabled={saving}
+                  disabled={saving || restarting}
                   presentation={sectionPres}
                 />
               ) : null}
@@ -780,7 +971,7 @@ export function DomainConfigSlot({
             type="button"
             variant="secondary"
             loading={saving}
-            disabled={saving || !canRestoreFactory}
+            disabled={saving || restarting || !canRestoreFactory}
             onClick={handleReset}
           >
             {t("machines.domainConfigReset")}
@@ -790,17 +981,31 @@ export function DomainConfigSlot({
               type="button"
               variant="secondary"
               loading={saving}
-              disabled={saving || !canSetFactory}
+              disabled={saving || restarting || !canSetFactory}
               onClick={handleSetFactory}
             >
               {t("machines.domainConfigSetFactory")}
             </Button>
           ) : null}
         </div>
-        <Button type="button" variant="primary" loading={saving} disabled={saving || !canSave} onClick={handleSave}>
+        <Button type="button" variant="primary" loading={saving} disabled={saving || restarting || !canSave} onClick={handleSave}>
           {t("machines.domainConfigSave")}
         </Button>
       </div>
+      <OpsConfirmModal
+        open={restartOpen}
+        title={t("machines.domainConfigRestartTitle")}
+        body={t("machines.domainConfigRestartBody")}
+        confirmLabel={t("machines.domainConfigRestart")}
+        danger
+        requireCheckbox
+        checkboxLabel={t("machines.domainConfigRestartCheck")}
+        busy={restarting}
+        onCancel={() => {
+          if (!restarting) setRestartOpen(false);
+        }}
+        onConfirm={handleRestart}
+      />
     </Card>
   );
 }
