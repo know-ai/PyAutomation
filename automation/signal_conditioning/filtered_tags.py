@@ -92,6 +92,39 @@ def resolve_subscription_tag(tag):
     return ensure_filtered_tag(tag) or tag
 
 
+def resolve_bind_tag(tag, mode: str = "filtered"):
+    """Choose raw or ``.f`` bind target for a machine subscription.
+
+    ``mode`` is ``\"raw\"`` or ``\"filtered\"`` (default). When the source has no
+    wavelet filter enabled, always returns the source tag.
+    """
+    if tag is None:
+        return tag
+    source = tag
+    if is_filtered_derivative_name(getattr(tag, "name", "") or ""):
+        try:
+            from ..tags import CVTEngine
+
+            source = CVTEngine().get_tag_by_name(source_tag_name(tag.name)) or tag
+        except Exception:
+            source = tag
+    if not tag_filter_enabled(source):
+        return source
+    preferred = (mode or "filtered").strip().lower()
+    if preferred == "raw":
+        return source
+    return ensure_filtered_tag(source) or source
+
+
+def subscription_pair_names(tag_name: str) -> set[str]:
+    """Return ``{source, source.f}`` for occupancy / exclusion sets."""
+    name = (tag_name or "").strip()
+    if not name:
+        return set()
+    source = source_tag_name(name)
+    return {source, filtered_tag_name(source)}
+
+
 def machine_sample_interval(machine) -> float:
     """Effective cadence for wavelet publication (sample_interval or execution interval)."""
     sample = machine.get_sample_interval()

@@ -193,11 +193,21 @@ class OPCUAServer(BaseModel):
     def serialize(self)-> dict:
         r"""
         Serializes the node record.
-        """
 
+        Rows with a NULL ``access_type`` FK (legacy / catalog push without remap)
+        default to Read so the OPC UA address-space build cannot crash.
+        """
+        try:
+            access = self.access_type
+        except Exception:
+            access = None
+        if access is None:
+            access_payload = {"id": None, "name": "Read"}
+        else:
+            access_payload = access.serialize()
         return {
             "id": self.id,
             "name": self.name,
             "namespace": self.namespace,
-            "access_type": self.access_type.serialize()
+            "access_type": access_payload,
         }

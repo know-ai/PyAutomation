@@ -10,6 +10,9 @@ from unittest.mock import patch
 from flask import Flask
 
 from ..domain_config import (
+    audit_domain_config_change,
+    diff_domain_config,
+    domain_config_action,
     supports_domain_config,
     unknown_generic_attribute_keys,
 )
@@ -114,6 +117,43 @@ class TestDomainConfigHelpers(unittest.TestCase):
             [],
         )
 
+    def test_domain_config_action_and_diff(self):
+        self.assertEqual(domain_config_action({"gain": 1}), "save")
+        self.assertEqual(domain_config_action({"_reset": True}), "reset")
+        self.assertEqual(domain_config_action({"gain": 1, "_set_factory": True}), "set_factory")
+        schema = ConfigurableMotor().get_ui_schema()
+        changes = diff_domain_config({"gain": 1.5}, {"gain": 3.0, "_warnings": "x"}, schema)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["label"], "Gain")
+        self.assertEqual(changes[0]["from"], "1.5")
+        self.assertEqual(changes[0]["to"], "3.0")
+
+    def test_audit_domain_config_emits_friendly_event(self):
+        calls = []
+
+        def fake_persist(**kwargs):
+            calls.append(kwargs)
+            return True
+
+        schema = ConfigurableMotor().get_ui_schema()
+        with patch(
+            "automation.utils.system_event_audit.persist_system_event",
+            side_effect=fake_persist,
+        ):
+            audit_domain_config_change(
+                machine_name="ConfigurableMotor",
+                payload={"gain": 3.0},
+                before={"gain": 1.5},
+                after={"gain": 3.0},
+                schema=schema,
+                user=object(),
+            )
+        self.assertEqual(len(calls), 1)
+        self.assertIn("Gain", calls[0]["message"])
+        self.assertIn("1.5", calls[0]["description"])
+        self.assertIn("3.0", calls[0]["description"])
+        self.assertEqual(calls[0]["classification"], "Configuration")
+
 
 class TestDomainConfigResource(unittest.TestCase):
     def setUp(self):
@@ -155,6 +195,9 @@ class TestDomainConfigResource(unittest.TestCase):
         ), patch(
             "automation.extensions.api.Api._resolve_session_user",
             return_value=(fake_user, None, 200),
+        ), patch(
+            "automation.utils.system_event_audit.persist_system_event",
+            return_value=True,
         ):
             mock_app.get_machine.return_value = machine
             with self.flask.test_request_context(

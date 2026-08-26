@@ -114,10 +114,26 @@ class TestUnsubscribeDetachesMachineObserver(unittest.TestCase):
             buffer_roll_type=SimpleNamespace(value="backward"),
             machine_engine=MagicMock(),
             data={},
+            signal_modes={},
+            name=SimpleNamespace(value="m1"),
         )
         machine.flow = ProcessType(tag=tag, default=tag.value, read_only=True)
         machine.get_subscribed_tags = StateMachineCore.get_subscribed_tags.__get__(machine, StateMachineCore)
-        machine.restart_buffer = StateMachineCore.restart_buffer.__get__(machine, StateMachineCore)
+        machine.get_read_only_process_type_variables = (
+            StateMachineCore.get_read_only_process_type_variables.__get__(
+                machine, StateMachineCore
+            )
+        )
+        machine._wavelet_source_tag = StateMachineCore._wavelet_source_tag.__get__(
+            machine, StateMachineCore
+        )
+        machine._find_subscribed_process_type = (
+            StateMachineCore._find_subscribed_process_type.__get__(
+                machine, StateMachineCore
+            )
+        )
+        machine._unregister_wavelet_tag = MagicMock()
+        machine.restart_buffer = MagicMock()
         machine.unsubscribe_to = StateMachineCore.unsubscribe_to.__get__(machine, StateMachineCore)
 
         observer = MachineObserver(machine)
@@ -131,6 +147,7 @@ class TestUnsubscribeDetachesMachineObserver(unittest.TestCase):
         self.assertIsNone(observer.machine)
         self.assertIsNone(machine.flow.tag)
         machine.machine_engine.unbind_tag.assert_called_once()
+        machine.restart_buffer.assert_called_once()
 
     def test_unsubscribe_by_default_tag_name(self):
         tag = _tag(name="PI_01", tag_id="unsub02")
@@ -139,10 +156,26 @@ class TestUnsubscribeDetachesMachineObserver(unittest.TestCase):
             buffer_roll_type=SimpleNamespace(value="backward"),
             machine_engine=MagicMock(),
             data={},
+            signal_modes={},
+            name=SimpleNamespace(value="m1"),
         )
         machine.inlet_pressure = ProcessType(tag=tag, default=tag.value, read_only=True)
         machine.get_subscribed_tags = StateMachineCore.get_subscribed_tags.__get__(machine, StateMachineCore)
-        machine.restart_buffer = StateMachineCore.restart_buffer.__get__(machine, StateMachineCore)
+        machine.get_read_only_process_type_variables = (
+            StateMachineCore.get_read_only_process_type_variables.__get__(
+                machine, StateMachineCore
+            )
+        )
+        machine._wavelet_source_tag = StateMachineCore._wavelet_source_tag.__get__(
+            machine, StateMachineCore
+        )
+        machine._find_subscribed_process_type = (
+            StateMachineCore._find_subscribed_process_type.__get__(
+                machine, StateMachineCore
+            )
+        )
+        machine._unregister_wavelet_tag = MagicMock()
+        machine.restart_buffer = MagicMock()
         machine.unsubscribe_to = StateMachineCore.unsubscribe_to.__get__(machine, StateMachineCore)
         tag.attach(MachineObserver(machine))
 

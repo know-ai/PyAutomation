@@ -277,6 +277,9 @@ class Machine(Singleton):
                         machine.sample_overrides = dict(
                             config[machine.name.value].get("sample_overrides") or {}
                         )
+                        machine.signal_modes = dict(
+                            config[machine.name.value].get("signal_modes") or {}
+                        )
                         # Flags so product engines can skip overwriting DB-backed
                         # parameters with model/config defaults.
                         on_delay_db = config[machine.name.value].get('on_delay')
@@ -629,6 +632,8 @@ class StateMachineCore(StateMachine):
         self._buffer_provider = DequeBufferProvider()
         self._sample_interval = None
         self.sample_overrides = {}
+        # source tag name → "raw" | "filtered" (only meaningful when filter_enabled)
+        self.signal_modes = {}
         self.restart_buffer()
         self.machine_engine = MachinesLoggerEngine()
         transitions = []
@@ -992,23 +997,28 @@ class StateMachineCore(StateMachine):
         r"""
         Names of field tags currently bound to read-only ProcessType inputs.
 
+        Includes both the raw source and the ``.f`` derivative so the field-tags
+        dropdown cannot map a second variable to the same plant signal.
+
         **Returns:**
 
         * **set**: Set of tag names (``Tag.name``).
         """
+        from .signal_conditioning.filtered_tags import subscription_pair_names
+
         names = set()
         for _, value in self.get_read_only_process_type_variables().items():
             if value.tag is None:
                 continue
             tag_name = getattr(value.tag, "name", None)
             if tag_name:
-                names.add(tag_name)
+                names.update(subscription_pair_names(tag_name))
             get_name = getattr(value.tag, "get_name", None)
             if callable(get_name):
                 try:
                     n = get_name()
                     if n:
-                        names.add(n)
+                        names.update(subscription_pair_names(n))
                 except Exception:
                     pass
         return names
@@ -1019,7 +1029,8 @@ class StateMachineCore(StateMachine):
 
         Same UX as the legacy Dash HMI: once a field tag is bound to an
         internal ProcessType, it disappears from the "Tags de Campo" list;
-        after unsubscribe it reappears.
+        after unsubscribe it reappears. Candidates are always **raw** names
+        (``.f`` derivatives are never offered).
 
         **Parameters:**
 
@@ -1030,11 +1041,17 @@ class StateMachineCore(StateMachine):
 
         * **list**: Field tag names not yet subscribed by this machine.
         """
+        from .signal_conditioning.filtered_tags import is_filtered_derivative_name
+
         if field_tags is None:
             from .tags.cvt import CVTEngine
             field_tags = list(CVTEngine()._cvt.get_cuasi_field_tags_names() or [])
         else:
             field_tags = list(field_tags)
+
+        field_tags = [
+            name for name in field_tags if not is_filtered_derivative_name(name)
+        ]
 
         subscribed = self.get_subscribed_field_tag_names()
         if not subscribed:
@@ -1054,13 +1071,12 @@ class StateMachineCore(StateMachine):
     def _register_wavelet_tag(self, tag: Tag) -> Tag:
         from .signal_conditioning.filtered_tags import (
             machine_sample_interval,
-            resolve_subscription_tag,
+            resolve_bind_tag,
             tag_filter_enabled,
         )
         from .workers.wavelet_worker import get_wavelet_worker
 
         source = self._wavelet_source_tag(tag)
-        subscription_tag = resolve_subscription_tag(source)
         if source and tag_filter_enabled(source):
             worker = get_wavelet_worker()
             if worker is not None:
@@ -1069,7 +1085,12 @@ class StateMachineCore(StateMachine):
                     sample_interval=machine_sample_interval(self),
                     machine_name=self.name.value,
                 )
-        return subscription_tag or tag
+            mode = (self.signal_modes or {}).get(source.name, "filtered")
+            if mode not in ("raw", "filtered"):
+                mode = "filtered"
+            self.signal_modes[source.name] = mode
+            return resolve_bind_tag(source, mode) or tag
+        return source or tag
 
     def _unregister_wavelet_tag(self, tag: Tag) -> None:
         from .workers.wavelet_worker import get_wavelet_worker
@@ -1078,6 +1099,132 @@ class StateMachineCore(StateMachine):
         worker = get_wavelet_worker()
         if worker is not None and source is not None:
             worker.unregister_tag(source.name, machine_name=self.name.value)
+
+    def _process_type_attr_name(self, process_type) -> str | None:
+        for name, value in self.get_read_only_process_type_variables().items():
+            if value is process_type:
+                return name
+        return None
+
+    def _find_subscribed_process_type(self, tag_or_source_name: str):
+        """Locate ProcessType bound to ``name``, its raw source, or its ``.f`` pair."""
+        from .signal_conditioning.filtered_tags import subscription_pair_names
+
+        candidates = subscription_pair_names(tag_or_source_name)
+        candidates.add((tag_or_source_name or "").strip())
+        for tag_name, process_type in self.get_subscribed_tags().items():
+            if tag_name in candidates:
+                return process_type, tag_name
+        return None, None
+
+    def get_signal_mode_for_tag(self, tag) -> str | None:
+        """Return ``raw`` / ``filtered`` when wavelet is on for the source; else None."""
+        from .signal_conditioning.filtered_tags import (
+            is_filtered_derivative_name,
+            tag_filter_enabled,
+        )
+
+        if tag is None:
+            return None
+        source = self._wavelet_source_tag(tag)
+        if source is None or not tag_filter_enabled(source):
+            return None
+        stored = (self.signal_modes or {}).get(source.name)
+        if stored in ("raw", "filtered"):
+            return stored
+        if is_filtered_derivative_name(getattr(tag, "name", "") or ""):
+            return "filtered"
+        return "raw"
+
+    def set_signal_mode(self, tag_or_source_name: str, mode: str, user=None):
+        """Rebind a subscribed ProcessType between raw and ``.f`` for this machine."""
+        from .signal_conditioning.filtered_tags import (
+            resolve_bind_tag,
+            tag_filter_enabled,
+        )
+        from .workers.wavelet_worker import get_wavelet_worker
+
+        preferred = (mode or "").strip().lower()
+        if preferred not in ("raw", "filtered"):
+            raise ValueError("signal mode must be 'raw' or 'filtered'")
+
+        process_type, old_tag_name = self._find_subscribed_process_type(tag_or_source_name)
+        if process_type is None or process_type.tag is None:
+            raise ValueError(
+                f"No subscription found for tag '{tag_or_source_name}'"
+            )
+
+        old_tag = process_type.tag
+        source = self._wavelet_source_tag(old_tag)
+        if source is None or not tag_filter_enabled(source):
+            raise ValueError(
+                f"Tag '{tag_or_source_name}' has no active wavelet filter"
+            )
+
+        new_tag = resolve_bind_tag(source, preferred)
+        if new_tag is None:
+            raise ValueError(f"Unable to resolve bind tag for '{source.name}'")
+
+        self.signal_modes[source.name] = preferred
+
+        if getattr(new_tag, "name", None) == getattr(old_tag, "name", None):
+            return True
+
+        default_tag_name = self._process_type_attr_name(process_type)
+        old_tag.detach_machine(self)
+        try:
+            self.machine_engine.unbind_tag(tag=old_tag, machine=self)
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "unbind_tag skipped during signal_mode switch",
+                exc_info=True,
+            )
+
+        process_type.tag = new_tag
+        self.attach(machine=self, tag=new_tag)
+        try:
+            self.machine_engine.bind_tag(
+                tag=new_tag, machine=self, default_tag_name=default_tag_name
+            )
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "bind_tag skipped during signal_mode switch",
+                exc_info=True,
+            )
+
+        if old_tag_name and old_tag_name in (self.sample_overrides or {}):
+            override_val = self.sample_overrides.pop(old_tag_name)
+            self.sample_overrides[new_tag.name] = override_val
+            try:
+                self.machine_engine.put_sample_override(
+                    tag=new_tag, machine=self, sample_override=override_val
+                )
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "sample_override migrate skipped during signal_mode switch",
+                    exc_info=True,
+                )
+
+        worker = get_wavelet_worker()
+        if worker is not None:
+            from .signal_conditioning.filtered_tags import machine_sample_interval
+
+            worker.sync_from_tag(
+                source,
+                sample_interval=machine_sample_interval(self),
+                machine_name=self.name.value,
+            )
+
+        self.restart_buffer()
+        return True
+
+    def set_signal_modes(self, modes: dict, user=None):
+        """Apply a map of source_name → ``raw``|``filtered``."""
+        if not isinstance(modes, dict):
+            raise TypeError("signal_modes must be an object of tag_name → mode")
+        for name, mode in modes.items():
+            self.set_signal_mode(str(name), str(mode), user=user)
+        return True
 
     def _ensure_bind_partition(self, tag: Tag) -> None:
         """Refuse to attach a tag whose area differs from this machine's area."""
@@ -1187,6 +1334,10 @@ class StateMachineCore(StateMachine):
         process_type = None
         if tag is not None:
             process_type = self.get_subscribed_tags().get(tag.name)
+            if process_type is None:
+                process_type, _ = self._find_subscribed_process_type(tag.name)
+                if process_type is not None:
+                    tag = process_type.tag
         elif default_tag_name:
             candidate = getattr(self, default_tag_name, None)
             if isinstance(candidate, ProcessType) and candidate.tag:
@@ -1195,6 +1346,10 @@ class StateMachineCore(StateMachine):
 
         if process_type is None or tag is None:
             return
+
+        source = self._wavelet_source_tag(tag)
+        if source is not None and source.name in (self.signal_modes or {}):
+            self.signal_modes.pop(source.name, None)
 
         self._unregister_wavelet_tag(tag)
         tag.detach_machine(self)
@@ -1559,6 +1714,7 @@ class StateMachineCore(StateMachine):
             "execution_interval": self.get_interval(),
             "sample_interval": self.get_sample_interval(),
             "sample_overrides": dict(self.sample_overrides or {}),
+            "signal_modes": dict(self.signal_modes or {}),
             "has_domain_config": supports_domain_config(self),
         }
         result.update(self.get_serialized_models())
@@ -2167,8 +2323,15 @@ class OPCUAServer(StateMachineCore):
         opcua_server_obj = app.get_opcua_server_record_by_namespace(namespace=namespace)
         access_type = "Read"
         if opcua_server_obj:
-            record = opcua_server_obj.serialize()
-            access_type = record['access_type']['name']
+            record = opcua_server_obj.serialize() or {}
+            access_payload = record.get("access_type")
+            if isinstance(access_payload, dict) and access_payload.get("name"):
+                access_type = str(access_payload["name"])
+            # Heal NULL / missing FK so the next restart does not hit the same row.
+            if not isinstance(access_payload, dict) or access_payload.get("id") is None:
+                app.update_opcua_server_access_type(
+                    namespace=namespace, access_type=access_type
+                )
         else:
             app.create_opcua_server_record(name=var_name, namespace=namespace, access_type=access_type)
 

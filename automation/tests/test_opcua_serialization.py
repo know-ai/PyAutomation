@@ -41,3 +41,19 @@ class TestOpcuaSerialization(unittest.TestCase):
         json.dumps(out)
 
 
+class TestOpcuaServerRecordSerialize(unittest.TestCase):
+    def test_null_access_type_defaults_to_read(self):
+        from automation.dbmodels.opcua_server import OPCUAServer
+
+        row = OPCUAServer()
+        row.id = 1
+        row.name = "Linea1_Supe.Linea1.PI_02"
+        row.namespace = "ns=2;s=deadbeef"
+        row.access_type = None
+        payload = row.serialize()
+        self.assertEqual(payload["name"], row.name)
+        self.assertEqual(payload["namespace"], row.namespace)
+        self.assertEqual(payload["access_type"]["name"], "Read")
+        self.assertIsNone(payload["access_type"]["id"])
+
+

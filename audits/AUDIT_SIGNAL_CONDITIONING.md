@@ -19,16 +19,16 @@
 
 | Palanca | ¿Runtime? | Qué es hoy |
 |---|---|---|
-| **Filtro wavelet (`filter_enabled`)** | **Sí** | DWT + soft-threshold + IDWT en `WaveletWorker`; hot path solo encola O(1). SM consume tag `.f` |
+| **Filtro wavelet (`filter_enabled`)** | **Sí** | DWT + soft-threshold + IDWT en `WaveletWorker`; hot path solo encola O(1). SM puede consumir raw o `.f` |
 | **Calidad OPC en `.f`** | **Sí** | Muestra BAD/NaN → `HOLD` + publicación `UNCERTAIN` con último valor bueno; GOOD al recuperar señal |
 | **Filtro gaussiano / Kalman** | **Eliminado** | Columnas BD, API, HMI, `filter.py`, `@filter` y páginas Dash retirados (2026-08-19) |
 | **Filtro de proceso (`process_filter`)** | **Eliminado** | Columna SQL eliminada por migración idempotente `_drop_legacy_tag_columns()` |
 | **Deadband** | **Sí** | Puerta única en `Tag.set_value`; CVT respeta `False` y no re-emite |
 | **Outlier / OOR / frozen (IAD)** | **No en hot path** | Decoradores IAD **comentados**. Stubs sin enganche |
 
-**Mensaje operativo:** el filtrado de señal para control de proceso es **wavelet RT** vía tag `{nombre}.f`. Raw permanece en el tag source. Ante datos inválidos, el operador ve calidad **UNCERTAIN** en `.f` y estado **hold** en HMI/Performance. Admin/supervisor pueden **Reconstruir derivados** en `/performance` (`POST /api/admin/tags/rebuild-derived`): asegura `.f` si el filtro está ON y elimina `.f` cuyo source ya no existe.
+**Mensaje operativo:** el filtrado de señal para control de proceso es **wavelet RT** vía tag `{nombre}.f`. Raw permanece en el tag source. Cada máquina elige por suscripción (`signal_modes`: `raw` | `filtered`, default **filtrado**) qué valor consumir; el dropdown «Tags de Campo» lista solo el raw y lo oculta si ya está mapeado (raw o `.f`). Ante datos inválidos, el operador ve calidad **UNCERTAIN** en `.f` y estado **hold** en HMI/Performance. Admin/supervisor pueden **Reconstruir derivados** en `/performance` (`POST /api/admin/tags/rebuild-derived`): asegura `.f` si el filtro está ON y elimina `.f` cuyo source ya no existe.
 
-Cadena con wavelet ON y SM suscrita:
+Cadena con wavelet ON y SM suscrita (modo filtrado, default):
 
 ```
 OPC datachange (hilo suscripción)
@@ -46,6 +46,7 @@ WaveletWorker (hilo dedicado, tick ~50 ms)
   → SAF (si filter_persist) almacena value + quality en journal
 ```
 
+Con `signal_modes[source]=raw`, el worker sigue publicando `.f`, pero la SM lee el tag source.
 ---
 
 ## 1. Inventario de código (post-A+)
@@ -55,7 +56,8 @@ WaveletWorker (hilo dedicado, tick ~50 ms)
 | Calidad OPC | `automation/signal_conditioning/quality.py` | `GOOD` / `UNCERTAIN` / `BAD`; helpers ingest |
 | Anillo O(1) | `automation/signal_conditioning/sample_ring.py` | `SampleRing`: encolado thread-safe |
 | DWT bloques | `automation/signal_conditioning/wavelet_block.py` | `WaveletBlockFilter`: DWT, HOLD, métricas status |
-| Tags `.f` | `automation/signal_conditioning/filtered_tags.py` | `ensure_filtered_tag`, `resolve_subscription_tag` |
+| Tags `.f` | `automation/signal_conditioning/filtered_tags.py` | `ensure_filtered_tag`, `resolve_subscription_tag`, `resolve_bind_tag` |
+| Preferencia SM | `automation/state_machine.py` | `signal_modes`, `set_signal_mode`; HMI columna Señal en MachinesDetailed |
 | Worker | `automation/workers/wavelet_worker.py` | Publicación con `quality` en `.f` |
 | Hot path | `automation/tags/tag.py`, `automation/tags/cvt.py` | Deadband + ingest + `quality` en `set_value` |
 | SM | `automation/state_machine.py` | `subscribe_to` → `.f` + registro worker |

@@ -971,6 +971,10 @@
     "domainConfigSaveError": "Could not save domain configuration",
     "domainConfigValidationError": "One or more fields are outside the allowed range",
     "domainConfigUnsupportedVersion": "This configuration schema is newer than this HMI supports. Some fields may not display.",
+    "domainConfigReset": "Restore factory defaults",
+    "domainConfigResetSaved": "Configuration restored to factory defaults",
+    "domainConfigSetFactory": "Set as factory defaults",
+    "domainConfigSetFactorySaved": "Current configuration is now the factory default",
     "updateAttribute": "Update",
     "updatingAttribute": "Updating...",
     "updateAttributeError": "Error updating attribute",
@@ -1007,7 +1011,12 @@
     "scanTime": "Scan time (field)",
     "sampleOverride": "Custom sample interval (s)",
     "sampleFasterThanScan": "Cannot be less than the tag scan time",
-    "temporalUpdated": "Timing configuration updated"
+    "temporalUpdated": "Timing configuration updated",
+    "signalMode": "Signal",
+    "signalModeRaw": "Raw",
+    "signalModeFiltered": "Filtered",
+    "signalModeHint": "Use the raw field value or the filtered derivative (.f) on this machine",
+    "signalModeUpdated": "Signal mode updated"
   },
   "alarms": {
     "editAlarm": "Edit alarm",

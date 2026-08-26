@@ -34,28 +34,44 @@ type MachineDetailedData = {
   [key: string]: any;
 };
 
-/** Nombres de tags de campo ya suscritos (clave API + tag.name anidado). */
+/** Nombres de tags de campo ya suscritos (clave API + source + par .f). */
 function collectSubscribedFieldTagNames(details: MachineDetailedData): Set<string> {
   const names = new Set<string>();
+  const addPair = (name: string | undefined | null) => {
+    if (!name) return;
+    names.add(name);
+    if (name.endsWith(".f")) {
+      names.add(name.slice(0, -2));
+    } else {
+      names.add(`${name}.f`);
+    }
+  };
   for (const [key, val] of Object.entries(details.subscribed_tags || {})) {
-    if (key) names.add(key);
-    const nested = val && typeof val === "object" ? (val as { tag?: { name?: string } }).tag?.name : undefined;
-    if (typeof nested === "string" && nested) names.add(nested);
+    addPair(key);
+    const nested = val && typeof val === "object" ? (val as { tag?: { name?: string }; source_name?: string }).tag?.name : undefined;
+    addPair(typeof nested === "string" ? nested : undefined);
+    const source =
+      val && typeof val === "object"
+        ? (val as { source_name?: string }).source_name
+        : undefined;
+    addPair(typeof source === "string" ? source : undefined);
   }
   for (const val of Object.values(details.read_only_process_type_variables || {})) {
     const nested =
       val && typeof val === "object"
         ? (val as { tag?: { name?: string } }).tag?.name
         : undefined;
-    if (typeof nested === "string" && nested) names.add(nested);
+    addPair(typeof nested === "string" ? nested : undefined);
   }
   return names;
 }
 
-/** Tags de campo a?n libres para suscribir (no est?n en Tags Suscritos). */
+/** Tags de campo aún libres para suscribir (solo raw; nunca .f). */
 function getAvailableFieldTags(details: MachineDetailedData): string[] {
   const subscribed = collectSubscribedFieldTagNames(details);
-  return (details.field_tags || []).filter((name) => !subscribed.has(name));
+  return (details.field_tags || []).filter(
+    (name) => !name.endsWith(".f") && !subscribed.has(name)
+  );
 }
 
 function subscribedInternalVariableNames(details: MachineDetailedData): Set<string> {
@@ -177,6 +193,26 @@ export function MachinesDetailed() {
 
   const uiHintsFor = (machineName: string): MachineUiHints =>
     domainSchemas[machineName]?.ui_hints || {};
+
+  const refreshDomainConfig = async (machineName: string, details?: MachineDetailedData | null) => {
+    const hasDomain =
+      details?.serialization?.has_domain_config ??
+      machineDetails[machineName]?.serialization?.has_domain_config;
+    if (!hasDomain) return;
+    try {
+      const domain = await getMachineDomainConfig(machineName);
+      if (!domain) return;
+      setDomainSchemas((prev) => ({ ...prev, [machineName]: domain.schema || {} }));
+      setDomainConfigs((prev) => ({ ...prev, [machineName]: domain.config || {} }));
+    } catch (domainErr: any) {
+      const payload = domainErr?.response?.data;
+      const message =
+        (typeof payload === "string" ? payload : undefined) ??
+        payload?.message ??
+        t("machines.domainConfigLoadError");
+      showToast(message, "error");
+    }
+  };
 
   const isAttributeLocked = (machineName: string, attribute: string): boolean =>
     (uiHintsFor(machineName).lock_generic_attributes || []).includes(attribute);
@@ -487,6 +523,33 @@ export function MachinesDetailed() {
         sample_overrides: overrides,
       });
       showToast(message || t("machines.temporalUpdated"), "success");
+      const data = await getMachineByName(machineName);
+      temporalHydratedRef.current.delete(machineName);
+      setMachineDetails((prev) => ({ ...prev, [machineName]: data }));
+    } catch (err: any) {
+      const data = err?.response?.data;
+      const backendMessage =
+        (typeof data === "string" ? data : undefined) ??
+        data?.message ??
+        data?.detail ??
+        data?.error;
+      showToast(backendMessage || err?.message || t("machines.updateAttributeError"), "error");
+    } finally {
+      setSavingTemporal((prev) => ({ ...prev, [machineName]: false }));
+    }
+  };
+
+  const handleSignalModeChange = async (
+    machineName: string,
+    sourceName: string,
+    mode: "raw" | "filtered"
+  ) => {
+    setSavingTemporal((prev) => ({ ...prev, [machineName]: true }));
+    try {
+      const { message } = await updateMachineAttributes(machineName, {
+        signal_modes: { [sourceName]: mode },
+      });
+      showToast(message || t("machines.signalModeUpdated"), "success");
       const data = await getMachineByName(machineName);
       temporalHydratedRef.current.delete(machineName);
       setMachineDetails((prev) => ({ ...prev, [machineName]: data }));
@@ -1444,7 +1507,9 @@ export function MachinesDetailed() {
                 const isBufferSizeLocked = isAttributeLocked(machineName, "buffer_size");
                 const isThresholdLocked = isAttributeLocked(machineName, "threshold");
                 const isOnDelayLocked = isAttributeLocked(machineName, "on_delay");
-                const showGenericCard = hasGenericAttributes(details);
+                const showGenericCard =
+                  hints.show_generic_attributes_card !== false &&
+                  hasGenericAttributes(details);
                 return (
                   <div
                     key={machineName}
@@ -1701,6 +1766,7 @@ export function MachinesDetailed() {
                                             ...prev,
                                             [machineName]: data,
                                           }));
+                                          await refreshDomainConfig(machineName, data);
                                           // Resetear selecciones
                                           setSelectedReadOnlyVariable((prev) => ({
                                             ...prev,
@@ -1767,6 +1833,7 @@ export function MachinesDetailed() {
                                             ...prev,
                                             [machineName]: data,
                                           }));
+                                          await refreshDomainConfig(machineName, data);
                                           setSelectedSubscribedTag((prev) => ({
                                             ...prev,
                                             [machineName]: "",
@@ -1920,16 +1987,6 @@ export function MachinesDetailed() {
                               </div>
                             </Card>
                           )}
-                          {domainSchemas[machineName] && (
-                            <DomainConfigSlot
-                              machineName={machineName}
-                              schema={domainSchemas[machineName]}
-                              config={domainConfigs[machineName] || {}}
-                              onConfigUpdated={(next) =>
-                                setDomainConfigs((prev) => ({ ...prev, [machineName]: next }))
-                              }
-                            />
-                          )}
                         </div>
                       </div>
                       {machineDetails[machineName] && (
@@ -2076,6 +2133,7 @@ export function MachinesDetailed() {
                                       <thead>
                                         <tr>
                                           <th>{t("machines.subscribedTags")}</th>
+                                          <th>{t("machines.signalMode")}</th>
                                           <th>{t("machines.scanTime")}</th>
                                           {customized && <th>{t("machines.sampleOverride")}</th>}
                                           <th>{t("machines.samplingEffective")}</th>
@@ -2105,10 +2163,45 @@ export function MachinesDetailed() {
                                               effectiveLabel = t("machines.samplingUsesGlobal");
                                             }
                                           }
+                                          const sourceName =
+                                            (typeof payload?.source_name === "string" &&
+                                              payload.source_name) ||
+                                            tagName.replace(/\.f$/, "");
+                                          const filterEnabled = Boolean(payload?.filter_enabled);
+                                          const signalMode =
+                                            payload?.signal_mode === "raw" ? "raw" : "filtered";
                                           return (
                                             <tr key={tagName}>
                                               <td>
-                                                <code className="timing-tag-name">{tagName}</code>
+                                                <code className="timing-tag-name">{sourceName}</code>
+                                              </td>
+                                              <td style={{ minWidth: "8rem" }}>
+                                                {filterEnabled ? (
+                                                  <select
+                                                    className="form-select form-select-sm"
+                                                    value={signalMode}
+                                                    disabled={Boolean(savingTemporal[machineName])}
+                                                    onChange={(e) =>
+                                                      handleSignalModeChange(
+                                                        machineName,
+                                                        sourceName,
+                                                        e.target.value as "raw" | "filtered"
+                                                      )
+                                                    }
+                                                    title={t("machines.signalModeHint")}
+                                                  >
+                                                    <option value="filtered">
+                                                      {t("machines.signalModeFiltered")}
+                                                    </option>
+                                                    <option value="raw">
+                                                      {t("machines.signalModeRaw")}
+                                                    </option>
+                                                  </select>
+                                                ) : (
+                                                  <span className="text-muted small">
+                                                    {t("machines.signalModeRaw")}
+                                                  </span>
+                                                )}
                                               </td>
                                               <td className="text-nowrap">
                                                 {payload?.scan_time ?? "?"} ms
@@ -2181,6 +2274,26 @@ export function MachinesDetailed() {
                             </Card>
                               );
                             })()}
+                          </div>
+                        </div>
+                      )}
+                      {domainSchemas[machineName] && (
+                        <div className="row mt-3">
+                          <div className="col-12">
+                            <DomainConfigSlot
+                              machineName={machineName}
+                              schema={domainSchemas[machineName]}
+                              config={domainConfigs[machineName] || {}}
+                              machineState={String(
+                                machineDetails[machineName]?.serialization?.state || ""
+                              )}
+                              onConfigUpdated={(next) =>
+                                setDomainConfigs((prev) => ({ ...prev, [machineName]: next }))
+                              }
+                              onSchemaUpdated={(next) =>
+                                setDomainSchemas((prev) => ({ ...prev, [machineName]: next }))
+                              }
+                            />
                           </div>
                         </div>
                       )}

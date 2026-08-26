@@ -6,9 +6,11 @@ from ....extensions import _api as Api
 from ....models import StringType, FloatType, IntegerType
 from ....variables import Percentage
 from ....domain_config import (
+    audit_domain_config_change,
     supports_domain_config,
     unknown_generic_attribute_keys,
 )
+from ....state_machine_timing import MachineConfigError, validate_temporal_config
 
 
 ns = Namespace('Machines', description='State Machine Management Resources')
@@ -97,6 +99,10 @@ update_attributes_model = api.model("update_attributes_model", {
     'execution_interval': fields.Float(required=False, description='Alias of interval (seconds)'),
     'sample_interval': fields.Float(required=False, description='Independent sample interval in seconds; null = legacy mode'),
     'sample_overrides': fields.Raw(required=False, description='Map of tag name → sample_override seconds'),
+    'signal_modes': fields.Raw(
+        required=False,
+        description="Map of source tag name → 'raw' | 'filtered'",
+    ),
     'buffer_size': fields.Integer(required=False, description='Buffer size for input variables'),
     'on_delay': fields.Integer(required=False, description='Delay before starting the machine'),
 })
@@ -197,8 +203,29 @@ class MachineByNameResource(Resource):
                 payload["scan_time"] = scan_time
                 payload["sample_override"] = (machine.sample_overrides or {}).get(tag_name)
                 payload["effective_sample_interval"] = machine._get_effective_sample_interval(tag_name) if machine.get_sample_interval() is not None else None
+                source = None
+                try:
+                    source = machine._wavelet_source_tag(tag) if tag is not None else None
+                except Exception:
+                    source = None
+                source_name = getattr(source, "name", None) if source is not None else tag_name
+                payload["source_name"] = source_name
+                from ....signal_conditioning.filtered_tags import tag_filter_enabled
+
+                filter_on = bool(source is not None and tag_filter_enabled(source))
+                payload["filter_enabled"] = filter_on
+                if filter_on:
+                    mode = None
+                    getter = getattr(machine, "get_signal_mode_for_tag", None)
+                    if callable(getter):
+                        mode = getter(tag)
+                    payload["signal_mode"] = mode or (machine.signal_modes or {}).get(
+                        source_name, "filtered"
+                    )
+                else:
+                    payload["signal_mode"] = None
                 subscribed_tags[tag_name] = payload
-            
+
             # Serialize not subscribed tags (ProcessType objects)
             not_subscribed_tags_dict = machine.get_not_subscribed_tags()
             not_subscribed_tags = {
@@ -223,9 +250,15 @@ class MachineByNameResource(Resource):
             # Get complete serialization
             serialization = machine.serialize()
 
-            # Tags de Campo: solo los aún libres en ESTA máquina
-            # (misma regla que el HMI Dash: quitar los ya suscritos).
-            all_field_tags = app.cvt._cvt.get_field_tags_names()
+            # Tags de Campo: solo raw aún libres en ESTA máquina
+            # (misma regla que el HMI Dash: quitar los ya suscritos; nunca listar .f).
+            from ....signal_conditioning.filtered_tags import is_filtered_derivative_name
+
+            all_field_tags = [
+                name
+                for name in (app.cvt._cvt.get_field_tags_names() or [])
+                if not is_filtered_derivative_name(name)
+            ]
             field_tags = machine.get_available_field_tags(all_field_tags)
             
             return {
@@ -572,6 +605,7 @@ class MachineAttributesResource(Resource):
         - interval / execution_interval: Intervalo de ejecución en segundos (float)
         - sample_interval: Intervalo de muestreo independiente (float o null)
         - sample_overrides: Mapa tag → segundos
+        - signal_modes: Mapa source tag → 'raw' | 'filtered'
         - buffer_size: Tamaño del buffer (int)
         - on_delay: Retraso antes de iniciar (int)
 
@@ -606,6 +640,7 @@ class MachineAttributesResource(Resource):
         sample_interval_provided = "sample_interval" in data
         sample_interval = data.get("sample_interval") if sample_interval_provided else Ellipsis
         sample_overrides = data.get("sample_overrides")
+        signal_modes = data.get("signal_modes")
         buffer_size = data.get("buffer_size")
         on_delay = data.get("on_delay")
         user = Api.get_current_user()
@@ -615,13 +650,14 @@ class MachineAttributesResource(Resource):
             and interval is None
             and not sample_interval_provided
             and sample_overrides is None
+            and signal_modes is None
             and buffer_size is None
             and on_delay is None
         ):
             return {
                 "message": (
                     "At least one attribute (threshold, interval, sample_interval, "
-                    "sample_overrides, buffer_size, on_delay) must be provided"
+                    "sample_overrides, signal_modes, buffer_size, on_delay) must be provided"
                 )
             }, 400
 
@@ -717,6 +753,20 @@ class MachineAttributesResource(Resource):
                 except (ValueError, TypeError) as e:
                     return {
                         "message": f"Invalid interval value: {str(e)}"
+                    }, 400
+
+            # Actualizar signal_modes (raw vs filtrado por suscripción)
+            if signal_modes is not None:
+                if not isinstance(signal_modes, dict):
+                    return {
+                        "message": "signal_modes must be an object of tag_name → 'raw'|'filtered'"
+                    }, 400
+                try:
+                    machine.set_signal_modes(signal_modes, user=user)
+                    updated_attributes.append("signal_modes")
+                except (ValueError, TypeError) as e:
+                    return {
+                        "message": f"Invalid signal_modes: {str(e)}"
                     }, 400
 
             # Actualizar buffer_size
@@ -893,9 +943,28 @@ class MachineDomainConfigResource(Resource):
                 "message": "Payload must be a JSON object"
             }, 400
         try:
+            before = machine.get_config() or {}
+        except Exception:
+            before = {}
+        try:
+            schema = machine.get_ui_schema() or {}
+        except Exception:
+            schema = {}
+        try:
             config = machine.put_config(payload)
             if not isinstance(config, dict):
                 config = machine.get_config() or {}
+            try:
+                audit_domain_config_change(
+                    machine_name=machine_name,
+                    payload=payload,
+                    before=before,
+                    after=config,
+                    schema=schema,
+                    user=Api.get_current_user(),
+                )
+            except Exception:
+                pass
             return {
                 "status": "success",
                 "config": config,

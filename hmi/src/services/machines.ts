@@ -15,6 +15,7 @@ export type Machine = {
   execution_interval?: number;
   sample_interval?: number | null;
   sample_overrides?: Record<string, number>;
+  signal_modes?: Record<string, "raw" | "filtered">;
   buffer_size: number;
   buffer_roll_type: string;
   has_domain_config?: boolean;
@@ -112,6 +113,7 @@ export const updateMachineAttributes = async (
     execution_interval?: number;
     sample_interval?: number | null;
     sample_overrides?: Record<string, number | null>;
+    signal_modes?: Record<string, "raw" | "filtered">;
     buffer_size?: number;
     on_delay?: number;
   }
@@ -122,6 +124,9 @@ export const updateMachineAttributes = async (
   );
   return data;
 };
+
+export type DomainLabelDisplay = "visible" | "hidden";
+export type DomainHelpDisplay = "tooltip" | "text" | "both" | "none";
 
 export type DomainConfigField = {
   key: string;
@@ -135,13 +140,36 @@ export type DomainConfigField = {
   depends_on?: { field: string; equals?: unknown };
   help?: string;
   read_only?: boolean;
+  read_only_when?: { field: string; equals?: unknown };
+  short_label?: string;
+  false_label?: string;
+  true_label?: string;
+  show_label?: boolean;
+  label_display?: DomainLabelDisplay;
+  help_display?: DomainHelpDisplay;
   fields?: DomainConfigField[];
+  columns?: number;
+  dwt_bounds?: {
+    role?: "level" | "length";
+    family_key?: string;
+    length_key?: string;
+    level_key?: string;
+    filter_len?: Record<string, number>;
+    cap?: number;
+    min_length?: number;
+    apply_min_when?: { field: string; equals?: unknown };
+    apply_max_when?: { field: string; equals?: unknown };
+  };
 };
 
 export type DomainConfigSection = {
   id?: string;
   label?: string;
+  hint?: string;
   fields?: DomainConfigField[];
+  depends_on?: { field: string; equals?: unknown };
+  label_display?: DomainLabelDisplay;
+  help_display?: DomainHelpDisplay;
 };
 
 export type DomainUiHints = {
@@ -149,6 +177,11 @@ export type DomainUiHints = {
   lock_generic_attributes?: string[];
   threshold_unit?: string;
   show_generic_attributes_card?: boolean;
+  factory_defaults?: Record<string, unknown>;
+  label_display?: DomainLabelDisplay;
+  help_display?: DomainHelpDisplay;
+  show_labels?: boolean;
+  show_set_factory?: boolean;
 };
 
 export type DomainUiSchema = {
