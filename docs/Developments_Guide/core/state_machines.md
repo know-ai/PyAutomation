@@ -8,7 +8,7 @@ PyAutomation’s state-machine runtime executes all control logic, sequencing, a
 - **Scheduler**: `StateMachineWorker` runs machines on a fixed interval. Default mode is asynchronous; synchronous mode is available for tightly coupled cycles.
 - **Base classes**: `StateMachineCore` defines the standard lifecycle (start → wait → run → reset/restart). `AutomationStateMachine` extends it with extra `test` and `sleep` states for simulation/low-power modes.
 - **Data plane**: Process variables are `ProcessType` instances. Read-only variables subscribe to CVT tags; writable variables can be exposed as tags automatically via `create_tag_internal_process_type`, enabling logging and alarming. The scheduler stamps `machine.cycle_timestamp` immediately before each `loop()` so every CVT write in that tick shares one UTC instant. Duplicate `set_value` calls for the same tag/value in that cycle are absorbed by the persistence gateway before they reach the journal.
-- **Observability**: Each machine can emit state changes through SocketIO, is persisted by `MachinesLoggerEngine`, and can be serialized for UIs or tests with `.serialize()`.
+- **Observability**: Each machine can emit state changes through SocketIO, is persisted by `MachinesLoggerEngine`, and can be serialized for UIs or tests with `.serialize()` (`has_domain_config` flags Schema-Driven domain forms).
 - **Interop**: Machines interact with `CVTEngine` for data, `AlarmManager` for protection logic, `DataLoggerEngine` for history, and the OPC UA server/client stack for field connectivity.
 
 ## Lifecycle
@@ -124,6 +124,7 @@ app.machine.start()
 - Treat CVT as the single source of truth for inputs and outputs—avoid hidden globals.
 - Use explicit state transitions (`send(...)`) instead of conditionally mutating state flags.
 - Version your machine configuration (name, classification, priority, threshold/on-delay) in the database so restarts restore the expected behavior.
+- Domain-specific forms (product engines) belong in `get_ui_schema` / `get_config` / `put_config`. See [Domain configuration](domain_config.md).
 - Emit meaningful descriptions for process variables; they surface in the UI, logs, and OPC UA address space.
 
 ## Troubleshooting Checklist

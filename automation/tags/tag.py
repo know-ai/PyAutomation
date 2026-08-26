@@ -936,7 +936,7 @@ class Tag:
 
 
 def _machine_threshold_value(machine) -> float | None:
-    """Extrae umbral activo de una máquina de estado (incl. PPA/NPW)."""
+    """Extract the active threshold from a state machine (optional getter)."""
     getter = getattr(machine, "get_active_detection_threshold", None)
     if callable(getter):
         try:

@@ -17,6 +17,7 @@ export type Machine = {
   sample_overrides?: Record<string, number>;
   buffer_size: number;
   buffer_roll_type: string;
+  has_domain_config?: boolean;
   [key: string]: any;
 };
 
@@ -101,7 +102,7 @@ export const unsubscribeMachineTag = async (
 };
 
 /**
- * Actualiza atributos específicos de una máquina (threshold, buffer_size, on_delay, detection_threshold_mode)
+ * Actualiza atributos genéricos de una máquina (threshold, buffer_size, on_delay, timings)
  */
 export const updateMachineAttributes = async (
   machineName: string,
@@ -113,12 +114,76 @@ export const updateMachineAttributes = async (
     sample_overrides?: Record<string, number | null>;
     buffer_size?: number;
     on_delay?: number;
-    detection_threshold_mode?: "probability" | "statistic" | string;
   }
 ): Promise<{ message: string; data: Machine }> => {
   const { data } = await api.put(
     `/machines/${encodeURIComponent(machineName)}/attributes`,
     attributes
+  );
+  return data;
+};
+
+export type DomainConfigField = {
+  key: string;
+  type: "number" | "select" | "boolean" | "string" | "object" | "array" | string;
+  label?: string;
+  unit?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ value: string; label: string }>;
+  depends_on?: { field: string; equals?: unknown };
+  help?: string;
+  read_only?: boolean;
+  fields?: DomainConfigField[];
+};
+
+export type DomainConfigSection = {
+  id?: string;
+  label?: string;
+  fields?: DomainConfigField[];
+};
+
+export type DomainUiHints = {
+  exclusive_subscribe_pairs?: string[][];
+  lock_generic_attributes?: string[];
+  threshold_unit?: string;
+  show_generic_attributes_card?: boolean;
+};
+
+export type DomainUiSchema = {
+  version?: number;
+  title?: string;
+  sections?: DomainConfigSection[];
+  ui_hints?: DomainUiHints;
+};
+
+export type MachineDomainConfigResponse = {
+  schema: DomainUiSchema;
+  config: Record<string, unknown>;
+};
+
+export const getMachineDomainConfig = async (
+  machineName: string
+): Promise<MachineDomainConfigResponse | null> => {
+  try {
+    const { data } = await api.get(
+      `/machines/${encodeURIComponent(machineName)}/domain-config`
+    );
+    return data;
+  } catch (err: any) {
+    if (err?.response?.status === 404) return null;
+    throw err;
+  }
+};
+
+export const putMachineDomainConfig = async (
+  machineName: string,
+  payload: Record<string, unknown>
+): Promise<{ status: string; config: Record<string, unknown> }> => {
+  const { data } = await api.put(
+    `/machines/${encodeURIComponent(machineName)}/domain-config`,
+    payload
   );
   return data;
 };

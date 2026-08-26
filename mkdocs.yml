@@ -92,6 +92,7 @@ nav:
           - CVT: "Developments_Guide/core/cvt.md"
           - Data Logger: "Developments_Guide/core/datalogger.md"
           - State Machines: "Developments_Guide/core/state_machines.md"
+          - Domain configuration: "Developments_Guide/core/domain_config.md"
       - IIoT:
           - Summary: "Developments_Guide/iiot/index.md"
           - Modbus: "Developments_Guide/iiot/modbus.md"

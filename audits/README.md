@@ -12,7 +12,7 @@
 
 ---
 
-## Documentos canónicos (16)
+## Documentos canónicos (17)
 
 | Doc | Archivo | Absorbe | Veredicto vigente |
 |---|---|---|---|
@@ -32,6 +32,7 @@
 | **14 Calidad OPC + arranque degradado** | [AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md](./AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md) | Specs [09](../specs/09-OPC-QUALITY-AND-DEGRADED-STARTUP.md) + [10](../specs/10-OPC-QUALITY-A-PLUS.md) — verificación 2026-08-21 | **A− disponibilidad** / **A− calidad** (A+ condicionado a soak) / **A Login-UX** — CA-OQ-01…12 PASS; soak 13–15 pendiente |
 | **15 Catálogo local SQLite** | [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md) | Spec [11](../specs/11-CATALOG-SQLITE-LOCAL.md) — verificación 2026-08-21 P0 + Bulkhead 2026-08-25 | **A autonomía + integridad reinicio (código)** / **A separación SAF** / **A HMI-API** / **A aislamiento por fila** / **A− sync planta** — CA-01…06/10…13/15…18 + CA-ISOLATION-02…04 PASS; soak 07–09/14 + CA-ISOLATION-05 pendiente |
 | **16 Consistencia catálogo planta** | [AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md](./AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md) | Corrida 19:15 + 22:36 · CA-DAQ-01 vivo en planta · CA-CATALOG-NOISE-01/02 en código | **A catálogo de proceso** / **B− sidecar .81** — SyncFailed era umbral, no outage |
+| **17 Extensión HMI machines/domain** | [AUDIT_HMI_MACHINE_DOMAIN_EXTENSION.md](./AUDIT_HMI_MACHINE_DOMAIN_EXTENSION.md) | (nuevo 2026-08-26; implementación Fase A 2026-08-26) | **A** contrato Schema-Driven — pregunta fundamental **SÍ**; Fase B schemas de producto en iDetectFugas |
 
 ---
 
@@ -41,6 +42,7 @@
 2. IDs de hallazgos (`BE-H4`, `CA-DB-1`, `HMI-C1`, `CA-EDGE-1`, …) **se conservan**.
 3. El runbook operativo de deriva (RSS, OPC, SAF, conexiones, logs) vive en [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) § Runbook.
 4. Specs de arquitectura: `specs/01-MULTI-EDGE-ARCHITECTURE.md` (el estado de implementación real está en [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), no en el encabezado «propuesta» de la spec).
+5. Extensión de formularios de dominio en `/hmi/machines/detailed` (DIP/OCP, hardcodes producto, contrato Schema-Driven): [AUDIT_HMI_MACHINE_DOMAIN_EXTENSION.md](./AUDIT_HMI_MACHINE_DOMAIN_EXTENSION.md).
 
 ---
 

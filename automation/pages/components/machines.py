@@ -43,10 +43,6 @@ class MachinesComponents:
         disable = True
         if hasattr(machine, "buffer_size"):
             disable = False
-        if "pfm" in machine_name.lower():
-            disable = True
-        elif "observer" in  machine_name.lower():
-            disable = True
         return dash.html.Div([
             dash.dcc.Location(id='machine_attributes_page', refresh=False),
             dbc.Accordion(

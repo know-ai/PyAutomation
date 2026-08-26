@@ -37,6 +37,7 @@ from .logger.datalogger import DataLoggerEngine
 from .logger.alarms import AlarmsLoggerEngine
 from .node_scope import get_node_scope
 from flask_socketio import SocketIO
+from .domain_config import supports_domain_config
 from .state_machine_timing import (
     DequeBufferProvider,
     compute_sample_buffer_maxlen,
@@ -276,8 +277,8 @@ class Machine(Singleton):
                         machine.sample_overrides = dict(
                             config[machine.name.value].get("sample_overrides") or {}
                         )
-                        # Flags para que módulos (p.ej. NPW/Observer) puedan evitar sobreescribir
-                        # parámetros que vienen de BD con defaults del modelo/config.
+                        # Flags so product engines can skip overwriting DB-backed
+                        # parameters with model/config defaults.
                         on_delay_db = config[machine.name.value].get('on_delay')
                         if on_delay_db is not None:
                             machine.on_delay.value = on_delay_db
@@ -291,11 +292,9 @@ class Machine(Singleton):
                             class_name = machine.threshold.value.__class__.__name__
                             machine.threshold.value = eval(f"{class_name}({threshold_value}, unit='{threshold_unit}')")
                             machine._threshold_from_db = True
-                            if "leak detection" in machine.classification.value.lower():
-
-                                if machine.name.value.lower() == "npw":
-
-                                    machine.wavelet.threshold_iqr = threshold_value
+                            apply_threshold = getattr(machine, "apply_persisted_threshold", None)
+                            if callable(apply_threshold):
+                                apply_threshold(threshold_value)
                         else:
                             machine._threshold_from_db = False
                                     
@@ -867,8 +866,8 @@ class StateMachineCore(StateMachine):
     def _legacy_sample_and_execute(self) -> None:
         """Same-tick sampling hook for ``sample_interval IS NULL``.
 
-        Default is a no-op so iDetectFugas (LDS/NPW) keeps sampling inside
-        ``while_*`` / ``verify_inputs`` (CA-SM-04). Vanilla machines that opt
+        Default is a no-op so product engines that sample inside ``while_*`` /
+        ``verify_inputs`` keep that path (CA-SM-04). Vanilla machines that opt
         into ``sample_interval`` use SampleScheduler instead.
         """
         return None
@@ -1560,6 +1559,7 @@ class StateMachineCore(StateMachine):
             "execution_interval": self.get_interval(),
             "sample_interval": self.get_sample_interval(),
             "sample_overrides": dict(self.sample_overrides or {}),
+            "has_domain_config": supports_domain_config(self),
         }
         result.update(self.get_serialized_models())
         
@@ -1633,8 +1633,8 @@ class StateMachineCore(StateMachine):
         r"""
         Entering Wait always starts an empty sample window.
 
-        Leak engines restart via confirm_restart → waiting (they never run
-        ``while_restarting`` of this class), so the clear cannot live only
+        Product engines may restart via confirm_restart → waiting (they never
+        run ``while_restarting`` of this class), so the clear cannot live only
         on the vanilla restart transition.
         """
         self.restart_buffer()

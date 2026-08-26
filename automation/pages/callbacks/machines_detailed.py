@@ -142,10 +142,6 @@ def init_callback(app:dash.Dash):
             disable = False
             buffer_size = machine.buffer_size
             buffer_size = f"Current buffer size: {buffer_size.value}"
-        if "pfm" in machine_name.lower():
-            disable = True
-        elif "observer" in  machine_name.lower():
-            disable = True
         on_delay = f"Current on delay: {on_delay.value}"
         
         return machine_threshold_place, disable, threshold_input_text, machine_interval, buffer_size, disable, on_delay, "", "", "", ""
@@ -530,27 +526,9 @@ def init_callback(app:dash.Dash):
         if yes_n:
             
             if threshold:
-                
-                if hasattr(machine, "set_active_detection_threshold_from_ui"):
-                    threshold = machine.set_active_detection_threshold_from_ui(float(threshold))
-                else:
-                    if "leak detection" in machine.classification.value.lower():
-
-                        if machine_name.lower()=="npw":
-
-                            if threshold > 100:
-
-                                threshold = 100
-
-                            elif threshold < 0:
-
-                                threshold = 0
-
-                            machine.wavelet.threshold_iqr = threshold
-
-                    machine.threshold.value.value = threshold
-                    if hasattr(machine, "persist_ui_config_attributes"):
-                        machine.persist_ui_config_attributes(threshold=float(threshold))
+                machine.threshold.value.value = float(threshold)
+                if hasattr(machine, "persist_ui_config_attributes"):
+                    machine.persist_ui_config_attributes(threshold=float(threshold))
                 # UPDATE DB
                 if app.automation.is_db_connected():
                     try:

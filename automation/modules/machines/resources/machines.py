@@ -5,7 +5,10 @@ from ....extensions.api import api
 from ....extensions import _api as Api
 from ....models import StringType, FloatType, IntegerType
 from ....variables import Percentage
-from ....state_machine_timing import MachineConfigError, validate_temporal_config
+from ....domain_config import (
+    supports_domain_config,
+    unknown_generic_attribute_keys,
+)
 
 
 ns = Namespace('Machines', description='State Machine Management Resources')
@@ -96,10 +99,6 @@ update_attributes_model = api.model("update_attributes_model", {
     'sample_overrides': fields.Raw(required=False, description='Map of tag name → sample_override seconds'),
     'buffer_size': fields.Integer(required=False, description='Buffer size for input variables'),
     'on_delay': fields.Integer(required=False, description='Delay before starting the machine'),
-    'detection_threshold_mode': fields.String(
-        required=False,
-        description='PPA/NPW only: probability | statistic',
-    ),
 })
 
 
@@ -127,6 +126,7 @@ class MachinesResource(Resource):
         - description: Machine description
         - classification: Machine classification
         - interval: Execution interval
+        - has_domain_config: Whether the machine implements DomainConfigurable
         - And other machine-specific attributes
         """
         try:
@@ -565,33 +565,22 @@ class MachineAttributesResource(Resource):
     @ns.expect(update_attributes_model)
     def put(self, machine_name: str):
         r"""
-        Actualizar atributos específicos de una máquina de estado.
+        Actualizar atributos genéricos de una máquina de estado.
 
-        Permite actualizar los siguientes atributos:
+        Permite actualizar únicamente:
         - threshold: Valor del umbral (float)
-        - interval: Intervalo de ejecución en segundos (float)
+        - interval / execution_interval: Intervalo de ejecución en segundos (float)
+        - sample_interval: Intervalo de muestreo independiente (float o null)
+        - sample_overrides: Mapa tag → segundos
         - buffer_size: Tamaño del buffer (int)
         - on_delay: Retraso antes de iniciar (int)
-        - detection_threshold_mode: Solo PPA/NPW — ``probability`` o ``statistic``
+
+        Cualquier otro campo se rechaza con 400. La configuración de dominio
+        usa ``PUT /machines/<name>/domain-config``.
 
         **Parámetros:**
 
         * **machine_name** (str): Nombre de la máquina de estado.
-
-        **Request body:**
-
-        * **threshold** (float, opcional): Nuevo valor del threshold.
-        * **interval** (float, opcional): Nuevo intervalo de ejecución.
-        * **buffer_size** (int, opcional): Nuevo tamaño del buffer.
-        * **on_delay** (int, opcional): Nuevo valor de on_delay.
-        * **detection_threshold_mode** (str, opcional): Solo PPA/NPW.
-
-        **Notas:**
-
-        * Para PPA/NPW el umbral activo depende del modo (%% o estadístico t/g) y se persiste en YAML.
-        * Para otras máquinas NPW legacy, el threshold se limita entre 0 y 100.
-        * Al actualizar buffer_size, la máquina se reinicia automáticamente.
-        * Los cambios se persisten en la base de datos si está conectada.
 
         **Returns:**
 
@@ -603,6 +592,15 @@ class MachineAttributesResource(Resource):
             }, 400
 
         data = request.json or {}
+        unknown = unknown_generic_attribute_keys(data)
+        if unknown:
+            return {
+                "message": (
+                    "Unsupported attribute(s) for generic configuration: "
+                    f"{', '.join(unknown)}. Use /domain-config for domain fields."
+                )
+            }, 400
+
         threshold = data.get("threshold")
         interval = data.get("execution_interval", data.get("interval"))
         sample_interval_provided = "sample_interval" in data
@@ -610,10 +608,8 @@ class MachineAttributesResource(Resource):
         sample_overrides = data.get("sample_overrides")
         buffer_size = data.get("buffer_size")
         on_delay = data.get("on_delay")
-        detection_threshold_mode = data.get("detection_threshold_mode")
         user = Api.get_current_user()
 
-        # Validar que al menos un atributo esté presente
         if (
             threshold is None
             and interval is None
@@ -621,13 +617,11 @@ class MachineAttributesResource(Resource):
             and sample_overrides is None
             and buffer_size is None
             and on_delay is None
-            and detection_threshold_mode is None
         ):
             return {
                 "message": (
                     "At least one attribute (threshold, interval, sample_interval, "
-                    "sample_overrides, buffer_size, on_delay, detection_threshold_mode) "
-                    "must be provided"
+                    "sample_overrides, buffer_size, on_delay) must be provided"
                 )
             }, 400
 
@@ -645,91 +639,14 @@ class MachineAttributesResource(Resource):
             updated_attributes = []
             yaml_persist = {}
 
-            # PPA / NPW: modo de umbral (probabilidad vs estadístico)
-            if detection_threshold_mode is not None:
-                if not hasattr(machine, "set_detection_threshold_mode_from_ui"):
-                    return {
-                        "message": (
-                            "detection_threshold_mode is only supported for PPA/NPW engines"
-                        )
-                    }, 400
-                try:
-                    mode_value = machine.set_detection_threshold_mode_from_ui(
-                        detection_threshold_mode
-                    )
-                    updated_attributes.append(
-                        f"detection_threshold_mode to {mode_value}"
-                    )
-                except (ValueError, TypeError) as e:
-                    return {
-                        "message": f"Invalid detection_threshold_mode: {str(e)}"
-                    }, 400
-                except Exception as e:
-                    return {
-                        "message": f"Failed to update detection_threshold_mode: {str(e)}"
-                    }, 500
-
             # Actualizar threshold
             if threshold is not None:
                 try:
                     threshold_value = float(threshold)
-
-                    # PPA/NPW: umbral activo según modo + persistencia YAML
-                    if hasattr(machine, "set_active_detection_threshold_from_ui"):
-                        threshold_value = machine.set_active_detection_threshold_from_ui(
-                            threshold_value
-                        )
-                        # Columna legacy `threshold` = probabilidad %%; el estadístico vive en YAML.
-                        try:
-                            db_thr = float(machine.threshold.value.value)
-                        except Exception:
-                            db_thr = float(threshold_value)
-                        app.machines_engine.put(
-                            name=StringType(machine_name),
-                            threshold=FloatType(db_thr)
-                        )
-                        updated_attributes.append(f"threshold to {threshold_value}")
-                    else:
-                        # Validación especial para máquinas de leak detection tipo NPW
-                        if "leak detection" in machine.classification.value.lower():
-                            if machine_name.lower() == "npw":
-                                if threshold_value > 100:
-                                    threshold_value = 100
-                                elif threshold_value < 0:
-                                    threshold_value = 0
-                                # Actualizar threshold_iqr si existe el atributo wavelet
-                                if hasattr(machine, "wavelet"):
-                                    machine.wavelet.threshold_iqr = threshold_value
-
-                        # Actualizar el threshold de la máquina
-                        # Crear un nuevo objeto Percentage con el nuevo valor (similar a como se carga desde config)
-                        threshold_unit = machine.threshold.unit or "%"
-                        if machine.threshold.value and hasattr(machine.threshold.value, "__class__"):
-                            # Obtener la clase del objeto actual (Percentage, FloatType, etc.)
-                            class_name = machine.threshold.value.__class__.__name__
-                            if class_name == "Percentage":
-                                # Crear un nuevo objeto Percentage con el nuevo valor
-                                new_percentage = Percentage(threshold_value, unit=threshold_unit)
-                                # Usar set_value para actualizar tanto el ProcessType como el tag asociado
-                                machine.threshold.set_value(
-                                    value=new_percentage,
-                                    machine=machine,
-                                    name="threshold",
-                                    user=user,
-                                )
-                            else:
-                                # Si no es Percentage, actualizar directamente el valor y usar set_value
-                                machine.threshold.value.value = threshold_value
-                                # Si tiene tag, actualizarlo también usando set_value
-                                if machine.threshold.tag:
-                                    machine.threshold.set_value(
-                                        value=machine.threshold.value,
-                                        machine=machine,
-                                        name="threshold",
-                                        user=user,
-                                    )
-                        else:
-                            # Si no hay valor inicial, crear un nuevo Percentage y usar set_value
+                    threshold_unit = machine.threshold.unit or "%"
+                    if machine.threshold.value and hasattr(machine.threshold.value, "__class__"):
+                        class_name = machine.threshold.value.__class__.__name__
+                        if class_name == "Percentage":
                             new_percentage = Percentage(threshold_value, unit=threshold_unit)
                             machine.threshold.set_value(
                                 value=new_percentage,
@@ -737,14 +654,31 @@ class MachineAttributesResource(Resource):
                                 name="threshold",
                                 user=user,
                             )
-
-                        app.machines_engine.put(
-                            name=StringType(machine_name),
-                            threshold=FloatType(threshold_value)
+                        else:
+                            machine.threshold.value.value = threshold_value
+                            if machine.threshold.tag:
+                                machine.threshold.set_value(
+                                    value=machine.threshold.value,
+                                    machine=machine,
+                                    name="threshold",
+                                    user=user,
+                                )
+                    else:
+                        new_percentage = Percentage(threshold_value, unit=threshold_unit)
+                        machine.threshold.set_value(
+                            value=new_percentage,
+                            machine=machine,
+                            name="threshold",
+                            user=user,
                         )
 
-                        yaml_persist["threshold"] = threshold_value
-                        updated_attributes.append(f"threshold to {threshold_value}")
+                    app.machines_engine.put(
+                        name=StringType(machine_name),
+                        threshold=FloatType(threshold_value)
+                    )
+
+                    yaml_persist["threshold"] = threshold_value
+                    updated_attributes.append(f"threshold to {threshold_value}")
                 except (ValueError, TypeError) as e:
                     return {
                         "message": f"Invalid threshold value: {str(e)}"
@@ -870,14 +804,10 @@ class MachineAttributesResource(Resource):
                         "message": f"Invalid on_delay value: {str(e)}"
                     }, 400
 
-            # Persistencia YAML restante (threshold no-PPA/NPW, on_delay, etc.)
+            # Persistencia de atributos genéricos (threshold, on_delay, etc.)
             if yaml_persist and hasattr(machine, "persist_ui_config_attributes"):
                 try:
                     machine.persist_ui_config_attributes(**yaml_persist)
-                    if hasattr(machine, "_load_bayesian_motor_thresholds"):
-                        machine._load_bayesian_motor_thresholds()
-                    if hasattr(machine, "_sync_bayesian_detection_threshold"):
-                        machine._sync_bayesian_detection_threshold()
                 except Exception as persist_err:
                     return {
                         "message": f"Failed to persist attributes to config: {persist_err}"
@@ -894,4 +824,87 @@ class MachineAttributesResource(Resource):
         except Exception as e:
             return {
                 "message": f"Failed to update machine attributes: {str(e)}"
+            }, 500
+
+
+def _resolve_domain_machine(machine_name: str):
+    violation = _machine_scope_error(machine_name=machine_name)
+    if violation:
+        return None, violation
+    machine = app.get_machine(StringType(machine_name))
+    if not machine:
+        return None, ({"message": f"Machine '{machine_name}' not found"}, 404)
+    if not supports_domain_config(machine):
+        return None, ({"message": f"Machine '{machine_name}' has no domain configuration"}, 404)
+    return machine, None
+
+
+@ns.route('/<machine_name>/domain-config')
+class MachineDomainConfigResource(Resource):
+
+    @api.doc(
+        security='apikey',
+        description="Returns the domain UI schema and current configuration for a DomainConfigurable machine.",
+    )
+    @api.response(200, "Success")
+    @api.response(404, "Machine not found or does not implement DomainConfigurable")
+    @api.response(500, "Internal server error")
+    @Api.token_required(auth=True)
+    def get(self, machine_name: str):
+        machine, error = _resolve_domain_machine(machine_name)
+        if error:
+            return error
+        try:
+            schema = machine.get_ui_schema() or {}
+            config = machine.get_config() or {}
+            if not isinstance(schema, dict) or not isinstance(config, dict):
+                return {
+                    "message": "Domain configuration methods must return objects"
+                }, 500
+            return {
+                "schema": schema,
+                "config": config,
+            }, 200
+        except Exception as e:
+            return {
+                "message": f"Failed to retrieve domain configuration: {str(e)}"
+            }, 500
+
+    @api.doc(
+        security='apikey',
+        description="Updates domain configuration via put_config on a DomainConfigurable machine.",
+    )
+    @api.response(200, "Configuration updated")
+    @api.response(400, "Validation error")
+    @api.response(404, "Machine not found or does not implement DomainConfigurable")
+    @api.response(500, "Internal server error")
+    @Api.token_required(auth=True)
+    def put(self, machine_name: str):
+        if not request.is_json:
+            return {
+                "message": "Request must be JSON"
+            }, 400
+        machine, error = _resolve_domain_machine(machine_name)
+        if error:
+            return error
+        payload = request.json or {}
+        if not isinstance(payload, dict):
+            return {
+                "message": "Payload must be a JSON object"
+            }, 400
+        try:
+            config = machine.put_config(payload)
+            if not isinstance(config, dict):
+                config = machine.get_config() or {}
+            return {
+                "status": "success",
+                "config": config,
+            }, 200
+        except (ValueError, TypeError) as e:
+            return {
+                "message": str(e)
+            }, 400
+        except Exception as e:
+            return {
+                "message": f"Failed to update domain configuration: {str(e)}"
             }, 500
