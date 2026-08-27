@@ -349,13 +349,17 @@ class AsyncStateMachineWorker(BaseWorker):
         """
         sched_to_drop = None
         for index, sched in enumerate(self._schedulers):
-            if machine==sched.machine:
-
+            if machine == sched.machine:
                 sched_to_drop = self._schedulers.pop(index)
                 break
-        
+
         if sched_to_drop:
-            sched.stop()
+            sched_to_drop.stop()
+
+        try:
+            self._machines.remove(machine)
+        except ValueError:
+            pass
 
     def stop(self):
         r"""

@@ -19,6 +19,7 @@ export type NodePerformanceSnapshot = {
   HOST_CPU_PERCENT?: number | null;
   HOST_DISK_FREE_GB?: number | null;
   HOST_DISK_USED_PERCENT?: number | null;
+  HOST_DISK_CRITICAL?: boolean | null;
   HOST_THREADS?: number | null;
   HTTP_REQUESTS_TOTAL?: number | null;
   HTTP_REQUESTS_1M?: number | null;

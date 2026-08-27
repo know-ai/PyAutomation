@@ -55,5 +55,25 @@ class TestReadBackfillCap(unittest.TestCase):
             self.assertEqual(out["Linea1.PI_01"], [])
 
 
+class TestDataLoggerEngineReadBackfill(unittest.TestCase):
+    def test_engine_delegates_read_backfill(self):
+        from automation.logger.datalogger import DataLoggerEngine
+
+        self.assertTrue(callable(getattr(DataLoggerEngine, "read_backfill", None)))
+        engine = DataLoggerEngine()
+        with patch.object(engine, "query", return_value={"Linea1.PI_01": []}) as query:
+            out = engine.read_backfill(
+                ["Linea1.PI_01"], 1_724_520_000_000, 1_724_520_060_000, limit_per_tag=10
+            )
+        self.assertEqual(out, {"Linea1.PI_01": []})
+        query.assert_called_once()
+        payload = query.call_args[0][0]
+        self.assertEqual(payload["action"], "read_backfill")
+        self.assertEqual(payload["parameters"]["tags"], ["Linea1.PI_01"])
+        self.assertEqual(payload["parameters"]["start_ms"], 1_724_520_000_000)
+        self.assertEqual(payload["parameters"]["stop_ms"], 1_724_520_060_000)
+        self.assertEqual(payload["parameters"]["limit_per_tag"], 10)
+
+
 if __name__ == "__main__":
     unittest.main()

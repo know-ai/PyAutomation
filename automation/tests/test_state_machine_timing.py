@@ -192,5 +192,30 @@ class TestEnterWaitingClearsBuffer(unittest.TestCase):
         self.assertTrue(machine._sample_clock_reset)
 
 
+class TestAsyncStateMachineDrop(unittest.TestCase):
+    def test_drop_removes_from_registry(self):
+        from ..workers.state_machine import AsyncStateMachineWorker
+
+        machine = object()
+        worker = AsyncStateMachineWorker()
+        worker.add_machine(machine)
+
+        class _Sched:
+            def __init__(self, bound):
+                self.machine = bound
+                self.stopped = False
+
+            def stop(self):
+                self.stopped = True
+
+        sched = _Sched(machine)
+        worker._schedulers.append(sched)
+        worker.drop(machine)
+        self.assertNotIn(machine, worker._machines)
+        self.assertEqual(worker._schedulers, [])
+        self.assertTrue(sched.stopped)
+        self.assertEqual(len(worker._machines), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

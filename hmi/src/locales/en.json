@@ -1296,6 +1296,7 @@
     "kicker": "Observability",
     "title": "Node performance",
     "lede": "Live edge snapshot. Bell tiles are alarmable. Admins and supervisors can act on workers, SAF and catalog from this same view.",
+    "pollHint": "This dashboard polls /health/node, an O(1) copy of the sampler. Do not poll /health/system frequently: it recomputes metrics on every call. Sampler interval: AUTOMATION_METRICS_SAMPLE_INTERVAL_S (default 5s, range 5–30s).",
     "loadError": "Could not load node metrics.",
     "forbidden": "Sign in with a plant account to view the node performance dashboard.",
     "identity": "Identity",

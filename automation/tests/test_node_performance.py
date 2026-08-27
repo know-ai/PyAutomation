@@ -108,6 +108,8 @@ class TestMetricsSampler(unittest.TestCase):
             self.skipTest("psutil not installed")
         self.assertIn("HOST_CPU_PERCENT", payload)
         self.assertIn("HOST_DISK_FREE_GB", payload)
+        self.assertIn("HOST_DISK_USED_PERCENT", payload)
+        self.assertIn("HOST_DISK_CRITICAL", payload)
         self.assertIn("HOST_RSS_MB", payload)
 
     def test_survives_db_outage(self):

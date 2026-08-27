@@ -67,6 +67,7 @@ class MetricsSamplerWorker(BaseWorker):
         self._trend_buffers: dict[str, deque] = {key: deque() for key, _field in TREND_FIELDS}
         self._saf_rate_prev: tuple[int, int] | None = None
         self._saf_rate_at = 0.0
+        self._disk_was_critical = False
 
     def get_snapshot(self) -> dict[str, Any]:
         now = time.monotonic()
@@ -228,12 +229,13 @@ class MetricsSamplerWorker(BaseWorker):
 
             proc = psutil.Process()
             rss = proc.memory_info().rss / (1024 * 1024)
-            disk = psutil.disk_usage("/")
+            disk = self._disk_usage(psutil)
             payload["HOST_RSS_MB"] = round(rss, 2)
             payload["HOST_CPU_PERCENT"] = round(float(psutil.cpu_percent(interval=None)), 1)
             payload["HOST_DISK_FREE_GB"] = round(disk.free / (1024 ** 3), 2)
             payload["HOST_DISK_USED_PERCENT"] = round(float(disk.percent), 1)
             payload["HOST_THREADS"] = int(proc.num_threads())
+            self._apply_disk_critical(payload, disk)
         except Exception:
             _LOGGER.debug("metrics host (psutil) skipped", exc_info=True)
             try:
@@ -242,8 +244,64 @@ class MetricsSamplerWorker(BaseWorker):
 
                 payload["HOST_RSS_MB"] = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 2)
                 payload["HOST_THREADS"] = int(threading.active_count())
+                payload.setdefault("HOST_DISK_CRITICAL", False)
             except Exception:
                 pass
+
+    def _host_data_dir(self) -> str:
+        env = os.environ.get("AUTOMATION_DATA_DIR", "").strip()
+        if env:
+            return env
+        try:
+            from ..persistence.config import SafConfig
+
+            cfg = SafConfig.from_app_config(self._app_config())
+            return os.path.dirname(os.path.abspath(cfg.journal_path)) or "."
+        except Exception:
+            return os.path.abspath(os.path.join(".", "db"))
+
+    def _disk_usage(self, psutil_mod):
+        data_dir = self._host_data_dir()
+        target = data_dir if os.path.isdir(data_dir) else os.path.dirname(data_dir) or "/"
+        try:
+            return psutil_mod.disk_usage(target or "/")
+        except Exception:
+            return psutil_mod.disk_usage("/")
+
+    def _disk_critical_percent(self) -> float:
+        try:
+            from ..persistence.config import SafConfig
+
+            return float(SafConfig.from_app_config(self._app_config()).host_disk_critical_percent)
+        except Exception:
+            return 85.0
+
+    def _apply_disk_critical(self, payload: dict[str, Any], disk) -> None:
+        used_percent = round(float(getattr(disk, "percent", 0.0) or 0.0), 1)
+        threshold = self._disk_critical_percent()
+        is_critical = used_percent > threshold
+        payload["HOST_DISK_USED_PERCENT"] = used_percent
+        payload["HOST_DISK_CRITICAL"] = bool(is_critical)
+        if is_critical and not self._disk_was_critical:
+            self._emit_disk_critical(used_percent, threshold)
+        self._disk_was_critical = bool(is_critical)
+
+    def _emit_disk_critical(self, used_percent: float, threshold: float) -> None:
+        try:
+            from ..utils.audit_metrics import cooldown_allows
+            from ..utils.system_event_audit import persist_system_event
+
+            if not cooldown_allows("host:disk_critical", 3600.0):
+                return
+            persist_system_event(
+                message="Disk usage critical",
+                description=f"used_percent={used_percent} threshold={threshold}",
+                classification="System",
+                priority=4,
+                criticity=4,
+            )
+        except Exception:
+            _LOGGER.debug("host disk critical event skipped", exc_info=True)
 
     def _sample_http(self, payload: dict[str, Any]) -> None:
         try:

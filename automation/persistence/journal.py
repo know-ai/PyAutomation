@@ -14,7 +14,7 @@ import sqlite3
 import threading
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
 
 from .config import SafConfig
@@ -123,6 +123,7 @@ class JournalWriter:
         self._last_reconcile_mono = 0.0
         self._last_checkpoint_mono = 0.0
         self._last_compact_mono = 0.0
+        self._last_dlq_prune_mono = 0.0
 
     def start(self) -> None:
         with self._lock:
@@ -380,6 +381,64 @@ class JournalWriter:
         with self._lock:
             return self._disk_bytes_cached_locked()
 
+    def prune_dead_letters(self) -> int:
+        """Bound DEAD_LETTER by TTL and max rows. Idle path only."""
+        ttl_s = float(getattr(self.config, "dead_letter_ttl_s", 7 * 86400.0) or 0.0)
+        max_rows = int(getattr(self.config, "dead_letter_max_rows", 10_000) or 0)
+        now = time.monotonic()
+        if (now - self._last_dlq_prune_mono) < 60.0 and self._last_dlq_prune_mono > 0.0:
+            return 0
+        with self._lock:
+            self._ensure_open_locked()
+            deleted = 0
+            if ttl_s > 0:
+                cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_s)
+                cur = self._conn.execute(
+                    "DELETE FROM persistence_journal WHERE status = ? AND created_at < ?",
+                    (STATUS_DEAD_LETTER, cutoff.isoformat()),
+                )
+                gone = cur.rowcount if cur.rowcount is not None else 0
+                if gone < 0:
+                    gone = self._changes_locked()
+                deleted += int(gone)
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM persistence_journal WHERE status = ?",
+                (STATUS_DEAD_LETTER,),
+            ).fetchone()
+            count = int(row[0] if row else 0)
+            if max_rows > 0 and count > max_rows:
+                extra = count - max_rows
+                cur = self._conn.execute(
+                    """
+                    DELETE FROM persistence_journal
+                    WHERE id IN (
+                        SELECT id FROM persistence_journal
+                        WHERE status = ?
+                        ORDER BY created_at ASC, id ASC
+                        LIMIT ?
+                    )
+                    """,
+                    (STATUS_DEAD_LETTER, extra),
+                )
+                gone = cur.rowcount if cur.rowcount is not None else 0
+                if gone < 0:
+                    gone = self._changes_locked()
+                deleted += int(gone)
+                count = max_rows
+            if deleted:
+                self.deadletter_count = count
+                self._commit_locked()
+                logging.getLogger("pyautomation").warning(
+                    "SAF dead-letter pruned deleted=%s remaining=%s",
+                    deleted,
+                    count,
+                )
+            else:
+                self.deadletter_count = count
+                self._conn.commit()
+            self._last_dlq_prune_mono = now
+            return int(deleted)
+
     def reclaim_idle(self) -> dict[str, int]:
         """Slow path: GC SENT, truncate WAL, compact freelist back to the OS.
 
@@ -387,6 +446,11 @@ class JournalWriter:
         and wasted pages exceed compact_min_freelist_bytes.
         """
         deleted = self.gc_sent(self.config.gc_sent_after_s, self.config.gc_batch)
+        pruned = self.prune_dead_letters()
+        max_pending = int(getattr(self.config, "compact_max_pending", 256) or 256)
+        min_free = int(getattr(self.config, "compact_min_freelist_bytes", 64 * 1024 * 1024) or 0)
+        min_interval = float(getattr(self.config, "compact_min_interval_s", 3600.0) or 3600.0)
+        pending_after = 0
         with self._lock:
             self._ensure_open_locked()
             wal_bytes = self._wal_file_bytes()
@@ -397,10 +461,8 @@ class JournalWriter:
                 self._last_checkpoint_mono = now
                 checkpointed = 1
             pending = self._pending_rows_locked()
+            pending_after = pending
             freelist = self._freelist_bytes_locked()
-            min_free = int(getattr(self.config, "compact_min_freelist_bytes", 64 * 1024 * 1024) or 0)
-            min_interval = float(getattr(self.config, "compact_min_interval_s", 3600.0) or 3600.0)
-            max_pending = int(getattr(self.config, "compact_max_pending", 256) or 256)
             vacuumed = 0
             if (
                 pending <= max_pending
@@ -417,6 +479,7 @@ class JournalWriter:
                     disk_before,
                 )
                 try:
+                    self._conn.commit()
                     self._conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
                     self._conn.execute("VACUUM")
                     self._wal_checkpoint_truncate_locked()
@@ -438,13 +501,32 @@ class JournalWriter:
             disk = self._measure_disk_bytes()
             self._disk_bytes_cache = disk
             self._disk_bytes_mono = time.monotonic()
-            return {
+            result = {
                 "gc_deleted": int(deleted),
+                "dlq_pruned": int(pruned),
                 "checkpointed": checkpointed,
                 "vacuumed": vacuumed,
                 "freelist_bytes": int(freelist),
                 "disk_bytes": int(disk),
+                "catalog_vacuumed": 0,
+                "catalog_checkpointed": 0,
             }
+        if pending_after <= max_pending:
+            try:
+                from ..catalog.local_db import compact_catalog_idle
+
+                catalog = compact_catalog_idle(
+                    min_freelist_bytes=min_free,
+                    min_interval_s=min_interval,
+                )
+                result["catalog_vacuumed"] = int(catalog.get("vacuumed") or 0)
+                result["catalog_checkpointed"] = int(catalog.get("checkpointed") or 0)
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "SAF catalog compact skipped",
+                    exc_info=True,
+                )
+        return result
 
     def oldest_pending_age_s(self) -> float:
         with self._lock:

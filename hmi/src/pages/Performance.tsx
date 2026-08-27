@@ -123,7 +123,11 @@ function cpuTone(value: number | null | undefined): TileTone {
   return "ok";
 }
 
-function diskTone(used: number | null | undefined): TileTone {
+function diskTone(
+  used: number | null | undefined,
+  critical?: boolean | null,
+): TileTone {
+  if (critical) return "error";
   if (used == null) return "unknown";
   if (used >= 90) return "error";
   if (used >= 80) return "warn";
@@ -274,6 +278,7 @@ export function Performance() {
         <p className="settings-hero__eyebrow">{t("performance.kicker")}</p>
         <h2 className="settings-hero__title">{t("performance.title")}</h2>
         <p className="settings-hero__lede">{t("performance.lede")}</p>
+        <p className="settings-hero__lede">{t("performance.pollHint")}</p>
         <div className="perf-hero__chips">
           <span className="perf-chip">
             <strong>{t("performance.node")}</strong> {snapshot.NODE_ID || "—"}
@@ -344,7 +349,7 @@ export function Performance() {
             raw={snapshot.HOST_DISK_USED_PERCENT}
             max={100}
             hint={t("performance.diskFree", { value: formatNumber(snapshot.HOST_DISK_FREE_GB, 1, "GB") })}
-            tone={tileTone("disk", diskTone(snapshot.HOST_DISK_USED_PERCENT))}
+            tone={tileTone("disk", diskTone(snapshot.HOST_DISK_USED_PERCENT, snapshot.HOST_DISK_CRITICAL))}
             lifecycle={bindings.disk.lifecycle}
             spark={valuesOf(series.disk)}
             alarmable

@@ -3,12 +3,13 @@
 | Campo | Valor |
 |---|---|
 | **Producto** | PyAutomationIO (`automation/`) + despliegue planta iDetectFugas |
-| **Alcance** | Degradación a 1 / 10 / 100 / 1000 días: disco, RAM, CPU, locks, colas, historiador, catálogo, logs. **No** es spec de producto. **No** incluye cambios de código (solo evidencia y plan). |
-| **Fecha** | 2026-08-27 |
+| **Alcance** | Degradación a 1 / 10 / 100 / 1000 días: disco, RAM, CPU, locks, colas, historiador, catálogo, logs. Contraste código vs operación 24/7. Retención PG = DBA (fuera del edge). |
+| **Fecha baseline** | 2026-08-27 (hallazgo N1 disco ≠ cola) |
+| **Hardening código** | 2026-08-27 — SPEC_LONG_RUN_SOFTWARE_HARDENING (R1–R5) en checkout |
 | **Complementa** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md), [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](./AUDIT_NODE_PERFORMANCE_DASHBOARD.md) |
-| **Evidencia planta** | N1 `intelcon2` / 192.168.1.80 · `journal.db` 331 MiB + WAL 50 MiB · PENDING=45 · SENT=190 712 · freelist 217 MiB · `auto_vacuum=0` |
-| **Veredicto** | Hot path y colas **A−** (acotados en código). Disco SAF **B+** hasta desplegar `reclaim_idle`. Historiador PG y `DEAD_LETTER` **B−** (crecimiento de planta, no de proceso). Certificado día-1000 **pendiente de soak**. |
-| **Clasificación** | Auditoría de continuidad operacional · degrada-ción · grado planta 24/7 |
+| **Evidencia planta** | N1 `intelcon2` / 192.168.1.80 · `journal.db` 331 MiB + WAL 50 MiB · PENDING=45 · SENT=190 712 · freelist 217 MiB · `auto_vacuum=0` (imagen `3.0.0` **sin** hardening) |
+| **Veredicto** | Edge local (proceso + disco SAF/catálogo/DLQ) **A− en código**. Hot path O(1) + reclaim unificado + DLQ acotada + alerta disco + fuga SM cerrada. Historiador PG **B−** (retención = DBA). Certificado día-1000 **pendiente deploy + soak 24 h**. |
+| **Clasificación** | Auditoría de continuidad operacional · degradación · grado planta 24/7 |
 
 ---
 
@@ -16,13 +17,13 @@
 
 **¿El nodo del día 1000 es tan ligero y predecible como el del día 1, con catálogo fijo y red recuperable?**
 
-Respuesta honesta: **el proceso sí está diseñado para no hincharse en RAM/CPU del hot path**. El disco local y el historiador remoto **no** vuelven solos al tamaño del día 1 si no hay compactación + política de retención. Eso no es un leak de Python; es física de SQLite y de tablas de historia.
+**Respuesta (post-hardening en checkout):** **sí para el edge** — RAM, CPU del hot path, journal, `catalog.db` y `DEAD_LETTER` tienen techo duro o reclamación automática. El historiador PostgreSQL sigue creciendo de forma lineal; eso es política DBA, no del proceso del edge.
 
 ```
 Día 1     proceso ligero + journal pequeño + PG vacío
-Día 10    mismo RSS; journal en tamaño pico de la peor outage (hasta compactar)
-Día 100   mismo RSS; PG crece lineal con TagValue/Events/Logs
-Día 1000  mismo RSS si catálogo fijo; disco host = journal compactado + PG + backups
+Día 10    mismo RSS; tras catch-up + ~1 h, reclaim_idle compacta journal/catalog
+Día 100   mismo RSS; DLQ ≤ 10k / ≤ 7 d; PG crece (DBA)
+Día 1000  mismo RSS si catálogo fijo; disco edge autoregenerativo; PG retenido por planta
 ```
 
 ---
@@ -32,8 +33,8 @@ Día 1000  mismo RSS si catálogo fijo; disco host = journal compactado + PG + b
 | Horizonte | Régimen | Lo que debe permanecer plano | Lo que puede crecer (y cómo se corta) |
 |---|---|---|---|
 | **Día 1** | Arranque, catálogo caliente | RSS worker, `set_value` p99, `SAF_QUEUE_DEPTH` ≈ flujo vivo | Journal WAL transitorio |
-| **Día 10** | Outage PG de horas + catch-up | Tras drenar: PENDING ≈ decenas, no millones | SENT 1 h + freelist; **antes** el `.db` no encogía |
-| **Día 100** | Operación continua | Mismas métricas de proceso; `TAG_OBSERVER_COUNT` estable | Historiador PG (TagValue) ~ lineal con Hz × tags |
+| **Día 10** | Outage PG de horas + catch-up | Tras drenar: PENDING ≈ decenas | SENT TTL 1 h → freelist → VACUUM idle; WAL TRUNCATE |
+| **Día 100** | Operación continua | Mismas métricas de proceso; `TAG_OBSERVER_COUNT` estable | Historiador PG ~ lineal (DBA); DLQ podada |
 | **Día 1000** | Años de planta | Hot path O(1); ring ≤ 100k; logs L1 rotados | Sin retención DBA, PG es el único unbounded “oficial” |
 
 Objetivo de aceptación (alineado con [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md)):
@@ -41,12 +42,13 @@ Objetivo de aceptación (alineado con [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE
 - RSS gunicorn **±15 %** vs baseline a catálogo fijo.
 - `SAF_QUEUE_DEPTH` sin crecimiento monotónico con PG sano.
 - `SAF_DISK_BYTES` **después de compactar** en el orden del flujo vivo (MiB, no el pico de la outage).
-- `DAS.monitored_items` / `TAG_OBSERVER_COUNT` estables.
-- p99 `set_value` no degrada con journal gordo (post O(1) `pending_count`).
+- `HOST_DISK_CRITICAL` falso en régimen sano; alerta al cruzar 85 %.
+- `DAS.monitored_items` / `TAG_OBSERVER_COUNT` / `len(_machines)` estables.
+- p99 `set_value` no degrada con journal gordo (O(1) `pending_count`).
 
 ---
 
-## 2. Qué ya está acotado (día 1 = día 1000 en proceso)
+## 2. Qué está acotado (día 1 ≈ día 1000 en el edge)
 
 | Recurso | Techo | Dónde |
 |---|---|---|
@@ -55,196 +57,225 @@ Objetivo de aceptación (alineado con [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE
 | Disco journal (hard) | 10 GiB | `max_disk_bytes`; evict SENT; si no basta → `JournalDiskFullError` |
 | Shed analog history | high 50k / low 10k | tags pausados; eventos/alarmas siguen |
 | SENT | GC TTL **1 h**, lotes 5 000 | `gc_sent` |
+| **DEAD_LETTER** | **TTL 7 d + cap 10 000** | `prune_dead_letters` en `reclaim_idle` |
+| Journal freelist / WAL | TRUNCATE + VACUUM idle | `reclaim_idle` (pending ≤ 256, freelist ≥ 64 MiB, ≤ 1/h) |
+| **catalog.db** | Mismo umbral, **lock propio** | `compact_catalog_idle` fuera del `RLock` del journal |
 | CycleSampleCache | TTL 2 s | `cycle_dedupe.py` |
 | Buffer OPC / SM | `deque(maxlen=…)` | `buffer.py`, DAS, core |
+| Async SM registry | `drop()` remueve `_machines` | `state_machine.py` |
 | Trend PERF | ~68 puntos / 5 min | `metrics_sampler.py` |
 | Cooldown audit | cap 256 | `audit_metrics.py` |
-| L1 `app.log` | 10 MiB × 3 backups ≈ 40 MiB | `RotatingFileHandler` |
-| Docker json-file (iDetectFugas) | 10m × 7 ≈ 70 MiB | `compose/docker-compose.yml` |
-| Redis sesión | 64 MiB LRU | compose |
-| Health `/health/saf` | O(1) `pending_count` + LIMIT 1 lag | post-parche 2026-08-27 |
-| Hot path `pending_count` / shed / cap | **O(1)** RAM | `_pending_durable + len(_ring)`; COUNT solo al abrir y reconcile 30 s |
-
-Esto es lo que permite afirmar: **con catálogo fijo, el worker no “engorda” por día**.
+| L1 `app.log` | 10 MiB × 3 ≈ 40 MiB | `RotatingFileHandler` |
+| Docker json-file | 10m × 7 ≈ 70 MiB | compose iDetectFugas |
+| Disco host (alerta) | **85 %** → `HOST_DISK_CRITICAL` | sampler + evento con cooldown 1 h |
+| Health `/health/saf` | O(1) | post-parche |
+| Hot path pending / shed / cap | **O(1)** | `_pending_durable + len(_ring)` |
 
 ---
 
-## 3. Hallazgo planta 2026-08-27 — disco ≠ cola
+## 3. Hallazgo planta 2026-08-27 — disco ≠ cola (evidencia baseline)
 
-N1 Linea1, cola ya drenada:
+N1 Linea1, cola ya drenada (imagen `idetectfugas/app:3.0.0` **sin** el hardening):
 
 | Magnitud | Valor | Lectura |
 |---|---|---|
 | PENDING / REPLICATING | 45 | Flujo vivo. No hay lag de réplica. |
-| SENT | 190 712 | Catch-up marcado SENT en la última hora (`updated_at` 13:11–14:11 UTC). TTL 1 h **aún no aplica**. |
+| SENT | 190 712 | Catch-up marcado SENT en la última hora. TTL 1 h aún no aplica. |
 | `journal.db` | 331 MiB | Tamaño de fichero, no de filas vivas. |
-| WAL | 50 MiB | No se truncaba en idle. |
-| Freelist | 217 MiB (55 393 páginas) | Huecos de DELETE previos. `PRAGMA auto_vacuum=0`. |
+| WAL | 50 MiB | No se truncaba en idle en esa imagen. |
+| Freelist | 217 MiB | Huecos internos. `auto_vacuum=0`. |
 | Gauge HMI | `SAF_DISK_BYTES` = db+wal+shm | Correcto; **no** es “cola”. |
 
-**Antes (código en imagen `3.0.0`):** el GC borra SENT a la hora, pero SQLite **no devuelve páginas al SO**. El gauge se queda en el pico. Estrategia incompleta para “día 10 ligero”.
-
-**Ahora (checkout PyAutomation, no desplegado):** `JournalWriter.reclaim_idle()` en `ReplicationWorker` cuando la cola está quieta:
-
-1. `gc_sent` (igual que antes, TTL 1 h).
-2. `PRAGMA wal_checkpoint(TRUNCATE)` si WAL ≥ 8 MiB o cada 30 s.
-3. `VACUUM` si `pending ≤ 256`, freelist ≥ 64 MiB, y ≥ 1 h desde el último compact.
-
-**Estrategia de disco (intencional, no instantánea):**
+Ese síntoma motivó el compact idle. Con el código actual del checkout, tras deploy:
 
 ```
 t=0      Cola drenada → PENDING ≈ flujo vivo
-         Disco sigue alto (SENT < 1 h + freelist + WAL)
-t≈0+     TRUNCATE WAL → baja el WAL (decenas de MiB)
-t≈1 h    GC borra SENT → freelist aún más grande, .db igual de gordo
-t≥1 h    VACUUM idle → el SO recupera el pico
+t≈0+     TRUNCATE WAL (journal + catalog) → baja WAL
+t≈1 h    GC SENT → freelist grande
+t≥1 h    VACUUM idle (ambos .db) → SO recupera el pico
+continuo prune_dead_letters (TTL 7 d / cap 10k)
 ```
 
-VACUUM **no** va en el enqueue. Corre bajo el `RLock` del journal: unos segundos de cola de tags en RAM (ring) y eventos críticos esperan el lock. Frecuencia máx. ~1/h y solo con cola baja. Es el trade-off planta: compactar sin matar detección.
-
-Hasta reinstalar wheel + reiniciar gunicorn, N1 sigue el comportamiento **antes**.
+VACUUM del journal sigue bajo el `RLock` (trade-off conocido: segundos en idle, ≤ 1/h). El VACUUM de `catalog.db` **no** comparte ese lock.
 
 ---
 
-## 4. Matriz de riesgos residuales (día 1000)
+## 4. SPEC_LONG_RUN_SOFTWARE_HARDENING — evidencia implementada
 
-### 4.1 P1 — deben cerrarse para certificado nuclear
+Orden ejecutado: R3 → R5 → R2 → R1 → R4 (+ docs sampler).
 
-| ID | Riesgo | Día 1 | Día 1000 sin remediar | Mitigación actual | Hueco |
-|---|---|---|---|---|---|
-| **LR-DLQ-1** | Filas `DEAD_LETTER` sin GC | 0 | Poison pills + tags crónicos acumulan disco e índice UNIQUE | Solo `drop_unsent(confirm=True)` de operador | Falta TTL/cap de DLQ (p. ej. 7–30 d o N filas) |
-| **LR-PG-1** | `TagValue` / `Events` / `Logs` en PG **sin TTL en framework** | Vacío | Lineal con Hz × tags × 1000 d | Política DBA (particiones, `pg_partman`, archive) | [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) LOG-H5: retención = planta |
-| **LR-VAC-1** | VACUUM journal bajo el mismo lock que enqueue | N/A | Compact de cientos de MiB puede stallar `set_value` segundos | Solo idle, 1/h, pending ≤ 256 | Medir p99 durante compact; si duele: `incremental_vacuum` por lotes |
-| **LR-CAT-1** | `catalog.db` WAL sin VACUUM | Pequeño | Churn de sync infla fichero | Backoff, orphans TTL 5 min / 5 reintentos | Compact idle análogo al journal |
-| **LR-BKP-1** | `LoggerWorker.sqlite_db_backup` → `./db/backups/` **sin poda** | 0 ficheros | Un `.db` cada vez que historian SQLite > 1 GiB | Solo aplica historiador SQLite local (no PG) | `saf_backup_size_bytes` en config **no está cableado**; umbral hardcoded 1 GiB |
+### 4.1 Cierres R1–R5
 
-### 4.2 P2 — degradación silenciosa, no explosiva
+| ID | Requerimiento | Evidencia en código | Tests |
+|---|---|---|---|
+| **R1 / LR-DLQ-1** | DLQ acotada | `JournalWriter.prune_dead_letters()`: DELETE por `created_at` (TTL default 7 d) y por exceso sobre `dead_letter_max_rows` (default 10 000). Llamado desde `reclaim_idle()`. Config: `saf_dead_letter_ttl_s`, `saf_dead_letter_max_rows`. | `test_prune_dead_letters_caps_max_rows`, `test_prune_dead_letters_ttl` |
+| **R2 / LR-CAT-1** (+ compact journal) | Compactación unificada | Tras compactar journal, si `pending ≤ compact_max_pending`, `compact_catalog_idle()` en `catalog/local_db.py` con `_compact_lock` propio: checkpoint TRUNCATE + VACUUM condicional. | `test_compact_catalog_idle_vacuums_freelist`, `test_reclaim_idle_*` |
+| **R3 / LR-MEM-1** | Fuga SM | `AsyncStateMachineWorker.drop()` hace `_machines.remove(machine)` y `sched_to_drop.stop()`. | `test_drop_removes_from_registry` |
+| **R4 / LR-DEP-1** | Alarma disco host | Sampler mide volumen de datos (`journal_path` dir o `AUTOMATION_DATA_DIR`). Snapshot: `HOST_DISK_USED_PERCENT`, `HOST_DISK_CRITICAL` (> `host_disk_critical_percent` default 85). Flanco → `persist_system_event("Disk usage critical")` cooldown 3600 s. HMI: tile rojo si critical. | `test_host_disk_critical_*`, `test_psutil_fields_when_available` |
+| **R5 / LR-CFG-1** | Config huérfana | Eliminados `ingest_heartbeat_s` y `backup_size_bytes` de `SafConfig` / `from_app_config`. `grep` en `automation/` vacío. | CA-LR-06 por grep |
+
+### 4.2 Defaults nuevos (`SafConfig`)
+
+| Parámetro | Default | Override |
+|---|---|---|
+| `dead_letter_max_rows` | 10 000 | `saf_dead_letter_max_rows` |
+| `dead_letter_ttl_s` | 604 800 (7 d) | `saf_dead_letter_ttl_s` |
+| `compact_min_freelist_bytes` | 64 MiB | `saf_compact_min_freelist_bytes` |
+| `compact_min_interval_s` | 3600 | `saf_compact_min_interval_s` |
+| `compact_max_pending` | 256 | `saf_compact_max_pending` |
+| `host_disk_critical_percent` | 85.0 | `saf_host_disk_critical_percent` |
+
+### 4.3 Docs / operabilidad (LR-SYS-1 mitigado en ops)
+
+- [docs/runbook.md](../docs/runbook.md): poll de métricas → `/health/node` O(1); no poll frecuente de `/health/system`.
+- [docs/node-performance-runbook.md](../docs/node-performance-runbook.md): mismo aviso + `HOST_DISK_CRITICAL`.
+- HMI `performance.pollHint` (es/en): tooltip en `/performance`.
+
+El coste O(n tags) de `/health/system` y `_sample_field` **permanece**; la mitigación es no usarlo para dashboard.
+
+---
+
+## 5. Matriz de riesgos (día 1000) — estado post-hardening
+
+### 5.1 Cerrados en checkout
+
+| ID | Riesgo | Estado |
+|---|---|---|
+| **LR-DLQ-1** | DEAD_LETTER sin tope | **Cerrado** — TTL 7 d + cap 10k |
+| **LR-CAT-1** | catalog.db sin compact | **Cerrado** — `compact_catalog_idle` |
+| **LR-MEM-1** | `drop()` no limpia `_machines` | **Cerrado** |
+| **LR-CFG-1** | Config huérfana | **Cerrado** — eliminada |
+| **LR-DEP-1** | Disco host sin alerta | **Cerrado** — `HOST_DISK_CRITICAL` + evento |
+| O(1) pending / reclaim journal | COUNT por tag; fichero que no encoge | **Cerrado** (sesión previa + R2) |
+
+### 5.2 Residuales aceptados / fuera de alcance edge
 
 | ID | Riesgo | Notas |
 |---|---|---|
-| **LR-SYS-1** | `GET /health/system` y `_sample_field` (FIELD_STALE) son **O(n tags)** cada poll / cada 5 s | Catálogo de miles de tags: CPU del sampler crece. No es leak; es coste lineal. |
-| **LR-CTR-1** | Contadores `enqueued`, `shed_dropped`, `dropped_full`, `HTTP_REQUESTS_TOTAL` monotónicos | No comen RAM (int64). Dashboards “siempre suben”; usar **rates** (`SAF_INGEST` / `SAF_RATE`), no totales. |
-| **LR-MEM-1** | MEM-PY-4: `AsyncStateMachineWorker.drop()` no quita de `_machines` | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) §3.2. Leak solo si se crean/destruyen SM en caliente mil veces. |
-| **LR-CFG-1** | `ingest_heartbeat_s` y `backup_size_bytes` definidos y **no usados** | Expectativa ops falsa. |
-| **LR-DEP-1** | Bind mounts `./temp/db` sin cuota Docker | El techo real es el disco del host + `max_disk_bytes`. |
-| **LR-IDX-1** | UNIQUE `idempotency_key` vive mientras la fila viva (PENDING+SENT+DL) | SENT se va a 1 h; DL no. Catch-up de 190k SENT es transitorio. |
+| **LR-PG-1** | TagValue/Events/Logs en PG sin TTL | **Fuera de alcance** — DBA / particiones. LOG-H5. |
+| **LR-VAC-1** | VACUUM journal bajo `RLock` | Mitigado (idle, ≤ 1/h, pending ≤ 256). Medir `elapsed_s` en soak. Catalog compact **fuera** del lock. |
+| **LR-BKP-1** | `sqlite_db_backup` sin poda | Historiador SQLite legado; planta usa PG. Spec: backups historiador fuera de alcance. |
+| **LR-SYS-1** | `/health/system` O(n) | Documentado; dashboard usa `/health/node`. |
+| **LR-CTR-1** | Contadores monotónicos | Usar rates, no totales. |
+| **LR-IDX-1** | Índice UNIQUE mientras fila viva | SENT 1 h; DL ahora podada. |
 
-### 4.3 Ya no son el problema (cerrados o contenidos)
+### 5.3 Ya no son el problema
 
 | Tema | Estado |
 |---|---|
-| `COUNT(*)` por tag en journal gordo | **Cerrado en checkout** — O(1) cache |
-| Health hub haciendo COUNT sqlite | **Cerrado** (sesión P0) |
-| FIFO / DLQ escape / shed TAG-only | **Cerrado** |
-| L1 logs y json-file Docker | **Acotados** |
-| Ring, shed, cap pending, max disk | **Acotados** |
+| `COUNT(*)` por tag | Cerrado |
+| Health hub COUNT sqlite | Cerrado (P0) |
+| FIFO / shed TAG-only / DLQ escape | Cerrado |
+| L1 logs / json-file | Acotados |
+| Ring / shed / cap / max disk | Acotados |
 | `pending_orphans` catálogo | TTL 5 min + 5 retries |
-| HMI trends | colas por tag acotadas ([AUDIT_HMI.md](./AUDIT_HMI.md)) |
 
 ---
 
-## 5. CPU, locks y “el día 1000 se siente lento”
+## 6. CPU, locks y latencia
 
-No basta con no crecer en bytes. Hay que no degradar latencia.
-
-| Camino | Complejidad vs tamaño | Riesgo a 1000 d |
+| Camino | Complejidad | Riesgo a 1000 d |
 |---|---|---|
-| `set_value` → ring | O(1) | Bajo si no hay VACUUM en curso |
-| Flusher INSERT | O(log N) B-tree | N = filas vivas (PENDING + SENT de la última hora + DL), no el histórico PG |
-| `fetch_pending LIMIT` | O(lote) con índice `(status,id)` | OK |
-| `oldest_pending_age_s` | `ORDER BY id LIMIT 1` | OK |
-| Catalog full scan | cada 5 min, O(tablas × filas catálogo) | Catálogo de proceso es casi estático |
-| Sampler PERF | O(tags) / 5 s | Sube si el catálogo sube, no con el tiempo |
-| VACUUM idle | O(tamaño fichero) bajo lock | Evento raro; hay que instrumentar duración (`SAF journal compact done elapsed_s`) |
+| `set_value` → ring | O(1) | Bajo si no hay VACUUM journal en curso |
+| Flusher INSERT | O(log N) | N = filas vivas (PENDING + SENT &lt; 1 h + DL acotada) |
+| `fetch_pending LIMIT` | O(lote) | OK |
+| Sampler PERF / FIELD_STALE | O(tags) / 5 s | Crece con catálogo, no con el calendario |
+| VACUUM journal | O(fichero), bajo lock | Raro; log `elapsed_s` |
+| VACUUM catalog | O(fichero), lock propio | No bloquea enqueue SAF |
+| `prune_dead_letters` | O(borrados), idle | Capado a ≥ 60 s entre podas |
 
-**Resiliencia de lock:** un solo `RLock` une enqueue, flusher, replicator y compact. Correcto para un writer SQLite. Incorrecto si VACUUM se dispara en catch-up (el código **lo evita**: `compact_max_pending=256`, y en catch-up profundo no compacta).
-
-**Crash:** ring RAM se pierde (contrato T-01). WAL + `synchronous=FULL` recupera PENDING. Hidratar `_pending_durable` al abrir es O(pending) **una vez**, no por tag.
+**Invariante:** ninguna lógica R1–R5 corre dentro de `Tag.set_value`.
 
 ---
 
-## 6. Resiliencia (outage, no solo “cabe en disco”)
+## 7. Resiliencia (outage)
 
-| Escenario | Día 1 | Día 1000 |
+| Escenario | Día 1 | Día 1000 (código nuevo) |
 |---|---|---|
-| PG caído 1 h | PENDING crece; shed a 50k tags; eventos siguen | Igual. Disco journal sube. Tras recuperar: catch-up + TTL SENT 1 h + (nuevo) compact. |
-| PG caído muchos días | PENDING → 5e6 o 10 GiB | Backpressure / disk-full. **No** borra PENDING. Operador: retry / reset confirmado. |
-| Poison row | 5 intentos → DLQ | Sin GC, DLQ es el único crecimiento “con PG sano”. |
-| Catálogo PG a ratos | Backoff 30→900 s; sqlite local | `catalog.db` puede hincharse (LR-CAT-1). |
-| Restart gunicorn | Relee journal; COUNT hidrata | Arranque con 10 GiB PENDING puede tardar segundos (aceptable). |
-| Hub gevent freeze | Recycle opcional `AUTOMATION_HUB_LAG_RECYCLE` | No es leak; es watchdog. |
+| PG caído 1 h | PENDING crece; shed tags | Tras recuperar: catch-up + SENT TTL + reclaim |
+| PG caído muchos días | Cap 5e6 / 10 GiB | Backpressure; PENDING sagrado; ops retry/reset |
+| Poison row | → DLQ | DLQ se poda sola (TTL/cap) |
+| Catálogo a ratos | Backoff 30→900 s | `catalog.db` compacta en idle |
+| Disco host ≥ 85 % | — | `HOST_DISK_CRITICAL` + Event |
+| Restart gunicorn | Hidrata contadores | Arranque con journal gordo: COUNT una vez |
 
 ---
 
-## 7. Despliegue iDetectFugas (contexto planta)
-
-No es código PyAutomation, pero gobierna el día 1000 del edge:
+## 8. Despliegue iDetectFugas
 
 | Recurso | Tope | Comentario |
 |---|---|---|
-| `./temp/db` | Disco host | Journal + catalog.db + backups |
-| `./temp/logs` | Rotación app ~40 MiB | Volumen persiste |
-| `./temp/models` | Tamaño de artefactos ML | Estático salvo redeploy |
+| `./temp/db` | Disco host + alerta 85 % | Journal + catalog; reclaim tras deploy |
+| `./temp/logs` | ~40 MiB app | Volumen persiste |
+| `./temp/models` | Artefactos ML | Estático salvo redeploy |
 | json-file | ~70 MiB | OK |
-| Healthcheck / `GUNICORN_TIMEOUT=120` | No relajar | Fuera de alcance de esta auditoría |
+| Healthcheck / `GUNICORN_TIMEOUT=120` | No relajar | Fuera de alcance |
 
-Compose genérico de PyAutomation documenta **256M RAM** y **tmpfs /tmp 500k** en algunos YAML: demasiado justos para soak real. El compose de iDetectFugas planta es el que manda.
-
----
-
-## 8. Estrategia de continuidad (sin implementar aquí)
-
-Orden industrial, no “vacuum cada tag”:
-
-1. **Hot path O(1)** — hecho en checkout (pending cache, disk stat cache).
-2. **Reclaim idle** — hecho en checkout (TRUNCATE + VACUUM condicionado). Desplegar.
-3. **DLQ con TTL o cap** — único leak de filas con réplica sana (LR-DLQ-1).
-4. **Retención PG** — partición/archive de `TagValue` (LR-PG-1). Esto es DBA, no el edge.
-5. **Compact `catalog.db`** en idle, nunca en sync catch-up (LR-CAT-1).
-6. **Poda `db/backups`** si hay historiador SQLite (LR-BKP-1).
-7. **Soak certificado:** 24 h mínimo; 7 d deseable; día-1000 se **infiere** con las invariantes de §1 + ausencia de DLQ/PG sin tope, no se espera un ensayo de 1000 d.
-
-**No hacer:** VACUUM en enqueue; COUNT por muestra; borrar PENDING automáticamente; relajar healthcheck/timeout; `pg_dump`/backup SQLite en el hilo de drain.
+**Planta hoy:** imagen `3.0.0` **no** incluye R1–R5 ni O(1) pending hasta reinstalar wheel PyAutomation (+ rebuild HMI para tile/tooltip).
 
 ---
 
-## 9. Criterios de aceptación (CA-LR)
+## 9. Estrategia de continuidad (estado)
+
+| Paso | Estado |
+|---|---|
+| 1. Hot path O(1) | **Hecho** en checkout |
+| 2. Reclaim idle journal | **Hecho** |
+| 3. Compact catalog | **Hecho** (R2) |
+| 4. DLQ TTL/cap | **Hecho** (R1) |
+| 5. Alerta disco host | **Hecho** (R4) |
+| 6. Fuga SM + config limpia | **Hecho** (R3, R5) |
+| 7. Retención PG | **Pendiente DBA** (LR-PG-1) |
+| 8. Deploy wheel + soak 24 h | **Pendiente planta** |
+
+**No hacer:** VACUUM en enqueue; COUNT por muestra; borrar PENDING automático; relajar healthcheck/timeout.
+
+---
+
+## 10. Criterios de aceptación (CA-LR)
 
 | ID | Criterio | Estado |
 |---|---|---|
-| **CA-LR-01** | Enqueue de tags no ejecuta `COUNT(*)` | PASS en tests checkout |
-| **CA-LR-02** | `reclaim_idle` compacta freelist y trunca WAL con cola quieta | PASS tests; **pendiente planta** |
-| **CA-LR-03** | VACUUM no corre en catch-up (`compact_max_pending`) | PASS tests |
-| **CA-LR-04** | Tras outage + 1 h + compact, `SAF_DISK_BYTES` vuelve a orden de MiB de flujo vivo | Pendiente deploy + observación N1 |
-| **CA-LR-05** | `DEAD_LETTER` acotado por TTL o procedimiento ops documentado | **Pendiente** |
-| **CA-LR-06** | Política de retención TagValue/Events en PG documentada en planta | **Pendiente DBA** |
-| **CA-LR-07** | Soak 24 h: RSS ±15 %, cola plana, compact `elapsed_s` acotado | **Pendiente planta** |
+| **CA-LR-01** (spec: DLQ ≤ 10k / ≤ 7 d) | `prune_dead_letters` | **PASS** unit (`test_long_run_hardening`) |
+| **CA-LR-02** | `reclaim_idle` compacta journal **y** catalog con PENDING ≤ 256 | **PASS** unit; **pendiente planta** |
+| **CA-LR-03** | `drop()` decrementa `_machines` | **PASS** `test_drop_removes_from_registry` |
+| **CA-LR-04** | `/health/node` expone `HOST_DISK_*` + CRITICAL | **PASS** unit (psutil skip si no instalado) |
+| **CA-LR-05** | Evento Disk usage critical con cooldown | **PASS** unit flanco |
+| **CA-LR-06** | Sin `ingest_heartbeat_s` / `backup_size_bytes` en `automation/` | **PASS** grep |
+| **CA-LR-07** | Hot path no ejecuta R1–R5 | **PASS** por diseño (idle workers); soak/py-spy planta pendiente |
+| **CA-LR-08** (legado) | Enqueue sin `COUNT(*)` | **PASS** tests SAF |
+| **CA-LR-09** | Tras outage + compact, `SAF_DISK_BYTES` orden MiB | **Pendiente deploy N1** |
+| **CA-LR-10** | Retención TagValue/Events PG | **Pendiente DBA** |
+| **CA-LR-11** | Soak 24 h RSS ±15 %, cola plana | **Pendiente planta** |
+
+Numeración CA-LR-01…07 alineada a SPEC_LONG_RUN_SOFTWARE_HARDENING; CA-LR-08…11 conservan criterios del baseline O(1)/disco/PG/soak.
 
 ---
 
-## 10. Archivos clave
+## 11. Archivos clave
 
 | Pieza | Ruta |
 |---|---|
-| Contador O(1) + reclaim | `automation/persistence/journal.py` |
-| Config techos / compact | `automation/persistence/config.py` |
-| Shed / gateway | `automation/persistence/orchestrator.py` |
-| Idle compact caller | `automation/workers/replication.py` |
-| GC en drain | `automation/persistence/replicator.py` |
-| Sampler O(n tags) | `automation/workers/metrics_sampler.py` |
-| Backup SQLite historian | `automation/workers/logger.py` `sqlite_db_backup` |
-| Catálogo local | `automation/catalog/replicator.py`, `local_db.py` |
+| Contador O(1), prune DLQ, reclaim | `automation/persistence/journal.py` |
+| Config techos | `automation/persistence/config.py` |
+| Compact catalog | `automation/catalog/local_db.py` `compact_catalog_idle` |
+| Idle caller | `automation/workers/replication.py` |
+| Disco host / CRITICAL | `automation/workers/metrics_sampler.py` |
+| drop SM | `automation/workers/state_machine.py` |
+| Tests hardening | `automation/tests/test_long_run_hardening.py` |
+| HMI tile + pollHint | `hmi/src/pages/Performance.tsx`, locales |
 
 ---
 
-## 11. Veredicto
+## 12. Veredicto
 
-La aplicación **puede** ser tan ligera el día 1000 como el día 1 **en el proceso** (RAM, CPU del hot path, colas), porque esos recursos están techos y el COUNT del journal ya no escala con el fichero.
+Con R1–R5 en el checkout, el **edge** cumple la filosofía nuclear-industrial para 1000 días: RAM acotada, disco local autoregenerativo (journal + catalog + DLQ), CPU del hot path sin estas rutinas, configuración sin falsos techos.
 
-**No** será igual de ligera **en disco** hasta:
+Queda:
 
-- desplegar `reclaim_idle` (WAL + VACUUM),
-- acotar DLQ,
-- retener/archivar el historiador PG.
+1. **Desplegar** wheel (+ HMI) en N1/N2.
+2. **Observar** CA-LR-09 tras una outage o compact natural.
+3. **Soak 24 h** (CA-LR-11).
+4. **Retención PG** (CA-LR-10) — no es trabajo del edge.
 
-Eso es el estándar de planta (historiador crece; el edge no). El hueco que vimos en N1 (cola vacía, disco alto) es exactamente el eslabón que el compact idle cierra, **con retardo de ~1 h**, a propósito.
+El hueco visto en planta (cola vacía, disco alto) queda explicado y cerrado en código; la imagen en producción aún no lo refleja.

@@ -7,7 +7,9 @@ solo **admin / sudo**.
 
 ## Cómo leer el snapshot
 
-El valor viene de `GET /api/health/node`. Es una copia del dict que escribe `MetricsSamplerWorker` cada 5 s (configurable con `AUTOMATION_METRICS_SAMPLE_INTERVAL_S`). Si **Snapshot age** supera ~15 s, el sampler se retrasó; si supera ~60 s, el worker no está actualizando. El HMI hace poll cada **3 s** (30 s si la pestaña está oculta).
+El valor viene de `GET /api/health/node`. Es una copia del dict que escribe `MetricsSamplerWorker` cada 5 s (configurable con `AUTOMATION_METRICS_SAMPLE_INTERVAL_S`, rango 5–30 s). **No** hacer poll de `/api/health/system` para el dashboard: ese endpoint recalcula métricas en cada llamada. Si **Snapshot age** supera ~15 s, el sampler se retrasó; si supera ~60 s, el worker no está actualizando. El HMI hace poll cada **3 s** (30 s si la pestaña está oculta).
+
+`HOST_DISK_USED_PERCENT` se mide sobre el volumen de datos del journal (`./db` o `AUTOMATION_DATA_DIR`). `HOST_DISK_CRITICAL` es verdadero por encima del 85 % (`saf_host_disk_critical_percent`); la tarjeta de disco se pinta en rojo.
 
 ## Umbrales recomendados y acciones
 

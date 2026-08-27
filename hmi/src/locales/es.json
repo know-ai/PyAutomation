@@ -1291,6 +1291,7 @@
     "kicker": "Observabilidad",
     "title": "Rendimiento del nodo",
     "lede": "Snapshot en vivo del edge. Las tarjetas con campana son alarmables. Admin y supervisor pueden actuar sobre workers, SAF y catálogo desde esta misma vista.",
+    "pollHint": "Este dashboard consulta /health/node, una copia O(1) del sampler. No haga poll frecuente de /health/system: recalcula métricas en cada llamada. Intervalo del sampler: AUTOMATION_METRICS_SAMPLE_INTERVAL_S (default 5s, rango 5–30s).",
     "loadError": "No se pudieron cargar las métricas del nodo.",
     "forbidden": "Inicie sesión con una cuenta de planta para ver el dashboard de rendimiento.",
     "identity": "Identidad",

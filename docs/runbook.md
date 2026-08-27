@@ -10,3 +10,4 @@
 | Catálogo local SQLite | [catalog-sqlite.md](./catalog-sqlite.md) (feature) · [catalog-sqlite-runbook.md](./catalog-sqlite-runbook.md) (operación) |
 | Arquitectura multi-edge | [multi-edge.md](./multi-edge.md) |
 | Deriva RSS / hot path / SAF | [AUDIT_PERFORMANCE.md](../audits/AUDIT_PERFORMANCE.md) (sección Runbook) |
+| Poll de métricas | Dashboard `/performance` usa `GET /api/health/node` (copia O(1) del sampler). No poll frecuente de `/health/system`. Intervalo: `AUTOMATION_METRICS_SAMPLE_INTERVAL_S` (5–30 s, default 5). |

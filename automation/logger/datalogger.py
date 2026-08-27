@@ -1216,6 +1216,26 @@ class DataLoggerEngine(BaseEngine):
 
         return self.query(_query)
     
+    def read_backfill(
+        self,
+        tags: list,
+        start_ms: int,
+        stop_ms: int,
+        *,
+        limit_per_tag: int = 1000,
+    ):
+        r"""
+        Raw TagValue samples for Socket.IO reconnect backfill (thread-safe).
+        """
+        _query = dict()
+        _query["action"] = "read_backfill"
+        _query["parameters"] = dict()
+        _query["parameters"]["tags"] = tags
+        _query["parameters"]["start_ms"] = start_ms
+        _query["parameters"]["stop_ms"] = stop_ms
+        _query["parameters"]["limit_per_tag"] = limit_per_tag
+        return self.query(_query)
+
     def read_trends(self, start:str, stop:str, timezone:str, *tags):
         r"""
         Reads trend data (thread-safe).

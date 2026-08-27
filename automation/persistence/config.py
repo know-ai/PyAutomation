@@ -34,17 +34,18 @@ class SafConfig:
     circuit_open_s: float = 5.0
     gc_sent_after_s: float = 3600.0
     gc_batch: int = 5_000
-    backup_size_bytes: int = 1 * 1024 * 1024 * 1024
     wal_autocheckpoint: int = 1000
     dead_letter_attempts: int = 5
+    dead_letter_max_rows: int = 10_000
+    dead_letter_ttl_s: float = 7 * 86400.0
     shed_high: int = 50_000
     shed_low: int = 10_000
     catchup_depth: int = 5_000
     catchup_budget_s: float = 0.4
-    ingest_heartbeat_s: float = 15.0
     compact_min_freelist_bytes: int = 64 * 1024 * 1024
     compact_min_interval_s: float = 3600.0
     compact_max_pending: int = 256
+    host_disk_critical_percent: float = 85.0
 
     @classmethod
     def from_app_config(cls, raw: dict | None) -> "SafConfig":
@@ -63,14 +64,18 @@ class SafConfig:
             circuit_open_s=float(data.get("saf_circuit_open_s", defaults.circuit_open_s)),
             gc_sent_after_s=float(data.get("saf_gc_sent_after_s", defaults.gc_sent_after_s)),
             gc_batch=int(data.get("saf_gc_batch", defaults.gc_batch)),
-            backup_size_bytes=int(data.get("saf_backup_size_bytes", defaults.backup_size_bytes)),
             wal_autocheckpoint=int(data.get("saf_wal_autocheckpoint", defaults.wal_autocheckpoint)),
             dead_letter_attempts=int(data.get("saf_dead_letter_attempts", defaults.dead_letter_attempts)),
+            dead_letter_max_rows=int(
+                data.get("saf_dead_letter_max_rows", defaults.dead_letter_max_rows)
+            ),
+            dead_letter_ttl_s=float(
+                data.get("saf_dead_letter_ttl_s", defaults.dead_letter_ttl_s)
+            ),
             shed_high=int(data.get("saf_shed_high", defaults.shed_high)),
             shed_low=int(data.get("saf_shed_low", defaults.shed_low)),
             catchup_depth=int(data.get("saf_catchup_depth", defaults.catchup_depth)),
             catchup_budget_s=float(data.get("saf_catchup_budget_s", defaults.catchup_budget_s)),
-            ingest_heartbeat_s=float(data.get("saf_ingest_heartbeat_s", defaults.ingest_heartbeat_s)),
             compact_min_freelist_bytes=int(
                 data.get("saf_compact_min_freelist_bytes", defaults.compact_min_freelist_bytes)
             ),
@@ -79,5 +84,8 @@ class SafConfig:
             ),
             compact_max_pending=int(
                 data.get("saf_compact_max_pending", defaults.compact_max_pending)
+            ),
+            host_disk_critical_percent=float(
+                data.get("saf_host_disk_critical_percent", defaults.host_disk_critical_percent)
             ),
         )
