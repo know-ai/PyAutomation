@@ -1,3 +1,5 @@
+import os
+
 from flask import request
 from flask_restx import Namespace, Resource, fields
 from .... import PyAutomation
@@ -8,6 +10,7 @@ from ....variables import Percentage
 from ....domain_config import (
     audit_domain_config_change,
     supports_domain_config,
+    supports_domain_files,
     unknown_generic_attribute_keys,
 )
 from ....state_machine_timing import MachineConfigError, validate_temporal_config
@@ -503,11 +506,18 @@ class MachineSubscribeResource(Resource):
                     "message": message or "Subscription failed"
                 }, 400
 
-            # Devolvemos la serialización actualizada de la máquina
-            return {
+            payload = {
                 "message": message or "Tag subscribed successfully",
-                "data": machine.serialize()
-            }, 200
+                "data": machine.serialize(),
+            }
+            followup = getattr(machine, "subscription_followup", None)
+            if callable(followup):
+                extra = followup(internal_tag_name, field_tag) or {}
+                hint = extra.get("message")
+                if hint:
+                    payload["hint"] = hint
+                    payload["hint_level"] = extra.get("level") or "info"
+            return payload, 200
         except ValueError as e:
             return {
                 "message": str(e)
@@ -976,4 +986,77 @@ class MachineDomainConfigResource(Resource):
         except Exception as e:
             return {
                 "message": f"Failed to update domain configuration: {str(e)}"
+            }, 500
+
+
+@ns.route('/<machine_name>/domain-config/files')
+class MachineDomainConfigFilesResource(Resource):
+
+    @api.doc(
+        security='apikey',
+        description=(
+            "Uploads domain artifact files for one schema field. "
+            "The machine must implement put_domain_files(field_key, files)."
+        ),
+    )
+    @api.response(200, "Files stored")
+    @api.response(400, "Validation error")
+    @api.response(404, "Machine not found or does not accept domain files")
+    @api.response(500, "Internal server error")
+    @Api.token_required(auth=True)
+    def post(self, machine_name: str):
+        machine, error = _resolve_domain_machine(machine_name)
+        if error:
+            return error
+        if not supports_domain_files(machine):
+            return {
+                "message": f"Machine '{machine_name}' does not accept domain file uploads"
+            }, 404
+        field_key = str(request.form.get("field") or "").strip()
+        if not field_key:
+            return {"message": "Missing form field 'field'"}, 400
+        storages = request.files.getlist("files")
+        if not storages:
+            return {"message": "Missing files"}, 400
+        uploads = []
+        for storage in storages:
+            filename = os.path.basename(str(getattr(storage, "filename", "") or "")).strip()
+            if not filename or filename in {".", ".."}:
+                return {"message": "Each file must have a name"}, 400
+            if os.path.sep in filename or "/" in filename or "\\" in filename:
+                return {"message": f"Invalid file name: {filename}"}, 400
+            payload = storage.read()
+            uploads.append((filename, payload))
+        try:
+            before = machine.get_config() or {}
+        except Exception:
+            before = {}
+        try:
+            schema = machine.get_ui_schema() or {}
+        except Exception:
+            schema = {}
+        try:
+            config = machine.put_domain_files(field_key, uploads)
+            if not isinstance(config, dict):
+                config = machine.get_config() or {}
+            try:
+                audit_domain_config_change(
+                    machine_name=machine_name,
+                    payload={"_files": field_key},
+                    before=before,
+                    after=config,
+                    schema=schema,
+                    user=Api.get_current_user(),
+                )
+            except Exception:
+                pass
+            return {
+                "status": "success",
+                "config": config,
+            }, 200
+        except (ValueError, TypeError) as e:
+            return {"message": str(e)}, 400
+        except Exception as e:
+            return {
+                "message": f"Failed to store domain files: {str(e)}"
             }, 500

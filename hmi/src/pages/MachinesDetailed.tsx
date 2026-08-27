@@ -1731,6 +1731,12 @@ export function MachinesDetailed() {
                                   </div>
                                 </div>
 
+                                {hints.subscribe_hints?.[selectedInternalVariable[machineName] || ""] ? (
+                                  <div className="alert alert-info py-2 small mb-3" role="status">
+                                    {hints.subscribe_hints[selectedInternalVariable[machineName] || ""]}
+                                  </div>
+                                ) : null}
+
                                 {/* Tercera fila - Botones */}
                                 <div className="row">
                                   <div className="col-6">
@@ -1751,7 +1757,7 @@ export function MachinesDetailed() {
                                         }
 
                                         try {
-                                          const { message } = await subscribeMachineTag(
+                                          const { message, hint, hint_level } = await subscribeMachineTag(
                                             machineName,
                                             fieldTag,
                                             internalTag
@@ -1760,6 +1766,13 @@ export function MachinesDetailed() {
                                             message || t("machines.subscribe"),
                                             "success"
                                           );
+                                          if (hint) {
+                                            const level =
+                                              hint_level === "warning" || hint_level === "error"
+                                                ? hint_level
+                                                : "info";
+                                            showToast(hint, level, 8000);
+                                          }
                                           // Refrescar detalles de la m?quina
                                           const data = await getMachineByName(machineName);
                                           setMachineDetails((prev) => ({

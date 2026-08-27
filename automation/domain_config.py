@@ -48,6 +48,11 @@ def supports_domain_config(machine: Any) -> bool:
     return all(hasattr(machine, name) and callable(getattr(machine, name)) for name in required)
 
 
+def supports_domain_files(machine: Any) -> bool:
+    """Optional file upload hook used by POST /domain-config/files."""
+    return supports_domain_config(machine) and callable(getattr(machine, "put_domain_files", None))
+
+
 def unknown_generic_attribute_keys(payload: dict | None) -> list[str]:
     if not payload:
         return []
@@ -59,6 +64,7 @@ INTERNAL_CONFIG_KEYS = frozenset(
         "_reset",
         "_set_factory",
         "_restart",
+        "_files",
         "_warnings",
         "_effective_pressure_mode",
         "_pressure_tags_status",

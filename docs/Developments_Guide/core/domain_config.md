@@ -57,6 +57,7 @@ Runtime detection: `automation.domain_config.supports_domain_config(machine)` (a
 |---|---|---|
 | GET | `/api/machines/<name>/domain-config` | `{schema, config}` or **404** if the machine is missing or not DomainConfigurable |
 | PUT | `/api/machines/<name>/domain-config` | body → `put_config`; 200 `{status, config}` |
+| POST | `/api/machines/<name>/domain-config/files` | multipart `field` + `files` → optional `put_domain_files`; 200 `{status, config}` |
 | PUT | `/api/machines/<name>/attributes` | **Generic keys only**: `threshold`, `on_delay`, `interval`, `execution_interval`, `sample_interval`, `sample_overrides`, `signal_modes`, `buffer_size`. Any other key → 400 |
 
 Auth is the same API-key session as the rest of `/machines`.
@@ -73,13 +74,15 @@ Optional schema extras (all defined by the product engine; the HMI only renders 
 
 - `title`: card header.
 - Section `label`: visible subsection heading. Omit it to hide the heading.
-- Section `hint`: informational banner (no fields required).
+- Section `tabs`: optional array of `{ id, label, hint, fields }` rendered as Bootstrap `card-header-tabs` **inside that section's nested card**. The tab pane does not wrap later sections. The HMI collects tab fields for save/upload the same way as `section.fields`.
+- Labeled sections (with fields or tabs) render as nested cards so groups stay visually independent.
 - Field `columns`: Bootstrap grid width 1–12 so related inputs sit on the same row.
 - Field `label`: written caption. Visibility is controlled by `label_display` / `show_label`.
 - Field `short_label`: compact prefix inside the input (e.g. `SS`, `N`).
 - Field `help`: description. Placement is controlled by `help_display`.
 - Field `read_only` / `read_only_when`: lock a control (read-only numbers render as text, without spinners).
 - Field `false_label` / `true_label`: segmented boolean instead of a switch.
+- Field `type: "files"`: multi-file picker for versioned artifacts. Schema extras: `accept`, `multiple`, `required_names`, `optional_names`. `get_config` should return `{path, files, missing, ready}` (no file bytes). The HMI uploads with `POST /api/machines/<name>/domain-config/files` (`field` + `files`) and then `PUT /domain-config` without the file blobs. The engine implements optional `put_domain_files(field_key, files)`.
 - `ui_hints.lock_generic_attributes`: hide/disable fields on the legacy Machine Attributes card (`threshold`, `buffer_size`, `on_delay`).
 - `ui_hints.show_generic_attributes_card`: set `false` when the DomainConfig slot owns those knobs (recommended once `on_delay` lives in the domain schema).
 - `ui_hints.factory_defaults`: snapshot for **Volver a valores de fábrica**. The HMI `PUT`s `{ "_reset": true }`. **Guardar** must not overwrite this snapshot.

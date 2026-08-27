@@ -75,7 +75,7 @@ export const subscribeMachineTag = async (
   machineName: string,
   fieldTag: string,
   internalTag: string
-): Promise<{ message: string; data: Machine }> => {
+): Promise<{ message: string; hint?: string; hint_level?: string; data: Machine }> => {
   const { data } = await api.post(
     `/machines/${encodeURIComponent(machineName)}/subscribe`,
     {
@@ -130,7 +130,7 @@ export type DomainHelpDisplay = "tooltip" | "text" | "both" | "none";
 
 export type DomainConfigField = {
   key: string;
-  type: "number" | "select" | "boolean" | "string" | "object" | "array" | string;
+  type: "number" | "select" | "boolean" | "string" | "object" | "array" | "files" | string;
   label?: string;
   unit?: string;
   min?: number;
@@ -154,6 +154,12 @@ export type DomainConfigField = {
     fields?: DomainConfigField[];
   };
   columns?: number;
+  multiple?: boolean;
+  accept?: string;
+  required_names?: string[];
+  optional_names?: string[];
+  arrow_value_label?: boolean;
+  arrow_source_label?: string;
   dwt_bounds?: {
     role?: "level" | "length";
     family_key?: string;
@@ -167,14 +173,23 @@ export type DomainConfigField = {
   };
 };
 
+export type DomainConfigTab = {
+  id?: string;
+  label?: string;
+  hint?: string;
+  fields?: DomainConfigField[];
+};
+
 export type DomainConfigSection = {
   id?: string;
   label?: string;
   hint?: string;
   fields?: DomainConfigField[];
+  tabs?: DomainConfigTab[];
   depends_on?: { field: string; equals?: unknown };
   label_display?: DomainLabelDisplay;
   help_display?: DomainHelpDisplay;
+  tone?: "warning" | "info" | "success";
 };
 
 export type DomainUiHints = {
@@ -187,6 +202,7 @@ export type DomainUiHints = {
   help_display?: DomainHelpDisplay;
   show_labels?: boolean;
   show_set_factory?: boolean;
+  subscribe_hints?: Record<string, string>;
 };
 
 export type DomainUiSchema = {
@@ -222,6 +238,24 @@ export const putMachineDomainConfig = async (
   const { data } = await api.put(
     `/machines/${encodeURIComponent(machineName)}/domain-config`,
     payload
+  );
+  return data;
+};
+
+export const postMachineDomainFiles = async (
+  machineName: string,
+  fieldKey: string,
+  files: File[]
+): Promise<{ status: string; config: Record<string, unknown> }> => {
+  const body = new FormData();
+  body.append("field", fieldKey);
+  for (const file of files) {
+    body.append("files", file, file.name);
+  }
+  const { data } = await api.post(
+    `/machines/${encodeURIComponent(machineName)}/domain-config/files`,
+    body,
+    { timeout: 300000 }
   );
   return data;
 };

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ from ..domain_config import (
     diff_domain_config,
     domain_config_action,
     supports_domain_config,
+    supports_domain_files,
     unknown_generic_attribute_keys,
 )
 from ..state_machine import StateMachineCore
@@ -67,6 +69,17 @@ class ConfigurableMotor(StateMachineCore):
         if "gain" in payload and float(payload["gain"]) < 0:
             raise ValueError("gain must be >= 0")
         self._config.update(payload)
+        return dict(self._config)
+
+
+class FileConfigurableMotor(ConfigurableMotor):
+    def __init__(self):
+        super().__init__()
+        self.stored = []
+
+    def put_domain_files(self, field_key: str, files) -> dict:
+        self.stored.append((field_key, [(name, bytes(content)) for name, content in files]))
+        self._config["last_field"] = str(field_key)
         return dict(self._config)
 
 
@@ -231,6 +244,65 @@ class TestDomainConfigResource(unittest.TestCase):
                 err, status = resource.put("ConfigurableMotor")
             self.assertEqual(status, 400)
             self.assertIn("gain", err["message"].lower())
+
+    def test_domain_config_files_requires_put_domain_files(self):
+        from ..modules.machines.resources import machines as machines_mod
+
+        machine = ConfigurableMotor()
+        resource = machines_mod.MachineDomainConfigFilesResource()
+        fake_user = object()
+        with patch.object(machines_mod, "app") as mock_app, patch.object(
+            machines_mod, "_machine_scope_error", return_value=None
+        ), patch(
+            "automation.extensions.api.Api._resolve_session_user",
+            return_value=(fake_user, None, 200),
+        ):
+            mock_app.get_machine.return_value = machine
+            with self.flask.test_request_context(
+                "/api/machines/ConfigurableMotor/domain-config/files",
+                method="POST",
+                data={"field": "detection_artifacts", "files": (BytesIO(b"x"), "model_lgbm.txt")},
+                content_type="multipart/form-data",
+                headers={"X-API-KEY": "test"},
+            ):
+                payload, status = resource.post("ConfigurableMotor")
+        self.assertEqual(status, 404)
+        self.assertIn("file", payload["message"].lower())
+        self.assertFalse(supports_domain_files(machine))
+
+    def test_domain_config_files_round_trip(self):
+        from ..modules.machines.resources import machines as machines_mod
+
+        machine = FileConfigurableMotor()
+        resource = machines_mod.MachineDomainConfigFilesResource()
+        fake_user = object()
+        with patch.object(machines_mod, "app") as mock_app, patch.object(
+            machines_mod, "_machine_scope_error", return_value=None
+        ), patch(
+            "automation.extensions.api.Api._resolve_session_user",
+            return_value=(fake_user, None, 200),
+        ), patch(
+            "automation.utils.system_event_audit.persist_system_event",
+            return_value=True,
+        ):
+            mock_app.get_machine.return_value = machine
+            with self.flask.test_request_context(
+                "/api/machines/FileMotor/domain-config/files",
+                method="POST",
+                data={
+                    "field": "detection_artifacts",
+                    "files": (BytesIO(b"booster"), "model_lgbm.txt"),
+                },
+                content_type="multipart/form-data",
+                headers={"X-API-KEY": "test"},
+            ):
+                payload, status = resource.post("FileMotor")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual(payload["config"]["last_field"], "detection_artifacts")
+        self.assertEqual(machine.stored[0][0], "detection_artifacts")
+        self.assertEqual(machine.stored[0][1][0], ("model_lgbm.txt", b"booster"))
+        self.assertTrue(supports_domain_files(machine))
 
     def test_attributes_reject_domain_field(self):
         from ..modules.machines.resources import machines as machines_mod

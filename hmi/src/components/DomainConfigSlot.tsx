@@ -6,6 +6,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
 import {
   getMachineDomainConfig,
+  postMachineDomainFiles,
   putMachineDomainConfig,
   type DomainConfigField,
   type DomainConfigSection,
@@ -198,8 +199,41 @@ function warningList(raw: unknown): string[] {
 }
 
 function applyBannerClass(status: unknown): string {
-  if (status === "pending" || status === "restarting") return "alert alert-warning py-2 small mb-3";
+  if (
+    status === "pending" ||
+    status === "restarting" ||
+    status === "pending_restart" ||
+    status === "blocked" ||
+    status === "filling" ||
+    status === "rearm"
+  ) {
+    return "alert alert-warning py-2 small mb-3";
+  }
   return "alert alert-info py-2 small mb-3";
+}
+
+function sectionCardClass(tone: unknown): string {
+  if (tone === "warning") return "card mb-3 border-warning";
+  if (tone === "success") return "card mb-3 border-success";
+  return "card mb-3";
+}
+
+function sectionHeaderClass(tone: unknown, extra = "py-2"): string {
+  if (tone === "warning") return `card-header ${extra} bg-warning-subtle`;
+  if (tone === "success") return `card-header ${extra} bg-success-subtle`;
+  return `card-header ${extra}`;
+}
+
+function sectionHintClass(tone: unknown): string {
+  if (tone === "warning") return "alert alert-warning py-2 small mb-3";
+  if (tone === "success") return "alert alert-success py-2 small mb-3";
+  return "alert alert-info py-2 small mb-3";
+}
+
+function isIncompleteSave(saved: Record<string, unknown>): boolean {
+  const missingMaps = Array.isArray(saved._missing_input_mappings) ? saved._missing_input_mappings : [];
+  const missingTags = Array.isArray(saved._missing_field_attrs) ? saved._missing_field_attrs : [];
+  return missingMaps.length > 0 || missingTags.length > 0 || saved._apply_status === "blocked";
 }
 
 const INTERNAL_COMPARE_KEYS = new Set([
@@ -215,6 +249,10 @@ const INTERNAL_COMPARE_KEYS = new Set([
   "_effective_pressure_mode",
   "_pressure_tags_status",
   "_missing_tags_message",
+  "_show_inputs_mapping",
+  "_inputs_mapping_complete",
+  "_missing_input_mappings",
+  "_missing_field_attrs",
 ]);
 
 function normalizeCompareValue(value: unknown): string {
@@ -435,11 +473,18 @@ function FieldControl({
   }
 
   if (field.type === "select") {
+    const compact = Number(field.columns) > 0 && Number(field.columns) < 12;
     const select = (
       <select
         id={id}
         className="form-select"
-        style={field.short_label || field.unit ? undefined : { maxWidth: "280px" }}
+        style={
+          field.short_label || field.unit
+            ? undefined
+            : compact
+              ? { width: "100%" }
+              : { maxWidth: "280px" }
+        }
         value={value == null ? "" : String(value)}
         disabled={locked}
         onChange={(e) => onChange(e.target.value)}
@@ -590,6 +635,227 @@ function ArrayTableEditor({
   );
 }
 
+type ArtifactStatus = {
+  path?: string;
+  files?: string[];
+  missing?: string[];
+  ready?: boolean;
+};
+
+function artifactStatus(value: unknown): ArtifactStatus {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as ArtifactStatus;
+}
+
+const PFM_BINARY_PREFIXES: number[][] = [
+  [0x25, 0x50, 0x44, 0x46],
+  [0x50, 0x4b, 0x03, 0x04],
+  [0x50, 0x4b, 0x05, 0x06],
+  [0x50, 0x4b, 0x07, 0x08],
+  [0xd0, 0xcf, 0x11, 0xe0],
+  [0x89, 0x50, 0x4e, 0x47],
+  [0xff, 0xd8, 0xff],
+  [0x47, 0x49, 0x46, 0x38],
+];
+
+function bytesStartWith(bytes: Uint8Array, prefix: number[]): boolean {
+  return prefix.every((value, index) => bytes[index] === value);
+}
+
+async function peekPfmArtifactError(file: File): Promise<string | null> {
+  const head = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  if (PFM_BINARY_PREFIXES.some((prefix) => bytesStartWith(head, prefix))) {
+    return "parece un PDF, Office u otro binario";
+  }
+  const sample = await file.slice(0, 8000).text();
+  const trimmed = sample.replace(/^\uFEFF/, "").trimStart();
+  if (file.name === "model_lgbm.txt") {
+    const first = (trimmed.split(/\r?\n/, 1)[0] || "").trim().toLowerCase();
+    if (first === "tree" || trimmed.startsWith("{")) return null;
+    return "no es un modelo LightGBM (debe empezar por 'tree')";
+  }
+  if (file.name.endsWith(".json")) {
+    let data: unknown;
+    try {
+      data = JSON.parse(await file.text());
+    } catch {
+      return "no es JSON válido";
+    }
+    if (file.name === "features_schema.json") {
+      if (!Array.isArray(data) || !data.length || data.some((item) => typeof item !== "string" || !item.trim())) {
+        return "debe ser un array de nombres de features";
+      }
+      return null;
+    }
+    if (file.name.startsWith("lgbm_inference_config")) {
+      const obj = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
+      if (!obj) return "debe ser un objeto JSON";
+      if (!Array.isArray(obj.inputs) || !obj.inputs.length) return "falta 'inputs'";
+      if (!Array.isArray(obj.feature_columns) || !obj.feature_columns.length) return "falta 'feature_columns'";
+      if (!(Number(obj.window_size) >= 1)) return "'window_size' debe ser ≥ 1";
+      return null;
+    }
+    if (file.name === "label_mapping.json") {
+      const obj = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
+      if (!obj) return "debe ser un objeto JSON";
+      if (!("labels" in obj || "cluster_centers" in obj || "mapping" in obj || "classes" in obj || "label_to_index" in obj)) {
+        return "no parece un label_mapping (labels/cluster_centers/mapping)";
+      }
+      return null;
+    }
+  }
+  return null;
+}
+
+function FilesControl({
+  field,
+  value,
+  pending,
+  onPending,
+  disabled,
+  readOnly,
+  presentation,
+}: {
+  field: DomainConfigField;
+  value: unknown;
+  pending: File[];
+  onPending: (next: File[]) => void;
+  disabled: boolean;
+  readOnly: boolean;
+  presentation: Presentation;
+}) {
+  const { t } = useTranslation();
+  const locked = disabled || readOnly;
+  const status = artifactStatus(value);
+  const onDisk = status.files || [];
+  const required = field.required_names || status.missing || [];
+  const path = status.path || "";
+  const ready = Boolean(status.ready);
+  const pendingNames = pending.map((file) => file.name);
+  const covered = new Set([...onDisk, ...pendingNames]);
+  const stillMissing = required.filter((name) => !covered.has(name));
+  const pendingCoversRequired = Boolean(pending.length) && stillMissing.length === 0;
+  const id = `domain-files-${field.key.replace(/\./g, "-")}`;
+  const allowedNames = new Set(
+    [...(field.required_names || []), ...(field.optional_names || [])].filter(Boolean)
+  );
+  const mergeFiles = (list: FileList | null) => {
+    if (!list || locked) return;
+    void (async () => {
+      const byName = new Map<string, File>();
+      for (const file of pending) byName.set(file.name, file);
+      const rejectedNames: string[] = [];
+      const rejectedContent: string[] = [];
+      for (const file of Array.from(list)) {
+        if (allowedNames.size && !allowedNames.has(file.name)) {
+          rejectedNames.push(file.name);
+          continue;
+        }
+        const contentError = await peekPfmArtifactError(file);
+        if (contentError) {
+          rejectedContent.push(`${file.name} (${contentError})`);
+          continue;
+        }
+        byName.set(file.name, file);
+      }
+      if (rejectedNames.length) {
+        showToast(
+          `${t("machines.domainConfigFilesRejected")}: ${rejectedNames.join(", ")}. ${t(
+            "machines.domainConfigFilesAllowedNames"
+          )}: ${Array.from(allowedNames).join(", ")}`,
+          "error"
+        );
+      }
+      if (rejectedContent.length) {
+        showToast(`${t("machines.domainConfigFilesBadContent")}: ${rejectedContent.join("; ")}`, "error");
+      }
+      onPending(Array.from(byName.values()));
+    })();
+  };
+  const removePending = (name: string) => {
+    onPending(pending.filter((file) => file.name !== name));
+  };
+  return (
+    <div title={fieldTooltip(field, presentation)}>
+      {presentation.labelDisplay === "visible" && field.label ? (
+        <div className="form-label">{field.label}</div>
+      ) : null}
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+        {ready ? (
+          <span className="badge text-bg-success">{t("machines.domainConfigFilesReady")}</span>
+        ) : pendingCoversRequired ? (
+          <span className="badge text-bg-warning">{t("machines.domainConfigFilesPendingSave")}</span>
+        ) : (
+          <span className="badge text-bg-secondary">{t("machines.domainConfigFilesEmpty")}</span>
+        )}
+        {path ? <span className="small text-muted font-monospace">{path}</span> : null}
+      </div>
+      {onDisk.length ? (
+        <div className="small mb-1">
+          <span className="text-muted">{t("machines.domainConfigFilesOnDisk")}: </span>
+          {onDisk.join(", ")}
+        </div>
+      ) : null}
+      {!ready && stillMissing.length ? (
+        <div className="small text-warning mb-1">
+          {t("machines.domainConfigFilesMissing")}: {stillMissing.join(", ")}
+        </div>
+      ) : null}
+      {pending.length ? (
+        <div className="small mb-2">
+          <div className="text-muted mb-1">{t("machines.domainConfigFilesSelected")}:</div>
+          <ul className="list-unstyled mb-1">
+            {pending.map((file) => (
+              <li key={file.name} className="d-flex align-items-center gap-2 mb-1">
+                <span className="font-monospace">{file.name}</span>
+                {!locked ? (
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm p-0"
+                    onClick={() => removePending(file.name)}
+                  >
+                    {t("machines.domainConfigFilesRemove")}
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {!locked ? (
+            <button type="button" className="btn btn-link btn-sm p-0" onClick={() => onPending([])}>
+              {t("machines.domainConfigFilesClear")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {pending.length ? (
+        <div className="form-text mb-2">
+          {ready ? t("machines.domainConfigFilesReplaceHint") : t("machines.domainConfigFilesSaveHint")}
+        </div>
+      ) : null}
+      {!locked ? (
+        <label className="btn btn-outline-secondary btn-sm mb-0" htmlFor={id}>
+          {ready ? t("machines.domainConfigFilesUpdate") : t("machines.domainConfigChooseFiles")}
+          <input
+            id={id}
+            type="file"
+            className="visually-hidden"
+            multiple={field.multiple !== false}
+            accept={field.accept}
+            disabled={locked}
+            onChange={(event) => {
+              mergeFiles(event.target.files);
+              event.currentTarget.value = "";
+            }}
+          />
+        </label>
+      ) : null}
+      {field.help && (presentation.helpDisplay === "text" || presentation.helpDisplay === "both") ? (
+        <div className="form-text">{field.help}</div>
+      ) : null}
+    </div>
+  );
+}
+
 function NestedFields({
   fields,
   values,
@@ -597,6 +863,8 @@ function NestedFields({
   disabled,
   presentation,
   prefix = "",
+  pendingFiles,
+  onPendingFiles,
 }: {
   fields: DomainConfigField[];
   values: Record<string, unknown>;
@@ -604,6 +872,8 @@ function NestedFields({
   disabled: boolean;
   presentation: Presentation;
   prefix?: string;
+  pendingFiles: Record<string, File[]>;
+  onPendingFiles: (path: string, files: File[]) => void;
 }) {
   return (
     <div className="row g-2">
@@ -633,6 +903,23 @@ function NestedFields({
                 disabled={disabled}
                 presentation={fieldPres}
                 prefix={path}
+                pendingFiles={pendingFiles}
+                onPendingFiles={onPendingFiles}
+              />
+            </div>
+          );
+        }
+        if (field.type === "files") {
+          return (
+            <div key={path} className={`col-md-${col} mb-2`}>
+              <FilesControl
+                field={resolved}
+                value={getByPath(values, path)}
+                pending={pendingFiles[path] || []}
+                onPending={(next) => onPendingFiles(path, next)}
+                disabled={disabled}
+                readOnly={readOnly}
+                presentation={fieldPres}
               />
             </div>
           );
@@ -699,6 +986,124 @@ function validateLocal(fields: DomainConfigField[], values: Record<string, unkno
   return null;
 }
 
+function collectFileFields(fields: DomainConfigField[]): DomainConfigField[] {
+  const out: DomainConfigField[] = [];
+  for (const field of fields) {
+    if (field.type === "files") out.push(field);
+    if (field.type === "object" && field.fields) {
+      out.push(...collectFileFields(field.fields));
+    }
+  }
+  return out;
+}
+
+function omitFileFields(
+  values: Record<string, unknown>,
+  fields: DomainConfigField[]
+): Record<string, unknown> {
+  const next = { ...values };
+  for (const field of collectFileFields(fields)) {
+    delete next[field.key];
+  }
+  return next;
+}
+
+function validatePendingFiles(
+  fields: DomainConfigField[],
+  values: Record<string, unknown>,
+  pending: Record<string, File[]>
+): string | null {
+  for (const field of collectFileFields(fields)) {
+    const selected = pending[field.key] || [];
+    if (!selected.length) continue;
+    const required = field.required_names || [];
+    if (!required.length) continue;
+    const status = artifactStatus(values[field.key]);
+    const names = new Set([...(status.files || []), ...selected.map((file) => file.name)]);
+    if (required.some((name) => !names.has(name))) return field.label || field.key;
+  }
+  return null;
+}
+
+function collectSectionFields(section: DomainConfigSection): DomainConfigField[] {
+  const fields = [...(section.fields || [])];
+  for (const tab of section.tabs || []) {
+    fields.push(...(tab.fields || []));
+  }
+  return fields;
+}
+
+function TabbedSectionCard({
+  label,
+  hint,
+  tone,
+  tabs,
+  values,
+  onChange,
+  disabled,
+  presentation,
+  pendingFiles,
+  onPendingFiles,
+}: {
+  label?: string;
+  hint?: string;
+  tone?: DomainConfigSection["tone"];
+  tabs: NonNullable<DomainConfigSection["tabs"]>;
+  values: Record<string, unknown>;
+  onChange: (path: string, value: unknown) => void;
+  disabled: boolean;
+  presentation: Presentation;
+  pendingFiles: Record<string, File[]>;
+  onPendingFiles: (path: string, files: File[]) => void;
+}) {
+  const [active, setActive] = useState(0);
+  const index = Math.min(Math.max(0, active), Math.max(0, tabs.length - 1));
+  const tab = tabs[index];
+  return (
+    <div className={sectionCardClass(tone)}>
+      <div className={sectionHeaderClass(tone, "pb-0")}>
+        {label ? <h6 className="mb-2">{label}</h6> : null}
+        <ul className="nav nav-tabs card-header-tabs" role="tablist">
+          {tabs.map((item, i) => (
+            <li className="nav-item" key={item.id || `tab-${i}`} role="presentation">
+              <button
+                type="button"
+                className={`nav-link ${i === index ? "active" : ""}`}
+                role="tab"
+                aria-selected={i === index}
+                onClick={() => setActive(i)}
+              >
+                {item.label || item.id || `Tab ${i + 1}`}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="card-body">
+        {hint ? (
+          <div className={sectionHintClass(tone)} role="status">
+            {hint}
+          </div>
+        ) : null}
+        {tab?.hint ? (
+          <div className={sectionHintClass(tone)} role="status">
+            {tab.hint}
+          </div>
+        ) : null}
+        <NestedFields
+          fields={tab?.fields || []}
+          values={values}
+          onChange={onChange}
+          disabled={disabled}
+          presentation={presentation}
+          pendingFiles={pendingFiles}
+          onPendingFiles={onPendingFiles}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function DomainConfigSlot({
   machineName,
   schema,
@@ -709,6 +1114,7 @@ export function DomainConfigSlot({
 }: DomainConfigSlotProps) {
   const { t } = useTranslation();
   const [values, setValues] = useState<Record<string, unknown>>(config || {});
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File[]>>({});
   const [saving, setSaving] = useState(false);
   const [restartOpen, setRestartOpen] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -717,36 +1123,48 @@ export function DomainConfigSlot({
     setValues(config || {});
   }, [machineName, config]);
 
+  useEffect(() => {
+    setPendingFiles({});
+  }, [machineName]);
+
   const sections = schema.sections || [];
   const unsupported = Number(schema.version || 1) > SCHEMA_VERSION_SUPPORTED;
   const title = schema.title || t("machines.domainConfigTitle");
   const rootPresentation = schemaPresentation(schema);
 
   const allFields = useMemo(
-    () => sections.flatMap((section) => section.fields || []),
+    () => sections.flatMap((section) => collectSectionFields(section)),
     [sections]
   );
 
   useEffect(() => {
-    if (!machineState) return undefined;
+    if (!machineName) return undefined;
     let cancelled = false;
-    (async () => {
+    const applyKeys = [
+      "_apply_status",
+      "_apply_message",
+      "_restart_available",
+      "_buffer_filled",
+      "_buffer_need",
+      "_sm_state",
+      "_warnings",
+      "_operation_state",
+      "_active_engines",
+      "_posterior",
+      "_show_inputs_mapping",
+      "_inputs_mapping_complete",
+      "_missing_input_mappings",
+      "_missing_field_attrs",
+      "_missing_tags_message",
+      "_inference_contract_aligned",
+      "_inference_contract_mismatch",
+      "_models_loaded",
+    ];
+    const refresh = async () => {
       try {
         const domain = await getMachineDomainConfig(machineName);
         if (cancelled || !domain?.config) return;
         const next = domain.config as Record<string, unknown>;
-        const applyKeys = [
-          "_apply_status",
-          "_apply_message",
-          "_restart_available",
-          "_buffer_filled",
-          "_buffer_need",
-          "_sm_state",
-          "_warnings",
-          "_operation_state",
-          "_active_engines",
-          "_posterior",
-        ];
         setValues((prev) => {
           const merged = { ...prev };
           for (const key of applyKeys) {
@@ -759,9 +1177,14 @@ export function DomainConfigSlot({
       } catch {
         /* keep the local form */
       }
-    })();
+    };
+    void refresh();
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 2000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [machineName, machineState]);
 
@@ -782,9 +1205,11 @@ export function DomainConfigSlot({
       if (domain?.schema) {
         onSchemaUpdated?.(domain.schema);
       }
+      return (domain?.config as Record<string, unknown> | undefined) || fallbackConfig;
     } catch {
       setValues(fallbackConfig);
       onConfigUpdated?.(fallbackConfig);
+      return fallbackConfig;
     }
   };
 
@@ -794,13 +1219,36 @@ export function DomainConfigSlot({
       showToast(t("machines.domainConfigValidationError"), "error");
       return;
     }
+    const incomplete = validatePendingFiles(allFields, values, pendingFiles);
+    if (incomplete) {
+      showToast(t("machines.domainConfigFilesIncomplete"), "error");
+      return;
+    }
     setSaving(true);
     try {
-      const { _reset: _ignoredReset, _set_factory: _ignoredFactory, ...payload } = values;
+      let latest: Record<string, unknown> = { ...values };
+      for (const field of collectFileFields(allFields)) {
+        const selected = pendingFiles[field.key] || [];
+        if (!selected.length) continue;
+        const uploaded = await postMachineDomainFiles(machineName, field.key, selected);
+        if (uploaded.config) {
+          latest = { ...latest, ...uploaded.config };
+          setValues(latest);
+          onConfigUpdated?.(latest);
+        }
+      }
+      const { _reset: _ignoredReset, _set_factory: _ignoredFactory, ...rawPayload } = latest;
+      const payload = omitFileFields(rawPayload, allFields);
       const result = await putMachineDomainConfig(machineName, payload);
-      const next = result.config || values;
-      await applyServerState(next);
-      showToast(t("machines.domainConfigSaved"), "success");
+      const next = result.config || latest;
+      setPendingFiles({});
+      const saved = await applyServerState(next);
+      if (isIncompleteSave(saved)) {
+        const applyMessage = typeof saved._apply_message === "string" ? saved._apply_message.trim() : "";
+        showToast(applyMessage || t("machines.domainConfigIncompleteWarning"), "warning");
+      } else {
+        showToast(t("machines.domainConfigSaved"), "success");
+      }
     } catch (err: any) {
       const data = err?.response?.data;
       const message =
@@ -825,6 +1273,7 @@ export function DomainConfigSlot({
     try {
       const result = await putMachineDomainConfig(machineName, { _reset: true });
       const next = result.config || { ...values, ...defaults };
+      setPendingFiles({});
       await applyServerState(next);
       showToast(t("machines.domainConfigResetSaved"), "success");
     } catch (err: any) {
@@ -849,7 +1298,8 @@ export function DomainConfigSlot({
     }
     setSaving(true);
     try {
-      const { _reset: _ignoredReset, _set_factory: _ignoredFactory, ...payload } = values;
+      const { _reset: _ignoredReset, _set_factory: _ignoredFactory, ...rawPayload } = values;
+      const payload = omitFileFields(rawPayload, allFields);
       const result = await putMachineDomainConfig(machineName, { ...payload, _set_factory: true });
       const next = result.config || values;
       await applyServerState(next);
@@ -902,7 +1352,8 @@ export function DomainConfigSlot({
   const factoryKeys = comparableKeys.filter((key) => Object.prototype.hasOwnProperty.call(factoryDefaults, key));
   const isDirtyVsSaved = valuesDiffer(values, config || {}, comparableKeys);
   const differsFromFactory = hasFactoryDefaults && valuesDiffer(values, factoryDefaults, factoryKeys);
-  const canSave = isDirtyVsSaved;
+  const hasPendingFiles = Object.values(pendingFiles).some((files) => files.length > 0);
+  const canSave = isDirtyVsSaved || hasPendingFiles;
   const canRestoreFactory = differsFromFactory;
   const canSetFactory = differsFromFactory;
 
@@ -931,7 +1382,9 @@ export function DomainConfigSlot({
           ) : null}
         </div>
       ) : null}
-      {warningList(values._warnings).map((warning) => (
+      {warningList(values._warnings)
+        .filter((warning) => warning !== values._apply_message)
+        .map((warning) => (
         <div key={warning} className="alert alert-warning py-2 small mb-3" role="status">
           {warning}
         </div>
@@ -944,21 +1397,67 @@ export function DomainConfigSlot({
             }
           }
           const sectionPres = sectionPresentation(section, rootPresentation);
-          return (
-            <div key={section.id || `section-${index}`} className="mb-3">
-              {section.label ? <h6 className="mb-3">{section.label}</h6> : null}
-              {section.hint ? (
-                <div className="alert alert-info py-2 small mb-3" role="status">
-                  {section.hint}
+          const hasTabs = Boolean(section.tabs?.length);
+          const hasFields = Boolean((section.fields || []).length);
+          const key = section.id || `section-${index}`;
+          const hint = section.hint ? (
+            <div className={sectionHintClass(section.tone)} role="status">
+              {section.hint}
+            </div>
+          ) : null;
+          const fileHandlers = {
+            pendingFiles,
+            onPendingFiles: (path: string, files: File[]) =>
+              setPendingFiles((prev) => ({ ...prev, [path]: files })),
+          };
+          if (hasTabs) {
+            return (
+              <TabbedSectionCard
+                key={key}
+                label={section.label}
+                hint={section.hint}
+                tone={section.tone}
+                tabs={section.tabs || []}
+                values={values}
+                onChange={handleChange}
+                disabled={saving || restarting}
+                presentation={sectionPres}
+                {...fileHandlers}
+              />
+            );
+          }
+          if (section.label && hasFields) {
+            return (
+              <div key={key} className={sectionCardClass(section.tone)}>
+                <div className={sectionHeaderClass(section.tone)}>
+                  <h6 className="mb-0">{section.label}</h6>
                 </div>
-              ) : null}
-              {(section.fields || []).length ? (
+                <div className="card-body">
+                  {hint}
+                  <NestedFields
+                    fields={section.fields || []}
+                    values={values}
+                    onChange={handleChange}
+                    disabled={saving || restarting}
+                    presentation={sectionPres}
+                    {...fileHandlers}
+                  />
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div key={key} className="mb-3">
+              {section.label ? <h6 className="mb-3">{section.label}</h6> : null}
+              {hint}
+              {hasFields ? (
                 <NestedFields
                   fields={section.fields || []}
                   values={values}
                   onChange={handleChange}
                   disabled={saving || restarting}
                   presentation={sectionPres}
+                  {...fileHandlers}
                 />
               ) : null}
             </div>
@@ -988,8 +1487,15 @@ export function DomainConfigSlot({
             </Button>
           ) : null}
         </div>
-        <Button type="button" variant="primary" loading={saving} disabled={saving || restarting || !canSave} onClick={handleSave}>
+        <Button
+          type="button"
+          variant="primary"
+          loading={saving}
+          disabled={saving || restarting || !canSave}
+          onClick={handleSave}
+        >
           {t("machines.domainConfigSave")}
+          {hasPendingFiles ? ` (${t("machines.domainConfigFilesPendingSave")})` : ""}
         </Button>
       </div>
       <OpsConfirmModal
