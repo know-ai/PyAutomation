@@ -110,6 +110,7 @@ class SignUpResource(Resource):
         Distinguishes between signup errors and database connection errors.
         """
         args = signup_parser.parse_args()
+        args["email"] = (args.get("email") or "").strip()
         user, message = app.signup(**args)
         
         if user:

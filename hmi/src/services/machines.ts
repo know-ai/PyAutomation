@@ -158,6 +158,8 @@ export type DomainConfigField = {
   accept?: string;
   required_names?: string[];
   optional_names?: string[];
+  artifact_engine?: string;
+  artifact_role?: string;
   arrow_value_label?: boolean;
   arrow_source_label?: string;
   dwt_bounds?: {
@@ -250,7 +252,9 @@ export const postMachineDomainFiles = async (
   const body = new FormData();
   body.append("field", fieldKey);
   for (const file of files) {
-    body.append("files", file, file.name);
+    const raw = String(file.name || "").replace(/\\/g, "/");
+    const name = raw.split("/").pop() || file.name;
+    body.append("files", file, name);
   }
   const { data } = await api.post(
     `/machines/${encodeURIComponent(machineName)}/domain-config/files`,

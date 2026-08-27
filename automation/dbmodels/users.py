@@ -134,7 +134,7 @@ class Users(BaseModel):
     identifier = CharField(unique=True, max_length=16)
     username = CharField(unique=True, max_length=64)
     role = ForeignKeyField(Roles, backref='users', on_delete='CASCADE')
-    email = CharField(unique=True, max_length=128)
+    email = CharField(unique=True, max_length=128, null=True)
     password = CharField()
     token = CharField(null=True)
     name = CharField(max_length=64, null=True)
@@ -158,9 +158,10 @@ class Users(BaseModel):
 
             return None, f"username {user.username} is already used"
 
-        if cls.email_exist(user.email):
+        email = (getattr(user, "email", None) or "").strip() or None
+        if email and cls.email_exist(email):
 
-            return None, f"email {user.email} is already used"
+            return None, f"email {email} is already used"
         
         if cls.identifier_exist(user.identifier):
 
@@ -169,7 +170,7 @@ class Users(BaseModel):
         query = cls(
             username=user.username,
             role=Roles.read_by_name(name=user.role.name),
-            email=user.email,
+            email=email,
             password=user.password,
             identifier=user.identifier,
             name=user.name,
@@ -335,7 +336,8 @@ class Users(BaseModel):
         r"""
         Checks if an email exists.
         """
-
+        if not email:
+            return False
         return True if cls.get_or_none(email=email) else False
     
     @classmethod

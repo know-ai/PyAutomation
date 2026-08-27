@@ -3,7 +3,7 @@ import api from "./api";
 export type LoginPayload = { username: string; password: string };
 export type SignupPayload = {
   username: string;
-  email: string;
+  email?: string;
   password: string;
   role_name?: string;
   name?: string;

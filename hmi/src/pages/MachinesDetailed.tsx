@@ -21,6 +21,7 @@ import type { Tag } from "../services/tags";
 
 const ITEMS_PER_PAGE = 10;
 const ACTIVE_TAB_STORAGE_KEY = "machinesDetailed_activeTab";
+const EMPTY_DOMAIN_CONFIG: Record<string, unknown> = {};
 const getPageStorageKey = (machineName: string) => `machinesDetailed_page_${machineName}`;
 
 type MachineDetailedData = {
@@ -2296,7 +2297,7 @@ export function MachinesDetailed() {
                             <DomainConfigSlot
                               machineName={machineName}
                               schema={domainSchemas[machineName]}
-                              config={domainConfigs[machineName] || {}}
+                              config={domainConfigs[machineName] || EMPTY_DOMAIN_CONFIG}
                               machineState={String(
                                 machineDetails[machineName]?.serialization?.state || ""
                               )}

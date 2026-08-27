@@ -2001,7 +2001,7 @@ class PyAutomation(Singleton):
     @logging_error_handler
     @validate_types(
             username=str,
-            email=str,
+            email=str|type(None),
             password=str,
             name=str|type(None),
             lastname=str|type(None),
@@ -2027,7 +2027,7 @@ class PyAutomation(Singleton):
         **Parameters:**
 
         * **username** (str): Unique username.
-        * **email** (str): User's email address.
+        * **email** (str): User's email address. Optional; empty or omitted is allowed.
         * **password** (str): User's password (plain text or hash if encode_password=False).
         * **name** (str, optional): First name.
         * **lastname** (str, optional): Last name.
@@ -2053,6 +2053,7 @@ class PyAutomation(Singleton):
         ```
         """
         try:
+            email = (email or "").strip()
             
             # Persist user on Database if connected
             if self.is_db_connected():
@@ -2136,7 +2137,7 @@ class PyAutomation(Singleton):
                         "users",
                         {
                             "username": user.username,
-                            "email": user.email,
+                            "email": user.email or None,
                             "password": user.password,
                             "identifier": user.identifier,
                             "name": user.name,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Card } from "./Card";
 import { Button } from "./Button";
 import { OpsConfirmModal } from "./OpsConfirmModal";
@@ -273,16 +273,22 @@ function normalizeCompareValue(value: unknown): string {
   return String(value);
 }
 
-function visibleEditableKeys(fields: DomainConfigField[], values: Record<string, unknown>): string[] {
+function visibleEditableKeys(
+  fields: DomainConfigField[],
+  values: Record<string, unknown>,
+  prefix = ""
+): string[] {
   const keys: string[] = [];
   for (const field of fields) {
+    const path = prefix ? `${prefix}.${field.key}` : field.key;
     if (!isFieldVisible(field, values)) continue;
     if (field.read_only || isFieldReadOnly(field, values)) continue;
+    if (field.type === "files") continue;
     if (field.type === "object" && field.fields) {
-      keys.push(...visibleEditableKeys(field.fields, values));
+      keys.push(...visibleEditableKeys(field.fields, values, path));
       continue;
     }
-    keys.push(field.key);
+    keys.push(path);
   }
   return keys;
 }
@@ -294,7 +300,9 @@ function valuesDiffer(
 ): boolean {
   for (const key of keys) {
     if (INTERNAL_COMPARE_KEYS.has(key) || key.startsWith("_")) continue;
-    if (normalizeCompareValue(left[key]) !== normalizeCompareValue(right[key])) return true;
+    if (normalizeCompareValue(getByPath(left, key)) !== normalizeCompareValue(getByPath(right, key))) {
+      return true;
+    }
   }
   return false;
 }
@@ -662,40 +670,51 @@ function bytesStartWith(bytes: Uint8Array, prefix: number[]): boolean {
   return prefix.every((value, index) => bytes[index] === value);
 }
 
-async function peekPfmArtifactError(file: File): Promise<string | null> {
+function artifactFileName(file: File): string {
+  const raw = String(file.name || "").replace(/\\/g, "/");
+  const slash = raw.lastIndexOf("/");
+  return (slash >= 0 ? raw.slice(slash + 1) : raw).trim();
+}
+
+async function peekPfmArtifactError(
+  file: File,
+  fileName?: string,
+  slot?: { engine?: string; role?: string }
+): Promise<string | null> {
+  const name = fileName || artifactFileName(file);
   const head = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   if (PFM_BINARY_PREFIXES.some((prefix) => bytesStartWith(head, prefix))) {
     return "parece un PDF, Office u otro binario";
   }
   const sample = await file.slice(0, 8000).text();
   const trimmed = sample.replace(/^\uFEFF/, "").trimStart();
-  if (file.name === "model_lgbm.txt") {
+  if (name === "model_lgbm.txt") {
     const first = (trimmed.split(/\r?\n/, 1)[0] || "").trim().toLowerCase();
     if (first === "tree" || trimmed.startsWith("{")) return null;
     return "no es un modelo LightGBM (debe empezar por 'tree')";
   }
-  if (file.name.endsWith(".json")) {
+  if (name.endsWith(".json")) {
     let data: unknown;
     try {
       data = JSON.parse(await file.text());
     } catch {
       return "no es JSON válido";
     }
-    if (file.name === "features_schema.json") {
+    if (name === "features_schema.json") {
       if (!Array.isArray(data) || !data.length || data.some((item) => typeof item !== "string" || !item.trim())) {
         return "debe ser un array de nombres de features";
       }
       return null;
     }
-    if (file.name.startsWith("lgbm_inference_config")) {
+    if (name.startsWith("lgbm_inference_config")) {
       const obj = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
       if (!obj) return "debe ser un objeto JSON";
       if (!Array.isArray(obj.inputs) || !obj.inputs.length) return "falta 'inputs'";
       if (!Array.isArray(obj.feature_columns) || !obj.feature_columns.length) return "falta 'feature_columns'";
       if (!(Number(obj.window_size) >= 1)) return "'window_size' debe ser ≥ 1";
-      return null;
+      return inferenceConfigRoleError(obj, slot);
     }
-    if (file.name === "label_mapping.json") {
+    if (name === "label_mapping.json") {
       const obj = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
       if (!obj) return "debe ser un objeto JSON";
       if (!("labels" in obj || "cluster_centers" in obj || "mapping" in obj || "classes" in obj || "label_to_index" in obj)) {
@@ -703,6 +722,86 @@ async function peekPfmArtifactError(file: File): Promise<string | null> {
       }
       return null;
     }
+  }
+  return null;
+}
+
+const INFERENCE_SLOT_LABEL: Record<string, string> = {
+  "PFM:DETECTION": "PFM / Detección (clasificación binaria)",
+  "PFM:LEAKFLOW": "PFM / Caudal de fuga (regresión)",
+  "PFM:SIZE": "PFM / Tamaño de fuga (clasificación)",
+  "PFM:LOCATION": "PFM / Localización (clasificación)",
+  "OBSERVER:DETECTION": "Observer / Detección (regresión de caudal)",
+  "OBSERVER:SIZE": "Observer / Tamaño de fuga (regresión)",
+  "OBSERVER:LOCATION": "Observer / Localización (regresión)",
+};
+
+function inferenceConfigRoleError(
+  obj: Record<string, unknown>,
+  slot?: { engine?: string; role?: string }
+): string | null {
+  const engine = String(slot?.engine || "").toUpperCase();
+  const role = String(slot?.role || "").toUpperCase();
+  if (!engine || !role) return null;
+  const key = `${engine}:${role}`;
+  const label = INFERENCE_SLOT_LABEL[key] || `${engine} / ${role}`;
+  const problem = String(obj.problem_type || "").trim().toLowerCase();
+  const labelCol = String(obj.label_column || "").trim().toUpperCase();
+  const output = String(obj.output_key || "").trim().toLowerCase();
+  const expectedProblem: Record<string, string> = {
+    "PFM:DETECTION": "binary",
+    "PFM:LEAKFLOW": "regression",
+    "PFM:SIZE": "multiclass",
+    "PFM:LOCATION": "multiclass",
+    "OBSERVER:DETECTION": "regression",
+    "OBSERVER:SIZE": "regression",
+    "OBSERVER:LOCATION": "regression",
+  };
+  const want = expectedProblem[key];
+  if (!want) return null;
+  if (!problem) {
+    return `falta problem_type; el slot ${label} espera ${want}`;
+  }
+  if (problem !== want) {
+    return `es '${problem}', pero ${label} espera ${want}. No mezcle detección/diagnóstico ni PFM/Observer`;
+  }
+  const needNeedle: Record<string, string> = {
+    "PFM:DETECTION": "LABEL",
+    "PFM:LEAKFLOW": "LEAK_FLOW",
+    "PFM:SIZE": "LEAK_SIZE",
+    "PFM:LOCATION": "LEAK_LOCATION",
+    "OBSERVER:DETECTION": "LEAK_FLOW",
+    "OBSERVER:SIZE": "LEAK_SIZE",
+    "OBSERVER:LOCATION": "LEAK_LOCATION",
+  };
+  const forbid: Record<string, string[]> = {
+    "PFM:DETECTION": ["LEAK_FLOW", "LEAK_SIZE", "LEAK_LOCATION"],
+    "PFM:LEAKFLOW": ["LEAK_SIZE", "LEAK_LOCATION"],
+    "PFM:SIZE": ["LEAK_LOCATION", "LEAK_FLOW"],
+    "PFM:LOCATION": ["LEAK_SIZE", "LEAK_FLOW"],
+    "OBSERVER:DETECTION": ["LEAK_SIZE", "LEAK_LOCATION"],
+    "OBSERVER:SIZE": ["LEAK_LOCATION", "LEAK_FLOW"],
+    "OBSERVER:LOCATION": ["LEAK_SIZE", "LEAK_FLOW"],
+  };
+  const needle = needNeedle[key];
+  if (needle === "LABEL") {
+    if (labelCol && (labelCol.includes("LEAK_FLOW") || labelCol.includes("LEAK_SIZE") || labelCol.includes("LEAK_LOCATION"))) {
+      return `label_column='${obj.label_column}' no es de ${label}`;
+    }
+  } else if (needle && !labelCol.includes(needle)) {
+    return `label_column='${obj.label_column || ""}' no corresponde a ${label}`;
+  }
+  for (const token of forbid[key] || []) {
+    if (needle === "LABEL" && token === "LABEL") continue;
+    if (labelCol.includes(token)) {
+      return `label_column='${obj.label_column}' corresponde a otro rol. Slot: ${label}`;
+    }
+  }
+  if (key === "OBSERVER:DETECTION" && output !== "leak_flow") {
+    return `output_key debe ser 'leak_flow' en ${label} (un PFM LEAKFLOW no sirve aquí)`;
+  }
+  if (key === "PFM:LEAKFLOW" && output === "leak_flow") {
+    return `output_key='leak_flow' es de Observer Detección, no de ${label}`;
   }
   return null;
 }
@@ -731,7 +830,7 @@ function FilesControl({
   const required = field.required_names || status.missing || [];
   const path = status.path || "";
   const ready = Boolean(status.ready);
-  const pendingNames = pending.map((file) => file.name);
+  const pendingNames = pending.map((file) => artifactFileName(file));
   const covered = new Set([...onDisk, ...pendingNames]);
   const stillMissing = required.filter((name) => !covered.has(name));
   const pendingCoversRequired = Boolean(pending.length) && stillMissing.length === 0;
@@ -739,41 +838,64 @@ function FilesControl({
   const allowedNames = new Set(
     [...(field.required_names || []), ...(field.optional_names || [])].filter(Boolean)
   );
+  const [validating, setValidating] = useState(false);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  const mergeGen = useRef(0);
   const mergeFiles = (list: FileList | null) => {
-    if (!list || locked) return;
+    if (locked) return;
+    const picked = Array.from(list || []);
+    if (!picked.length) return;
+    const gen = ++mergeGen.current;
     void (async () => {
       const byName = new Map<string, File>();
-      for (const file of pending) byName.set(file.name, file);
+      for (const file of pendingRef.current) byName.set(artifactFileName(file), file);
       const rejectedNames: string[] = [];
       const rejectedContent: string[] = [];
-      for (const file of Array.from(list)) {
-        if (allowedNames.size && !allowedNames.has(file.name)) {
-          rejectedNames.push(file.name);
-          continue;
+      setValidating(true);
+      try {
+        for (const file of picked) {
+          const name = artifactFileName(file);
+          if (allowedNames.size && !allowedNames.has(name)) {
+            rejectedNames.push(name || file.name);
+            continue;
+          }
+          let contentError: string | null = null;
+          try {
+            contentError = await peekPfmArtifactError(file, name, {
+              engine: field.artifact_engine,
+              role: field.artifact_role,
+            });
+          } catch {
+            contentError = "no se pudo leer el archivo";
+          }
+          if (gen !== mergeGen.current) return;
+          if (contentError) {
+            rejectedContent.push(`${name} (${contentError})`);
+            continue;
+          }
+          byName.set(name, file);
         }
-        const contentError = await peekPfmArtifactError(file);
-        if (contentError) {
-          rejectedContent.push(`${file.name} (${contentError})`);
-          continue;
+        if (gen !== mergeGen.current) return;
+        if (rejectedNames.length) {
+          showToast(
+            `${t("machines.domainConfigFilesRejected")}: ${rejectedNames.join(", ")}. ${t(
+              "machines.domainConfigFilesAllowedNames"
+            )}: ${Array.from(allowedNames).join(", ")}`,
+            "error"
+          );
         }
-        byName.set(file.name, file);
+        if (rejectedContent.length) {
+          showToast(`${t("machines.domainConfigFilesBadContent")}: ${rejectedContent.join("; ")}`, "error");
+        }
+        onPending(Array.from(byName.values()));
+      } finally {
+        if (gen === mergeGen.current) setValidating(false);
       }
-      if (rejectedNames.length) {
-        showToast(
-          `${t("machines.domainConfigFilesRejected")}: ${rejectedNames.join(", ")}. ${t(
-            "machines.domainConfigFilesAllowedNames"
-          )}: ${Array.from(allowedNames).join(", ")}`,
-          "error"
-        );
-      }
-      if (rejectedContent.length) {
-        showToast(`${t("machines.domainConfigFilesBadContent")}: ${rejectedContent.join("; ")}`, "error");
-      }
-      onPending(Array.from(byName.values()));
     })();
   };
   const removePending = (name: string) => {
-    onPending(pending.filter((file) => file.name !== name));
+    onPending(pending.filter((file) => artifactFileName(file) !== name));
   };
   return (
     <div title={fieldTooltip(field, presentation)}>
@@ -801,24 +923,30 @@ function FilesControl({
           {t("machines.domainConfigFilesMissing")}: {stillMissing.join(", ")}
         </div>
       ) : null}
+      {validating ? (
+        <div className="small text-muted mb-1">{t("machines.domainConfigFilesValidating")}</div>
+      ) : null}
       {pending.length ? (
         <div className="small mb-2">
           <div className="text-muted mb-1">{t("machines.domainConfigFilesSelected")}:</div>
           <ul className="list-unstyled mb-1">
-            {pending.map((file) => (
-              <li key={file.name} className="d-flex align-items-center gap-2 mb-1">
-                <span className="font-monospace">{file.name}</span>
+            {pending.map((file) => {
+              const name = artifactFileName(file);
+              return (
+              <li key={name} className="d-flex align-items-center gap-2 mb-1">
+                <span className="font-monospace">{name}</span>
                 {!locked ? (
                   <button
                     type="button"
                     className="btn btn-link btn-sm p-0"
-                    onClick={() => removePending(file.name)}
+                    onClick={() => removePending(name)}
                   >
                     {t("machines.domainConfigFilesRemove")}
                   </button>
                 ) : null}
               </li>
-            ))}
+              );
+            })}
           </ul>
           {!locked ? (
             <button type="button" className="btn btn-link btn-sm p-0" onClick={() => onPending([])}>
@@ -833,21 +961,16 @@ function FilesControl({
         </div>
       ) : null}
       {!locked ? (
-        <label className="btn btn-outline-secondary btn-sm mb-0" htmlFor={id}>
-          {ready ? t("machines.domainConfigFilesUpdate") : t("machines.domainConfigChooseFiles")}
-          <input
-            id={id}
-            type="file"
-            className="visually-hidden"
-            multiple={field.multiple !== false}
-            accept={field.accept}
-            disabled={locked}
-            onChange={(event) => {
-              mergeFiles(event.target.files);
-              event.currentTarget.value = "";
-            }}
-          />
-        </label>
+        <input
+          id={id}
+          type="file"
+          className="form-control form-control-sm"
+          multiple={field.multiple !== false}
+          disabled={locked}
+          onChange={(event) => {
+            mergeFiles(event.currentTarget.files);
+          }}
+        />
       ) : null}
       {field.help && (presentation.helpDisplay === "text" || presentation.helpDisplay === "both") ? (
         <div className="form-text">{field.help}</div>
@@ -1019,7 +1142,7 @@ function validatePendingFiles(
     const required = field.required_names || [];
     if (!required.length) continue;
     const status = artifactStatus(values[field.key]);
-    const names = new Set([...(status.files || []), ...selected.map((file) => file.name)]);
+    const names = new Set([...(status.files || []), ...selected.map((file) => artifactFileName(file))]);
     if (required.some((name) => !names.has(name))) return field.label || field.key;
   }
   return null;
@@ -1137,6 +1260,10 @@ export function DomainConfigSlot({
     [sections]
   );
 
+  const lastSchemaJson = useRef("");
+  useEffect(() => {
+    lastSchemaJson.current = "";
+  }, [machineName]);
   useEffect(() => {
     if (!machineName) return undefined;
     let cancelled = false;
@@ -1166,14 +1293,39 @@ export function DomainConfigSlot({
         if (cancelled || !domain?.config) return;
         const next = domain.config as Record<string, unknown>;
         setValues((prev) => {
+          let changed = false;
           const merged = { ...prev };
           for (const key of applyKeys) {
-            if (key in next) merged[key] = next[key];
-            else delete merged[key];
+            if (key in next) {
+              if (merged[key] !== next[key]) {
+                merged[key] = next[key];
+                changed = true;
+              }
+            } else if (key in merged) {
+              delete merged[key];
+              changed = true;
+            }
           }
-          return merged;
+          for (const key of Object.keys(next)) {
+            if (!key.startsWith("artifacts_")) continue;
+            if (JSON.stringify(merged[key]) !== JSON.stringify(next[key])) {
+              merged[key] = next[key];
+              changed = true;
+            }
+          }
+          return changed ? merged : prev;
         });
-        if (domain.schema) onSchemaUpdated?.(domain.schema);
+        if (domain.schema) {
+          try {
+            const serialized = JSON.stringify(domain.schema);
+            if (serialized !== lastSchemaJson.current) {
+              lastSchemaJson.current = serialized;
+              onSchemaUpdated?.(domain.schema);
+            }
+          } catch {
+            onSchemaUpdated?.(domain.schema);
+          }
+        }
       } catch {
         /* keep the local form */
       }
@@ -1349,7 +1501,7 @@ export function DomainConfigSlot({
   const showSetFactory = schema.ui_hints?.show_set_factory !== false && hasFactoryDefaults;
   const factoryDefaults = (schema.ui_hints?.factory_defaults || {}) as Record<string, unknown>;
   const comparableKeys = visibleEditableKeys(allFields, values);
-  const factoryKeys = comparableKeys.filter((key) => Object.prototype.hasOwnProperty.call(factoryDefaults, key));
+  const factoryKeys = comparableKeys.filter((key) => getByPath(factoryDefaults, key) !== undefined);
   const isDirtyVsSaved = valuesDiffer(values, config || {}, comparableKeys);
   const differsFromFactory = hasFactoryDefaults && valuesDiffer(values, factoryDefaults, factoryKeys);
   const hasPendingFiles = Object.values(pendingFiles).some((files) => files.length > 0);

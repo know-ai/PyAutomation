@@ -341,43 +341,33 @@ class Users(Singleton):
         r"""
         Documentation here
         """
+        email = (email or "").strip()
         message = f"{username} created successfully"
-        if not self.check_username(username=username):
-
-            if not self.check_email(email=email):
-                
-                roles = Roles()
-                role = roles.get_by_name(name=role_name)
-
-                if role:
-                    
-                    user = self.__auth.signup(
-                        username=username,
-                        role=role,
-                        email=email,
-                        password=password,
-                        name=name,
-                        lastname=lastname,
-                        identifier=identifier,
-                        encode_password=encode_password
-                    )
-                    
-                    self.__by_identifier[user.identifier] = user
-                    self.__by_username[user.username] = user
-                    self.__by_email[user.email] = user
-                    return user, message
-                
-                else:
-
-                    return None, f"role: {role_name} not exists"
-            
-            else:
-
-                return None, f"Email: {email} already exists"
-            
-        else:
-
+        if self.check_username(username=username):
             return None, f"username: {username} already exists"
+        if email and self.check_email(email=email):
+            return None, f"Email: {email} already exists"
+
+        roles = Roles()
+        role = roles.get_by_name(name=role_name)
+        if not role:
+            return None, f"role: {role_name} not exists"
+
+        user = self.__auth.signup(
+            username=username,
+            role=role,
+            email=email,
+            password=password,
+            name=name,
+            lastname=lastname,
+            identifier=identifier,
+            encode_password=encode_password
+        )
+        self.__by_identifier[user.identifier] = user
+        self.__by_username[user.username] = user
+        if email:
+            self.__by_email[user.email] = user
+        return user, message
 
     def verify_credentials(self, password:str, username:str=None, email:str=None)->bool:
         r"""
@@ -435,6 +425,8 @@ class Users(Singleton):
         r"""
         Documentation here
         """
+        if not email:
+            return None
         if email in self.__by_email:
 
             return self.__by_email[email]

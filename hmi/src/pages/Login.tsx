@@ -11,6 +11,8 @@ import { showToast } from "../utils/toast";
 import { useTranslation } from "../hooks/useTranslation";
 import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
 
+const REMEMBER_USERNAME_KEY = "pyautomation.rememberUsername";
+
 const DATABASE_ERROR_HINTS = [
   "connecting database error",
   "database is not configured",
@@ -100,6 +102,18 @@ export function Login() {
   const credentialsInvalid = errorKey === "auth.invalidCredentials";
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem(REMEMBER_USERNAME_KEY);
+      if (saved) {
+        setUsername(saved);
+        setRemember(true);
+      }
+    } catch {
+      // localStorage may be unavailable
+    }
+  }, []);
+
+  useEffect(() => {
     if (authStatus === "authenticated" && existingToken) {
       navigate(isSystemUser(existingUser) ? SYSTEM_HOME_PATH : "/communications", {
         replace: true,
@@ -152,6 +166,15 @@ export function Login() {
         setErrorKey("auth.tokenNotReceived");
         dispatch(loginFailure("auth.tokenNotReceived"));
         return;
+      }
+      try {
+        if (remember) {
+          localStorage.setItem(REMEMBER_USERNAME_KEY, username.trim());
+        } else {
+          localStorage.removeItem(REMEMBER_USERNAME_KEY);
+        }
+      } catch {
+        // ignore storage errors
       }
       dispatch(loginSuccess({ token, user }));
       navigate(isSystemUser(user) ? SYSTEM_HOME_PATH : "/communications");
@@ -292,7 +315,17 @@ export function Login() {
                     type="checkbox"
                     className="form-check-input"
                     checked={remember}
-                    onChange={(e) => setRemember(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setRemember(checked);
+                      if (!checked) {
+                        try {
+                          localStorage.removeItem(REMEMBER_USERNAME_KEY);
+                        } catch {
+                          // ignore storage errors
+                        }
+                      }
+                    }}
                   />
                   <label className="form-check-label" htmlFor="rememberMe">
                     {t("auth.rememberMe")}

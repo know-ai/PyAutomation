@@ -1016,6 +1016,16 @@ export function Communications() {
     }
   };
 
+  const handleClientFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isFormComplete || isConnectingClient) return;
+    if (editingClient) {
+      void handleUpdateClient();
+      return;
+    }
+    void handleAddClient();
+  };
+
   return (
     <div className="row">
       <div className="col-lg-4">
@@ -1027,9 +1037,10 @@ export function Communications() {
             <div className="d-flex gap-2">
               {editingClient ? (
                 <>
-                  <Button 
-                    variant="primary" 
-                    onClick={handleUpdateClient}
+                  <Button
+                    type="submit"
+                    form="opcua-client-form"
+                    variant="primary"
                     disabled={!isFormComplete || isConnectingClient}
                   >
                     {isConnectingClient ? (
@@ -1042,6 +1053,7 @@ export function Communications() {
                     )}
                   </Button>
                   <Button
+                    type="button"
                     variant="secondary"
                     onClick={handleCancelEdit}
                     disabled={isConnectingClient}
@@ -1051,9 +1063,10 @@ export function Communications() {
                 </>
               ) : (
                 <>
-              <Button 
-                variant="primary" 
-                onClick={handleAddClient}
+              <Button
+                type="submit"
+                form="opcua-client-form"
+                variant="primary"
                 disabled={!isFormComplete || isConnectingClient}
               >
                 {isConnectingClient ? (
@@ -1067,6 +1080,7 @@ export function Communications() {
               </Button>
                   {selectedClient && (
                     <Button
+                      type="button"
                       variant="warning"
                       onClick={() => handleEditClient(selectedClient)}
                       disabled={isConnectingClient}
@@ -1075,6 +1089,7 @@ export function Communications() {
                     </Button>
                   )}
               <Button
+                type="button"
                 variant="danger"
                 onClick={() => selectedClient && handleRemoveClient(selectedClient)}
                 disabled={!selectedClient || isConnectingClient}
@@ -1137,6 +1152,7 @@ export function Communications() {
               <small>{t("common.editing")}: <strong>{editingClient}</strong></small>
             </div>
           )}
+          <form id="opcua-client-form" onSubmit={handleClientFormSubmit}>
           <div className="row g-2">
             <div className="col-12 col-md-4">
               <input
@@ -1164,6 +1180,7 @@ export function Communications() {
               />
             </div>
           </div>
+          </form>
           {error && <div className="alert alert-danger mt-2 mb-0 py-2">{error}</div>}
           </fieldset>
         </Card>

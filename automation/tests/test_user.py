@@ -89,6 +89,23 @@ class TestUsers(unittest.TestCase):
         user, _ = self.users.signup(username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD, name=NAME, lastname=LASTNAME)
         self.assertIsInstance(user, User)
 
+    def test_signup_without_email(self):
+        role = Role(name=ROLE_NAME, level=0)
+        self.roles.add(role=role)
+        user1, msg1 = self.users.signup(
+            username="noemail1", role_name=ROLE_NAME, email="", password=PASSWORD
+        )
+        user2, msg2 = self.users.signup(
+            username="noemail2", role_name=ROLE_NAME, email=None, password=PASSWORD
+        )
+        self.assertIsInstance(user1, User)
+        self.assertIsInstance(user2, User)
+        self.assertEqual(user1.email, "")
+        self.assertEqual(user2.email, "")
+        self.assertIsNone(self.users.get_by_email(email=""))
+        self.assertIn("created successfully", msg1)
+        self.assertIn("created successfully", msg2)
+
     def test_login_logout(self):
 
         role = Role(name=ROLE_NAME, level=0)

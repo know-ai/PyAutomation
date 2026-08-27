@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { Card } from "../components/Card";
@@ -16,6 +16,7 @@ export function Signup() {
     username: "",
     email: "",
     password: "",
+    confirmPassword: "",
     name: "",
     lastname: "",
   });
@@ -28,31 +29,43 @@ export function Signup() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const passwordsMatch =
+    form.password.length > 0 && form.password === form.confirmPassword;
+  const canCreate = Boolean(form.username.trim()) && passwordsMatch && !loading;
+
+  const confirmHint = useMemo(() => {
+    if (!form.password && !form.confirmPassword) return undefined;
+    if (!form.confirmPassword) {
+      return { text: t("auth.repeatPasswordHint"), tone: "muted" as const };
+    }
+    if (passwordsMatch) {
+      return { text: t("auth.passwordsMatch"), tone: "success" as const };
+    }
+    return { text: t("auth.passwordsMismatch"), tone: "danger" as const };
+  }, [form.password, form.confirmPassword, passwordsMatch, t]);
+
   const attemptSignup = async () => {
+    if (!form.username.trim() || !passwordsMatch) return;
     setError(null);
     setLoading(true);
     try {
       await signup({
-        username: form.username,
-        email: form.email,
+        username: form.username.trim(),
+        email: form.email.trim(),
         password: form.password,
         name: form.name,
         lastname: form.lastname,
       });
-      
-      // Guardar toast de éxito en sessionStorage para que persista al navegar
+
       const toastData = {
         message: t("auth.signupSuccess"),
         type: "success",
         duration: 5000,
       };
       sessionStorage.setItem("pendingToast", JSON.stringify(toastData));
-      
-      // Asegurar que el estado se actualice antes de navegar
+
       setLoading(false);
-      
-      // Navegar a login - el toast se mostrará automáticamente en Login.tsx
-      // Usar setTimeout para asegurar que el estado se actualice completamente
+
       setTimeout(() => {
         navigate("/login", { replace: true });
       }, 0);
@@ -66,8 +79,6 @@ export function Signup() {
         data?.error ??
         err?.message;
 
-      // Solo abrir config de historiador ante error explícito de BD remota.
-      // El registro offline usa catálogo local y no debe redirigir aquí.
       const isDatabaseError =
         data?.error_type === "database_connection_error" ||
         (status === 503 &&
@@ -89,14 +100,13 @@ export function Signup() {
           showToast(t("auth.databaseUnavailableWithEventId", { eventId }), "warning", 0);
         }
       } else {
-      let message: string;
-      if (status === 400 && !backendMessage) {
-        // Errores típicos de validación en signup (usuario ya existe, email inválido, etc.)
-        message = t("auth.signupError");
-      } else {
-        message = backendMessage || t("auth.signupError");
-      }
-      setError(message);
+        let message: string;
+        if (status === 400 && !backendMessage) {
+          message = t("auth.signupError");
+        } else {
+          message = backendMessage || t("auth.signupError");
+        }
+        setError(message);
       }
     } finally {
       setLoading(false);
@@ -112,7 +122,6 @@ export function Signup() {
     setShowDatabaseConfig(false);
     setDatabaseEventId(null);
     setError(null);
-    // Esperar un momento para que la conexión se establezca completamente
     setTimeout(() => {
       attemptSignup();
     }, 500);
@@ -136,21 +145,33 @@ export function Signup() {
             label={t("auth.username")}
             value={form.username}
             onChange={(e) => onChange("username", e.target.value)}
+            autoComplete="username"
             required
           />
           <Input
-            label={t("auth.email")}
+            label={t("auth.emailOptional")}
             type="email"
             value={form.email}
             onChange={(e) => onChange("email", e.target.value)}
-            required
+            autoComplete="email"
           />
           <Input
             label={t("auth.password")}
             type="password"
             value={form.password}
             onChange={(e) => onChange("password", e.target.value)}
+            autoComplete="new-password"
             required
+          />
+          <Input
+            label={t("auth.repeatPassword")}
+            type="password"
+            value={form.confirmPassword}
+            onChange={(e) => onChange("confirmPassword", e.target.value)}
+            autoComplete="new-password"
+            required
+            hint={confirmHint?.text}
+            hintTone={confirmHint?.tone}
           />
           <div className="row">
             <div className="col-6">
@@ -158,6 +179,7 @@ export function Signup() {
                 label={t("auth.name")}
                 value={form.name}
                 onChange={(e) => onChange("name", e.target.value)}
+                autoComplete="given-name"
               />
             </div>
             <div className="col-6">
@@ -165,12 +187,13 @@ export function Signup() {
                 label={t("auth.lastname")}
                 value={form.lastname}
                 onChange={(e) => onChange("lastname", e.target.value)}
+                autoComplete="family-name"
               />
             </div>
           </div>
           {error && <div className="alert alert-danger py-2">{error}</div>}
           <div className="d-flex justify-content-between align-items-center">
-            <Button type="submit" loading={loading}>
+            <Button type="submit" loading={loading} disabled={!canCreate}>
               {t("auth.signup")}
             </Button>
             <Link to="/login">{t("auth.backToLogin")}</Link>
@@ -181,5 +204,3 @@ export function Signup() {
     </AuthLayout>
   );
 }
-
-
