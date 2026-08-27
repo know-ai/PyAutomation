@@ -114,6 +114,66 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         tag_description="True when HTTP 5xx/min stays above the performance threshold",
         alarm_description="System · HTTP 5xx high",
     ),
+    PerfAlarmSpec(
+        key="field_stale",
+        snapshot_field="FIELD_STALE",
+        tag_suffix="SYS.PERF.FIELD_STALE",
+        alarm_suffix="ALM.PERF.FIELD_STALE",
+        display_name="Field Stale",
+        unit="",
+        tag_description="True when a field tag age exceeds 3× scan_time (floor 5 s), even if Socket.IO is connected",
+        alarm_description="System · Field values stale",
+    ),
+    PerfAlarmSpec(
+        key="saf_deadletter",
+        snapshot_field="SAF_DEADLETTER_COUNT",
+        tag_suffix="SYS.PERF.SAF_DEADLETTER",
+        alarm_suffix="ALM.PERF.SAF_DEADLETTER",
+        display_name="SAF Dead-letter",
+        unit="",
+        tag_description="True when poison journal rows have been dead-lettered after repeated failed drains",
+        alarm_description="System · SAF dead-letter",
+    ),
+    PerfAlarmSpec(
+        key="hub_lag",
+        snapshot_field="HUB_LAG_MS",
+        tag_suffix="SYS.PERF.HUB_LAG",
+        alarm_suffix="ALM.PERF.HUB_LAG",
+        display_name="Hub Lag High",
+        unit="ms",
+        tag_description="True when the gevent event-loop lag stays above the performance threshold",
+        alarm_description="System · Hub event-loop lag",
+    ),
+    PerfAlarmSpec(
+        key="saf_shed",
+        snapshot_field="SAF_SHED",
+        tag_suffix="SYS.PERF.SAF_SHED",
+        alarm_suffix="ALM.PERF.SAF_SHED",
+        display_name="SAF History Shed",
+        unit="",
+        tag_description="True when analog tag history is being shed to protect alarm/event durability",
+        alarm_description="System · SAF analog shed",
+    ),
+    PerfAlarmSpec(
+        key="saf_ingest",
+        snapshot_field="SAF_INGEST_AGE_MS",
+        tag_suffix="SYS.PERF.SAF_INGEST",
+        alarm_suffix="ALM.PERF.SAF_INGEST",
+        display_name="SAF Ingest Stale",
+        unit="ms",
+        tag_description="True when DAQ is running but no new domain=tag journal row arrived",
+        alarm_description="System · SAF ingest heartbeat lost",
+    ),
+    PerfAlarmSpec(
+        key="saf_rate",
+        snapshot_field="SAF_RATE_MISMATCH",
+        tag_suffix="SYS.PERF.SAF_RATE",
+        alarm_suffix="ALM.PERF.SAF_RATE",
+        display_name="SAF Drain Lagging",
+        unit="",
+        tag_description="True when SAF drain rate stays below ingest rate with the queue already above Low",
+        alarm_description="System · SAF drain slower than ingest",
+    ),
 )
 
 _SPECS_BY_KEY = {spec.key: spec for spec in PERF_ALARM_SPECS}
@@ -251,7 +311,7 @@ def _persist_performance_tag(app, tag) -> bool:
 
 
 def performance_tags_persisted(app=None) -> bool:
-    """True when all 7 SYS.PERF.* tags exist in the historian Tags table."""
+    """True when all SYS.PERF.* tags exist in the historian Tags table."""
     try:
         app = app or _app()
         if not _historian_connected(app):
@@ -272,7 +332,7 @@ def ensure_performance_alarms(config: dict[str, Any] | None = None) -> bool:
     Always refreshes alarm descriptions from the active thresholds so offline catalog
     and remote historian stay aligned when operators change PERF settings.
 
-    Returns True only if the 7 SYS.PERF.* rows exist in the central database.
+    Returns True only if the SYS.PERF.* rows exist in the central database.
     Never raises. Safe to call on every sampler tick until persisted.
     """
     try:

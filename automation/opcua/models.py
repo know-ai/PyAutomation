@@ -3,8 +3,11 @@ from opcua import ua
 from datetime import datetime
 # import sched
 from opcua.ua.uatypes import NodeId, datatype_to_varianttype
-import re, uuid, logging, time
+import re, uuid, logging, time, threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from ..utils import _colorize_message
+
+DAQ_READ_TIMEOUT_S = 0.2
 from ..utils.opcua_audit import (
     failure_cooldown_seconds,
     record_opcua_connection_event,
@@ -52,6 +55,10 @@ class Client(OPCClient):
         self._last_failure_event_monotonic = 0.0
         self._audit_source = "client-connect"
         self._suppress_connection_alarm = False
+        self._io_lock = threading.Lock()
+        self._io_pool = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=f"opc-io-{client_name}"[:15]
+        )
         # self.scheduler = sched.scheduler(time.time, time.sleep) 
         # self.token_renewal_interval = 30 # Cada 10 minutos
         super(Client, self).__init__(url, timeout)
@@ -226,7 +233,22 @@ class Client(OPCClient):
                 getattr(self, "owner_node", None),
             )
             return
-        # if not self.is_connected() or not self.is_token_valid(): 
+        if self.is_connected():
+            return
+        if not self._io_lock.acquire(timeout=DAQ_READ_TIMEOUT_S):
+            logging.getLogger("pyautomation").warning(
+                "OPC reconnect skipped client=%s reason=io-lock-busy",
+                self.name,
+            )
+            return
+        try:
+            if self.is_connected():
+                return
+            self._reconnect_unlocked()
+        finally:
+            self._io_lock.release()
+
+    def _reconnect_unlocked(self):
         if self.is_connected():
             return
 
@@ -598,10 +620,52 @@ class Client(OPCClient):
 
             return False
 
+    def get_node_data_value(self, node_namespace):
+        """One OPC read: Value + SourceTimestamp + StatusCode. Not a browse dump."""
+        node = self.get_node(NodeId.from_string(node_namespace))
+        return node.get_data_value()
+
+    def read_data_value_bounded(self, node_namespace, timeout_s: float = DAQ_READ_TIMEOUT_S):
+        """Serialize asyncua I/O and bound the wait so DAQ cannot hang the cycle."""
+
+        def _run():
+            with self._io_lock:
+                if not self.is_connected():
+                    return None
+                return self.get_node_data_value(node_namespace)
+
+        future = self._io_pool.submit(_run)
+        try:
+            return future.result(timeout=max(0.05, float(timeout_s)))
+        except FuturesTimeout:
+            logging.getLogger("pyautomation").warning(
+                "OPC DAQ read timed out client=%s namespace=%s budget=%.3fs",
+                self.name,
+                node_namespace,
+                timeout_s,
+            )
+            return None
+        except Exception:
+            logging.getLogger("pyautomation").error(
+                "OPC DAQ read failed client=%s namespace=%s",
+                self.name,
+                node_namespace,
+                exc_info=True,
+            )
+            return None
+
     def get_node_attributes(self, node_namespace)->dict:
         r"""
         Documentation here
         """
+        if not self._io_lock.acquire(timeout=max(1.0, DAQ_READ_TIMEOUT_S)):
+            return {}, 400
+        try:
+            return self._get_node_attributes_unlocked(node_namespace)
+        finally:
+            self._io_lock.release()
+
+    def _get_node_attributes_unlocked(self, node_namespace):
         if self.is_connected():
             _node = self.get_node(NodeId.from_string(node_namespace))
 

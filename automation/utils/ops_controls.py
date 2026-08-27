@@ -19,6 +19,7 @@ _RESTARTING: dict[str, bool] = {
     "LoggerWorker": False,
     "CatalogReplicator": False,
     "MetricsSampler": False,
+    "ReplicationWorker": False,
 }
 
 WORKER_ALIASES = {
@@ -30,6 +31,9 @@ WORKER_ALIASES = {
     "metricssampler": "MetricsSampler",
     "metricssamplerworker": "MetricsSampler",
     "metrics": "MetricsSampler",
+    "replicationworker": "ReplicationWorker",
+    "replication": "ReplicationWorker",
+    "saf": "ReplicationWorker",
 }
 
 CONTROL_ROLES = frozenset({"admin", "supervisor", "sudo"})
@@ -46,7 +50,7 @@ def normalize_worker_name(name: str | None) -> str:
     resolved = WORKER_ALIASES.get(key)
     if not resolved:
         raise OpsControlError(
-            "Unknown worker. Use LoggerWorker, CatalogReplicator or MetricsSampler."
+            "Unknown worker. Use LoggerWorker, CatalogReplicator, MetricsSampler or ReplicationWorker."
         )
     return resolved
 
@@ -108,6 +112,7 @@ def worker_snapshot() -> dict[str, dict[str, Any]]:
     logger = getattr(app, "db_worker", None)
     catalog = get_catalog_replicator()
     metrics = getattr(app, "metrics_worker", None)
+    replication = getattr(app, "replication_worker", None)
     catalog_last = None
     if catalog is not None:
         last = getattr(catalog, "_last_sync", None)
@@ -127,6 +132,11 @@ def worker_snapshot() -> dict[str, dict[str, Any]]:
             "name": "MetricsSampler",
             "state": _state(metrics, "MetricsSampler"),
             "last_cycle_utc": getattr(metrics, "last_cycle_utc", None),
+        },
+        "ReplicationWorker": {
+            "name": "ReplicationWorker",
+            "state": _state(replication, "ReplicationWorker"),
+            "last_cycle_utc": getattr(replication, "last_cycle_utc", None),
         },
     }
 
@@ -158,6 +168,8 @@ def restart_worker(name: str, *, user=None, reason: str | None = None) -> dict[s
                 _restart_logger()
             elif resolved == "CatalogReplicator":
                 _restart_catalog()
+            elif resolved == "ReplicationWorker":
+                _restart_replication()
             else:
                 _restart_metrics()
             _audit(
@@ -232,17 +244,37 @@ def _restart_metrics() -> dict[str, Any]:
     return {"state": "alive"}
 
 
+def _restart_replication() -> dict[str, Any]:
+    from .. import PyAutomation
+    from ..workers.replication import ReplicationWorker
+
+    app = PyAutomation()
+    old = getattr(app, "replication_worker", None)
+    if old is not None:
+        old.stop()
+        old.join(timeout=8.0)
+    new = ReplicationWorker()
+    app.replication_worker = new
+    new.start()
+    return {"state": "alive"}
+
+
 def saf_retry(*, user=None, reason: str | None = None) -> dict[str, Any]:
     from .. import PyAutomation
     from ..persistence import get_persistence_gateway
 
     replicated = 0
-    worker = getattr(PyAutomation(), "db_worker", None)
-    request = getattr(worker, "request_cycle", None)
+    app = PyAutomation()
+    logger = getattr(app, "db_worker", None)
+    request = getattr(logger, "request_cycle", None)
     if callable(request):
         request()
+    repl = getattr(app, "replication_worker", None)
+    wake = getattr(repl, "request_cycle", None)
+    if callable(wake):
+        wake()
     try:
-        replicated = int(get_persistence_gateway().replicate_once() or 0)
+        replicated = int(get_persistence_gateway().replicate_catchup() or 0)
     except Exception:
         _LOGGER.warning("SAF retry replicate_once failed; LoggerWorker will retry", exc_info=True)
     who = _username(user)
@@ -382,22 +414,9 @@ def update_runtime_settings(payload: dict[str, Any], *, user=None) -> dict[str, 
         value = max(1000, min(1_000_000, int(ring)))
         gw = get_persistence_gateway()
         current = gw.config
-        new_cfg = SafConfig(
-            journal_path=current.journal_path,
-            max_disk_bytes=current.max_disk_bytes,
-            max_pending_rows=current.max_pending_rows,
-            ring_maxsize=value,
-            tag_batch_size=current.tag_batch_size,
-            tag_flush_interval_s=current.tag_flush_interval_s,
-            replicate_batch_size=current.replicate_batch_size,
-            replicate_rate_per_s=current.replicate_rate_per_s,
-            circuit_fail_threshold=current.circuit_fail_threshold,
-            circuit_open_s=current.circuit_open_s,
-            gc_sent_after_s=current.gc_sent_after_s,
-            gc_batch=current.gc_batch,
-            backup_size_bytes=current.backup_size_bytes,
-            wal_autocheckpoint=current.wal_autocheckpoint,
-        )
+        from dataclasses import replace
+
+        new_cfg = replace(current, ring_maxsize=value)
         gw.config = new_cfg
         gw.journal.config = new_cfg
         gw.replicator.config = new_cfg

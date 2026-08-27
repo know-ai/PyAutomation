@@ -21,6 +21,12 @@ const LABEL_KEYS: Record<PerfAlarmKey, string> = {
   metrics_age: "performance.metricsAge",
   db_conn: "performance.dbConnections",
   http_5xx: "performance.http5xx",
+  field_stale: "performance.fieldStale",
+  saf_deadletter: "performance.safDeadletter",
+  hub_lag: "performance.hubLag",
+  saf_shed: "performance.safShed",
+  saf_ingest: "performance.safIngest",
+  saf_rate: "performance.safRate",
 };
 
 type Row = {

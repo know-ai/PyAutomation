@@ -23,6 +23,18 @@ _DEFAULTS: dict[str, Any] = {
     "perf_db_conn_threshold": 10.0,
     "perf_http_5xx_enabled": True,
     "perf_http_5xx_threshold": 5.0,
+    "perf_field_stale_enabled": True,
+    "perf_field_stale_threshold": 1.0,
+    "perf_saf_deadletter_enabled": True,
+    "perf_saf_deadletter_threshold": 1.0,
+    "perf_hub_lag_enabled": True,
+    "perf_hub_lag_threshold": 2000.0,
+    "perf_saf_shed_enabled": True,
+    "perf_saf_shed_threshold": 1.0,
+    "perf_saf_ingest_enabled": True,
+    "perf_saf_ingest_threshold": 15000.0,
+    "perf_saf_rate_enabled": True,
+    "perf_saf_rate_threshold": 1.0,
 }
 
 _ENV_MAP = {
@@ -35,6 +47,12 @@ _ENV_MAP = {
     "AUTOMATION_PERF_METRICS_AGE_THRESHOLD": ("perf_metrics_age_threshold", float),
     "AUTOMATION_PERF_DB_CONN_THRESHOLD": ("perf_db_conn_threshold", float),
     "AUTOMATION_PERF_HTTP_5XX_THRESHOLD": ("perf_http_5xx_threshold", float),
+    "AUTOMATION_PERF_FIELD_STALE_THRESHOLD": ("perf_field_stale_threshold", float),
+    "AUTOMATION_PERF_SAF_DEADLETTER_THRESHOLD": ("perf_saf_deadletter_threshold", float),
+    "AUTOMATION_PERF_HUB_LAG_THRESHOLD": ("perf_hub_lag_threshold", float),
+    "AUTOMATION_PERF_SAF_SHED_THRESHOLD": ("perf_saf_shed_threshold", float),
+    "AUTOMATION_PERF_SAF_INGEST_THRESHOLD": ("perf_saf_ingest_threshold", float),
+    "AUTOMATION_PERF_SAF_RATE_THRESHOLD": ("perf_saf_rate_threshold", float),
 }
 
 _BOOL_KEYS = {
@@ -46,6 +64,12 @@ _BOOL_KEYS = {
     "perf_metrics_age_enabled",
     "perf_db_conn_enabled",
     "perf_http_5xx_enabled",
+    "perf_field_stale_enabled",
+    "perf_saf_deadletter_enabled",
+    "perf_hub_lag_enabled",
+    "perf_saf_shed_enabled",
+    "perf_saf_ingest_enabled",
+    "perf_saf_rate_enabled",
 }
 
 _CLAMP: dict[str, tuple[float, float]] = {
@@ -57,6 +81,12 @@ _CLAMP: dict[str, tuple[float, float]] = {
     "perf_metrics_age_threshold": (1000, 600_000),
     "perf_db_conn_threshold": (1, 10_000),
     "perf_http_5xx_threshold": (1, 100_000),
+    "perf_field_stale_threshold": (1, 1),
+    "perf_saf_deadletter_threshold": (1, 10_000_000),
+    "perf_hub_lag_threshold": (100, 60_000),
+    "perf_saf_shed_threshold": (1, 1),
+    "perf_saf_ingest_threshold": (1000, 600_000),
+    "perf_saf_rate_threshold": (1, 1),
 }
 
 _CAMEL_TO_SNAKE = {
@@ -69,6 +99,12 @@ _CAMEL_TO_SNAKE = {
     "metricsAgeThreshold": "perf_metrics_age_threshold",
     "dbConnThreshold": "perf_db_conn_threshold",
     "http5xxThreshold": "perf_http_5xx_threshold",
+    "fieldStaleThreshold": "perf_field_stale_threshold",
+    "safDeadletterThreshold": "perf_saf_deadletter_threshold",
+    "hubLagThreshold": "perf_hub_lag_threshold",
+    "safShedThreshold": "perf_saf_shed_threshold",
+    "safIngestThreshold": "perf_saf_ingest_threshold",
+    "safRateThreshold": "perf_saf_rate_threshold",
 }
 
 ALARM_KEYS = (
@@ -79,6 +115,12 @@ ALARM_KEYS = (
     "metrics_age",
     "db_conn",
     "http_5xx",
+    "field_stale",
+    "saf_deadletter",
+    "hub_lag",
+    "saf_shed",
+    "saf_ingest",
+    "saf_rate",
 )
 
 

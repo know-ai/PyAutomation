@@ -40,4 +40,14 @@ class SafHealthProbe:
             "SAF_MAX_DISK_BYTES": self.journal.config.max_disk_bytes,
             "SAF_MAX_PENDING_ROWS": getattr(self.journal.config, "max_pending_rows", 0),
             "SAF_PENDING_CAP_HITS": getattr(self.journal, "pending_cap_hits", 0),
+            "SAF_DEADLETTER_COUNT": int(getattr(self.journal, "deadletter_count", 0) or 0),
+            "SAF_TAG_INGEST_AGE_S": self._ingest_age_s(),
         }
+
+    def _ingest_age_s(self) -> float:
+        mono = float(getattr(self.journal, "last_tag_ingest_mono", 0.0) or 0.0)
+        if mono <= 0:
+            return 0.0
+        import time
+
+        return max(0.0, time.monotonic() - mono)

@@ -36,6 +36,15 @@ class SafConfig:
     gc_batch: int = 5_000
     backup_size_bytes: int = 1 * 1024 * 1024 * 1024
     wal_autocheckpoint: int = 1000
+    dead_letter_attempts: int = 5
+    shed_high: int = 50_000
+    shed_low: int = 10_000
+    catchup_depth: int = 5_000
+    catchup_budget_s: float = 0.4
+    ingest_heartbeat_s: float = 15.0
+    compact_min_freelist_bytes: int = 64 * 1024 * 1024
+    compact_min_interval_s: float = 3600.0
+    compact_max_pending: int = 256
 
     @classmethod
     def from_app_config(cls, raw: dict | None) -> "SafConfig":
@@ -56,4 +65,19 @@ class SafConfig:
             gc_batch=int(data.get("saf_gc_batch", defaults.gc_batch)),
             backup_size_bytes=int(data.get("saf_backup_size_bytes", defaults.backup_size_bytes)),
             wal_autocheckpoint=int(data.get("saf_wal_autocheckpoint", defaults.wal_autocheckpoint)),
+            dead_letter_attempts=int(data.get("saf_dead_letter_attempts", defaults.dead_letter_attempts)),
+            shed_high=int(data.get("saf_shed_high", defaults.shed_high)),
+            shed_low=int(data.get("saf_shed_low", defaults.shed_low)),
+            catchup_depth=int(data.get("saf_catchup_depth", defaults.catchup_depth)),
+            catchup_budget_s=float(data.get("saf_catchup_budget_s", defaults.catchup_budget_s)),
+            ingest_heartbeat_s=float(data.get("saf_ingest_heartbeat_s", defaults.ingest_heartbeat_s)),
+            compact_min_freelist_bytes=int(
+                data.get("saf_compact_min_freelist_bytes", defaults.compact_min_freelist_bytes)
+            ),
+            compact_min_interval_s=float(
+                data.get("saf_compact_min_interval_s", defaults.compact_min_interval_s)
+            ),
+            compact_max_pending=int(
+                data.get("saf_compact_max_pending", defaults.compact_max_pending)
+            ),
         )

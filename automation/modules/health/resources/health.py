@@ -76,6 +76,12 @@ class HealthPingResource(Resource):
         This endpoint is intentionally lightweight and unauthenticated so it
         can be safely used by Docker/Kubernetes health checks.
         """
+        try:
+            from ....utils.hub_lag import start_hub_lag_watch
+
+            start_hub_lag_watch()
+        except Exception:
+            pass
         return {
             "status": "ok",
             "service": "pyautomation",
@@ -161,10 +167,10 @@ class HealthSystemResource(Resource):
         except Exception:
             pass
         try:
-            from ....persistence import get_persistence_gateway
-            snapshot = get_persistence_gateway().snapshot()
-            pending_rows = int(snapshot.get("SAF_QUEUE_DEPTH") or 0)
-            pending_cap_hits = int(snapshot.get("SAF_PENDING_CAP_HITS") or 0)
+            worker = getattr(app, "metrics_worker", None)
+            snap = worker.get_snapshot() if worker is not None and hasattr(worker, "get_snapshot") else {}
+            pending_rows = int(snap.get("SAF_QUEUE_DEPTH") or 0)
+            pending_cap_hits = int(snap.get("SAF_PENDING_CAP_HITS") or 0)
         except Exception:
             pass
         try:

@@ -971,20 +971,35 @@ class OPCUAClientManager:
         return None
     
     @logging_error_handler
+    def get_node_data_value_by_opcua_address(
+        self, opcua_address: str, namespace: str, timeout_s: float = 0.2
+    ):
+        """DAQ hot path: one get_data_value, bounded wait, shared client lock."""
+        from ..opcua.models import DAQ_READ_TIMEOUT_S
+
+        budget = DAQ_READ_TIMEOUT_S if timeout_s is None else float(timeout_s)
+        for client_name, client in list(self._clients.items()):
+            if opcua_address != client.serialize()["server_url"]:
+                continue
+            if not client.is_connected():
+                return None
+            return client.read_data_value_bounded(namespace, timeout_s=budget)
+        return None
+
+    @logging_error_handler
     def get_node_value_by_opcua_address(self, opcua_address:str, namespace:str)->list:
         r"""
         Reads a node value using the server address to find the client.
 
-        **Parameters:**
-
-        * **opcua_address** (str): Server URL.
-        * **namespace** (str): Node ID.
+        Acquisition uses ``get_node_data_value_by_opcua_address``. This path
+        remains for callers that still expect the nested attribute dump.
         """
-        for client_name, client in self._clients.items():
-
-            if opcua_address==client.serialize()["server_url"]:
-                if client.is_connected():
-                    return self.get_node_attributes(client_name=client_name, namespaces=[namespace])
+        data_value = self.get_node_data_value_by_opcua_address(
+            opcua_address=opcua_address, namespace=namespace
+        )
+        if data_value is None:
+            return None
+        return [[{"DataValue": data_value}]]
     
     @logging_error_handler 
     def get_node_attributes(self, client_name:str, namespaces:list)->list:

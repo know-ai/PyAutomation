@@ -78,6 +78,12 @@ export const PERF_ALARM_KEYS = [
   "metrics_age",
   "db_conn",
   "http_5xx",
+  "field_stale",
+  "saf_deadletter",
+  "hub_lag",
+  "saf_shed",
+  "saf_ingest",
+  "saf_rate",
 ] as const;
 
 export type PerfAlarmKey = (typeof PERF_ALARM_KEYS)[number];

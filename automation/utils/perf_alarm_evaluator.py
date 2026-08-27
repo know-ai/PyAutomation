@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Debounced threshold evaluator for node performance alarms.
 
-O(n) with n=7. Never touches OPC or the historian. The sampler calls evaluate()
+O(n) with n=len(PERF_ALARM_SPECS). Never touches OPC or the historian. The sampler calls evaluate()
 once per tick; BOOL writes happen only on state change.
 """
 from __future__ import annotations

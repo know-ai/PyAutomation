@@ -77,4 +77,10 @@ export const PERF_ALARM_UNITS: Record<PerfAlarmKey, string> = {
   metrics_age: "ms",
   db_conn: "",
   http_5xx: "/min",
+  field_stale: "",
+  saf_deadletter: "",
+  hub_lag: "ms",
+  saf_shed: "",
+  saf_ingest: "ms",
+  saf_rate: "",
 };

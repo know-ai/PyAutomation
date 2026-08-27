@@ -22,7 +22,7 @@ app = PyAutomation()
 restart_model = api.model(
     "admin_worker_restart",
     {
-        "name": fields.String(required=False, description="LoggerWorker | CatalogReplicator | MetricsSampler"),
+        "name": fields.String(required=False, description="LoggerWorker | CatalogReplicator | MetricsSampler | ReplicationWorker"),
         "reason": fields.String(required=False),
     },
 )
@@ -78,7 +78,7 @@ def _handle(exc):
 
 @ns.route("/workers/restart")
 class AdminWorkerRestartResource(Resource):
-    @api.doc(security="apikey", description="Restart LoggerWorker, CatalogReplicator or MetricsSampler.")
+    @api.doc(security="apikey", description="Restart LoggerWorker, CatalogReplicator, MetricsSampler or ReplicationWorker.")
     @Api.token_required(auth=True)
     @Api.auth_roles(["admin", "supervisor", "sudo"])
     @ns.expect(restart_model)

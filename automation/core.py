@@ -11,7 +11,7 @@ from .dbmodels.users import Roles, Users
 from .dbmodels.machines import Machines
 # PYAUTOMATION MODULES IMPORTATION
 from .singleton import Singleton
-from .workers import LoggerWorker, NtpMonitorWorker, HmiSessionCleanupWorker, HmiSessionSyncWorker, UserInvalidateWorker, MetricsSamplerWorker
+from .workers import LoggerWorker, NtpMonitorWorker, HmiSessionCleanupWorker, HmiSessionSyncWorker, UserInvalidateWorker, MetricsSamplerWorker, ReplicationWorker
 from .managers import DBManager, OPCUAClientManager, AlarmManager
 from .opcua.models import Client
 from .tags import CVTEngine, Tag
@@ -3559,6 +3559,10 @@ class PyAutomation(Singleton):
                 self.machine.join(machine=daq)
             elif not reload:
                 self.machine.start()
+        else:
+            setter = getattr(daq, "set_opcua_client_manager", None)
+            if callable(setter):
+                setter(manager=self.opcua_client_manager)
 
         daq.subscribe_to(tag=tag)
 
@@ -6264,6 +6268,16 @@ class PyAutomation(Singleton):
             self.metrics_worker = MetricsSamplerWorker()
             self.metrics_worker.start()
 
+            self.replication_worker = ReplicationWorker()
+            self.replication_worker.start()
+
+            try:
+                from .utils.hub_lag import start_hub_lag_watch
+
+                start_hub_lag_watch()
+            except Exception:
+                logging.debug("hub lag watch startup skipped", exc_info=True)
+
             from .workers.wavelet_worker import start_wavelet_worker
 
             self.wavelet_worker = start_wavelet_worker()
@@ -6305,6 +6319,8 @@ class PyAutomation(Singleton):
             self.user_invalidate_worker.stop()
         if hasattr(self, "metrics_worker") and self.metrics_worker is not None:
             self.metrics_worker.stop()
+        if hasattr(self, "replication_worker") and self.replication_worker is not None:
+            self.replication_worker.stop()
         if hasattr(self, "wavelet_worker") and self.wavelet_worker is not None:
             from .workers.wavelet_worker import stop_wavelet_worker
 

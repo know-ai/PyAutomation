@@ -216,6 +216,10 @@ class RemoteReplicator:
             self.circuit.success()
             self.last_error = ""
         self.last_replicated = replicated
+        try:
+            self.journal.total_replicated = int(getattr(self.journal, "total_replicated", 0) or 0) + int(replicated or 0)
+        except Exception:
+            pass
         self.journal.gc_sent(self.config.gc_sent_after_s, self.config.gc_batch)
         return replicated
 

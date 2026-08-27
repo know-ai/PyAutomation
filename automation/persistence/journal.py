@@ -25,6 +25,7 @@ from .records import utc_now
 STATUS_PENDING = "PENDING"
 STATUS_REPLICATING = "REPLICATING"
 STATUS_SENT = "SENT"
+STATUS_DEAD_LETTER = "DEAD_LETTER"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS persistence_journal (
@@ -49,6 +50,19 @@ INSERT INTO persistence_journal
     (domain, entity_id, idempotency_key, payload, status, created_at, updated_at, attempts)
 VALUES (?, ?, ?, ?, 'PENDING', ?, ?, 0)
 """
+
+# SQLite default SQLITE_MAX_VARIABLE_NUMBER is 999 on some builds.
+_SQL_IN_CHUNK = 400
+_DISK_CACHE_TTL_S = 1.0
+_DISK_HOT_RATIO = 0.8
+_RECONCILE_INTERVAL_S = 30.0
+_DRAINABLE = (STATUS_PENDING, STATUS_REPLICATING)
+
+
+def _iter_id_chunks(ids: Sequence[int], size: int = _SQL_IN_CHUNK):
+    values = [int(jid) for jid in ids]
+    for index in range(0, len(values), size):
+        yield values[index : index + size]
 
 
 def _notify_saf_capacity_event(kind: str) -> None:
@@ -100,6 +114,15 @@ class JournalWriter:
         self.backpressure = False
         self.last_error = ""
         self._force_flush_hook = None
+        self.deadletter_count = 0
+        self.last_tag_ingest_mono = 0.0
+        self.total_replicated = 0
+        self._pending_durable = 0
+        self._disk_bytes_cache = 0
+        self._disk_bytes_mono = 0.0
+        self._last_reconcile_mono = 0.0
+        self._last_checkpoint_mono = 0.0
+        self._last_compact_mono = 0.0
 
     def start(self) -> None:
         with self._lock:
@@ -241,11 +264,7 @@ class JournalWriter:
         self.start()
         with self._lock:
             self._ensure_open_locked()
-            row = self._conn.execute(
-                "SELECT COUNT(*) FROM persistence_journal WHERE status IN (?, ?)",
-                (STATUS_PENDING, STATUS_REPLICATING),
-            ).fetchone()
-            return int(row[0]) + len(self._ring)
+            return self._pending_rows_locked()
 
     def fetch_pending(self, limit: int) -> list[dict[str, Any]]:
         self.start()
@@ -256,7 +275,7 @@ class JournalWriter:
                 SELECT id, domain, entity_id, idempotency_key, payload, created_at, attempts
                 FROM persistence_journal
                 WHERE status = ?
-                ORDER BY CASE domain WHEN 'tag' THEN 0 ELSE 1 END, id ASC
+                ORDER BY id ASC
                 LIMIT ?
                 """,
                 (STATUS_PENDING, int(limit)),
@@ -270,6 +289,8 @@ class JournalWriter:
         if not journal_ids:
             return
         now = utc_now().isoformat()
+        max_attempts = int(getattr(self.config, "dead_letter_attempts", 5) or 5)
+        ids = [int(jid) for jid in journal_ids]
         with self._lock:
             self._ensure_open_locked()
             self._conn.executemany(
@@ -278,8 +299,26 @@ class JournalWriter:
                 SET status = ?, updated_at = ?, attempts = attempts + 1, last_error = ?
                 WHERE id = ?
                 """,
-                [(STATUS_PENDING, now, error[:512], int(jid)) for jid in journal_ids],
+                [(STATUS_PENDING, now, error[:512], jid) for jid in ids],
             )
+            placeholders = ",".join("?" * len(ids))
+            cur = self._conn.execute(
+                f"""
+                UPDATE persistence_journal
+                SET status = ?, updated_at = ?
+                WHERE id IN ({placeholders}) AND attempts >= ?
+                """,
+                [STATUS_DEAD_LETTER, now, *ids, max_attempts],
+            )
+            flipped = int(cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else self._changes_locked())
+            if flipped > 0:
+                self.deadletter_count += flipped
+                self._pending_durable = max(0, self._pending_durable - flipped)
+                logging.getLogger("pyautomation").error(
+                    "SAF dead-lettered %s journal row(s) after %s attempts",
+                    flipped,
+                    max_attempts,
+                )
             self._commit_locked()
 
     def mark_sent(self, journal_ids: Sequence[int]) -> None:
@@ -304,6 +343,7 @@ class JournalWriter:
             )
             deleted = cur.rowcount if cur.rowcount is not None else 0
             self._commit_locked()
+            self._reconcile_pending_locked(force=True)
             return int(deleted)
 
     def drop_unsent(self, *, confirm: bool) -> int:
@@ -319,40 +359,92 @@ class JournalWriter:
             dropped_ring = len(self._ring)
             self._ring.clear()
             cur = self._conn.execute(
-                "DELETE FROM persistence_journal WHERE status IN (?, ?)",
-                (STATUS_PENDING, STATUS_REPLICATING),
+                "DELETE FROM persistence_journal WHERE status IN (?, ?, ?)",
+                (STATUS_PENDING, STATUS_REPLICATING, STATUS_DEAD_LETTER),
             )
             deleted = int(cur.rowcount if cur.rowcount is not None else 0)
+            self._pending_durable = 0
             self._commit_locked()
+            self._reconcile_pending_locked(force=True)
             return deleted + dropped_ring
 
     def evict_sent_oldest(self, limit: int) -> int:
         """Controlled eviction: SENT only. PENDING is sacred."""
         with self._lock:
             self._ensure_open_locked()
-            cur = self._conn.execute(
-                """
-                DELETE FROM persistence_journal
-                WHERE id IN (
-                    SELECT id FROM persistence_journal
-                    WHERE status = ?
-                    ORDER BY id ASC
-                    LIMIT ?
-                )
-                """,
-                (STATUS_SENT, int(limit)),
-            )
-            deleted = cur.rowcount if cur.rowcount is not None else 0
+            deleted = self._evict_sent_oldest_locked(limit)
             self._commit_locked()
-            return int(deleted)
+            return deleted
 
     def disk_bytes(self) -> int:
-        total = 0
-        for suffix in ("", "-wal", "-shm"):
-            path = self.config.journal_path + suffix
-            if os.path.exists(path):
-                total += os.path.getsize(path)
-        return total
+        with self._lock:
+            return self._disk_bytes_cached_locked()
+
+    def reclaim_idle(self) -> dict[str, int]:
+        """Slow path: GC SENT, truncate WAL, compact freelist back to the OS.
+
+        Never called from enqueue. VACUUM runs only when the live queue is quiet
+        and wasted pages exceed compact_min_freelist_bytes.
+        """
+        deleted = self.gc_sent(self.config.gc_sent_after_s, self.config.gc_batch)
+        with self._lock:
+            self._ensure_open_locked()
+            wal_bytes = self._wal_file_bytes()
+            now = time.monotonic()
+            checkpointed = 0
+            if wal_bytes >= 8 * 1024 * 1024 or (now - self._last_checkpoint_mono) >= 30.0:
+                self._wal_checkpoint_truncate_locked()
+                self._last_checkpoint_mono = now
+                checkpointed = 1
+            pending = self._pending_rows_locked()
+            freelist = self._freelist_bytes_locked()
+            min_free = int(getattr(self.config, "compact_min_freelist_bytes", 64 * 1024 * 1024) or 0)
+            min_interval = float(getattr(self.config, "compact_min_interval_s", 3600.0) or 3600.0)
+            max_pending = int(getattr(self.config, "compact_max_pending", 256) or 256)
+            vacuumed = 0
+            if (
+                pending <= max_pending
+                and min_free > 0
+                and freelist >= min_free
+                and (now - self._last_compact_mono) >= min_interval
+            ):
+                disk_before = self._measure_disk_bytes()
+                started = time.monotonic()
+                logging.getLogger("pyautomation").warning(
+                    "SAF journal compact start pending=%s freelist_bytes=%s disk=%s",
+                    pending,
+                    freelist,
+                    disk_before,
+                )
+                try:
+                    self._conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
+                    self._conn.execute("VACUUM")
+                    self._wal_checkpoint_truncate_locked()
+                    vacuumed = 1
+                except sqlite3.Error:
+                    logging.getLogger("pyautomation").error(
+                        "SAF journal VACUUM failed; file left intact",
+                        exc_info=True,
+                    )
+                self._last_compact_mono = time.monotonic()
+                self._last_checkpoint_mono = self._last_compact_mono
+                self._invalidate_disk_cache_locked()
+                logging.getLogger("pyautomation").warning(
+                    "SAF journal compact done elapsed_s=%.3f disk=%s vacuumed=%s",
+                    time.monotonic() - started,
+                    self._measure_disk_bytes(),
+                    vacuumed,
+                )
+            disk = self._measure_disk_bytes()
+            self._disk_bytes_cache = disk
+            self._disk_bytes_mono = time.monotonic()
+            return {
+                "gc_deleted": int(deleted),
+                "checkpointed": checkpointed,
+                "vacuumed": vacuumed,
+                "freelist_bytes": int(freelist),
+                "disk_bytes": int(disk),
+            }
 
     def oldest_pending_age_s(self) -> float:
         with self._lock:
@@ -375,20 +467,94 @@ class JournalWriter:
         if not journal_ids:
             return
         now = utc_now().isoformat()
+        ids = [int(jid) for jid in journal_ids]
         with self._lock:
             self._ensure_open_locked()
-            self._conn.executemany(
-                "UPDATE persistence_journal SET status = ?, updated_at = ? WHERE id = ?",
-                [(status, now, int(jid)) for jid in journal_ids],
-            )
+            if status == STATUS_SENT:
+                flipped = self._update_status_chunked_locked(
+                    ids,
+                    new_status=STATUS_SENT,
+                    now=now,
+                    only_statuses=_DRAINABLE,
+                )
+                if flipped > 0:
+                    self._pending_durable = max(0, self._pending_durable - flipped)
+            elif status == STATUS_REPLICATING:
+                self._update_status_chunked_locked(
+                    ids,
+                    new_status=STATUS_REPLICATING,
+                    now=now,
+                    only_statuses=(STATUS_PENDING,),
+                )
+            else:
+                self._update_status_chunked_locked(
+                    ids,
+                    new_status=status,
+                    now=now,
+                    only_statuses=None,
+                )
             self._commit_locked()
 
+    def _update_status_chunked_locked(
+        self,
+        ids: Sequence[int],
+        *,
+        new_status: str,
+        now: str,
+        only_statuses: Sequence[str] | None,
+    ) -> int:
+        flipped = 0
+        for chunk in _iter_id_chunks(ids):
+            placeholders = ",".join("?" * len(chunk))
+            if only_statuses:
+                status_ph = ",".join("?" * len(only_statuses))
+                self._conn.execute(
+                    f"""
+                    UPDATE persistence_journal
+                    SET status = ?, updated_at = ?
+                    WHERE id IN ({placeholders}) AND status IN ({status_ph})
+                    """,
+                    [new_status, now, *chunk, *only_statuses],
+                )
+            else:
+                self._conn.execute(
+                    f"""
+                    UPDATE persistence_journal
+                    SET status = ?, updated_at = ?
+                    WHERE id IN ({placeholders})
+                    """,
+                    [new_status, now, *chunk],
+                )
+            flipped += self._changes_locked()
+        return flipped
+
+    def _changes_locked(self) -> int:
+        row = self._conn.execute("SELECT changes()").fetchone()
+        return max(0, int(row[0] if row else 0))
+
     def _pending_rows_locked(self) -> int:
+        return self._pending_durable + len(self._ring)
+
+    def _count_durable_pending_locked(self) -> int:
         row = self._conn.execute(
             "SELECT COUNT(*) FROM persistence_journal WHERE status IN (?, ?)",
-            (STATUS_PENDING, STATUS_REPLICATING),
+            _DRAINABLE,
         ).fetchone()
-        return int(row[0]) + len(self._ring)
+        return int(row[0] if row else 0)
+
+    def _reconcile_pending_locked(self, *, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and (now - self._last_reconcile_mono) < _RECONCILE_INTERVAL_S:
+            return
+        actual = self._count_durable_pending_locked()
+        if actual != self._pending_durable:
+            logging.getLogger("pyautomation").warning(
+                "SAF pending counter drift cache=%s sqlite=%s; reconciling",
+                self._pending_durable,
+                actual,
+            )
+            self._pending_durable = actual
+        self._last_reconcile_mono = now
 
     def _guard_pending_locked(self) -> None:
         max_rows = int(getattr(self.config, "max_pending_rows", 0) or 0)
@@ -431,6 +597,7 @@ class JournalWriter:
                 with self._lock:
                     self._drain_ring_locked()
                     self._commit_locked()
+                    self._reconcile_pending_locked()
             except JournalDiskFullError:
                 logging.getLogger("pyautomation").critical("SAF journal disk full during flush")
             except sqlite3.Error:
@@ -472,6 +639,9 @@ class JournalWriter:
                 ),
             )
             self.enqueued += 1
+            self._pending_durable += 1
+            if persistable.domain() == "tag":
+                self.last_tag_ingest_mono = time.monotonic()
             return int(cur.lastrowid)
         except sqlite3.IntegrityError:
             row = self._conn.execute(
@@ -487,6 +657,7 @@ class JournalWriter:
             return
         try:
             self._conn.commit()
+            self._invalidate_disk_cache_locked()
         except sqlite3.OperationalError as err:
             self._raise_operational(err)
 
@@ -499,12 +670,81 @@ class JournalWriter:
             raise JournalDiskFullError(str(err)) from err
         raise JournalError(str(err)) from err
 
+    def _measure_disk_bytes(self) -> int:
+        total = 0
+        for suffix in ("", "-wal", "-shm"):
+            path = self.config.journal_path + suffix
+            try:
+                total += os.path.getsize(path)
+            except OSError:
+                continue
+        return total
+
+    def _wal_file_bytes(self) -> int:
+        try:
+            return int(os.path.getsize(self.config.journal_path + "-wal"))
+        except OSError:
+            return 0
+
+    def _freelist_bytes_locked(self) -> int:
+        page = self._conn.execute("PRAGMA page_size").fetchone()
+        free = self._conn.execute("PRAGMA freelist_count").fetchone()
+        page_size = int(page[0] if page else 0)
+        free_pages = int(free[0] if free else 0)
+        return max(0, page_size * free_pages)
+
+    def _wal_checkpoint_truncate_locked(self) -> None:
+        try:
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            logging.getLogger("pyautomation").debug(
+                "SAF wal_checkpoint(TRUNCATE) skipped",
+                exc_info=True,
+            )
+        self._invalidate_disk_cache_locked()
+
+    def _invalidate_disk_cache_locked(self) -> None:
+        self._disk_bytes_mono = 0.0
+
+    def _disk_bytes_cached_locked(self, *, for_guard: bool = False) -> int:
+        now = time.monotonic()
+        max_bytes = int(self.config.max_disk_bytes or 0)
+        hot = max_bytes > 0 and self._disk_bytes_cache >= (max_bytes * _DISK_HOT_RATIO)
+        stale = self._disk_bytes_mono <= 0.0 or (now - self._disk_bytes_mono) >= _DISK_CACHE_TTL_S
+        if stale or (for_guard and hot):
+            self._disk_bytes_cache = self._measure_disk_bytes()
+            self._disk_bytes_mono = now
+        return self._disk_bytes_cache
+
+    def _evict_sent_oldest_locked(self, limit: int) -> int:
+        cur = self._conn.execute(
+            """
+            DELETE FROM persistence_journal
+            WHERE id IN (
+                SELECT id FROM persistence_journal
+                WHERE status = ?
+                ORDER BY id ASC
+                LIMIT ?
+            )
+            """,
+            (STATUS_SENT, int(limit)),
+        )
+        deleted = cur.rowcount if cur.rowcount is not None else 0
+        if deleted is None or deleted < 0:
+            deleted = self._changes_locked()
+        self._invalidate_disk_cache_locked()
+        return int(deleted)
+
     def _guard_disk_locked(self) -> None:
-        usage = self.disk_bytes()
+        usage = self._disk_bytes_cached_locked(for_guard=True)
         if usage < self.config.max_disk_bytes:
             return
-        freed = self.evict_sent_oldest(self.config.gc_batch)
-        if freed <= 0 or self.disk_bytes() >= self.config.max_disk_bytes:
+        freed = self._evict_sent_oldest_locked(self.config.gc_batch)
+        self._commit_locked()
+        usage = self._measure_disk_bytes()
+        self._disk_bytes_cache = usage
+        self._disk_bytes_mono = time.monotonic()
+        if freed <= 0 or usage >= self.config.max_disk_bytes:
             self.dropped_full += 1
             self.backpressure = True
             raise JournalDiskFullError(
@@ -545,6 +785,18 @@ class JournalWriter:
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(_SCHEMA)
             self._conn.commit()
+            self._hydrate_counters_locked()
         except sqlite3.Error as err:
             self.last_error = str(err)
             raise JournalError(f"Unable to open SAF journal: {err}") from err
+
+    def _hydrate_counters_locked(self) -> None:
+        self._pending_durable = self._count_durable_pending_locked()
+        row = self._conn.execute(
+            "SELECT count(*) FROM persistence_journal WHERE status = ?",
+            (STATUS_DEAD_LETTER,),
+        ).fetchone()
+        self.deadletter_count = int(row[0] if row else 0)
+        self._last_reconcile_mono = time.monotonic()
+        self._disk_bytes_cache = self._measure_disk_bytes()
+        self._disk_bytes_mono = time.monotonic()

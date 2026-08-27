@@ -13,11 +13,15 @@ from ..persistence import reset_persistence_gateway
 from ..persistence.config import SafConfig
 from ..persistence.contracts import NullRemoteDB
 from ..persistence.exceptions import JournalBackpressureError, JournalDiskFullError
-from ..persistence.journal import JournalWriter, STATUS_PENDING, STATUS_SENT
+from ..persistence.journal import JournalWriter, STATUS_DEAD_LETTER, STATUS_PENDING
 from ..persistence.cycle_dedupe import CycleSampleCache
 from ..persistence.orchestrator import PersistenceOrchestrator
 from ..persistence.records import DOMAIN, PersistableRecord
 from ..persistence.replicator import CircuitBreaker, RateLimiter, RemoteReplicator
+
+
+def setUpModule():
+    os.environ.setdefault("AUTOMATION_MULTI_EDGE_ENABLED", "false")
 
 
 class FakeRemote:
@@ -56,6 +60,31 @@ class FakeRemote:
 
     def batch_insert_with_dedupe(self, payloads):
         return self.write_batch(DOMAIN.TAG, payloads)
+
+
+def _sql_drainable(journal: JournalWriter) -> int:
+    with journal._lock:
+        journal._ensure_open_locked()
+        return journal._count_durable_pending_locked() + len(journal._ring)
+
+
+class _BanCountConn:
+    def __init__(self, conn):
+        object.__setattr__(self, "_conn", conn)
+
+    def execute(self, sql, parameters=()):
+        if "COUNT(" in str(sql).upper():
+            raise AssertionError(f"COUNT on SAF hot path: {sql}")
+        return self._conn.execute(sql, parameters)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def _ban_sqlite_count(journal: JournalWriter):
+    original = journal._conn
+    journal._conn = _BanCountConn(original)
+    return original
 
 
 class TestSafJournal(unittest.TestCase):
@@ -204,7 +233,7 @@ class TestSafJournal(unittest.TestCase):
     def test_default_ring_is_100k(self):
         self.assertEqual(SafConfig().ring_maxsize, 100_000)
 
-    def test_fetch_pending_prioritizes_tag_domain(self):
+    def test_fetch_pending_is_fifo_by_id(self):
         self.journal.append(PersistableRecord.event(message="later-event", username="system"))
         self.journal.append(
             PersistableRecord.tag_sample("FI_01", 1.0, datetime.now(timezone.utc))
@@ -212,9 +241,240 @@ class TestSafJournal(unittest.TestCase):
         self.journal.flush_sync()
         pending = self.journal.fetch_pending(10)
         domains = [row["domain"] for row in pending]
-        self.assertIn("tag", domains)
-        self.assertIn("event", domains)
-        self.assertLess(domains.index("tag"), domains.index("event"))
+        self.assertEqual(domains[0], "event")
+        self.assertEqual(domains[1], "tag")
+
+    def test_dead_letter_escapes_poison_and_leaves_pending(self):
+        self.journal.append(PersistableRecord.event(message="poison", username="system"))
+        self.journal.flush_sync()
+        rows = self.journal.fetch_pending(10)
+        self.assertEqual(len(rows), 1)
+        jid = rows[0]["id"]
+        for _ in range(int(self.config.dead_letter_attempts)):
+            self.journal.mark_pending([jid], error="remote rejected")
+        with self.journal._lock:
+            row = self.journal._conn.execute(
+                "SELECT status FROM persistence_journal WHERE id = ?",
+                (jid,),
+            ).fetchone()
+        self.assertEqual(row["status"], STATUS_DEAD_LETTER)
+        self.assertEqual(self.journal.fetch_pending(10), [])
+        self.assertGreaterEqual(self.journal.deadletter_count, 1)
+        self.assertEqual(self.journal.pending_count(), 0)
+
+    def test_pending_cache_matches_sql_across_mutations(self):
+        event = PersistableRecord.event(
+            message="cache-inv",
+            username="system",
+            timestamp=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        )
+        event_id = self.journal.append(event)
+        self.assertEqual(self.journal.pending_count(), _sql_drainable(self.journal))
+        self.assertEqual(self.journal.pending_count(), 1)
+
+        dupe = self.journal.append(event)
+        self.assertEqual(dupe, event_id)
+        self.assertEqual(self.journal.pending_count(), 1)
+        self.assertEqual(self.journal.pending_count(), _sql_drainable(self.journal))
+
+        t0 = datetime(2026, 1, 2, 0, 0, 1, tzinfo=timezone.utc)
+        self.journal.append(PersistableRecord.tag_sample("flow.cache", 1.0, t0))
+        self.assertEqual(self.journal.pending_count(), _sql_drainable(self.journal))
+        self.journal.flush_sync()
+        self.assertEqual(self.journal.pending_count(), _sql_drainable(self.journal))
+        self.assertEqual(self.journal.pending_count(), 2)
+
+        self.journal.mark_replicating([event_id])
+        self.assertEqual(self.journal.pending_count(), 2)
+        self.journal.mark_sent([event_id])
+        self.assertEqual(self.journal.pending_count(), 1)
+        self.journal.mark_sent([event_id])
+        self.assertEqual(self.journal.pending_count(), 1)
+        self.assertEqual(self.journal.pending_count(), _sql_drainable(self.journal))
+
+        poison = PersistableRecord.event(message="dlq-cache", username="system")
+        poison_id = self.journal.append(poison)
+        for _ in range(int(self.config.dead_letter_attempts)):
+            self.journal.mark_pending([poison_id], error="rejected")
+        self.assertEqual(self.journal.pending_count(), 1)
+        self.assertEqual(self.journal.pending_count(), _sql_drainable(self.journal))
+
+        dropped = self.journal.drop_unsent(confirm=True)
+        self.assertGreaterEqual(dropped, 1)
+        self.assertEqual(self.journal.pending_count(), 0)
+        self.assertEqual(self.journal.pending_count(), _sql_drainable(self.journal))
+
+    def test_tag_enqueue_and_pending_count_skip_sqlite_count(self):
+        self.journal.append(
+            PersistableRecord.event(message="seed", username="system")
+        )
+        self.journal.flush_sync()
+        original = _ban_sqlite_count(self.journal)
+        try:
+            self.journal.append(
+                PersistableRecord.tag_sample(
+                    "flow.hot",
+                    2.0,
+                    datetime(2026, 1, 3, tzinfo=timezone.utc),
+                )
+            )
+            self.assertGreaterEqual(self.journal.pending_count(), 2)
+        finally:
+            self.journal._conn = original
+
+    def test_pending_counter_hydrates_on_reopen(self):
+        path = os.path.join(self.tmp.name, "reopen.db")
+        config = SafConfig(
+            journal_path=path,
+            tag_flush_interval_s=0.05,
+            ring_maxsize=32,
+        )
+        first = JournalWriter(config)
+        first.start()
+        try:
+            first.append(PersistableRecord.event(message="persist-me", username="system"))
+            first.flush_sync()
+            self.assertEqual(first.pending_count(), 1)
+        finally:
+            first.stop()
+        second = JournalWriter(config)
+        second.start()
+        try:
+            self.assertEqual(second.pending_count(), 1)
+            self.assertEqual(second.pending_count(), _sql_drainable(second))
+        finally:
+            second.stop()
+
+    def test_flush_batch_does_not_stat_disk_per_insert(self):
+        path = os.path.join(self.tmp.name, "disk-cache.db")
+        config = SafConfig(
+            journal_path=path,
+            ring_maxsize=256,
+            tag_batch_size=64,
+            tag_flush_interval_s=60.0,
+            max_disk_bytes=5 * 1024 * 1024,
+        )
+        writer = JournalWriter(config)
+        writer.start()
+        writer._stop.set()
+        writer._ring_event.set()
+        if writer._flusher:
+            writer._flusher.join(timeout=1)
+        measured = []
+        real_getsize = os.path.getsize
+
+        def counting_getsize(path_name):
+            measured.append(path_name)
+            return real_getsize(path_name)
+
+        try:
+            with patch("automation.persistence.journal.os.path.getsize", counting_getsize):
+                t0 = datetime(2026, 1, 4, tzinfo=timezone.utc)
+                for i in range(24):
+                    writer.append(
+                        PersistableRecord.tag_sample(
+                            "flow.disk",
+                            float(i),
+                            t0 + timedelta(milliseconds=i),
+                        )
+                    )
+                writer._disk_bytes_mono = 0.0
+                writer.flush_sync()
+            self.assertGreater(len(measured), 0)
+            self.assertLess(len(measured), 12)
+        finally:
+            writer.stop()
+
+    def test_tag_enqueue_stays_o1_with_fat_pending_journal(self):
+        seed_ts = datetime(2026, 1, 5, tzinfo=timezone.utc)
+        for i in range(800):
+            self.journal.append(
+                PersistableRecord.event(
+                    message=f"fat-{i}",
+                    username="system",
+                    timestamp=seed_ts + timedelta(milliseconds=i),
+                )
+            )
+        original = _ban_sqlite_count(self.journal)
+        try:
+            started = time.perf_counter()
+            for i in range(150):
+                self.journal.append(
+                    PersistableRecord.tag_sample(
+                        "flow.fat",
+                        float(i),
+                        seed_ts + timedelta(seconds=1, milliseconds=i),
+                    )
+                )
+            elapsed = time.perf_counter() - started
+        finally:
+            self.journal._conn = original
+        self.assertLess(elapsed, 0.5)
+        self.assertEqual(self.journal.pending_count(), _sql_drainable(self.journal))
+
+    def test_reclaim_idle_truncates_wal_and_compacts_freelist(self):
+        path = os.path.join(self.tmp.name, "compact.db")
+        config = SafConfig(
+            journal_path=path,
+            gc_sent_after_s=0.0,
+            gc_batch=10_000,
+            compact_min_freelist_bytes=1,
+            compact_min_interval_s=0.0,
+            compact_max_pending=256,
+            tag_flush_interval_s=60.0,
+            ring_maxsize=256,
+        )
+        writer = JournalWriter(config)
+        writer.start()
+        try:
+            ts = datetime(2026, 1, 6, tzinfo=timezone.utc)
+            ids = []
+            for i in range(200):
+                ids.append(
+                    writer.append(
+                        PersistableRecord.event(
+                            message=f"compact-{i}",
+                            username="system",
+                            description="x" * 512,
+                            timestamp=ts + timedelta(milliseconds=i),
+                        )
+                    )
+                )
+            writer.flush_sync()
+            writer.mark_sent(ids)
+            writer.gc_sent(0.0, 10_000)
+            before = writer.disk_bytes()
+            result = writer.reclaim_idle()
+            after = writer.disk_bytes()
+            self.assertEqual(result["vacuumed"], 1)
+            self.assertLess(after, before)
+            self.assertEqual(writer.pending_count(), 0)
+            wal = path + "-wal"
+            if os.path.exists(wal):
+                self.assertLess(os.path.getsize(wal), 1024 * 1024)
+        finally:
+            writer.stop()
+
+    def test_reclaim_idle_skips_vacuum_during_catchup(self):
+        path = os.path.join(self.tmp.name, "no-compact.db")
+        config = SafConfig(
+            journal_path=path,
+            gc_sent_after_s=0.0,
+            compact_min_freelist_bytes=1,
+            compact_min_interval_s=0.0,
+            compact_max_pending=0,
+            tag_flush_interval_s=60.0,
+        )
+        writer = JournalWriter(config)
+        writer.start()
+        try:
+            writer.append(PersistableRecord.event(message="keep-pending", username="system"))
+            writer.flush_sync()
+            result = writer.reclaim_idle()
+            self.assertEqual(result["vacuumed"], 0)
+            self.assertEqual(writer.pending_count(), 1)
+        finally:
+            writer.stop()
 
 
 class TestSafReplicatorControls(unittest.TestCase):
@@ -270,6 +530,63 @@ class TestSafOrchestrator(unittest.TestCase):
             domains,
             {DOMAIN.TAG, DOMAIN.EVENT, DOMAIN.ALARM_SUMMARY, DOMAIN.LOG},
         )
+        orch.close()
+
+    def test_catchup_drains_more_than_one_batch_per_period(self):
+        remote = FakeRemote()
+        config = SafConfig(
+            journal_path=os.path.join(self.tmp.name, "catchup.db"),
+            replicate_batch_size=100,
+            replicate_rate_per_s=10_000,
+            catchup_budget_s=0.5,
+            tag_flush_interval_s=0.001,
+        )
+        orch = PersistenceOrchestrator(config=config, remote=remote)
+        for i in range(350):
+            orch.enqueue(
+                PersistableRecord.tag_sample(
+                    f"flow{i}",
+                    float(i),
+                    datetime(2026, 8, 13, 16, 1, 0, i * 1000, tzinfo=timezone.utc),
+                )
+            )
+        orch.flush_sync()
+        pending = orch.pending_count()
+        self.assertGreaterEqual(pending, 300)
+        started = time.monotonic()
+        written = orch.replicate_catchup()
+        elapsed = time.monotonic() - started
+        self.assertGreater(written, 100)
+        self.assertLess(elapsed, 2.0)
+        orch.close()
+
+    def test_shed_drops_tags_keeps_events(self):
+        remote = FakeRemote()
+        config = SafConfig(
+            journal_path=os.path.join(self.tmp.name, "shed.db"),
+            shed_high=3,
+            shed_low=1,
+            tag_flush_interval_s=0.001,
+        )
+        orch = PersistenceOrchestrator(config=config, remote=remote)
+        for i in range(3):
+            orch.enqueue(
+                PersistableRecord.tag_sample(
+                    f"flow{i}",
+                    float(i),
+                    datetime(2026, 8, 13, 16, 2, i, tzinfo=timezone.utc),
+                )
+            )
+        orch.flush_sync()
+        self.assertGreaterEqual(orch.pending_count(), 3)
+        orch.enqueue(
+            PersistableRecord.tag_sample("flow99", 99.0, datetime.now(timezone.utc))
+        )
+        snap = orch.snapshot()
+        self.assertTrue(snap["SAF_SHED"])
+        self.assertGreaterEqual(int(snap["SAF_SHED_DROPPED"]), 1)
+        event_id = orch.enqueue(PersistableRecord.event(message="must-keep", username="system"))
+        self.assertGreater(event_id, 0)
         orch.close()
 
     def test_cycle_dedupe_drops_same_tag_value_timestamp(self):

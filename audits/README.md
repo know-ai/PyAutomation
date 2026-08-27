@@ -4,6 +4,7 @@
 |---|---|
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
 | **Fecha de compactación** | 2026-08-20 |
+| **Continuidad día-1000** | 2026-08-27 — [AUDIT_LONG_RUN_CONTINUITY.md](./AUDIT_LONG_RUN_CONTINUITY.md) |
 | **Revisión aislamiento Bulkhead** | 2026-08-25 — CA-ISOLATION-01…04 en código; CA-ISOLATION-05 soak planta |
 | **Revisión controles `/performance`** | 2026-08-25 — CA-OPS-01…04 en código; CA-OPS-02/05 HMI planta |
 | **Auditoría consistencia catálogo planta** | 2026-08-25 — 2 edges reales + PG; ver [AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md](./AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md) |
@@ -12,7 +13,7 @@
 
 ---
 
-## Documentos canónicos (17)
+## Documentos canónicos (18)
 
 | Doc | Archivo | Absorbe | Veredicto vigente |
 |---|---|---|---|
@@ -33,6 +34,7 @@
 | **15 Catálogo local SQLite** | [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md) | Spec [11](../specs/11-CATALOG-SQLITE-LOCAL.md) — verificación 2026-08-21 P0 + Bulkhead 2026-08-25 | **A autonomía + integridad reinicio (código)** / **A separación SAF** / **A HMI-API** / **A aislamiento por fila** / **A− sync planta** — CA-01…06/10…13/15…18 + CA-ISOLATION-02…04 PASS; soak 07–09/14 + CA-ISOLATION-05 pendiente |
 | **16 Consistencia catálogo planta** | [AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md](./AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md) | Corrida 19:15 + 22:36 · CA-DAQ-01 vivo en planta · CA-CATALOG-NOISE-01/02 en código | **A catálogo de proceso** / **B− sidecar .81** — SyncFailed era umbral, no outage |
 | **17 Extensión HMI machines/domain** | [AUDIT_HMI_MACHINE_DOMAIN_EXTENSION.md](./AUDIT_HMI_MACHINE_DOMAIN_EXTENSION.md) | (nuevo 2026-08-26; implementación Fase A 2026-08-26) | **A** contrato Schema-Driven — pregunta fundamental **SÍ**; Fase B schemas de producto en iDetectFugas |
+| **18 Continuidad 1–1000 días** | [AUDIT_LONG_RUN_CONTINUITY.md](./AUDIT_LONG_RUN_CONTINUITY.md) | (nuevo 2026-08-27; N1 disco vs cola + O(1) + reclaim_idle) | Hot path **A−**; disco SAF **B+** hasta deploy compact; PG/DLQ **B−**; soak 24 h pendiente |
 
 ---
 

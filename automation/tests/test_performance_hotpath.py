@@ -244,6 +244,46 @@ class TestPendingCapAndReplicatorCache(unittest.TestCase):
             finally:
                 writer.stop()
 
+    def test_pending_count_is_cached_not_sql_count(self):
+        import os
+        import tempfile
+        from datetime import timezone
+
+        from ..persistence.config import SafConfig
+        from ..persistence.journal import JournalWriter
+        from ..persistence.records import PersistableRecord
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = SafConfig(
+                journal_path=os.path.join(tmp, "journal.db"),
+                ring_maxsize=200,
+                tag_flush_interval_s=0.05,
+            )
+            writer = JournalWriter(cfg)
+            try:
+                writer.append(
+                    PersistableRecord.event(message="seed", username="system")
+                )
+                original = writer._conn
+
+                class BanCountConn:
+                    def execute(self, sql, parameters=()):
+                        if "COUNT(" in str(sql).upper():
+                            raise AssertionError(f"COUNT on hot path: {sql}")
+                        return original.execute(sql, parameters)
+
+                    def __getattr__(self, name):
+                        return getattr(original, name)
+
+                writer._conn = BanCountConn()
+                writer.append(
+                    PersistableRecord.tag_sample("T-hot", 1.0, datetime.now(timezone.utc))
+                )
+                self.assertGreaterEqual(writer.pending_count(), 2)
+                writer._conn = original
+            finally:
+                writer.stop()
+
     def test_payload_mapper_caches_tags_per_batch(self):
         from datetime import timezone
 

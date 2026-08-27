@@ -76,7 +76,7 @@ class TestWorkerSnapshot(unittest.TestCase):
             "automation.catalog.replicator.get_catalog_replicator", return_value=catalog
         ):
             snap = worker_snapshot()
-        self.assertEqual(set(snap), {"LoggerWorker", "CatalogReplicator", "MetricsSampler"})
+        self.assertEqual(set(snap), {"LoggerWorker", "CatalogReplicator", "MetricsSampler", "ReplicationWorker"})
         self.assertEqual(snap["LoggerWorker"]["state"], "alive")
         self.assertEqual(snap["CatalogReplicator"]["state"], "alive")
         self.assertEqual(snap["MetricsSampler"]["state"], "alive")
@@ -122,6 +122,7 @@ class TestSafControls(unittest.TestCase):
         app = MagicMock()
         app.db_worker = MagicMock()
         gw = MagicMock()
+        gw.replicate_catchup.return_value = 3
         gw.replicate_once.return_value = 3
         with patch("automation.PyAutomation", return_value=app), patch(
             "automation.persistence.get_persistence_gateway", return_value=gw

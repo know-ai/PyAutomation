@@ -15,6 +15,12 @@ const PERF_ALARM_SUFFIX_TO_TITLE_KEY: Record<string, string> = {
   "ALM.PERF.METRICS_AGE": "metrics_age",
   "ALM.PERF.DB_CONN": "db_conn",
   "ALM.PERF.HTTP_5XX": "http_5xx",
+  "ALM.PERF.FIELD_STALE": "field_stale",
+  "ALM.PERF.SAF_DEADLETTER": "saf_deadletter",
+  "ALM.PERF.HUB_LAG": "hub_lag",
+  "ALM.PERF.SAF_SHED": "saf_shed",
+  "ALM.PERF.SAF_INGEST": "saf_ingest",
+  "ALM.PERF.SAF_RATE": "saf_rate",
 };
 
 const PERF_ALARM_MESSAGE =

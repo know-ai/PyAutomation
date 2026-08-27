@@ -1138,7 +1138,13 @@
         "safLag": "SAF replication lag",
         "metricsAge": "metrics snapshot age",
         "dbConn": "historian DB connections",
-        "http5xx": "HTTP 5xx errors per minute"
+        "http5xx": "HTTP 5xx errors per minute",
+        "fieldStale": "field tag age",
+        "safDeadletter": "SAF dead-letter rows",
+        "hubLag": "event-loop lag",
+        "safShed": "SAF analog history shed",
+        "safIngest": "SAF tag ingest age",
+        "safRate": "SAF ingest/drain mismatch"
       }
     }
   },
@@ -1307,6 +1313,12 @@
     "http": "HTTP",
     "http1m": "Requests / min",
     "http5xx": "5xx / min",
+    "fieldStale": "Field stale",
+    "safDeadletter": "SAF dead-letter",
+    "hubLag": "Hub lag",
+    "safShed": "SAF shed",
+    "safIngest": "SAF ingest",
+    "safRate": "Drain vs ingest",
     "httpInFlight": "In flight",
     "httpTotal": "Requests total",
     "hmi": "HMI / Socket",
@@ -1439,7 +1451,13 @@
       "saf_lag": "High SAF lag",
       "metrics_age": "Stale metrics snapshot",
       "db_conn": "High DB connections",
-      "http_5xx": "High HTTP 5xx"
+      "http_5xx": "High HTTP 5xx",
+      "field_stale": "Field values stale",
+      "saf_deadletter": "SAF dead-letter",
+      "hub_lag": "Hub event-loop lag",
+      "saf_shed": "SAF analog shed",
+      "saf_ingest": "SAF ingest heartbeat lost",
+      "saf_rate": "SAF drain slower than ingest"
     }
   }
 }

@@ -173,6 +173,8 @@ class LoggerWorker(BaseWorker):
                         )
                         continue
                     try:
+                        if opcua_client.is_connected():
+                            continue
                         opcua_client.reconnect()
                     except Exception as e:
                         # Si hay un error durante la reconexión, registrar pero continuar con otros clientes
@@ -317,8 +319,15 @@ class LoggerWorker(BaseWorker):
                 try:
                     from ..persistence import get_persistence_gateway
 
-                    get_persistence_gateway().replicate_once()
+                    gateway = get_persistence_gateway()
+                    repl = getattr(app, "replication_worker", None)
+                    if repl is None or not getattr(repl, "is_alive", lambda: False)():
+                        gateway.replicate_catchup()
                     self.last_cycle_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    pending = int(gateway.pending_count() or 0)
+                    catchup_depth = int(getattr(gateway.config, "catchup_depth", 5000) or 5000)
+                    if pending < catchup_depth:
+                        self.sqlite_db_backup()
                 except Exception as exc:
                     text = str(exc).lower()
                     if "tag not in remote" in text or (
@@ -337,14 +346,14 @@ class LoggerWorker(BaseWorker):
                                 )
                         except Exception:
                             log.debug(
-                                "catalog full-sync request skipped", exc_info=True
+                                "catalog full-sync request skipped",
+                                exc_info=True,
                             )
                     else:
                         log.error(
                             "SAF replication cycle failed; journal preserved",
                             exc_info=True,
                         )
-                self.sqlite_db_backup()
 
             self.check_opcua_connection()
 

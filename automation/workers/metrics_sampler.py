@@ -65,6 +65,8 @@ class MetricsSamplerWorker(BaseWorker):
         self.last_cycle_utc = None
         self._evaluator = PerfAlarmEvaluator(config_provider=self._app_config)
         self._trend_buffers: dict[str, deque] = {key: deque() for key, _field in TREND_FIELDS}
+        self._saf_rate_prev: tuple[int, int] | None = None
+        self._saf_rate_at = 0.0
 
     def get_snapshot(self) -> dict[str, Any]:
         now = time.monotonic()
@@ -162,6 +164,8 @@ class MetricsSamplerWorker(BaseWorker):
         self._sample_hmi(payload)
         self._sample_db(payload)
         self._sample_saf(payload)
+        self._sample_field(payload)
+        self._sample_hub(payload)
         self._sample_catalog(payload)
         self._sample_acquisition(payload)
         self._sample_workers(payload)
@@ -312,15 +316,122 @@ class MetricsSamplerWorker(BaseWorker):
         try:
             from ..persistence import get_persistence_gateway
 
-            snap = get_persistence_gateway().snapshot()
+            gateway = get_persistence_gateway()
+            snap = gateway.snapshot()
             payload["SAF_QUEUE_DEPTH"] = int(snap.get("SAF_QUEUE_DEPTH") or 0)
             lag_s = snap.get("SAF_REPLICATION_LAG")
             payload["SAF_REPLICATION_LAG_MS"] = (
                 None if lag_s is None else round(float(lag_s) * 1000.0, 1)
             )
             payload["SAF_DISK_BYTES"] = int(snap.get("SAF_DISK_BYTES") or 0)
+            payload["SAF_PENDING_CAP_HITS"] = int(snap.get("SAF_PENDING_CAP_HITS") or 0)
+            payload["SAF_DEADLETTER_COUNT"] = int(snap.get("SAF_DEADLETTER_COUNT") or 0)
+            payload["SAF_SHED"] = 1.0 if snap.get("SAF_SHED") else 0.0
+            payload["SAF_SHED_DROPPED"] = int(snap.get("SAF_SHED_DROPPED") or 0)
+            self._sample_saf_rates(payload, gateway, snap)
+            self._sample_ingest_age(payload, gateway, snap)
         except Exception:
             _LOGGER.debug("metrics saf skipped", exc_info=True)
+
+    def _sample_saf_rates(self, payload: dict[str, Any], gateway, snap: dict[str, Any]) -> None:
+        journal = getattr(gateway, "journal", None)
+        enqueued = int(getattr(journal, "enqueued", 0) or 0)
+        replicated = int(getattr(journal, "total_replicated", 0) or 0)
+        now = time.monotonic()
+        ingest_rate = 0.0
+        drain_rate = 0.0
+        if self._saf_rate_prev is not None and self._saf_rate_at > 0:
+            elapsed = max(0.001, now - self._saf_rate_at)
+            ingest_rate = max(0.0, enqueued - self._saf_rate_prev[0]) / elapsed
+            drain_rate = max(0.0, replicated - self._saf_rate_prev[1]) / elapsed
+        payload["SAF_INGEST_RATE"] = round(ingest_rate, 3)
+        payload["SAF_DRAIN_RATE"] = round(drain_rate, 3)
+        pending = int(snap.get("SAF_QUEUE_DEPTH") or payload.get("SAF_QUEUE_DEPTH") or 0)
+        low = int(getattr(getattr(gateway, "config", None), "shed_low", 10_000) or 10_000)
+        mismatch = pending > low and drain_rate < ingest_rate and ingest_rate > 0
+        payload["SAF_RATE_MISMATCH"] = 1.0 if mismatch else 0.0
+        self._saf_rate_prev = (enqueued, replicated)
+        self._saf_rate_at = now
+
+    def _sample_ingest_age(self, payload: dict[str, Any], gateway, snap: dict[str, Any]) -> None:
+        from .. import PyAutomation
+
+        app = PyAutomation()
+        running = self._acquisition_running(app)
+        ingest_age_s = float(snap.get("SAF_TAG_INGEST_AGE_S") or 0.0)
+        mono = float(getattr(getattr(gateway, "journal", None), "last_tag_ingest_mono", 0.0) or 0.0)
+        if not running:
+            payload["SAF_INGEST_AGE_MS"] = 0.0
+            return
+        if mono <= 0:
+            payload["SAF_INGEST_AGE_MS"] = round((time.monotonic() - self._started_at) * 1000.0, 1)
+        else:
+            payload["SAF_INGEST_AGE_MS"] = round(ingest_age_s * 1000.0, 1)
+
+    def _acquisition_running(self, app) -> bool:
+        try:
+            manager = getattr(app, "machine_manager", None)
+            machines = manager.get_machines() if manager is not None else []
+            for machine in machines or []:
+                state = getattr(machine, "current_state", None)
+                value = getattr(state, "value", state)
+                if str(value or "").lower() == "running":
+                    return True
+        except Exception:
+            _LOGGER.debug("metrics acquisition running probe skipped", exc_info=True)
+        return False
+
+    def _sample_field(self, payload: dict[str, Any]) -> None:
+        try:
+            from datetime import datetime, timezone
+
+            from .. import PyAutomation
+            from ..timebase import ensure_utc
+
+            app = PyAutomation()
+            cvt = getattr(app, "cvt", None)
+            engine = getattr(cvt, "_cvt", cvt)
+            tags = getattr(engine, "_tags", None) or {}
+            now = datetime.now(timezone.utc)
+            max_age_ms = 0.0
+            stale = False
+            for tag in tags.values():
+                namespace = getattr(tag, "node_namespace", None)
+                scan = getattr(tag, "scan_time", None)
+                if not namespace or not scan:
+                    continue
+                name = str(getattr(tag, "name", "") or "")
+                if name.startswith("SYS."):
+                    continue
+                stamp = getattr(tag, "timestamp", None)
+                if stamp is None:
+                    continue
+                try:
+                    stamp = ensure_utc(stamp)
+                    age_ms = max(0.0, (now - stamp).total_seconds() * 1000.0)
+                except Exception:
+                    continue
+                try:
+                    scan_ms = float(scan)
+                except (TypeError, ValueError):
+                    continue
+                threshold_ms = max(5000.0, 3.0 * scan_ms)
+                if age_ms > max_age_ms:
+                    max_age_ms = age_ms
+                if age_ms > threshold_ms:
+                    stale = True
+            payload["FIELD_MAX_AGE_MS"] = round(max_age_ms, 1)
+            payload["FIELD_STALE"] = 1.0 if stale else 0.0
+        except Exception:
+            _LOGGER.debug("metrics field stale skipped", exc_info=True)
+
+    def _sample_hub(self, payload: dict[str, Any]) -> None:
+        try:
+            from ..utils.hub_lag import snapshot_hub_lag_ms
+
+            payload["HUB_LAG_MS"] = snapshot_hub_lag_ms()
+        except Exception:
+            payload.setdefault("HUB_LAG_MS", 0.0)
 
     def _sample_catalog(self, payload: dict[str, Any]) -> None:
         try:

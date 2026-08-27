@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 import logging
+import time
 from typing import Sequence
 
 from .config import SafConfig
@@ -16,6 +17,7 @@ from .cycle_dedupe import CycleSampleCache
 from .health import SafHealthProbe
 from .idempotent_insert import IdempotentBatchInserter
 from .journal import JournalWriter
+from .records import DOMAIN
 from .remote import PeeweeRemoteDB
 from .replicator import RemoteReplicator
 
@@ -65,6 +67,8 @@ class PersistenceOrchestrator:
         self.health = SafHealthProbe(self.journal, self.replicator)
         self.cycle_cache = CycleSampleCache()
         self._kick_running = False
+        self._shed_active = False
+        self.shed_dropped = 0
         self.journal.set_force_flush_hook(self._kick_replicate)
         self.journal.start()
 
@@ -98,6 +102,9 @@ class PersistenceOrchestrator:
             return 0
         if self.cycle_cache.should_drop(persistable):
             return 0
+        if persistable.domain() == DOMAIN.TAG and self._tag_history_shed_locked():
+            self.shed_dropped += 1
+            return 0
         return self.journal.append(persistable)
 
     def enqueue_many(self, persistables: Sequence[IPersistable]) -> list[int]:
@@ -113,6 +120,9 @@ class PersistenceOrchestrator:
                 )
                 continue
             if self.cycle_cache.should_drop(persistable):
+                continue
+            if persistable.domain() == DOMAIN.TAG and self._tag_history_shed_locked():
+                self.shed_dropped += 1
                 continue
             owned.append(persistable)
         if not owned:
@@ -137,12 +147,55 @@ class PersistenceOrchestrator:
     def replicate_once(self) -> int:
         return self.replicator.flush()
 
+    def replicate_catchup(self, budget_s: float | None = None) -> int:
+        """Drain PENDING until the time budget elapses or the queue is empty."""
+        budget = float(
+            budget_s
+            if budget_s is not None
+            else getattr(self.config, "catchup_budget_s", 0.4)
+        )
+        deadline = time.monotonic() + max(0.05, budget)
+        total = 0
+        while time.monotonic() < deadline:
+            written = self.replicator.flush()
+            total += int(written or 0)
+            if written <= 0:
+                break
+        return total
+
+    def reclaim_idle(self) -> dict:
+        """GC SENT, truncate WAL, compact freelist. Slow path only."""
+        return self.journal.reclaim_idle()
+
+    def _tag_history_shed_locked(self) -> bool:
+        pending = self.journal.pending_count()
+        high = int(getattr(self.config, "shed_high", 50_000) or 50_000)
+        low = int(getattr(self.config, "shed_low", 10_000) or 10_000)
+        if self._shed_active:
+            if pending <= low:
+                self._shed_active = False
+                logging.getLogger("pyautomation").warning(
+                    "SAF analog history shed released pending=%s low=%s",
+                    pending,
+                    low,
+                )
+        elif pending >= high:
+            self._shed_active = True
+            logging.getLogger("pyautomation").error(
+                "SAF analog history shed engaged pending=%s high=%s; tags paused, alarms/events continue",
+                pending,
+                high,
+            )
+        return self._shed_active
+
     def drop_unsent(self, *, confirm: bool) -> int:
         return self.journal.drop_unsent(confirm=confirm)
 
     def snapshot(self) -> dict:
         snap = dict(self.health.snapshot())
         snap["SAF_CYCLE_DUPES_DROPPED"] = self.cycle_cache.dropped
+        snap["SAF_SHED"] = bool(self._shed_active)
+        snap["SAF_SHED_DROPPED"] = int(self.shed_dropped)
         return snap
 
     def close(self) -> None:

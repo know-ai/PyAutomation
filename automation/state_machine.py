@@ -1867,23 +1867,68 @@ class DAQ(StateMachineCore):
         Reads values from OPC UA using the client manager and updates the CVT and DAS buffers.
         """
         from .timebase import ensure_utc
+        from .signal_conditioning.quality import BAD
+        from .opcua.models import DAQ_READ_TIMEOUT_S
+
+        manager = getattr(self, "opcua_client_manager", None)
+        if manager is None:
+            try:
+                from automation import PyAutomation
+
+                manager = PyAutomation().opcua_client_manager
+                self.opcua_client_manager = manager
+            except Exception:
+                manager = None
+        log = logging.getLogger("pyautomation")
         for tag_name, process_type in self.get_subscribed_tags().items():
             tag = process_type.tag
             if not _scope_owns_tag(tag):
                 continue
             namespace = tag.get_node_namespace()
             opcua_address = tag.get_opcua_address()
-            values = self.opcua_client_manager.get_node_value_by_opcua_address(opcua_address=opcua_address, namespace=namespace)
-            if values:
-                data_value = values[0][0]["DataValue"]
-                value = data_value.Value.Value
-                timestamp = data_value.SourceTimestamp
-                timestamp = ensure_utc(timestamp)
-                val = tag.value.convert_value(value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
-                val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
-                if val is not None and tag_name in self.das.buffer:
-                    self.das.buffer[tag_name]["timestamp"](timestamp)
-                    self.das.buffer[tag_name]["values"](val)
+            data_value = None
+            if manager is not None:
+                reader = getattr(manager, "get_node_data_value_by_opcua_address", None)
+                if callable(reader):
+                    data_value = reader(
+                        opcua_address=opcua_address,
+                        namespace=namespace,
+                        timeout_s=DAQ_READ_TIMEOUT_S,
+                    )
+            try:
+                if data_value is not None:
+                    value = data_value.Value.Value
+                    timestamp = data_value.SourceTimestamp
+                    timestamp = ensure_utc(timestamp)
+                    val = tag.value.convert_value(
+                        value=value, from_unit=tag.get_unit(), to_unit=tag.get_display_unit()
+                    )
+                    val = self.cvt.set_value(id=tag.id, value=val, timestamp=timestamp)
+                    self._daq_empty_logged = False
+                    if val is not None and tag_name in self.das.buffer:
+                        self.das.buffer[tag_name]["timestamp"](timestamp)
+                        self.das.buffer[tag_name]["values"](val)
+                    continue
+                timestamp = ensure_utc(datetime.now(pytz.utc))
+                held = None
+                try:
+                    held = tag.value.value
+                except Exception:
+                    held = tag.get_value()
+                self.cvt.set_value(id=tag.id, value=held, timestamp=timestamp, quality=BAD)
+                if not getattr(self, "_daq_empty_logged", False):
+                    log.warning(
+                        "DAQ read empty/timeout tag=%s namespace=%s; holding last-good as BAD",
+                        getattr(tag, "name", tag_name),
+                        namespace,
+                    )
+                    self._daq_empty_logged = True
+            except Exception:
+                log.error(
+                    "DAQ sample failed tag=%s; continuing remaining tags",
+                    getattr(tag, "name", tag_name),
+                    exc_info=True,
+                )
 
         super().while_running()
 

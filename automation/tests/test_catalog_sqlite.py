@@ -761,6 +761,8 @@ class TestReplicatorStartupGrace(unittest.TestCase):
         audit_metrics.reset_audit_metrics()
         worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
         worker._failures = 3
+        worker._consecutive_errors = 3
+        worker._hard_fail_since = time.monotonic() - 400.0
         with patch("automation.catalog.replicator.set_sync_failed"), patch(
             "automation.catalog.replicator.persist_system_event"
         ) as persist:
@@ -817,8 +819,173 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
         worker._backoff_step = 2
         self.assertEqual(worker._wait_interval(), _BACKOFF_INTERVALS_S[2])
 
-    def test_transient_row_errors_do_not_abort_remaining_tables(self):
-        from automation.catalog.replicator import CatalogReplicatorWorker, REPLICATED_TABLES
+    def test_connection_backoff_beats_stale_catchup(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker, _BACKOFF_INTERVALS_S
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, catchup_interval=30.0)
+        worker._catch_up = True
+        worker._pending_orphans = {("tagsmachines", "x"): object()}
+        worker._connection_backoff = True
+        worker._backoff_step = 2
+        self.assertEqual(worker._wait_interval(), _BACKOFF_INTERVALS_S[2])
+
+    def test_socket_death_recycles_replica_and_does_not_arm_catchup(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker, _BACKOFF_INTERVALS_S
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, catchup_interval=30.0, startup_grace_s=0.0)
+        worker._catch_up = False
+
+        class InterfaceError(Exception):
+            pass
+
+        def _sync(table, **_k):
+            if table == "tags":
+                raise InterfaceError("server closed the connection unexpectedly")
+            return (0, 0, 0, 0)
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch(
+            "automation.catalog.replicator.replica_watermark_ms", return_value=1
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_changed", return_value=[]
+        ), patch.object(
+            worker, "_sync_table", side_effect=_sync
+        ), patch(
+            "automation.catalog.replicator.reset_replica_database"
+        ) as reset_replica, patch(
+            "automation.catalog.replicator.close_replica_thread_connection"
+        ), patch("automation.catalog.replicator.set_sync_failed"), patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ):
+            result = worker.cycle(force=True)
+        self.assertGreater(result.get("connection_errors", 0), 0)
+        self.assertFalse(worker._catch_up)
+        self.assertTrue(worker._connection_backoff)
+        self.assertGreaterEqual(reset_replica.call_count, 1)
+        self.assertEqual(worker._wait_interval(), _BACKOFF_INTERVALS_S[worker._backoff_step])
+        worker._remote_available = True
+        worker._catch_up = True
+        self.assertEqual(worker._wait_interval(), _BACKOFF_INTERVALS_S[worker._backoff_step])
+
+    def test_successful_cycle_clears_connection_backoff(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, catchup_interval=30.0, startup_grace_s=0.0)
+        worker._connection_backoff = True
+        worker._backoff_step = 2
+        worker._catch_up = False
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch(
+            "automation.catalog.replicator.replica_watermark_ms", return_value=1
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_changed", return_value=[]
+        ), patch.object(
+            worker, "_sync_table", return_value=(0, 0, 0, 0)
+        ), patch("automation.catalog.replicator.set_sync_failed"), patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ):
+            worker.cycle(force=True)
+        self.assertFalse(worker._connection_backoff)
+        self.assertEqual(worker._backoff_step, 0)
+        self.assertEqual(worker._wait_interval(), 300.0)
+
+    def test_backoff_idle_skips_sqlite_scan_and_table_sync(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker, _BACKOFF_INTERVALS_S
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, catchup_interval=30.0, startup_grace_s=0.0)
+        worker._connection_backoff = True
+        worker._backoff_step = len(_BACKOFF_INTERVALS_S) - 1
+        worker._catch_up = True
+
+        with patch.object(worker, "_is_remote_available", return_value=True) as remote_ok, patch.object(
+            worker, "_historian_ready", return_value=True
+        ) as historian_ok, patch.object(
+            worker, "_probe_replica_writable", return_value=False
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending"
+        ) as list_pending, patch.object(
+            worker._local, "read_all"
+        ) as read_all, patch.object(
+            worker, "_sync_table"
+        ) as sync_table, patch(
+            "automation.catalog.replicator.reset_replica_database"
+        ), patch(
+            "automation.catalog.replicator.close_replica_thread_connection"
+        ), patch("automation.catalog.replicator.set_sync_failed"), patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ):
+            result = worker.cycle(force=False)
+        self.assertEqual(result.get("reason"), "connection-backoff")
+        self.assertTrue(result.get("skipped"))
+        remote_ok.assert_not_called()
+        historian_ok.assert_not_called()
+        list_pending.assert_not_called()
+        read_all.assert_not_called()
+        sync_table.assert_not_called()
+        self.assertTrue(worker._connection_backoff)
+        self.assertEqual(worker._backoff_step, len(_BACKOFF_INTERVALS_S) - 1)
+        self.assertEqual(worker._wait_interval(), _BACKOFF_INTERVALS_S[-1])
+        self.assertEqual(worker._consecutive_errors, 1)
+
+    def test_backoff_idle_probe_success_resumes_full_cycle(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, catchup_interval=30.0, startup_grace_s=0.0)
+        worker._connection_backoff = True
+        worker._backoff_step = 3
+
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=True
+        ), patch.object(
+            worker, "_probe_replica_writable", return_value=True
+        ), patch("automation.catalog.replicator.refresh_catalog_source", return_value="remote"), patch(
+            "automation.catalog.replicator.list_local_pending", return_value=[]
+        ), patch(
+            "automation.catalog.replicator.pending_count", return_value=0
+        ), patch(
+            "automation.catalog.replicator.replica_watermark_ms", return_value=1
+        ), patch.object(
+            worker._local, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_all", return_value=[]
+        ), patch.object(
+            worker._remote, "read_changed", return_value=[]
+        ), patch.object(
+            worker, "_sync_table", return_value=(0, 0, 0, 0)
+        ) as sync_table, patch("automation.catalog.replicator.set_sync_failed"), patch(
+            "automation.catalog.replicator.set_orphan_rows"
+        ):
+            result = worker.cycle(force=False)
+        self.assertFalse(result.get("skipped"))
+        self.assertFalse(worker._connection_backoff)
+        self.assertEqual(worker._backoff_step, 0)
+        self.assertGreater(sync_table.call_count, 0)
+
+    def test_transient_connection_aborts_remaining_tables(self):
+        from automation.catalog.replicator import (
+            CatalogReplicatorWorker,
+            REPLICATED_TABLES,
+            _BACKOFF_INTERVALS_S,
+        )
 
         worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
         worker._remote_available = True
@@ -857,14 +1024,17 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
         self.assertNotEqual(result.get("reason"), "remote-connection-lost")
         self.assertGreater(result.get("connection_errors", 0), 0)
         self.assertIn("tags", synced)
-        self.assertIn("tagsmachines", synced)
         self.assertNotIn("alarms", synced)
+        self.assertNotIn("tagsmachines", synced)
         self.assertGreater(len(synced), 1)
         self.assertLess(len(synced), len(REPLICATED_TABLES))
         set_sync_failed.assert_called_with(False)
         self.assertEqual(worker._consecutive_errors, 1)
         self.assertIsNone(worker._last_sync)
-        self.assertTrue(worker._catch_up)
+        self.assertFalse(worker._catch_up)
+        self.assertTrue(worker._connection_backoff)
+        self.assertGreater(worker._backoff_step, 0)
+        self.assertEqual(worker._wait_interval(), _BACKOFF_INTERVALS_S[worker._backoff_step])
 
     def test_orphan_rows_does_not_latch_on_deferred_fk_remap(self):
         """CA-CATALOG-NOISE-01: local-owned remap retries are not orphans / SyncFailed."""
@@ -1553,7 +1723,7 @@ class TestReplicatorScopeAndIntegrity(unittest.TestCase):
         self.assertTrue(worker._tags_sync_pending)
         self.assertNotIn("tagsmachines", synced)
         self.assertNotIn("alarms", synced)
-        self.assertIn("tags", synced)
+        self.assertEqual(synced, [])
 
     def test_integrity_error_continues_and_does_not_latch_sync_failed(self):
         """CA-ISOLATION-02: one orphan/IntegrityError row must not block siblings."""

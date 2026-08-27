@@ -31,9 +31,9 @@ class TestPerformanceAlarmConfig(unittest.TestCase):
         self.assertFalse(payload["perf_disk_enabled"])
         self.assertEqual(payload["perf_disk_threshold"], 88)
 
-    def test_public_config_lists_seven_alarms(self):
+    def test_public_config_lists_all_alarms(self):
         pub = public_config(load_performance_alarm_config({}))
-        self.assertEqual(len(pub["alarms"]), 7)
+        self.assertEqual(len(pub["alarms"]), len(PERF_ALARM_SPECS))
         self.assertEqual(pub["alarms"][0]["key"], "cpu")
 
 
@@ -80,6 +80,15 @@ class TestPerfAlarmEvaluator(unittest.TestCase):
         evaluator.evaluate({"DB_ACTIVE_CONNECTIONS": None})
         self.assertFalse(evaluator._active["db_conn"])
 
+    def test_field_stale_fires_with_socket_connected(self):
+        cfg = load_performance_alarm_config(
+            {"perf_debounce_count": 1, "perf_field_stale_threshold": 1, "perf_field_stale_enabled": True}
+        )
+        evaluator = PerfAlarmEvaluator(writer=lambda *args, **kwargs: True)
+        evaluator.reload(cfg)
+        evaluator.evaluate({"FIELD_STALE": 1, "HMI_ACTIVE_CLIENTS": 12})
+        self.assertTrue(evaluator._active["field_stale"])
+
     def test_reconfigure_applies_new_threshold_same_cycle(self):
         cfg = load_performance_alarm_config({"perf_debounce_count": 1, "perf_cpu_threshold": 95})
         evaluator = PerfAlarmEvaluator(writer=lambda *args, **kwargs: True)
@@ -105,12 +114,12 @@ class TestSamplerReconfigure(unittest.TestCase):
         self.assertTrue(worker._evaluator._active["cpu"])
         snap = worker.get_snapshot()
         self.assertIn("PERF_ALARMS", snap)
-        self.assertEqual(len(snap["PERF_ALARMS"]["alarms"]), 7)
+        self.assertEqual(len(snap["PERF_ALARMS"]["alarms"]), len(PERF_ALARM_SPECS))
 
 
 class TestPerformanceAlarmNames(unittest.TestCase):
     def test_catalog_size(self):
-        self.assertEqual(len(PERF_ALARM_SPECS), 7)
+        self.assertEqual(len(PERF_ALARM_SPECS), 13)
 
     def test_scoped_names_without_area(self):
         scope = MagicMock(enabled=False, is_valid=False)
@@ -129,7 +138,7 @@ class TestPerformanceAlarmNames(unittest.TestCase):
         ), patch.object(mod, "_ensure_bool_alarm") as ensure:
             persisted = mod.ensure_performance_alarms(load_performance_alarm_config({}))
         self.assertFalse(persisted)
-        self.assertEqual(ensure.call_count, 7)
+        self.assertEqual(ensure.call_count, len(PERF_ALARM_SPECS))
         first = ensure.call_args_list[0].kwargs
         self.assertEqual(first["alarm_name"], "ALM.PERF.CPU")
         self.assertEqual(first["display_name"], "CPU High")
@@ -225,8 +234,8 @@ class TestPerformanceAlarmNames(unittest.TestCase):
             mod, "_app", return_value=app
         ), patch.object(mod, "_ensure_bool_alarm"):
             self.assertTrue(mod.ensure_performance_alarms({}))
-        self.assertEqual(app.logger_engine.set_tag.call_count, 7)
-        self.assertEqual(app.logger_engine.get_tag_by_name.call_count, 7)
+        self.assertEqual(app.logger_engine.set_tag.call_count, len(PERF_ALARM_SPECS))
+        self.assertEqual(app.logger_engine.get_tag_by_name.call_count, len(PERF_ALARM_SPECS))
 
     def test_sampler_retries_persist_until_historian_has_catalog(self):
         worker = MetricsSamplerWorker(interval_seconds=5)
@@ -276,6 +285,10 @@ class TestPerformanceTagsHistorian(unittest.TestCase):
         self.app = PyAutomation()
         self.server = Flask(__name__)
         self.app.run(server=self.server, debug=True, test=True, create_tables=True)
+        worker = getattr(self.app, "metrics_worker", None)
+        if worker is not None:
+            worker.stop()
+            worker.join(timeout=2.0)
 
     def tearDown(self) -> None:
         self.app.safe_stop()
