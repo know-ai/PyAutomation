@@ -8,7 +8,13 @@ import os
 def _default_journal_path() -> str:
     enabled = os.environ.get("AUTOMATION_MULTI_EDGE_ENABLED", "true").strip().lower()
     multi_edge = enabled not in {"0", "false", "no", "off"}
-    node_id = os.environ.get("AUTOMATION_NODE_ID", "").strip()
+    node_id = ""
+    try:
+        from ..node_scope import NodeScope
+
+        node_id = (NodeScope.from_env().node_id or "").strip()
+    except Exception:
+        node_id = os.environ.get("AUTOMATION_NODE_ID", "").strip()
     if multi_edge:
         safe_node = "".join(
             char if char.isalnum() or char in "._-" else "_"

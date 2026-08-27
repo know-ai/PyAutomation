@@ -83,7 +83,9 @@
     "email": "Correo electrónico",
     "emailOptional": "Correo electrónico (opcional)",
     "name": "Nombre",
+    "nameOptional": "Nombre (opcional)",
     "lastname": "Apellido",
+    "lastnameOptional": "Apellido (opcional)",
     "rememberMe": "Recordarme",
     "repeatPassword": "Repetir contraseña",
     "repeatPasswordHint": "Vuelva a escribir la contraseña para confirmarla",
@@ -548,6 +550,17 @@
     "degradedModeBanner": "Para asegurar un rendimiento óptimo, conecte la BD de producción.",
     "degradedModeMove": "Arrastrar para mover el aviso",
     "staleWhileSocketDown": "Estado de BD conservado — no se puede verificar mientras el socket tiempo real está caído."
+  },
+  "processRestart": {
+    "title": "Reiniciando iDetectFugas",
+    "body": "El contenedor se está reiniciando para aplicar la configuración. La HMI permanece bloqueada hasta que el servicio vuelva a estar operativo.",
+    "waitingDown": "Deteniendo el proceso…",
+    "waitingUp": "Arrancando el servicio…",
+    "waitingSocket": "Restableciendo la conexión en tiempo real…",
+    "overtime": "Está tardando más de lo estimado. Espere a que el servicio se recupere.",
+    "remaining": "Tiempo estimado restante: {{time}}",
+    "elapsed": "Tiempo transcurrido: {{time}}",
+    "ready": "El servicio volvió a estar operativo."
   },
   "quality": {
     "good": "Calidad GOOD",

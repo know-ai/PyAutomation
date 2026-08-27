@@ -33,6 +33,29 @@ class TestNodeScope(unittest.TestCase):
         with self.assertRaises(NodeIdentityError):
             scope.validate_for_acquisition()
 
+    def test_node_id_is_derived_from_manufacturer_and_segment(self):
+        scope = NodeScope.from_env(
+            {
+                "AUTOMATION_SEGMENT": "Linea1",
+                "AUTOMATION_MANUFACTURER": "Supe",
+            }
+        )
+        self.assertEqual(scope.node_id, "edge-Supe-Linea1")
+        self.assertEqual(scope.area, "Linea1")
+        self.assertEqual(scope.site, "Supe")
+        scope.validate_for_acquisition()
+
+    def test_explicit_node_id_overrides_derived_identity(self):
+        scope = NodeScope.from_env(
+            {
+                "AUTOMATION_NODE_ID": "edge-1",
+                "AUTOMATION_SEGMENT": "Linea1",
+                "AUTOMATION_MANUFACTURER": "Supe",
+            }
+        )
+        self.assertEqual(scope.node_id, "edge-1")
+        scope.validate_for_acquisition()
+
     def test_segment_and_manufacturer_are_aliases_of_area_and_site(self):
         from_app_env = NodeScope.from_env(
             {

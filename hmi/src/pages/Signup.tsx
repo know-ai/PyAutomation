@@ -31,7 +31,16 @@ export function Signup() {
 
   const passwordsMatch =
     form.password.length > 0 && form.password === form.confirmPassword;
-  const canCreate = Boolean(form.username.trim()) && passwordsMatch && !loading;
+  const emailTrimmed = form.email.trim();
+  const emailOk =
+    !emailTrimmed || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
+  const requiredOk =
+    Boolean(form.username.trim()) &&
+    form.password.length > 0 &&
+    form.confirmPassword.length > 0 &&
+    passwordsMatch &&
+    emailOk;
+  const canCreate = requiredOk && !loading;
 
   const confirmHint = useMemo(() => {
     if (!form.password && !form.confirmPassword) return undefined;
@@ -45,7 +54,7 @@ export function Signup() {
   }, [form.password, form.confirmPassword, passwordsMatch, t]);
 
   const attemptSignup = async () => {
-    if (!form.username.trim() || !passwordsMatch) return;
+    if (!requiredOk) return;
     setError(null);
     setLoading(true);
     try {
@@ -176,7 +185,7 @@ export function Signup() {
           <div className="row">
             <div className="col-6">
               <Input
-                label={t("auth.name")}
+                label={t("auth.nameOptional")}
                 value={form.name}
                 onChange={(e) => onChange("name", e.target.value)}
                 autoComplete="given-name"
@@ -184,7 +193,7 @@ export function Signup() {
             </div>
             <div className="col-6">
               <Input
-                label={t("auth.lastname")}
+                label={t("auth.lastnameOptional")}
                 value={form.lastname}
                 onChange={(e) => onChange("lastname", e.target.value)}
                 autoComplete="family-name"

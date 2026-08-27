@@ -172,7 +172,7 @@ class PyAutomation(Singleton):
         """Load runtime from ./db/catalog.db when the historian is down.
 
         Does **not** require Nodes registration in PostgreSQL (that needs the
-        remote). A valid AUTOMATION_NODE_ID + AREA/SEGMENT is enough.
+        remote). A valid MANUFACTURER + SEGMENT (derived node id) is enough.
         """
         scope = self._refresh_node_scope()
         self.load_db_to_roles()

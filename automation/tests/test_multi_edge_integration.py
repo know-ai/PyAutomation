@@ -125,6 +125,20 @@ class TestIsolatedSaf(unittest.TestCase):
         self.assertIn("edge-a", path_a)
         self.assertIn("edge-b", path_b)
 
+    def test_default_journal_path_uses_derived_node_id(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTOMATION_MULTI_EDGE_ENABLED": "true",
+                "AUTOMATION_NODE_ID": "",
+                "AUTOMATION_SEGMENT": "Linea1",
+                "AUTOMATION_MANUFACTURER": "Supe",
+            },
+            clear=False,
+        ):
+            path = SafConfig().journal_path
+        self.assertIn("edge-Supe-Linea1", path)
+
     def test_two_edges_use_isolated_journals_and_reject_cross_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_a = SafConfig(journal_path=os.path.join(tmp, "edge-a.db"))

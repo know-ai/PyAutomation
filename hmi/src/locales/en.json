@@ -83,7 +83,9 @@
     "email": "Email",
     "emailOptional": "Email (optional)",
     "name": "Name",
+    "nameOptional": "Name (optional)",
     "lastname": "Last Name",
+    "lastnameOptional": "Last Name (optional)",
     "rememberMe": "Remember me",
     "repeatPassword": "Repeat password",
     "repeatPasswordHint": "Type the password again to confirm it",
@@ -548,6 +550,17 @@
     "degradedModeBanner": "For optimal performance, connect the production database.",
     "degradedModeMove": "Drag to move banner",
     "staleWhileSocketDown": "DB status held — cannot verify while the real-time socket is down."
+  },
+  "processRestart": {
+    "title": "Restarting iDetectFugas",
+    "body": "The container is restarting to apply the configuration. The HMI stays locked until the service is fully operational again.",
+    "waitingDown": "Stopping the process…",
+    "waitingUp": "Starting the service…",
+    "waitingSocket": "Restoring the real-time connection…",
+    "overtime": "This is taking longer than estimated. Wait for the service to recover.",
+    "remaining": "Estimated time remaining: {{time}}",
+    "elapsed": "Elapsed time: {{time}}",
+    "ready": "The service is operational again."
   },
   "quality": {
     "good": "GOOD quality",

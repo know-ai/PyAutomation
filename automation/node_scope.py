@@ -40,6 +40,25 @@ def _resolve_alias(
     return alias, False, None
 
 
+def compose_edge_node_id(site: str, area: str) -> str:
+    """Identidad interna: ``edge-{MANUFACTURER}-{SEGMENT}``."""
+    return f"edge-{site}-{area}"
+
+
+def _resolve_node_id(
+    explicit: str | None,
+    site: str | None,
+    area: str | None,
+) -> str | None:
+    """NODE_ID explícito gana (tests/legado); si falta, se deriva de sitio + área."""
+    explicit = _clean(explicit)
+    if explicit:
+        return explicit
+    if not site or not area:
+        return None
+    return compose_edge_node_id(site, area)
+
+
 @dataclass(frozen=True)
 class NodeScope:
     node_id: str | None
@@ -68,10 +87,10 @@ class NodeScope:
         if self.identity_conflict:
             return self.identity_conflict
         missing = []
-        if not self.node_id:
-            missing.append("AUTOMATION_NODE_ID")
         if not self.area:
             missing.append("AUTOMATION_AREA or AUTOMATION_SEGMENT")
+        if not self.node_id and not self.site:
+            missing.append("AUTOMATION_MANUFACTURER or AUTOMATION_SITE")
         if missing:
             return "missing " + " and ".join(missing)
         return None
@@ -100,8 +119,9 @@ class NodeScope:
             site_from_manufacturer = site_primary is None and site is not None
 
         explicit_area = _clean(env.get("AUTOMATION_AREA"))
+        node_id = _resolve_node_id(env.get("AUTOMATION_NODE_ID"), site, None if area_conflict else area)
         return cls(
-            node_id=_clean(env.get("AUTOMATION_NODE_ID")),
+            node_id=node_id,
             area=None if area_conflict else area,
             site=site,
             multi_edge_enabled=_enabled(env.get("AUTOMATION_MULTI_EDGE_ENABLED")),
@@ -117,10 +137,10 @@ class NodeScope:
         if self.identity_conflict:
             raise NodeIdentityError(self.identity_conflict)
         missing = []
-        if not self.node_id:
-            missing.append("AUTOMATION_NODE_ID")
         if not self.area:
             missing.append("AUTOMATION_AREA or AUTOMATION_SEGMENT")
+        if not self.node_id and not self.site:
+            missing.append("AUTOMATION_MANUFACTURER or AUTOMATION_SITE")
         if missing:
             raise NodeIdentityError(
                 "Multi-edge acquisition requires " + " and ".join(missing)

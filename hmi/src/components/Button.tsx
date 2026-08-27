@@ -19,8 +19,8 @@ export function Button({
   return (
     <button
       className={clsx("btn", `btn-${variant}`, className)}
-      disabled={loading || props.disabled}
       {...props}
+      disabled={loading || props.disabled}
     >
       {loading ? t("common.loading") : children}
     </button>

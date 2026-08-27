@@ -23,7 +23,7 @@
 | **04 HMI** | [AUDIT_HMI.md](./AUDIT_HMI.md) | `AUDIT_HMI_PERFORMANCE`, `AUDIT_RT_TRENDS` | Heap acotado **A**; forma de onda RT con cola por tag (no last-wins en historial) |
 | **05 Store-and-Forward** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) | `STORE_AND_FORWARD`, `PERSISTENCE_FLOW`, `T01_SOAK_LAST_RUN` | **A+** durabilidad; **A** aislamiento Bulkhead (código); CA-ISOLATION-05 planta pendiente |
 | **06 Multi-edge** | [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) | (ya era único) | Fase 1 en código; **planta 2-edge 2026-08-25**: 3 binds Linea2→DAQ Linea1 ([AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md](./AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md)); RLS y soak 24 h pendientes |
-| **07 Logs, eventos y bitácora** | [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) | `AUDIT_LOGGING`, `AUDIT_USER_EVENTS`, `AUDIT_OPERATIONAL_LOGS` | L1 **A+**; Events **A−**; bitácora **A+**; replicación L2/L3 por muestra (CA-ISOLATION-01) |
+| **07 Logs, eventos y bitácora** | [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) | `AUDIT_USER_EVENTS`, `AUDIT_OPERATIONAL_LOGS` | **Log aplicación ≠ Eventos**; pantalla HMI dedicada pendiente (LOG-GUI); export Loki **C** |
 | **08 Tiempo (presentación)** | [AUDIT_TIMEZONE.md](./AUDIT_TIMEZONE.md) | (ya era único; actualizado) | Operación «Hora Única»: UTC en wire; selector planta/local en HMI |
 | **09 Acondicionamiento de señal** | [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md) | `AUDIT_TAG_NOISE_FILTERS` | **A− (wavelet RT)** / **C (nuclear)** — calidad OPC en `.f`, legado eliminado; IAD pendiente |
 | **10 Máquinas de estado** | [AUDIT_STATE_MACHINES.md](./AUDIT_STATE_MACHINES.md) | (nuevo 2026-08-18; spec 02) | Tres relojes; SM-H1 cerrado en modo `sample_interval`; iDetectFugas dual-path |

@@ -3,6 +3,7 @@ import { API_BASE_URL, DETECTED_PROTOCOL } from "../config/constants";
 import { store } from "../store/store";
 import { AUTH_STORAGE_KEY, logout } from "../store/slices/authSlice";
 import { DB_UNAVAILABLE_CODE, emitDatabaseHealth } from "./health";
+import { isProcessRestartActive } from "./processRestart";
 
 // Configuración de axios
 // Nota: Para certificados autofirmados en el navegador, el usuario debe
@@ -112,6 +113,10 @@ api.interceptors.response.use(
           emitDatabaseHealth(false);
         }
         // Never force-logout when the historian/auth backend is temporarily down.
+        return Promise.reject(error);
+      }
+
+      if (status === 401 && isProcessRestartActive()) {
         return Promise.reject(error);
       }
 

@@ -14,6 +14,7 @@ import {
   type DomainLabelDisplay,
   type DomainUiSchema,
 } from "../services/machines";
+import { beginProcessRestart } from "../services/processRestart";
 
 const SCHEMA_VERSION_SUPPORTED = 1;
 
@@ -243,6 +244,7 @@ const INTERNAL_COMPARE_KEYS = new Set([
   "_apply_status",
   "_apply_message",
   "_restart_available",
+  "_restart_eta_s",
   "_buffer_filled",
   "_buffer_need",
   "_sm_state",
@@ -355,26 +357,38 @@ function formatDisplayValue(value: unknown): string {
   return String(value);
 }
 
+function selectMaxWidth(field: DomainConfigField): string {
+  const col = Number(field.columns) || 12;
+  if (col <= 4) return "9.25rem";
+  if (col < 12) return "11rem";
+  return "16rem";
+}
+
 function ControlShell({
   field,
   htmlFor,
   presentation,
   children,
   grow,
+  forceLabel,
 }: {
   field: DomainConfigField;
   htmlFor?: string;
   presentation: Presentation;
   children: ReactNode;
   grow?: boolean;
+  forceLabel?: boolean;
 }) {
   const tooltip = fieldTooltip(field, presentation);
-  const showLabel = Boolean(field.label) && presentation.labelDisplay === "visible" && field.type !== "boolean";
-  const width = grow ? "100%" : field.type === "select" ? "280px" : "220px";
+  const showLabel =
+    Boolean(field.label) &&
+    presentation.labelDisplay === "visible" &&
+    (forceLabel || field.type !== "boolean");
+  const width = grow ? "100%" : field.type === "select" ? selectMaxWidth(field) : "220px";
   return (
     <div title={tooltip} style={{ cursor: tooltip ? "help" : undefined }}>
       {field.label ? (
-        <label className={showLabel ? "form-label d-block" : "visually-hidden"} htmlFor={htmlFor}>
+        <label className={showLabel ? "form-label d-block small mb-1" : "visually-hidden"} htmlFor={htmlFor}>
           {field.label}
         </label>
       ) : null}
@@ -417,6 +431,33 @@ function FieldControl({
   if (field.type === "boolean") {
     const checked = Boolean(value);
     const hasSegments = Boolean(field.false_label || field.true_label);
+    const compact = Number(field.columns) > 0 && Number(field.columns) < 12;
+    if (hasSegments && compact) {
+      return (
+        <ControlShell field={field} htmlFor={id} presentation={presentation} forceLabel>
+          <div className="btn-group" role="group" aria-label={field.label || field.key}>
+            <button
+              type="button"
+              className={`btn btn-sm py-0 px-2 ${!checked ? "btn-primary" : "btn-outline-secondary"}`}
+              style={{ minHeight: "31px" }}
+              disabled={locked}
+              onClick={() => onChange(false)}
+            >
+              {field.false_label || "Off"}
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm py-0 px-2 ${checked ? "btn-primary" : "btn-outline-secondary"}`}
+              style={{ minHeight: "31px" }}
+              disabled={locked}
+              onClick={() => onChange(true)}
+            >
+              {field.true_label || "On"}
+            </button>
+          </div>
+        </ControlShell>
+      );
+    }
     if (hasSegments) {
       return (
         <div
@@ -485,13 +526,13 @@ function FieldControl({
     const select = (
       <select
         id={id}
-        className="form-select"
+        className="form-select form-select-sm"
         style={
           field.short_label || field.unit
             ? undefined
             : compact
-              ? { width: "100%" }
-              : { maxWidth: "280px" }
+              ? { maxWidth: selectMaxWidth(field), width: "auto" }
+              : { maxWidth: "16rem" }
         }
         value={value == null ? "" : String(value)}
         disabled={locked}
@@ -505,7 +546,7 @@ function FieldControl({
       </select>
     );
     return (
-      <ControlShell field={field} htmlFor={id} presentation={presentation} grow>
+      <ControlShell field={field} htmlFor={id} presentation={presentation} grow={!compact}>
         {select}
       </ControlShell>
     );
@@ -1271,6 +1312,7 @@ export function DomainConfigSlot({
       "_apply_status",
       "_apply_message",
       "_restart_available",
+      "_restart_eta_s",
       "_buffer_filled",
       "_buffer_need",
       "_sm_state",
@@ -1478,7 +1520,8 @@ export function DomainConfigSlot({
       setValues(next);
       onConfigUpdated?.(next);
       setRestartOpen(false);
-      showToast(t("machines.domainConfigRestartQueued"), "success");
+      const eta = Number(next._restart_eta_s);
+      beginProcessRestart(eta);
     } catch (err: any) {
       const data = err?.response?.data;
       const message =

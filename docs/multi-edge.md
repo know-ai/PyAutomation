@@ -1,17 +1,17 @@
 # Arquitectura multi-edge
 
-PyAutomation opera en modo multi-edge por defecto. Cada instancia de adquisición es un nodo con identidad propia. La API y el HMI permanecen disponibles si falta configuración; la hidratación y la adquisición se bloquean (fail-closed) hasta que existan `NODE_ID` y un área (`AUTOMATION_AREA` o `AUTOMATION_SEGMENT`).
+PyAutomation opera en modo multi-edge por defecto. Cada instancia de adquisición es un nodo con identidad propia. La API y el HMI permanecen disponibles si falta configuración; la hidratación y la adquisición se bloquean (fail-closed) hasta que existan un área (`AUTOMATION_AREA` o `AUTOMATION_SEGMENT`) y un sitio (`AUTOMATION_MANUFACTURER` o `AUTOMATION_SITE`). El `NODE_ID` interno se deriva como `edge-{MANUFACTURER}-{SEGMENT}`.
 
 ## Variables obligatorias
 
 | Variable | Obligatorio | Default | Rol |
 |---|---|---|---|
 | `AUTOMATION_MULTI_EDGE_ENABLED` | No | `true` | Activa partición, single-writer y fail-closed. `false` restaura el modo monolítico. |
-| `AUTOMATION_NODE_ID` | Sí (si multi-edge está activo) | — | Identidad estable del edge. Máximo 64 caracteres. |
 | `AUTOMATION_SEGMENT` | Sí (si multi-edge está activo; alias de `AREA`) | — | Clave de partición de línea (`Linea1`, `Linea2`, …). Es el nombre que ya usan las aplicaciones. |
 | `AUTOMATION_AREA` | Alias de `SEGMENT` | — | Mismo valor. Si ambos existen, **deben coincidir**. |
-| `AUTOMATION_MANUFACTURER` | No (alias de `SITE`) | — | Sitio / fabricante / cliente de planta. Es el nombre que ya usan las aplicaciones. |
+| `AUTOMATION_MANUFACTURER` | Sí (si multi-edge está activo; alias de `SITE`) | — | Sitio / fabricante / cliente de planta. Con `SEGMENT` forma el `node_id`: `edge-{MANUFACTURER}-{SEGMENT}`. |
 | `AUTOMATION_SITE` | Alias de `MANUFACTURER` | — | Mismo valor. Si ambos existen, **deben coincidir**. |
+| `AUTOMATION_NODE_ID` | No | derivado | Solo para tests o legado. Si falta, la app usa `edge-{MANUFACTURER}-{SEGMENT}`. |
 
 No hace falta declarar `AREA` y `SEGMENT` a la vez, ni `SITE` y `MANUFACTURER`. En iDetectFugas basta `AUTOMATION_SEGMENT` y `AUTOMATION_MANUFACTURER`.
 
@@ -43,7 +43,7 @@ Tras desplegar esta versión, reiniciar cada edge para crear la tabla `user_api_
 ## Receta N-edge
 
 1. Un PostgreSQL compartido para catálogo e histórico.
-2. Un proceso (o contenedor) por línea, con `AUTOMATION_NODE_ID` y `AUTOMATION_SEGMENT` únicos.
+2. Un proceso (o contenedor) por línea, con `AUTOMATION_MANUFACTURER` y `AUTOMATION_SEGMENT` únicos (`node_id` = `edge-{MANUFACTURER}-{SEGMENT}`).
 3. Journal SAF local por nodo: `./db/saf/<node_id>/journal.db`.
 4. Clientes OPC UA con `owner_node` igual al `NODE_ID` del edge que los abre.
 5. Pollers DAQ: un ejemplar por `(SEGMENT, scan_time)` — nombre `Linea1.DAQ-1000`, `Linea2.DAQ-1000`. Ya no hay una sola fila global `DAQ-1000`.
@@ -55,15 +55,15 @@ Ejemplo:
 ```ini
 # Edge A (nombres de aplicación; AREA/SITE son alias)
 AUTOMATION_MULTI_EDGE_ENABLED=true
-AUTOMATION_NODE_ID=edge-linea1
 AUTOMATION_SEGMENT=Linea1
 AUTOMATION_MANUFACTURER=Test
+# node_id interno: edge-Test-Linea1
 
 # Edge B
 AUTOMATION_MULTI_EDGE_ENABLED=true
-AUTOMATION_NODE_ID=edge-linea2
 AUTOMATION_SEGMENT=Linea2
 AUTOMATION_MANUFACTURER=Test
+# node_id interno: edge-Test-Linea2
 ```
 
 `application_name` de PostgreSQL queda `PyAutomationIO:<node_id>:<rol>` (máximo 63 caracteres).
