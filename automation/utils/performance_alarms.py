@@ -174,6 +174,36 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         tag_description="True when SAF drain rate stays below ingest rate with the queue already above Low",
         alarm_description="System · SAF drain slower than ingest",
     ),
+    PerfAlarmSpec(
+        key="ssd",
+        snapshot_field="HOST_SSD_ALARM",
+        tag_suffix="SYS.PERF.SSD",
+        alarm_suffix="ALM.PERF.SSD",
+        display_name="SSD SMART",
+        unit="",
+        tag_description="True when SSD wear or temperature exceeds AUTOMATION_SSD_WEAR_WARN / AUTOMATION_SSD_TEMP_WARN",
+        alarm_description="System · SSD SMART warning",
+    ),
+    PerfAlarmSpec(
+        key="ntp",
+        snapshot_field="HOST_NTP_ABS_OFFSET_MS",
+        tag_suffix="SYS.PERF.NTP",
+        alarm_suffix="ALM.PERF.NTP",
+        display_name="NTP Offset High",
+        unit="ms",
+        tag_description="True when abs(HOST_NTP_OFFSET_MS) stays above the early-warning threshold (default 100 ms)",
+        alarm_description="System · NTP offset high",
+    ),
+    PerfAlarmSpec(
+        key="node_down",
+        snapshot_field="HOST_PEER_DOWN",
+        tag_suffix="SYS.PERF.NODE_DOWN",
+        alarm_suffix="ALM.PERF.NODE_DOWN",
+        display_name="Peer Node Down",
+        unit="",
+        tag_description="True when another registered edge has last_seen older than AUTOMATION_PEER_STALE_S",
+        alarm_description="System · peer edge heartbeat lost",
+    ),
 )
 
 _SPECS_BY_KEY = {spec.key: spec for spec in PERF_ALARM_SPECS}

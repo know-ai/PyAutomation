@@ -27,6 +27,9 @@ const LABEL_KEYS: Record<PerfAlarmKey, string> = {
   saf_shed: "performance.safShed",
   saf_ingest: "performance.safIngest",
   saf_rate: "performance.safRate",
+  ssd: "performance.ssd",
+  ntp: "performance.ntp",
+  node_down: "performance.peerDown",
 };
 
 type Row = {

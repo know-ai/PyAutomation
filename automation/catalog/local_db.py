@@ -48,6 +48,7 @@ def open_catalog_db(path: str | None = None) -> SqliteDatabase:
                 "foreign_keys": 1,
                 "cache_size": -8000,
                 "synchronous": 1,
+                "temp_store": "MEMORY",
             },
         )
         db.connect(reuse_if_open=True)

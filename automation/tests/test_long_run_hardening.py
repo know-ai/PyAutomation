@@ -112,6 +112,11 @@ class TestCatalogCompact(unittest.TestCase):
         self.assertIn(result["vacuumed"], (0, 1))
         self.assertIn("checkpointed", result)
 
+    def test_catalog_temp_store_memory(self):
+        db = local_db.open_catalog_db(self.path)
+        row = db.execute_sql("PRAGMA temp_store").fetchone()
+        self.assertEqual(int(row[0]), 2)
+
 
 class TestHostDiskCritical(unittest.TestCase):
     def test_host_disk_critical_rising_edge_emits_event(self):

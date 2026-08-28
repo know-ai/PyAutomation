@@ -53,7 +53,16 @@ API / HMI / core / loggers
 
 ---
 
-## 1. Matriz de criterios de aceptación (CA-CATALOG)
+## Roles de las bases de datos SQLite (G-DISK-06)
+
+| Base de datos | Propósito | `synchronous` | `temp_store` | Durabilidad |
+|---|---|---|---|---|
+| `journal.db` (`./db/saf/<node_id>/`) | Outbox SAF de muestras, alarmas, eventos, logs | **FULL** | MEMORY | Crítica (Plan A local) |
+| `catalog.db` (`./db/catalog.db`) | Espejo de configuración, usuarios, OPC, máquinas | **NORMAL** (1) | MEMORY | No crítica; se reconstruye desde el historiador o seed |
+
+El historiador remoto (PostgreSQL) **nunca** se sustituye por SQLite. Ver [AUDIT_DISK_DURABILITY.md](./AUDIT_DISK_DURABILITY.md).
+
+---
 
 | ID | Criterio | Resultado | Evidencia primaria | Test |
 |---|---|---|---|---|

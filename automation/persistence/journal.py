@@ -124,6 +124,7 @@ class JournalWriter:
         self._last_checkpoint_mono = 0.0
         self._last_compact_mono = 0.0
         self._last_dlq_prune_mono = 0.0
+        self._durability_fd = -1
 
     def start(self) -> None:
         with self._lock:
@@ -150,6 +151,7 @@ class JournalWriter:
             if self._conn is not None:
                 self._conn.close()
                 self._conn = None
+            self._close_durability_fd_locked()
             self._started = False
 
     def set_force_flush_hook(self, hook) -> None:
@@ -739,9 +741,37 @@ class JournalWriter:
             return
         try:
             self._conn.commit()
+            # PRAGMA synchronous=FULL already fsyncs the WAL; extra fsync of the
+            # db file survives a SIGKILL between SQLite's commit return and a
+            # delayed kernel writeback on some filesystems.
+            self._fsync_durability_fd_locked()
             self._invalidate_disk_cache_locked()
         except sqlite3.OperationalError as err:
             self._raise_operational(err)
+
+    def _open_durability_fd_locked(self) -> None:
+        self._close_durability_fd_locked()
+        try:
+            self._durability_fd = os.open(self.config.journal_path, os.O_RDONLY)
+        except OSError:
+            self._durability_fd = -1
+
+    def _close_durability_fd_locked(self) -> None:
+        if self._durability_fd < 0:
+            return
+        try:
+            os.close(self._durability_fd)
+        except OSError:
+            pass
+        self._durability_fd = -1
+
+    def _fsync_durability_fd_locked(self) -> None:
+        if self._durability_fd < 0:
+            return
+        try:
+            os.fsync(self._durability_fd)
+        except OSError:
+            pass
 
     def _raise_operational(self, err: sqlite3.OperationalError) -> None:
         message = str(err).lower()
@@ -863,10 +893,13 @@ class JournalWriter:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA synchronous=FULL")
             self._conn.execute("PRAGMA temp_store=MEMORY")
+            self._conn.execute("PRAGMA cache_size=-64000")
+            self._conn.execute("PRAGMA mmap_size=268435456")
             self._conn.execute(f"PRAGMA wal_autocheckpoint={int(self.config.wal_autocheckpoint)}")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(_SCHEMA)
             self._conn.commit()
+            self._open_durability_fd_locked()
             self._hydrate_counters_locked()
         except sqlite3.Error as err:
             self.last_error = str(err)

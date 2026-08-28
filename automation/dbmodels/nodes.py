@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import socket
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from peewee import CharField, TimestampField, BooleanField, FloatField
 
@@ -105,6 +105,38 @@ class Nodes(BaseModel):
             ntp_updated_at=timestamp,
             updated_at=timestamp,
         ).where(cls.id == node_id).execute()
+
+    @classmethod
+    def heartbeat(cls, node_id: str, now: datetime | None = None) -> None:
+        """Refresh last_seen so peers can detect a silent node."""
+        if not node_id:
+            return
+        timestamp = now or utc_now()
+        cls.update(last_seen=timestamp, updated_at=timestamp).where(cls.id == node_id).execute()
+
+    @classmethod
+    def stale_peer_ids(
+        cls,
+        node_id: str,
+        *,
+        older_than_s: float = 90.0,
+        now: datetime | None = None,
+    ) -> list[str]:
+        """Ids of other registered nodes whose last_seen is older than the TTL."""
+        if not node_id:
+            return []
+        cutoff = (now or utc_now()) - timedelta(seconds=max(1.0, float(older_than_s)))
+        stale: list[str] = []
+        for row in cls.select().where(cls.id != node_id):
+            stamp = row.last_seen
+            if stamp is None:
+                stale.append(str(row.id))
+                continue
+            if isinstance(stamp, datetime) and stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            if stamp < cutoff:
+                stale.append(str(row.id))
+        return stale
 
     def serialize(self) -> dict:
         return {

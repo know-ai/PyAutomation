@@ -1157,7 +1157,10 @@
         "hubLag": "event-loop lag",
         "safShed": "SAF analog history shed",
         "safIngest": "SAF tag ingest age",
-        "safRate": "SAF ingest/drain mismatch"
+        "safRate": "SAF ingest/drain mismatch",
+        "ssd": "SSD wear or temperature",
+        "ntp": "absolute NTP offset",
+        "peerDown": "peer node heartbeat"
       }
     }
   },
@@ -1323,6 +1326,13 @@
     "rss": "RSS",
     "disk": "Disk used",
     "diskFree": "Free {{value}}",
+    "ssd": "SSD",
+    "ssdHint": "Wear {{wear}} · {{temp}}",
+    "ssdUnavailable": "SMART unavailable (set AUTOMATION_SSD_DEVICE)",
+    "peerDown": "Peer node",
+    "peerOk": "All seen",
+    "peerDownHint": "{{count}} missed heartbeat ({{ids}})",
+    "noatimeMissing": "Data volume mounted without noatime",
     "threads": "Threads",
     "http": "HTTP",
     "http1m": "Requests / min",
@@ -1471,7 +1481,10 @@
       "hub_lag": "Hub event-loop lag",
       "saf_shed": "SAF analog shed",
       "saf_ingest": "SAF ingest heartbeat lost",
-      "saf_rate": "SAF drain slower than ingest"
+      "saf_rate": "SAF drain slower than ingest",
+      "ssd": "SSD SMART",
+      "ntp": "High NTP offset",
+      "node_down": "Peer node down"
     }
   }
 }

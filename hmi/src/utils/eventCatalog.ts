@@ -21,6 +21,9 @@ const PERF_ALARM_SUFFIX_TO_TITLE_KEY: Record<string, string> = {
   "ALM.PERF.SAF_SHED": "saf_shed",
   "ALM.PERF.SAF_INGEST": "saf_ingest",
   "ALM.PERF.SAF_RATE": "saf_rate",
+  "ALM.PERF.SSD": "ssd",
+  "ALM.PERF.NTP": "ntp",
+  "ALM.PERF.NODE_DOWN": "node_down",
 };
 
 const PERF_ALARM_MESSAGE =

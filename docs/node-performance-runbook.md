@@ -9,7 +9,7 @@ solo **admin / sudo**.
 
 El valor viene de `GET /api/health/node`. Es una copia del dict que escribe `MetricsSamplerWorker` cada 5 s (configurable con `AUTOMATION_METRICS_SAMPLE_INTERVAL_S`, rango 5–30 s). **No** hacer poll de `/api/health/system` para el dashboard: ese endpoint recalcula métricas en cada llamada. Si **Snapshot age** supera ~15 s, el sampler se retrasó; si supera ~60 s, el worker no está actualizando. El HMI hace poll cada **3 s** (30 s si la pestaña está oculta).
 
-`HOST_DISK_USED_PERCENT` se mide sobre el volumen de datos del journal (`./db` o `AUTOMATION_DATA_DIR`). `HOST_DISK_CRITICAL` es verdadero por encima del 85 % (`saf_host_disk_critical_percent`); la tarjeta de disco se pinta en rojo.
+`HOST_DISK_USED_PERCENT` se mide sobre el volumen de datos del journal (`./db` o `AUTOMATION_DATA_DIR`). `HOST_DISK_CRITICAL` es verdadero por encima del 85 % (`saf_host_disk_critical_percent`); la tarjeta de disco se pinta en rojo. `HOST_DISK_NOATIME` / `HOST_DISK_DATA_ORDERED` indican montaje. Wear/temperatura SSD (`HOST_SSD_WEAR_PERCENT`, `HOST_SSD_TEMP_C`) requieren `AUTOMATION_SSD_DEVICE` y `smartctl`; la alarma es `ALM.PERF.SSD`. Desfase NTP: `HOST_NTP_OFFSET_MS` / `HOST_NTP_ABS_OFFSET_MS` → `ALM.PERF.NTP` (default 100 ms). Pares: `HOST_PEER_DOWN` → `ALM.PERF.NODE_DOWN` si `last_seen` > `AUTOMATION_PEER_STALE_S` (90 s). Hardware: [HARDWARE_REQUIREMENTS.md](./HARDWARE_REQUIREMENTS.md).
 
 ## Umbrales recomendados y acciones
 
@@ -17,11 +17,13 @@ El valor viene de `GET /api/health/node`. Es una copia del dict que escribe `Met
 |---|---|---|---|
 | CPU % | ≥ 70 | ≥ 90 | Revisar SM/OPC; no aumentar poll de `/health/system` |
 | Disco usado % | ≥ 80 | ≥ 90 | Liberar journal SAF / logs rotados |
+| SSD wear / temp | ≥ `AUTOMATION_SSD_WEAR_WARN` (80) / `AUTOMATION_SSD_TEMP_WARN` (65) | SMART crítico | Sustituir SSD; ver [HARDWARE_REQUIREMENTS.md](./HARDWARE_REQUIREMENTS.md) |
 | 5xx / min | ≥ 1 | sostenido | Logs ERROR; no es el sampler (O(1) en GET /node) |
 | Cola SAF | > 0 sostenida | backpressure | Historiador o red; ver `/api/health/saf`. Si > 1000, **Forzar replicación**. Si > 5000 y admin, **Vaciar cola** solo como último recurso |
 | Filas huérfanas de catálogo | > 0 | sync atascado | **Forzar sincronización**; si persisten, **Limpiar huérfanos** (admin) |
 | Worker inactivo / error | amarillo/rojo | ciclo detenido | **Reiniciar** el worker afectado |
-| NTP unsynced | warn offset | alarma BOOL | Runbook NTP |
+| NTP abs offset | ≥ 50 ms (warn clock) | ≥ 100 ms `ALM.PERF.NTP`; ≥ 1000 ms `ALM.NTP.OutOfSync` | chrony + servidores de planta |
+| Peer `last_seen` | — | `ALM.PERF.NODE_DOWN` si otro edge > 90 s | No hay steal-tags; revisar el edge caído |
 | Clientes HMI | — | mismatch vs `hmi_sessions` | Socket rechazado / heartbeat |
 
 ## Controles en caliente (misma vista)
@@ -54,7 +56,7 @@ Cada proceso tiene su propio sampler, journal y workers. Un dashboard en Linea1 
 
 ## Alarmas de rendimiento (ISA-18.2)
 
-Siete alarmas BOOL de sistema: CPU, disco, cola SAF, lag SAF, antigüedad del snapshot, conexiones PG y HTTP 5xx/min. Viven en el AlarmManager (`{área}.ALM.PERF.*`).
+Dieciséis alarmas BOOL de sistema (`ALM.PERF.*`): CPU, disco, cola/lag SAF, antigüedad del snapshot, conexiones PG, HTTP 5xx, campo congelado, dead-letter, hub, shed, ingest, rate, SSD, NTP y nodo par. Viven en el AlarmManager (`{área}.ALM.PERF.*`). `ALM.NTP.OutOfSync` es independiente (umbral 1 s).
 
 | Acción | Dónde |
 |---|---|

@@ -20,6 +20,20 @@ export type NodePerformanceSnapshot = {
   HOST_DISK_FREE_GB?: number | null;
   HOST_DISK_USED_PERCENT?: number | null;
   HOST_DISK_CRITICAL?: boolean | null;
+  HOST_DISK_NOATIME?: boolean | null;
+  HOST_DISK_FSTYPE?: string | null;
+  HOST_DISK_IO_SCHEDULER?: string | null;
+  HOST_SSD_SMART_AVAILABLE?: boolean | null;
+  HOST_SSD_WEAR_PERCENT?: number | null;
+  HOST_SSD_TEMP_C?: number | null;
+  HOST_SSD_ALARM?: number | null;
+  HOST_NTP_OFFSET_MS?: number | null;
+  HOST_NTP_ABS_OFFSET_MS?: number | null;
+  HOST_NTP_SYNCED?: number | null;
+  HOST_PEER_DOWN?: number | null;
+  HOST_PEER_DOWN_COUNT?: number | null;
+  HOST_PEER_DOWN_IDS?: string[];
+  HOST_DISK_DATA_ORDERED?: boolean | null;
   HOST_THREADS?: number | null;
   HTTP_REQUESTS_TOTAL?: number | null;
   HTTP_REQUESTS_1M?: number | null;
@@ -37,6 +51,12 @@ export type NodePerformanceSnapshot = {
   SAF_QUEUE_DEPTH?: number | null;
   SAF_REPLICATION_LAG_MS?: number | null;
   SAF_DISK_BYTES?: number | null;
+  SAF_DEADLETTER_COUNT?: number | null;
+  SAF_SHED?: number | null;
+  SAF_INGEST_AGE_MS?: number | null;
+  SAF_RATE_MISMATCH?: number | null;
+  FIELD_STALE?: number | null;
+  HUB_LAG_MS?: number | null;
   OPC_MONITORED_COUNT?: number | null;
   CVT_TAG_COUNT?: number | null;
   CVT_LOCK_CONTENTION?: number | null;
@@ -85,6 +105,9 @@ export const PERF_ALARM_KEYS = [
   "saf_shed",
   "saf_ingest",
   "saf_rate",
+  "ssd",
+  "ntp",
+  "node_down",
 ] as const;
 
 export type PerfAlarmKey = (typeof PERF_ALARM_KEYS)[number];

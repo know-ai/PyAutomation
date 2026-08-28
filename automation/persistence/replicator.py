@@ -51,6 +51,44 @@ def _node_scope():
         return None
 
 
+_SAF_NTP_MAX_OFFSET_MS = 1000.0
+
+
+def clock_blocks_replication(status: dict[str, Any] | None) -> str:
+    """Keep PENDING (do not ACK) when NTP offset exceeds 1 s.
+
+    Empty string means replication may proceed. NTP disabled or offset still
+    unknown does not block (lab / first check). Does not trip the circuit breaker.
+    """
+    if not status or not status.get("enabled"):
+        return ""
+    offset = status.get("offset_ms")
+    if offset is None:
+        return ""
+    try:
+        abs_ms = abs(float(offset))
+    except (TypeError, ValueError):
+        return ""
+    if abs_ms > _SAF_NTP_MAX_OFFSET_MS:
+        return (
+            f"clock offset {abs_ms:.1f} ms exceeds "
+            f"{_SAF_NTP_MAX_OFFSET_MS:.0f} ms"
+        )
+    return ""
+
+
+def _live_clock_status() -> dict[str, Any] | None:
+    try:
+        from .. import PyAutomation
+
+        worker = getattr(PyAutomation(), "ntp_worker", None)
+        if worker is None:
+            return None
+        return worker.get_status()
+    except Exception:
+        return None
+
+
 def _scope_owns_payload(scope, payload: dict[str, Any]) -> bool:
     if scope is None or not getattr(scope, "enabled", False):
         return True
@@ -132,6 +170,10 @@ class RemoteReplicator:
             self.last_error = "invalid node scope"
             return 0
         if not self.circuit.allow():
+            return 0
+        reason = clock_blocks_replication(_live_clock_status())
+        if reason:
+            self.last_error = reason
             return 0
         if not self.remote.is_reachable():
             self.circuit.failure()

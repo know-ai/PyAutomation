@@ -119,7 +119,7 @@ class TestSamplerReconfigure(unittest.TestCase):
 
 class TestPerformanceAlarmNames(unittest.TestCase):
     def test_catalog_size(self):
-        self.assertEqual(len(PERF_ALARM_SPECS), 13)
+        self.assertEqual(len(PERF_ALARM_SPECS), 16)
 
     def test_scoped_names_without_area(self):
         scope = MagicMock(enabled=False, is_valid=False)

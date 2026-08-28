@@ -35,6 +35,12 @@ _DEFAULTS: dict[str, Any] = {
     "perf_saf_ingest_threshold": 15000.0,
     "perf_saf_rate_enabled": True,
     "perf_saf_rate_threshold": 1.0,
+    "perf_ssd_enabled": True,
+    "perf_ssd_threshold": 1.0,
+    "perf_ntp_enabled": True,
+    "perf_ntp_threshold": 100.0,
+    "perf_node_down_enabled": True,
+    "perf_node_down_threshold": 1.0,
 }
 
 _ENV_MAP = {
@@ -53,6 +59,9 @@ _ENV_MAP = {
     "AUTOMATION_PERF_SAF_SHED_THRESHOLD": ("perf_saf_shed_threshold", float),
     "AUTOMATION_PERF_SAF_INGEST_THRESHOLD": ("perf_saf_ingest_threshold", float),
     "AUTOMATION_PERF_SAF_RATE_THRESHOLD": ("perf_saf_rate_threshold", float),
+    "AUTOMATION_PERF_SSD_THRESHOLD": ("perf_ssd_threshold", float),
+    "AUTOMATION_PERF_NTP_THRESHOLD": ("perf_ntp_threshold", float),
+    "AUTOMATION_PERF_NODE_DOWN_THRESHOLD": ("perf_node_down_threshold", float),
 }
 
 _BOOL_KEYS = {
@@ -70,6 +79,9 @@ _BOOL_KEYS = {
     "perf_saf_shed_enabled",
     "perf_saf_ingest_enabled",
     "perf_saf_rate_enabled",
+    "perf_ssd_enabled",
+    "perf_ntp_enabled",
+    "perf_node_down_enabled",
 }
 
 _CLAMP: dict[str, tuple[float, float]] = {
@@ -87,6 +99,9 @@ _CLAMP: dict[str, tuple[float, float]] = {
     "perf_saf_shed_threshold": (1, 1),
     "perf_saf_ingest_threshold": (1000, 600_000),
     "perf_saf_rate_threshold": (1, 1),
+    "perf_ssd_threshold": (1, 1),
+    "perf_ntp_threshold": (10, 10_000),
+    "perf_node_down_threshold": (1, 1),
 }
 
 _CAMEL_TO_SNAKE = {
@@ -105,6 +120,9 @@ _CAMEL_TO_SNAKE = {
     "safShedThreshold": "perf_saf_shed_threshold",
     "safIngestThreshold": "perf_saf_ingest_threshold",
     "safRateThreshold": "perf_saf_rate_threshold",
+    "ssdThreshold": "perf_ssd_threshold",
+    "ntpThreshold": "perf_ntp_threshold",
+    "nodeDownThreshold": "perf_node_down_threshold",
 }
 
 ALARM_KEYS = (
@@ -121,6 +139,9 @@ ALARM_KEYS = (
     "saf_shed",
     "saf_ingest",
     "saf_rate",
+    "ssd",
+    "ntp",
+    "node_down",
 )
 
 

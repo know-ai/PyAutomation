@@ -1152,7 +1152,10 @@
         "hubLag": "retraso del event-loop",
         "safShed": "shed de historia analógica SAF",
         "safIngest": "antigüedad de ingestión SAF de tags",
-        "safRate": "desajuste ingestión/drenaje SAF"
+        "safRate": "desajuste ingestión/drenaje SAF",
+        "ssd": "desgaste o temperatura del SSD",
+        "ntp": "desfase NTP absoluto",
+        "peerDown": "heartbeat de nodo par"
       }
     }
   },
@@ -1318,6 +1321,13 @@
     "rss": "RSS",
     "disk": "Disco usado",
     "diskFree": "Libre {{value}}",
+    "ssd": "SSD",
+    "ssdHint": "Desgaste {{wear}} · {{temp}}",
+    "ssdUnavailable": "SMART no disponible (defina AUTOMATION_SSD_DEVICE)",
+    "peerDown": "Nodo par",
+    "peerOk": "Todos vistos",
+    "peerDownHint": "{{count}} sin heartbeat ({{ids}})",
+    "noatimeMissing": "Volumen de datos sin noatime",
     "threads": "Hilos",
     "http": "HTTP",
     "http1m": "Peticiones / min",
@@ -1466,7 +1476,10 @@
       "hub_lag": "Lag del event-loop",
       "saf_shed": "Shed de historia SAF",
       "saf_ingest": "Ingestión SAF detenida",
-      "saf_rate": "Drenaje SAF más lento que la ingestión"
+      "saf_rate": "Drenaje SAF más lento que la ingestión",
+      "ssd": "SSD SMART",
+      "ntp": "Desfase NTP alto",
+      "node_down": "Nodo par caído"
     }
   }
 }

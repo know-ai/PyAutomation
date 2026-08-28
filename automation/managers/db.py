@@ -551,6 +551,12 @@ class DBManager(Singleton):
             ntp_offset_ms=ntp_offset_ms,
         )
 
+    def heartbeat_node(self, node_id: str, now=None):
+        return Nodes.heartbeat(node_id, now=now)
+
+    def list_stale_peer_ids(self, node_id: str, *, older_than_s: float = 90.0, now=None):
+        return Nodes.stale_peer_ids(node_id, older_than_s=older_than_s, now=now)
+
     # USERS METHODS
     @logging_error_handler
     def set_role(self, name:str, level:int, identifier:str):

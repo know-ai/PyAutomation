@@ -31,7 +31,49 @@ def check_url(url, context=None):
         return False
 
 
+def _warn_db_mount_without_noatime():
+    """Advisory only — never fails the orchestrator healthcheck."""
+    data_dir = os.environ.get("AUTOMATION_DATA_DIR") or "/app/db"
+    path = "/proc/self/mountinfo"
+    try:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError:
+        return
+    abs_target = os.path.abspath(data_dir)
+    best = ""
+    options = ""
+    fstype = ""
+    for line in text.splitlines():
+        if " - " not in line:
+            continue
+        left, right = line.split(" - ", 1)
+        left_parts = left.split()
+        right_parts = right.split()
+        if len(left_parts) < 6 or not right_parts:
+            continue
+        point, opts = left_parts[4], left_parts[5]
+        if abs_target == point or abs_target.startswith(point.rstrip("/") + "/") or point == "/":
+            if len(point) >= len(best):
+                super_opts = right_parts[2] if len(right_parts) > 2 else ""
+                best = point
+                options = f"{opts},{super_opts}"
+                fstype = right_parts[0]
+    option_set = {part.strip() for part in options.split(",") if part.strip()}
+    if best and "noatime" not in option_set:
+        print(
+            f"WARNING: data volume {abs_target} mounted without noatime ({best})",
+            file=sys.stderr,
+        )
+    if best and fstype == "ext4" and not ({"data=ordered", "data=journal"} & option_set):
+        print(
+            f"WARNING: data volume {abs_target} ext4 without data=ordered ({best})",
+            file=sys.stderr,
+        )
+
+
 def main():
+    _warn_db_mount_without_noatime()
     port = os.environ.get("AUTOMATION_PORT") or os.environ.get("PORT", "8050")
     use_ssl = _ssl_enabled()
     scheme = "https" if use_ssl else "http"

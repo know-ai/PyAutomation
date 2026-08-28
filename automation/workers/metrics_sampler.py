@@ -22,6 +22,7 @@ _LOGGER = logging.getLogger("pyautomation.metrics")
 _DEFAULT_INTERVAL_S = 5.0
 _MIN_INTERVAL_S = 5.0
 _MAX_INTERVAL_S = 30.0
+_SMART_INTERVAL_S = 60.0
 TREND_WINDOW_S = 300.0
 TREND_FIELDS = (
     ("cpu", "HOST_CPU_PERCENT"),
@@ -68,6 +69,9 @@ class MetricsSamplerWorker(BaseWorker):
         self._saf_rate_prev: tuple[int, int] | None = None
         self._saf_rate_at = 0.0
         self._disk_was_critical = False
+        self._smart_sample: dict[str, Any] = {}
+        self._smart_at = 0.0
+        self._ssd_was_alarm = False
 
     def get_snapshot(self) -> dict[str, Any]:
         now = time.monotonic()
@@ -171,6 +175,7 @@ class MetricsSamplerWorker(BaseWorker):
         self._sample_acquisition(payload)
         self._sample_workers(payload)
         self._sample_clock(payload)
+        self._sample_peers(payload)
         self._sample_perf_alarms(payload)
         self._record_trends(payload)
         return payload
@@ -247,6 +252,8 @@ class MetricsSamplerWorker(BaseWorker):
                 payload.setdefault("HOST_DISK_CRITICAL", False)
             except Exception:
                 pass
+        self._sample_disk_mount(payload)
+        self._sample_ssd(payload)
 
     def _host_data_dir(self) -> str:
         env = os.environ.get("AUTOMATION_DATA_DIR", "").strip()
@@ -302,6 +309,67 @@ class MetricsSamplerWorker(BaseWorker):
             )
         except Exception:
             _LOGGER.debug("host disk critical event skipped", exc_info=True)
+
+    def _sample_disk_mount(self, payload: dict[str, Any]) -> None:
+        try:
+            from ..utils.disk_mount import snapshot as mount_snapshot, warn_if_missing_noatime
+
+            payload.update(mount_snapshot(self._host_data_dir()))
+            warn_if_missing_noatime(self._host_data_dir())
+        except Exception:
+            _LOGGER.debug("metrics disk mount skipped", exc_info=True)
+            payload.setdefault("HOST_DISK_NOATIME", None)
+
+    def _sample_ssd(self, payload: dict[str, Any]) -> None:
+        try:
+            from ..utils import ssd_health
+
+            now = time.monotonic()
+            if now - self._smart_at >= _SMART_INTERVAL_S or not self._smart_sample:
+                self._smart_sample = ssd_health.collect()
+                self._smart_at = now
+            sample = self._smart_sample or {}
+            wear = sample.get("wear_percent")
+            temp = sample.get("temp_c")
+            available = bool(sample.get("available"))
+            payload["HOST_SSD_SMART_AVAILABLE"] = available
+            payload["HOST_SSD_DEVICE"] = sample.get("device")
+            payload["HOST_SSD_WEAR_PERCENT"] = None if wear is None else round(float(wear), 1)
+            payload["HOST_SSD_TEMP_C"] = None if temp is None else round(float(temp), 1)
+            wear_warn = ssd_health.wear_warn_percent()
+            temp_warn = ssd_health.temp_warn_c()
+            payload["HOST_SSD_WEAR_WARN"] = wear_warn
+            payload["HOST_SSD_TEMP_WARN"] = temp_warn
+            is_alarm = ssd_health.alarm_active(sample, wear_warn=wear_warn, temp_warn=temp_warn)
+            payload["HOST_SSD_ALARM"] = 1.0 if is_alarm else 0.0
+            if is_alarm and not self._ssd_was_alarm:
+                self._emit_ssd_alarm(payload, wear_warn, temp_warn)
+            self._ssd_was_alarm = bool(is_alarm)
+        except Exception:
+            _LOGGER.debug("metrics SSD SMART skipped", exc_info=True)
+            payload.setdefault("HOST_SSD_ALARM", 0.0)
+            payload.setdefault("HOST_SSD_SMART_AVAILABLE", False)
+
+    def _emit_ssd_alarm(self, payload: dict[str, Any], wear_warn: float, temp_warn: float) -> None:
+        try:
+            from ..utils.audit_metrics import cooldown_allows
+            from ..utils.system_event_audit import persist_system_event
+
+            if not cooldown_allows("host:ssd_smart", 3600.0):
+                return
+            persist_system_event(
+                message="SSD SMART warning",
+                description=(
+                    f"wear={payload.get('HOST_SSD_WEAR_PERCENT')} "
+                    f"wear_warn={wear_warn} temp={payload.get('HOST_SSD_TEMP_C')} "
+                    f"temp_warn={temp_warn}"
+                ),
+                classification="System",
+                priority=3,
+                criticity=3,
+            )
+        except Exception:
+            _LOGGER.debug("host SSD SMART event skipped", exc_info=True)
 
     def _sample_http(self, payload: dict[str, Any]) -> None:
         try:
@@ -560,13 +628,57 @@ class MetricsSamplerWorker(BaseWorker):
             worker = getattr(PyAutomation(), "ntp_worker", None)
             if worker is None:
                 payload["clock"] = {"synced": False, "offset_ms": None, "enabled": False}
+                payload["HOST_NTP_OFFSET_MS"] = None
+                payload["HOST_NTP_ABS_OFFSET_MS"] = None
+                payload["HOST_NTP_SYNCED"] = 0.0
                 return
             status = worker.get_status()
+            offset = status.get("offset_ms")
+            abs_offset = None
+            if offset is not None:
+                try:
+                    abs_offset = abs(float(offset))
+                except (TypeError, ValueError):
+                    abs_offset = None
             payload["clock"] = {
                 "enabled": bool(status.get("enabled")),
                 "synced": bool(status.get("synced")),
                 "warn": bool(status.get("warn")),
-                "offset_ms": status.get("offset_ms"),
+                "offset_ms": offset,
             }
+            payload["HOST_NTP_OFFSET_MS"] = offset
+            payload["HOST_NTP_ABS_OFFSET_MS"] = abs_offset
+            payload["HOST_NTP_SYNCED"] = 1.0 if status.get("synced") else 0.0
         except Exception:
             _LOGGER.debug("metrics clock skipped", exc_info=True)
+
+    def _sample_peers(self, payload: dict[str, Any]) -> None:
+        payload.setdefault("HOST_PEER_DOWN", 0.0)
+        payload.setdefault("HOST_PEER_DOWN_COUNT", 0)
+        payload.setdefault("HOST_PEER_DOWN_IDS", [])
+        try:
+            from .. import PyAutomation
+            from ..node_scope import get_node_scope
+
+            app = PyAutomation()
+            if not app.is_db_connected():
+                return
+            scope = get_node_scope()
+            if scope is None or not getattr(scope, "is_valid", False):
+                return
+            stale_s = 90.0
+            raw = os.environ.get("AUTOMATION_PEER_STALE_S")
+            if raw not in (None, ""):
+                try:
+                    stale_s = max(15.0, float(raw))
+                except (TypeError, ValueError):
+                    stale_s = 90.0
+            app.db_manager.heartbeat_node(scope.node_id)
+            ids = app.db_manager.list_stale_peer_ids(
+                scope.node_id, older_than_s=stale_s
+            )
+            payload["HOST_PEER_DOWN_COUNT"] = len(ids)
+            payload["HOST_PEER_DOWN_IDS"] = ids
+            payload["HOST_PEER_DOWN"] = 1.0 if ids else 0.0
+        except Exception:
+            _LOGGER.debug("metrics peers skipped", exc_info=True)

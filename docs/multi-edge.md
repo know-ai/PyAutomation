@@ -104,8 +104,9 @@ Checklist operativo:
 2. Confirmar `/api/health/system`: `ACQUISITION_READY=true`, `DB_CONNECTIONS_COUNT` ≤ 4 idle, `SAF_QUEUE_DEPTH` estable.
 3. Reboot de A: el CVT de A no lista `Linea2.*`; B sigue adquiriendo.
 4. Caer OPC de A: A no abre el cliente de B; B no encola samples de A.
-5. HMI de cada edge: CVT, alarmas activas, máquinas y clientes OPC solo del área local. Resumen de alarmas, eventos, logs, tendencias y datalogger ven toda la planta (selector de área opcional).
-6. Tras 24 h, `PENDING_ROWS` no crece de forma sostenida y no hay writes cruzados en TagValue (`owner_node`).
+5. Heartbeat de nodos: cada sampler actualiza `Nodes.last_seen`. Si A desaparece > `AUTOMATION_PEER_STALE_S` (90 s), B genera `ALM.PERF.NODE_DOWN` con el id de A. **B no asume los tags de A** (partición single-writer; ver [AUDIT_MULTI_EDGE.md](../audits/AUDIT_MULTI_EDGE.md)).
+6. HMI de cada edge: CVT, alarmas activas, máquinas y clientes OPC solo del área local. Resumen de alarmas, eventos, logs, tendencias y datalogger ven toda la planta (selector de área opcional).
+7. Tras 24 h, `PENDING_ROWS` no crece de forma sostenida y no hay writes cruzados en TagValue (`owner_node`).
 
 ## Sincronización NTP (multi-edge)
 

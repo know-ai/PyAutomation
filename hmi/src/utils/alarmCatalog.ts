@@ -15,6 +15,9 @@ const PERF_ALARM_SUFFIX_TO_TITLE_KEY: Record<string, string> = {
   "ALM.PERF.SAF_SHED": "saf_shed",
   "ALM.PERF.SAF_INGEST": "saf_ingest",
   "ALM.PERF.SAF_RATE": "saf_rate",
+  "ALM.PERF.SSD": "ssd",
+  "ALM.PERF.NTP": "ntp",
+  "ALM.PERF.NODE_DOWN": "node_down",
 };
 
 /** Snapshot metric codes → locale keys under alarms.catalog.fields.* */
@@ -32,6 +35,9 @@ const PERF_FIELD_TO_KEY: Record<string, string> = {
   SAF_SHED: "safShed",
   SAF_INGEST_AGE_MS: "safIngest",
   SAF_RATE_MISMATCH: "safRate",
+  HOST_SSD_ALARM: "ssd",
+  HOST_NTP_ABS_OFFSET_MS: "ntp",
+  HOST_PEER_DOWN: "peerDown",
 };
 
 const OPCUA_CONNECTION_LOST = /^OPC UA client '(.+)' connection lost$/i;

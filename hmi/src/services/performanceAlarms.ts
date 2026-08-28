@@ -83,4 +83,7 @@ export const PERF_ALARM_UNITS: Record<PerfAlarmKey, string> = {
   saf_shed: "",
   saf_ingest: "ms",
   saf_rate: "",
+  ssd: "",
+  ntp: "ms",
+  node_down: "",
 };

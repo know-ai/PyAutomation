@@ -89,6 +89,29 @@ class HealthPingResource(Resource):
         }, 200
 
 
+@ns.route("/liveness")
+class HealthLivenessResource(Resource):
+    @api.doc(description="Liveness probe (same payload as /ping).")
+    @api.response(200, "Process is alive")
+    def get(self):
+        return {
+            "status": "alive",
+            "service": "pyautomation",
+        }, 200
+
+
+@ns.route("/readiness")
+class HealthReadinessResource(Resource):
+    @api.doc(description="Readiness: gunicorn finished PyAutomation.run (acquisition path).")
+    @api.response(200, "Acquisition stack is ready")
+    @api.response(503, "Still starting")
+    def get(self):
+        starting = bool(getattr(app, "is_starting", False))
+        if starting:
+            return {"status": "not_ready", "phase": "starting"}, 503
+        return {"status": "ready", "phase": "acquisition_ready"}, 200
+
+
 def node_metrics_payload():
     """O(1) copy of the sampler snapshot. Safe when the worker is not running."""
     worker = getattr(app, "metrics_worker", None)

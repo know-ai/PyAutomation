@@ -154,6 +154,15 @@ function numericValue(snapshot: NodePerformanceSnapshot, key: PerfAlarmKey): num
     metrics_age: snapshot.METRICS_AGE_MS,
     db_conn: snapshot.DB_ACTIVE_CONNECTIONS,
     http_5xx: snapshot.HTTP_5XX_1M,
+    field_stale: snapshot.FIELD_STALE,
+    saf_deadletter: snapshot.SAF_DEADLETTER_COUNT,
+    hub_lag: snapshot.HUB_LAG_MS,
+    saf_shed: snapshot.SAF_SHED,
+    saf_ingest: snapshot.SAF_INGEST_AGE_MS,
+    saf_rate: snapshot.SAF_RATE_MISMATCH,
+    ssd: snapshot.HOST_SSD_ALARM,
+    ntp: snapshot.HOST_NTP_ABS_OFFSET_MS,
+    node_down: snapshot.HOST_PEER_DOWN,
   };
   const value = map[key];
   return value == null ? null : Number(value);
@@ -210,6 +219,9 @@ export function Performance() {
   const valueLabel = (key: PerfAlarmKey | null): string => {
     if (key === "cpu") return formatNumber(snapshot.HOST_CPU_PERCENT, 1, "%");
     if (key === "disk") return formatNumber(snapshot.HOST_DISK_USED_PERCENT, 1, "%");
+    if (key === "ssd") return formatNumber(snapshot.HOST_SSD_WEAR_PERCENT, 1, "%");
+    if (key === "ntp") return formatNumber(snapshot.HOST_NTP_ABS_OFFSET_MS, 1, "ms");
+    if (key === "node_down") return formatNumber(snapshot.HOST_PEER_DOWN_COUNT, 0);
     if (key === "saf_queue") return formatNumber(snapshot.SAF_QUEUE_DEPTH, 0);
     if (key === "saf_lag") return formatNumber(snapshot.SAF_REPLICATION_LAG_MS, 0, "ms");
     if (key === "metrics_age") return formatNumber(snapshot.METRICS_AGE_MS, 0, "ms");
@@ -297,7 +309,12 @@ export function Performance() {
             <i className="bi bi-bell" aria-hidden="true" />
             <strong>{t("performance.metricsAge")}</strong> {formatNumber(snapshot.METRICS_AGE_MS, 0, "ms")}
           </button>
-          <span className={`perf-chip perf-chip--${clockTone}`}>
+          <button
+            type="button"
+            className={`perf-chip perf-chip--${tileTone("ntp", clockTone)}`}
+            onClick={() => setOpenKey("ntp")}
+          >
+            <i className="bi bi-bell" aria-hidden="true" />
             <strong>{t("performance.ntp")}</strong>{" "}
             {snapshot.clock?.synced
               ? t("performance.ntpSynced")
@@ -305,7 +322,21 @@ export function Performance() {
                 ? t("performance.ntpUnsynced")
                 : t("performance.ntpDisabled")}
             {snapshot.clock?.offset_ms != null ? ` · ${formatNumber(snapshot.clock.offset_ms, 1, "ms")}` : ""}
-          </span>
+          </button>
+          <button
+            type="button"
+            className={`perf-chip perf-chip--${tileTone("node_down", snapshot.HOST_PEER_DOWN ? "error" : "ok")}`}
+            onClick={() => setOpenKey("node_down")}
+          >
+            <i className="bi bi-bell" aria-hidden="true" />
+            <strong>{t("performance.peerDown")}</strong>{" "}
+            {snapshot.HOST_PEER_DOWN
+              ? t("performance.peerDownHint", {
+                  count: Number(snapshot.HOST_PEER_DOWN_COUNT || 0),
+                  ids: (snapshot.HOST_PEER_DOWN_IDS || []).join(", ") || "—",
+                })
+              : t("performance.peerOk")}
+          </button>
         </div>
       </header>
 
@@ -348,7 +379,11 @@ export function Performance() {
             value={formatNumber(snapshot.HOST_DISK_USED_PERCENT, 1, "%")}
             raw={snapshot.HOST_DISK_USED_PERCENT}
             max={100}
-            hint={t("performance.diskFree", { value: formatNumber(snapshot.HOST_DISK_FREE_GB, 1, "GB") })}
+            hint={
+              snapshot.HOST_DISK_NOATIME === false
+                ? t("performance.noatimeMissing")
+                : t("performance.diskFree", { value: formatNumber(snapshot.HOST_DISK_FREE_GB, 1, "GB") })
+            }
             tone={tileTone("disk", diskTone(snapshot.HOST_DISK_USED_PERCENT, snapshot.HOST_DISK_CRITICAL))}
             lifecycle={bindings.disk.lifecycle}
             spark={valuesOf(series.disk)}
@@ -358,6 +393,40 @@ export function Performance() {
             canConfigure={canConfigure}
             onOpen={() => setOpenKey("disk")}
             onConfigure={() => setConfigKey("disk")}
+          />
+          <MetricTile
+            variant="gauge"
+            label={t("performance.ssd")}
+            value={
+              snapshot.HOST_SSD_SMART_AVAILABLE
+                ? formatNumber(snapshot.HOST_SSD_WEAR_PERCENT, 1, "%")
+                : t("performance.ssdUnavailable")
+            }
+            raw={snapshot.HOST_SSD_WEAR_PERCENT}
+            max={100}
+            hint={
+              snapshot.HOST_SSD_SMART_AVAILABLE
+                ? t("performance.ssdHint", {
+                    wear: formatNumber(snapshot.HOST_SSD_WEAR_PERCENT, 1, "%"),
+                    temp: formatNumber(snapshot.HOST_SSD_TEMP_C, 1, "°C"),
+                  })
+                : t("performance.ssdUnavailable")
+            }
+            tone={tileTone(
+              "ssd",
+              snapshot.HOST_SSD_ALARM
+                ? "error"
+                : snapshot.HOST_SSD_SMART_AVAILABLE
+                  ? "ok"
+                  : "unknown"
+            )}
+            lifecycle={bindings.ssd.lifecycle}
+            alarmable
+            threshold={bindings.ssd.catalog?.threshold}
+            thresholdLabel={thresholdOf(bindings.ssd)}
+            canConfigure={canConfigure}
+            onOpen={() => setOpenKey("ssd")}
+            onConfigure={() => setConfigKey("ssd")}
           />
           <MetricTile
             variant="gauge"

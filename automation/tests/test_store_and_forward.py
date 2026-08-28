@@ -223,6 +223,65 @@ class TestSafJournal(unittest.TestCase):
         self.assertEqual(deleted, 0)
         self.assertEqual(len(self.journal.fetch_pending(10)), 1)
 
+    def test_journal_pragmas_durable_and_cached(self):
+        with self.journal._lock:
+            mode = str(self.journal._conn.execute("PRAGMA journal_mode").fetchone()[0]).upper()
+            sync = int(self.journal._conn.execute("PRAGMA synchronous").fetchone()[0])
+            temp = int(self.journal._conn.execute("PRAGMA temp_store").fetchone()[0])
+            cache = int(self.journal._conn.execute("PRAGMA cache_size").fetchone()[0])
+            mmap = int(self.journal._conn.execute("PRAGMA mmap_size").fetchone()[0])
+        self.assertEqual(mode, "WAL")
+        self.assertEqual(sync, 2)
+        self.assertEqual(temp, 2)
+        self.assertEqual(cache, -64000)
+        self.assertGreaterEqual(mmap, 0)
+        self.assertGreaterEqual(self.journal._durability_fd, 0)
+
+    def test_disk_full_error_when_pending_cannot_evict(self):
+        """WD-06 / G-DISK-03: JournalDiskFullError when SENT cannot free space."""
+        with patch.object(
+            self.journal, "_measure_disk_bytes", return_value=self.config.max_disk_bytes
+        ):
+            with self.journal._lock:
+                self.journal._disk_bytes_cache = self.config.max_disk_bytes
+                self.journal._disk_bytes_mono = time.monotonic()
+                with self.assertRaises(JournalDiskFullError):
+                    self.journal._guard_disk_locked()
+                self.assertTrue(self.journal.backpressure)
+                self.assertGreaterEqual(self.journal.dropped_full, 1)
+
+    def test_disk_full_error_on_append_when_cap_exceeded(self):
+        path = os.path.join(self.tmp.name, "tiny-journal.db")
+        config = SafConfig(
+            journal_path=path,
+            max_disk_bytes=32 * 1024,
+            max_pending_rows=1_000_000,
+            ring_maxsize=8,
+            tag_flush_interval_s=60.0,
+            gc_batch=10,
+            gc_sent_after_s=86_400,
+        )
+        writer = JournalWriter(config)
+        writer.start()
+        raised = False
+        ts = datetime(2026, 8, 28, tzinfo=timezone.utc)
+        try:
+            for i in range(400):
+                try:
+                    writer.append(
+                        PersistableRecord.event(
+                            message="payload-" + ("x" * 256),
+                            username="system",
+                            timestamp=ts + timedelta(milliseconds=i),
+                        )
+                    )
+                except JournalDiskFullError:
+                    raised = True
+                    break
+            self.assertTrue(raised, "expected JournalDiskFullError before 400 pending events")
+        finally:
+            writer.stop()
+
     def test_health_snapshot_keys(self):
         orch = PersistenceOrchestrator(config=self.config, remote=NullRemoteDB())
         snap = orch.snapshot()
