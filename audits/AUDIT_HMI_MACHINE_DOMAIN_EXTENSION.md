@@ -9,7 +9,7 @@
 | **Respuesta (post Fase A)** | **SÍ** — Schema-Driven UI + duck-typing; ver [§13 evidencia](#13-evidencia-de-implementación-2026-08-26) |
 | **Principios (pre)** | DIP / OCP violados |
 | **Principios (post)** | Host de schemas; el producto implementa `get_ui_schema` / `get_config` / `put_config` |
-| **Fecha** | 2026-08-26 (auditoría) · implementación 2026-08-26 |
+| **Fecha** | 2026-08-26 (auditoría) · Fase A 2026-08-26 · Fase B iDetectFugas 2026-08-26 · suscripción filtrada **2026-09-01** |
 | **Complementa** | [AUDIT_STATE_MACHINES.md](./AUDIT_STATE_MACHINES.md), [AUDIT_HMI.md](./AUDIT_HMI.md); producto: `idetectfugas/audits/10-AUDIT_HMI_MACHINE_CONFIG_EXTENSION.md` |
 | **Misión** | Evolucionar PyAutomationIO de un framework que **conoce** iDetectFugas a uno que **ignora** el dominio, pero es extraordinariamente extensible |
 
@@ -30,6 +30,7 @@
 11. [Criterios de aceptación (Definition of Done)](#11-criterios-de-aceptación-definition-of-done)
 12. [Fuera de alcance / Fase B](#12-fuera-de-alcance--fase-b)
 13. [Evidencia de implementación (2026-08-26)](#13-evidencia-de-implementación-2026-08-26)
+14. [Actualización 2026-09-01 — suscripción filtrada](#14-actualización-2026-09-01--suscripción-filtrada)
 
 ---
 
@@ -45,7 +46,7 @@
 
 **Por qué es SÍ ahora:** un engine externo implementa `get_ui_schema` / `get_config` / `put_config`. El framework los detecta por duck-typing, publica `has_domain_config` en `serialize()`, sirve `GET|PUT /api/machines/<name>/domain-config` y renderiza `DomainConfigSlot`. Cero nombres de producto en la API/HMI de machines (guardia en `test_machine_domain_config.py`).
 
-**Hueco de producto:** hasta que iDetectFugas implemente el Protocol (Fase B), el slot no aparece y el toggle probabilidad/estadístico deja de existir en HMI.
+**Fase B (producto):** iDetectFugas implementó el Protocol en LDS/NPW/PPA/PFM/Observer (**2026-08-26**). El slot aparece para esos motores; el toggle probabilidad/estadístico vive en el schema de NPW/PPA, no en `/attributes`.
 
 ---
 
@@ -504,12 +505,12 @@ Excepción permitida temporal: este archivo `audits/AUDIT_HMI_MACHINE_DOMAIN_EXT
 
 ## 12. Fuera de alcance / Fase B
 
-| Ítem | Repo |
-|---|---|
-| Schemas reales LDS/NPW/PPA/PFM/Observer | **iDetectFugas** |
-| Persistencia YAML Bayes / classic configs | **iDetectFugas** |
-| Panel rico de aportes bayesianos (charts) | iDetectFugas (extensión remota opcional post-slot) |
-| Editar site-packages en edge | **Prohibido** |
+| Ítem | Repo | Estado |
+|---|---|---|
+| Schemas reales LDS/NPW/PPA/PFM/Observer | **iDetectFugas** | **Implementado** (2026-08-26) |
+| Persistencia YAML Bayes / classic configs | **iDetectFugas** | **Implementado** |
+| Panel rico de aportes bayesianos (charts) | iDetectFugas (extensión remota opcional post-slot) | Pendiente |
+| Editar site-packages en edge | **Prohibido** | — |
 
 Documento hermano de producto: `gitlab/intelcon/idetectfugas/audits/10-AUDIT_HMI_MACHINE_CONFIG_EXTENSION.md`.
 
@@ -593,7 +594,25 @@ Fase A está en el árbol. PyAutomationIO **ignora** nombres de producto y hospe
 - GET/PUT domain-config round-trip + `ValueError` → 400
 - Guardia estática sobre paths de §10.3
 
-### 13.6 Hueco restante (Fase B, fuera de este repo)
+### 13.6 Fase B producto (2026-08-26 — cerrada)
 
-iDetectFugas debe implementar el Protocol en LDS/NPW/PPA/PFM/Observer. Hasta entonces el slot no aparece y se pierde el toggle de modo umbral en HMI. Coordinar wheel 2.9 con esa Fase B.
+iDetectFugas implementó el Protocol en LDS, NPW, PPA, PFM y Observer. Evidencia en `gitlab/intelcon/idetectfugas/audits/11-AUDIT_SPEC_IDETECTFUGAS_ENGINE_CONFIG.md` §13.
+
+---
+
+## 14. Actualización 2026-09-01 — suscripción filtrada
+
+Mejoras en el árbol fuente (pueden no estar en wheel `2.8.1` empaquetado hasta rebuild).
+
+| Tema | Archivo | Comportamiento |
+|------|---------|----------------|
+| Metadatos tags de campo | `automation/modules/machines/resources/machines.py` — `_field_tag_info`, `_tag_opcua_mapped` | GET máquina incluye `field_tags_info`: `name`, `variable`, `unit`, `opcua_mapped`, `opcua_client_name` |
+| Compatibilidad de tipos | `automation/variables/__init__.py` — `variable_for_unit`, `compatible_field_variables` | MassFlow ↔ VolumetricFlow intercambiables; resto exige mismo tipo |
+| Validación subscribe | `machines.py` POST subscribe | Rechaza tag no mapeado OPC UA o tipo incompatible con variable interna |
+| Orden UX HMI | `hmi/src/pages/MachinesDetailed.tsx` — `getCompatibleFieldTags` | Primero variable interna; dropdown Tags de Campo deshabilitado hasta selección; filtra por `opcua_mapped` y tipo |
+| Tooltips schema | `hmi/src/components/DomainConfigSlot.tsx` — `FieldHelpLabel` | `help_display: "tooltip"` en schemas de producto → icono `bi-info-circle` |
+| `ProcessType.variable` | `automation/models.py` — `serialize()` | Expone variable lógica para inferir tipo en suscripción |
+| Tests | `automation/tests/test_resolve_units_for_variable.py`, `automation/tests/test_machine_domain_config.py` | Compatibilidad tipos; guardia anti-acoplamiento |
+
+**Coordinación producto:** iDetectFugas emite `_subscribe_mapping_hint` permanente en `get_config()` de cada motor; el framework filtra tags en la card de suscripción genérica — ver `idetectfugas/audits/10-AUDIT_HMI_MACHINE_CONFIG_EXTENSION.md` §14.
 
