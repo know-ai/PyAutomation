@@ -8,6 +8,7 @@ import { logout as logoutAction } from "../store/slices/authSlice";
 import { closeSidebarOnMobile } from "./sidebarDom";
 import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
 import { canViewPerformance, canViewSettings, canViewUserManagement } from "../utils/access";
+import { listHmiExtensions, type HmiMenuItem } from "../services/hmiExtensions";
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -30,6 +31,7 @@ export function Sidebar() {
   );
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [extensions, setExtensions] = useState<HmiMenuItem[]>([]);
 
   const isCommunicationsActive = location.pathname.startsWith("/communications");
   const isTagsActive = location.pathname.startsWith("/tags");
@@ -94,6 +96,24 @@ export function Sidebar() {
       setMachinesExpanded(true);
     }
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (systemOnly) {
+      setExtensions([]);
+      return;
+    }
+    let cancelled = false;
+    void listHmiExtensions()
+      .then((items) => {
+        if (!cancelled) setExtensions(items);
+      })
+      .catch(() => {
+        if (!cancelled) setExtensions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [systemOnly]);
 
   // Prevenir scroll del body cuando el modal está abierto
   useEffect(() => {
@@ -321,6 +341,21 @@ export function Sidebar() {
             </li>
               </>
             )}
+
+            {!systemOnly &&
+              canViewPerformance(user?.role) &&
+              extensions.map((item) => (
+                <li className="nav-item" key={item.id}>
+                  <NavLink
+                    to={item.path}
+                    className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                    onClick={closeSidebarOnMobile}
+                  >
+                    <i className={`nav-icon ${item.icon}`} />
+                    <p>{t(item.label_key)}</p>
+                  </NavLink>
+                </li>
+              ))}
             
             {/* Otros items del menú */}
             {(systemOnly

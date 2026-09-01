@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import type { KeyboardEvent, MouseEvent } from "react";
+import { PerfInfoTip } from "./PerfPanel";
 import { Sparkline } from "./Sparkline";
 import type { PerfAlarmLifecycle, TileTone } from "../services/performanceAlarms";
 import { utilizationColor } from "../services/performanceColors";
@@ -21,6 +22,9 @@ type MetricTileProps = {
   variant?: "gauge" | "tile";
   onOpen?: () => void;
   onConfigure?: () => void;
+  /** Tooltip del icono "i". Sin valor o `false`: se oculta. */
+  info?: string | false;
+  dragHandle?: boolean;
 };
 
 const GAUGE_COLORS: Record<TileTone, string> = {
@@ -110,6 +114,8 @@ export function MetricTile({
   variant = "tile",
   onOpen,
   onConfigure,
+  info,
+  dragHandle = false,
 }: MetricTileProps) {
   const { t } = useTranslation();
   const clickable = Boolean(onOpen);
@@ -152,7 +158,7 @@ export function MetricTile({
       onKeyDown={onKeyDown}
       aria-label={alarmable ? `${label}. ${status || ""}. ${thresholdLabel || ""}` : label}
     >
-      <header className="perf-tile__head">
+      <header className={clsx("perf-tile__head", dragHandle && "lds-card-handle")}>
         <span className="perf-tile__label">{label}</span>
         <span className="perf-tile__tools">
           {alarmable ? (
@@ -161,9 +167,9 @@ export function MetricTile({
               title={thresholdLabel ? t("performance.thresholdHint", { value: thresholdLabel }) : t("performance.alarmable")}
               aria-hidden="true"
             />
-          ) : (
-            <i className="bi bi-info-circle perf-tile__mark perf-tile__mark--info" title={t("performance.informative")} aria-hidden="true" />
-          )}
+          ) : typeof info === "string" && info ? (
+            <PerfInfoTip text={info} />
+          ) : null}
           {canConfigure && onConfigure ? (
             <button
               type="button"

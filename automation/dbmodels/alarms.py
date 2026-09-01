@@ -5,6 +5,7 @@ from ..dbmodels.core import BaseModel
 from datetime import datetime
 from .tags import Tags
 from ..alarms.states import States
+from ..alarms.delays import DEFAULT_ALARM_DELAY_S, DEFAULT_ALARM_DELAY_UNITS
 from ..tags.cvt import CVTEngine
 from ..timebase import TAGVALUE_TIMESTAMP_RESOLUTION, SECONDS_CEILING, quantize_datetime_ms
 from ..utils.decorators import logging_error_handler
@@ -196,6 +197,10 @@ class Alarms(BaseModel):
     description = CharField(null=True, max_length=256)
     state = ForeignKeyField(AlarmStates, backref='alarms')
     timestamp = TimestampField(utc=True, null=True)
+    on_delay = FloatField(default=DEFAULT_ALARM_DELAY_S)
+    off_delay = FloatField(default=DEFAULT_ALARM_DELAY_S)
+    on_delay_units = CharField(default=DEFAULT_ALARM_DELAY_UNITS, max_length=16)
+    off_delay_units = CharField(default=DEFAULT_ALARM_DELAY_UNITS, max_length=16)
 
     class Meta:
         indexes = ((("area", "name"), False),)
@@ -212,7 +217,11 @@ class Alarms(BaseModel):
         description:str=None,
         state:str=States.NORM.value,
         timestamp:datetime=None,
-        area:str=None
+        area:str=None,
+        on_delay:float=None,
+        off_delay:float=None,
+        on_delay_units:str=None,
+        off_delay_units:str=None,
         ):
         r"""
         Creates a new Alarm configuration record.
@@ -258,7 +267,11 @@ class Alarms(BaseModel):
                 description=description,
                 state=state,
                 timestamp=timestamp,
-                area=area
+                area=area,
+                on_delay=DEFAULT_ALARM_DELAY_S if on_delay is None else on_delay,
+                off_delay=DEFAULT_ALARM_DELAY_S if off_delay is None else off_delay,
+                on_delay_units=on_delay_units or DEFAULT_ALARM_DELAY_UNITS,
+                off_delay_units=off_delay_units or DEFAULT_ALARM_DELAY_UNITS,
             )
             alarm.save()
 
@@ -324,9 +337,70 @@ class Alarms(BaseModel):
             'description': self.description,
             'state': self.state.name,
             'timestamp': timestamp,
-            'area': self.area
+            'area': self.area,
+            'on_delay': self.on_delay if self.on_delay is not None else DEFAULT_ALARM_DELAY_S,
+            'off_delay': self.off_delay if self.off_delay is not None else DEFAULT_ALARM_DELAY_S,
+            'on_delay_units': self.on_delay_units or DEFAULT_ALARM_DELAY_UNITS,
+            'off_delay_units': self.off_delay_units or DEFAULT_ALARM_DELAY_UNITS,
         }
     
+
+def ensure_alarm_delay_schema(db) -> None:
+    """Add On-Delay / Off-Delay columns to existing ``alarms`` tables."""
+    if db is None:
+        return
+    table = Alarms._meta.table_name
+    try:
+        existing = {column.name for column in db.get_columns(table)}
+    except Exception:
+        return
+    additions = (
+        ("on_delay", Alarms.on_delay),
+        ("off_delay", Alarms.off_delay),
+        ("on_delay_units", Alarms.on_delay_units),
+        ("off_delay_units", Alarms.off_delay_units),
+    )
+    pending = [(name, field) for name, field in additions if name not in existing]
+    if not pending:
+        return
+    try:
+        from peewee import MySQLDatabase, PostgresqlDatabase, SqliteDatabase
+        from playhouse.migrate import (
+            MySQLMigrator,
+            PostgresqlMigrator,
+            SqliteMigrator,
+            migrate,
+        )
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "alarm delay schema migrate skipped (playhouse unavailable)",
+            exc_info=True,
+        )
+        return
+    if isinstance(db, SqliteDatabase):
+        migrator = SqliteMigrator(db)
+    elif isinstance(db, PostgresqlDatabase):
+        migrator = PostgresqlMigrator(db)
+    elif isinstance(db, MySQLDatabase):
+        migrator = MySQLMigrator(db)
+    else:
+        logging.getLogger("pyautomation").warning(
+            "alarm delay schema migrate skipped: unsupported db %s",
+            type(db).__name__,
+        )
+        return
+    for field_name, field in pending:
+        cloned = field.clone()
+        cloned.index = False
+        try:
+            migrate(migrator.add_column(table, field_name, cloned))
+        except Exception:
+            logging.getLogger("pyautomation").warning(
+                "alarm delay column %s add skipped",
+                field_name,
+                exc_info=True,
+            )
+
 
 class AlarmSummary(BaseModel):
     r"""

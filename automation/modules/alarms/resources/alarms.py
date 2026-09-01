@@ -4,6 +4,18 @@ from automation.alarms import AlarmState
 from ....extensions.api import api
 from ....extensions import _api as Api
 from ....utils.system_event_audit import persist_system_event
+from ..filters import filter_serialized_alarms
+from ....alarms.delays import clamp_alarm_delay, normalize_delay_units
+
+
+ns = Namespace('Alarms', description='Alarm Management Resources')
+app = PyAutomation()
+
+
+def _payload_delay(payload: dict, key: str):
+    if key not in payload or payload.get(key) is None:
+        return None
+    return clamp_alarm_delay(payload.get(key))
 
 
 ns = Namespace('Alarms', description='Alarm Management Resources')
@@ -45,7 +57,11 @@ create_alarm_model = api.model("create_alarm_model", {
     'alarm_type': fields.String(required=False, description='Alarm type (BOOL, HIGH, LOW, HIGH-HIGH, LOW-LOW)', default='BOOL'),
     'trigger_value': fields.Raw(required=False, description='Value that triggers the alarm (bool, float, or int)', default=True),
     'description': fields.String(required=False, description='Alarm description', default=''),
-    'display_name': fields.String(required=False, description='Operator-facing display name (defaults to the base name)')
+    'display_name': fields.String(required=False, description='Operator-facing display name (defaults to the base name)'),
+    'on_delay': fields.Float(required=False, description='Seconds the condition must hold before the alarm activates (ISA-18.2 On-Delay). Default 0 (immediate).', default=0.0),
+    'off_delay': fields.Float(required=False, description='Seconds the condition must stay normal before the alarm clears (ISA-18.2 Off-Delay). Default 0 (immediate).', default=0.0),
+    'on_delay_units': fields.String(required=False, description="Delay unit (currently always 'seconds')", default='seconds'),
+    'off_delay_units': fields.String(required=False, description="Delay unit (currently always 'seconds')", default='seconds'),
 })
 
 alarms_kp_range_model = api.model("alarms_kp_range_model", {
@@ -60,7 +76,11 @@ update_alarm_model = api.model("update_alarm_model", {
     'tag': fields.String(required=False, description='Tag name to monitor'),
     'description': fields.String(required=False, description='Alarm description'),
     'alarm_type': fields.String(required=False, description='Alarm type (BOOL, HIGH, LOW, HIGH-HIGH, LOW-LOW)'),
-    'trigger_value': fields.Raw(required=False, description='Value that triggers the alarm (int or float)')
+    'trigger_value': fields.Raw(required=False, description='Value that triggers the alarm (int or float)'),
+    'on_delay': fields.Float(required=False, description='Seconds the condition must hold before the alarm activates (ISA-18.2 On-Delay)'),
+    'off_delay': fields.Float(required=False, description='Seconds the condition must stay normal before the alarm clears (ISA-18.2 Off-Delay)'),
+    'on_delay_units': fields.String(required=False, description="Delay unit (currently always 'seconds')"),
+    'off_delay_units': fields.String(required=False, description="Delay unit (currently always 'seconds')"),
 })
 
 # Parsers
@@ -85,6 +105,20 @@ class AlarmsCollection(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('page', type=int, location='args', help='Page number', default=1)
     parser.add_argument('limit', type=int, location='args', help='Items per page', default=20)
+    parser.add_argument(
+        'q',
+        type=str,
+        location='args',
+        help='Case-insensitive partial match on alarm name or description',
+        default='',
+    )
+    parser.add_argument(
+        'state',
+        type=str,
+        location='args',
+        help='ISA 18.2 state name (e.g. Unacknowledged). Empty = all states.',
+        default='',
+    )
 
     @api.doc(security='apikey', description="Retrieves a list of all configured alarms with pagination support.")
     @api.response(200, "Success")
@@ -96,10 +130,13 @@ class AlarmsCollection(Resource):
 
         Retrieves a paginated list of all alarms currently defined in the system.
         Supports pagination via query parameters: page (default: 1) and limit (default: 20).
+        Optional ``q`` (name/description) and ``state`` (ISA 18.2) filter before paging.
         """
         args = self.parser.parse_args()
         page = args.get('page', 1)
         limit = args.get('limit', 20)
+        query = str(args.get('q') or "").strip()
+        state = str(args.get('state') or "").strip()
         
         # Validate pagination parameters
         if page < 1:
@@ -108,7 +145,11 @@ class AlarmsCollection(Resource):
             return {'message': 'Limit must be greater than 0'}, 400
         
         # Get all alarms
-        all_alarms = app.serialize_alarms()
+        all_alarms = filter_serialized_alarms(
+            app.serialize_alarms(),
+            query=query,
+            state=state,
+        )
         total = len(all_alarms)
         
         # Calculate pagination
@@ -529,6 +570,10 @@ class AddAlarmResource(Resource):
                 display_name=payload.get('display_name'),
                 user=user,
                 skip_validation=False,
+                on_delay=_payload_delay(payload, 'on_delay'),
+                off_delay=_payload_delay(payload, 'off_delay'),
+                on_delay_units=normalize_delay_units(payload.get('on_delay_units')) if payload.get('on_delay_units') else None,
+                off_delay_units=normalize_delay_units(payload.get('off_delay_units')) if payload.get('off_delay_units') else None,
             )
             
             if alarm:
@@ -549,7 +594,9 @@ class AddAlarmResource(Resource):
                         'name': alarm.name,
                         'tag': alarm.tag.name if hasattr(alarm.tag, 'name') else str(alarm.tag),
                         'alarm_type': alarm.alarm_setpoint.type.value if hasattr(alarm.alarm_setpoint.type, 'value') else str(alarm.alarm_setpoint.type),
-                        'trigger_value': alarm.alarm_setpoint.value
+                        'trigger_value': alarm.alarm_setpoint.value,
+                        'on_delay': alarm._on_delay_s(),
+                        'off_delay': alarm._off_delay_s(),
                     }
                 }, 200
             else:
@@ -625,6 +672,10 @@ class UpdateAlarmResource(Resource):
                 alarm_type=update_kwargs.get('alarm_type'),
                 trigger_value=update_kwargs.get('trigger_value'),
                 user=Api.get_current_user(),
+                on_delay=_payload_delay(update_kwargs, 'on_delay'),
+                off_delay=_payload_delay(update_kwargs, 'off_delay'),
+                on_delay_units=normalize_delay_units(update_kwargs.get('on_delay_units')) if update_kwargs.get('on_delay_units') else None,
+                off_delay_units=normalize_delay_units(update_kwargs.get('off_delay_units')) if update_kwargs.get('off_delay_units') else None,
             )
             
             # Get updated alarm

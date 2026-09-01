@@ -172,6 +172,10 @@ def local_alarm_payloads() -> list[dict]:
                 "description": row.get("description") or "",
                 "state": (state or {}).get("name"),
                 "area": row.get("area"),
+                "on_delay": row.get("on_delay"),
+                "off_delay": row.get("off_delay"),
+                "on_delay_units": row.get("on_delay_units"),
+                "off_delay_units": row.get("off_delay_units"),
             }
         )
     return payloads

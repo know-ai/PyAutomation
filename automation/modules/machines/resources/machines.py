@@ -1,3 +1,4 @@
+import logging
 import os
 
 from flask import request
@@ -6,15 +7,17 @@ from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
 from ....models import StringType, FloatType, IntegerType
-from ....variables import Percentage
+from ....variables import Percentage, compatible_field_variables, variable_for_unit
 from ....domain_config import (
     audit_domain_config_change,
+    domain_files_upload_payload,
     supports_domain_config,
     supports_domain_files,
     unknown_generic_attribute_keys,
 )
 from ....state_machine_timing import MachineConfigError, validate_temporal_config
 
+logger = logging.getLogger(__name__)
 
 ns = Namespace('Machines', description='State Machine Management Resources')
 app = PyAutomation()
@@ -32,6 +35,58 @@ def _machine_scope_error(machine_name: str | None = None, machine=None):
     if target is not None and not app._machine_in_scope(target):
         return {"message": "Machine belongs to another edge node"}, 403
     return None
+
+
+def _tag_opcua_mapped(tag) -> bool:
+    if tag is None:
+        return False
+    address = tag.get_opcua_address() if hasattr(tag, "get_opcua_address") else getattr(tag, "opcua_address", None)
+    node = tag.get_node_namespace() if hasattr(tag, "get_node_namespace") else getattr(tag, "node_namespace", None)
+    return bool(address) and bool(node)
+
+
+def _field_tag_info(tag, *, name: str | None = None) -> dict:
+    tag_name = name or (getattr(tag, "name", None) if tag is not None else None) or ""
+    variable = ""
+    unit = ""
+    client = ""
+    if tag is not None:
+        if hasattr(tag, "get_variable"):
+            variable = tag.get_variable() or ""
+        else:
+            variable = getattr(tag, "variable", None) or ""
+        if hasattr(tag, "get_unit"):
+            unit = tag.get_unit() or ""
+        else:
+            unit = getattr(tag, "unit", None) or ""
+        if hasattr(tag, "get_opcua_client_name"):
+            client = tag.get_opcua_client_name() or ""
+        else:
+            client = getattr(tag, "opcua_client_name", None) or ""
+    return {
+        "name": tag_name,
+        "variable": variable,
+        "unit": unit,
+        "opcua_mapped": _tag_opcua_mapped(tag),
+        "opcua_client_name": client,
+    }
+
+
+def _subscription_type_error(process_type, field_tag, *, internal_tag_name: str, field_tag_name: str):
+    internal_var = variable_for_unit(getattr(process_type, "unit", None))
+    if hasattr(field_tag, "get_variable"):
+        tag_var = field_tag.get_variable()
+    else:
+        tag_var = getattr(field_tag, "variable", None)
+    if not internal_var or not tag_var:
+        return None
+    allowed = compatible_field_variables(internal_var)
+    if tag_var in allowed:
+        return None
+    return (
+        f"El tag de campo '{field_tag_name}' ({tag_var}) no es compatible "
+        f"con '{internal_tag_name}' ({internal_var})."
+    )
 
 
 def _apply_temporal_update(machine, new_execution, new_sample, overrides, user, persist: bool):
@@ -263,6 +318,13 @@ class MachineByNameResource(Resource):
                 if not is_filtered_derivative_name(name)
             ]
             field_tags = machine.get_available_field_tags(all_field_tags)
+            field_tags_info = []
+            for tag_name in field_tags:
+                tag = app.cvt._cvt.get_tag_by_name(name=tag_name)
+                info = _field_tag_info(tag, name=tag_name)
+                if tag is None:
+                    info["opcua_mapped"] = True
+                field_tags_info.append(info)
             
             return {
                 "data": {
@@ -271,6 +333,7 @@ class MachineByNameResource(Resource):
                     "not_subscribed_tags": not_subscribed_tags,
                     "internal_process_variables": internal_process_variables,
                     "field_tags": field_tags,
+                    "field_tags_info": field_tags_info,
                     "read_only_process_type_variables": read_only_process_type_variables,
                     "serialization": serialization
                 }
@@ -495,6 +558,24 @@ class MachineSubscribeResource(Resource):
                 return {
                     "message": f"Field tag '{field_tag_name}' not found"
                 }, 404
+
+            if not _tag_opcua_mapped(field_tag):
+                return {
+                    "message": (
+                        f"El tag de campo '{field_tag_name}' no está mapeado a un cliente OPC UA."
+                    )
+                }, 400
+
+            if machine.process_type_exists(name=internal_tag_name):
+                process_type = getattr(machine, internal_tag_name)
+                type_error = _subscription_type_error(
+                    process_type,
+                    field_tag,
+                    internal_tag_name=internal_tag_name,
+                    field_tag_name=field_tag_name,
+                )
+                if type_error:
+                    return {"message": type_error}, 400
 
             subscribed, message = machine.subscribe_to(
                 tag=field_tag,
@@ -1039,24 +1120,27 @@ class MachineDomainConfigFilesResource(Resource):
             config = machine.put_domain_files(field_key, uploads)
             if not isinstance(config, dict):
                 config = machine.get_config() or {}
+            payload = domain_files_upload_payload(
+                config, field_key=field_key, uploads=uploads
+            )
             try:
                 audit_domain_config_change(
                     machine_name=machine_name,
                     payload={"_files": field_key},
                     before=before,
-                    after=config,
+                    after=payload.get("config") or config,
                     schema=schema,
                     user=Api.get_current_user(),
                 )
             except Exception:
                 pass
-            return {
-                "status": "success",
-                "config": config,
-            }, 200
+            return payload, 200
         except (ValueError, TypeError) as e:
             return {"message": str(e)}, 400
-        except Exception as e:
-            return {
-                "message": f"Failed to store domain files: {str(e)}"
-            }, 500
+        except Exception:
+            logger.exception(
+                "Failed to store domain files for machine %s field %s",
+                machine_name,
+                field_key,
+            )
+            return {"message": "Failed to store domain files"}, 500

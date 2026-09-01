@@ -5,6 +5,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import type { Alarm } from "../services/alarms";
 import type { Tag } from "../services/tags";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
+import { alarmDelayBadgeClass, formatDelayRemaining } from "../utils/alarmState";
 
 type AlarmTableRowProps = {
   alarm: Alarm;
@@ -69,6 +70,19 @@ export const AlarmTableRow = memo(
           ? String(currentAlarm.alarm_setpoint.value)
           : "-";
 
+    const delayPhase = currentAlarm.delay_phase;
+    const delayBadge = alarmDelayBadgeClass(delayPhase);
+    const delayLabel =
+      delayPhase === "pending"
+        ? t("alarms.pendingOnDelay", {
+            seconds: formatDelayRemaining(currentAlarm.on_timer_remaining),
+          })
+        : delayPhase === "clearing"
+          ? t("alarms.clearingOffDelay", {
+              seconds: formatDelayRemaining(currentAlarm.off_timer_remaining),
+            })
+          : null;
+
     return (
       <tr>
         <td>
@@ -98,8 +112,8 @@ export const AlarmTableRow = memo(
         <td>{triggerValue}</td>
         <td>{translateAlarmDescription(currentAlarm.description, currentAlarm.name, t)}</td>
         <td>
-          <span className={`badge ${getStateBadgeClass(currentAlarm.state)}`}>
-            {getStateLabel(currentAlarm.state)}
+          <span className={`badge ${delayBadge || getStateBadgeClass(currentAlarm.state)}`}>
+            {delayLabel || getStateLabel(currentAlarm.state)}
           </span>
         </td>
         <td>

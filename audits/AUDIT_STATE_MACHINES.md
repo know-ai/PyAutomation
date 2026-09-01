@@ -20,7 +20,7 @@
 | ¿Cada cuánto se **muestrea** el buffer? | Si `sample_interval` no es NULL: `SampleSchedThread` (hilo OS propio) llama `_sample_once` cada `sample_interval` s, con override por tag. Si es NULL: **legado** — no hay sampler; iDetectFugas sigue muestreando en el tick de ejecución |
 | ¿Cómo se configura? | `PUT /machines/<name>/attributes` (`execution_interval` / `interval`, `sample_interval`, `sample_overrides`). HMI detalle: checkbox «Personalizar muestreo». Persistencia: `machines.execution_interval`, `machines.sample_interval`, `tags_machines.sample_override` |
 | ¿El buffer de tags suscritos se llena con el dato de campo? | CVT = last-wins a ritmo de adquisición. **Modo desacoplado:** `_push_to_buffer` copia `ProcessType.value` al anillo `IBufferProvider` (`self.data`) a ritmo de muestreo. **Legado:** `self.data` sigue sin llenarse; las apps usan su `self.buffer` |
-| OPC UA 200 ms, sample 0.2 s, ejecución 1.0 s | DAQ-200 escribe CVT ~5 Hz. Sampler toma 1 muestra / 0.2 s (5 por ventana de ejecución). `while_running` corre a 1 Hz **leyendo** el buffer, sin llenarlo (cláusula nuclear) |
+| OPC UA timeout vs `scan_time` | `AUTOMATION_DAQ_READ_TIMEOUT_S` (default **0.5 s**) acota **un** `Read` batch por ciclo DAQ. `DAQ-1000` despierta cada 1 s; el tope no es el intervalo. DAQ-500 y DAQ-1000 cada uno hace su propio batch de tags |
 | ¿Se puede llenar el buffer a otra frecuencia que el ciclo? | **Sí**, activando `sample_interval` con `execution_interval >= sample_interval >= scan_time` |
 | ¿El ciclo puede ser más rápido que el muestreo o el campo? | **No vía API.** `MachineConfigError` → HTTP **400** con el mensaje de la regla violada |
 | ¿Tiempos distintos por capa? | Adquisición (`scan_time` ms) / muestreo (`sample_interval` s, override por tag) / ejecución (`execution_interval` s) / historiador (evento CVT) |
@@ -207,7 +207,7 @@ Umbral duro en `subscribe_opcua`:
 | `scan_time` | Camino | Cadencia real |
 |---|---|---|
 | `None` o `≤ 100` | **DAS** `subscribe_data_change` | Evento del servidor OPC UA. La suscripción python-opcua se crea con **publishing interval 1000 ms** (`period=1000`), **no** con el `scan_time` del tag. El 100 ms es solo el *switch* DAS vs DAQ |
-| `> 100` (p. ej. **200**) | **DAQ** poll `get_node_value_by_opcua_address` | Un ciclo DAQ cada 0,200 s. Lectura síncrona, no monitored item |
+| `> 100` (p. ej. **1000**) | **DAQ** poll: **un `Read` batch** (`get_attributes` Value) de todos los tags de esa SM | Un ciclo cada `scan_time` ms. DAQ-1000 y DAQ-500 **no mezclan** tags. Timeout `AUTOMATION_DAQ_READ_TIMEOUT_S` (default 0.5 s) |
 
 HMI Dash histórica limita el input de scan a **min 500 ms / step 500**. La API REST **no** impone ese mínimo: 200 ms es legal por API/BD.
 

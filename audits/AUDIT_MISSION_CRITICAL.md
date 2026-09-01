@@ -24,7 +24,7 @@ El stack ya era fuerte en SAF (WAL + ACK exact-once), NTP de aplicación, sesion
 | CT-03 | Sesiones | TTL por heartbeat, fail-closed token, audit Events | **A** | soak 2-edge pendiente |
 | CT-04 | Failover | Circuit breaker + `ALM.PERF.NODE_DOWN`; **no** steal-tags | **B+** (diseño) | lab C-04 pendiente |
 | CT-05 | Zero-DT | Volúmenes persistentes; rolling por línea; overlay ~30 s | **B** | procedimiento en deploy |
-| CT-06 | Salud | `/performance` + 16 `ALM.PERF.*`; KPI fugas no dashboard | **A−** | scrape Prometheus opcional |
+| CT-06 | Salud | `/performance` + `/lds-dashboard` + 16 `ALM.PERF.*` | **A−** | scrape Prometheus opcional |
 | CT-07 | Caos | Runbook + plantilla + unitarios; campaña OT vacía | **B+** | [CHAOS_LAST_RUN.md](./CHAOS_LAST_RUN.md) |
 
 **Puntuación global (código):** **A− / B+**. No se declara “grado nuclear industrial alcanzado” mientras CT-04-A (I/O failover), CT-05-B (&lt; 10 s) y CT-07-D (campaña firmada) sigan fuera de contrato o pendientes.
@@ -98,7 +98,7 @@ Mitigación: overlay HMI durante el reciclo; la otra línea sigue adquiriendo.
 | ID | Control | Estado | Evidencia |
 |---|---|---|---|
 | CT-06-A | Salud sistema | ✅ PASS | `/api/health/system` y `/api/health/node` |
-| CT-06-B | KPI negocio (fugas) | ⚠️ CONDICIONAL | Eventos/alarmas LDS en iDetectFugas; **no** hay dashboard de tasa de falsas alarmas en `/performance` |
+| CT-06-B | KPI negocio (fugas) | ✅ PASS | Dashboard `/lds-dashboard` + `GET /api/LDS/dashboard` (iDetectFugas `audits/14-AUDIT_LDS_DASHBOARD.md`). No vive en `/performance`. |
 | CT-06-C | Alertas tempranas | ✅ PASS | `ALM.PERF.*` (16 specs) + NTP/SSD/NODE_DOWN |
 | CT-06-D | Events de salud | ✅ PASS | Transiciones NTP, disco crítico, SSD, HMI |
 | CT-06-E | Dashboard HMI | ✅ PASS | `/performance` chips NTP y nodo par |
@@ -128,7 +128,7 @@ Mitigación: overlay HMI durante el reciclo; la otra línea sigue adquiriendo.
 | P2 | CT-06-F | `docs/observability.md` | Hecho |
 | P2 | CT-04-A | **No implementar** steal-tags | Documentado |
 | P2 | CT-05-B | **No afirmar** restart &lt; 10 s | Documentado |
-| P3 | CT-06-B | KPI fugas (producto iDetectFugas, fuera de framework) | Abierto |
+| P3 | CT-06-B | KPI fugas: dashboard `/lds-dashboard` (iDetect + HMI) | Hecho |
 | P3 | CT-07-D | Ejecutar C-01…C-05 en lab y firmar `CHAOS_LAST_RUN.md` | Abierto |
 
 ---
@@ -167,7 +167,7 @@ Tests: `test_mission_critical`, pragmas journal (`_durability_fd`), `test_disk_d
 | CT-03 | Sesiones | TTL, heartbeat, audit; fail-closed token | ✅ PASS con fail-open store degradado |
 | CT-04 | Failover | Multi-edge + breaker + heartbeat | ⚠️ CONDICIONAL (sin steal-tags) |
 | CT-05 | Zero-DT | Docs + persistencia + rollback | ⚠️ CONDICIONAL (~30 s overlay, no &lt; 10 s) |
-| CT-06 | Salud | Métricas, alarmas, dashboard | ✅ PASS; KPI negocio abierto |
+| CT-06 | Salud | Métricas, alarmas, dashboard | ✅ PASS; KPI fugas en `/lds-dashboard` |
 | CT-07 | Caos | Runbook + RTO/RPO escritos + tests | ⚠️ CONDICIONAL (campaña OT vacía) |
 
 **Veredicto final:** el sistema está **listo para operar 24/7 por línea con SAF y fail-closed de I/O**. No está certificado como planta nuclear hasta: (1) UPS/SSD PLP instalados, (2) `CHAOS_LAST_RUN.md` firmado, (3) soak 24 h 2-edge, (4) `AUTOMATION_NTP_SERVERS` en cada Moxa. El failover mágico de adquisición **no forma parte del producto**.

@@ -16,6 +16,7 @@ def init_app(app):
     from ..modules.linear_referencing.resources import init_app as init_linear_referencing
     from ..modules.history.resources import init_app as init_history
     from ..modules.admin.resources import init_app as init_admin
+    from ..modules.hmi_ext.resources import init_app as init_hmi_ext
 
     init_tags()
     init_alarms()
@@ -30,3 +31,4 @@ def init_app(app):
     init_linear_referencing()
     init_history()
     init_admin()
+    init_hmi_ext()

@@ -4,6 +4,7 @@ import { Button } from "./Button";
 import { OpsConfirmModal } from "./OpsConfirmModal";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
+import { axiosErrorMessage, getConnectedNodeInfo } from "../services/health";
 import {
   getMachineDomainConfig,
   postMachineDomainFiles,
@@ -31,6 +32,45 @@ type Presentation = {
   labelDisplay: DomainLabelDisplay;
   helpDisplay: DomainHelpDisplay;
 };
+
+type DestinationInfo = {
+  nodeId: string;
+  host: string;
+  modelsRoot: string;
+};
+
+type UploadProgressState = {
+  percent: number;
+  current: number;
+  total: number;
+  nodeLabel: string;
+};
+
+function looksSensitiveUploadError(message: string): boolean {
+  const text = message.trim();
+  if (!text || text.length > 320) return true;
+  if (/traceback|exception|stack|sqlalchemy|psycopg|permission denied|errno/i.test(text)) {
+    return true;
+  }
+  return text.includes("File \"") || text.startsWith("<");
+}
+
+function domainUploadErrorMessage(
+  err: unknown,
+  fallback: string,
+  t: (key: string, params?: Record<string, string | number>) => string
+): string {
+  const status = (err as { response?: { status?: number } })?.response?.status;
+  if (status === 401 || status === 403) return t("machines.domainConfigFilesUploadAuth");
+  if (status === 413) return t("machines.domainConfigFilesUploadTooLarge");
+  if (status === 404) return t("machines.domainConfigFilesUploadNotSupported");
+  if (status && status >= 500) return t("machines.domainConfigFilesUploadNodeError");
+  if (!status) return t("machines.domainConfigFilesUploadNetwork");
+  const detail = axiosErrorMessage(err, "");
+  if (detail && !looksSensitiveUploadError(detail)) return detail;
+  if (status === 400) return t("machines.domainConfigFilesUploadRejected");
+  return fallback;
+}
 
 function parseLabelDisplay(raw: unknown): DomainLabelDisplay | undefined {
   if (raw === "visible" || raw === "hidden") return raw;
@@ -213,6 +253,34 @@ function applyBannerClass(status: unknown): string {
   return "alert alert-info py-2 small mb-3";
 }
 
+function fillingCount(filled: unknown, need: unknown): { f: number; n: number } | null {
+  const n = Number(need);
+  const f = Number(filled);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(f)) return null;
+  return { f: Math.max(0, Math.trunc(f)), n: Math.trunc(n) };
+}
+
+function fillingBannerText(message: string, filled: unknown, need: unknown): string {
+  const count = fillingCount(filled, need);
+  if (!count) return message;
+  const label = `${count.f} / ${count.n}`;
+  if (/\d+\s*\/\s*\d+/.test(message)) {
+    return message.replace(/\d+\s*\/\s*\d+/, label);
+  }
+  return message;
+}
+
+function FillProgress({ filled, need }: { filled: unknown; need: unknown }) {
+  const count = fillingCount(filled, need);
+  if (!count) return null;
+  const pct = Math.max(0, Math.min(100, (count.f / count.n) * 100));
+  return (
+    <div className="progress mt-2" style={{ height: "0.4rem" }} aria-hidden="true">
+      <div className="progress-bar bg-warning" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
 function sectionCardClass(tone: unknown): string {
   if (tone === "warning") return "card mb-3 border-warning";
   if (tone === "success") return "card mb-3 border-success";
@@ -251,6 +319,8 @@ const INTERNAL_COMPARE_KEYS = new Set([
   "_effective_pressure_mode",
   "_pressure_tags_status",
   "_missing_tags_message",
+  "_subscribe_mapping_hint",
+  "_subscribe_mapping_level",
   "_show_inputs_mapping",
   "_inputs_mapping_complete",
   "_missing_input_mappings",
@@ -343,10 +413,37 @@ function emptyItem(fields: DomainConfigField[]): Record<string, unknown> {
   return row;
 }
 
-function parseNumberInput(raw: string, fallback: unknown): unknown {
+function parseNumberInput(raw: string, fallback: unknown, decimals?: number): unknown {
   if (raw === "" || raw === "-") return raw;
-  const n = Number(raw);
+  let next = raw;
+  if (decimals != null && decimals >= 0 && next.includes(".")) {
+    const [intPart, frac = ""] = next.split(".");
+    next = `${intPart}.${frac.slice(0, decimals)}`;
+  }
+  const n = Number(next);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function fieldDecimals(field: DomainConfigField): number | undefined {
+  if (typeof field.decimals === "number" && Number.isFinite(field.decimals) && field.decimals >= 0) {
+    return field.decimals;
+  }
+  if (typeof field.step === "number" && Number.isFinite(field.step) && field.step > 0 && field.step < 1) {
+    const text = String(field.step);
+    const idx = text.indexOf(".");
+    if (idx >= 0) return text.length - idx - 1;
+  }
+  return undefined;
+}
+
+function roundToDecimals(n: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round((n + Number.EPSILON) * factor) / factor;
+}
+
+function isCompactField(field: DomainConfigField): boolean {
+  const col = Number(field.columns);
+  return Number.isFinite(col) && col > 0 && col <= 2;
 }
 
 function formatDisplayValue(value: unknown): string {
@@ -359,9 +456,43 @@ function formatDisplayValue(value: unknown): string {
 
 function selectMaxWidth(field: DomainConfigField): string {
   const col = Number(field.columns) || 12;
+  if (col <= 2) return "100%";
   if (col <= 4) return "9.25rem";
   if (col < 12) return "11rem";
   return "16rem";
+}
+
+function controlMaxWidth(field: DomainConfigField, grow?: boolean): string {
+  if (grow || isCompactField(field)) return "100%";
+  if (field.type === "select") return selectMaxWidth(field);
+  return "220px";
+}
+
+function FieldHelpLabel({
+  field,
+  htmlFor,
+  presentation,
+  visible,
+}: {
+  field: DomainConfigField;
+  htmlFor?: string;
+  presentation: Presentation;
+  visible: boolean;
+}) {
+  const tooltip = fieldTooltip(field, presentation);
+  return (
+    <label
+      className={visible ? "form-label d-flex align-items-center gap-1 small mb-1 text-nowrap" : "visually-hidden"}
+      htmlFor={htmlFor}
+      title={tooltip}
+      style={{ cursor: tooltip ? "help" : undefined, minHeight: "1.25rem" }}
+    >
+      <span className="text-truncate">{field.label}</span>
+      {visible && tooltip ? (
+        <i className="bi bi-info-circle text-muted" aria-hidden="true" title={tooltip} />
+      ) : null}
+    </label>
+  );
 }
 
 function ControlShell({
@@ -384,16 +515,14 @@ function ControlShell({
     Boolean(field.label) &&
     presentation.labelDisplay === "visible" &&
     (forceLabel || field.type !== "boolean");
-  const width = grow ? "100%" : field.type === "select" ? selectMaxWidth(field) : "220px";
+  const width = controlMaxWidth(field, grow);
   return (
-    <div title={tooltip} style={{ cursor: tooltip ? "help" : undefined }}>
+    <div className="d-flex flex-column h-100" title={tooltip} style={{ cursor: tooltip ? "help" : undefined }}>
       {field.label ? (
-        <label className={showLabel ? "form-label d-block small mb-1" : "visually-hidden"} htmlFor={htmlFor}>
-          {field.label}
-        </label>
+        <FieldHelpLabel field={field} htmlFor={htmlFor} presentation={presentation} visible={showLabel} />
       ) : null}
       {field.short_label || field.unit ? (
-        <div className="input-group" style={{ maxWidth: width }}>
+        <div className={isCompactField(field) ? "input-group input-group-sm" : "input-group"} style={{ maxWidth: width }}>
           {field.short_label ? <span className="input-group-text">{field.short_label}</span> : null}
           {children}
           {field.unit ? <span className="input-group-text">{field.unit}</span> : null}
@@ -514,7 +643,7 @@ function FieldControl({
   if (locked && (field.type === "number" || field.type === "string" || field.read_only)) {
     return (
       <ControlShell field={field} htmlFor={id} presentation={presentation}>
-        <span className="form-control bg-body-secondary" id={id} aria-readonly="true">
+        <span className={isCompactField(field) ? "form-control form-control-sm bg-body-secondary" : "form-control bg-body-secondary"} id={id} aria-readonly="true">
           {formatDisplayValue(value)}
         </span>
       </ControlShell>
@@ -523,6 +652,7 @@ function FieldControl({
 
   if (field.type === "select") {
     const compact = Number(field.columns) > 0 && Number(field.columns) < 12;
+    const tight = isCompactField(field);
     const select = (
       <select
         id={id}
@@ -530,9 +660,11 @@ function FieldControl({
         style={
           field.short_label || field.unit
             ? undefined
-            : compact
-              ? { maxWidth: selectMaxWidth(field), width: "auto" }
-              : { maxWidth: "16rem" }
+            : tight
+              ? { width: "100%" }
+              : compact
+                ? { maxWidth: selectMaxWidth(field), width: "auto" }
+                : { maxWidth: "16rem" }
         }
         value={value == null ? "" : String(value)}
         disabled={locked}
@@ -554,18 +686,25 @@ function FieldControl({
 
   if (field.type === "number") {
     const numeric = typeof value === "number" ? value : value == null ? "" : String(value);
+    const decimals = fieldDecimals(field);
+    const compact = isCompactField(field);
     const input = (
       <input
         id={id}
         type="number"
-        className="form-control"
-        style={field.short_label || field.unit ? undefined : { maxWidth: "180px" }}
+        className={compact ? "form-control form-control-sm" : "form-control"}
+        style={field.short_label || field.unit || compact ? undefined : { maxWidth: "180px" }}
         min={field.min}
         max={field.max}
         step={field.step ?? "any"}
         value={numeric}
         disabled={locked}
-        onChange={(e) => onChange(parseNumberInput(e.target.value, value))}
+        onChange={(e) => onChange(parseNumberInput(e.target.value, value, decimals))}
+        onBlur={(e) => {
+          if (decimals == null) return;
+          const n = Number(e.target.value);
+          if (Number.isFinite(n)) onChange(roundToDecimals(n, decimals));
+        }}
       />
     );
     return (
@@ -686,6 +825,7 @@ function ArrayTableEditor({
 
 type ArtifactStatus = {
   path?: string;
+  absolute_path?: string;
   files?: string[];
   missing?: string[];
   ready?: boolean;
@@ -847,6 +987,13 @@ function inferenceConfigRoleError(
   return null;
 }
 
+function fieldColClass(field: DomainConfigField, col: number): string {
+  if (field.type === "files") {
+    return `col-12 col-lg-${col} mb-3 domain-artifact-col`;
+  }
+  return `col-md-${col} mb-2`;
+}
+
 function FilesControl({
   field,
   value,
@@ -869,7 +1016,6 @@ function FilesControl({
   const status = artifactStatus(value);
   const onDisk = status.files || [];
   const required = field.required_names || status.missing || [];
-  const path = status.path || "";
   const ready = Boolean(status.ready);
   const pendingNames = pending.map((file) => artifactFileName(file));
   const covered = new Set([...onDisk, ...pendingNames]);
@@ -935,86 +1081,64 @@ function FilesControl({
       }
     })();
   };
-  const removePending = (name: string) => {
-    onPending(pending.filter((file) => artifactFileName(file) !== name));
-  };
   return (
-    <div title={fieldTooltip(field, presentation)}>
+    <div className="domain-artifact-slot" title={fieldTooltip(field, presentation)}>
       {presentation.labelDisplay === "visible" && field.label ? (
         <div className="form-label">{field.label}</div>
       ) : null}
-      <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <div className="d-flex align-items-center gap-2 mb-2">
         {ready ? (
-          <span className="badge text-bg-success">{t("machines.domainConfigFilesReady")}</span>
+          <span className="badge text-bg-success flex-shrink-0">{t("machines.domainConfigFilesReady")}</span>
         ) : pendingCoversRequired ? (
-          <span className="badge text-bg-warning">{t("machines.domainConfigFilesPendingSave")}</span>
+          <span className="badge text-bg-warning flex-shrink-0">{t("machines.domainConfigFilesPendingSave")}</span>
         ) : (
-          <span className="badge text-bg-secondary">{t("machines.domainConfigFilesEmpty")}</span>
+          <span className="badge text-bg-secondary flex-shrink-0">{t("machines.domainConfigFilesEmpty")}</span>
         )}
-        {path ? <span className="small text-muted font-monospace">{path}</span> : null}
+        {!locked ? (
+          <input
+            id={id}
+            type="file"
+            className="form-control form-control-sm"
+            multiple={field.multiple !== false}
+            disabled={locked}
+            aria-label={field.label || t("machines.domainConfigFilesSelected")}
+            onChange={(event) => {
+              mergeFiles(event.currentTarget.files);
+            }}
+          />
+        ) : null}
       </div>
-      {onDisk.length ? (
-        <div className="small mb-1">
-          <span className="text-muted">{t("machines.domainConfigFilesOnDisk")}: </span>
-          {onDisk.join(", ")}
-        </div>
-      ) : null}
-      {!ready && stillMissing.length ? (
-        <div className="small text-warning mb-1">
-          {t("machines.domainConfigFilesMissing")}: {stillMissing.join(", ")}
-        </div>
-      ) : null}
       {validating ? (
         <div className="small text-muted mb-1">{t("machines.domainConfigFilesValidating")}</div>
       ) : null}
-      {pending.length ? (
-        <div className="small mb-2">
-          <div className="text-muted mb-1">{t("machines.domainConfigFilesSelected")}:</div>
-          <ul className="list-unstyled mb-1">
-            {pending.map((file) => {
-              const name = artifactFileName(file);
-              return (
-              <li key={name} className="d-flex align-items-center gap-2 mb-1">
-                <span className="font-monospace">{name}</span>
-                {!locked ? (
-                  <button
-                    type="button"
-                    className="btn btn-link btn-sm p-0"
-                    onClick={() => removePending(name)}
-                  >
-                    {t("machines.domainConfigFilesRemove")}
-                  </button>
-                ) : null}
-              </li>
-              );
-            })}
-          </ul>
-          {!locked ? (
-            <button type="button" className="btn btn-link btn-sm p-0" onClick={() => onPending([])}>
-              {t("machines.domainConfigFilesClear")}
-            </button>
-          ) : null}
+      {required.length ? (
+        <div className="domain-artifact-slot__list">
+          {required.map((name) => {
+            const present = covered.has(name);
+            const boxId = `${id}-${name.replace(/[^A-Za-z0-9_-]/g, "-")}`;
+            return (
+              <div key={name} className="form-check mb-1">
+                <input
+                  id={boxId}
+                  type="checkbox"
+                  className="form-check-input"
+                  checked={present}
+                  disabled
+                  readOnly
+                  tabIndex={-1}
+                />
+                <label className="form-check-label small font-monospace" htmlFor={boxId}>
+                  {name}
+                </label>
+              </div>
+            );
+          })}
         </div>
       ) : null}
-      {pending.length ? (
-        <div className="form-text mb-2">
-          {ready ? t("machines.domainConfigFilesReplaceHint") : t("machines.domainConfigFilesSaveHint")}
-        </div>
-      ) : null}
-      {!locked ? (
-        <input
-          id={id}
-          type="file"
-          className="form-control form-control-sm"
-          multiple={field.multiple !== false}
-          disabled={locked}
-          onChange={(event) => {
-            mergeFiles(event.currentTarget.files);
-          }}
-        />
-      ) : null}
-      {field.help && (presentation.helpDisplay === "text" || presentation.helpDisplay === "both") ? (
-        <div className="form-text">{field.help}</div>
+      {pending.length && !locked ? (
+        <button type="button" className="btn btn-link btn-sm p-0 mt-1" onClick={() => onPending([])}>
+          {t("machines.domainConfigFilesClear")}
+        </button>
       ) : null}
     </div>
   );
@@ -1029,6 +1153,7 @@ function NestedFields({
   prefix = "",
   pendingFiles,
   onPendingFiles,
+  destinationInfo,
 }: {
   fields: DomainConfigField[];
   values: Record<string, unknown>;
@@ -1038,9 +1163,10 @@ function NestedFields({
   prefix?: string;
   pendingFiles: Record<string, File[]>;
   onPendingFiles: (path: string, files: File[]) => void;
+  destinationInfo: DestinationInfo;
 }) {
   return (
-    <div className="row g-2">
+    <div className="row g-2 align-items-end">
       {fields.map((field) => {
         const path = prefix ? `${prefix}.${field.key}` : field.key;
         if (!isFieldVisible(field, values)) return null;
@@ -1056,7 +1182,7 @@ function NestedFields({
         };
         if (field.type === "object" && Array.isArray(field.fields)) {
           return (
-            <div key={path} className={`col-md-${col} mb-2`}>
+            <div key={path} className={fieldColClass(field, col)}>
               {fieldPres.labelDisplay === "visible" && field.label ? (
                 <div className="fw-semibold small mb-2">{field.label}</div>
               ) : null}
@@ -1069,28 +1195,33 @@ function NestedFields({
                 prefix={path}
                 pendingFiles={pendingFiles}
                 onPendingFiles={onPendingFiles}
+                destinationInfo={destinationInfo}
               />
             </div>
           );
         }
         if (field.type === "files") {
           return (
-            <div key={path} className={`col-md-${col} mb-2`}>
-              <FilesControl
-                field={resolved}
-                value={getByPath(values, path)}
-                pending={pendingFiles[path] || []}
-                onPending={(next) => onPendingFiles(path, next)}
-                disabled={disabled}
-                readOnly={readOnly}
-                presentation={fieldPres}
-              />
+            <div key={path} className={fieldColClass(field, col)}>
+              <div className="card h-100 domain-artifact-card">
+                <div className="card-body p-2">
+                  <FilesControl
+                    field={resolved}
+                    value={getByPath(values, path)}
+                    pending={pendingFiles[path] || []}
+                    onPending={(next) => onPendingFiles(path, next)}
+                    disabled={disabled}
+                    readOnly={readOnly}
+                    presentation={fieldPres}
+                  />
+                </div>
+              </div>
             </div>
           );
         }
         if (field.type === "array") {
           return (
-            <div key={path} className={`col-md-${col} mb-2`}>
+            <div key={path} className={fieldColClass(field, col)}>
               <ArrayTableEditor
                 field={field}
                 value={getByPath(values, path)}
@@ -1103,7 +1234,7 @@ function NestedFields({
           );
         }
         return (
-          <div key={path} className={`col-md-${col} mb-2`}>
+          <div key={path} className={fieldColClass(field, col)}>
             <FieldControl
               field={resolved}
               value={getByPath(values, path)}
@@ -1161,6 +1292,14 @@ function collectFileFields(fields: DomainConfigField[]): DomainConfigField[] {
   return out;
 }
 
+function omitTransientKeys(values: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...values };
+  delete next._destination_path;
+  delete next._files_written;
+  delete next._models_root;
+  return next;
+}
+
 function omitFileFields(
   values: Record<string, unknown>,
   fields: DomainConfigField[]
@@ -1208,6 +1347,7 @@ function TabbedSectionCard({
   presentation,
   pendingFiles,
   onPendingFiles,
+  destinationInfo,
 }: {
   label?: string;
   hint?: string;
@@ -1219,6 +1359,7 @@ function TabbedSectionCard({
   presentation: Presentation;
   pendingFiles: Record<string, File[]>;
   onPendingFiles: (path: string, files: File[]) => void;
+  destinationInfo: DestinationInfo;
 }) {
   const [active, setActive] = useState(0);
   const index = Math.min(Math.max(0, active), Math.max(0, tabs.length - 1));
@@ -1262,6 +1403,7 @@ function TabbedSectionCard({
           presentation={presentation}
           pendingFiles={pendingFiles}
           onPendingFiles={onPendingFiles}
+          destinationInfo={destinationInfo}
         />
       </div>
     </div>
@@ -1282,6 +1424,11 @@ export function DomainConfigSlot({
   const [saving, setSaving] = useState(false);
   const [restartOpen, setRestartOpen] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
+  const [nodeInfo, setNodeInfo] = useState<{ nodeId: string; host: string }>({
+    nodeId: "",
+    host: typeof window !== "undefined" ? window.location.host : "",
+  });
 
   useEffect(() => {
     setValues(config || {});
@@ -1290,6 +1437,16 @@ export function DomainConfigSlot({
   useEffect(() => {
     setPendingFiles({});
   }, [machineName]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getConnectedNodeInfo().then((info) => {
+      if (!cancelled) setNodeInfo(info);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const sections = schema.sections || [];
   const unsupported = Number(schema.version || 1) > SCHEMA_VERSION_SUPPORTED;
@@ -1305,6 +1462,7 @@ export function DomainConfigSlot({
   useEffect(() => {
     lastSchemaJson.current = "";
   }, [machineName]);
+  const filling = values._apply_status === "filling";
   useEffect(() => {
     if (!machineName) return undefined;
     let cancelled = false;
@@ -1325,9 +1483,12 @@ export function DomainConfigSlot({
       "_missing_input_mappings",
       "_missing_field_attrs",
       "_missing_tags_message",
+      "_subscribe_mapping_hint",
+      "_subscribe_mapping_level",
       "_inference_contract_aligned",
       "_inference_contract_mismatch",
       "_models_loaded",
+      "_models_root",
     ];
     const refresh = async () => {
       try {
@@ -1375,12 +1536,12 @@ export function DomainConfigSlot({
     void refresh();
     const timer = window.setInterval(() => {
       void refresh();
-    }, 2000);
+    }, filling ? 400 : 2000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [machineName, machineState]);
+  }, [machineName, machineState, filling]);
 
   const handleChange = (path: string, value: unknown) => {
     setValues((prev) => applyDwtConstraints(allFields, setByPath(prev, path, value)));
@@ -1419,12 +1580,37 @@ export function DomainConfigSlot({
       return;
     }
     setSaving(true);
+    setUploadProgress(null);
     try {
       let latest: Record<string, unknown> = { ...values };
-      for (const field of collectFileFields(allFields)) {
+      const fileJobs = collectFileFields(allFields).filter(
+        (field) => (pendingFiles[field.key] || []).length > 0
+      );
+      const destPaths: string[] = [];
+      const nodeLabel = nodeInfo.nodeId || nodeInfo.host || "—";
+      for (let index = 0; index < fileJobs.length; index += 1) {
+        const field = fileJobs[index];
         const selected = pendingFiles[field.key] || [];
-        if (!selected.length) continue;
-        const uploaded = await postMachineDomainFiles(machineName, field.key, selected);
+        setUploadProgress({
+          percent: 0,
+          current: index + 1,
+          total: fileJobs.length,
+          nodeLabel,
+        });
+        const uploaded = await postMachineDomainFiles(
+          machineName,
+          field.key,
+          selected,
+          (progress) => {
+            setUploadProgress({
+              percent: progress.percent,
+              current: index + 1,
+              total: fileJobs.length,
+              nodeLabel,
+            });
+          }
+        );
+        if (uploaded.destination_path) destPaths.push(uploaded.destination_path);
         if (uploaded.config) {
           latest = { ...latest, ...uploaded.config };
           setValues(latest);
@@ -1432,7 +1618,7 @@ export function DomainConfigSlot({
         }
       }
       const { _reset: _ignoredReset, _set_factory: _ignoredFactory, ...rawPayload } = latest;
-      const payload = omitFileFields(rawPayload, allFields);
+      const payload = omitTransientKeys(omitFileFields(rawPayload, allFields));
       const result = await putMachineDomainConfig(machineName, payload);
       const next = result.config || latest;
       setPendingFiles({});
@@ -1440,19 +1626,20 @@ export function DomainConfigSlot({
       if (isIncompleteSave(saved)) {
         const applyMessage = typeof saved._apply_message === "string" ? saved._apply_message.trim() : "";
         showToast(applyMessage || t("machines.domainConfigIncompleteWarning"), "warning");
+      } else if (destPaths.length) {
+        showToast(
+          t("machines.domainConfigFilesSavedTo", { path: destPaths[destPaths.length - 1] }),
+          "success",
+          8000
+        );
       } else {
         showToast(t("machines.domainConfigSaved"), "success");
       }
     } catch (err: any) {
-      const data = err?.response?.data;
-      const message =
-        (typeof data === "string" ? data : undefined) ??
-        data?.message ??
-        data?.detail ??
-        err?.message ??
-        t("machines.domainConfigSaveError");
+      const message = domainUploadErrorMessage(err, t("machines.domainConfigSaveError"), t);
       showToast(message, "error");
     } finally {
+      setUploadProgress(null);
       setSaving(false);
     }
   };
@@ -1493,7 +1680,7 @@ export function DomainConfigSlot({
     setSaving(true);
     try {
       const { _reset: _ignoredReset, _set_factory: _ignoredFactory, ...rawPayload } = values;
-      const payload = omitFileFields(rawPayload, allFields);
+      const payload = omitTransientKeys(omitFileFields(rawPayload, allFields));
       const result = await putMachineDomainConfig(machineName, { ...payload, _set_factory: true });
       const next = result.config || values;
       await applyServerState(next);
@@ -1551,6 +1738,11 @@ export function DomainConfigSlot({
   const canSave = isDirtyVsSaved || hasPendingFiles;
   const canRestoreFactory = differsFromFactory;
   const canSetFactory = differsFromFactory;
+  const destinationInfo: DestinationInfo = {
+    nodeId: nodeInfo.nodeId,
+    host: nodeInfo.host,
+    modelsRoot: typeof values._models_root === "string" ? values._models_root : "",
+  };
 
   return (
     <Card title={title} className="mt-3">
@@ -1561,7 +1753,18 @@ export function DomainConfigSlot({
       ) : null}
       {typeof values._apply_message === "string" && values._apply_message ? (
         <div className={applyBannerClass(values._apply_status)} role="status">
-          <div>{values._apply_message}</div>
+          <div>
+            {values._apply_status === "filling"
+              ? fillingBannerText(
+                  values._apply_message,
+                  values._buffer_filled,
+                  values._buffer_need
+                )
+              : values._apply_message}
+          </div>
+          {values._apply_status === "filling" ? (
+            <FillProgress filled={values._buffer_filled} need={values._buffer_need} />
+          ) : null}
           {values._restart_available === true ? (
             <div className="mt-2">
               <Button
@@ -1604,6 +1807,7 @@ export function DomainConfigSlot({
             pendingFiles,
             onPendingFiles: (path: string, files: File[]) =>
               setPendingFiles((prev) => ({ ...prev, [path]: files })),
+            destinationInfo,
           };
           if (hasTabs) {
             return (
@@ -1659,6 +1863,29 @@ export function DomainConfigSlot({
           );
         })}
       </fieldset>
+      {uploadProgress ? (
+        <div className="mb-3" role="status" aria-live="polite">
+          <div className="small mb-1">
+            {t("machines.domainConfigFilesUploading", {
+              node: uploadProgress.nodeLabel,
+              current: uploadProgress.current,
+              total: uploadProgress.total,
+            })}
+          </div>
+          <div className="progress" style={{ height: "0.75rem" }}>
+            <div
+              className="progress-bar progress-bar-striped progress-bar-animated"
+              role="progressbar"
+              style={{ width: `${uploadProgress.percent}%` }}
+              aria-valuenow={uploadProgress.percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              {uploadProgress.percent}%
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="d-flex justify-content-between flex-wrap gap-2">
         <div className="d-flex flex-wrap gap-2">
           <Button
@@ -1685,7 +1912,7 @@ export function DomainConfigSlot({
         <Button
           type="button"
           variant="primary"
-          loading={saving}
+          loading={saving && !uploadProgress}
           disabled={saving || restarting || !canSave}
           onClick={handleSave}
         >

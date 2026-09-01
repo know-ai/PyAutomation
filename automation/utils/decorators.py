@@ -1,4 +1,4 @@
-import functools, logging, re, sys
+import functools, inspect, logging, re, sys
 from ..modules.users.users import User, Users
 from ..logger.events import EventsLoggerEngine
 
@@ -192,19 +192,37 @@ def validate_types(**validations):
 
             _output = type(None)
 
-    def decorator(func):
+    else:
 
+        _output = None
+
+    def decorator(func):
+        try:
+            signature = inspect.signature(func)
+            accepted = set(signature.parameters)
+            has_var_keyword = any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in signature.parameters.values()
+            )
+        except (TypeError, ValueError):
+            accepted = None
+            has_var_keyword = False
+
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             
-            for key, _data_type in kwargs.items():
+            for key, value in kwargs.items():
 
                 if key in validations:
                 
-                    if not isinstance(_data_type, validations[key]):
-                        message = f"Expected Input {key} as {validations[key]}, but got {type(_data_type)} in {func}"
+                    if not isinstance(value, validations[key]):
+                        message = f"Expected Input {key} as {validations[key]}, but got {type(value)} in {func}"
                         _logger.error(message)
                         raise TypeError(message)
-                    
+
+                elif accepted is not None and (key in accepted or has_var_keyword):
+                    continue
+
                 else:
                     message = f"You didn't define {key} argument to validate in {func}"
                     _logger.error(message)

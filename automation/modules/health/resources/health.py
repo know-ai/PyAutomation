@@ -287,6 +287,15 @@ class HealthSystemResource(Resource):
                 clock_metrics = {"clock": {"enabled": False, "synced": False}}
         except Exception:
             clock_metrics = {"clock": {"enabled": False, "synced": False}}
+        product_extras = {}
+        try:
+            extras_fn = getattr(app, "health_system_extras", None)
+            if callable(extras_fn):
+                extra_payload = extras_fn() or {}
+                if isinstance(extra_payload, dict):
+                    product_extras = extra_payload
+        except Exception:
+            product_extras = {}
         return {
             "status": "ok",
             "service": "pyautomation",
@@ -311,6 +320,7 @@ class HealthSystemResource(Resource):
             **_log_error_metrics(),
             **_event_rate_metrics(),
             **_catalog_metrics(),
+            **product_extras,
         }, 200
 
 

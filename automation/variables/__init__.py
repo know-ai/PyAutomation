@@ -89,3 +89,33 @@ def resolve_units_for_variable(
         current_display_unit if current_display_unit is not None else current_unit,
     )
     return unit, display
+
+
+FLOW_VARIABLES = frozenset({"MassFlow", "VolumetricFlow"})
+
+
+def variable_for_unit(unit: str | None) -> str | None:
+    """Catalogue variable name whose units include ``unit``, or ``None``."""
+    if not unit:
+        return None
+    needle = str(unit).strip()
+    if not needle:
+        return None
+    for variable, units in VARIABLES.items():
+        if needle in units.values() or needle in units.keys():
+            return variable
+    return None
+
+
+def compatible_field_variables(variable: str | None) -> frozenset[str]:
+    """Field-tag variable names that may bind to an internal ProcessType.
+
+    MassFlow and VolumetricFlow are interchangeable: engines convert volumetric
+    flow with density into mass flow.
+    """
+    name = str(variable or "").strip()
+    if not name:
+        return frozenset()
+    if name in FLOW_VARIABLES:
+        return FLOW_VARIABLES
+    return frozenset({name})

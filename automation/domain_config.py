@@ -53,6 +53,47 @@ def supports_domain_files(machine: Any) -> bool:
     return supports_domain_config(machine) and callable(getattr(machine, "put_domain_files", None))
 
 
+def domain_files_upload_payload(
+    config: Any,
+    *,
+    field_key: str = "",
+    uploads: Any = None,
+) -> dict[str, Any]:
+    """HTTP envelope for POST /domain-config/files.
+
+    Machines may attach ``_destination_path`` and ``_files_written`` on the
+    dict returned by ``put_domain_files``. Those keys are lifted to the
+    envelope so the HMI can show the remote volume path without treating
+    them as form fields.
+    """
+    n_uploads = 0
+    if uploads is not None:
+        try:
+            n_uploads = len(uploads)
+        except TypeError:
+            n_uploads = 0
+    body = dict(config) if isinstance(config, dict) else {}
+    dest = body.pop("_destination_path", None)
+    written = body.pop("_files_written", None)
+    if not (isinstance(dest, str) and dest.strip()):
+        slot = body.get(field_key)
+        if isinstance(slot, dict):
+            dest = slot.get("absolute_path") or slot.get("path")
+    try:
+        files_written = int(written) if written is not None else n_uploads
+    except (TypeError, ValueError):
+        files_written = n_uploads
+    payload: dict[str, Any] = {
+        "status": "success",
+        "config": body if isinstance(config, dict) else (config or {}),
+        "files_written": max(0, files_written),
+        "message": "Models stored successfully",
+    }
+    if isinstance(dest, str) and dest.strip():
+        payload["destination_path"] = dest.strip()
+    return payload
+
+
 def unknown_generic_attribute_keys(payload: dict | None) -> list[str]:
     if not payload:
         return []

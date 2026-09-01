@@ -251,6 +251,7 @@ class DBManager(Singleton):
         self._ensure_machine_name_partition(db)
         self._ensure_nodes_clock_schema(db, migrator)
         self._ensure_tag_filter_schema(db, migrator)
+        self._ensure_alarm_delay_schema(db, migrator)
 
     def _drop_legacy_tag_columns(self, db, migrator=None):
         if db is None:
@@ -306,6 +307,11 @@ class DBManager(Singleton):
                     )
                 )
         self._drop_legacy_tag_columns(db, migrator)
+
+    def _ensure_alarm_delay_schema(self, db, migrator):
+        from ..dbmodels.alarms import ensure_alarm_delay_schema
+
+        ensure_alarm_delay_schema(db)
 
     def _ensure_nodes_clock_schema(self, db, migrator):
         table = Nodes._meta.table_name

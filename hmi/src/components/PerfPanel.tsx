@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import type { MouseEvent, ReactNode } from "react";
+import type { ButtonHTMLAttributes, MouseEvent, ReactNode } from "react";
 import { Sparkline } from "./Sparkline";
 import type { PerfAlarmLifecycle, TileTone } from "../services/performanceAlarms";
 import { useTranslation } from "../hooks/useTranslation";
@@ -16,7 +16,49 @@ type PerfPanelProps = {
   actions?: ReactNode;
   onOpen?: () => void;
   onConfigure?: () => void;
+  /** Tooltip del icono "i". Cadena vacía o ausente: se oculta. */
+  info?: string;
+  subtitle?: string;
+  dragHandle?: boolean;
+  className?: string;
+  bodyClassName?: string;
 };
+
+export function PerfInfoTip({ text }: { text: string }) {
+  return (
+    <button
+      type="button"
+      className="perf-info"
+      aria-label={text}
+      onClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      <i className="bi bi-info-circle" aria-hidden="true" />
+      <span className="perf-info__bubble" role="tooltip">
+        {text}
+      </span>
+    </button>
+  );
+}
+
+type OpsHintButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  hint: string;
+};
+
+export function OpsHintButton({ hint, className, children, type, ...props }: OpsHintButtonProps) {
+  return (
+    <button
+      {...props}
+      type={type ?? "button"}
+      className={clsx("perf-ops-tip", className)}
+    >
+      {children}
+      <span className="perf-ops-tip__bubble" role="tooltip">
+        {hint}
+      </span>
+    </button>
+  );
+}
 
 export function PerfPanel({
   title,
@@ -30,6 +72,11 @@ export function PerfPanel({
   actions,
   onOpen,
   onConfigure,
+  info,
+  subtitle,
+  dragHandle = false,
+  className,
+  bodyClassName,
 }: PerfPanelProps) {
   const { t } = useTranslation();
   const status =
@@ -41,7 +88,7 @@ export function PerfPanel({
           ? t("performance.badgeShelved")
           : alarmable
             ? t("performance.badgeOk")
-            : t("performance.informative");
+            : null;
 
   const openConfigure = (event: MouseEvent) => {
     event.stopPropagation();
@@ -50,7 +97,7 @@ export function PerfPanel({
 
   return (
     <section
-      className={clsx("perf-panel", `perf-panel--${tone}`, onOpen && "perf-panel--clickable")}
+      className={clsx("perf-panel", `perf-panel--${tone}`, onOpen && "perf-panel--clickable", className)}
       onClick={onOpen}
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
@@ -62,20 +109,23 @@ export function PerfPanel({
         }
       }}
     >
-      <header className="perf-panel__head">
+      <header className={clsx("perf-panel__head", dragHandle && "lds-card-handle")}>
         <div>
           <h4 className="perf-panel__title">{title}</h4>
-          <span className={clsx("perf-badge", `perf-badge--${lifecycle === "normal" ? "ok" : lifecycle}`)}>
-            <span className={clsx("perf-badge__dot", lifecycle === "unack" && "perf-badge__dot--live")} />
-            {status}
-          </span>
+          {subtitle ? <p className="perf-panel__subtitle">{subtitle}</p> : null}
+          {status ? (
+            <span className={clsx("perf-badge", `perf-badge--${lifecycle === "normal" ? "ok" : lifecycle}`)}>
+              <span className={clsx("perf-badge__dot", lifecycle === "unack" && "perf-badge__dot--live")} />
+              {status}
+            </span>
+          ) : null}
         </div>
         <span className="perf-tile__tools">
           {alarmable ? (
             <i className="bi bi-bell perf-tile__mark" title={t("performance.alarmable")} aria-hidden="true" />
-          ) : (
-            <i className="bi bi-info-circle perf-tile__mark perf-tile__mark--info" title={t("performance.informative")} aria-hidden="true" />
-          )}
+          ) : info ? (
+            <PerfInfoTip text={info} />
+          ) : null}
           {canConfigure && onConfigure ? (
             <button
               type="button"
@@ -89,7 +139,7 @@ export function PerfPanel({
           ) : null}
         </span>
       </header>
-      <div className="perf-panel__body">{children}</div>
+      <div className={clsx("perf-panel__body", bodyClassName)}>{children}</div>
       {actions ? (
         <div className="perf-panel__actions" onClick={(event) => event.stopPropagation()}>
           {actions}

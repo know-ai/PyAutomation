@@ -33,7 +33,9 @@ class TestAlarms(unittest.TestCase):
             name=name,
             tag=tag,
             alarm_type=StringType("HIGH"),
-            alarm_setpoint=FloatType(50.0)
+            alarm_setpoint=FloatType(50.0),
+            alarm_on_delay=FloatType(0.0),
+            alarm_off_delay=FloatType(0.0),
         )
 
         self.assertEqual(alarm.state.state.lower(), "normal")
@@ -55,7 +57,9 @@ class TestAlarms(unittest.TestCase):
             name=name,
             tag=tag,
             alarm_type=StringType("HIGH"),
-            alarm_setpoint=FloatType(50.0)
+            alarm_setpoint=FloatType(50.0),
+            alarm_on_delay=FloatType(0.0),
+            alarm_off_delay=FloatType(0.0),
         )
 
         with self.subTest("Test alarm Unack status"):
@@ -87,7 +91,9 @@ class TestAlarms(unittest.TestCase):
             name=name,
             tag=tag,
             alarm_type=StringType("HIGH"),
-            alarm_setpoint=FloatType(50.0)
+            alarm_setpoint=FloatType(50.0),
+            alarm_on_delay=FloatType(0.0),
+            alarm_off_delay=FloatType(0.0),
         )
 
         tag.set_value(value=55)
@@ -117,6 +123,8 @@ class TestAlarms(unittest.TestCase):
             tag=tag,
             alarm_type=StringType("BOOL"),
             alarm_setpoint=IntegerType(1),
+            alarm_on_delay=FloatType(0.0),
+            alarm_off_delay=FloatType(0.0),
         )
         tag.set_value(value=True)
         self.assertEqual(alarm.current_state.value.lower(), "unack_alarm")

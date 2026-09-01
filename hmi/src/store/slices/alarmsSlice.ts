@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction, createSelector } from "@reduxjs/toolkit";
 import type { Alarm } from "../../services/alarms";
 import { logout } from "./authSlice";
+import { isAnnunciatedAlarm } from "../../utils/alarmState";
 
 interface AlarmsState {
   // Map of alarm identifier/id -> latest alarm data
@@ -57,13 +58,10 @@ export default alarmsSlice.reducer;
 const PREVIEW_SIZE = 3;
 
 function isActiveAlarm(alarm: Alarm): boolean {
-  const state = alarm.state;
-  if (typeof state === "object") {
-    const stateStr = state.mnemonic || state.state || "";
-    return stateStr.includes("UNACK") || stateStr.includes("ACK");
+  if (alarm.delay_phase === "pending" || alarm.delay_phase === "clearing") {
+    return true;
   }
-  const stateStr = String(state);
-  return stateStr.includes("Unacknowledged") || stateStr.includes("Acknowledged");
+  return isAnnunciatedAlarm(alarm.state);
 }
 
 export const selectActiveAlarmsPreview = createSelector(

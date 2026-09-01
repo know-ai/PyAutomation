@@ -5,6 +5,7 @@ import { useAppDispatch } from "../hooks/useAppDispatch";
 import { setLocale } from "../store/slices/localeSlice";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { useDisplayDensity } from "../hooks/useDisplayDensity";
+import { useShowInfraMachines } from "../hooks/useShowInfraMachines";
 import { SettingsChapter } from "./SettingsChapter";
 import type { DisplayDensity } from "../utils/displayDensity";
 
@@ -30,6 +31,7 @@ export function StationAppearance() {
   const { mode, set } = useTheme();
   const { mode: tzMode, setMode: setTzMode, plantTimezone, browserTimezone } = useDisplayTimezone();
   const { mode: densityMode, setMode: setDensityMode } = useDisplayDensity();
+  const { showInfra, setShowInfra } = useShowInfraMachines();
   const dispatch = useAppDispatch();
 
   return (
@@ -123,6 +125,39 @@ export function StationAppearance() {
                 </button>
               );
             })}
+          </div>
+        </article>
+
+        <article className="settings-tile settings-tile--span">
+          <div className="settings-tile__label">{t("settings.infraMachines")}</div>
+          <p className="settings-tile__hint">{t("settings.infraMachinesLede")}</p>
+          <div className="settings-choice" role="radiogroup" aria-label={t("settings.infraMachines")}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!showInfra}
+              className={clsx("settings-choice__card", !showInfra && "is-selected")}
+              onClick={() => setShowInfra(false)}
+            >
+              <i className="bi bi-eye-slash settings-choice__icon" aria-hidden="true" />
+              <span className="settings-choice__copy">
+                <span className="settings-choice__name">{t("settings.infraMachinesHide")}</span>
+                <span className="settings-choice__hint">{t("settings.infraMachinesHideHint")}</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={showInfra}
+              className={clsx("settings-choice__card", showInfra && "is-selected")}
+              onClick={() => setShowInfra(true)}
+            >
+              <i className="bi bi-eye settings-choice__icon" aria-hidden="true" />
+              <span className="settings-choice__copy">
+                <span className="settings-choice__name">{t("settings.infraMachinesShow")}</span>
+                <span className="settings-choice__hint">{t("settings.infraMachinesShowHint")}</span>
+              </span>
+            </button>
           </div>
         </article>
 

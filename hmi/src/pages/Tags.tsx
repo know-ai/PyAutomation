@@ -1729,9 +1729,10 @@ export function Tags() {
                         onChange={(patch) => setFormData({ ...formData, ...patch })}
                       />
 
-                      {/* Detección */}
+                      {/* Detección IAD — runtime desactivado (decoradores comentados en CVT) */}
                       <div className="col-12">
                         <h6 className="border-bottom pb-2">{t("tags.detection")}</h6>
+                        <p className="small text-muted mb-2">{t("tags.iadDetectionDisabledHint")}</p>
                       </div>
                       <div className="col-md-4">
                         <div className="form-check">
@@ -1739,6 +1740,8 @@ export function Tags() {
                             className="form-check-input"
                             type="checkbox"
                             checked={formData.outlier_detection}
+                            disabled
+                            title={t("tags.iadDetectionDisabledHint")}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
@@ -1746,7 +1749,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">{t("tags.outlierDetection")}</label>
+                          <label className="form-check-label text-muted">{t("tags.outlierDetection")}</label>
                         </div>
                       </div>
                       <div className="col-md-4">
@@ -1755,6 +1758,8 @@ export function Tags() {
                             className="form-check-input"
                             type="checkbox"
                             checked={formData.out_of_range_detection}
+                            disabled
+                            title={t("tags.iadDetectionDisabledHint")}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
@@ -1762,7 +1767,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">{t("tags.outOfRangeDetection")}</label>
+                          <label className="form-check-label text-muted">{t("tags.outOfRangeDetection")}</label>
                         </div>
                       </div>
                       <div className="col-md-4">
@@ -1771,6 +1776,8 @@ export function Tags() {
                             className="form-check-input"
                             type="checkbox"
                             checked={formData.frozen_data_detection}
+                            disabled
+                            title={t("tags.iadDetectionDisabledHint")}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
@@ -1778,7 +1785,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">{t("tags.frozenDataDetection")}</label>
+                          <label className="form-check-label text-muted">{t("tags.frozenDataDetection")}</label>
                         </div>
                       </div>
 
@@ -2117,9 +2124,10 @@ export function Tags() {
                         onChange={(patch) => setFormData({ ...formData, ...patch })}
                       />
 
-                      {/* Detección */}
+                      {/* Detección IAD — runtime desactivado (decoradores comentados en CVT) */}
                       <div className="col-12">
                         <h6 className="border-bottom pb-2">{t("tags.detection")}</h6>
+                        <p className="small text-muted mb-2">{t("tags.iadDetectionDisabledHint")}</p>
                       </div>
                       <div className="col-md-4">
                         <div className="form-check">
@@ -2127,6 +2135,8 @@ export function Tags() {
                             className="form-check-input"
                             type="checkbox"
                             checked={formData.outlier_detection}
+                            disabled
+                            title={t("tags.iadDetectionDisabledHint")}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
@@ -2134,7 +2144,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">{t("tags.outlierDetection")}</label>
+                          <label className="form-check-label text-muted">{t("tags.outlierDetection")}</label>
                         </div>
                       </div>
                       <div className="col-md-4">
@@ -2143,6 +2153,8 @@ export function Tags() {
                             className="form-check-input"
                             type="checkbox"
                             checked={formData.out_of_range_detection}
+                            disabled
+                            title={t("tags.iadDetectionDisabledHint")}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
@@ -2150,7 +2162,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">{t("tags.outOfRangeDetection")}</label>
+                          <label className="form-check-label text-muted">{t("tags.outOfRangeDetection")}</label>
                         </div>
                       </div>
                       <div className="col-md-4">
@@ -2159,6 +2171,8 @@ export function Tags() {
                             className="form-check-input"
                             type="checkbox"
                             checked={formData.frozen_data_detection}
+                            disabled
+                            title={t("tags.iadDetectionDisabledHint")}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
@@ -2166,7 +2180,7 @@ export function Tags() {
                               })
                             }
                           />
-                          <label className="form-check-label">{t("tags.frozenDataDetection")}</label>
+                          <label className="form-check-label text-muted">{t("tags.frozenDataDetection")}</label>
                         </div>
                       </div>
 

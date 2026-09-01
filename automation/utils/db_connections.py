@@ -138,14 +138,26 @@ def _open_tracked_connection(database) -> Any:
     return conn
 
 
+def _safe_application_token(value: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in value) or "unknown"
+
+
+def historian_node_name_prefix() -> str:
+    """``application_name`` prefix that identifies this edge in ``pg_stat_activity``."""
+    from ..node_scope import current_node_scope
+
+    scope = current_node_scope()
+    if scope.enabled and scope.node_id:
+        return f"{APPLICATION_NAME_PREFIX}:{_safe_application_token(scope.node_id)}"
+    return APPLICATION_NAME_PREFIX
+
+
 def historian_application_name(role: str | None = None) -> str:
     """libpq application_name for this greenlet. Max 63 chars (PostgreSQL)."""
     from ..node_scope import current_node_scope
 
     def safe(value: str) -> str:
-        return "".join(
-            ch if ch.isalnum() or ch in "._-" else "_" for ch in value
-        ) or "unknown"
+        return _safe_application_token(value)
 
     scope = current_node_scope()
     if not scope.enabled:
@@ -527,12 +539,12 @@ def keep_historian_socket() -> bool:
 
 
 def count_active_backends(db: Any | None) -> int | None:
-    """Backends in pg_stat_activity for this database, excluding the probe itself."""
+    """Client backends of **this edge** on the current database (excludes the probe)."""
     return _count_pg_activity(db, named_only=False)
 
 
 def count_named_backends(db: Any | None) -> int | None:
-    """Backends whose application_name is PyAutomationIO, excluding the probe."""
+    """This edge's ``PyAutomationIO:<node>:%`` backends, excluding the probe."""
     return _count_pg_activity(db, named_only=True)
 
 
@@ -653,6 +665,7 @@ def _count_pg_activity(db: Any | None, *, named_only: bool) -> int | None:
             return None
         try:
             with conn.cursor() as cursor:
+                prefix = historian_node_name_prefix() + "%"
                 if named_only:
                     cursor.execute(
                         "SELECT count(*) FROM pg_stat_activity "
@@ -660,13 +673,27 @@ def _count_pg_activity(db: Any | None, *, named_only: bool) -> int | None:
                         "AND backend_type = 'client backend' "
                         "AND application_name LIKE %s "
                         "AND pid <> pg_backend_pid()",
-                        (APPLICATION_NAME_PREFIX + "%",),
+                        (prefix,),
                     )
                 else:
                     cursor.execute(
                         "SELECT count(*) FROM pg_stat_activity "
-                        "WHERE datname = current_database() AND pid <> pg_backend_pid() "
-                        "AND backend_type = 'client backend'"
+                        "WHERE datname = current_database() "
+                        "AND backend_type = 'client backend' "
+                        "AND pid <> pg_backend_pid() "
+                        "AND ("
+                        "  application_name LIKE %s "
+                        "  OR ("
+                        "    client_addr IS NOT NULL "
+                        "    AND client_addr IN ("
+                        "      SELECT DISTINCT client_addr FROM pg_stat_activity "
+                        "      WHERE datname = current_database() "
+                        "        AND application_name LIKE %s "
+                        "        AND client_addr IS NOT NULL"
+                        "    )"
+                        "  )"
+                        ")",
+                        (prefix, prefix),
                     )
                 row = cursor.fetchone()
                 return int(row[0] if row else 0)

@@ -96,6 +96,29 @@ export const getNodeIdentity = async (): Promise<NodeIdentity> => {
   };
 };
 
+export type ConnectedNodeInfo = {
+  nodeId: string;
+  host: string;
+};
+
+export const getConnectedNodeInfo = async (): Promise<ConnectedNodeInfo> => {
+  const host =
+    typeof window !== "undefined" && window.location.host ? window.location.host : "";
+  try {
+    const { data } = await api.get("/health/node", { timeout: 2500 });
+    const nodeId = typeof data?.NODE_ID === "string" ? data.NODE_ID.trim() : "";
+    if (nodeId) return { nodeId, host };
+  } catch {
+    /* fall through to /health/system */
+  }
+  try {
+    const identity = await getNodeIdentity();
+    return { nodeId: identity.nodeId.trim(), host };
+  } catch {
+    return { nodeId: "", host };
+  }
+};
+
 export const reconnectRemoteDatabase = async (): Promise<DatabaseHealthResponse> => {
   try {
     const { data } = await api.post("/system/reconnect_db", {}, { timeout: 15000 });

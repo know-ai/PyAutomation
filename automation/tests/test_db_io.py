@@ -211,7 +211,7 @@ class TestConnectionRegistry(unittest.TestCase):
         snap = snapshot_connection_metrics()
         self.assertGreater(snap["DB_CONNECTIONS_COUNT"], snap["DB_CONNECTIONS_ALERT_THRESHOLD"])
         self.assertTrue(snap["DB_CONNECTIONS_ALERT"])
-        self.assertEqual(snap["DB_APPLICATION_NAME"], "PyAutomationIO")
+        self.assertTrue(snap["DB_APPLICATION_NAME"].startswith("PyAutomationIO"))
         self.assertEqual(snap["DB_ACTIVE_CONNECTIONS"], snap["DB_CONNECTIONS_COUNT"])
         self.assertEqual(snap["DB_CONNECTIONS_EXPECTED_MAX"], 4)
 
@@ -428,6 +428,26 @@ class TestConnectionRegistry(unittest.TestCase):
             with ephemeral_historian(db):
                 pass
         db.close.assert_not_called()
+
+
+class TestHistorianNodeScopedBackends(unittest.TestCase):
+    def test_node_prefix_includes_node_id_when_multi_edge(self):
+        from types import SimpleNamespace
+
+        from ..utils.db_connections import historian_node_name_prefix
+
+        scope = SimpleNamespace(enabled=True, node_id="edge-Supe")
+        with patch("automation.node_scope.current_node_scope", return_value=scope):
+            self.assertEqual(historian_node_name_prefix(), "PyAutomationIO:edge-Supe")
+
+    def test_node_prefix_without_multi_edge(self):
+        from types import SimpleNamespace
+
+        from ..utils.db_connections import historian_node_name_prefix
+
+        scope = SimpleNamespace(enabled=False, node_id="")
+        with patch("automation.node_scope.current_node_scope", return_value=scope):
+            self.assertEqual(historian_node_name_prefix(), "PyAutomationIO")
 
 
 class TestJournalThenRemoteCloses(unittest.TestCase):

@@ -3517,6 +3517,8 @@ class PyAutomation(Singleton):
         Subscribes a tag to a Data Acquisition (DAQ) machine for polling.
 
         It manages the creation of DAQ machines based on the scan time interval.
+        Each DAQ (DAQ-1000, DAQ-500, …) batch-reads only the tags subscribed
+        to that scan_time in a single OPC Read per cycle.
 
         **Parameters:**
 
@@ -4949,6 +4951,10 @@ class PyAutomation(Singleton):
                     trigger_value=payload.get("trigger_value") if payload.get("trigger_value") is not None else 0,
                     description=payload.get("description") or "",
                     area=payload.get("area"),
+                    on_delay=payload.get("on_delay"),
+                    off_delay=payload.get("off_delay"),
+                    on_delay_units=payload.get("on_delay_units"),
+                    off_delay_units=payload.get("off_delay_units"),
                 )
                 synced += 1
             except Exception:
@@ -5264,6 +5270,10 @@ class PyAutomation(Singleton):
             area=str|type(None),
             display_name=str|type(None),
             skip_validation=bool,
+            on_delay=int|float|None,
+            off_delay=int|float|None,
+            on_delay_units=str|None,
+            off_delay_units=str|None,
             output=(Alarm|type(None), str)
     )
     def create_alarm(
@@ -5282,6 +5292,10 @@ class PyAutomation(Singleton):
             area:str=None,
             display_name:str=None,
             skip_validation:bool=False,
+            on_delay:float=None,
+            off_delay:float=None,
+            on_delay_units:str=None,
+            off_delay_units:str=None,
         )->tuple[Alarm, str]:
         r"""
         Creates and registers a new alarm in the system.
@@ -5363,7 +5377,11 @@ class PyAutomation(Singleton):
             ack_timestamp=ack_timestamp,
             user=user,
             reload=reload,
-            sio=self.sio
+            sio=self.sio,
+            on_delay=on_delay,
+            off_delay=off_delay,
+            on_delay_units=on_delay_units,
+            off_delay_units=off_delay_units,
         )
 
         # Verificar que result no sea None antes de desempaquetar
@@ -5397,6 +5415,10 @@ class PyAutomation(Singleton):
                             trigger_value=trigger_value,
                             description=description,
                             area=scope.area or area,
+                            on_delay=alarm._on_delay_s(),
+                            off_delay=alarm._off_delay_s(),
+                            on_delay_units=alarm.on_delay_units,
+                            off_delay_units=alarm.off_delay_units,
                         )
                 else:
                     try:
@@ -5413,6 +5435,10 @@ class PyAutomation(Singleton):
                                 trigger_value=trigger_value,
                                 description=description,
                                 area=scope.area or area,
+                                on_delay=alarm._on_delay_s(),
+                                off_delay=alarm._off_delay_s(),
+                                on_delay_units=alarm.on_delay_units,
+                                off_delay_units=alarm.off_delay_units,
                             )
                     except Exception:
                         logging.debug("local catalog alarm persist skipped", exc_info=True)
@@ -5502,7 +5528,7 @@ class PyAutomation(Singleton):
             return self.alarms_engine.filter_alarm_summary_by(**fields)
 
     @logging_error_handler
-    @validate_types(id=str, name=str|None, tag=str|None, description=str|None, alarm_type=str|None, trigger_value=int|float|None, output=None)
+    @validate_types(id=str, name=str|None, tag=str|None, description=str|None, alarm_type=str|None, trigger_value=int|float|None, user=User|type(None), on_delay=int|float|None, off_delay=int|float|None, on_delay_units=str|None, off_delay_units=str|None, output=None)
     def update_alarm(
             self, 
             id:str, 
@@ -5511,7 +5537,11 @@ class PyAutomation(Singleton):
             description:str=None,
             alarm_type:str=None,
             trigger_value:int|float=None,
-            user:User=None)->None:
+            user:User=None,
+            on_delay:int|float=None,
+            off_delay:int|float=None,
+            on_delay_units:str=None,
+            off_delay_units:str=None)->None:
         r"""
         Updates the properties of an existing alarm.
 
@@ -5558,6 +5588,10 @@ class PyAutomation(Singleton):
             alarm_type=alarm_type,
             trigger_value=trigger_value,
             user=user,
+            on_delay=on_delay,
+            off_delay=off_delay,
+            on_delay_units=on_delay_units,
+            off_delay_units=off_delay_units,
         )
         # Persist Tag on Database
         if self.is_db_connected():
@@ -5568,7 +5602,12 @@ class PyAutomation(Singleton):
                 tag=tag,
                 description=description,
                 alarm_type=alarm_type,
-                trigger_value=trigger_value)
+                trigger_value=trigger_value,
+                on_delay=on_delay,
+                off_delay=off_delay,
+                on_delay_units=on_delay_units,
+                off_delay_units=off_delay_units,
+            )
         try:
             from .catalog.mutations import persist_alarm_fields_local
 
@@ -5582,6 +5621,10 @@ class PyAutomation(Singleton):
                 description=description,
                 alarm_type=alarm_type,
                 trigger_value=trigger_value,
+                on_delay=on_delay,
+                off_delay=off_delay,
+                on_delay_units=on_delay_units,
+                off_delay_units=off_delay_units,
             )
         except Exception:
             logging.debug("local catalog alarm update skipped", exc_info=True)

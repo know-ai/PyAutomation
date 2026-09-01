@@ -9,6 +9,7 @@ export type Alarm = {
   alarm_type?: string;
   trigger_value?: number | boolean;
   description?: string;
+  display_name?: string;
   state?: {
     mnemonic?: string;
     state?: string;
@@ -28,6 +29,14 @@ export type Alarm = {
   actions?: {
     [key: string]: string;
   };
+  on_delay?: number;
+  off_delay?: number;
+  on_delay_units?: string;
+  off_delay_units?: string;
+  condition_met?: boolean;
+  on_timer_remaining?: number | null;
+  off_timer_remaining?: number | null;
+  delay_phase?: "pending" | "clearing" | null;
   [key: string]: any;
 };
 
@@ -41,16 +50,25 @@ export type AlarmsResponse = {
   };
 };
 
+export type AlarmsListFilter = {
+  q?: string;
+  state?: string;
+};
+
 /**
  * Obtiene la lista de alarmas con paginación
  */
 export const getAlarms = async (
   page: number = 1,
-  limit: number = 20
+  limit: number = 20,
+  filters: AlarmsListFilter = {}
 ): Promise<AlarmsResponse> => {
-  const { data } = await api.get("/alarms/", {
-    params: { page, limit },
-  });
+  const params: Record<string, string | number> = { page, limit };
+  const query = filters.q?.trim();
+  const state = filters.state?.trim();
+  if (query) params.q = query;
+  if (state) params.state = state;
+  const { data } = await api.get("/alarms/", { params });
   return data;
 };
 

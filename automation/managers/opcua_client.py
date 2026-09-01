@@ -972,19 +972,38 @@ class OPCUAClientManager:
     
     @logging_error_handler
     def get_node_data_value_by_opcua_address(
-        self, opcua_address: str, namespace: str, timeout_s: float = 0.2
+        self, opcua_address: str, namespace: str, timeout_s: float = None
     ):
-        """DAQ hot path: one get_data_value, bounded wait, shared client lock."""
-        from ..opcua.models import DAQ_READ_TIMEOUT_S
+        """DAQ single-node path. Prefer ``get_node_data_values_by_opcua_address``."""
+        payload = self.get_node_data_values_by_opcua_address(
+            opcua_address=opcua_address,
+            namespaces=[namespace],
+            timeout_s=timeout_s,
+        )
+        return payload.get(str(namespace)) if isinstance(payload, dict) else None
 
-        budget = DAQ_READ_TIMEOUT_S if timeout_s is None else float(timeout_s)
-        for client_name, client in list(self._clients.items()):
+    @logging_error_handler
+    def get_node_data_values_by_opcua_address(
+        self, opcua_address: str, namespaces, timeout_s: float = None
+    ):
+        """One bounded Read for all NodeIds on the same OPC client URL."""
+        from ..opcua.models import daq_read_timeout_s
+
+        budget = daq_read_timeout_s() if timeout_s is None else float(timeout_s)
+        names = [str(ns) for ns in (namespaces or []) if ns]
+        empty = {ns: None for ns in names}
+        if not names:
+            return {}
+        for _client_name, client in list(self._clients.items()):
             if opcua_address != client.serialize()["server_url"]:
                 continue
             if not client.is_connected():
-                return None
-            return client.read_data_value_bounded(namespace, timeout_s=budget)
-        return None
+                return empty
+            reader = getattr(client, "read_data_values_bounded", None)
+            if callable(reader):
+                return reader(names, timeout_s=budget)
+            return {ns: client.read_data_value_bounded(ns, timeout_s=budget) for ns in names}
+        return empty
 
     @logging_error_handler
     def get_node_value_by_opcua_address(self, opcua_address:str, namespace:str)->list:

@@ -19,6 +19,7 @@ import { Settings } from "../pages/Settings";
 import { Events } from "../pages/Events";
 import { OperationalLogs } from "../pages/OperationalLogs";
 import { Performance } from "../pages/Performance";
+import { LdsDashboard } from "../pages/LdsDashboard";
 import { MainLayout } from "../layouts/MainLayout";
 import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
 import {
@@ -39,6 +40,9 @@ function ProtectedLayout() {
   const path = location.pathname;
   if (!isSystemUser(user)) {
     if (path === "/performance" || path.startsWith("/performance/")) {
+      if (!canViewPerformance(role)) return <Navigate to="/communications" replace />;
+    }
+    if (path === "/lds-dashboard" || path.startsWith("/lds-dashboard/")) {
       if (!canViewPerformance(role)) return <Navigate to="/communications" replace />;
     }
     if (path === "/settings" || path.startsWith("/settings/")) {
@@ -81,6 +85,7 @@ export function AppRoutes() {
         <Route path="/events" element={<Events />} />
         <Route path="/operational-logs" element={<OperationalLogs />} />
         <Route path="/performance" element={<Performance />} />
+        <Route path="/lds-dashboard" element={<LdsDashboard />} />
         <Route path="/user-management" element={<UserManagement />} />
         <Route path="/settings" element={<Settings />} />
       </Route>

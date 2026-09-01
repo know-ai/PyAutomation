@@ -45,5 +45,49 @@ class TestResolveUnitsForVariable(unittest.TestCase):
             resolve_units_for_variable("NotAVariable")
 
 
+class TestVariableForUnit(unittest.TestCase):
+    def test_kg_sec_is_mass_flow(self):
+        from automation.variables import variable_for_unit
+
+        self.assertEqual(variable_for_unit("kg/sec"), "MassFlow")
+
+    def test_pa_is_pressure(self):
+        from automation.variables import variable_for_unit
+
+        self.assertEqual(variable_for_unit("Pa"), "Pressure")
+
+    def test_kg_m3_is_density(self):
+        from automation.variables import variable_for_unit
+
+        self.assertEqual(variable_for_unit("kg/m3"), "Density")
+
+    def test_empty_unit(self):
+        from automation.variables import variable_for_unit
+
+        self.assertIsNone(variable_for_unit(""))
+        self.assertIsNone(variable_for_unit(None))
+
+    def test_flow_variables_are_interchangeable(self):
+        from automation.variables import compatible_field_variables
+
+        self.assertEqual(
+            compatible_field_variables("MassFlow"),
+            frozenset({"MassFlow", "VolumetricFlow"}),
+        )
+        self.assertEqual(
+            compatible_field_variables("VolumetricFlow"),
+            frozenset({"MassFlow", "VolumetricFlow"}),
+        )
+        self.assertEqual(compatible_field_variables("Pressure"), frozenset({"Pressure"}))
+
+    def test_process_type_serialize_includes_variable(self):
+        from automation.models import ProcessType
+
+        serialized = ProcessType(read_only=True, unit="kg/sec").serialize()
+        self.assertEqual(serialized["variable"], "MassFlow")
+        serialized = ProcessType(read_only=True, unit="kg/m3").serialize()
+        self.assertEqual(serialized["variable"], "Density")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -12,9 +12,17 @@ import { updateAlarmsBatch } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { formatTimestamp } from "../utils/timezone";
-import { alarmStateBadgeClass } from "../utils/alarmState";
+import {
+  alarmStateBadgeClass,
+  alarmStateMatches,
+  alarmMatchesSearch,
+  isUnacknowledgedAlarm,
+  ISA_ALARM_STATES,
+} from "../utils/alarmState";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
+import { alarmToFormData } from "../utils/alarmForm";
 import { VirtualizedCombobox, type ComboboxItem } from "../components/VirtualizedCombobox";
+import { useDebounce } from "../hooks/useDebounce";
 
 export function Alarms() {
   const { t } = useTranslation();
@@ -55,6 +63,13 @@ export function Alarms() {
   });
   const [shelving, setShelving] = useState(false);
   const [acknowledgingAll, setAcknowledgingAll] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(
+    () => localStorage.getItem("alarms_definitions_search") || ""
+  );
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const [selectedState, setSelectedState] = useState(
+    () => localStorage.getItem("alarms_definitions_state") || ""
+  );
   
   // Form state
   const [formData, setFormData] = useState({
@@ -64,6 +79,8 @@ export function Alarms() {
     trigger_value: "",
     description: "",
     display_name: "",
+    on_delay: "0",
+    off_delay: "0",
   });
   const [nodeIdentity, setNodeIdentity] = useState<NodeIdentity>({
     nodeId: "",
@@ -130,6 +147,8 @@ export function Alarms() {
     trigger_value: "",
     description: "",
     display_name: "",
+    on_delay: "0",
+    off_delay: "0",
   };
 
   const syncDerivedFields = (nextTagName: string, nextType: string) => {
@@ -165,11 +184,19 @@ export function Alarms() {
   const realTimeAlarms = useAppSelector((state) => state.alarms.alarms);
   const tagValues = useAppSelector((state) => state.tags.tagValues);
 
+  const listFilters = useMemo(
+    () => ({
+      q: debouncedSearchTerm.trim() || undefined,
+      state: selectedState.trim() || undefined,
+    }),
+    [debouncedSearchTerm, selectedState]
+  );
+
   const loadAlarms = async (page: number = pagination.page, limit: number = pagination.limit) => {
     setLoading(true);
     setError(null);
     try {
-      const response: AlarmsResponse = await getAlarms(page, limit);
+      const response: AlarmsResponse = await getAlarms(page, limit, listFilters);
       const loadedAlarms = response.data || [];
       setAlarms(loadedAlarms);
       setPagination(response.pagination || {
@@ -209,9 +236,14 @@ export function Alarms() {
   };
 
   useEffect(() => {
-    loadAlarms(1, 20);
     loadTags();
   }, []);
+
+  useEffect(() => {
+    loadAlarms(1, pagination.limit);
+    // Filters change: always restart at page 1. Limit changes go through handleLimitChange.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchTerm, selectedState]);
 
   useEffect(() => {
     if (!showCreateModal) return;
@@ -425,26 +457,21 @@ export function Alarms() {
       setError(t("alarms.noIdToEdit"));
       return;
     }
-    
-    // Extraer alarm_type y trigger_value de la estructura de la alarma
-    const alarmType = alarm.alarm_type || (alarm.alarm_setpoint?.type) || "BOOL";
-    const triggerValue = alarm.trigger_value !== undefined 
-      ? alarm.trigger_value 
-      : (alarm.alarm_setpoint?.value !== undefined ? alarm.alarm_setpoint.value : "");
-    
-    // Cargar datos de la alarma en el formulario
-    setFormData({
-      name: alarm.name || "",
-      tag: alarm.tag || "",
-      alarm_type: alarmType,
-      trigger_value: triggerValue !== undefined ? String(triggerValue) : "",
-      description: alarm.description || "",
-      display_name: "",
-    });
-    
+
+    setFormData(alarmToFormData(alarm));
     setEditingAlarm(alarm);
     setShowEditModal(true);
     setError(null);
+    if (alarm.name) {
+      getAlarmByName(alarm.name)
+        .then((fresh) => {
+          setFormData(alarmToFormData(fresh));
+          setEditingAlarm(fresh);
+        })
+        .catch(() => {
+          /* keep the snapshot already loaded from the table row */
+        });
+    }
   };
 
   const handleDeleteAlarm = (alarm: Alarm) => {
@@ -462,7 +489,7 @@ export function Alarms() {
     try {
       setError(null);
       // Obtener todas las alarmas (sin paginación)
-      const response = await getAlarms(1, 10000);
+      const response = await getAlarms(1, 10000, listFilters);
       const allAlarms = response.data || [];
       
       if (!allAlarms || allAlarms.length === 0) {
@@ -634,6 +661,22 @@ export function Alarms() {
         payload.description = formData.description;
       }
 
+      const parseDelay = (raw: string): number => {
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return 0;
+        return Math.min(3600, Math.max(0, n));
+      };
+      const originalOnDelay = original.on_delay !== undefined && original.on_delay !== null ? Number(original.on_delay) : 0;
+      const originalOffDelay = original.off_delay !== undefined && original.off_delay !== null ? Number(original.off_delay) : 0;
+      const nextOnDelay = parseDelay(formData.on_delay);
+      const nextOffDelay = parseDelay(formData.off_delay);
+      if (nextOnDelay !== originalOnDelay) {
+        payload.on_delay = nextOnDelay;
+      }
+      if (nextOffDelay !== originalOffDelay) {
+        payload.off_delay = nextOffDelay;
+      }
+
       // Si no hay campos para actualizar, mostrar error
       const fieldsToUpdate = Object.keys(payload).filter(key => key !== 'id');
       if (fieldsToUpdate.length === 0) {
@@ -716,6 +759,13 @@ export function Alarms() {
       if (formData.display_name) {
         payload.display_name = formData.display_name;
       }
+      const parseDelay = (raw: string): number => {
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return 0;
+        return Math.min(3600, Math.max(0, n));
+      };
+      payload.on_delay = parseDelay(formData.on_delay);
+      payload.off_delay = parseDelay(formData.off_delay);
 
       const response = await createAlarm(payload);
       const responseMessage =
@@ -760,18 +810,7 @@ export function Alarms() {
     return String(state);
   };
 
-  const isUnacknowledged = (alarm: Alarm): boolean => {
-    const state = alarm.state;
-    const stateStr =
-      typeof state === "object"
-        ? `${state.mnemonic || ""} ${state.state || ""} ${state.acknowledge_status || ""}`
-        : String(state || "");
-    return (
-      stateStr.includes("Unacknowledged") ||
-      stateStr.includes("UNACK") ||
-      stateStr.includes("RTNUN")
-    );
-  };
+  const isUnacknowledged = (alarm: Alarm): boolean => isUnacknowledgedAlarm(alarm.state);
 
   const hasUnacknowledgedAlarms = useMemo(() => {
     const byKey = new Map<string, Alarm>();
@@ -784,6 +823,21 @@ export function Alarms() {
     }
     return Array.from(byKey.values()).some(isUnacknowledged);
   }, [alarms, realTimeAlarms]);
+
+  const displayedAlarms = useMemo(() => {
+    const query = debouncedSearchTerm.trim();
+    return alarms.filter((alarm) => {
+      if (selectedState && !alarmStateMatches(alarm.state, selectedState)) {
+        return false;
+      }
+      if (!query) return true;
+      if (alarmMatchesSearch(alarm, query)) return true;
+      const translated = translateAlarmDescription(alarm.description, alarm.name, t);
+      return translated.toLowerCase().includes(query.toLowerCase());
+    });
+  }, [alarms, debouncedSearchTerm, selectedState, t]);
+
+  const filtersActive = Boolean(debouncedSearchTerm.trim() || selectedState);
 
   const handleAcknowledgeAll = async () => {
     if (!hasUnacknowledgedAlarms || acknowledgingAll) {
@@ -817,41 +871,78 @@ export function Alarms() {
         <Card
           className="page-fit-card"
           title={
-            <div className="d-flex justify-content-between align-items-center w-100">
-              <span>{t("navigation.alarms")}</span>
-              <div className="d-flex gap-2">
-                <Button
-                  variant="warning"
-                  className="btn-sm"
-                  onClick={handleAcknowledgeAll}
-                  disabled={loading || acknowledgingAll || !hasUnacknowledgedAlarms}
-                  loading={acknowledgingAll}
-                  title={
-                    hasUnacknowledgedAlarms
-                      ? t("alarms.acknowledgeAll")
-                      : t("alarms.acknowledgeAllDisabled")
-                  }
-                >
-                  <i className="bi bi-check2-all me-1"></i>
-                  {t("alarms.acknowledgeAll")}
-                </Button>
-                <Button
-                  variant="secondary"
-                  className="btn-sm"
-                  onClick={handleExportCSV}
-                  disabled={loading || alarms.length === 0}
-                >
-                  <i className="bi bi-download me-1"></i>
-                  {t("alarms.exportCSV")}
-                </Button>
-                <Button
-                  variant="success"
-                  className="btn-sm"
-                  onClick={() => setShowCreateModal(true)}
-                >
-                  <i className="bi bi-plus-circle me-1"></i>
-                  {t("alarms.createAlarm")}
-                </Button>
+            <div className="card-header-stack w-100">
+              <div className="d-flex align-items-center gap-2 w-100 flex-wrap">
+                <span className="me-auto">{t("navigation.alarms")}</span>
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                  <input
+                    type="search"
+                    className="form-control form-control-sm"
+                    style={{ width: "220px", maxWidth: "100%" }}
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      localStorage.setItem("alarms_definitions_search", e.target.value);
+                      setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+                    }}
+                    placeholder={t("alarms.searchPlaceholder")}
+                    aria-label={t("alarms.searchPlaceholder")}
+                  />
+                  <select
+                    className="form-select form-select-sm"
+                    style={{ width: "200px", maxWidth: "100%" }}
+                    value={selectedState}
+                    onChange={(e) => {
+                      setSelectedState(e.target.value);
+                      localStorage.setItem("alarms_definitions_state", e.target.value);
+                      setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+                    }}
+                    aria-label={t("alarms.selectStatePlaceholder")}
+                  >
+                    <option value="">{t("alarms.allStates")}</option>
+                    {ISA_ALARM_STATES.map((state) => (
+                      <option key={state} value={state}>
+                        {t(`alarmsSummary.states.${state}`)}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    variant="warning"
+                    className="btn-sm"
+                    onClick={handleAcknowledgeAll}
+                    disabled={loading || acknowledgingAll || !hasUnacknowledgedAlarms}
+                    loading={acknowledgingAll}
+                    title={
+                      hasUnacknowledgedAlarms
+                        ? t("alarms.acknowledgeAll")
+                        : t("alarms.acknowledgeAllDisabled")
+                    }
+                  >
+                    <i className="bi bi-check2-all me-1"></i>
+                    {t("alarms.acknowledgeAll")}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="btn-sm"
+                    onClick={handleExportCSV}
+                    disabled={loading || alarms.length === 0}
+                  >
+                    <i className="bi bi-download me-1"></i>
+                    {t("alarms.exportCSV")}
+                  </Button>
+                  <Button
+                    variant="success"
+                    className="btn-sm"
+                    onClick={() => {
+                      setFormData({ ...emptyForm });
+                      setError(null);
+                      setShowCreateModal(true);
+                    }}
+                  >
+                    <i className="bi bi-plus-circle me-1"></i>
+                    {t("alarms.createAlarm")}
+                  </Button>
+                </div>
               </div>
             </div>
           }
@@ -947,14 +1038,16 @@ export function Alarms() {
                   </tr>
                 </thead>
                 <tbody>
-                  {alarms.length === 0 ? (
+                  {displayedAlarms.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="text-center text-muted py-4">
-                        {t("alarms.noAlarmsAvailable")}
+                        {filtersActive
+                          ? t("alarms.noAlarmsMatchFilter")
+                          : t("alarms.noAlarmsAvailable")}
                       </td>
                     </tr>
                   ) : (
-                    alarms.map((alarm) => {
+                    displayedAlarms.map((alarm) => {
                       const alarmName = alarm.name;
                       return (
                         <AlarmTableRow
@@ -1132,6 +1225,46 @@ export function Alarms() {
                           />
                         )}
                       </div>
+                      <div className="col-md-6">
+                        <label className="form-label" title={t("alarms.onDelayTooltip")}>
+                          {t("alarms.onDelay")}
+                        </label>
+                        <div className="input-group">
+                          <input
+                            type="number"
+                            className="form-control"
+                            min={0}
+                            max={3600}
+                            step="0.1"
+                            value={formData.on_delay}
+                            onChange={(e) =>
+                              setFormData({ ...formData, on_delay: e.target.value })
+                            }
+                            title={t("alarms.onDelayTooltip")}
+                          />
+                          <span className="input-group-text">{t("alarms.secondsUnit")}</span>
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label" title={t("alarms.offDelayTooltip")}>
+                          {t("alarms.offDelay")}
+                        </label>
+                        <div className="input-group">
+                          <input
+                            type="number"
+                            className="form-control"
+                            min={0}
+                            max={3600}
+                            step="0.1"
+                            value={formData.off_delay}
+                            onChange={(e) =>
+                              setFormData({ ...formData, off_delay: e.target.value })
+                            }
+                            title={t("alarms.offDelayTooltip")}
+                          />
+                          <span className="input-group-text">{t("alarms.secondsUnit")}</span>
+                        </div>
+                      </div>
                       <div className="col-12">
                         <label className="form-label">{t("tables.description")}</label>
                         <textarea
@@ -1231,6 +1364,9 @@ export function Alarms() {
                           disabled={loadingTags}
                         >
                           <option value="">{t("alarms.selectTag")}</option>
+                          {formData.tag && !availableTags.some((tag) => tag.name === formData.tag) ? (
+                            <option value={formData.tag}>{formData.tag}</option>
+                          ) : null}
                           {availableTags.map((tag) => (
                             <option key={tag.name} value={tag.name}>
                               {tag.name}
@@ -1291,6 +1427,46 @@ export function Alarms() {
                             placeholder={t("alarms.enterTriggerValue")}
                           />
                         )}
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label" title={t("alarms.onDelayTooltip")}>
+                          {t("alarms.onDelay")}
+                        </label>
+                        <div className="input-group">
+                          <input
+                            type="number"
+                            className="form-control"
+                            min={0}
+                            max={3600}
+                            step="0.1"
+                            value={formData.on_delay}
+                            onChange={(e) =>
+                              setFormData({ ...formData, on_delay: e.target.value })
+                            }
+                            title={t("alarms.onDelayTooltip")}
+                          />
+                          <span className="input-group-text">{t("alarms.secondsUnit")}</span>
+                        </div>
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label" title={t("alarms.offDelayTooltip")}>
+                          {t("alarms.offDelay")}
+                        </label>
+                        <div className="input-group">
+                          <input
+                            type="number"
+                            className="form-control"
+                            min={0}
+                            max={3600}
+                            step="0.1"
+                            value={formData.off_delay}
+                            onChange={(e) =>
+                              setFormData({ ...formData, off_delay: e.target.value })
+                            }
+                            title={t("alarms.offDelayTooltip")}
+                          />
+                          <span className="input-group-text">{t("alarms.secondsUnit")}</span>
+                        </div>
                       </div>
                       <div className="col-12">
                         <label className="form-label">{t("tables.description")}</label>

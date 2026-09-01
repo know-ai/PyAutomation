@@ -14,6 +14,7 @@ from ..domain_config import (
     audit_domain_config_change,
     diff_domain_config,
     domain_config_action,
+    domain_files_upload_payload,
     supports_domain_config,
     supports_domain_files,
     unknown_generic_attribute_keys,
@@ -80,10 +81,29 @@ class FileConfigurableMotor(ConfigurableMotor):
     def put_domain_files(self, field_key: str, files) -> dict:
         self.stored.append((field_key, [(name, bytes(content)) for name, content in files]))
         self._config["last_field"] = str(field_key)
-        return dict(self._config)
+        cfg = dict(self._config)
+        cfg["_destination_path"] = "/app/modules/models/demo"
+        cfg["_files_written"] = len(files)
+        return cfg
 
 
 class TestDomainConfigHelpers(unittest.TestCase):
+    def test_domain_files_upload_payload_lifts_receipt(self):
+        payload = domain_files_upload_payload(
+            {
+                "gain": 1,
+                "_destination_path": "/app/modules/models/PFM/diesel/lgbm",
+                "_files_written": 4,
+            },
+            field_key="artifacts_DIESEL_DETECTION",
+            uploads=[("a", b"1"), ("b", b"2")],
+        )
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual(payload["destination_path"], "/app/modules/models/PFM/diesel/lgbm")
+        self.assertEqual(payload["files_written"], 4)
+        self.assertEqual(payload["config"]["gain"], 1)
+        self.assertNotIn("_destination_path", payload["config"])
+
     def test_generic_motor_does_not_support_domain_config(self):
         machine = GenericMotor()
         self.assertFalse(supports_domain_config(machine))
@@ -300,6 +320,11 @@ class TestDomainConfigResource(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["status"], "success")
         self.assertEqual(payload["config"]["last_field"], "detection_artifacts")
+        self.assertEqual(payload["destination_path"], "/app/modules/models/demo")
+        self.assertEqual(payload["files_written"], 1)
+        self.assertEqual(payload["message"], "Models stored successfully")
+        self.assertNotIn("_destination_path", payload["config"])
+        self.assertNotIn("_files_written", payload["config"])
         self.assertEqual(machine.stored[0][0], "detection_artifacts")
         self.assertEqual(machine.stored[0][1][0], ("model_lgbm.txt", b"booster"))
         self.assertTrue(supports_domain_files(machine))

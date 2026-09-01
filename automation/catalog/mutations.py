@@ -116,6 +116,10 @@ def persist_alarm_fields_local(
     alarm_type: str | None = None,
     trigger_value=None,
     state: str | None = None,
+    on_delay=None,
+    off_delay=None,
+    on_delay_units: str | None = None,
+    off_delay_units: str | None = None,
 ) -> None:
     """Update an alarm row already present in the local mirror."""
     row = _find_by_any("alarms", identifier=identifier, name=name)
@@ -133,6 +137,10 @@ def persist_alarm_fields_local(
                     trigger_value=trigger_value,
                     description=description or "",
                     state=state or "Normal",
+                    on_delay=on_delay,
+                    off_delay=off_delay,
+                    on_delay_units=on_delay_units,
+                    off_delay_units=off_delay_units,
                 )
             except Exception:
                 _LOGGER.debug("persist_alarm_fields_local create fallback failed", exc_info=True)
@@ -168,6 +176,14 @@ def persist_alarm_fields_local(
             pk = state_row.get("_pk") or state_row.get("id")
             payload["state"] = pk
             payload["state_id"] = pk
+    if on_delay is not None:
+        payload["on_delay"] = on_delay
+    if off_delay is not None:
+        payload["off_delay"] = off_delay
+    if on_delay_units is not None:
+        payload["on_delay_units"] = on_delay_units
+    if off_delay_units is not None:
+        payload["off_delay_units"] = off_delay_units
     _upsert("alarms", payload)
 
 

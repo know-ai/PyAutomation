@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from peewee import IntegrityError
 
+from automation.dbmodels.machines import Machines
 from automation.logger.datalogger import DataLogger
 from automation.logger.machines import MachinesLogger
 
@@ -192,3 +193,60 @@ class TestMachinesBindTagIntegrity(unittest.TestCase):
         self.assertIn("does not match", str(caught.exception))
         self.assertIn("cross-area", str(caught.exception))
         binds.create.assert_not_called()
+
+
+_MACHINE_CREATE_KW = dict(
+    identifier="b7136118",
+    name="DAQ-1000",
+    interval=1,
+    description="",
+    classification="DAQ",
+    buffer_size=10,
+    buffer_roll_type="fifo",
+    criticity=1,
+    priority=1,
+    area="Linea2",
+)
+
+
+class TestMachinesCreateIdentifierIdempotent(unittest.TestCase):
+    def test_create_returns_existing_when_identifier_present(self):
+        existing = MagicMock()
+        existing.name = "DAQ-1000"
+        existing.area = "Linea1"
+        existing.serialize.return_value = {"identifier": "b7136118", "name": "DAQ-1000"}
+        with patch.object(Machines, "get_or_none", return_value=existing):
+            result = Machines.create(**_MACHINE_CREATE_KW)
+        self.assertIn("already exists", result["message"])
+        existing.save.assert_not_called()
+
+    def test_create_fills_blank_area_on_existing_identifier(self):
+        existing = MagicMock()
+        existing.name = "DAQ-1000"
+        existing.area = None
+        existing.serialize.return_value = {
+            "identifier": "b7136118",
+            "name": "DAQ-1000",
+            "area": "Linea2",
+        }
+        with patch.object(Machines, "get_or_none", return_value=existing):
+            Machines.create(**_MACHINE_CREATE_KW)
+        self.assertEqual(existing.area, "Linea2")
+        existing.save.assert_called_once()
+
+    def test_logger_create_swallows_duplicate_identifier(self):
+        logger = MachinesLogger.__new__(MachinesLogger)
+        logger.check_connectivity = lambda: True
+        logger._db = MagicMock()
+        existing = MagicMock()
+        with patch("automation.logger.machines.Machines") as machines, patch(
+            "automation.catalog.bootstrap.mirror_historian_row"
+        ) as mirror:
+            machines.create.side_effect = IntegrityError(
+                'duplicate key value violates unique constraint "machines_identifier"'
+            )
+            machines.get_or_none.return_value = existing
+            logger.create(**_MACHINE_CREATE_KW)
+        logger._db.connection.return_value.rollback.assert_called()
+        machines.create.assert_called_once()
+        mirror.assert_called_once_with(existing)

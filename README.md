@@ -129,7 +129,7 @@ Comprehensive real-time monitoring with intuitive dashboards and live data visua
 Advanced strip chart visualization with configurable dashboards and multiple chart support.
 
 ### 🚨 Alarm Management
-Enterprise-grade alarm management following ISA-18.2 standards.
+Enterprise-grade alarm management following ISA-18.2 standards, including On-Delay and Off-Delay (default 0 s; set a delay to filter fleeting alarms and chattering).
 
 ### 💾 Historical Data Logging
 Comprehensive historical data logging for trend analysis and compliance.

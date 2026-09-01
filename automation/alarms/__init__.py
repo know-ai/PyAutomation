@@ -1,7 +1,14 @@
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from .states import AlarmState, AlarmAttrs
 from .trigger import Trigger, TriggerType
+from .delays import (
+    DEFAULT_ALARM_DELAY_S,
+    DEFAULT_ALARM_DELAY_UNITS,
+    clamp_alarm_delay,
+    normalize_delay_units,
+)
 from ..tags.tag import Tag, MachineObserver
 from ..tags.cvt import CVTEngine
 from ..modules.users.users import User
@@ -66,6 +73,9 @@ class Alarm(StateMachine):
     out_of_service_to_normal = out_of_service.to(normal)
     out_of_service_to_unack_alarm = out_of_service.to(unack_alarm)
 
+    # ISA-18.2 On-Delay / Off-Delay. Tests may disable wall-clock wakeups.
+    enable_delay_wakeups = True
+
     def __init__(
             self,
             name:str, 
@@ -77,11 +87,13 @@ class Alarm(StateMachine):
             timestamp:datetime=None,
             ack_timestamp:datetime=None,
             alarm_deadband:IntegerType|FloatType=FloatType(0.0),
-            alarm_on_delay:IntegerType|FloatType=FloatType(0.0),
-            alarm_off_delay:IntegerType|FloatType=FloatType(0.0),
+            alarm_on_delay:IntegerType|FloatType=FloatType(DEFAULT_ALARM_DELAY_S),
+            alarm_off_delay:IntegerType|FloatType=FloatType(DEFAULT_ALARM_DELAY_S),
             identifier:str=None,
             user:User=None,
-            reload:bool=False
+            reload:bool=False,
+            on_delay_units:str=DEFAULT_ALARM_DELAY_UNITS,
+            off_delay_units:str=DEFAULT_ALARM_DELAY_UNITS,
         ):
         r"""
         Initializes the Alarm.
@@ -109,12 +121,19 @@ class Alarm(StateMachine):
         self.attach(machine=self, tag=tag)
         self.description = description        
         self.alarm_setpoint = Trigger()
-        self.alarm_setpoint.value = alarm_setpoint.value
         self.alarm_setpoint.type = TriggerType(value=alarm_type.value.upper())
+        self.alarm_setpoint.value = alarm_setpoint.value
         alarm_deadband.unit = tag.get_display_unit()
         self.alarm_deadband = alarm_deadband
-        self.alarm_on_delay = alarm_on_delay
-        self.alarm_off_delay = alarm_off_delay
+        self.alarm_on_delay = FloatType(clamp_alarm_delay(alarm_on_delay))
+        self.alarm_off_delay = FloatType(clamp_alarm_delay(alarm_off_delay))
+        self.on_delay_units = normalize_delay_units(on_delay_units)
+        self.off_delay_units = normalize_delay_units(off_delay_units)
+        self._condition_met = False
+        self._on_timer_start = None
+        self._off_timer_start = None
+        self._last_eval_epoch = None
+        self._delay_wakeup_job = None
         self.timestamp = timestamp 
         self.ack_timestamp = ack_timestamp
         self.state = AlarmState.NORM
@@ -183,6 +202,10 @@ class Alarm(StateMachine):
             "trigger_value": trigger_value,
             "description": self.description or "",
             "area": area,
+            "on_delay": self._on_delay_s(),
+            "off_delay": self._off_delay_s(),
+            "on_delay_units": self.on_delay_units,
+            "off_delay_units": self.off_delay_units,
         }
 
     @logging_error_handler
@@ -191,6 +214,7 @@ class Alarm(StateMachine):
         self.state = AlarmState.NORM
         self.timestamp = None 
         self.ack_timestamp = None
+        self._reset_delay_timers()
 
     @logging_error_handler
     @put_alarm_state
@@ -262,18 +286,21 @@ class Alarm(StateMachine):
     def on_enter_shelved(self):
         
         self.state = AlarmState.SHLVD
+        self._reset_delay_timers()
 
     @logging_error_handler
     @put_alarm_state
     def on_enter_suppressed_by_design(self):
         
         self.state = AlarmState.DSUPR
+        self._reset_delay_timers()
 
     @logging_error_handler
     @put_alarm_state
     def on_enter_out_of_service(self):
         
         self.state = AlarmState.OOSRV
+        self._reset_delay_timers()
 
     def set_socketio(self, sio:SocketIO):
         r"""
@@ -311,41 +338,202 @@ class Alarm(StateMachine):
         """ 
         self.__timestamp = timestamp
         if self.state not in (AlarmState.DSUPR, AlarmState.SHLVD, AlarmState.OOSRV):
-            if self._quality_allows_process_evaluation():
-                if self.alarm_setpoint.type in (TriggerType.HH, TriggerType.H):
-
-                    if value.value > self.alarm_setpoint.value:
-
-                        self.abnormal_condition()
-                    
-                    else: 
-                        self.normal_condition()
-
-                elif self.alarm_setpoint.type in (TriggerType.L, TriggerType.LL):
-
-                    if value.value < self.alarm_setpoint.value:
-
-                        self.abnormal_condition()
-
-                    else:
-
-                        self.normal_condition()
-
-                else: # Boolean Alarm
-                    
-                    if value.value == bool(self.alarm_setpoint.value):
-
-                        self.abnormal_condition()
-
-                    else:
-
-                        self.normal_condition()
+            if self._is_iad_alarm():
+                self._evaluate_delays(self._iad_condition_met(), timestamp)
+            elif self._quality_allows_process_evaluation():
+                condition_met = self._process_condition_met(value.value)
+                self._evaluate_delays(condition_met, timestamp)
 
         if self.state==AlarmState.SHLVD:
 
             if datetime.now(timezone.utc) >= self._shelved_until:
 
                 self.unshelve(current_value=value)
+
+    def _is_iad_alarm(self) -> bool:
+        name = (getattr(self, "name", None) or "").lower()
+        return name.endswith(".iad") or name.startswith("alarm.iad.") or ".iad." in name
+
+    def _iad_condition_met(self) -> bool:
+        """IAD alarms follow signal quality, not the analog PV as BOOL."""
+        from ..signal_conditioning.quality import GOOD, is_good_quality
+
+        tag = getattr(self, "tag", None)
+        if tag is None:
+            return False
+        quality = getattr(tag, "quality", GOOD)
+        stale = bool(getattr(tag, "stale", False))
+        return stale or not is_good_quality(quality)
+
+    def _on_delay_s(self) -> float:
+        return clamp_alarm_delay(self.alarm_on_delay)
+
+    def _off_delay_s(self) -> float:
+        return clamp_alarm_delay(self.alarm_off_delay)
+
+    def _epoch(self, timestamp: datetime | None) -> float:
+        if timestamp is None:
+            return time.time()
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        return timestamp.timestamp()
+
+    def _is_process_active(self) -> bool:
+        current = getattr(self.current_state, "name", "") or ""
+        return current.lower() in ("unack_alarm", "ack_alarm")
+
+    def _process_condition_met(self, numeric_value) -> bool:
+        kind = self.alarm_setpoint.type
+        setpoint = self.alarm_setpoint.value
+        deadband = float(getattr(self.alarm_deadband, "value", self.alarm_deadband) or 0.0)
+        active = self._is_process_active()
+        if kind in (TriggerType.HH, TriggerType.H):
+            if active and deadband > 0.0:
+                return numeric_value >= (setpoint - deadband)
+            return numeric_value > setpoint
+        if kind in (TriggerType.L, TriggerType.LL):
+            if active and deadband > 0.0:
+                return numeric_value <= (setpoint + deadband)
+            return numeric_value < setpoint
+        return bool(numeric_value) == bool(setpoint)
+
+    def _reset_delay_timers(self) -> None:
+        self._on_timer_start = None
+        self._off_timer_start = None
+        self._cancel_delay_wakeup()
+
+    def _cancel_delay_wakeup(self) -> None:
+        job = getattr(self, "_delay_wakeup_job", None)
+        if job is None:
+            return
+        self._delay_wakeup_job = None
+        killer = getattr(job, "kill", None)
+        if callable(killer):
+            try:
+                killer()
+                return
+            except Exception:
+                pass
+        cancel = getattr(job, "cancel", None)
+        if callable(cancel):
+            try:
+                cancel()
+            except Exception:
+                pass
+
+    def _delay_phase(self) -> str | None:
+        if self._on_timer_start is not None and not self._is_process_active() and self._condition_met:
+            return "pending"
+        if self._off_timer_start is not None and self._is_process_active() and not self._condition_met:
+            return "clearing"
+        return None
+
+    def _timer_remaining(self, start: float | None, delay_s: float) -> float | None:
+        if start is None:
+            return None
+        now = self._last_eval_epoch
+        if now is None:
+            return None
+        wall = time.time()
+        if abs(wall - now) < 2.0:
+            now = wall
+        remaining = delay_s - (now - start)
+        return max(0.0, round(remaining, 1))
+
+    def _remaining_wakeup_s(self) -> float | None:
+        now = self._last_eval_epoch
+        if now is None:
+            return None
+        if self._on_timer_start is not None and not self._is_process_active():
+            return max(0.0, self._on_delay_s() - (now - self._on_timer_start))
+        if self._off_timer_start is not None and self._is_process_active():
+            return max(0.0, self._off_delay_s() - (now - self._off_timer_start))
+        return None
+
+    def _schedule_delay_wakeup(self) -> None:
+        self._cancel_delay_wakeup()
+        if not getattr(self, "enable_delay_wakeups", True):
+            return
+        remaining = self._remaining_wakeup_s()
+        if remaining is None:
+            return
+        now = self._last_eval_epoch
+        if now is not None and abs(time.time() - now) > 2.0:
+            # Synthetic / historical timestamps: tests drive time via notify().
+            return
+        delay = max(0.0, remaining)
+        try:
+            import gevent
+
+            self._delay_wakeup_job = gevent.spawn_later(delay, self._delay_wakeup)
+            return
+        except Exception:
+            pass
+        import threading
+
+        timer = threading.Timer(delay, self._delay_wakeup)
+        timer.daemon = True
+        timer.start()
+        self._delay_wakeup_job = timer
+
+    def _delay_wakeup(self) -> None:
+        self._delay_wakeup_job = None
+        tag = getattr(self, "tag", None)
+        if tag is None:
+            return
+        value = getattr(tag, "value", None)
+        if value is None:
+            return
+        name = getattr(tag, "name", None)
+        if not name:
+            return
+        self.notify(tag=name, value=value, timestamp=datetime.now(timezone.utc))
+
+    def _emit_runtime_state(self) -> None:
+        sio = getattr(self, "sio", None)
+        if not sio:
+            return
+        try:
+            sio.emit("on.alarm", data=self.serialize())
+        except Exception:
+            pass
+
+    def _evaluate_delays(self, condition_met: bool, timestamp: datetime) -> None:
+        previous_phase = self._delay_phase()
+        now = self._epoch(timestamp)
+        self._last_eval_epoch = now
+        self._condition_met = bool(condition_met)
+        alarm_active = self._is_process_active()
+        on_delay = self._on_delay_s()
+        off_delay = self._off_delay_s()
+
+        if condition_met:
+            self._off_timer_start = None
+            if not alarm_active:
+                if self._on_timer_start is None:
+                    self._on_timer_start = now
+                if (now - self._on_timer_start) >= on_delay:
+                    self.abnormal_condition()
+                    self._on_timer_start = None
+                    self._off_timer_start = None
+            else:
+                self._on_timer_start = None
+        else:
+            self._on_timer_start = None
+            if alarm_active:
+                if self._off_timer_start is None:
+                    self._off_timer_start = now
+                if (now - self._off_timer_start) >= off_delay:
+                    self.normal_condition()
+                    self._off_timer_start = None
+                    self._on_timer_start = None
+            else:
+                self._off_timer_start = None
+
+        self._schedule_delay_wakeup()
+        phase = self._delay_phase()
+        if phase or previous_phase:
+            self._emit_runtime_state()
 
     def _quality_allows_process_evaluation(self) -> bool:
         """Gate process setpoints on PV quality (ISA-18.2 inhibit on Bad)."""
@@ -567,7 +755,11 @@ class Alarm(StateMachine):
             tag:str=None,
             description:str=None,
             alarm_type:TriggerType=None,
-            trigger_value:float=None):
+            trigger_value:float=None,
+            on_delay:float=None,
+            off_delay:float=None,
+            on_delay_units:str=None,
+            off_delay_units:str=None):
         r"""
         Updates the alarm configuration.
 
@@ -592,9 +784,8 @@ class Alarm(StateMachine):
 
                 message += f" alarm_type: {alarm_type.value}"
 
-        if trigger_value:
-            
-            self.alarm_setpoint.value = float(trigger_value)
+        if trigger_value is not None:
+            self.alarm_setpoint.value = trigger_value
             message += f" trigger value: {trigger_value}"
         
         if name:
@@ -611,7 +802,30 @@ class Alarm(StateMachine):
 
             self._description = description
             message += f" description: {description}"
-        
+
+        delay_changed = False
+        if on_delay is not None:
+            self.alarm_on_delay = FloatType(clamp_alarm_delay(on_delay, default=self._on_delay_s()))
+            message += f" on_delay: {self._on_delay_s()}"
+            delay_changed = True
+        if off_delay is not None:
+            self.alarm_off_delay = FloatType(clamp_alarm_delay(off_delay, default=self._off_delay_s()))
+            message += f" off_delay: {self._off_delay_s()}"
+            delay_changed = True
+        if on_delay_units is not None:
+            self.on_delay_units = normalize_delay_units(on_delay_units)
+        if off_delay_units is not None:
+            self.off_delay_units = normalize_delay_units(off_delay_units)
+        if delay_changed:
+            self._reset_delay_timers()
+            try:
+                value = getattr(self.tag, "value", None)
+                if value is not None:
+                    ts = getattr(self.tag, "timestamp", None) or datetime.now(timezone.utc)
+                    self.notify(tag=self.tag.name, value=value, timestamp=ts)
+            except Exception:
+                pass
+
         return self, message
 
     def _get_active_transitions(self):
@@ -721,16 +935,32 @@ class Alarm(StateMachine):
         timestamp = iso_millis(self.timestamp)
         ack_timestamp = iso_millis(self.ack_timestamp)
 
+        setpoint = self.alarm_setpoint.serialize()
         return {
             "identifier": self.identifier,
             "segment": self.segment,
             "manufacturer": self.manufacturer,
             "timestamp": timestamp,
             "name": self.name,
+            "display_name": getattr(self, "display_name", None),
             "tag": self.tag.name,
             "state": self.state.serialize(),
-            "alarm_setpoint": self.alarm_setpoint.serialize(),
+            "alarm_type": setpoint.get("type"),
+            "trigger_value": setpoint.get("value"),
+            "alarm_setpoint": setpoint,
             "ack_timestamp": ack_timestamp,
             "description": self.description,
-            "actions": self.get_operator_actions()
+            "actions": self.get_operator_actions(),
+            "on_delay": self._on_delay_s(),
+            "off_delay": self._off_delay_s(),
+            "on_delay_units": self.on_delay_units,
+            "off_delay_units": self.off_delay_units,
+            "condition_met": bool(self._condition_met),
+            "on_timer_remaining": self._timer_remaining(self._on_timer_start, self._on_delay_s())
+            if self._delay_phase() == "pending"
+            else None,
+            "off_timer_remaining": self._timer_remaining(self._off_timer_start, self._off_delay_s())
+            if self._delay_phase() == "clearing"
+            else None,
+            "delay_phase": self._delay_phase(),
         }

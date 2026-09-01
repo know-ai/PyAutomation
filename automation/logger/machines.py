@@ -71,26 +71,34 @@ class MachinesLogger(BaseLogger):
         if hasattr(threshold, "value"):
             
             threshold = threshold.value
-       
-        Machines.create(
-            identifier=identifier,
-            name=name,
-            interval=interval,
-            description=description,
-            classification=classification,
-            buffer_size=buffer_size,
-            buffer_roll_type=buffer_roll_type,
-            criticity=criticity,
-            priority=priority,
-            on_delay=on_delay,
-            threshold=threshold,
-            area=area,
-        )
+
+        try:
+            Machines.create(
+                identifier=identifier,
+                name=name,
+                interval=interval,
+                description=description,
+                classification=classification,
+                buffer_size=buffer_size,
+                buffer_roll_type=buffer_roll_type,
+                criticity=criticity,
+                priority=priority,
+                on_delay=on_delay,
+                threshold=threshold,
+                area=area,
+            )
+        except Exception as exc:
+            if not _is_unique_violation(exc) and not isinstance(exc, IntegrityError):
+                raise
+            try:
+                self._db.connection().rollback()
+            except Exception:
+                pass
         try:
             from ..catalog.bootstrap import mirror_historian_row
 
-            row = Machines.get_or_none(Machines.name == name) or Machines.get_or_none(
-                Machines.identifier == identifier
+            row = Machines.get_or_none(Machines.identifier == identifier) or Machines.get_or_none(
+                Machines.name == name
             )
             if row is not None:
                 mirror_historian_row(row)

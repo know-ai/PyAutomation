@@ -136,6 +136,7 @@ export type DomainConfigField = {
   min?: number;
   max?: number;
   step?: number;
+  decimals?: number;
   options?: Array<{ value: string; label: string } | string>;
   depends_on?: { field: string; equals?: unknown };
   help?: string;
@@ -160,6 +161,7 @@ export type DomainConfigField = {
   optional_names?: string[];
   artifact_engine?: string;
   artifact_role?: string;
+  destination_rel?: string;
   arrow_value_label?: boolean;
   arrow_source_label?: string;
   dwt_bounds?: {
@@ -247,8 +249,9 @@ export const putMachineDomainConfig = async (
 export const postMachineDomainFiles = async (
   machineName: string,
   fieldKey: string,
-  files: File[]
-): Promise<{ status: string; config: Record<string, unknown> }> => {
+  files: File[],
+  onProgress?: (progress: DomainFilesUploadProgress) => void
+): Promise<DomainFilesUploadResult> => {
   const body = new FormData();
   body.append("field", fieldKey);
   for (const file of files) {
@@ -259,8 +262,32 @@ export const postMachineDomainFiles = async (
   const { data } = await api.post(
     `/machines/${encodeURIComponent(machineName)}/domain-config/files`,
     body,
-    { timeout: 300000 }
+    {
+      timeout: 300000,
+      onUploadProgress: (event) => {
+        if (!onProgress) return;
+        const fallbackTotal = files.reduce((sum, file) => sum + (file.size || 0), 0);
+        const total = event.total && event.total > 0 ? event.total : fallbackTotal;
+        const loaded = event.loaded || 0;
+        const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+        onProgress({ loaded, total, percent });
+      },
+    }
   );
   return data;
+};
+
+export type DomainFilesUploadProgress = {
+  loaded: number;
+  total: number;
+  percent: number;
+};
+
+export type DomainFilesUploadResult = {
+  status: string;
+  config: Record<string, unknown>;
+  destination_path?: string;
+  files_written?: number;
+  message?: string;
 };
 

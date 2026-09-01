@@ -191,8 +191,10 @@ class ProcessType(FloatType):
 
         **Returns:**
 
-        * **dict**: {value, unit, tag, read_only}
+        * **dict**: {value, unit, variable, tag, read_only}
         """
+        from .variables import variable_for_unit
+
         tag = None
         if self.tag:
 
@@ -216,6 +218,7 @@ class ProcessType(FloatType):
         return {
             "value": value,
             "unit": self.unit,
+            "variable": variable_for_unit(self.unit),
             "tag": tag,
             "read_only": self.read_only
         }

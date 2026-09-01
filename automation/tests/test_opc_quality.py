@@ -152,6 +152,8 @@ class TestAlarmQualityGate(unittest.TestCase):
                 tag=tag,
                 alarm_type=StringType("HIGH"),
                 alarm_setpoint=FloatType(50.0),
+                alarm_on_delay=FloatType(0.0),
+                alarm_off_delay=FloatType(0.0),
             )
         # Simulate a Bad sample that would trip HI if evaluated on the incoming value.
         tag.quality = BAD

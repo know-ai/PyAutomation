@@ -48,7 +48,12 @@ class Trigger:
 
         * **_type** (str): The trigger type string (e.g., 'HIGH', 'BOOL').
         """
-        self.__type = TriggerType(_type)
+        if isinstance(_type, TriggerType):
+            self.__type = _type
+        else:
+            self.__type = TriggerType(_type)
+        if self.__value is not None:
+            self.__value = self._coerce(self.__value)
 
     @property
     def value(self):
@@ -56,6 +61,28 @@ class Trigger:
         Gets the threshold value.
         """
         return self.__value
+
+    @staticmethod
+    def _coerce_bool(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in ("true", "1", "yes")
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return bool(value)
+
+    def _coerce(self, value):
+        if self.type == TriggerType.B:
+            return self._coerce_bool(value)
+        if isinstance(value, bool):
+            return float(value)
+        if isinstance(value, (float, int)):
+            return value
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return value
 
     @value.setter
     def value(self, value):
@@ -69,21 +96,7 @@ class Trigger:
 
         * **value**: The threshold value.
         """
-        if self.type==TriggerType.B:
-
-            if isinstance(value, bool):
-
-                self.__value = value
-
-            else:
-
-                self.__value = bool(value)
-
-        else:
-
-            if isinstance(value, (float, int)):
-
-                self.__value = value
+        self.__value = self._coerce(value)
 
     def serialize(self):
         r"""

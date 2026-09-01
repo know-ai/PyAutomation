@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { acknowledgeAlarm, acknowledgeAllAlarms, type Alarm } from "../services/alarms";
@@ -9,6 +10,25 @@ import { useTranslation } from "../hooks/useTranslation";
 import { formatTimestamp } from "../utils/timezone";
 import { isSystemUser } from "../utils/systemUser";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
+import {
+  alarmDelayBadgeClass,
+  formatDelayRemaining,
+  isUnacknowledgedAlarm,
+} from "../utils/alarmState";
+
+const MENU_WIDTH = 240;
+const MENU_HEIGHT = 96;
+const MENU_PAD = 8;
+const OUTSIDE_LISTENER_DELAY_MS = 100;
+
+function clampMenuPosition(clientX: number, clientY: number): { x: number; y: number } {
+  const maxX = Math.max(MENU_PAD, window.innerWidth - MENU_WIDTH - MENU_PAD);
+  const maxY = Math.max(MENU_PAD, window.innerHeight - MENU_HEIGHT - MENU_PAD);
+  return {
+    x: Math.min(Math.max(MENU_PAD, clientX), maxX),
+    y: Math.min(Math.max(MENU_PAD, clientY - MENU_HEIGHT), maxY),
+  };
+}
 
 export function Footer() {
   const { t } = useTranslation();
@@ -30,26 +50,42 @@ export function Footer() {
   const [acknowledging, setAcknowledging] = useState<string | null>(null);
   const [acknowledgingAll, setAcknowledgingAll] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const pendingAlarmNameRef = useRef<string | null>(null);
 
   const activeAlarms: (Alarm | null)[] = [...preview];
   while (activeAlarms.length < 3) {
     activeAlarms.push(null);
   }
 
-  // Close context menu when clicking outside
+  const closeContextMenu = () => {
+    pendingAlarmNameRef.current = null;
+    setContextMenu({ visible: false, x: 0, y: 0, alarmName: null });
+  };
+
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target as Node)) {
-        setContextMenu({ visible: false, x: 0, y: 0, alarmName: null });
+    if (!contextMenu.visible) {
+      return undefined;
+    }
+    const handlePointerDown = (event: MouseEvent) => {
+      if (contextMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      closeContextMenu();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeContextMenu();
       }
     };
-
-    if (contextMenu.visible) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
-    }
+    const timer = window.setTimeout(() => {
+      document.addEventListener("mousedown", handlePointerDown);
+    }, OUTSIDE_LISTENER_DELAY_MS);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [contextMenu.visible]);
 
   if (isSystemUser(user)) {
@@ -57,6 +93,16 @@ export function Footer() {
   }
 
   const getStateLabel = (alarm: Alarm): string => {
+    if (alarm.delay_phase === "pending") {
+      return t("alarms.pendingOnDelay", {
+        seconds: formatDelayRemaining(alarm.on_timer_remaining),
+      });
+    }
+    if (alarm.delay_phase === "clearing") {
+      return t("alarms.clearingOffDelay", {
+        seconds: formatDelayRemaining(alarm.off_timer_remaining),
+      });
+    }
     const state = alarm.state;
     if (typeof state === "object") {
       return state.mnemonic || state.state || "-";
@@ -64,82 +110,129 @@ export function Footer() {
     return String(state || "-");
   };
 
-  const isUnacknowledged = (alarm: Alarm): boolean => {
-    const state = alarm.state;
-    if (typeof state === "object") {
-      const stateStr = state.mnemonic || state.state || "";
-      return stateStr.includes("UNACK");
-    }
-    return String(state).includes("Unacknowledged");
-  };
-
-  const handleRowClick = (alarm: Alarm) => {
+  const handleRowClick = () => {
     navigate("/alarms/summary");
   };
 
-  const handleRowDoubleClick = async (alarm: Alarm) => {
+  const handleRowDoubleClick = (alarm: Alarm) => {
     if (acknowledging || acknowledgingAll) return;
     const alarmName = alarm.name;
     if (!alarmName) return;
-
-    setAcknowledging(alarmName);
-    try {
-      const response = await acknowledgeAlarm(alarmName);
-      const message = response?.message || response?.data?.message || `${alarmName} was acknowledged successfully`;
-      showToast(message, "success");
-    } catch (error: any) {
-      const errorMessage = error?.response?.data?.message || error?.message || `Error acknowledging alarm ${alarmName}`;
-      showToast(errorMessage, "error");
-    } finally {
-      setAcknowledging(null);
-    }
+    void runAcknowledgeOne(alarmName);
   };
 
   const handleRowContextMenu = (e: React.MouseEvent, alarm: Alarm) => {
     e.preventDefault();
     e.stopPropagation();
+    const alarmName = alarm.name || null;
+    pendingAlarmNameRef.current = alarmName;
+    const { x, y } = clampMenuPosition(e.clientX, e.clientY);
     setContextMenu({
       visible: true,
-      x: e.clientX,
-      y: e.clientY,
-      alarmName: alarm.name || null,
+      x,
+      y,
+      alarmName,
     });
   };
 
-  const handleAcknowledgeAlarm = async () => {
-    if (!contextMenu.alarmName || acknowledging || acknowledgingAll) return;
-
-    const alarmName = contextMenu.alarmName;
+  const runAcknowledgeOne = async (alarmName: string) => {
+    if (acknowledging || acknowledgingAll) return;
     setAcknowledging(alarmName);
-    setContextMenu({ visible: false, x: 0, y: 0, alarmName: null });
+    closeContextMenu();
     try {
       const response = await acknowledgeAlarm(alarmName);
-      const message = response?.message || response?.data?.message || `${alarmName} was acknowledged successfully`;
+      const message =
+        response?.message ||
+        response?.data?.message ||
+        t("alarms.acknowledgeOneSuccess", { name: alarmName });
       showToast(message, "success");
     } catch (error: any) {
-      const errorMessage = error?.response?.data?.message || error?.message || `Error acknowledging alarm ${alarmName}`;
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        t("alarms.acknowledgeOneError", { name: alarmName });
       showToast(errorMessage, "error");
     } finally {
       setAcknowledging(null);
     }
   };
 
-  const handleAcknowledgeAll = async () => {
+  const runAcknowledgeAll = async () => {
     if (acknowledging || acknowledgingAll) return;
-
     setAcknowledgingAll(true);
-    setContextMenu({ visible: false, x: 0, y: 0, alarmName: null });
+    closeContextMenu();
     try {
       const response = await acknowledgeAllAlarms();
-      const message = response?.message || response?.data?.message || "Alarms were acknowledged successfully";
+      const message =
+        response?.message ||
+        response?.data?.message ||
+        t("alarms.acknowledgeAllSuccess");
       showToast(message, "success");
     } catch (error: any) {
-      const errorMessage = error?.response?.data?.message || error?.message || "Error acknowledging all alarms";
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        t("alarms.acknowledgeAllError");
       showToast(errorMessage, "error");
     } finally {
       setAcknowledgingAll(false);
     }
   };
+
+  const handleAcknowledgeAlarm = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const alarmName = pendingAlarmNameRef.current || contextMenu.alarmName;
+    if (!alarmName) return;
+    void runAcknowledgeOne(alarmName);
+  };
+
+  const handleAcknowledgeAll = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void runAcknowledgeAll();
+  };
+
+  const contextMenuNode =
+    contextMenu.visible &&
+    createPortal(
+      <div
+        ref={contextMenuRef}
+        className="dropdown-menu show footer-alarm-context-menu"
+        role="menu"
+        style={{
+          position: "fixed",
+          top: `${contextMenu.y}px`,
+          left: `${contextMenu.x}px`,
+          zIndex: 2000,
+          minWidth: `${MENU_WIDTH}px`,
+        }}
+      >
+        {contextMenu.alarmName && (
+          <button
+            type="button"
+            className="dropdown-item"
+            role="menuitem"
+            onMouseDown={handleAcknowledgeAlarm}
+            disabled={acknowledging === contextMenu.alarmName || acknowledgingAll}
+          >
+            <i className="bi bi-check-circle me-2"></i>
+            {t("alarms.acknowledgeOne")}
+          </button>
+        )}
+        <button
+          type="button"
+          className="dropdown-item"
+          role="menuitem"
+          onMouseDown={handleAcknowledgeAll}
+          disabled={acknowledging !== null || acknowledgingAll}
+        >
+          <i className="bi bi-check-all me-2"></i>
+          {t("alarms.acknowledgeAll")}
+        </button>
+      </div>,
+      document.body
+    );
 
   return (
     <footer className="app-footer text-sm">
@@ -157,7 +250,6 @@ export function Footer() {
         <tbody>
           {activeAlarms.map((alarm, index) => {
             if (!alarm) {
-              // Empty row
               return (
                 <tr key={`empty-${index}`} className="footer-alarm-row-empty">
                   <td>-</td>
@@ -169,45 +261,60 @@ export function Footer() {
                 </tr>
               );
             }
-            
-            const isUnack = isUnacknowledged(alarm);
-            const alarmType = alarm.alarm_type || (alarm.alarm_setpoint?.type) || "-";
-            const triggerValue = alarm.trigger_value !== undefined 
-              ? String(alarm.trigger_value)
-              : (alarm.alarm_setpoint?.value !== undefined ? String(alarm.alarm_setpoint.value) : "-");
-            
+
+            const isUnack = isUnacknowledgedAlarm(alarm.state);
+            const alarmType = alarm.alarm_type || alarm.alarm_setpoint?.type || "-";
+            const triggerValue =
+              alarm.trigger_value !== undefined
+                ? String(alarm.trigger_value)
+                : alarm.alarm_setpoint?.value !== undefined
+                  ? String(alarm.alarm_setpoint.value)
+                  : "-";
+            const delayPhase = alarm.delay_phase;
+            const rowColor =
+              delayPhase === "pending" ? "#f9a825" : delayPhase === "clearing" ? "#29b6f6" : "#dc3545";
+            const rowText = delayPhase === "pending" || delayPhase === "clearing" ? "#212121" : "#fff";
+            const delayBadge = alarmDelayBadgeClass(delayPhase);
+
             return (
               <tr
                 key={alarm.identifier || alarm.id || alarm.name}
                 className={`footer-alarm-row ${isUnack ? "alarm-unacknowledged" : "alarm-acknowledged"}`}
-                onClick={() => handleRowClick(alarm)}
+                onClick={handleRowClick}
                 onDoubleClick={() => handleRowDoubleClick(alarm)}
                 onContextMenu={(e) => handleRowContextMenu(e, alarm)}
-                style={{ 
+                style={{
                   cursor: "pointer",
-                  backgroundColor: "#dc3545",
-                  color: "#fff"
+                  backgroundColor: rowColor,
+                  color: rowText,
                 }}
               >
-                <td style={{ backgroundColor: "#dc3545", color: "#fff" }}>
+                <td style={{ backgroundColor: rowColor, color: rowText }}>
                   <span
                     title={translateAlarmDescription(alarm.description, alarm.name, t)}
-                    style={{ cursor: alarm.tag || alarm.description ? "help" : "default", color: "#fff" }}
+                    style={{ cursor: alarm.tag || alarm.description ? "help" : "default", color: rowText }}
                   >
                     {alarm.name || "-"}
                   </span>
                 </td>
-                <td style={{ backgroundColor: "#dc3545", color: "#fff" }}>
-                  <span className="badge" style={{ backgroundColor: "rgba(255, 255, 255, 0.2)", color: "#fff" }}>{alarmType}</span>
+                <td style={{ backgroundColor: rowColor, color: rowText }}>
+                  <span className="badge" style={{ backgroundColor: "rgba(255, 255, 255, 0.2)", color: rowText }}>
+                    {alarmType}
+                  </span>
                 </td>
-                <td style={{ backgroundColor: "#dc3545", color: "#fff" }}>
-                  <span className="badge" style={{ backgroundColor: "rgba(255, 255, 255, 0.2)", color: "#fff" }}>{getStateLabel(alarm)}</span>
+                <td style={{ backgroundColor: rowColor, color: rowText }}>
+                  <span
+                    className={`badge ${delayBadge || ""}`}
+                    style={delayBadge ? undefined : { backgroundColor: "rgba(255, 255, 255, 0.2)", color: rowText }}
+                  >
+                    {getStateLabel(alarm)}
+                  </span>
                 </td>
-                <td style={{ backgroundColor: "#dc3545", color: "#fff" }}>{triggerValue}</td>
-                <td style={{ backgroundColor: "#dc3545", color: "#fff" }}>
+                <td style={{ backgroundColor: rowColor, color: rowText }}>{triggerValue}</td>
+                <td style={{ backgroundColor: rowColor, color: rowText }}>
                   {formatTimestamp(alarm.timestamp, timeZone) || "-"}
                 </td>
-                <td style={{ backgroundColor: "#dc3545", color: "#fff" }}>
+                <td style={{ backgroundColor: rowColor, color: rowText }}>
                   {formatTimestamp(alarm.ack_timestamp, timeZone) || "-"}
                 </td>
               </tr>
@@ -215,40 +322,7 @@ export function Footer() {
           })}
         </tbody>
       </table>
-
-      {/* Context Menu */}
-      {contextMenu.visible && (
-        <div
-          ref={contextMenuRef}
-          className="dropdown-menu show"
-          style={{
-            position: "fixed",
-            bottom: `${window.innerHeight - contextMenu.y}px`,
-            left: `${contextMenu.x}px`,
-            zIndex: 1000,
-            transform: "translateY(0)",
-          }}
-        >
-          {contextMenu.alarmName && (
-            <button
-              className="dropdown-item"
-              onClick={handleAcknowledgeAlarm}
-              disabled={acknowledging === contextMenu.alarmName || acknowledgingAll}
-            >
-              <i className="bi bi-check-circle me-2"></i>
-              Reconocer Alarma
-            </button>
-          )}
-          <button
-            className="dropdown-item"
-            onClick={handleAcknowledgeAll}
-            disabled={acknowledging !== null || acknowledgingAll}
-          >
-            <i className="bi bi-check-all me-2"></i>
-            Reconocer Todas
-          </button>
-        </div>
-      )}
+      {contextMenuNode}
     </footer>
   );
 }

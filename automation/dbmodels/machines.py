@@ -1,6 +1,27 @@
-from peewee import CharField, IntegerField, ForeignKeyField, FloatField
+from peewee import CharField, IntegerField, ForeignKeyField, FloatField, IntegrityError
 from .core import BaseModel
 from .tags import Tags
+
+
+def _is_unique_violation(exc: BaseException) -> bool:
+    name = type(exc).__name__
+    if name in ("IntegrityError", "UniqueViolation"):
+        return True
+    text = str(exc).lower()
+    return "duplicate key" in text or "unique constraint" in text
+
+
+def _rollback_db(cls) -> None:
+    try:
+        db = cls._meta.database
+        if db is not None:
+            db.rollback()
+    except Exception:
+        pass
+
+
+def _blank(value) -> bool:
+    return value is None or str(value).strip() == ""
 
 
 class Machines(BaseModel):
@@ -65,6 +86,23 @@ class Machines(BaseModel):
         result = dict()
         data = dict()
 
+        existing = cls.get_or_none(cls.identifier == identifier)
+        if existing is not None:
+            if not _blank(area) and _blank(existing.area):
+                existing.area = area
+                try:
+                    existing.save()
+                except Exception:
+                    _rollback_db(cls)
+            data.update(existing.serialize())
+            result.update(
+                {
+                    'message': f"Machine {existing.name} already exists (identifier {identifier})",
+                    'data': data,
+                }
+            )
+            return result
+
         if not cls.name_exist(name, area=area):
 
             query = cls(
@@ -83,8 +121,26 @@ class Machines(BaseModel):
                 on_delay=on_delay,
                 area=area
                 )
-            query.save()
-            
+            try:
+                query.save()
+            except Exception as exc:
+                if not _is_unique_violation(exc) and not isinstance(exc, IntegrityError):
+                    raise
+                _rollback_db(cls)
+                raced = cls.get_or_none(cls.identifier == identifier)
+                if raced is None:
+                    raced = cls.select().where(cls.name == name).get_or_none()
+                if raced is not None:
+                    data.update(raced.serialize())
+                    result.update(
+                        {
+                            'message': f"Machine {raced.name} already exists",
+                            'data': data,
+                        }
+                    )
+                    return result
+                raise
+
             message = f"Machine {name} created successfully"
             data.update(query.serialize())
 

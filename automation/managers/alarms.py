@@ -12,6 +12,7 @@ from ..alarms import AlarmState, Alarm
 from ..dbmodels.alarms import AlarmSummary
 from ..modules.users.users import User
 from ..models import FloatType, StringType
+from ..alarms.delays import clamp_alarm_delay, normalize_delay_units
 from ..utils.decorators import set_event, logging_error_handler
 from flask_socketio import SocketIO
 
@@ -127,7 +128,11 @@ class AlarmManager(Singleton):
             ack_timestamp:str=None,
             user:User=None,
             reload:bool=False,
-            sio:SocketIO|None=None
+            sio:SocketIO|None=None,
+            on_delay:float=None,
+            off_delay:float=None,
+            on_delay_units:str=None,
+            off_delay_units:str=None,
         )->tuple[Alarm, str]:
         r"""
         Creates and registers a new alarm in the manager.
@@ -187,7 +192,11 @@ class AlarmManager(Singleton):
             timestamp=timestamp,
             ack_timestamp=ack_timestamp,
             user=user,
-            reload=reload
+            reload=reload,
+            alarm_on_delay=FloatType(clamp_alarm_delay(on_delay)),
+            alarm_off_delay=FloatType(clamp_alarm_delay(off_delay)),
+            on_delay_units=normalize_delay_units(on_delay_units),
+            off_delay_units=normalize_delay_units(off_delay_units),
         )
         alarm.set_socketio(sio=sio)
         self._alarms[alarm.identifier] = alarm
@@ -204,7 +213,11 @@ class AlarmManager(Singleton):
             description:str=None,
             alarm_type:str=None,
             trigger_value:float=None,
-            user:User=None
+            user:User=None,
+            on_delay:float=None,
+            off_delay:float=None,
+            on_delay_units:str=None,
+            off_delay_units:str=None,
             )->tuple[Alarm, str]:
         r"""
         Updates an existing alarm configuration.
@@ -273,7 +286,11 @@ class AlarmManager(Singleton):
             tag=tag,
             description=description,
             alarm_type=alarm_type,
-            trigger_value=trigger_value
+            trigger_value=trigger_value,
+            on_delay=on_delay,
+            off_delay=off_delay,
+            on_delay_units=on_delay_units,
+            off_delay_units=off_delay_units,
             )
         self._alarms[id] = alarm
         self._index_alarm(alarm)

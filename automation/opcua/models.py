@@ -3,11 +3,28 @@ from opcua import ua
 from datetime import datetime
 # import sched
 from opcua.ua.uatypes import NodeId, datatype_to_varianttype
-import re, uuid, logging, time, threading
+import os, re, uuid, logging, time, threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from ..utils import _colorize_message
 
-DAQ_READ_TIMEOUT_S = 0.2
+_DAQ_TIMEOUT_MIN_S = 0.05
+_DAQ_TIMEOUT_MAX_S = 5.0
+_DAQ_TIMEOUT_DEFAULT_S = 0.5
+DAQ_READ_TIMEOUT_S = _DAQ_TIMEOUT_DEFAULT_S  # default; prefer daq_read_timeout_s()
+
+
+def daq_read_timeout_s(environ=None) -> float:
+    """Per-cycle OPC Read budget (seconds). Env ``AUTOMATION_DAQ_READ_TIMEOUT_S``.
+
+    This is **not** ``scan_time`` / DAQ-1000 interval. Clamp 0.05–5.0; default 0.5.
+    """
+    env = environ if environ is not None else os.environ
+    raw = env.get("AUTOMATION_DAQ_READ_TIMEOUT_S", str(_DAQ_TIMEOUT_DEFAULT_S))
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        value = _DAQ_TIMEOUT_DEFAULT_S
+    return max(_DAQ_TIMEOUT_MIN_S, min(_DAQ_TIMEOUT_MAX_S, value))
 from ..utils.opcua_audit import (
     failure_cooldown_seconds,
     record_opcua_connection_event,
@@ -235,7 +252,7 @@ class Client(OPCClient):
             return
         if self.is_connected():
             return
-        if not self._io_lock.acquire(timeout=DAQ_READ_TIMEOUT_S):
+        if not self._io_lock.acquire(timeout=daq_read_timeout_s()):
             logging.getLogger("pyautomation").warning(
                 "OPC reconnect skipped client=%s reason=io-lock-busy",
                 self.name,
@@ -625,40 +642,63 @@ class Client(OPCClient):
         node = self.get_node(NodeId.from_string(node_namespace))
         return node.get_data_value()
 
-    def read_data_value_bounded(self, node_namespace, timeout_s: float = DAQ_READ_TIMEOUT_S):
+    def read_data_value_bounded(self, node_namespace, timeout_s: float = None):
         """Serialize asyncua I/O and bound the wait so DAQ cannot hang the cycle."""
+        budget = daq_read_timeout_s() if timeout_s is None else float(timeout_s)
+        result = self.read_data_values_bounded([node_namespace], timeout_s=budget)
+        return result.get(str(node_namespace))
+
+    def read_data_values_bounded(self, namespaces, timeout_s: float = None):
+        """One OPC Read for all NodeIds. Bounded wait; does not cancel in-flight I/O."""
+        budget = daq_read_timeout_s() if timeout_s is None else float(timeout_s)
+        names = [str(ns) for ns in (namespaces or []) if ns]
+        if not names:
+            return {}
 
         def _run():
             with self._io_lock:
                 if not self.is_connected():
                     return None
-                return self.get_node_data_value(node_namespace)
+                return self._read_data_values_unlocked(names)
 
         future = self._io_pool.submit(_run)
         try:
-            return future.result(timeout=max(0.05, float(timeout_s)))
+            results = future.result(timeout=max(_DAQ_TIMEOUT_MIN_S, budget))
         except FuturesTimeout:
             logging.getLogger("pyautomation").warning(
-                "OPC DAQ read timed out client=%s namespace=%s budget=%.3fs",
+                "OPC DAQ batch read timed out client=%s nodes=%s budget=%.3fs",
                 self.name,
-                node_namespace,
-                timeout_s,
+                len(names),
+                budget,
             )
-            return None
+            return {ns: None for ns in names}
         except Exception:
             logging.getLogger("pyautomation").error(
-                "OPC DAQ read failed client=%s namespace=%s",
+                "OPC DAQ batch read failed client=%s nodes=%s",
                 self.name,
-                node_namespace,
+                len(names),
                 exc_info=True,
             )
-            return None
+            return {ns: None for ns in names}
+        if results is None:
+            return {ns: None for ns in names}
+        out = {}
+        for index, ns in enumerate(names):
+            out[ns] = results[index] if index < len(results) else None
+        return out
+
+    def _read_data_values_unlocked(self, namespaces):
+        node_ids = [NodeId.from_string(ns) for ns in namespaces]
+        getter = getattr(getattr(self, "uaclient", None), "get_attributes", None)
+        if callable(getter):
+            return getter(node_ids, ua.AttributeIds.Value)
+        return [self.get_node_data_value(ns) for ns in namespaces]
 
     def get_node_attributes(self, node_namespace)->dict:
         r"""
         Documentation here
         """
-        if not self._io_lock.acquire(timeout=max(1.0, DAQ_READ_TIMEOUT_S)):
+        if not self._io_lock.acquire(timeout=max(1.0, daq_read_timeout_s())):
             return {}, 400
         try:
             return self._get_node_attributes_unlocked(node_namespace)

@@ -74,7 +74,11 @@ class AlarmsLogger(BaseLogger):
             trigger_type:str,
             trigger_value:float,
             description:str,
-            area:str=None):
+            area:str=None,
+            on_delay:float=None,
+            off_delay:float=None,
+            on_delay_units:str=None,
+            off_delay_units:str=None):
         r"""
         Creates a new Alarm definition in the database.
 
@@ -99,6 +103,10 @@ class AlarmsLogger(BaseLogger):
             trigger_value=trigger_value,
             description=description,
             area=area,
+            on_delay=on_delay,
+            off_delay=off_delay,
+            on_delay_units=on_delay_units,
+            off_delay_units=off_delay_units,
         )
         try:
             from ..catalog.bootstrap import mirror_historian_row
@@ -237,7 +245,11 @@ class AlarmsLogger(BaseLogger):
         description:str=None,
         alarm_type:str=None,
         trigger_value:str=None,
-        state:str=None
+        state:str=None,
+        on_delay:float=None,
+        off_delay:float=None,
+        on_delay_units:str=None,
+        off_delay_units:str=None,
         ):
         r"""
         Updates an existing alarm definition.
@@ -273,6 +285,14 @@ class AlarmsLogger(BaseLogger):
             if state:
                 alarm_state = AlarmStates.get_or_none(name=state)
                 fields["state"] = alarm_state
+            if on_delay is not None:
+                fields["on_delay"] = on_delay
+            if off_delay is not None:
+                fields["off_delay"] = off_delay
+            if on_delay_units is not None:
+                fields["on_delay_units"] = on_delay_units
+            if off_delay_units is not None:
+                fields["off_delay_units"] = off_delay_units
             query = Alarms.put(
                 id=alarm.id,
                 **fields
@@ -628,6 +648,10 @@ class AlarmsLoggerEngine(BaseEngine):
         trigger_value:float,
         description:str,
         area:str=None,
+        on_delay:float=None,
+        off_delay:float=None,
+        on_delay_units:str=None,
+        off_delay_units:str=None,
         ):
         r"""
         Thread-safe alarm creation.
@@ -642,6 +666,10 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["trigger_value"] = trigger_value
         _query["parameters"]["description"] = description
         _query["parameters"]["area"] = area
+        _query["parameters"]["on_delay"] = on_delay
+        _query["parameters"]["off_delay"] = off_delay
+        _query["parameters"]["on_delay_units"] = on_delay_units
+        _query["parameters"]["off_delay_units"] = off_delay_units
         
         return self.query(_query)
     
@@ -793,7 +821,11 @@ class AlarmsLoggerEngine(BaseEngine):
         description:str=None,
         alarm_type:str=None,
         trigger_value:str=None,
-        state:str=None
+        state:str=None,
+        on_delay:float=None,
+        off_delay:float=None,
+        on_delay_units:str=None,
+        off_delay_units:str=None,
         ):
         r"""
         Thread-safe alarm update.
@@ -808,6 +840,10 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["alarm_type"] = alarm_type
         _query["parameters"]["trigger_value"] = trigger_value
         _query["parameters"]["state"] = state
+        _query["parameters"]["on_delay"] = on_delay
+        _query["parameters"]["off_delay"] = off_delay
+        _query["parameters"]["on_delay_units"] = on_delay_units
+        _query["parameters"]["off_delay_units"] = off_delay_units
 
         return self.query(_query)
 

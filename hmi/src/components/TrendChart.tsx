@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { utilizationColor } from "../services/performanceColors";
 import type { TrendPoint } from "../services/performanceTrends";
@@ -10,6 +11,7 @@ type TrendChartProps = {
   unit?: string;
   threshold?: number | null;
   redAt?: number | null;
+  dragHandle?: boolean;
 };
 
 function formatTick(value: number): string {
@@ -67,7 +69,7 @@ function formatAgo(ms: number, t: (key: string, params?: Record<string, string |
   return t("performance.trendAgoMin", { value: Math.round(seconds / 60) });
 }
 
-export function TrendChart({ label, points, currentLabel, unit = "", threshold, redAt }: TrendChartProps) {
+export function TrendChart({ label, points, currentLabel, unit = "", threshold, redAt, dragHandle = false }: TrendChartProps) {
   const { t } = useTranslation();
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 320, h: 156 });
@@ -121,7 +123,7 @@ export function TrendChart({ label, points, currentLabel, unit = "", threshold, 
 
   return (
     <article className="perf-trend">
-      <header className="perf-trend__head">
+      <header className={clsx("perf-trend__head", dragHandle && "lds-card-handle")}>
         <span className="perf-trend__label">{label}</span>
         <strong className="perf-trend__value" style={{ color }}>
           {currentLabel}

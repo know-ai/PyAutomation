@@ -18,11 +18,22 @@ import { DomainConfigSlot } from "../components/DomainConfigSlot";
 import { showToast } from "../utils/toast";
 import { socketService } from "../services/socket";
 import type { Tag } from "../services/tags";
+import { getTagsList } from "../services/tags";
+import { useShowInfraMachines } from "../hooks/useShowInfraMachines";
+import { loadShowInfraMachines, visibleMachineTabs } from "../utils/infraMachines";
 
 const ITEMS_PER_PAGE = 10;
 const ACTIVE_TAB_STORAGE_KEY = "machinesDetailed_activeTab";
 const EMPTY_DOMAIN_CONFIG: Record<string, unknown> = {};
 const getPageStorageKey = (machineName: string) => `machinesDetailed_page_${machineName}`;
+
+type FieldTagInfo = {
+  name: string;
+  variable?: string;
+  unit?: string;
+  opcua_mapped?: boolean;
+  opcua_client_name?: string;
+};
 
 type MachineDetailedData = {
   process_variables: Record<string, any>;
@@ -31,7 +42,8 @@ type MachineDetailedData = {
   internal_process_variables: Record<string, any>;
   read_only_process_type_variables: Record<string, any>;
   serialization: any;
-  field_tags?: string[];
+  field_tags?: Array<string | FieldTagInfo>;
+  field_tags_info?: FieldTagInfo[];
   [key: string]: any;
 };
 
@@ -68,11 +80,103 @@ function collectSubscribedFieldTagNames(details: MachineDetailedData): Set<strin
 }
 
 /** Tags de campo aún libres para suscribir (solo raw; nunca .f). */
-function getAvailableFieldTags(details: MachineDetailedData): string[] {
+function fieldTagName(entry: string | FieldTagInfo): string {
+  return typeof entry === "string" ? entry : entry?.name || "";
+}
+
+function fieldTagEntries(details: MachineDetailedData, catalog: Record<string, Tag>): FieldTagInfo[] {
+  if (Array.isArray(details.field_tags_info) && details.field_tags_info.length) {
+    return details.field_tags_info.filter((item) => item && item.name);
+  }
+  return (details.field_tags || []).map((item) => {
+    if (typeof item !== "string") {
+      return item;
+    }
+    const tag = catalog[item];
+    return {
+      name: item,
+      variable: tag?.variable,
+      unit: tag?.unit,
+      opcua_mapped: tag
+        ? Boolean((tag.opcua_address && tag.node_namespace) || tag.opcua_client_name)
+        : true,
+      opcua_client_name: tag?.opcua_client_name,
+    };
+  });
+}
+
+const FLOW_VARIABLES = new Set(["massflow", "volumetricflow"]);
+
+const UNIT_TO_VARIABLE: Record<string, string> = {
+  "kg/sec": "MassFlow",
+  "kg/s": "MassFlow",
+  "kg/hr": "MassFlow",
+  "kg/min": "MassFlow",
+  "kg/day": "MassFlow",
+  "lb/sec": "MassFlow",
+  "lb/hr": "MassFlow",
+  "m3/sec": "VolumetricFlow",
+  "m3/hr": "VolumetricFlow",
+  "bbl/sec": "VolumetricFlow",
+  "bbl/hr": "VolumetricFlow",
+  "gal/min": "VolumetricFlow",
+  "kg/m3": "Density",
+  "kg/m³": "Density",
+  "kg/lt": "Density",
+  "g/ml": "Density",
+  Pa: "Pressure",
+  bar: "Pressure",
+  psi: "Pressure",
+  kPa: "Pressure",
+  MPa: "Pressure",
+};
+
+function normalizeVariableName(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+function variableFromUnit(unit: unknown): string {
+  if (typeof unit !== "string") return "";
+  const trimmed = unit.trim();
+  if (!trimmed) return "";
+  return UNIT_TO_VARIABLE[trimmed] || UNIT_TO_VARIABLE[trimmed.toLowerCase()] || "";
+}
+
+function internalVariableType(details: MachineDetailedData, internalKey: string): string {
+  const record = details.not_subscribed_tags?.[internalKey];
+  if (record && typeof record === "object") {
+    const fromField = normalizeVariableName((record as { variable?: unknown }).variable);
+    if (fromField) return fromField;
+    const fromUnit = variableFromUnit((record as { unit?: unknown }).unit);
+    if (fromUnit) return fromUnit;
+  }
+  return "";
+}
+
+function isCompatibleFieldVariable(internalVar: string, fieldVar: string): boolean {
+  const left = internalVar.trim().toLowerCase();
+  const right = fieldVar.trim().toLowerCase();
+  if (!left || !right) return false;
+  if (FLOW_VARIABLES.has(left)) return FLOW_VARIABLES.has(right);
+  return left === right;
+}
+
+function getCompatibleFieldTags(
+  details: MachineDetailedData,
+  internalKey: string,
+  catalog: Record<string, Tag> = {}
+): FieldTagInfo[] {
   const subscribed = collectSubscribedFieldTagNames(details);
-  return (details.field_tags || []).filter(
-    (name) => !name.endsWith(".f") && !subscribed.has(name)
-  );
+  const internalVar = internalVariableType(details, internalKey);
+  return fieldTagEntries(details, catalog).filter((item) => {
+    if (!item.name || item.name.endsWith(".f") || subscribed.has(item.name)) return false;
+    if (item.opcua_mapped === false) return false;
+    if (!internalVar) return true;
+    const fieldVar = normalizeVariableName(item.variable);
+    if (!fieldVar) return false;
+    return isCompatibleFieldVariable(internalVar, fieldVar);
+  });
 }
 
 function subscribedInternalVariableNames(details: MachineDetailedData): Set<string> {
@@ -153,6 +257,7 @@ function hasGenericAttributes(details: MachineDetailedData | undefined): boolean
 
 export function MachinesDetailed() {
   const { t } = useTranslation();
+  const { showInfra } = useShowInfraMachines();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -191,6 +296,7 @@ export function MachinesDetailed() {
   } | null>(null);
   const [domainSchemas, setDomainSchemas] = useState<Record<string, DomainUiSchema>>({});
   const [domainConfigs, setDomainConfigs] = useState<Record<string, Record<string, unknown>>>({});
+  const [fieldTagCatalog, setFieldTagCatalog] = useState<Record<string, Tag>>({});
 
   const uiHintsFor = (machineName: string): MachineUiHints =>
     domainSchemas[machineName]?.ui_hints || {};
@@ -266,17 +372,28 @@ export function MachinesDetailed() {
       try {
         const data = await getMachines();
         setMachines(data);
+        try {
+          const tags = await getTagsList();
+          const catalog: Record<string, Tag> = {};
+          for (const tag of tags || []) {
+            if (tag?.name) catalog[tag.name] = tag;
+          }
+          setFieldTagCatalog(catalog);
+        } catch {
+          setFieldTagCatalog({});
+        }
+        const visible = visibleMachineTabs(data, loadShowInfraMachines());
         
         // Intentar cargar el tab activo guardado en localStorage
         const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
         
-        // Verificar si el tab guardado existe en las m?quinas disponibles
+        // Verificar si el tab guardado existe en las m?quinas visibles
         let tabToActivate: string | null = null;
-        if (savedActiveTab && data.some((m) => m.name === savedActiveTab)) {
+        if (savedActiveTab && visible.some((m) => m.name === savedActiveTab)) {
           tabToActivate = savedActiveTab;
-        } else if (data.length > 0 && data[0].name) {
-          // Si no hay tab guardado v?lido, usar el primero
-          tabToActivate = data[0].name;
+        } else if (visible.length > 0 && visible[0].name) {
+          // Si no hay tab guardado v?lido, usar el primero visible
+          tabToActivate = visible[0].name;
         }
         
         if (tabToActivate) {
@@ -1215,9 +1332,19 @@ export function MachinesDetailed() {
   }, []); // Sin dependencias - se suscribe una sola vez
 
   // Obtener los nombres ?nicos de las m?quinas
-  const machineNames = machines
-    .map((machine) => machine.name)
-    .filter((name): name is string => !!name);
+  const machineNames = useMemo(
+    () =>
+      visibleMachineTabs(machines, showInfra)
+        .map((machine) => machine.name)
+        .filter((name): name is string => !!name),
+    [machines, showInfra],
+  );
+
+  useEffect(() => {
+    if (machineNames.length === 0) return;
+    if (activeTab && machineNames.includes(activeTab)) return;
+    setActiveTab(machineNames[0]);
+  }, [machineNames, activeTab]);
 
   // Funci?n para obtener atributos a mostrar en la tabla (excluyendo los especificados)
   const getTableAttributes = (data: MachineDetailedData | undefined) => {
@@ -1229,6 +1356,7 @@ export function MachinesDetailed() {
       "internal_process_variables",
       "read_only_process_type_variables",
       "field_tags",
+      "field_tags_info",
       "name",
       "auto_restart",
       "identifier",
@@ -1504,6 +1632,19 @@ export function MachinesDetailed() {
                 const notSubscribedKeys = details
                   ? getNotSubscribedTagKeys(details, hints.exclusive_subscribe_pairs || [])
                   : [];
+                const selectedInternal =
+                  details && notSubscribedKeys.includes(selectedInternalVariable[machineName] || "")
+                    ? selectedInternalVariable[machineName]
+                    : "";
+                const compatibleFieldTags =
+                  details && selectedInternal
+                    ? getCompatibleFieldTags(details, selectedInternal, fieldTagCatalog)
+                    : [];
+                const selectedFieldTag = compatibleFieldTags.some(
+                  (item) => item.name === (selectedReadOnlyVariable[machineName] || "")
+                )
+                  ? selectedReadOnlyVariable[machineName]
+                  : "";
                 const thresholdUnit = getThresholdUnitLabel(details, hints, t);
                 const isBufferSizeLocked = isAttributeLocked(machineName, "buffer_size");
                 const isThresholdLocked = isAttributeLocked(machineName, "threshold");
@@ -1694,33 +1835,18 @@ export function MachinesDetailed() {
                                   </select>
                                 </div>
 
-                                {/* Segunda fila - Dos columnas con dropdowns */}
+                                {/* Segunda fila - variable interna primero, luego tags de campo filtrados */}
                                 <div className="row mb-3">
-                                  <div className="col-6">
-                                    <label className="form-label">{t("machines.fieldTags")}</label>
-                                    <select
-                                      className="form-select"
-                                      value={selectedReadOnlyVariable[machineName] || ""}
-                                      onChange={(e) => setSelectedReadOnlyVariable((prev) => ({ ...prev, [machineName]: e.target.value }))}
-                                    >
-                                      <option value="">{t("machines.select")}</option>
-                                      {getAvailableFieldTags(machineDetails[machineName]).map((tagName) => (
-                                        <option key={tagName} value={tagName}>
-                                          {tagName}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
                                   <div className="col-6">
                                     <label className="form-label">{t("machines.notSubscribedTags")}</label>
                                     <select
                                       className="form-select"
-                                      value={
-                                        notSubscribedKeys.includes(selectedInternalVariable[machineName] || "")
-                                          ? selectedInternalVariable[machineName]
-                                          : ""
-                                      }
-                                      onChange={(e) => setSelectedInternalVariable((prev) => ({ ...prev, [machineName]: e.target.value }))}
+                                      value={selectedInternal}
+                                      onChange={(e) => {
+                                        const next = e.target.value;
+                                        setSelectedInternalVariable((prev) => ({ ...prev, [machineName]: next }));
+                                        setSelectedReadOnlyVariable((prev) => ({ ...prev, [machineName]: "" }));
+                                      }}
                                     >
                                       <option value="">{t("machines.select")}</option>
                                       {notSubscribedKeys.map((key) => (
@@ -1730,25 +1856,36 @@ export function MachinesDetailed() {
                                       ))}
                                     </select>
                                   </div>
-                                </div>
-
-                                {hints.subscribe_hints?.[selectedInternalVariable[machineName] || ""] ? (
-                                  <div className="alert alert-info py-2 small mb-3" role="status">
-                                    {hints.subscribe_hints[selectedInternalVariable[machineName] || ""]}
+                                  <div className="col-6">
+                                    <label className="form-label">{t("machines.fieldTags")}</label>
+                                    <select
+                                      className="form-select"
+                                      value={selectedFieldTag}
+                                      disabled={!selectedInternal}
+                                      onChange={(e) => setSelectedReadOnlyVariable((prev) => ({ ...prev, [machineName]: e.target.value }))}
+                                    >
+                                      <option value="">
+                                        {selectedInternal
+                                          ? compatibleFieldTags.length
+                                            ? t("machines.select")
+                                            : t("machines.noCompatibleFieldTags")
+                                          : t("machines.selectInternalFirst")}
+                                      </option>
+                                      {compatibleFieldTags.map((item) => (
+                                        <option key={item.name} value={item.name}>
+                                          {item.name}
+                                        </option>
+                                      ))}
+                                    </select>
                                   </div>
-                                ) : null}
+                                </div>
 
                                 {/* Tercera fila - Botones */}
                                 <div className="row">
                                   <div className="col-6">
                                     <Button
                                       className="w-100"
-                                      disabled={
-                                        !selectedReadOnlyVariable[machineName] ||
-                                        !selectedInternalVariable[machineName] ||
-                                        selectedReadOnlyVariable[machineName] === "" ||
-                                        selectedInternalVariable[machineName] === ""
-                                      }
+                                      disabled={!selectedFieldTag || !selectedInternal}
                                       onClick={async () => {
                                         const fieldTag = selectedReadOnlyVariable[machineName];
                                         const internalTag = selectedInternalVariable[machineName];
@@ -1758,7 +1895,7 @@ export function MachinesDetailed() {
                                         }
 
                                         try {
-                                          const { message, hint, hint_level } = await subscribeMachineTag(
+                                          const { message } = await subscribeMachineTag(
                                             machineName,
                                             fieldTag,
                                             internalTag
@@ -1767,13 +1904,6 @@ export function MachinesDetailed() {
                                             message || t("machines.subscribe"),
                                             "success"
                                           );
-                                          if (hint) {
-                                            const level =
-                                              hint_level === "warning" || hint_level === "error"
-                                                ? hint_level
-                                                : "info";
-                                            showToast(hint, level, 8000);
-                                          }
                                           // Refrescar detalles de la m?quina
                                           const data = await getMachineByName(machineName);
                                           setMachineDetails((prev) => ({
@@ -1885,6 +2015,29 @@ export function MachinesDetailed() {
                                     </Button>
                                   </div>
                                 </div>
+                                <p className="form-text text-muted mt-2 mb-0">
+                                  {t("machines.fieldTagMissingOpcHint")}
+                                </p>
+                                {(() => {
+                                  const mappingHint = String(
+                                    domainConfigs[machineName]?._subscribe_mapping_hint || ""
+                                  ).trim();
+                                  if (!mappingHint) return null;
+                                  const level = String(
+                                    domainConfigs[machineName]?._subscribe_mapping_level || "needed"
+                                  );
+                                  const levelClass =
+                                    level === "ready"
+                                      ? "text-success"
+                                      : level === "optional"
+                                        ? "text-info"
+                                        : "text-warning";
+                                  return (
+                                    <p className={`form-text ${levelClass} mt-1 mb-0`}>
+                                      {mappingHint}
+                                    </p>
+                                  );
+                                })()}
                               </div>
                             ) : (
                               <p className="text-muted">{t("machines.loadingDetails")}</p>
