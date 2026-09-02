@@ -3,7 +3,6 @@ import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import {
   addClient,
-  getClientTree,
   getClientTreeWithOptions,
   getClientTreeChildrenWithOptions,
   getNodeValues,
@@ -17,6 +16,7 @@ import {
 } from "../services/opcua";
 import { useTranslation } from "../hooks/useTranslation";
 import { socketService } from "../services/socket";
+import { translateOpcUaError, type OpcUaErrorView } from "../utils/opcuaErrors";
 
 type SelectedNode = {
   client: string;
@@ -323,6 +323,16 @@ const loadSelectedNodes = (): SelectedNode[] => {
   return [];
 };
 
+function OpcUaErrorNotice({ error, kicker }: { error: OpcUaErrorView; kicker: string }) {
+  return (
+    <div className="opcua-error" role="alert">
+      <div className="opcua-error__kicker">{kicker}</div>
+      <div className="opcua-error__title">{error.title}</div>
+      {error.detail ? <div className="opcua-error__detail">{error.detail}</div> : null}
+    </div>
+  );
+}
+
 export function Communications() {
   const { t } = useTranslation();
   const [clients, setClients] = useState<OpcUaClient[]>([]);
@@ -347,7 +357,8 @@ export function Communications() {
   });
   const [selectedTreeNodes, setSelectedTreeNodes] = useState<string[]>([]); // Para selección múltiple en el árbol
   const [polling, setPolling] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<OpcUaErrorView | null>(null);
+  const [treeError, setTreeError] = useState<OpcUaErrorView | null>(null);
   const [isConnectingClient, setIsConnectingClient] = useState(false);
 
   const namespacesToPoll = useMemo(
@@ -478,7 +489,7 @@ export function Communications() {
   const loadClients = async () => {
     setLoadingClients(true);
     try {
-      setError(null);
+      setFormError(null);
       const list = await listClients();
       // Normalizar la lista de clientes
       const clientsList: OpcUaClient[] = list.map((c) => {
@@ -528,8 +539,7 @@ export function Communications() {
         setClientConnectionStatus({});
       }
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || t("communications.title");
-      setError(errorMsg);
+      setFormError(translateOpcUaError(t, e, "communications.errors.unknown"));
       setClients([]);
       setSelectedClient("");
       localStorage.removeItem(SELECTED_CLIENT_STORAGE_KEY);
@@ -545,7 +555,7 @@ export function Communications() {
       return;
     }
     setLoadingTree(true);
-    setError(null);
+    setTreeError(null);
     try {
       // Para evitar congelar la UI en servidores con árboles muy grandes,
       // pedimos un árbol acotado y dejamos fallback automático a legacy si es necesario.
@@ -564,8 +574,7 @@ export function Communications() {
       const treeArray = Array.isArray(treeNodes) ? treeNodes : treeNodes ? [treeNodes] : [];
       setTree(treeArray);
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || t("communications.explorer");
-      setError(errorMsg);
+      setTreeError(translateOpcUaError(t, e, "communications.errors.browse_failed"));
       setTree([]);
     } finally {
       setLoadingTree(false);
@@ -594,17 +603,21 @@ export function Communications() {
   const loadChildren = useCallback(
     async (clientName: string, nodeId: string) => {
       if (!clientName || !nodeId) return;
-      const children = await getClientTreeChildrenWithOptions(clientName, nodeId, {
-        mode: "generic",
-        max_nodes: 5000,
-        include_properties: true,
-        include_property_values: false,
-        timeout_ms: 60_000,
-        fallback_to_legacy: true,
-      });
-      setChildrenForNode(nodeId, children);
+      try {
+        const children = await getClientTreeChildrenWithOptions(clientName, nodeId, {
+          mode: "generic",
+          max_nodes: 5000,
+          include_properties: true,
+          include_property_values: false,
+          timeout_ms: 60_000,
+          fallback_to_legacy: true,
+        });
+        setChildrenForNode(nodeId, children);
+      } catch (e) {
+        setTreeError(translateOpcUaError(t, e, "communications.errors.browse_failed"));
+      }
     },
-    [setChildrenForNode]
+    [setChildrenForNode, t]
   );
 
   // Cargar clientes al montar el componente
@@ -873,12 +886,12 @@ export function Communications() {
 
   const handleAddClient = async () => {
     if (!form.name || !form.host || !form.port) {
-      setError(t("common.error"));
+      setFormError({ code: "invalid_request", title: t("communications.errors.formIncomplete") });
       return;
     }
     if (isConnectingClient) return;
     try {
-      setError(null);
+      setFormError(null);
       setIsConnectingClient(true);
       const clientName = form.name;
       await addClient({ name: clientName, host: form.host, port: Number(form.port) });
@@ -888,11 +901,8 @@ export function Communications() {
       setSelectedClient(clientName);
       localStorage.setItem(SELECTED_CLIENT_STORAGE_KEY, clientName);
     } catch (e: any) {
-      const errorMsg =
-        e?.code === "ECONNABORTED" || e?.message?.includes?.("timeout")
-          ? t("communications.connectTimeout")
-          : e?.response?.data?.message || e?.message || t("communications.title");
-      setError(errorMsg);
+      setFormError(translateOpcUaError(t, e, "communications.errors.add_failed"));
+      await loadClients();
     } finally {
       setIsConnectingClient(false);
     }
@@ -901,7 +911,7 @@ export function Communications() {
   const handleRemoveClient = async (clientName: string) => {
     if (!clientName) return;
     try {
-      setError(null);
+      setFormError(null);
       await removeClient(clientName);
       // Si se eliminó el cliente seleccionado, limpiar la selección
       if (clientName === selectedClient) {
@@ -924,8 +934,7 @@ export function Communications() {
       }
       await loadClients();
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || t("communications.title");
-      setError(errorMsg);
+      setFormError(translateOpcUaError(t, e, "communications.errors.remove_failed"));
     }
   };
 
@@ -967,12 +976,12 @@ export function Communications() {
 
   const handleUpdateClient = async () => {
     if (!editingClient) {
-      setError(t("common.error"));
+      setFormError({ code: "invalid_request", title: t("communications.errors.formIncomplete") });
       return;
     }
     if (isConnectingClient) return;
     try {
-      setError(null);
+      setFormError(null);
       setIsConnectingClient(true);
       // Solo enviar los campos que tienen valores
       const newName = form.name && form.name.trim() !== "" ? form.name : undefined;
@@ -1009,8 +1018,8 @@ export function Communications() {
         }
       }
     } catch (e: any) {
-      const errorMsg = e?.response?.data?.message || e?.message || t("communications.title");
-      setError(errorMsg);
+      setFormError(translateOpcUaError(t, e, "communications.errors.update_failed"));
+      await loadClients();
     } finally {
       setIsConnectingClient(false);
     }
@@ -1181,7 +1190,9 @@ export function Communications() {
             </div>
           </div>
           </form>
-          {error && <div className="alert alert-danger mt-2 mb-0 py-2">{error}</div>}
+          {formError && (
+            <OpcUaErrorNotice error={formError} kicker={t("communications.errors.title")} />
+          )}
           </fieldset>
         </Card>
         {isConnectingClient && (
@@ -1214,8 +1225,22 @@ export function Communications() {
               {t("communications.loadingTree")}
             </div>
           )}
-          {selectedClient && !loadingTree && tree.length === 0 && (
-            <div className="text-muted">{t("communications.noNodesAvailable")}</div>
+          {selectedClient && !loadingTree && treeError && (
+            <OpcUaErrorNotice error={treeError} kicker={t("communications.errors.title")} />
+          )}
+          {selectedClient && !loadingTree && !treeError && tree.length === 0 && (
+            selectedClientConnectionStatus ? (
+              <div className="text-muted">{t("communications.noNodesAvailable")}</div>
+            ) : (
+              <OpcUaErrorNotice
+                error={{
+                  code: "not_connected",
+                  title: t("communications.errors.not_connected"),
+                  detail: selectedClient ? t("communications.errors.clientName", { client: selectedClient }) : undefined,
+                }}
+                kicker={t("communications.errors.title")}
+              />
+            )
           )}
           {selectedClient && !loadingTree && tree.length > 0 && (
             <div

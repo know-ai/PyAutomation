@@ -475,17 +475,40 @@
     "value": "Valor",
     "timestamp": "Marca de tiempo",
     "status": "Estado",
-    "remove": "Quitar",
+    "remove": "Remover",
     "pollingEvery1s": "Polling cada 1s",
     "ctrlClickForMultiSelect": "Ctrl+Click para selección múltiple",
     "clearSelection": "Limpiar selección",
     "unnamed": "Sin nombre",
     "create": "Crear",
-    "remove": "Remover",
     "loading": "Cargando...",
     "connecting": "Conectando al servidor OPC UA…",
     "connectingHint": "Validando la conexión. Espere; no pulse de nuevo hasta que termine o expire el tiempo de espera.",
     "connectTimeout": "No se pudo conectar al servidor OPC UA (tiempo de espera agotado).",
+    "errors": {
+      "title": "Problema de comunicación",
+      "formIncomplete": "Indique nombre, host y puerto antes de conectar.",
+      "endpoint": "Servidor: {{host}}:{{port}}",
+      "endpointUrl": "Servidor: {{url}}",
+      "clientName": "Cliente: {{client}}",
+      "connection_refused": "El servidor OPC UA no está accesible. Compruebe que está en marcha y que el host y el puerto son correctos.",
+      "connection_timeout": "El servidor OPC UA no respondió a tiempo. Revise la red y que el puerto esté abierto.",
+      "host_unresolved": "No se pudo resolver el nombre del host. Verifique la dirección.",
+      "host_unreachable": "El host no es alcanzable desde esta estación. Revise enrutado y cortafuegos.",
+      "session_closed": "La sesión OPC UA se cerró. Intente conectar de nuevo.",
+      "not_connected": "Este cliente no está conectado a su servidor OPC UA. El árbol de nodos no se puede cargar hasta que la sesión esté activa.",
+      "client_not_found": "Ese cliente OPC UA ya no está disponible.",
+      "browse_failed": "No se pudo obtener el árbol de nodos del servidor OPC UA.",
+      "add_failed": "No se pudo crear el cliente OPC UA.",
+      "update_failed": "No se pudo actualizar el cliente OPC UA.",
+      "remove_failed": "No se pudo eliminar el cliente OPC UA.",
+      "duplicate_name": "Ya existe un cliente con este nombre.",
+      "not_owned": "Este cliente OPC UA pertenece a otro nodo de borde.",
+      "identity_missing": "La identidad del nodo de borde no está configurada.",
+      "discovery_failed": "No se encontró un servidor OPC UA en esta dirección.",
+      "invalid_request": "La solicitud no es válida.",
+      "unknown": "No se pudo completar la conexión OPC UA."
+    },
     "clientConnected": "Cliente conectado",
     "clientDisconnected": "Cliente desconectado",
     "dbFile": "dbFile",
@@ -1080,7 +1103,58 @@
     "signalModeRaw": "Raw",
     "signalModeFiltered": "Filtrado",
     "signalModeHint": "Usar el valor crudo del campo o el derivado filtrado (.f) en esta máquina",
-    "signalModeUpdated": "Modo de señal actualizado"
+    "signalModeUpdated": "Modo de señal actualizado",
+    "attrs": {
+      "state": "Estado",
+      "description": "Descripción",
+      "classification": "Clasificación",
+      "priority": "Prioridad",
+      "criticity": "Criticidad",
+      "name": "Nombre",
+      "interval": "Intervalo",
+      "sample_interval": "Intervalo de muestreo",
+      "buffer_size": "Tamaño de buffer",
+      "threshold": "Umbral",
+      "on_delay": "On delay",
+      "inlet_flow": "Caudal de entrada",
+      "outlet_flow": "Caudal de salida",
+      "inlet_pressure": "Presión de entrada",
+      "outlet_pressure": "Presión de salida",
+      "inlet_density": "Densidad de entrada",
+      "outlet_density": "Densidad de salida",
+      "fluid": "Fluido",
+      "execution_interval": "Intervalo de ejecución"
+    },
+    "states": {
+      "waiting": "Waiting",
+      "wait": "Waiting",
+      "running": "Running",
+      "run": "Running",
+      "leaking": "Leaking",
+      "leak": "Leaking",
+      "pre_alarming": "Pre-alarma",
+      "pre_alarm": "Pre-alarma",
+      "starting": "Arranque",
+      "start": "Arranque",
+      "restarting": "Reiniciando",
+      "resetting": "Reseteando",
+      "sleep": "Sleep",
+      "test": "Test",
+      "con_restart": "Confirmar reinicio",
+      "confirm_restart": "Confirmar reinicio",
+      "confirm_restarting": "Confirmando reinicio",
+      "con_reset": "Confirmar reset",
+      "confirm_reset": "Confirmar reset",
+      "confirm_resetting": "Confirmando reset"
+    },
+    "classifications": {
+      "leak_detection": "Detección de fugas",
+      "general_leak_detection": "Detección general de fugas",
+      "system": "Sistema",
+      "configuration": "Configuración",
+      "lds_field_validation": "Validación de campo LDS",
+      "leak_report": "Reporte de fuga"
+    }
   },
   "alarms": {
     "editAlarm": "Editar alarma",
@@ -1725,6 +1799,308 @@
     "infoAudit": "Últimas clasificaciones de operador. Un evento clasificado no se puede modificar.",
     "auditLine": "Evento #{{id}} clasificado como {{verdict}} por @{{user}} a las {{time}}",
     "auditLineAuto": "{{engine}} se auto-reinició sin confirmación de LDS. Contado como falsa alarma de motor ({{time}})."
+  },
+  "domain": {
+    "common": {
+      "tabIncomplete": "incompleto",
+      "tabLoading": "cargando",
+      "tabPendingLoad": "pendiente de carga",
+      "unmapped": "Sin asignar",
+      "duration": {
+        "120": "2 min",
+        "300": "5 min",
+        "600": "10 min",
+        "900": "15 min",
+        "1800": "30 min",
+        "3600": "1 h",
+        "7200": "2 h",
+        "18000": "5 h",
+        "86400": "24 h"
+      },
+      "sections": {
+        "bayes_calibration": "Calibración Bayesiana (para LDS)"
+      },
+      "fields": {
+        "artifactsHelp": "Seleccione los archivos con estos nombres exactos. El lgbm_inference_config.json debe ser de este motor y rol.",
+        "threshold_SS": "Umbral SS",
+        "threshold_SSHelp": "Umbral de decisión en estado estable (SS).",
+        "threshold_SI": "Umbral SI",
+        "threshold_SIHelp": "Umbral de decisión con ducto cerrado (SI).",
+        "threshold_TS": "Umbral TS",
+        "threshold_TSHelp": "Umbral de decisión en transitorio (TS).",
+        "threshold_statistic_SS": "Umbral estadístico SS",
+        "threshold_statistic_SSHelp": "Umbral del estadístico t en estado estable.",
+        "threshold_statistic_SI": "Umbral estadístico SI",
+        "threshold_statistic_SIHelp": "Umbral del estadístico t con ducto cerrado.",
+        "threshold_statistic_TS": "Umbral estadístico TS",
+        "threshold_statistic_TSHelp": "Umbral del estadístico t en transitorio.",
+        "on_delay": "Retardo de confirmación",
+        "on_delayHelp": "Segundos consecutivos por encima del umbral en pre-alarma antes de declarar fuga.",
+        "detection_threshold_mode": "Modo de umbral",
+        "detection_threshold_modeHelp": "Elija probabilidad (%) o estadístico adimensional.",
+        "window_size": "Tamaño de ventana",
+        "sample_window_size": "Ventana corta (N1)",
+        "inputs": "Inputs lógicos → buffers",
+        "inputsHelp": "Asigne canales de planta. Cada lista muestra canal → input del modelo.",
+        "_likelihood_at_threshold": "P al umbral",
+        "bayes_p_SS": "P(leak | motor detecta) - SS",
+        "bayes_p_SI": "P(leak | motor detecta) - SI",
+        "bayes_p_TS": "P(leak | motor detecta) - TS",
+        "bayes_q_SS": "Especificidad q_i - SS",
+        "bayes_q_SI": "Especificidad q_i - SI",
+        "bayes_q_TS": "Especificidad q_i - TS",
+        "bayes_alpha_SS": "Peso α_i - SS",
+        "bayes_alpha_SI": "Peso α_i - SI",
+        "bayes_alpha_TS": "Peso α_i - TS",
+        "bayes_p_SSHelp": "Probabilidad de fuga dado que el motor detecta. Estado SS. 1.0 = sin calibrar (neutro) para p/q.",
+        "bayes_p_SIHelp": "Probabilidad de fuga dado que el motor detecta. Estado SI. 1.0 = sin calibrar (neutro) para p/q.",
+        "bayes_p_TSHelp": "Probabilidad de fuga dado que el motor detecta. Estado TS. 1.0 = sin calibrar (neutro) para p/q.",
+        "bayes_q_SSHelp": "Probabilidad de no-fuga dado que el motor no detecta. Estado SS.",
+        "bayes_q_SIHelp": "Probabilidad de no-fuga dado que el motor no detecta. Estado SI.",
+        "bayes_q_TSHelp": "Probabilidad de no-fuga dado que el motor no detecta. Estado TS.",
+        "bayes_alpha_SSHelp": "Peso del motor en la fusión LDS (0 = ignora, 1 = completo). Estado SS.",
+        "bayes_alpha_SIHelp": "Peso del motor en la fusión LDS (0 = ignora, 1 = completo). Estado SI.",
+        "bayes_alpha_TSHelp": "Peso del motor en la fusión LDS (0 = ignora, 1 = completo). Estado TS."
+      }
+    },
+    "banners": {
+      "filling": "Llenando buffer: {{filled}} / {{need}} muestras. {{engine}} vuelve a running al completar la ventana.",
+      "rearm": "{{engine}} volverá a waiting en el siguiente ciclo para aplicar una ventana de {{need}} muestras.",
+      "restarting": "Reinicio en curso. Este contenedor se detendrá y Docker lo volverá a arrancar.",
+      "pendingLeak": "Cambio estructural aplazado: {{engine}} está en alarma (leaking). Se aplicará al salir a waiting.",
+      "pendingMotors": "Hay un cambio de motores pendiente: hace falta reiniciar para aplicarlo.",
+      "pendingDiskModels": "{{engine}}: modelos nuevos en disco. Reset del engine para cargarlos en starting (no reinicie la aplicación).",
+      "inputsMapping": "Falta asignar canales de planta. Cada lista muestra canal → input del modelo (p. ej. Caudal de salida → MASS_FLOW_T1).",
+      "needsModels": "{{engine}} permanece en starting: defina un fluido en LDS y cargue sus modelos.",
+      "waitingTags": "{{engine}} permanece en waiting: el buffer necesita las variables de campo requeridas suscritas.",
+      "volumetricDensity": "{{engine}}: el caudal volumétrico exige densidad suscrita.",
+      "fluidMismatch": "LDS indica un fluido distinto al de los modelos cargados en {{engine}}."
+    },
+    "attrs": {
+      "inletFlow": "caudal de entrada",
+      "outletFlow": "caudal de salida",
+      "inletPressure": "presión de entrada",
+      "outletPressure": "presión de salida",
+      "inletDensity": "densidad de entrada",
+      "outletDensity": "densidad de salida"
+    },
+    "subscribe": {
+      "missing": "Falta suscribir: {{items}}.",
+      "done": "Ya suscritas: {{items}}.",
+      "pressure": {
+        "none": "{{engine}} necesita al menos una presión suscrita (entrada o salida) para detectar. Aún no hay presiones mapeadas.",
+        "inletOnly": "Presión de entrada suscrita: {{engine}} puede detectar. Falta la presión de salida.",
+        "outletOnly": "Presión de salida suscrita: {{engine}} puede detectar. Falta la presión de entrada.",
+        "npwReady": "Presiones de entrada y salida suscritas. NPW puede detectar y localizar.",
+        "ppaReady": "Presiones de entrada y salida suscritas. PPA puede detectar en modo delta."
+      },
+      "lgbm": {
+        "needModel": "Cargue el modelo de detección de {{engine}} para saber si usa un punto o mediciones de entrada y salida. Mientras tanto, {{engine}} necesita al menos presión y caudal.",
+        "densityNote": "Si el caudal es volumétrico, la densidad es obligatoria. Si es másico, la densidad es opcional para reportar volumen de fuga.",
+        "modelBoth": "El modelo de {{engine}} usa mediciones de entrada y salida: presión y caudal en ambos extremos.",
+        "modelInlet": "El modelo de {{engine}} usa un solo punto de medición (entrada): presión y caudal de entrada.",
+        "modelOutlet": "El modelo de {{engine}} usa un solo punto de medición (salida): presión y caudal de salida.",
+        "volHasDensity": "{{flow}} es volumétrico y ya tiene {{density}}.",
+        "volNeedDensity": "{{flow}} es volumétrico: suscribe {{density}} (obligatorio para que {{engine}} opere).",
+        "massHasDensity": "{{flow}} es másico y {{density}} está suscrita: se puede reportar volumen de fuga.",
+        "massOptionalDensity": "{{flow}} es másico: {{engine}} puede operar. Suscribe {{density}} si quieres reportar volumen de fuga.",
+        "unknownKind": "Si {{flow}} es volumétrico, suscribe también {{density}}. Si es másico, la densidad es opcional para volumen de fuga.",
+        "minReady": "{{engine}} tiene las suscripciones mínimas para operar."
+      },
+      "lds": {
+        "usesFlows": "LDS usa caudal de entrada y salida para clasificar el régimen del ducto (estable, transitorio o cerrado) y para el balance másico.",
+        "densityNote": "Si el caudal es volumétrico, la densidad es obligatoria. Si es másico, la densidad es opcional para identificar el fluido y reportar volumen.",
+        "volHasDensity": "{{flow}} es volumétrico y ya tiene {{density}}.",
+        "volNeedDensity": "{{flow}} es volumétrico: suscribe {{density}} (obligatorio para que LDS opere con ese caudal).",
+        "massHasDensity": "{{flow}} es másico y {{density}} está suscrita.",
+        "massOptionalDensity": "{{flow}} es másico: LDS puede clasificar el régimen. Suscribe {{density}} si quieres identificar el fluido y reportar volumen.",
+        "unknownKind": "Si {{flow}} es volumétrico, suscribe también {{density}}. Si es másico, la densidad es opcional.",
+        "minReady": "LDS tiene las suscripciones mínimas para operar."
+      }
+    },
+    "files": {
+      "looksBinary": "parece un PDF, Office u otro binario",
+      "notLightGbm": "no es un modelo LightGBM (debe empezar por 'tree')",
+      "invalidJson": "no es JSON válido",
+      "featuresArray": "debe ser un array de nombres de features",
+      "mustBeObject": "debe ser un objeto JSON",
+      "missingInputs": "falta 'inputs'",
+      "missingFeatureColumns": "falta 'feature_columns'",
+      "windowSize": "'window_size' debe ser ≥ 1",
+      "notLabelMapping": "no parece un label_mapping (labels/cluster_centers/mapping)",
+      "unreadable": "no se pudo leer el archivo",
+      "missingProblemType": "falta problem_type; el slot {{slot}} espera {{want}}",
+      "wrongProblemType": "es '{{problem}}', pero {{slot}} espera {{want}}. No mezcle detección/diagnóstico ni PFM/Observer",
+      "labelColumnWrongSlot": "label_column='{{column}}' no es de {{slot}}",
+      "labelColumnMismatch": "label_column='{{column}}' no corresponde a {{slot}}",
+      "labelColumnOtherRole": "label_column='{{column}}' corresponde a otro rol. Slot: {{slot}}",
+      "observerOutputKey": "output_key debe ser 'leak_flow' en {{slot}} (un PFM LEAKFLOW no sirve aquí)",
+      "pfmLeakflowOutputKey": "output_key='leak_flow' es de Observer Detección, no de {{slot}}"
+    },
+    "slots": {
+      "PFM": {
+        "DETECTION": "PFM / Detección (clasificación binaria)",
+        "LEAKFLOW": "PFM / Caudal de fuga (regresión)",
+        "SIZE": "PFM / Tamaño de fuga (clasificación)",
+        "LOCATION": "PFM / Localización (clasificación)"
+      },
+      "OBSERVER": {
+        "DETECTION": "Observer / Detección (regresión de caudal)",
+        "SIZE": "Observer / Tamaño de fuga (regresión)",
+        "LOCATION": "Observer / Localización (regresión)"
+      }
+    },
+    "lds": {
+      "engine": "LDS",
+      "title": "Configuración LDS",
+      "banners": {
+        "needsFluid": "LDS permanece en starting: agregue al menos un fluido en la sección Fluidos y densidades (nombre, densidad mínima y máxima) y pulse Guardar.",
+        "noEngines": "Ningún motor de detección está activo. Active al menos PPA, NPW, PFM u Observer en la sección Motores de detección y pulse Guardar (el alta o baja de motores requiere reinicio)."
+      },
+      "sections": {
+        "alarm": "Decisión de alarma",
+        "auto_restart": "Auto-reinicio de engines",
+        "modules": "Motores de detección",
+        "fluids": "Fluidos y densidades",
+        "operation": "Estado operativo del ducto"
+      },
+      "fields": {
+        "detection_threshold": "Umbral de fusión",
+        "detection_thresholdHelp": "Confianza combinada mínima para considerar que hay fuga. Por ejemplo, 60 % exige que, entre todos los motores, la fusión llegue al menos a ese valor.",
+        "on_delay": "Tiempo de confirmación",
+        "on_delayHelp": "Segundos seguidos que la fusión debe permanecer por encima del umbral antes de declarar fuga. Filtra picos cortos.",
+        "p_leak": "Probabilidad previa de fuga",
+        "p_leakHelp": "Qué tan frecuente espera fugas en este ducto antes de mirar los motores. Un valor bajo (p. ej. 0.01) asume que la fuga es rara.",
+        "negative_evidence": "Evidencia de no fuga",
+        "negative_evidenceHelp": "Si está activo, un motor en operación normal (sin alarma) reduce la confianza de fuga. Si está apagado, solo cuentan los motores que sí detectaron.",
+        "orphan_auto_restart_s": "Si LDS no se dispara",
+        "orphan_auto_restart_sHelp": "Tiempo en fuga de un motor individual sin confirmación de LDS antes de auto-reiniciarlo. Valor por defecto: 2 min.",
+        "fleet_auto_restart_enabled": "Si LDS está disparado",
+        "fleet_auto_restart_enabledHelp": "Por defecto no. Si se activa, cuando LDS y todos los motores de detección están en fuga y nadie los reinicia, se auto-reinicia toda la flota (incluido LDS).",
+        "fleet_auto_restart_s": "Tiempo con LDS disparado",
+        "fleet_auto_restart_sHelp": "Tiempo con LDS y todos los motores de detección en fuga, sin reinicio de operador, antes de auto-reiniciar toda la flota. Solo aplica si el interruptor está en Sí.",
+        "module_PPA": "PPA",
+        "module_PPAHelp": "Motor de análisis de presión puntual.",
+        "module_NPW": "NPW",
+        "module_NPWHelp": "Motor de onda de presión negativa.",
+        "module_PFM": "PFM",
+        "module_PFMHelp": "Motor de monitoreo presión-caudal. Requiere modelo LGBM cargado.",
+        "module_Observer": "Observer",
+        "module_ObserverHelp": "Estima el caudal de fuga. Requiere modelo LGBM cargado.",
+        "fluids": "Tabla de fluidos",
+        "fluidsHelp": "Rangos de densidad para identificar el fluido en tránsito. Guardar aplica la tabla de inmediato.",
+        "fluids_name": "Fluido",
+        "fluids_min": "Densidad mín.",
+        "fluids_max": "Densidad máx.",
+        "fluids_unit": "Unidad",
+        "flow_variance_threshold": "Umbral de transitorio",
+        "flow_variance_thresholdHelp": "Si la varianza del caudal supera este valor, LDS clasifica el ducto como transitorio (arranques, cambios de setpoint).",
+        "flow_shutin_threshold": "Umbral de ducto cerrado",
+        "flow_shutin_thresholdHelp": "Si el caudal promedio baja de este valor, LDS clasifica el ducto como cerrado (Shut-In)."
+      }
+    },
+    "ppa": {
+      "engine": "PPA",
+      "title": "Configuración PPA",
+      "sections": {
+        "detection_mode": "Modo y Umbrales",
+        "windows": "Ventanas Estadísticas (N0, N1)",
+        "bayes_calibration": "Calibración Bayesiana (para LDS)"
+      },
+      "fields": {
+        "detection_threshold_mode": "Modo de umbral",
+        "detection_threshold_mode_opt_probability": "Probabilidad (%)",
+        "detection_threshold_mode_opt_statistic": "Estadístico t (adim)",
+        "window_size": "Ventana larga (N0)",
+        "window_sizeHelp": "Ventana de población. Debe ser mayor que N1.",
+        "sample_window_size": "Ventana corta (N1)",
+        "sample_window_sizeHelp": "Muestra reciente. Debe ser menor que N0 (ventana larga).",
+        "on_delay": "Retardo de confirmación",
+        "on_delayHelp": "Segundos en pre-alarma antes de declarar fuga."
+      }
+    },
+    "npw": {
+      "engine": "NPW",
+      "title": "Configuración NPW",
+      "sections": {
+        "detection": "Detección y umbrales",
+        "windows_wavelet": "Ventanas y wavelet",
+        "geometry": "Geometría",
+        "bayes_calibration": "Calibración Bayesiana (para LDS)"
+      },
+      "fields": {
+        "detection_threshold_mode": "Modo de umbral",
+        "detection_threshold_mode_opt_probability": "Probabilidad (%)",
+        "detection_threshold_mode_opt_statistic": "Estadístico (adim)",
+        "define_by_wavelet_level": "Criterio de tamaño",
+        "window_size": "Tamaño de ventana",
+        "baseline_window": "Ventana de baseline",
+        "wavelet_family": "Familia wavelet",
+        "wavelet_level": "Nivel wavelet",
+        "pipeline_length_m": "Longitud del ducto",
+        "pipeline_length_mHelp": "Longitud entre sensores de presión, en metros.",
+        "speed_of_sound": "Velocidad del sonido",
+        "speed_of_soundHelp": "Velocidad acústica efectiva en el fluido.",
+        "on_delay": "Retardo de confirmación"
+      }
+    },
+    "pfm": {
+      "engine": "PFM",
+      "title": "Configuración PFM (Pressure Flow Monitoring)",
+      "sections": {
+        "models_by_fluid": "Modelos LGBM por fluido",
+        "inputs_mapping": "Mapeo de entradas del modelo",
+        "detection_thresholds": "Umbrales de decisión (SS / SI / TS)",
+        "bayes_calibration": "Calibración Bayesiana (para LDS)",
+        "inputs_mappingHint": "Falta asignar canales de planta. Cada lista muestra canal → input del modelo (p. ej. Caudal de salida → MASS_FLOW_T1)."
+      },
+      "roles": {
+        "DETECTION": "Detección",
+        "LEAKFLOW": "Flujo de Fuga",
+        "SIZE": "Tamaño de Fuga",
+        "LOCATION": "Localización de Fuga"
+      },
+      "fields": {
+        "on_delay": "Confirmación (on_delay)",
+        "inputs": "Inputs lógicos → buffers"
+      },
+      "subscribeHints": {
+        "inlet_flow": "Los modelos PFM trabajan en flujo másico. Si el tag de campo es volumétrico, suscriba también la densidad de entrada; sin ella el motor permanece en Waiting. Si es másico, la densidad es opcional y permite estimar el volumen fugado en diagnóstico.",
+        "outlet_flow": "Los modelos PFM trabajan en flujo másico. Si el tag de campo es volumétrico, suscriba también la densidad de salida; sin ella el motor permanece en Waiting. Si es másico, la densidad es opcional y permite estimar el volumen fugado en diagnóstico.",
+        "inlet_density": "La densidad de entrada convierte caudal volumétrico a másico (obligatorio en ese caso) y permite reportar el volumen fugado cuando el caudal ya es másico.",
+        "outlet_density": "La densidad de salida convierte caudal volumétrico a másico (obligatorio en ese caso) y permite reportar el volumen fugado cuando el caudal ya es másico."
+      }
+    },
+    "observer": {
+      "engine": "Observer",
+      "title": "Configuración Observer (Caudal de fuga)",
+      "sections": {
+        "models_by_fluid": "Modelos LGBM por fluido",
+        "inputs_mapping": "Mapeo de entradas del modelo",
+        "detection_thresholds": "Umbrales de decisión (caudal)",
+        "bayes_calibration": "Calibración Bayesiana (para LDS)",
+        "inputs_mappingHint": "Falta asignar canales de planta. Cada lista muestra canal → input del modelo (p. ej. Caudal de salida → MASS_FLOW_T1)."
+      },
+      "roles": {
+        "DETECTION": "Detección",
+        "SIZE": "Tamaño de Fuga",
+        "LOCATION": "Localización de Fuga"
+      },
+      "fields": {
+        "threshold_SS": "SS",
+        "threshold_SI": "SI",
+        "threshold_TS": "TS",
+        "_likelihood_at_threshold": "P al umbral",
+        "on_delay": "On-delay",
+        "on_delayHelp": "Confirmación: segundos consecutivos por encima del umbral en pre-alarma antes de declarar fuga.",
+        "inputs": "Inputs lógicos → buffers"
+      },
+      "subscribeHints": {
+        "inlet_flow": "Caudal de entrada (kg/s o m³/s). Si el tag es volumétrico, suscriba también la densidad de entrada; sin ella el motor permanece en Waiting. Si es másico, la densidad es opcional y permite estimar el volumen fugado en diagnóstico.",
+        "outlet_flow": "Caudal de salida (kg/s o m³/s). Si el tag es volumétrico, suscriba también la densidad de salida; sin ella el motor permanece en Waiting. Si es másico, la densidad es opcional y permite estimar el volumen fugado en diagnóstico.",
+        "inlet_density": "Densidad de entrada (kg/m³) – obligatoria si caudal es volumétrico",
+        "outlet_density": "Densidad de salida (kg/m³) – obligatoria si caudal es volumétrico"
+      }
+    }
   }
 }
-

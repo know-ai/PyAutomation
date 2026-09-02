@@ -16,6 +16,14 @@ import {
   type DomainUiSchema,
 } from "../services/machines";
 import { beginProcessRestart } from "../services/processRestart";
+import {
+  fillingCount,
+  inferDomainNs,
+  translateApplyBanner,
+  translateDomainSchema,
+  translateWarning,
+  type TranslateFn,
+} from "../utils/domainI18n";
 
 const SCHEMA_VERSION_SUPPORTED = 1;
 
@@ -251,23 +259,6 @@ function applyBannerClass(status: unknown): string {
     return "alert alert-warning py-2 small mb-3";
   }
   return "alert alert-info py-2 small mb-3";
-}
-
-function fillingCount(filled: unknown, need: unknown): { f: number; n: number } | null {
-  const n = Number(need);
-  const f = Number(filled);
-  if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(f)) return null;
-  return { f: Math.max(0, Math.trunc(f)), n: Math.trunc(n) };
-}
-
-function fillingBannerText(message: string, filled: unknown, need: unknown): string {
-  const count = fillingCount(filled, need);
-  if (!count) return message;
-  const label = `${count.f} / ${count.n}`;
-  if (/\d+\s*\/\s*\d+/.test(message)) {
-    return message.replace(/\d+\s*\/\s*\d+/, label);
-  }
-  return message;
 }
 
 function FillProgress({ filled, need }: { filled: unknown; need: unknown }) {
@@ -860,46 +851,51 @@ function artifactFileName(file: File): string {
 async function peekPfmArtifactError(
   file: File,
   fileName?: string,
-  slot?: { engine?: string; role?: string }
+  slot?: { engine?: string; role?: string },
+  t?: TranslateFn
 ): Promise<string | null> {
+  const tr = (key: string, fallback: string, params?: Record<string, string | number>) =>
+    t ? t(key, params) : fallback;
   const name = fileName || artifactFileName(file);
   const head = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   if (PFM_BINARY_PREFIXES.some((prefix) => bytesStartWith(head, prefix))) {
-    return "parece un PDF, Office u otro binario";
+    return tr("domain.files.looksBinary", "parece un PDF, Office u otro binario");
   }
   const sample = await file.slice(0, 8000).text();
   const trimmed = sample.replace(/^\uFEFF/, "").trimStart();
   if (name === "model_lgbm.txt") {
     const first = (trimmed.split(/\r?\n/, 1)[0] || "").trim().toLowerCase();
     if (first === "tree" || trimmed.startsWith("{")) return null;
-    return "no es un modelo LightGBM (debe empezar por 'tree')";
+    return tr("domain.files.notLightGbm", "no es un modelo LightGBM (debe empezar por 'tree')");
   }
   if (name.endsWith(".json")) {
     let data: unknown;
     try {
       data = JSON.parse(await file.text());
     } catch {
-      return "no es JSON válido";
+      return tr("domain.files.invalidJson", "no es JSON válido");
     }
     if (name === "features_schema.json") {
       if (!Array.isArray(data) || !data.length || data.some((item) => typeof item !== "string" || !item.trim())) {
-        return "debe ser un array de nombres de features";
+        return tr("domain.files.featuresArray", "debe ser un array de nombres de features");
       }
       return null;
     }
     if (name.startsWith("lgbm_inference_config")) {
       const obj = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
-      if (!obj) return "debe ser un objeto JSON";
-      if (!Array.isArray(obj.inputs) || !obj.inputs.length) return "falta 'inputs'";
-      if (!Array.isArray(obj.feature_columns) || !obj.feature_columns.length) return "falta 'feature_columns'";
-      if (!(Number(obj.window_size) >= 1)) return "'window_size' debe ser ≥ 1";
-      return inferenceConfigRoleError(obj, slot);
+      if (!obj) return tr("domain.files.mustBeObject", "debe ser un objeto JSON");
+      if (!Array.isArray(obj.inputs) || !obj.inputs.length) return tr("domain.files.missingInputs", "falta 'inputs'");
+      if (!Array.isArray(obj.feature_columns) || !obj.feature_columns.length) {
+        return tr("domain.files.missingFeatureColumns", "falta 'feature_columns'");
+      }
+      if (!(Number(obj.window_size) >= 1)) return tr("domain.files.windowSize", "'window_size' debe ser ≥ 1");
+      return inferenceConfigRoleError(obj, slot, t);
     }
     if (name === "label_mapping.json") {
       const obj = data && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
-      if (!obj) return "debe ser un objeto JSON";
+      if (!obj) return tr("domain.files.mustBeObject", "debe ser un objeto JSON");
       if (!("labels" in obj || "cluster_centers" in obj || "mapping" in obj || "classes" in obj || "label_to_index" in obj)) {
-        return "no parece un label_mapping (labels/cluster_centers/mapping)";
+        return tr("domain.files.notLabelMapping", "no parece un label_mapping (labels/cluster_centers/mapping)");
       }
       return null;
     }
@@ -919,13 +915,18 @@ const INFERENCE_SLOT_LABEL: Record<string, string> = {
 
 function inferenceConfigRoleError(
   obj: Record<string, unknown>,
-  slot?: { engine?: string; role?: string }
+  slot?: { engine?: string; role?: string },
+  t?: TranslateFn
 ): string | null {
+  const tr = (key: string, fallback: string, params?: Record<string, string | number>) =>
+    t ? t(key, params) : fallback;
   const engine = String(slot?.engine || "").toUpperCase();
   const role = String(slot?.role || "").toUpperCase();
   if (!engine || !role) return null;
   const key = `${engine}:${role}`;
-  const label = INFERENCE_SLOT_LABEL[key] || `${engine} / ${role}`;
+  const slotKey = `domain.slots.${engine}.${role}`;
+  const label = t ? t(slotKey) : INFERENCE_SLOT_LABEL[key] || `${engine} / ${role}`;
+  const slotLabel = label === slotKey ? INFERENCE_SLOT_LABEL[key] || `${engine} / ${role}` : label;
   const problem = String(obj.problem_type || "").trim().toLowerCase();
   const labelCol = String(obj.label_column || "").trim().toUpperCase();
   const output = String(obj.output_key || "").trim().toLowerCase();
@@ -941,10 +942,17 @@ function inferenceConfigRoleError(
   const want = expectedProblem[key];
   if (!want) return null;
   if (!problem) {
-    return `falta problem_type; el slot ${label} espera ${want}`;
+    return tr("domain.files.missingProblemType", `falta problem_type; el slot ${slotLabel} espera ${want}`, {
+      slot: slotLabel,
+      want,
+    });
   }
   if (problem !== want) {
-    return `es '${problem}', pero ${label} espera ${want}. No mezcle detección/diagnóstico ni PFM/Observer`;
+    return tr(
+      "domain.files.wrongProblemType",
+      `es '${problem}', pero ${slotLabel} espera ${want}. No mezcle detección/diagnóstico ni PFM/Observer`,
+      { problem, slot: slotLabel, want }
+    );
   }
   const needNeedle: Record<string, string> = {
     "PFM:DETECTION": "LABEL",
@@ -967,22 +975,42 @@ function inferenceConfigRoleError(
   const needle = needNeedle[key];
   if (needle === "LABEL") {
     if (labelCol && (labelCol.includes("LEAK_FLOW") || labelCol.includes("LEAK_SIZE") || labelCol.includes("LEAK_LOCATION"))) {
-      return `label_column='${obj.label_column}' no es de ${label}`;
+      return tr(
+        "domain.files.labelColumnWrongSlot",
+        `label_column='${obj.label_column}' no es de ${slotLabel}`,
+        { column: String(obj.label_column || ""), slot: slotLabel }
+      );
     }
   } else if (needle && !labelCol.includes(needle)) {
-    return `label_column='${obj.label_column || ""}' no corresponde a ${label}`;
+    return tr(
+      "domain.files.labelColumnMismatch",
+      `label_column='${obj.label_column || ""}' no corresponde a ${slotLabel}`,
+      { column: String(obj.label_column || ""), slot: slotLabel }
+    );
   }
   for (const token of forbid[key] || []) {
     if (needle === "LABEL" && token === "LABEL") continue;
     if (labelCol.includes(token)) {
-      return `label_column='${obj.label_column}' corresponde a otro rol. Slot: ${label}`;
+      return tr(
+        "domain.files.labelColumnOtherRole",
+        `label_column='${obj.label_column}' corresponde a otro rol. Slot: ${slotLabel}`,
+        { column: String(obj.label_column || ""), slot: slotLabel }
+      );
     }
   }
   if (key === "OBSERVER:DETECTION" && output !== "leak_flow") {
-    return `output_key debe ser 'leak_flow' en ${label} (un PFM LEAKFLOW no sirve aquí)`;
+    return tr(
+      "domain.files.observerOutputKey",
+      `output_key debe ser 'leak_flow' en ${slotLabel} (un PFM LEAKFLOW no sirve aquí)`,
+      { slot: slotLabel }
+    );
   }
   if (key === "PFM:LEAKFLOW" && output === "leak_flow") {
-    return `output_key='leak_flow' es de Observer Detección, no de ${label}`;
+    return tr(
+      "domain.files.pfmLeakflowOutputKey",
+      `output_key='leak_flow' es de Observer Detección, no de ${slotLabel}`,
+      { slot: slotLabel }
+    );
   }
   return null;
 }
@@ -1052,9 +1080,9 @@ function FilesControl({
             contentError = await peekPfmArtifactError(file, name, {
               engine: field.artifact_engine,
               role: field.artifact_role,
-            });
+            }, t);
           } catch {
-            contentError = "no se pudo leer el archivo";
+            contentError = t("domain.files.unreadable");
           }
           if (gen !== mergeGen.current) return;
           if (contentError) {
@@ -1448,10 +1476,12 @@ export function DomainConfigSlot({
     };
   }, []);
 
-  const sections = schema.sections || [];
+  const localized = useMemo(() => translateDomainSchema(schema, t), [schema, t]);
+  const domainNs = inferDomainNs(schema);
+  const sections = localized.sections || [];
   const unsupported = Number(schema.version || 1) > SCHEMA_VERSION_SUPPORTED;
-  const title = schema.title || t("machines.domainConfigTitle");
-  const rootPresentation = schemaPresentation(schema);
+  const title = localized.title || t("machines.domainConfigTitle");
+  const rootPresentation = schemaPresentation(localized);
 
   const allFields = useMemo(
     () => sections.flatMap((section) => collectSectionFields(section)),
@@ -1469,12 +1499,14 @@ export function DomainConfigSlot({
     const applyKeys = [
       "_apply_status",
       "_apply_message",
+      "_apply_message_i18n",
       "_restart_available",
       "_restart_eta_s",
       "_buffer_filled",
       "_buffer_need",
       "_sm_state",
       "_warnings",
+      "_warnings_i18n",
       "_operation_state",
       "_active_engines",
       "_posterior",
@@ -1485,6 +1517,7 @@ export function DomainConfigSlot({
       "_missing_tags_message",
       "_subscribe_mapping_hint",
       "_subscribe_mapping_level",
+      "_subscribe_mapping_i18n",
       "_inference_contract_aligned",
       "_inference_contract_mismatch",
       "_models_loaded",
@@ -1753,15 +1786,7 @@ export function DomainConfigSlot({
       ) : null}
       {typeof values._apply_message === "string" && values._apply_message ? (
         <div className={applyBannerClass(values._apply_status)} role="status">
-          <div>
-            {values._apply_status === "filling"
-              ? fillingBannerText(
-                  values._apply_message,
-                  values._buffer_filled,
-                  values._buffer_need
-                )
-              : values._apply_message}
-          </div>
+          <div>{translateApplyBanner(t, values, domainNs)}</div>
           {values._apply_status === "filling" ? (
             <FillProgress filled={values._buffer_filled} need={values._buffer_need} />
           ) : null}
@@ -1781,10 +1806,14 @@ export function DomainConfigSlot({
         </div>
       ) : null}
       {warningList(values._warnings)
-        .filter((warning) => warning !== values._apply_message)
-        .map((warning) => (
-        <div key={warning} className="alert alert-warning py-2 small mb-3" role="status">
-          {warning}
+        .map((warning, index) => ({
+          warning,
+          i18n: Array.isArray(values._warnings_i18n) ? values._warnings_i18n[index] : values._warnings_i18n,
+        }))
+        .filter((item) => item.warning !== values._apply_message)
+        .map((item) => (
+        <div key={item.warning} className="alert alert-warning py-2 small mb-3" role="status">
+          {translateWarning(t, item.warning, item.i18n, domainNs)}
         </div>
       ))}
       <fieldset disabled={saving || restarting}>

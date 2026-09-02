@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from automation.opcua.models import daq_read_timeout_s
+from automation.opcua.models import daq_bad_after_misses, daq_read_timeout_s
 from automation.signal_conditioning.quality import BAD
 from automation.state_machine import DAQ, StateMachineCore
 from automation.tags.tag import Tag
@@ -55,6 +55,12 @@ class TestDaqReadTimeoutEnv(unittest.TestCase):
     def test_invalid_falls_back(self):
         self.assertEqual(daq_read_timeout_s({"AUTOMATION_DAQ_READ_TIMEOUT_S": "nope"}), 0.5)
 
+    def test_bad_after_misses_default_and_clamp(self):
+        self.assertEqual(daq_bad_after_misses({}), 3)
+        self.assertEqual(daq_bad_after_misses({"AUTOMATION_DAQ_BAD_AFTER_MISSES": "1"}), 1)
+        self.assertEqual(daq_bad_after_misses({"AUTOMATION_DAQ_BAD_AFTER_MISSES": "99"}), 20)
+        self.assertEqual(daq_bad_after_misses({"AUTOMATION_DAQ_BAD_AFTER_MISSES": "nope"}), 3)
+
 
 class TestDaqAcquisition(unittest.TestCase):
     def test_daq_does_not_call_get_node_attributes(self):
@@ -63,9 +69,9 @@ class TestDaqAcquisition(unittest.TestCase):
         manager.get_node_data_values_by_opcua_address.return_value = {tag.get_node_namespace(): None}
         manager.get_node_attributes.side_effect = AssertionError("DAQ must not browse")
         daq = _daq(tag, manager)
-        with patch("automation.state_machine._scope_owns_tag", return_value=True), patch.object(
-            StateMachineCore, "while_running", return_value=None
-        ):
+        with patch("automation.state_machine._scope_owns_tag", return_value=True), patch(
+            "automation.opcua.models.daq_bad_after_misses", return_value=1
+        ), patch.object(StateMachineCore, "while_running", return_value=None):
             daq.while_running()
         manager.get_node_attributes.assert_not_called()
         manager.get_node_data_values_by_opcua_address.assert_called_once()
@@ -78,12 +84,34 @@ class TestDaqAcquisition(unittest.TestCase):
         manager = MagicMock()
         manager.get_node_data_values_by_opcua_address.return_value = {tag.get_node_namespace(): None}
         daq = _daq(tag, manager)
+        with patch("automation.state_machine._scope_owns_tag", return_value=True), patch(
+            "automation.opcua.models.daq_bad_after_misses", return_value=1
+        ), patch.object(StateMachineCore, "while_running", return_value=None):
+            daq.while_running()
+        daq.cvt.set_value.assert_called()
+        self.assertEqual(daq.cvt.set_value.call_args.kwargs.get("quality"), BAD)
+
+    def test_single_empty_read_does_not_mark_bad(self):
+        tag = _field_tag()
+        manager = MagicMock()
+        manager.get_node_data_values_by_opcua_address.return_value = {tag.get_node_namespace(): None}
+        daq = _daq(tag, manager)
+        with patch("automation.state_machine._scope_owns_tag", return_value=True), patch(
+            "automation.opcua.models.daq_bad_after_misses", return_value=3
+        ), patch.object(StateMachineCore, "while_running", return_value=None):
+            daq.while_running()
+        daq.cvt.set_value.assert_not_called()
+
+    def test_inflight_batch_does_not_mark_bad(self):
+        tag = _field_tag()
+        manager = MagicMock()
+        manager.get_node_data_values_by_opcua_address.return_value = None
+        daq = _daq(tag, manager)
         with patch("automation.state_machine._scope_owns_tag", return_value=True), patch.object(
             StateMachineCore, "while_running", return_value=None
         ):
             daq.while_running()
-        daq.cvt.set_value.assert_called()
-        self.assertEqual(daq.cvt.set_value.call_args.kwargs.get("quality"), BAD)
+        daq.cvt.set_value.assert_not_called()
 
     def test_one_batch_read_for_all_tags_of_this_daq(self):
         tags = [
@@ -149,6 +177,30 @@ class TestDaqAcquisition(unittest.TestCase):
             elapsed = time.monotonic() - started
             self.assertIsNone(result)
             self.assertLess(elapsed, 1.0)
+        finally:
+            client._io_pool.shutdown(wait=False, cancel_futures=True)
+
+    def test_inflight_timeout_applies_on_next_cycle(self):
+        from automation.opcua.models import Client
+
+        client = object.__new__(Client)
+        client.name = "PLC80"
+        client._io_lock = threading.Lock()
+        client._io_pool = ThreadPoolExecutor(max_workers=1)
+        client.is_connected = lambda: True
+        client.uaclient = None
+
+        def hang(_namespace):
+            time.sleep(0.35)
+            return "late"
+
+        client.get_node_data_value = hang
+        try:
+            first = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.1)
+            self.assertIsNone(first)
+            time.sleep(0.4)
+            second = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.1)
+            self.assertEqual(second, "late")
         finally:
             client._io_pool.shutdown(wait=False, cancel_futures=True)
 

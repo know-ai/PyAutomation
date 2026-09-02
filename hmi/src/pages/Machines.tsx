@@ -8,6 +8,7 @@ import { useAppSelector } from "../hooks/useAppSelector";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { loadAllMachines } from "../store/slices/machinesSlice";
 import { socketService } from "../services/socket";
+import { translateMachineState, translateMachineClassification } from "../utils/domainI18n";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -377,11 +378,11 @@ export function Machines() {
       const rows = machinesWithRealTime.map((machine) => {
         return [
           machine.name || "",
-          machine.state || "",
+          machine.state ? translateMachineState(t, machine.state) : "",
           machine.priority !== undefined ? String(machine.priority) : "",
           machine.criticity !== undefined ? String(machine.criticity) : "",
           machine.description || "",
-          machine.classification || "",
+          machine.classification ? translateMachineClassification(t, machine.classification) : "",
         ];
       });
 
@@ -539,13 +540,13 @@ export function Machines() {
                             disabled={updatingMachine === machine.name || !machine.actions || machine.actions.length === 0}
                             style={{ minWidth: "120px", padding: "0.25rem 0.5rem", fontSize: "0.8rem" }}
                           >
-                            <option value={machine.state}>{machine.state}</option>
+                            <option value={machine.state}>{translateMachineState(t, machine.state)}</option>
                             {machine.actions && machine.actions.length > 0
                               ? machine.actions
                                   .filter((action) => action !== machine.state)
                                   .map((action) => (
                                     <option key={action} value={action}>
-                                      {action}
+                                      {translateMachineState(t, action)}
                                     </option>
                                   ))
                               : null}
@@ -561,7 +562,7 @@ export function Machines() {
                           {machine.description || "-"}
                         </td>
                         <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          {machine.classification || "-"}
+                          {machine.classification ? translateMachineClassification(t, machine.classification) : "-"}
                         </td>
                         <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
                           <div
@@ -670,11 +671,11 @@ export function Machines() {
                 </div>
                 <div className="mb-2">
                   <strong>{t("machines.currentState")}:</strong>{" "}
-                  <span className="badge bg-secondary">{pendingTransition.oldState}</span>
+                  <span className="badge bg-secondary">{translateMachineState(t, pendingTransition.oldState)}</span>
                 </div>
                 <div>
                   <strong>{t("machines.newState")}:</strong>{" "}
-                  <span className="badge bg-primary">{pendingTransition.newState}</span>
+                  <span className="badge bg-primary">{translateMachineState(t, pendingTransition.newState)}</span>
                 </div>
               </div>
               <div className="modal-footer">

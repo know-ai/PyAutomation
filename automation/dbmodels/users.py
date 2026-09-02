@@ -154,22 +154,35 @@ class Users(BaseModel):
         * **tuple**: (Query object, status message)
         """
 
-        if cls.username_exist(user.username):
+        if user is None:
+            return None, "user is required"
 
-            return None, f"username {user.username} is already used"
+        username = getattr(user, "username", None)
+        if not username:
+            return None, "username is required"
+
+        if cls.username_exist(username):
+
+            return None, f"username: {username} already exists"
 
         email = (getattr(user, "email", None) or "").strip() or None
         if email and cls.email_exist(email):
 
-            return None, f"email {email} is already used"
+            return None, f"email: {email} already exists"
         
         if cls.identifier_exist(user.identifier):
 
             return None, f"identifier {user.identifier} is already used"
+
+        role_obj = getattr(user, "role", None)
+        role_name = getattr(role_obj, "name", None)
+        db_role = Roles.read_by_name(name=role_name) if role_name else None
+        if db_role is None:
+            return None, f"role: {role_name or 'missing'} not exists"
         
         query = cls(
-            username=user.username,
-            role=Roles.read_by_name(name=user.role.name),
+            username=username,
+            role=db_role,
             email=email,
             password=user.password,
             identifier=user.identifier,

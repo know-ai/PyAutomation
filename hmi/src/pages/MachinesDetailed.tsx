@@ -16,6 +16,7 @@ import {
 } from "../services/machines";
 import { DomainConfigSlot } from "../components/DomainConfigSlot";
 import { showToast } from "../utils/toast";
+import { tx, translateSubscribeHint, translateMachineState, translateMachineClassification } from "../utils/domainI18n";
 import { socketService } from "../services/socket";
 import type { Tag } from "../services/tags";
 import { getTagsList } from "../services/tags";
@@ -1536,11 +1537,17 @@ export function MachinesDetailed() {
           className={badgeClass}
           style={needsBlink ? { animation: "blink-alarm 1s infinite" } : undefined}
         >
-          {stateStr}
+          {translateMachineState(t, stateStr)}
         </span>
       );
     }
     
+    if (attributeName === "classification") {
+      const classValue =
+        typeof value === "object" && value !== null && "value" in value ? value.value : value;
+      return translateMachineClassification(t, String(classValue ?? ""));
+    }
+
     // Si es el atributo "priority" o "criticity", mostrar como badge num?rico
     if (attributeName === "priority" || attributeName === "criticity") {
       const numericValue = typeof value === "object" && value !== null && "value" in value 
@@ -1587,8 +1594,9 @@ export function MachinesDetailed() {
   };
 
   return (
-    <div className="row">
-      <div className="col-12">
+    <div className="machines-detailed-page">
+      <div className="row g-0">
+        <div className="col-12">
         {loading ? (
           <div className="text-center py-5">
             <div className="spinner-border text-primary" role="status">
@@ -1695,7 +1703,7 @@ export function MachinesDetailed() {
                                       }
                                       return paginated.map(([key, value]) => (
                                         <tr key={key}>
-                                          <td style={{ width: "40%", wordBreak: "break-word" }}><strong>{key}</strong></td>
+                                          <td style={{ width: "40%", wordBreak: "break-word" }}><strong>{tx(t, key, `machines.attrs.${key}`)}</strong></td>
                                           <td style={{ width: "60%", wordBreak: "break-word" }}>{formatAttributeValue(value, key)}</td>
                                         </tr>
                                       ));
@@ -2019,9 +2027,11 @@ export function MachinesDetailed() {
                                   {t("machines.fieldTagMissingOpcHint")}
                                 </p>
                                 {(() => {
-                                  const mappingHint = String(
-                                    domainConfigs[machineName]?._subscribe_mapping_hint || ""
-                                  ).trim();
+                                  const mappingHint = translateSubscribeHint(
+                                    t,
+                                    String(domainConfigs[machineName]?._subscribe_mapping_hint || "").trim(),
+                                    domainConfigs[machineName]?._subscribe_mapping_i18n
+                                  );
                                   if (!mappingHint) return null;
                                   const level = String(
                                     domainConfigs[machineName]?._subscribe_mapping_level || "needed"
@@ -2539,6 +2549,7 @@ export function MachinesDetailed() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

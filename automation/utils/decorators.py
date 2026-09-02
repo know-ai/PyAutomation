@@ -324,8 +324,13 @@ def db_rollback(func, args, kwargs):
                 func.__name__,
                 e_message,
             )
-        conn = self._db.connection()
-        conn.rollback()
+        try:
+            conn = self._db.connection()
+            conn.rollback()
+        except Exception:
+            _logger.debug("db_rollback could not roll back connection", exc_info=True)
+        if isinstance(e, (AttributeError, TypeError, ValueError, KeyError)):
+            raise
         result = func(*args, **kwargs)
 
         return result

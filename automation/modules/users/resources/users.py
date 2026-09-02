@@ -146,6 +146,7 @@ class SignUpResource(Resource):
             # Detectar errores de validación o duplicados (username/email ya existe, etc.)
             elif any(keyword in message_lower for keyword in [
                 "already exists",
+                "already used",
                 "username",
                 "email",
                 "duplicate",

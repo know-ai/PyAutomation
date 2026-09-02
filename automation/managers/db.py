@@ -586,6 +586,8 @@ class DBManager(Singleton):
         r"""
         Creates a new user in the database.
         """
+        if user is None:
+            return None, "user is required"
         result = self.users_logger.set_user(user=user)
         try:
             from ..catalog.bootstrap import write_catalog_row

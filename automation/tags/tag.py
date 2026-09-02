@@ -819,9 +819,15 @@ class Tag:
     def notify(self):
         r"""
         Notifies all attached observers of a change.
+
+        Observers (state machines, SAF, alarms) require an acquisition timestamp.
+        A brand-new tag can receive a BAD/stale sample before any good PV (lab
+        node, OPC down). Fan-out without a datetime would raise in
+        ``StateMachineCore.notify`` / LDS ``notify``.
         """
+        if self.get_timestamp() is None:
+            return
         for observer in self._observers:
-            
             observer.update()
 
     def serialize(self):
@@ -959,6 +965,22 @@ def _machine_threshold_value(machine) -> float | None:
     return numeric if numeric != 0 else None
 
 
+def _skip_historian_tag(tag) -> bool:
+    """Diagnostic BOOL tags and samples without acquisition time are not TagValue history."""
+    if getattr(tag, "timestamp", None) is None:
+        return True
+    name = (getattr(tag, "name", None) or "").upper()
+    markers = (
+        ".SYS.QUALITY.",
+        "SYS.QUALITY.",
+        ".SYS.OPCUA.",
+        "SYS.OPCUA.",
+        ".SYS.DB.",
+        "SYS.DB.",
+    )
+    return any(name.startswith(marker) or marker in name for marker in markers)
+
+
 class TagObserver(Observer):
     """
     Observer implementation that pushes tag updates to a queue.
@@ -979,6 +1001,8 @@ class TagObserver(Observer):
             return
         if not _scope_owns_tag(self._subject):
             _audit_foreign_tag(self._subject)
+            return
+        if _skip_historian_tag(self._subject):
             return
         try:
             result = dict()
@@ -1032,4 +1056,14 @@ class MachineObserver(Observer):
         """
         if self._subject is None or self.machine is None:
             return
-        self.machine.notify(tag=self._subject.name, value=self._subject.value, timestamp=self._subject.timestamp)
+        timestamp = getattr(self._subject, "timestamp", None)
+        if timestamp is None:
+            return
+        value = getattr(self._subject, "value", None)
+        if value is None:
+            return
+        self.machine.notify(
+            tag=self._subject.name,
+            value=value,
+            timestamp=timestamp,
+        )

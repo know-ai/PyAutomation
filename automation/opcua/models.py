@@ -10,6 +10,8 @@ from ..utils import _colorize_message
 _DAQ_TIMEOUT_MIN_S = 0.05
 _DAQ_TIMEOUT_MAX_S = 5.0
 _DAQ_TIMEOUT_DEFAULT_S = 0.5
+_DAQ_BAD_AFTER_MISSES_DEFAULT = 3
+_DAQ_BAD_AFTER_MISSES_MAX = 20
 DAQ_READ_TIMEOUT_S = _DAQ_TIMEOUT_DEFAULT_S  # default; prefer daq_read_timeout_s()
 
 
@@ -25,6 +27,22 @@ def daq_read_timeout_s(environ=None) -> float:
     except (TypeError, ValueError):
         value = _DAQ_TIMEOUT_DEFAULT_S
     return max(_DAQ_TIMEOUT_MIN_S, min(_DAQ_TIMEOUT_MAX_S, value))
+
+
+def daq_bad_after_misses(environ=None) -> int:
+    """Consecutive confirmed empty reads before DAQ marks the PV BAD.
+
+    A single ``FuturesTimeout`` is not a confirmed empty: the in-flight OPC
+    Read is left running and applied on the next cycle. Env
+    ``AUTOMATION_DAQ_BAD_AFTER_MISSES`` (1–20, default 3).
+    """
+    env = environ if environ is not None else os.environ
+    raw = env.get("AUTOMATION_DAQ_BAD_AFTER_MISSES", str(_DAQ_BAD_AFTER_MISSES_DEFAULT))
+    try:
+        value = int(float(raw))
+    except (TypeError, ValueError):
+        value = _DAQ_BAD_AFTER_MISSES_DEFAULT
+    return max(1, min(_DAQ_BAD_AFTER_MISSES_MAX, value))
 from ..utils.opcua_audit import (
     failure_cooldown_seconds,
     record_opcua_connection_event,
@@ -76,6 +94,9 @@ class Client(OPCClient):
         self._io_pool = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix=f"opc-io-{client_name}"[:15]
         )
+        self._daq_future_lock = threading.Lock()
+        self._daq_inflight = None
+        self._daq_inflight_names = None
         # self.scheduler = sched.scheduler(time.time, time.sleep) 
         # self.token_renewal_interval = 30 # Cada 10 minutos
         super(Client, self).__init__(url, timeout)
@@ -224,12 +245,15 @@ class Client(OPCClient):
             else:
                 self._audit_connection("CONNECTION_FAILED", reason="initial-connect", error=error_text)
             self._sync_connection_alarm(disconnected=True)
+            from .errors import classify_opcua_error
+
             result = {
                 'message': 'Connection could not be established',
                 'url': self._server_url,
                 'is_connected': self._is_open,
                 'id': self.get_id(),
                 'error': error_text,
+                'code': classify_opcua_error(error_text),
                 }
             return result, 404
         
@@ -646,14 +670,37 @@ class Client(OPCClient):
         """Serialize asyncua I/O and bound the wait so DAQ cannot hang the cycle."""
         budget = daq_read_timeout_s() if timeout_s is None else float(timeout_s)
         result = self.read_data_values_bounded([node_namespace], timeout_s=budget)
+        if not isinstance(result, dict):
+            return None
         return result.get(str(node_namespace))
 
+    def _ensure_daq_inflight_state(self) -> None:
+        if not hasattr(self, "_daq_future_lock"):
+            self._daq_future_lock = threading.Lock()
+        if not hasattr(self, "_daq_inflight"):
+            self._daq_inflight = None
+        if not hasattr(self, "_daq_inflight_names"):
+            self._daq_inflight_names = None
+
+    def _pack_daq_results(self, names, results):
+        if results is None:
+            return {ns: None for ns in names}
+        out = {}
+        for index, ns in enumerate(names):
+            out[ns] = results[index] if index < len(results) else None
+        return out
+
     def read_data_values_bounded(self, namespaces, timeout_s: float = None):
-        """One OPC Read for all NodeIds. Bounded wait; does not cancel in-flight I/O."""
+        """One OPC Read for all NodeIds. Bounded wait; does not cancel in-flight I/O.
+
+        ``None`` means the previous Read is still running — DAQ must **not**
+        treat that as empty/BAD. A completed disconnect returns ``{ns: None}``.
+        """
         budget = daq_read_timeout_s() if timeout_s is None else float(timeout_s)
         names = [str(ns) for ns in (namespaces or []) if ns]
         if not names:
             return {}
+        self._ensure_daq_inflight_state()
 
         def _run():
             with self._io_lock:
@@ -661,17 +708,41 @@ class Client(OPCClient):
                     return None
                 return self._read_data_values_unlocked(names)
 
-        future = self._io_pool.submit(_run)
+        with self._daq_future_lock:
+            inflight = self._daq_inflight
+            if inflight is not None and not inflight.done():
+                logging.getLogger("pyautomation").debug(
+                    "OPC DAQ read still in flight client=%s nodes=%s",
+                    self.name,
+                    len(names),
+                )
+                return None
+            if inflight is not None and inflight.done():
+                try:
+                    results = inflight.result(timeout=0)
+                except Exception:
+                    results = None
+                inflight_names = list(self._daq_inflight_names or names)
+                self._daq_inflight = None
+                self._daq_inflight_names = None
+                packed = self._pack_daq_results(inflight_names, results)
+                if inflight_names == names:
+                    return packed
+                return {ns: packed.get(ns) for ns in names}
+            future = self._io_pool.submit(_run)
+            self._daq_inflight = future
+            self._daq_inflight_names = list(names)
+
         try:
             results = future.result(timeout=max(_DAQ_TIMEOUT_MIN_S, budget))
         except FuturesTimeout:
-            logging.getLogger("pyautomation").warning(
-                "OPC DAQ batch read timed out client=%s nodes=%s budget=%.3fs",
+            logging.getLogger("pyautomation").debug(
+                "OPC DAQ batch read still in flight client=%s nodes=%s budget=%.3fs",
                 self.name,
                 len(names),
                 budget,
             )
-            return {ns: None for ns in names}
+            return None
         except Exception:
             logging.getLogger("pyautomation").error(
                 "OPC DAQ batch read failed client=%s nodes=%s",
@@ -679,13 +750,16 @@ class Client(OPCClient):
                 len(names),
                 exc_info=True,
             )
+            with self._daq_future_lock:
+                if self._daq_inflight is future:
+                    self._daq_inflight = None
+                    self._daq_inflight_names = None
             return {ns: None for ns in names}
-        if results is None:
-            return {ns: None for ns in names}
-        out = {}
-        for index, ns in enumerate(names):
-            out[ns] = results[index] if index < len(results) else None
-        return out
+        with self._daq_future_lock:
+            if self._daq_inflight is future:
+                self._daq_inflight = None
+                self._daq_inflight_names = None
+        return self._pack_daq_results(names, results)
 
     def _read_data_values_unlocked(self, namespaces):
         node_ids = [NodeId.from_string(ns) for ns in namespaces]

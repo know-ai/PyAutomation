@@ -106,6 +106,34 @@ class TestUsers(unittest.TestCase):
         self.assertIn("created successfully", msg1)
         self.assertIn("created successfully", msg2)
 
+    def test_signup_duplicate_username(self):
+        role = Role(name=ROLE_NAME, level=0)
+        self.roles.add(role=role)
+        first, _ = self.users.signup(
+            username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD
+        )
+        duplicate, message = self.users.signup(
+            username=USERNAME, role_name=ROLE_NAME, email=EMAIL2, password=PASSWORD
+        )
+        self.assertIsInstance(first, User)
+        self.assertIsNone(duplicate)
+        self.assertIn("already exists", message)
+        self.assertIn(USERNAME, message)
+
+    def test_signup_duplicate_email(self):
+        role = Role(name=ROLE_NAME, level=0)
+        self.roles.add(role=role)
+        first, _ = self.users.signup(
+            username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD
+        )
+        duplicate, message = self.users.signup(
+            username=USERNAME2, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD
+        )
+        self.assertIsInstance(first, User)
+        self.assertIsNone(duplicate)
+        self.assertIn("already exists", message)
+        self.assertIn(EMAIL, message)
+
     def test_login_logout(self):
 
         role = Role(name=ROLE_NAME, level=0)

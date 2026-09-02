@@ -132,6 +132,7 @@ export type DomainConfigField = {
   key: string;
   type: "number" | "select" | "boolean" | "string" | "object" | "array" | "files" | string;
   label?: string;
+  label_key?: string;
   unit?: string;
   min?: number;
   max?: number;
@@ -140,6 +141,7 @@ export type DomainConfigField = {
   options?: Array<{ value: string; label: string } | string>;
   depends_on?: { field: string; equals?: unknown };
   help?: string;
+  help_key?: string;
   read_only?: boolean;
   read_only_when?: { field: string; equals?: unknown };
   short_label?: string;
@@ -212,6 +214,8 @@ export type DomainUiHints = {
 export type DomainUiSchema = {
   version?: number;
   title?: string;
+  title_key?: string;
+  i18n_ns?: string;
   sections?: DomainConfigSection[];
   ui_hints?: DomainUiHints;
 };

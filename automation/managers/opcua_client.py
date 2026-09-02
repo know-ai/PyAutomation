@@ -649,47 +649,50 @@ class OPCUAClientManager:
 
         * **tuple**: (Tree dict, HTTP status code).
         """
+        from ..opcua.errors import CLIENT_NOT_FOUND, NOT_CONNECTED, opcua_error
+
         client = self.get(client_name=client_name)
         if not client:
-            return {}, 404
-        if client.is_connected():
-            try:
-                mode_l = (mode or "generic").strip().lower()
-                # "legacy": usa el método viejo (ObjectsFolder -> children descriptions)
-                if mode_l == "legacy":
-                    tree, status = client.get_opc_ua_tree()
-                    if status != 200 or not isinstance(tree, dict):
-                        return tree or {}, status
-                    # Normalizar a {Objects:[...]} cuando sea posible
-                    if "Objects" in tree and isinstance(tree["Objects"], list):
-                        return {"Objects": tree["Objects"]}, 200
-                    # si el root del dict es "Objects" u otro, tomar primer nivel como children
-                    if len(tree.keys()) == 1:
-                        root_key = next(iter(tree.keys()))
-                        if isinstance(tree[root_key], list):
-                            return {"Objects": tree[root_key]}, 200
-                    return tree, 200
+            return opcua_error(CLIENT_NOT_FOUND, client=client_name), 404
+        if not client.is_connected():
+            return opcua_error(NOT_CONNECTED, client=client_name, url=getattr(client, "_server_url", None)), 503
+        try:
+            mode_l = (mode or "generic").strip().lower()
+            # "legacy": usa el método viejo (ObjectsFolder -> children descriptions)
+            if mode_l == "legacy":
+                tree, status = client.get_opc_ua_tree()
+                if status != 200 or not isinstance(tree, dict):
+                    return tree or {}, status
+                # Normalizar a {Objects:[...]} cuando sea posible
+                if "Objects" in tree and isinstance(tree["Objects"], list):
+                    return {"Objects": tree["Objects"]}, 200
+                # si el root del dict es "Objects" u otro, tomar primer nivel como children
+                if len(tree.keys()) == 1:
+                    root_key = next(iter(tree.keys()))
+                    if isinstance(tree[root_key], list):
+                        return {"Objects": tree[root_key]}, 200
+                return tree, 200
 
-                # "generic" (default): browse robusto desde Objects folder
-                objects_nodeid = client.get_objects_node()
-                objects_node = client.get_node(objects_nodeid)
-                children = client.browse_tree_generic(
-                    objects_node,
-                    max_depth=int(max_depth),
-                    max_nodes=int(max_nodes),
-                    include_properties=bool(include_properties),
-                    include_property_values=bool(include_property_values),
-                )
-                return {"Objects": children}, 200
+            # "generic" (default): browse robusto desde Objects folder
+            objects_nodeid = client.get_objects_node()
+            objects_node = client.get_node(objects_nodeid)
+            children = client.browse_tree_generic(
+                objects_node,
+                max_depth=int(max_depth),
+                max_nodes=int(max_nodes),
+                include_properties=bool(include_properties),
+                include_property_values=bool(include_property_values),
+            )
+            return {"Objects": children}, 200
+        except Exception:
+            # Fallback a la implementación anterior (browse_tree sobre root)
+            root_node = client.get_root_node()
+            _tree = client.browse_tree(root_node)
+            try:
+                result = {"Objects": _tree[0]["children"]}
             except Exception:
-                # Fallback a la implementación anterior (browse_tree sobre root)
-                root_node = client.get_root_node()
-                _tree = client.browse_tree(root_node)
-                try:
-                    result = {"Objects": _tree[0]["children"]}
-                except Exception:
-                    result = {"Objects": _tree}
-                return result, 200
+                result = {"Objects": _tree}
+            return result, 200
     
         
     @logging_error_handler
@@ -710,11 +713,13 @@ class OPCUAClientManager:
         Retorna una lista con el mismo formato de nodos que consume el frontend:
         title/key/NodeClass/children/has_children
         """
+        from ..opcua.errors import CLIENT_NOT_FOUND, NOT_CONNECTED, opcua_error
+
         client = self.get(client_name=client_name)
         if not client:
-            return {"children": []}, 404
+            return opcua_error(CLIENT_NOT_FOUND, client=client_name), 404
         if not client.is_connected():
-            return {"children": []}, 400
+            return opcua_error(NOT_CONNECTED, client=client_name, url=getattr(client, "_server_url", None)), 503
 
         mode_l = (mode or "generic").strip().lower()
 

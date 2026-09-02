@@ -176,9 +176,19 @@ export const getClientTreeWithOptions = async (
     console.warn("No valid tree structure found in data:", treeData);
     return [];
   } catch (error) {
-    // fallback a legacy si falla el modo generic
+    const code = (error as { response?: { data?: { code?: string } } })?.response?.data?.code;
+    const skipFallback = [
+      "not_connected",
+      "connection_refused",
+      "connection_timeout",
+      "host_unresolved",
+      "host_unreachable",
+      "client_not_found",
+      "session_closed",
+      "discovery_failed",
+    ].includes(String(code || ""));
     const mode = options.mode ?? "generic";
-    const shouldFallback = options.fallback_to_legacy !== false && mode === "generic";
+    const shouldFallback = !skipFallback && options.fallback_to_legacy !== false && mode === "generic";
     if (shouldFallback) {
       console.warn("Error fetching tree (generic). Falling back to legacy.", error);
       return await getClientTreeWithOptions(clientName, { ...options, mode: "legacy", fallback_to_legacy: false });

@@ -322,7 +322,15 @@ class BaseEngine(Singleton):
 
         logger = logging.getLogger("pyautomation")
         action = msg.replace("Error in BaseEngine: ", "").strip() or "request"
-        log_historian_link_issue(logger, e, where="BaseEngine", action=action)
+        if isinstance(e, (AttributeError, TypeError, ValueError, KeyError)):
+            logger.warning(
+                "Historian request %s failed with %s: %s. Not a remote-link outage.",
+                action,
+                type(e).__name__,
+                e,
+            )
+        else:
+            log_historian_link_issue(logger, e, where="BaseEngine", action=action)
         self._response = {
             "result": False,
             "response": None

@@ -2975,9 +2975,36 @@ body.process-restart-lock #toast-container {
   padding: 0;
 }
 
-.app-content:has(.performance-page) .container-fluid {
+.app-content:has(.performance-page) .container-fluid,
+.app-content:has(.machines-detailed-page) .container-fluid {
   padding-left: 0.4rem;
   padding-right: 0.4rem;
+}
+
+@media (min-width: 1400px) {
+  .app-content {
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+  }
+
+  .app-content .container-fluid {
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+  }
+
+  .settings-page {
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
+.machines-detailed-page {
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
 }
 
 .perf-hero {
@@ -3828,6 +3855,37 @@ html[data-hmi-density="control"] .card > .card-header {
   text-align: center;
   max-width: 16rem;
   padding: 0.75rem 1rem;
+}
+
+.opcua-error {
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--bs-danger, #b42318) 28%, var(--bs-border-color, #dee2e6));
+  background: color-mix(in srgb, var(--bs-danger, #b42318) 8%, var(--bs-body-bg, #fff));
+}
+
+.opcua-error__kicker {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--bs-danger, #b42318);
+  margin-bottom: 0.2rem;
+}
+
+.opcua-error__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--bs-body-color, #152033);
+  line-height: 1.4;
+}
+
+.opcua-error__detail {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--bs-secondary-color, #667085);
 }
 
 /* StripChart tag picker — wider panel + dismissible search list */

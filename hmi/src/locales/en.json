@@ -481,11 +481,34 @@
     "clearSelection": "Clear selection",
     "unnamed": "Unnamed",
     "create": "Create",
-    "remove": "Remove",
     "loading": "Loading...",
     "connecting": "Connecting to OPC UA server…",
     "connectingHint": "Validating the connection. Please wait; do not click again until it finishes or times out.",
     "connectTimeout": "Could not connect to the OPC UA server (timed out).",
+    "errors": {
+      "title": "Communication problem",
+      "formIncomplete": "Enter a name, host and port before connecting.",
+      "endpoint": "Server: {{host}}:{{port}}",
+      "endpointUrl": "Server: {{url}}",
+      "clientName": "Client: {{client}}",
+      "connection_refused": "The OPC UA server is not reachable. Confirm that it is running and that the host and port are correct.",
+      "connection_timeout": "The OPC UA server did not respond in time. Check the network path and that the port is open.",
+      "host_unresolved": "The host name could not be resolved. Check the address.",
+      "host_unreachable": "The host is unreachable from this station. Check routing and firewalls.",
+      "session_closed": "The OPC UA session was closed. Try connecting again.",
+      "not_connected": "This client is not connected to its OPC UA server. The node tree cannot be loaded until the session is up.",
+      "client_not_found": "That OPC UA client is no longer available.",
+      "browse_failed": "The node tree could not be retrieved from the OPC UA server.",
+      "add_failed": "The OPC UA client could not be created.",
+      "update_failed": "The OPC UA client could not be updated.",
+      "remove_failed": "The OPC UA client could not be removed.",
+      "duplicate_name": "A client with this name already exists.",
+      "not_owned": "This OPC UA client belongs to another edge node.",
+      "identity_missing": "The edge node identity is not configured.",
+      "discovery_failed": "No OPC UA server was found at this address.",
+      "invalid_request": "The request is not valid.",
+      "unknown": "The OPC UA connection could not be completed."
+    },
     "clientConnected": "Client connected",
     "clientDisconnected": "Client disconnected",
     "dbFile": "dbFile",
@@ -942,11 +965,6 @@
     "exportSuccess": "Data exported successfully",
     "exportError": "Error exporting data",
     "exportToCSV": "Export to CSV",
-    "noMachinesAvailable": "No machines available",
-    "noDescription": "No description available",
-    "state": "State",
-    "classification": "Classification",
-    "machineNotFound": "Machine not found",
     "editConfigComingSoon": "Configuration editing functionality coming soon",
     "comingSoon": "This page is under development. Coming soon...",
     "editConfiguration": "Edit configuration",
@@ -1085,7 +1103,58 @@
     "signalModeRaw": "Raw",
     "signalModeFiltered": "Filtered",
     "signalModeHint": "Use the raw field value or the filtered derivative (.f) on this machine",
-    "signalModeUpdated": "Signal mode updated"
+    "signalModeUpdated": "Signal mode updated",
+    "attrs": {
+      "state": "State",
+      "description": "Description",
+      "classification": "Classification",
+      "priority": "Priority",
+      "criticity": "Criticity",
+      "name": "Name",
+      "interval": "Interval",
+      "sample_interval": "Sample interval",
+      "buffer_size": "Buffer size",
+      "threshold": "Threshold",
+      "on_delay": "On delay",
+      "inlet_flow": "Inlet flow",
+      "outlet_flow": "Outlet flow",
+      "inlet_pressure": "Inlet pressure",
+      "outlet_pressure": "Outlet pressure",
+      "inlet_density": "Inlet density",
+      "outlet_density": "Outlet density",
+      "fluid": "Fluid",
+      "execution_interval": "Execution interval"
+    },
+    "states": {
+      "waiting": "Waiting",
+      "wait": "Waiting",
+      "running": "Running",
+      "run": "Running",
+      "leaking": "Leaking",
+      "leak": "Leaking",
+      "pre_alarming": "Pre-alarming",
+      "pre_alarm": "Pre-alarming",
+      "starting": "Starting",
+      "start": "Starting",
+      "restarting": "Restarting",
+      "resetting": "Resetting",
+      "sleep": "Sleep",
+      "test": "Test",
+      "con_restart": "Confirm restart",
+      "confirm_restart": "Confirm restart",
+      "confirm_restarting": "Confirming restart",
+      "con_reset": "Confirm reset",
+      "confirm_reset": "Confirm reset",
+      "confirm_resetting": "Confirming reset"
+    },
+    "classifications": {
+      "leak_detection": "Leak detection",
+      "general_leak_detection": "General leak detection",
+      "system": "System",
+      "configuration": "Configuration",
+      "lds_field_validation": "LDS field validation",
+      "leak_report": "Leak report"
+    }
   },
   "alarms": {
     "editAlarm": "Edit alarm",
@@ -1730,6 +1799,308 @@
     "infoAudit": "Latest operator classifications. A classified event cannot be changed.",
     "auditLine": "Event #{{id}} classified as {{verdict}} by @{{user}} at {{time}}",
     "auditLineAuto": "{{engine}} auto-restarted without LDS confirmation. Counted as an engine false alarm ({{time}})."
+  },
+  "domain": {
+    "common": {
+      "tabIncomplete": "incomplete",
+      "tabLoading": "loading",
+      "tabPendingLoad": "pending load",
+      "unmapped": "Unassigned",
+      "duration": {
+        "120": "2 min",
+        "300": "5 min",
+        "600": "10 min",
+        "900": "15 min",
+        "1800": "30 min",
+        "3600": "1 h",
+        "7200": "2 h",
+        "18000": "5 h",
+        "86400": "24 h"
+      },
+      "sections": {
+        "bayes_calibration": "Bayesian calibration (for LDS)"
+      },
+      "fields": {
+        "artifactsHelp": "Select files with these exact names. lgbm_inference_config.json must match this engine and role.",
+        "threshold_SS": "SS threshold",
+        "threshold_SSHelp": "Steady-state decision threshold.",
+        "threshold_SI": "SI threshold",
+        "threshold_SIHelp": "Shut-in decision threshold.",
+        "threshold_TS": "TS threshold",
+        "threshold_TSHelp": "Transient decision threshold.",
+        "threshold_statistic_SS": "SS statistic threshold",
+        "threshold_statistic_SSHelp": "t-statistic threshold in steady state.",
+        "threshold_statistic_SI": "SI statistic threshold",
+        "threshold_statistic_SIHelp": "t-statistic threshold in shut-in.",
+        "threshold_statistic_TS": "TS statistic threshold",
+        "threshold_statistic_TSHelp": "t-statistic threshold in transient.",
+        "on_delay": "Confirmation delay",
+        "on_delayHelp": "Consecutive seconds above the threshold in pre-alarm before declaring a leak.",
+        "detection_threshold_mode": "Threshold mode",
+        "detection_threshold_modeHelp": "Choose probability (%) or dimensionless statistic.",
+        "window_size": "Window size",
+        "sample_window_size": "Short window (N1)",
+        "inputs": "Logical inputs → buffers",
+        "inputsHelp": "Assign plant channels. Each list shows channel → model input.",
+        "_likelihood_at_threshold": "P at threshold",
+        "bayes_p_SS": "P(leak | motor detects) - SS",
+        "bayes_p_SI": "P(leak | motor detects) - SI",
+        "bayes_p_TS": "P(leak | motor detects) - TS",
+        "bayes_q_SS": "Specificity q_i - SS",
+        "bayes_q_SI": "Specificity q_i - SI",
+        "bayes_q_TS": "Specificity q_i - TS",
+        "bayes_alpha_SS": "Weight α_i - SS",
+        "bayes_alpha_SI": "Weight α_i - SI",
+        "bayes_alpha_TS": "Weight α_i - TS",
+        "bayes_p_SSHelp": "Probability of leak given the motor detects. State SS. 1.0 = uncalibrated (neutral) for p/q.",
+        "bayes_p_SIHelp": "Probability of leak given the motor detects. State SI. 1.0 = uncalibrated (neutral) for p/q.",
+        "bayes_p_TSHelp": "Probability of leak given the motor detects. State TS. 1.0 = uncalibrated (neutral) for p/q.",
+        "bayes_q_SSHelp": "Probability of no-leak given the motor does not detect. State SS.",
+        "bayes_q_SIHelp": "Probability of no-leak given the motor does not detect. State SI.",
+        "bayes_q_TSHelp": "Probability of no-leak given the motor does not detect. State TS.",
+        "bayes_alpha_SSHelp": "Motor weight in LDS fusion (0 = ignore, 1 = full). State SS.",
+        "bayes_alpha_SIHelp": "Motor weight in LDS fusion (0 = ignore, 1 = full). State SI.",
+        "bayes_alpha_TSHelp": "Motor weight in LDS fusion (0 = ignore, 1 = full). State TS."
+      }
+    },
+    "banners": {
+      "filling": "Filling buffer: {{filled}} / {{need}} samples. {{engine}} returns to running when the window is complete.",
+      "rearm": "{{engine}} will return to waiting on the next cycle to apply a window of {{need}} samples.",
+      "restarting": "Restart in progress. This container will stop and Docker will bring it back up.",
+      "pendingLeak": "Structural change deferred: {{engine}} is in alarm (leaking). It will apply when returning to waiting.",
+      "pendingMotors": "An engine change is pending: a restart is required to apply it.",
+      "pendingDiskModels": "{{engine}}: new models on disk. Reset the engine to load them in starting (do not restart the application).",
+      "inputsMapping": "Assign plant channels. Each list shows channel → model input (e.g. Outlet flow → MASS_FLOW_T1).",
+      "needsModels": "{{engine}} stays in starting: define a fluid in LDS and load its models.",
+      "waitingTags": "{{engine}} stays in waiting: the buffer needs the required field variables subscribed.",
+      "volumetricDensity": "{{engine}}: volumetric flow requires a subscribed density tag.",
+      "fluidMismatch": "LDS reports a different fluid than the models currently loaded in {{engine}}."
+    },
+    "attrs": {
+      "inletFlow": "inlet flow",
+      "outletFlow": "outlet flow",
+      "inletPressure": "inlet pressure",
+      "outletPressure": "outlet pressure",
+      "inletDensity": "inlet density",
+      "outletDensity": "outlet density"
+    },
+    "subscribe": {
+      "missing": "Still to subscribe: {{items}}.",
+      "done": "Already subscribed: {{items}}.",
+      "pressure": {
+        "none": "{{engine}} needs at least one subscribed pressure (inlet or outlet) to detect. No pressures are mapped yet.",
+        "inletOnly": "Inlet pressure subscribed: {{engine}} can detect. Outlet pressure is still missing.",
+        "outletOnly": "Outlet pressure subscribed: {{engine}} can detect. Inlet pressure is still missing.",
+        "npwReady": "Inlet and outlet pressures subscribed. NPW can detect and locate.",
+        "ppaReady": "Inlet and outlet pressures subscribed. PPA can detect in delta mode."
+      },
+      "lgbm": {
+        "needModel": "Load the {{engine}} detection model to know whether it uses one point or inlet/outlet measurements. Meanwhile {{engine}} needs at least pressure and flow.",
+        "densityNote": "If flow is volumetric, density is required. If it is mass flow, density is optional to report leak volume.",
+        "modelBoth": "The {{engine}} model uses inlet and outlet measurements: pressure and flow at both ends.",
+        "modelInlet": "The {{engine}} model uses a single measurement point (inlet): inlet pressure and flow.",
+        "modelOutlet": "The {{engine}} model uses a single measurement point (outlet): outlet pressure and flow.",
+        "volHasDensity": "{{flow}} is volumetric and already has {{density}}.",
+        "volNeedDensity": "{{flow}} is volumetric: subscribe {{density}} (required for {{engine}} to operate).",
+        "massHasDensity": "{{flow}} is mass flow and {{density}} is subscribed: leak volume can be reported.",
+        "massOptionalDensity": "{{flow}} is mass flow: {{engine}} can operate. Subscribe {{density}} if you want to report leak volume.",
+        "unknownKind": "If {{flow}} is volumetric, also subscribe {{density}}. If it is mass flow, density is optional for leak volume.",
+        "minReady": "{{engine}} has the minimum subscriptions to operate."
+      },
+      "lds": {
+        "usesFlows": "LDS uses inlet and outlet flow to classify pipeline regime (steady, transient or shut-in) and for mass balance.",
+        "densityNote": "If flow is volumetric, density is required. If it is mass flow, density is optional to identify the fluid and report volume.",
+        "volHasDensity": "{{flow}} is volumetric and already has {{density}}.",
+        "volNeedDensity": "{{flow}} is volumetric: subscribe {{density}} (required for LDS to operate with that flow).",
+        "massHasDensity": "{{flow}} is mass flow and {{density}} is subscribed.",
+        "massOptionalDensity": "{{flow}} is mass flow: LDS can classify regime. Subscribe {{density}} to identify the fluid and report volume.",
+        "unknownKind": "If {{flow}} is volumetric, also subscribe {{density}}. If it is mass flow, density is optional.",
+        "minReady": "LDS has the minimum subscriptions to operate."
+      }
+    },
+    "files": {
+      "looksBinary": "looks like a PDF, Office or other binary file",
+      "notLightGbm": "is not a LightGBM model (must start with 'tree')",
+      "invalidJson": "is not valid JSON",
+      "featuresArray": "must be an array of feature names",
+      "mustBeObject": "must be a JSON object",
+      "missingInputs": "missing 'inputs'",
+      "missingFeatureColumns": "missing 'feature_columns'",
+      "windowSize": "'window_size' must be ≥ 1",
+      "notLabelMapping": "does not look like a label_mapping (labels/cluster_centers/mapping)",
+      "unreadable": "could not read the file",
+      "missingProblemType": "missing problem_type; slot {{slot}} expects {{want}}",
+      "wrongProblemType": "is '{{problem}}', but {{slot}} expects {{want}}. Do not mix detection/diagnosis or PFM/Observer",
+      "labelColumnWrongSlot": "label_column='{{column}}' does not belong to {{slot}}",
+      "labelColumnMismatch": "label_column='{{column}}' does not match {{slot}}",
+      "labelColumnOtherRole": "label_column='{{column}}' belongs to another role. Slot: {{slot}}",
+      "observerOutputKey": "output_key must be 'leak_flow' in {{slot}} (a PFM LEAKFLOW file cannot be used here)",
+      "pfmLeakflowOutputKey": "output_key='leak_flow' belongs to Observer Detection, not {{slot}}"
+    },
+    "slots": {
+      "PFM": {
+        "DETECTION": "PFM / Detection (binary classification)",
+        "LEAKFLOW": "PFM / Leak flow (regression)",
+        "SIZE": "PFM / Leak size (classification)",
+        "LOCATION": "PFM / Location (classification)"
+      },
+      "OBSERVER": {
+        "DETECTION": "Observer / Detection (flow regression)",
+        "SIZE": "Observer / Leak size (regression)",
+        "LOCATION": "Observer / Location (regression)"
+      }
+    },
+    "lds": {
+      "engine": "LDS",
+      "title": "LDS configuration",
+      "banners": {
+        "needsFluid": "LDS stays in starting: add at least one fluid in Fluids and densities (name, min and max density) and click Save.",
+        "noEngines": "No detection engine is active. Enable at least PPA, NPW, PFM or Observer in Detection engines and click Save (adding or removing engines requires a restart)."
+      },
+      "sections": {
+        "alarm": "Alarm decision",
+        "auto_restart": "Engine auto-restart",
+        "modules": "Detection engines",
+        "fluids": "Fluids and densities",
+        "operation": "Pipeline operating state"
+      },
+      "fields": {
+        "detection_threshold": "Fusion threshold",
+        "detection_thresholdHelp": "Minimum combined confidence to consider a leak. For example, 60% requires fusion of all engines to reach at least that value.",
+        "on_delay": "Confirmation time",
+        "on_delayHelp": "Consecutive seconds that fusion must stay above the threshold before declaring a leak. Filters short spikes.",
+        "p_leak": "Prior leak probability",
+        "p_leakHelp": "How often you expect leaks on this pipeline before looking at the engines. A low value (e.g. 0.01) assumes leaks are rare.",
+        "negative_evidence": "No-leak evidence",
+        "negative_evidenceHelp": "If enabled, a motor in normal operation reduces leak confidence. If off, only motors that detected count.",
+        "orphan_auto_restart_s": "If LDS does not fire",
+        "orphan_auto_restart_sHelp": "Time an individual motor stays leaking without LDS confirmation before auto-restart. Default: 2 min.",
+        "fleet_auto_restart_enabled": "If LDS is fired",
+        "fleet_auto_restart_enabledHelp": "Default off. If enabled, when LDS and all detection motors are leaking and nobody restarts them, the whole fleet (including LDS) auto-restarts.",
+        "fleet_auto_restart_s": "Time with LDS fired",
+        "fleet_auto_restart_sHelp": "Time with LDS and all detection motors leaking, without operator restart, before auto-restarting the fleet. Only applies if the switch is Yes.",
+        "module_PPA": "PPA",
+        "module_PPAHelp": "Pressure-point analysis engine.",
+        "module_NPW": "NPW",
+        "module_NPWHelp": "Negative pressure wave engine.",
+        "module_PFM": "PFM",
+        "module_PFMHelp": "Pressure-flow monitoring engine. Requires a loaded LGBM model.",
+        "module_Observer": "Observer",
+        "module_ObserverHelp": "Estimates leak flow. Requires a loaded LGBM model.",
+        "fluids": "Fluids table",
+        "fluidsHelp": "Density ranges to identify the fluid in transit. Save applies the table immediately.",
+        "fluids_name": "Fluid",
+        "fluids_min": "Min. density",
+        "fluids_max": "Max. density",
+        "fluids_unit": "Unit",
+        "flow_variance_threshold": "Transient threshold",
+        "flow_variance_thresholdHelp": "If flow variance exceeds this value, LDS classifies the pipeline as transient (startups, setpoint changes).",
+        "flow_shutin_threshold": "Shut-in threshold",
+        "flow_shutin_thresholdHelp": "If average flow drops below this value, LDS classifies the pipeline as shut-in."
+      }
+    },
+    "ppa": {
+      "engine": "PPA",
+      "title": "PPA configuration",
+      "sections": {
+        "detection_mode": "Mode and thresholds",
+        "windows": "Statistical windows (N0, N1)",
+        "bayes_calibration": "Bayesian calibration (for LDS)"
+      },
+      "fields": {
+        "detection_threshold_mode": "Threshold mode",
+        "detection_threshold_mode_opt_probability": "Probability (%)",
+        "detection_threshold_mode_opt_statistic": "t-statistic (adim)",
+        "window_size": "Long window (N0)",
+        "window_sizeHelp": "Population window. Must be greater than N1.",
+        "sample_window_size": "Short window (N1)",
+        "sample_window_sizeHelp": "Recent sample. Must be smaller than N0 (window size).",
+        "on_delay": "Confirmation delay",
+        "on_delayHelp": "Seconds in pre-alarm before declaring a leak."
+      }
+    },
+    "npw": {
+      "engine": "NPW",
+      "title": "NPW configuration",
+      "sections": {
+        "detection": "Detection and thresholds",
+        "windows_wavelet": "Windows and wavelet",
+        "geometry": "Geometry",
+        "bayes_calibration": "Bayesian calibration (for LDS)"
+      },
+      "fields": {
+        "detection_threshold_mode": "Threshold mode",
+        "detection_threshold_mode_opt_probability": "Probability (%)",
+        "detection_threshold_mode_opt_statistic": "Statistic (adim)",
+        "define_by_wavelet_level": "Size criterion",
+        "window_size": "Window size",
+        "baseline_window": "Baseline window",
+        "wavelet_family": "Wavelet family",
+        "wavelet_level": "Wavelet level",
+        "pipeline_length_m": "Pipeline length",
+        "pipeline_length_mHelp": "Length between pressure sensors, in metres.",
+        "speed_of_sound": "Speed of sound",
+        "speed_of_soundHelp": "Effective acoustic speed in the fluid.",
+        "on_delay": "Confirmation delay"
+      }
+    },
+    "pfm": {
+      "engine": "PFM",
+      "title": "PFM configuration (Pressure Flow Monitoring)",
+      "sections": {
+        "models_by_fluid": "LGBM models by fluid",
+        "inputs_mapping": "Model input mapping",
+        "detection_thresholds": "Decision thresholds (SS / SI / TS)",
+        "bayes_calibration": "Bayesian calibration (for LDS)",
+        "inputs_mappingHint": "Assign plant channels. Each list shows channel → model input (e.g. Outlet flow → MASS_FLOW_T1)."
+      },
+      "roles": {
+        "DETECTION": "Detection",
+        "LEAKFLOW": "Leak flow",
+        "SIZE": "Leak size",
+        "LOCATION": "Leak location"
+      },
+      "fields": {
+        "on_delay": "Confirmation (on_delay)",
+        "inputs": "Logical inputs → buffers"
+      },
+      "subscribeHints": {
+        "inlet_flow": "PFM models work in mass flow. If the field tag is volumetric, also subscribe inlet density; without it the engine stays in Waiting. If it is mass flow, density is optional and lets you estimate leaked volume in diagnosis.",
+        "outlet_flow": "PFM models work in mass flow. If the field tag is volumetric, also subscribe outlet density; without it the engine stays in Waiting. If it is mass flow, density is optional and lets you estimate leaked volume in diagnosis.",
+        "inlet_density": "Inlet density converts volumetric flow to mass flow (required in that case) and lets you report leaked volume when flow is already mass.",
+        "outlet_density": "Outlet density converts volumetric flow to mass flow (required in that case) and lets you report leaked volume when flow is already mass."
+      }
+    },
+    "observer": {
+      "engine": "Observer",
+      "title": "Observer configuration (Leak flow)",
+      "sections": {
+        "models_by_fluid": "LGBM models by fluid",
+        "inputs_mapping": "Model input mapping",
+        "detection_thresholds": "Decision thresholds (flow)",
+        "bayes_calibration": "Bayesian calibration (for LDS)",
+        "inputs_mappingHint": "Assign plant channels. Each list shows channel → model input (e.g. Outlet flow → MASS_FLOW_T1)."
+      },
+      "roles": {
+        "DETECTION": "Detection",
+        "SIZE": "Leak size",
+        "LOCATION": "Leak location"
+      },
+      "fields": {
+        "threshold_SS": "SS",
+        "threshold_SI": "SI",
+        "threshold_TS": "TS",
+        "_likelihood_at_threshold": "P at threshold",
+        "on_delay": "On-delay",
+        "on_delayHelp": "Confirmation: consecutive seconds above the pre-alarm threshold before declaring a leak.",
+        "inputs": "Logical inputs → buffers"
+      },
+      "subscribeHints": {
+        "inlet_flow": "Inlet flow (kg/s or m³/s). If the tag is volumetric, also subscribe inlet density; without it the engine stays in Waiting. If it is mass flow, density is optional and lets you estimate leaked volume in diagnosis.",
+        "outlet_flow": "Outlet flow (kg/s or m³/s). If the tag is volumetric, also subscribe outlet density; without it the engine stays in Waiting. If it is mass flow, density is optional and lets you estimate leaked volume in diagnosis.",
+        "inlet_density": "Inlet density (kg/m³) — required if flow is volumetric",
+        "outlet_density": "Outlet density (kg/m³) — required if flow is volumetric"
+      }
+    }
   }
 }
-

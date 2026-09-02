@@ -48,6 +48,8 @@ class UsersLogger(BaseLogger):
 
         * **user** (User): User object containing name, password, email, roles.
         """
+        if user is None:
+            return None, "user is required"
         return Users.create(
             user=user
         )

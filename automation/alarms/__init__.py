@@ -316,13 +316,13 @@ class Alarm(StateMachine):
     @validate_types(
             tag=str, 
             value=Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|Volume|MassFlow|Density|Percentage|Adimentional, 
-            timestamp=datetime, 
+            timestamp=(datetime, type(None)), 
             output=None)
     def notify(
         self, 
         tag:str, 
         value:Temperature|Length|Current|Time|Pressure|Mass|Force|Power|VolumetricFlow|Volume|MassFlow|Density|Percentage|Adimentional, 
-        timestamp:datetime):
+        timestamp:datetime|None):
         r"""
         Callback triggered when the monitored Tag value changes (Observer pattern).
         
@@ -334,8 +334,11 @@ class Alarm(StateMachine):
 
         * **tag** (str): Tag name.
         * **value** (Quantity): The new tag value.
-        * **timestamp** (datetime): Time of the value change.
+        * **timestamp** (datetime): Time of the value change. ``None`` is ignored
+          (tag never had a last-good sample).
         """ 
+        if timestamp is None:
+            return
         self.__timestamp = timestamp
         if self.state not in (AlarmState.DSUPR, AlarmState.SHLVD, AlarmState.OOSRV):
             if self._is_iad_alarm():
@@ -353,6 +356,11 @@ class Alarm(StateMachine):
     def _is_iad_alarm(self) -> bool:
         name = (getattr(self, "name", None) or "").lower()
         return name.endswith(".iad") or name.startswith("alarm.iad.") or ".iad." in name
+
+    def _is_quality_alarm(self) -> bool:
+        """Instrument-quality BOOL (ALM.QUALITY.*), not a process setpoint."""
+        name = (getattr(self, "name", None) or "").lower()
+        return ".alm.quality." in name or name.startswith("alm.quality.")
 
     def _iad_condition_met(self) -> bool:
         """IAD alarms follow signal quality, not the analog PV as BOOL."""
@@ -568,20 +576,28 @@ class Alarm(StateMachine):
         r"""
         Triggers transition to normal or return-to-normal states.
 
-        RTN Unacknowledged with condition still normal: no-op. The operator
-        must acknowledge to reach Normal (ISA-18.2).
+        Process alarms: RTN Unacknowledged until the operator acks (ISA-18.2).
+        ``ALM.QUALITY.*`` auto-clears to Normal when the PV is GOOD again so
+        the HMI does not keep a diagnostic alarm after OPC recovers.
         """
         current_state = self.current_state.name.lower()
+        auto_clear = self._is_quality_alarm()
 
         if current_state=="unack_alarm":
 
             transition_name = f'{current_state}_to_rtn_unack'
             self.__transition(transition_name=transition_name)
+            if auto_clear:
+                self._apply_acknowledge(datetime.now(timezone.utc))
 
         elif current_state=="ack_alarm":
 
             transition_name = f'{current_state}_to_normal'
             self.__transition(transition_name=transition_name)
+
+        elif current_state=="rtn_unack" and auto_clear:
+
+            self._apply_acknowledge(datetime.now(timezone.utc))
 
     def _apply_acknowledge(self, now:datetime)->bool:
         r"""

@@ -342,6 +342,10 @@ class PeeweeRemoteDB:
                 if row is None:
                     if tag_name in tag_cache and tag_cache.get(tag_name) is None:
                         outcomes[index] = _missing_tag_should_drop(str(tag_name or ""))
+                    else:
+                        # Unmappable payload (no timestamp / value / unit) must
+                        # drain. Retrying it 5× only dead-letters the journal.
+                        outcomes[index] = True
                     continue
                 _clear_missing_tag(str(tag_name or ""))
                 insert_at.append(index)

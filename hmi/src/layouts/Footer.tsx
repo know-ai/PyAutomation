@@ -105,9 +105,12 @@ export function Footer() {
     }
     const state = alarm.state;
     if (typeof state === "object") {
-      return state.mnemonic || state.state || "-";
+      const raw = state.mnemonic || state.state || "-";
+      return t(`alarms.states.${raw}`) !== `alarms.states.${raw}` ? t(`alarms.states.${raw}`) : String(raw);
     }
-    return String(state || "-");
+    const raw = String(state || "-");
+    const key = `alarms.states.${raw}`;
+    return t(key) !== key ? t(key) : raw;
   };
 
   const handleRowClick = () => {
@@ -239,12 +242,12 @@ export function Footer() {
       <table className="table table-sm table-borderless mb-0 footer-alarms-table">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>State</th>
-            <th>Trigger Value</th>
-            <th>Alarm Time</th>
-            <th>Ack Timestamp</th>
+            <th>{t("tables.name")}</th>
+            <th>{t("tables.type")}</th>
+            <th>{t("tables.state")}</th>
+            <th>{t("tables.triggerValue")}</th>
+            <th>{t("tables.alarmDateTime")}</th>
+            <th>{t("alarms.ackTimestamp")}</th>
           </tr>
         </thead>
         <tbody>

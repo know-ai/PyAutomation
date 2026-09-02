@@ -3,6 +3,17 @@ from flask_restx import Namespace, Resource, fields, reqparse
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ....opcua.errors import (
+    ADD_FAILED,
+    BROWSE_FAILED,
+    INVALID_REQUEST,
+    NOT_OWNED,
+    REMOVE_FAILED,
+    UPDATE_FAILED,
+    from_connect_failure,
+    opcua_error,
+    unpack_result,
+)
 import json
 from datetime import datetime
 
@@ -34,6 +45,37 @@ def _client_scope_error(client_name=None):
             if row.get("client_name") == client_name:
                 return {'message': 'OPC UA client belongs to another edge node'}, 403
     return None
+
+
+def _scope_error_payload(violation):
+    if not violation:
+        return None
+    body, status = violation
+    message = body.get("message") if isinstance(body, dict) else str(body)
+    code = NOT_OWNED if "another" in str(message).lower() else "identity_missing"
+    return opcua_error(code, message=message), status
+
+
+def _command_result(result, fallback_code, **params):
+    if result is None:
+        return opcua_error(fallback_code, **params), None
+    ok, payload = unpack_result(result)
+    if ok:
+        return None, payload
+    return from_connect_failure(payload, **params), None
+
+
+def _browse_result(result, fallback_code, **params):
+    if result is None:
+        return opcua_error(fallback_code, **params), 400
+    tree, status = unpack_result(result)
+    if tree is None:
+        return opcua_error(fallback_code, **params), 400
+    if isinstance(tree, dict) and tree.get("code") and "Objects" not in tree and "children" not in tree:
+        return tree, status or 400
+    if isinstance(status, int) and status >= 400:
+        return from_connect_failure(tree, **params), status
+    return tree, status or 200
 
 # Models
 add_client_model = api.model("add_client_model", {
@@ -286,32 +328,31 @@ class AddOPCUAClientResource(Resource):
         args = add_client_parser.parse_args()
         scope, error = _node_scope()
         if error:
-            return error
+            return _scope_error_payload(error)
         owner_node = args.get('owner_node') or scope.node_id
         if scope.enabled and owner_node != scope.node_id:
-            return {'message': 'OPC UA client belongs to another edge node'}, 403
+            return opcua_error(NOT_OWNED, client=args['client_name']), 403
+        host = args.get('host', '127.0.0.1')
+        port = args.get('port', 4840)
+        params = {
+            "client": args["client_name"],
+            "host": host,
+            "port": port,
+            "url": f"opc.tcp://{host}:{port}",
+        }
         result = app.add_opcua_client(
             client_name=args['client_name'],
-            host=args.get('host', '127.0.0.1'),
-            port=args.get('port', 4840),
+            host=host,
+            port=port,
             owner_node=owner_node,
         )
-        
-        if result:
-            success, message_or_data = result
-            if success:
-                return {
-                    'message': f"OPC UA client '{args['client_name']}' added successfully",
-                    'data': message_or_data if isinstance(message_or_data, dict) else {'message': message_or_data}
-                }, 200
-            else:
-                return {
-                    'message': f"Failed to add OPC UA client: {message_or_data}"
-                }, 400
-        
-        return {
-            'message': f"Failed to discover OPC UA server at {args.get('host', '127.0.0.1')}:{args.get('port', 4840)}"
-        }, 400
+        error, payload = _command_result(result, ADD_FAILED, **params)
+        if error is None:
+            return {
+                'message': f"OPC UA client '{args['client_name']}' added successfully",
+                'data': payload if isinstance(payload, dict) else {'message': payload}
+            }, 200
+        return error, 400
 
 
 @ns.route('/update/<client_name>')
@@ -330,32 +371,28 @@ class UpdateOPCUAClientResource(Resource):
         Updates the configuration (name, host, port) of an existing OPC UA client.
         """
         args = update_client_parser.parse_args()
-        violation = _client_scope_error(client_name)
-        if violation:
-            return violation
+        scoped = _scope_error_payload(_client_scope_error(client_name))
+        if scoped:
+            return scoped
+        params = {
+            "client": args.get("new_client_name") or client_name,
+            "host": args.get("host"),
+            "port": args.get("port"),
+        }
         result = app.update_opcua_client(
             old_client_name=client_name,
             new_client_name=args.get('new_client_name'),
             host=args.get('host'),
             port=args.get('port')
         )
-        
-        if result:
-            success, message_or_data = result
-            if success:
-                new_name = args.get('new_client_name') or client_name
-                return {
-                    'message': f"OPC UA client '{client_name}' updated successfully" + (f" to '{new_name}'" if new_name != client_name else ""),
-                    'data': message_or_data if isinstance(message_or_data, dict) else {'message': message_or_data}
-                }, 200
-            else:
-                return {
-                    'message': f"Failed to update OPC UA client: {message_or_data}"
-                }, 400
-        
-        return {
-            'message': f"Failed to update OPC UA client: Unknown error"
-        }, 400
+        error, payload = _command_result(result, UPDATE_FAILED, **params)
+        if error is None:
+            new_name = args.get('new_client_name') or client_name
+            return {
+                'message': f"OPC UA client '{client_name}' updated successfully" + (f" to '{new_name}'" if new_name != client_name else ""),
+                'data': payload if isinstance(payload, dict) else {'message': payload}
+            }, 200
+        return error, 400
 
 
 @ns.route('/remove/<client_name>')
@@ -372,9 +409,9 @@ class RemoveOPCUAClientResource(Resource):
 
         Disconnects and removes an OPC UA client configuration.
         """
-        violation = _client_scope_error(client_name)
-        if violation:
-            return violation
+        scoped = _scope_error_payload(_client_scope_error(client_name))
+        if scoped:
+            return scoped
         success = app.remove_opcua_client(client_name=client_name)
         
         if success:
@@ -382,9 +419,7 @@ class RemoveOPCUAClientResource(Resource):
                 'message': f"OPC UA client '{client_name}' removed successfully"
             }, 200
         
-        return {
-            'message': f"OPC UA client '{client_name}' not found or failed to remove"
-        }, 400
+        return opcua_error(REMOVE_FAILED, client=client_name), 400
 
 
 @ns.route('/tree/<client_name>')
@@ -401,9 +436,9 @@ class OPCUAClientTreeResource(Resource):
 
         Retrieves the hierarchical node tree structure from a connected OPC UA server.
         """
-        violation = _client_scope_error(client_name)
-        if violation:
-            return violation
+        scoped = _scope_error_payload(_client_scope_error(client_name))
+        if scoped:
+            return scoped
         try:
             # Query params opcionales para soportar diferentes servidores y controlar performance
             mode = request.args.get("mode", "generic")  # generic | legacy
@@ -412,19 +447,20 @@ class OPCUAClientTreeResource(Resource):
             include_properties = request.args.get("include_properties", "true").lower() in ("1", "true", "yes")
             include_property_values = request.args.get("include_property_values", "false").lower() in ("1", "true", "yes")
 
-            tree, status = app.get_opcua_tree(
-                client_name=client_name,
-                mode=mode,
-                max_depth=max_depth,
-                max_nodes=max_nodes,
-                include_properties=include_properties,
-                include_property_values=include_property_values,
+            return _browse_result(
+                app.get_opcua_tree(
+                    client_name=client_name,
+                    mode=mode,
+                    max_depth=max_depth,
+                    max_nodes=max_nodes,
+                    include_properties=include_properties,
+                    include_property_values=include_property_values,
+                ),
+                BROWSE_FAILED,
+                client=client_name,
             )
-            return tree, status
-        except Exception as e:
-            return {
-                'message': f"Failed to retrieve node tree for client '{client_name}': {str(e)}"
-            }, 400
+        except Exception as exc:
+            return from_connect_failure(exc, client=client_name), 400
 
 
 @ns.route('/tree_children/<client_name>')
@@ -447,13 +483,13 @@ class OPCUAClientTreeChildrenResource(Resource):
         - include_property_values
         - fallback_to_legacy
         """
-        violation = _client_scope_error(client_name)
-        if violation:
-            return violation
+        scoped = _scope_error_payload(_client_scope_error(client_name))
+        if scoped:
+            return scoped
         try:
             node_id = request.args.get("node_id")
             if not node_id:
-                return {"message": "node_id query param is required"}, 400
+                return opcua_error(INVALID_REQUEST, client=client_name), 400
 
             mode = request.args.get("mode", "generic")  # generic | legacy
             max_nodes = int(request.args.get("max_nodes", "5000"))
@@ -461,20 +497,21 @@ class OPCUAClientTreeChildrenResource(Resource):
             include_property_values = request.args.get("include_property_values", "false").lower() in ("1", "true", "yes")
             fallback_to_legacy = request.args.get("fallback_to_legacy", "true").lower() in ("1", "true", "yes")
 
-            children, status = app.get_opcua_tree_children(
-                client_name=client_name,
-                node_id=node_id,
-                mode=mode,
-                max_nodes=max_nodes,
-                include_properties=include_properties,
-                include_property_values=include_property_values,
-                fallback_to_legacy=fallback_to_legacy,
+            return _browse_result(
+                app.get_opcua_tree_children(
+                    client_name=client_name,
+                    node_id=node_id,
+                    mode=mode,
+                    max_nodes=max_nodes,
+                    include_properties=include_properties,
+                    include_property_values=include_property_values,
+                    fallback_to_legacy=fallback_to_legacy,
+                ),
+                BROWSE_FAILED,
+                client=client_name,
             )
-            return children, status
-        except Exception as e:
-            return {
-                "message": f"Failed to retrieve node children for client '{client_name}': {str(e)}"
-            }, 400
+        except Exception as exc:
+            return from_connect_failure(exc, client=client_name), 400
 
 
 @ns.route('/variables/<client_name>')
@@ -495,27 +532,28 @@ class OPCUAClientVariablesResource(Resource):
         - max_nodes
         - fallback_to_legacy
         """
-        violation = _client_scope_error(client_name)
-        if violation:
-            return violation
+        scoped = _scope_error_payload(_client_scope_error(client_name))
+        if scoped:
+            return scoped
         try:
             mode = request.args.get("mode", "generic")
             max_depth = int(request.args.get("max_depth", "20"))
             max_nodes = int(request.args.get("max_nodes", "50000"))
             fallback_to_legacy = request.args.get("fallback_to_legacy", "true").lower() in ("1", "true", "yes")
 
-            data, status = app.get_opcua_variables(
-                client_name=client_name,
-                mode=mode,
-                max_depth=max_depth,
-                max_nodes=max_nodes,
-                fallback_to_legacy=fallback_to_legacy,
+            return _browse_result(
+                app.get_opcua_variables(
+                    client_name=client_name,
+                    mode=mode,
+                    max_depth=max_depth,
+                    max_nodes=max_nodes,
+                    fallback_to_legacy=fallback_to_legacy,
+                ),
+                BROWSE_FAILED,
+                client=client_name,
             )
-            return data, status
-        except Exception as e:
-            return {
-                "message": f"Failed to retrieve variables for client '{client_name}': {str(e)}"
-            }, 400
+        except Exception as exc:
+            return from_connect_failure(exc, client=client_name), 400
 
 
 @ns.route('/attrs/<client_name>')
@@ -534,31 +572,17 @@ class OPCUAClientAttributesResource(Resource):
         Reads attributes (e.g., Description, DataType) from multiple nodes using the specified OPC UA client.
         Requires namespaces list in request body as JSON array.
         """
-        violation = _client_scope_error(client_name)
-        if violation:
-            return violation
+        scoped = _scope_error_payload(_client_scope_error(client_name))
+        if scoped:
+            return scoped
         if not request.is_json:
-            return {
-                'message': "Request must be JSON with 'namespaces' array"
-            }, 400
+            return opcua_error(INVALID_REQUEST, client=client_name), 400
         
         data = request.json
         namespaces = data.get('namespaces')
         
-        if not namespaces:
-            return {
-                'message': "namespaces parameter is required in request body as array"
-            }, 400
-        
-        if not isinstance(namespaces, list):
-            return {
-                'message': "namespaces must be an array/list"
-            }, 400
-        
-        if len(namespaces) == 0:
-            return {
-                'message': "namespaces array cannot be empty"
-            }, 400
+        if not namespaces or not isinstance(namespaces, list):
+            return opcua_error(INVALID_REQUEST, client=client_name), 400
         
         try:
             attributes = app.get_node_attributes(client_name=client_name, namespaces=namespaces)
@@ -567,10 +591,8 @@ class OPCUAClientAttributesResource(Resource):
             return {
                 'data': serialized_attributes
             }, 200
-        except Exception as e:
-            return {
-                'message': f"Failed to read node attributes for client '{client_name}': {str(e)}"
-            }, 400
+        except Exception as exc:
+            return from_connect_failure(exc, client=client_name), 400
 
 
 @ns.route('/values/<client_name>')
@@ -590,31 +612,17 @@ class OPCUAClientValuesResource(Resource):
         Used for polling time and updating in the explorer.
         Requires namespaces list in request body as JSON array.
         """
-        violation = _client_scope_error(client_name)
-        if violation:
-            return violation
+        scoped = _scope_error_payload(_client_scope_error(client_name))
+        if scoped:
+            return scoped
         if not request.is_json:
-            return {
-                'message': "Request must be JSON with 'namespaces' array"
-            }, 400
+            return opcua_error(INVALID_REQUEST, client=client_name), 400
         
         data = request.json
         namespaces = data.get('namespaces')
         
-        if not namespaces:
-            return {
-                'message': "namespaces parameter is required in request body as array"
-            }, 400
-        
-        if not isinstance(namespaces, list):
-            return {
-                'message': "namespaces must be an array/list"
-            }, 400
-        
-        if len(namespaces) == 0:
-            return {
-                'message': "namespaces array cannot be empty"
-            }, 400
+        if not namespaces or not isinstance(namespaces, list):
+            return opcua_error(INVALID_REQUEST, client=client_name), 400
         
         try:
             values = app.get_node_values(client_name=client_name, namespaces=namespaces)
@@ -624,8 +632,6 @@ class OPCUAClientValuesResource(Resource):
             return {
                 'data': serialized_values
             }, 200
-        except Exception as e:
-            return {
-                'message': f"Failed to read node values for client '{client_name}': {str(e)}"
-            }, 400
+        except Exception as exc:
+            return from_connect_failure(exc, client=client_name), 400
 

@@ -999,6 +999,28 @@ class TestTagValuePayloadMapper(unittest.TestCase):
         remote._tag_inserter.insert_tag_values.assert_not_called()
         reset_missing_tag_tries()
 
+    def test_unmappable_timestamp_is_acked_without_retry(self):
+        from unittest.mock import Mock
+        from types import SimpleNamespace
+
+        from ..persistence.remote import PeeweeRemoteDB, TagValuePayloadMapper
+
+        unit = SimpleNamespace(id=1)
+        tag = SimpleNamespace(id=1, display_unit=unit, unit=unit)
+        remote = PeeweeRemoteDB(
+            tag_mapper=TagValuePayloadMapper(
+                resolve_tag=lambda _name: tag,
+                resolve_unit=lambda _tag: unit,
+            )
+        )
+        remote._tag_inserter = Mock()
+        outcomes = remote.write_batch_outcomes(
+            "tag",
+            [{"tag": "Supe.Linea2.PI_02", "value": 1.0, "timestamp": None}],
+        )
+        self.assertEqual(outcomes, [True])
+        remote._tag_inserter.insert_tag_values.assert_not_called()
+
 
 class TestReplicatorDomainIsolation(unittest.TestCase):
     def setUp(self):

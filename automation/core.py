@@ -2069,6 +2069,8 @@ class PyAutomation(Singleton):
                         identifier=identifier,
                         encode_password=encode_password
                     )
+                    if user is None:
+                        return None, message or "Signup failed"
                     # Verificar que la conexión realmente funciona antes de intentar guardar
                     db = self.db_manager.get_db()
                     if db is None:
@@ -2093,7 +2095,16 @@ class PyAutomation(Singleton):
                             return None, "Could not persist user to database. The connection may have been lost during the operation or there is a problem with the database configuration."
                         # Si result es una tupla, usar el mensaje
                         if isinstance(result, tuple) and len(result) == 2:
-                            _, db_message = result
+                            db_user, db_message = result
+                            if db_user is None:
+                                try:
+                                    users.drop_cached_user(username)
+                                except Exception:
+                                    logging.debug(
+                                        "signup rollback of in-memory user skipped",
+                                        exc_info=True,
+                                    )
+                                return None, db_message or "Signup failed"
                             message = db_message if db_message else message
                     except (OperationalError, InterfaceError, DatabaseError) as db_error:
                         # Error específico de base de datos al intentar guardar

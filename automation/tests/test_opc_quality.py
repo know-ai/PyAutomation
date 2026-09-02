@@ -14,8 +14,10 @@ from automation.signal_conditioning.quality import (
     is_process_alarm_allowed,
     status_code_to_quality,
 )
+from automation.state_machine import StateMachineCore
 from automation.tags.cvt import CVT, CVTEngine
-from automation.tags.tag import Tag
+from automation.tags.tag import MachineObserver, Tag
+from automation.variables import Adimentional
 
 
 def _make_tag(name: str = "PV.Press", **kwargs) -> Tag:
@@ -127,6 +129,37 @@ class TestHoldLast(unittest.TestCase):
         self.assertEqual(payload["quality_label"], "BAD")
         self.assertTrue(payload["stale"])
         self.assertIsNotNone(payload["stale_age_ms"])
+
+    def test_first_bad_sample_does_not_notify_machine_without_timestamp(self):
+        """Lab / OPC down: first sample is BAD, Tag.timestamp stays None (hold-last)."""
+        tag = _make_tag()
+        machine = MagicMock()
+        tag.attach(MachineObserver(machine))
+        ts = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        tag.set_value(value=0.0, timestamp=ts, quality=BAD)
+        machine.notify.assert_not_called()
+        self.assertIsNone(tag.get_timestamp())
+        self.assertTrue(tag.stale)
+        self.assertEqual(tag.quality, BAD)
+
+    def test_machine_notified_after_first_good_sample(self):
+        tag = _make_tag()
+        machine = MagicMock()
+        tag.attach(MachineObserver(machine))
+        ts = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        tag.set_value(value=1.0, timestamp=ts, quality=GOOD)
+        machine.notify.assert_called_once()
+        _, kwargs = machine.notify.call_args
+        self.assertEqual(kwargs["tag"], tag.name)
+        self.assertEqual(kwargs["timestamp"], ts)
+
+    def test_state_machine_notify_ignores_none_timestamp(self):
+        StateMachineCore.notify(
+            object(),
+            tag="PV.Press",
+            value=Adimentional(0.0, unit="adim"),
+            timestamp=None,
+        )
 
 
 class TestAlarmQualityGate(unittest.TestCase):
@@ -264,6 +297,35 @@ class TestQualityAlarmEngine(unittest.TestCase):
                 mocked.reset_mock()
                 tag.set_value(value=43.0, timestamp=ts, quality=GOOD)
                 mocked.assert_called_with("Line.P", False)
+
+    def test_quality_alarm_returns_to_normal_when_pv_recovers(self):
+        """ALM.QUALITY.* auto-acks to Normal; process BOOL stays RTN Unack."""
+        from automation.alarms import Alarm
+        from automation.models import FloatType, IntegerType, StringType
+        from automation.tags.cvt import CVTEngine
+
+        cvt = CVTEngine()
+        cvt.set_tag(
+            name="sys_quality_pi02",
+            variable="Adimentional",
+            unit="adim",
+            data_type="boolean",
+            description="quality bool",
+        )
+        tag = cvt.get_tag_by_name(name="sys_quality_pi02")
+        alarm = Alarm(
+            name="Supe.Linea2.ALM.QUALITY.Supe.Linea2.PI_02",
+            tag=tag,
+            alarm_type=StringType("BOOL"),
+            alarm_setpoint=IntegerType(1),
+            alarm_on_delay=FloatType(0.0),
+            alarm_off_delay=FloatType(0.0),
+        )
+        alarm.enable_delay_wakeups = False
+        tag.set_value(value=True)
+        self.assertEqual(alarm.current_state.value.lower(), "unack_alarm")
+        tag.set_value(value=False)
+        self.assertEqual(alarm.current_state.value.lower(), "normal")
 
 
 class TestInhibitUncertainCache(unittest.TestCase):
