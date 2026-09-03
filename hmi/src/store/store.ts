@@ -1,5 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer, { AUTH_STORAGE_KEY } from "./slices/authSlice";
+import authzReducer from "./slices/authzSlice";
 import themeReducer, { loadThemeFromStorage } from "./slices/themeSlice";
 import localeReducer, { loadLocaleFromStorage } from "./slices/localeSlice";
 import tagsReducer, { persistTagHistory } from "./slices/tagsSlice";
@@ -40,6 +41,7 @@ const loadLocaleState = () => {
 export const store = configureStore({
   reducer: {
     auth: authReducer,
+    authz: authzReducer,
     theme: themeReducer,
     locale: localeReducer,
     tags: tagsReducer,

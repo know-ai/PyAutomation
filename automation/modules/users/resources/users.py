@@ -542,20 +542,11 @@ class UpdateRoleResource(Resource):
         if not target_user:
             return {'message': f'User {target_username} not found'}, 400
 
-        # Extract role information
-        current_role_name = current_user.role.name.upper()
-        current_role_level = current_user.role.level
-        target_role_name = target_user.role.name.upper()
-        target_role_level = target_user.role.level
+        from ....authz.roles_policy import validate_role_assignment
 
-        # Check authorization: Only admin and sudo can access this endpoint
-        if current_role_name not in ["ADMIN", "SUDO"]:
-            return {'message': 'Only admin and sudo users can update user roles'}, 403
-
-        # Business logic validation - API level restrictions
-        # Users can only change roles of users with role_level >= their own level
-        if target_role_level < current_role_level:
-            return {'message': f'You cannot change roles of users with role level lower than {current_role_level}'}, 400
+        denied = validate_role_assignment(current_user, target_user, new_role_name)
+        if denied:
+            return denied
 
         # Verify that the new role exists
         from ....modules.users.roles import roles as cvt_roles
@@ -591,29 +582,46 @@ class CreateTPTResource(Resource):
     @api.response(403, "Forbidden - Sudo access required")
     @ns.expect(create_tpt_parser)
     @Api.token_required(auth=True)
-    @Api.auth_roles(['sudo'])
     def post(self):
         """
         Create Third Party Token (TPT).
 
         Creates a JWT token for third-party integration with a specific role embedded.
-        This endpoint is restricted to sudo users only.
-        
-        The token is signed using AUTOMATION_APP_SECRET_KEY and can be used
-        for third-party API authentication.
+        Restricted to the system user and integrator. The token expires and carries a role
+        that the ACL engine binds on each request.
         """
+        from datetime import timedelta
+        from ....utils.system_user import is_system_username
+
+        current_user = Api.get_current_user()
+        if not current_user:
+            return {'message': 'Invalid token or user not found'}, 401
+        role_name_actor = str(getattr(getattr(current_user, "role", None), "name", "") or "").lower()
+        if not is_system_username(getattr(current_user, "username", None)) and role_name_actor != "integrator":
+            return {'message': 'Only system or integrator can create TPT'}, 403
+
         # Parse arguments
         args = create_tpt_parser.parse_args()
         role_name = args['role_name']
+        role_lower = str(role_name or "").strip().lower()
+        if role_lower == "sudo":
+            return {'message': 'Cannot embed sudo in a TPT'}, 403
+        if role_lower == "integrator" and not is_system_username(getattr(current_user, "username", None)):
+            return {'message': 'Only system can mint an integrator TPT'}, 403
+
+        from ....modules.users.roles import roles as cvt_roles
+        if cvt_roles.get_by_name(name=role_name) is None:
+            return {'message': f'Role {role_name} not found'}, 400
 
         try:
-            # Create JWT payload
+            now = datetime.now(timezone.utc)
             payload = {
-                "created_on": datetime.now(timezone.utc).strftime(app.cvt.DATETIME_FORMAT),
-                "role": role_name
+                "created_on": now.strftime(app.cvt.DATETIME_FORMAT),
+                "role": role_name,
+                "exp": int((now + timedelta(hours=8)).timestamp()),
+                "sub": getattr(current_user, "username", None),
             }
             
-            # Encode token using AUTOMATION_APP_SECRET_KEY
             token = jwt.encode(
                 payload, 
                 app.server.config['AUTOMATION_APP_SECRET_KEY'], 
@@ -624,6 +632,7 @@ class CreateTPTResource(Resource):
                 'token': token,
                 'role': role_name,
                 'created_on': payload['created_on'],
+                'exp': payload['exp'],
                 'message': 'Third Party Token created successfully'
             }, 200
             

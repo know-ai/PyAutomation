@@ -19,6 +19,7 @@ class Roles(BaseModel):
     name = CharField(unique=True, max_length=32)
     level = IntegerField()
     __defaults__ = [
+        {"name": "integrator", "level": 0, "identifier": "roleint0"},
         {"name": "sudo", "level": 0, "identifier": secrets.token_hex(4)},
         {"name": "admin", "level": 1, "identifier": secrets.token_hex(4)},
         {"name": "supervisor", "level": 2, "identifier": secrets.token_hex(4)},

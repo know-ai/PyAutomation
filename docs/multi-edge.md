@@ -33,6 +33,7 @@ Con PostgreSQL compartido, **no** se usa un único `Users.token` global para inv
 | Token API/HMI | Hash de sesión en memoria + fila en `user_api_sessions` (`token`, `username`, `node_id`, `area`). En multi-edge **no** se sobrescribe `Users.token` en PostgreSQL al hacer login |
 | Login en un edge | Revoca solo tokens previos del **mismo** `AUTOMATION_NODE_ID` en `user_api_sessions`; otras líneas conservan su sesión |
 | Login de usuarios | Read-Through al historiador si está vivo; `catalog.db` solo es fallback offline. Tras signup/password/rol se emite `pg_notify(pya_user_invalidate)` (y Redis Pub/Sub si hay `AUTOMATION_REDIS_URL`) para que los otros edges borren su fila local en <2 s |
+| ACL / `authz_grants` | LOOKUP de planta (no se particiona por línea). Fuente de verdad = PG; RAM por worker. Tras `PUT /api/authz/grants`: `pg_notify(pya_authz_invalidate)` + Redis `pya:authz:invalidate` (`{version, origin}`, sin grants). Heartbeat 300 s. Ver [AUDIT_AUTH_AUTHORIZATION.md](../audits/AUDIT_AUTH_AUTHORIZATION.md) §11 |
 | Socket.IO | Valida token vía `Api._resolve_session_user` — **no** compara `node_id` del token con el edge. El hot path connect/disconnect usa Redis (`hmi:sess:{sid}`) o memoria; PostgreSQL `hmi_sessions` es snapshot en background |
 | `AUTOMATION_REDIS_URL` | URL del sidecar Redis **local al edge** (`redis://redis-session:6379/0`). Jamás un Redis de planta. Si falta o el sidecar cae, las sesiones HMI siguen en RAM |
 | `AUTOMATION_APP_SECRET_KEY` | Solo firmas TPT (integraciones); debe ser idéntica en todos los edges si se usan TPT |

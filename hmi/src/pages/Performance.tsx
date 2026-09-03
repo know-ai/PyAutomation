@@ -9,14 +9,12 @@ import { OpsHintButton, PerfPanel, PerfStat } from "../components/PerfPanel";
 import { PerformanceAlarmModal } from "../components/PerformanceAlarmModal";
 import { PerformanceThresholdModal } from "../components/PerformanceThresholdModal";
 import { TrendChart } from "../components/TrendChart";
-import { useAppSelector } from "../hooks/useAppSelector";
+import { useAuthz } from "../hooks/useAuthz";
+import { VIEW_IDS } from "../utils/access";
 import { usePerformanceAlarms, type PerfAlarmBinding } from "../hooks/usePerformanceAlarms";
 import { usePerformanceTrends } from "../hooks/usePerformanceTrends";
 import { useTranslation } from "../hooks/useTranslation";
 import {
-  canControlOps,
-  canDestroyOps,
-  canViewPerformance,
   type NodePerformanceSnapshot,
   type PerfAlarmKey,
   type PerfAlarmsCatalog,
@@ -313,11 +311,11 @@ function activeLayoutsOf(layouts: PerfLayouts, isMobile: boolean): Record<string
 
 export function Performance() {
   const { t } = useTranslation();
-  const role = useAppSelector((state) => state.auth.user?.role);
-  const allowed = canViewPerformance(role);
-  const canConfigure = canConfigurePerformanceAlarms(role);
-  const canControl = canControlOps(role);
-  const canDestroy = canDestroyOps(role);
+  const { canView, canUse, canRest, views } = useAuthz();
+  const allowed = canView(VIEW_IDS.performance);
+  const canConfigure = canConfigurePerformanceAlarms(views);
+  const canControl = canRest("/api/admin/workers") || canUse(VIEW_IDS.performance);
+  const canDestroy = canRest("/api/admin/saf/reset") || canRest("clean-orphans");
   const { snapshot, series, errorStatus, errorMessage } = usePerformanceTrends();
   const [openKey, setOpenKey] = useState<PerfAlarmKey | null>(null);
   const [configKey, setConfigKey] = useState<PerfAlarmKey | null>(null);

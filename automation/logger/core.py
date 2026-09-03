@@ -156,6 +156,7 @@ class BaseLogger(Singleton):
         self.__init_default_variables_schema()
         self.__init_default_datatypes_schema()
         self.__init_default_roles_schema()
+        self.__init_default_authz_schema()
 
     def __init_default_roles_schema(self):
         r"""
@@ -167,6 +168,17 @@ class BaseLogger(Singleton):
             if not Roles.name_exist(name=role['name']):
 
                 Roles.create(**role)
+
+    def __init_default_authz_schema(self):
+        try:
+            from ..authz.bootstrap import bootstrap_authz
+
+            bootstrap_authz()
+        except Exception:
+            logging.getLogger("pyautomation").warning(
+                "authz schema seed skipped",
+                exc_info=True,
+            )
 
     def __init_default_variables_schema(self):
         r"""

@@ -6,7 +6,6 @@ import "react-resizable/css/styles.css";
 import { MetricTile } from "../components/MetricTile";
 import { PerfPanel, PerfStat } from "../components/PerfPanel";
 import { TrendChart } from "../components/TrendChart";
-import { useAppSelector } from "../hooks/useAppSelector";
 import { useTranslation } from "../hooks/useTranslation";
 import {
   getLdsDashboardSnapshot,
@@ -32,7 +31,8 @@ import {
 } from "../services/ldsValidation";
 import { listHmiExtensions } from "../services/hmiExtensions";
 import { pollIntervalMs } from "../services/performance";
-import { canViewPerformance } from "../utils/access";
+import { VIEW_IDS } from "../utils/access";
+import { useAuthz } from "../hooks/useAuthz";
 
 type DashLayoutItem = {
   i: string;
@@ -296,7 +296,7 @@ function coverageMap(data: LdsDashboardSnapshot | null): Record<string, Record<s
 
 export function LdsDashboard() {
   const { t } = useTranslation();
-  const role = useAppSelector((s) => s.auth.user?.role);
+  const { canView } = useAuthz();
   const [tab, setTab] = useState<TabId>("overview");
   const [eventsEngine, setEventsEngine] = useState("");
   const [data, setData] = useState<LdsDashboardSnapshot | null>(null);
@@ -484,7 +484,7 @@ export function LdsDashboard() {
     persistLayouts(LAYOUT_KEY_ALARMAS, next);
   }, [isMobile]);
 
-  if (!canViewPerformance(role)) {
+  if (!canView(VIEW_IDS.ldsDashboard)) {
     return <Navigate to="/communications" replace />;
   }
   if (dashboardEnabled === false) {

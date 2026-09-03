@@ -22,6 +22,8 @@ import type { Tag } from "../services/tags";
 import { getTagsList } from "../services/tags";
 import { useShowInfraMachines } from "../hooks/useShowInfraMachines";
 import { loadShowInfraMachines, visibleMachineTabs } from "../utils/infraMachines";
+import { useAuthz } from "../hooks/useAuthz";
+import { VIEW_IDS } from "../utils/access";
 
 const ITEMS_PER_PAGE = 10;
 const ACTIVE_TAB_STORAGE_KEY = "machinesDetailed_activeTab";
@@ -258,6 +260,8 @@ function hasGenericAttributes(details: MachineDetailedData | undefined): boolean
 
 export function MachinesDetailed() {
   const { t } = useTranslation();
+  const { canUse } = useAuthz();
+  const canMutate = canUse(VIEW_IDS.machinesDetailed);
   const { showInfra } = useShowInfraMachines();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(false);
@@ -2082,7 +2086,7 @@ export function MachinesDetailed() {
                                         handleUpdateThreshold(machineName);
                                       }
                                     }}
-                                    disabled={updatingAttribute[machineName] === "threshold" || isThresholdLocked}
+                                    disabled={updatingAttribute[machineName] === "threshold" || isThresholdLocked || !canMutate}
                                   />
                                   {thresholdUnit.label && (
                                     <span className="text-muted small" title={thresholdUnit.hint || undefined}>
@@ -2120,7 +2124,7 @@ export function MachinesDetailed() {
                                         handleUpdateBufferSize(machineName);
                                       }
                                     }}
-                                    disabled={updatingAttribute[machineName] === "buffer_size" || isBufferSizeLocked}
+                                    disabled={updatingAttribute[machineName] === "buffer_size" || isBufferSizeLocked || !canMutate}
                                   />
                                   {updatingAttribute[machineName] === "buffer_size" && (
                                     <div className="spinner-border spinner-border-sm text-primary" role="status">
@@ -2153,7 +2157,7 @@ export function MachinesDetailed() {
                                         handleUpdateOnDelay(machineName);
                                       }
                                     }}
-                                    disabled={updatingAttribute[machineName] === "on_delay" || isOnDelayLocked}
+                                    disabled={updatingAttribute[machineName] === "on_delay" || isOnDelayLocked || !canMutate}
                                   />
                                   {updatingAttribute[machineName] === "on_delay" && (
                                     <div className="spinner-border spinner-border-sm text-primary" role="status">
@@ -2441,7 +2445,7 @@ export function MachinesDetailed() {
                                 </Button>
                                 <Button
                                   onClick={() => handleSaveTemporalConfig(machineName)}
-                                  disabled={Boolean(savingTemporal[machineName]) || overrideInvalid}
+                                  disabled={Boolean(savingTemporal[machineName]) || overrideInvalid || !canMutate}
                                 >
                                   {savingTemporal[machineName]
                                     ? t("machines.updating")

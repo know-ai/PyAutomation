@@ -358,6 +358,7 @@
     "events": "Eventos",
     "operationalLogs": "Registros operacionales",
     "userManagement": "Gestión de usuarios",
+    "accessControl": "Administración de accesos",
     "settings": "Configuración",
     "trends": "Tendencias",
     "realTimeTrends": "Tendencias en Tiempo Real",
@@ -442,6 +443,11 @@
       "title": "Máquinas",
       "summary": "Resumen",
       "detailed": "Detallado"
+    },
+    "administration": {
+      "title": "Administración",
+      "userManagement": "Gestión de usuarios",
+      "accessControl": "Administración de accesos"
     }
   },
   "header": {
@@ -946,6 +952,33 @@
     "add": "Agregar",
     "availableRoles": "Roles Disponibles",
     "close": "Cerrar"
+  },
+  "authz": {
+    "title": "Administración de accesos",
+    "help": "Las vistas HMI controlan qué pantallas aparecen en el menú lateral. Los endpoints REST se evalúan de forma independiente en cada llamada API.",
+    "helpRest": "Puede conceder acceso a endpoints concretos (p. ej. alarmas) aunque el rol no tenga la vista HMI de alarmas. Ver = GET/HEAD; Usar = POST/PUT/DELETE/PATCH. Los grants de usuario tienen prioridad sobre el rol.",
+    "tabHmi": "Vistas HMI",
+    "tabRest": "Endpoints REST",
+    "endpoint": "Endpoint",
+    "searchRest": "Buscar endpoint…",
+    "endpoints": "endpoints",
+    "noRestMatches": "No hay endpoints que coincidan con la búsqueda.",
+    "role": "Rol",
+    "user": "Usuario",
+    "selectSubject": "Seleccione…",
+    "editing": "Editando",
+    "resource": "Recurso",
+    "view": "Ver",
+    "use": "Usar",
+    "effectAllow": "Permitir",
+    "effectDeny": "Denegar",
+    "previewViews": "Vistas permitidas",
+    "previewRest": "Endpoints REST permitidos",
+    "saved": "Permisos guardados",
+    "saveError": "No se pudieron guardar los permisos",
+    "loadError": "No se pudo cargar el catálogo de accesos",
+    "previewError": "No se pudo previsualizar este sujeto",
+    "noAccess": "Su cuenta no tiene vistas HMI asignadas. Contacte a un administrador."
   },
   "machines": {
     "loadError": "Error al cargar las máquinas de estado",

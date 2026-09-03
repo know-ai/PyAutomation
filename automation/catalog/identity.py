@@ -23,6 +23,7 @@ NATURAL_KEYS: dict[str, tuple[tuple[str, ...], ...]] = {
     "units": (("unit",), ("name",)),
     "segment": (("name",),),
     "users": (("username",), ("identifier",)),
+    "authz_grants": (("subject_type", "subject_id", "resource_key", "action"),),
     "tags": (("identifier",), ("name",)),
     "opcua": (("client_name",),),
     "opcuaserver": (("namespace",), ("name",)),

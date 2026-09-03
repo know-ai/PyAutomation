@@ -81,7 +81,7 @@ class MassFlow(EngUnit):
         'mg/day' : 1000000.0,
         'mg/hr' : 1000000.0 / 24,
         'mg/min' : 1000000.0 / 24 / 60,
-        'mg/min' : 1000000.0 / 24 / 60 / 60,
+        'mg/sec' : 1000000.0 / 24 / 60 / 60,
         'metricTon/day' : 1.0 / 1000.0,
         'metricTon/hr' : 1.0 / 1000.0 / 24,
         'metricTon/min' : 1.0 / 1000.0 / 24 / 60,

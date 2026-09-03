@@ -28,6 +28,7 @@ import {
 import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp, type UiLocale } from "../utils/timezone";
 import { alarmStateBadgeClass } from "../utils/alarmState";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
+import { useAuthz } from "../hooks/useAuthz";
 
 type PresetDate = 
   | "Last Hour"
@@ -94,6 +95,7 @@ function displayValue(value: unknown): string {
 
 export function AlarmsSummary() {
   const { t, locale } = useTranslation();
+  const { canExportCsv } = useAuthz();
   const { timeZone } = useDisplayTimezone();
   const plantAreas = usePlantAreas();
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
@@ -494,6 +496,7 @@ export function AlarmsSummary() {
   };
 
   const handleExportCommentsCSV = () => {
+    if (!canExportCsv()) return;
     if (!comments || comments.length === 0) {
       setError(t("alarmsSummary.noCommentsToExport"));
       return;
@@ -565,6 +568,7 @@ export function AlarmsSummary() {
   };
 
   const handleExportCSV = async () => {
+    if (!canExportCsv()) return;
     try {
       setError(null);
       
@@ -740,15 +744,17 @@ export function AlarmsSummary() {
                       </option>
                     ))}
                   </select>
-                  <Button
-                    variant="primary"
-                    className="btn-sm"
-                    onClick={handleExportCSV}
-                    disabled={alarmsSummary.length === 0}
-                  >
-                    <i className="bi bi-download me-1"></i>
-                    CSV
-                  </Button>
+                  {canExportCsv() && (
+                    <Button
+                      variant="primary"
+                      className="btn-sm"
+                      onClick={handleExportCSV}
+                      disabled={alarmsSummary.length === 0}
+                    >
+                      <i className="bi bi-download me-1"></i>
+                      CSV
+                    </Button>
+                  )}
                   <Button variant="secondary" className="btn-sm" onClick={handleClearFilters}>
                     {t("common.clear")}
                   </Button>
@@ -1010,15 +1016,17 @@ export function AlarmsSummary() {
                       {t("alarmsSummary.commentsTitle", { name: selectedAlarmForComments.name || t("tables.alarm") })}
                     </h5>
                     <div className="d-flex align-items-center gap-2">
-                      <Button
-                        variant="primary"
-                        className="btn-sm"
-                        onClick={handleExportCommentsCSV}
-                        disabled={loadingComments || comments.length === 0}
-                      >
-                        <i className="bi bi-download me-1"></i>
-                        CSV
-                      </Button>
+                      {canExportCsv() && (
+                        <Button
+                          variant="primary"
+                          className="btn-sm"
+                          onClick={handleExportCommentsCSV}
+                          disabled={loadingComments || comments.length === 0}
+                        >
+                          <i className="bi bi-download me-1"></i>
+                          CSV
+                        </Button>
+                      )}
                       <button
                         type="button"
                         className="btn-close"

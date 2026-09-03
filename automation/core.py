@@ -2204,11 +2204,14 @@ class PyAutomation(Singleton):
         ```
         """
         from . import server
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
         payload = {
-            "created_on": datetime.now(timezone.utc).strftime(self.cvt.DATETIME_FORMAT),
-            "role": role_name
+            "created_on": now.strftime(self.cvt.DATETIME_FORMAT),
+            "role": role_name,
+            "exp": int((now + timedelta(hours=8)).timestamp()),
         }
-        return jwt.encode(payload, server.config['APP_SECRET_KEY'], algorithm="HS256")
+        return jwt.encode(payload, server.config['AUTOMATION_APP_SECRET_KEY'], algorithm="HS256")
 
     @logging_error_handler
     @validate_types(name=str, level=int, output=(Role|None, str))
@@ -2262,6 +2265,14 @@ class PyAutomation(Singleton):
                     )
                 except Exception:
                     logging.debug("local catalog role persist skipped", exc_info=True)
+
+            try:
+                from .authz.seed import seed_grants_for_new_role
+                from . import server as flask_server
+
+                seed_grants_for_new_role(name, role.identifier, flask_server)
+            except Exception:
+                logging.debug("authz seed for new role skipped", exc_info=True)
 
             return role, message
 
@@ -3318,6 +3329,89 @@ class PyAutomation(Singleton):
         return self.opcua_client_manager.remove(client_name=client_name)
 
     @logging_error_handler
+    def resubscribe_mapped_tags_for_opcua_client(
+        self,
+        client_name: str,
+        server_url: str | None = None,
+    ) -> int:
+        """Re-bind every mapped tag to DAQ/DAS after (re)connecting an OPC UA client.
+
+        HMI remove/add cycles leave DAQ pollers subscribed in memory but stale;
+        this path is auth-free runtime acquisition (not REST/HMI ACL).
+        """
+        logger = logging.getLogger("pyautomation")
+        endpoint = server_url
+        if not endpoint:
+            client = self.opcua_client_manager.get(client_name=client_name)
+            if client is not None:
+                try:
+                    endpoint = client.serialize().get("server_url")
+                except Exception:
+                    endpoint = None
+        resubscribed = 0
+        for tag_obj in self.cvt.iter_tags_for_opcua_client(client_name, endpoint):
+            namespace = tag_obj.get_node_namespace()
+            scan_time = tag_obj.get_scan_time()
+            if not namespace or not scan_time:
+                continue
+            address = tag_obj.get_opcua_address() or endpoint
+            if not address:
+                continue
+            if hasattr(tag_obj, "set_opcua_client_name"):
+                tag_obj.set_opcua_client_name(client_name, opcua_address=address)
+            self.subscribe_opcua(
+                tag=tag_obj,
+                opcua_address=address,
+                node_namespace=namespace,
+                scan_time=scan_time,
+                reload=True,
+            )
+            try:
+                self.das.restart_buffer(tag=tag_obj)
+            except Exception:
+                logger.debug(
+                    "DAS buffer restart skipped tag=%s",
+                    getattr(tag_obj, "name", None),
+                    exc_info=True,
+                )
+            resubscribed += 1
+        if resubscribed:
+            logger.info(
+                "OPC acquisition resubscribed count=%s client=%s",
+                resubscribed,
+                client_name,
+            )
+        return resubscribed
+
+    @logging_error_handler
+    def resubscribe_all_mapped_opcua_tags(self) -> int:
+        """Ensure DAQ/DAS matches CVT after DB hydrate or historian reconnect."""
+        total = 0
+        seen: set[str] = set()
+        for tag_obj in self.cvt.iter_tags():
+            namespace = tag_obj.get_node_namespace()
+            scan_time = tag_obj.get_scan_time()
+            address = tag_obj.get_opcua_address()
+            client_name = getattr(tag_obj, "opcua_client_name", None)
+            if not namespace or not scan_time or not address:
+                continue
+            key = getattr(tag_obj, "id", None) or getattr(tag_obj, "name", None)
+            if key in seen:
+                continue
+            seen.add(key)
+            if client_name and client_name not in self.get_opcua_clients():
+                continue
+            self.subscribe_opcua(
+                tag=tag_obj,
+                opcua_address=address,
+                node_namespace=namespace,
+                scan_time=scan_time,
+                reload=True,
+            )
+            total += 1
+        return total
+
+    @logging_error_handler
     @validate_types(old_client_name=str, new_client_name=str|type(None), host=str|type(None), port=int|type(None), output=(bool, str|dict))
     def update_opcua_client(self, old_client_name:str, new_client_name:str=None, host:str=None, port:int=None):
         r"""
@@ -3578,6 +3672,10 @@ class PyAutomation(Singleton):
                 setter(manager=self.opcua_client_manager)
 
         daq.subscribe_to(tag=tag)
+        misses = getattr(daq, "_daq_misses", None)
+        namespace = tag.get_node_namespace() if tag is not None else None
+        if isinstance(misses, dict) and namespace:
+            misses.pop(namespace, None)
 
     @logging_error_handler    
     @validate_types(tag=Tag, drop_all_machines=bool, output=None)
@@ -4592,6 +4690,7 @@ class PyAutomation(Singleton):
                 self.load_opcua_clients_from_db()
                 self.load_db_to_cvt()
                 self.load_db_to_alarm_manager()
+                self.resubscribe_all_mapped_opcua_tags()
             finally:
                 self.opcua_client_manager._defer_connection_alarms = False
         self.load_db_to_roles()
@@ -5178,8 +5277,6 @@ class PyAutomation(Singleton):
                     logging.info(f"Tag {tag_name} loaded from database")
                     print(_colorize_message(f"[{str_date}] [INFO] Tag {tag_name} loaded from database", "INFO"))
             else:
-                logging.info(f"State machine {machine.name.value} is a data acquisition system, skipping tag subscriptions")
-                print(_colorize_message(f"[{str_date}] [INFO] State machine {machine.name.value} is a data acquisition system, skipping tag subscriptions", "INFO"))
                 machine_name = machine.name.value
                 scope = self._refresh_node_scope()
                 machine_db = (
@@ -5189,8 +5286,53 @@ class PyAutomation(Singleton):
                     if scope.enabled
                     else Machines.get_or_none(name=machine_name)
                 )
-                if machine_db:
-                    machine.identifier.value = machine_db.identifier
+                if not machine_db:
+                    logging.warning(
+                        "DAQ machine %s not found in database; skipping tag subscriptions",
+                        machine_name,
+                    )
+                    continue
+                machine.identifier.value = machine_db.identifier
+                daq_setter = getattr(machine, "set_opcua_client_manager", None)
+                if callable(daq_setter):
+                    daq_setter(manager=self.opcua_client_manager)
+                tags_machine = machine_db.get_tags()
+                logging.info(
+                    "%s tags found for DAQ machine %s in database",
+                    len(tags_machine),
+                    machine_name,
+                )
+                print(
+                    _colorize_message(
+                        f"[{str_date}] [INFO] {len(tags_machine)} tags found for DAQ machine {machine_name} in database",
+                        "INFO",
+                    )
+                )
+                for tag_machine in tags_machine:
+                    _tag = tag_machine.serialize()
+                    tag_name = _tag["tag"]["name"]
+                    tag = self.cvt.get_tag_by_name(name=tag_name)
+                    if tag is None or (scope.enabled and not scope.owns_tag(tag)):
+                        logging.critical(
+                            "Skipping foreign DAQ tag binding machine=%s tag=%s",
+                            machine_name,
+                            tag_name,
+                        )
+                        continue
+                    self.subscribe_opcua(
+                        tag=tag,
+                        opcua_address=tag.get_opcua_address(),
+                        node_namespace=tag.get_node_namespace(),
+                        scan_time=tag.get_scan_time(),
+                        reload=True,
+                    )
+                    logging.info(f"Tag {tag_name} resubscribed on DAQ {machine_name}")
+                    print(
+                        _colorize_message(
+                            f"[{str_date}] [INFO] Tag {tag_name} resubscribed on DAQ {machine_name}",
+                            "INFO",
+                        )
+                    )
 
     @logging_error_handler
     def add_db_table(self, table:BaseModel):

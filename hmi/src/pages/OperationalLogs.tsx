@@ -27,6 +27,7 @@ import {
   type ScheduledQueryContext,
 } from "../hooks/useScheduledQuery";
 import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp } from "../utils/timezone";
+import { useAuthz } from "../hooks/useAuthz";
 
 type PresetDate =
   | "Last Hour"
@@ -102,6 +103,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 
 export function OperationalLogs() {
   const { t, locale } = useTranslation();
+  const { canExportCsv } = useAuthz();
   const { timeZone } = useDisplayTimezone();
   const plantAreas = usePlantAreas();
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
@@ -433,6 +435,7 @@ export function OperationalLogs() {
   };
 
   const handleExportCSV = async () => {
+    if (!canExportCsv()) return;
     try {
       setError(null);
       
@@ -653,15 +656,17 @@ export function OperationalLogs() {
                     <i className="bi bi-plus-circle me-1"></i>
                     {t("operationalLogs.add")}
                   </Button>
-                  <Button
-                    variant="primary"
-                    className="btn-sm"
-                    onClick={handleExportCSV}
-                    disabled={logs.length === 0}
-                  >
-                    <i className="bi bi-download me-1"></i>
-                    CSV
-                  </Button>
+                  {canExportCsv() && (
+                    <Button
+                      variant="primary"
+                      className="btn-sm"
+                      onClick={handleExportCSV}
+                      disabled={logs.length === 0}
+                    >
+                      <i className="bi bi-download me-1"></i>
+                      CSV
+                    </Button>
+                  )}
                 </div>
               </div>
               {presetDate === "Custom" && (

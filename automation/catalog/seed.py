@@ -103,14 +103,14 @@ def seed_variables_and_units() -> int:
 
 
 def seed_roles() -> int:
-    """Insert default roles only when the table is empty."""
+    """Insert default roles that are missing (idempotent; adds integrator on upgrade)."""
     from ..dbmodels.users import Roles
 
-    if _table_row_count("roles") > 0:
-        return 0
     n = 0
     for role in Roles.__defaults__:
         name = role["name"]
+        if _find_by_name("roles", name):
+            continue
         if _upsert(
             "roles",
             {
@@ -219,9 +219,16 @@ def seed_local_catalog_defaults(*, system_password: str | None = None) -> dict:
         "roles": seed_roles(),
         "alarm_meta": seed_alarm_types_and_states(),
         "system_user": 0,
+        "authz_grants": 0,
     }
     if system_password is not None:
         counts["system_user"] = 1 if seed_system_user(system_password) else 0
+    try:
+        from ..authz.bootstrap import bootstrap_authz
+
+        counts["authz_grants"] = bootstrap_authz()
+    except Exception:
+        _LOGGER.debug("local authz grant seed skipped", exc_info=True)
     total = sum(v for k, v in counts.items() if k != "skipped" and isinstance(v, int))
     if total:
         _LOGGER.info("Local catalog cold-start seeded: %s", counts)

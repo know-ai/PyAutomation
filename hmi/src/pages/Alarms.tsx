@@ -23,9 +23,14 @@ import { translateAlarmDescription } from "../utils/alarmCatalog";
 import { alarmToFormData } from "../utils/alarmForm";
 import { VirtualizedCombobox, type ComboboxItem } from "../components/VirtualizedCombobox";
 import { useDebounce } from "../hooks/useDebounce";
+import { useAuthz } from "../hooks/useAuthz";
+import { VIEW_IDS } from "../utils/access";
 
 export function Alarms() {
   const { t } = useTranslation();
+  const { canUse, canRest, canExportCsv } = useAuthz();
+  const canMutate = canRest("/api/alarms/add");
+  const canAct = canUse(VIEW_IDS.alarmsDefinitions);
   const dispatch = useAppDispatch();
   const { timeZone } = useDisplayTimezone();
   const [alarms, setAlarms] = useState<Alarm[]>([]);
@@ -486,6 +491,7 @@ export function Alarms() {
   };
 
   const handleExportCSV = async () => {
+    if (!canExportCsv()) return;
     try {
       setError(null);
       // Obtener todas las alarmas (sin paginación)
@@ -910,7 +916,7 @@ export function Alarms() {
                     variant="warning"
                     className="btn-sm"
                     onClick={handleAcknowledgeAll}
-                    disabled={loading || acknowledgingAll || !hasUnacknowledgedAlarms}
+                    disabled={loading || acknowledgingAll || !hasUnacknowledgedAlarms || !canAct}
                     loading={acknowledgingAll}
                     title={
                       hasUnacknowledgedAlarms
@@ -921,15 +927,17 @@ export function Alarms() {
                     <i className="bi bi-check2-all me-1"></i>
                     {t("alarms.acknowledgeAll")}
                   </Button>
-                  <Button
-                    variant="secondary"
-                    className="btn-sm"
-                    onClick={handleExportCSV}
-                    disabled={loading || alarms.length === 0}
-                  >
-                    <i className="bi bi-download me-1"></i>
-                    {t("alarms.exportCSV")}
-                  </Button>
+                  {canExportCsv() && (
+                    <Button
+                      variant="secondary"
+                      className="btn-sm"
+                      onClick={handleExportCSV}
+                      disabled={loading || alarms.length === 0}
+                    >
+                      <i className="bi bi-download me-1"></i>
+                      {t("alarms.exportCSV")}
+                    </Button>
+                  )}
                   <Button
                     variant="success"
                     className="btn-sm"
@@ -938,6 +946,7 @@ export function Alarms() {
                       setError(null);
                       setShowCreateModal(true);
                     }}
+                    disabled={!canMutate}
                   >
                     <i className="bi bi-plus-circle me-1"></i>
                     {t("alarms.createAlarm")}
@@ -1061,6 +1070,8 @@ export function Alarms() {
                           tagStaleAgeMs={alarm.tag ? tagValues[alarm.tag]?.stale_age_ms : undefined}
                           onEdit={handleEditAlarm}
                           onDelete={handleDeleteAlarm}
+                          canConfigure={canMutate}
+                          canAct={canAct}
                           getStateBadgeClass={getStateBadgeClass}
                           getStateLabel={getStateLabel}
                           actions={alarmActions[alarmName]}

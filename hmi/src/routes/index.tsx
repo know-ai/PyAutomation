@@ -1,8 +1,9 @@
 import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
+import { useEffect } from "react";
 import { useAppSelector } from "../hooks/useAppSelector";
+import { useAppDispatch } from "../hooks/useAppDispatch";
 import { Login } from "../pages/Login";
 import { Signup } from "../pages/Signup";
-// import { ForgotPassword } from "../pages/ForgotPassword";
 import { Communications } from "../pages/Communications";
 import { OpcUaServer } from "../pages/OpcUaServer";
 import { Database } from "../pages/Database";
@@ -15,41 +16,49 @@ import { AlarmsSummary } from "../pages/AlarmsSummary";
 import { Machines } from "../pages/Machines";
 import { MachinesDetailed } from "../pages/MachinesDetailed";
 import { UserManagement } from "../pages/UserManagement";
+import { AccessControl } from "../pages/AccessControl";
 import { Settings } from "../pages/Settings";
 import { Events } from "../pages/Events";
 import { OperationalLogs } from "../pages/OperationalLogs";
 import { Performance } from "../pages/Performance";
 import { LdsDashboard } from "../pages/LdsDashboard";
+import { NoAccess } from "../pages/NoAccess";
 import { MainLayout } from "../layouts/MainLayout";
 import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
-import {
-  canViewPerformance,
-  canViewSettings,
-  canViewUserManagement,
-} from "../utils/access";
+import { firstAllowedPath, viewForPath } from "../utils/access";
+import { loadAuthzMe } from "../store/slices/authzSlice";
 
 function ProtectedLayout() {
   const isAuth = useAppSelector((s) => !!s.auth.token);
   const user = useAppSelector((s) => s.auth.user);
+  const views = useAppSelector((s) => s.authz.views);
+  const authzStatus = useAppSelector((s) => s.authz.status);
+  const dispatch = useAppDispatch();
   const location = useLocation();
+
+  useEffect(() => {
+    if (isAuth && (authzStatus === "idle" || authzStatus === "error")) {
+      void dispatch(loadAuthzMe());
+    }
+  }, [isAuth, authzStatus, dispatch]);
+
   if (!isAuth) return <Navigate to="/login" replace />;
-  if (isSystemUser(user) && location.pathname !== SYSTEM_HOME_PATH) {
+  const system = isSystemUser(user);
+  const path = location.pathname;
+  if (system && path !== SYSTEM_HOME_PATH && !path.startsWith("/user-management")) {
     return <Navigate to={SYSTEM_HOME_PATH} replace />;
   }
-  const role = user?.role;
-  const path = location.pathname;
-  if (!isSystemUser(user)) {
-    if (path === "/performance" || path.startsWith("/performance/")) {
-      if (!canViewPerformance(role)) return <Navigate to="/communications" replace />;
-    }
-    if (path === "/lds-dashboard" || path.startsWith("/lds-dashboard/")) {
-      if (!canViewPerformance(role)) return <Navigate to="/communications" replace />;
-    }
-    if (path === "/settings" || path.startsWith("/settings/")) {
-      if (!canViewSettings(role)) return <Navigate to="/communications" replace />;
-    }
-    if (path === "/user-management" || path.startsWith("/user-management/")) {
-      if (!canViewUserManagement(role)) return <Navigate to="/communications" replace />;
+  if (path === "/no-access") {
+    return (
+      <MainLayout>
+        <Outlet />
+      </MainLayout>
+    );
+  }
+  if (!system && authzStatus === "ready") {
+    const viewId = viewForPath(path);
+    if (viewId && !views[viewId]?.includes("view")) {
+      return <Navigate to={firstAllowedPath(views, false)} replace />;
     }
   }
   return (
@@ -64,7 +73,6 @@ export function AppRoutes() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
-      {/* <Route path="/forgot-password" element={<ForgotPassword />} /> */}
 
       <Route element={<ProtectedLayout />}>
         <Route path="/communications" element={<Navigate to="/communications/clients" replace />} />
@@ -87,7 +95,9 @@ export function AppRoutes() {
         <Route path="/performance" element={<Performance />} />
         <Route path="/lds-dashboard" element={<LdsDashboard />} />
         <Route path="/user-management" element={<UserManagement />} />
+        <Route path="/user-management/access" element={<AccessControl />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/no-access" element={<NoAccess />} />
       </Route>
 
       <Route path="/" element={<Navigate to="/login" replace />} />
@@ -95,5 +105,3 @@ export function AppRoutes() {
     </Routes>
   );
 }
-
-

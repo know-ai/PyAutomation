@@ -358,6 +358,7 @@
     "events": "Events",
     "operationalLogs": "Operational Logs",
     "userManagement": "User Management",
+    "accessControl": "Access control",
     "settings": "Settings",
     "trends": "Trends",
     "realTimeTrends": "Real Time Trends",
@@ -442,6 +443,11 @@
       "title": "Machines",
       "summary": "Summary",
       "detailed": "Detailed"
+    },
+    "administration": {
+      "title": "Administration",
+      "userManagement": "User management",
+      "accessControl": "Access control"
     }
   },
   "header": {
@@ -946,6 +952,33 @@
     "add": "Add",
     "availableRoles": "Available Roles",
     "close": "Close"
+  },
+  "authz": {
+    "title": "Access control",
+    "help": "HMI views control which screens appear in the sidebar. REST endpoints are evaluated independently on each API call.",
+    "helpRest": "You can grant access to specific endpoints (e.g. alarms) even when the role lacks the alarms HMI view. View = GET/HEAD; Use = POST/PUT/DELETE/PATCH. User grants override the role.",
+    "tabHmi": "HMI views",
+    "tabRest": "REST endpoints",
+    "endpoint": "Endpoint",
+    "searchRest": "Search endpoint…",
+    "endpoints": "endpoints",
+    "noRestMatches": "No endpoints match your search.",
+    "role": "Role",
+    "user": "User",
+    "selectSubject": "Select…",
+    "editing": "Editing",
+    "resource": "Resource",
+    "view": "View",
+    "use": "Use",
+    "effectAllow": "Allow",
+    "effectDeny": "Deny",
+    "previewViews": "Allowed views",
+    "previewRest": "Allowed REST endpoints",
+    "saved": "Access grants saved",
+    "saveError": "Could not save grants",
+    "loadError": "Could not load the access catalog",
+    "previewError": "Could not preview this subject",
+    "noAccess": "Your account has no HMI views assigned. Contact an administrator."
   },
   "machines": {
     "loadError": "Error loading state machines",

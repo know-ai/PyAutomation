@@ -24,6 +24,7 @@ type ServiceRuntimePanelProps = {
   onPeriodChange: (value: number) => void;
   onLevelChange: (value: number) => void;
   onSave: () => void;
+  canSave?: boolean;
 };
 
 export function ServiceRuntimePanel({
@@ -33,6 +34,7 @@ export function ServiceRuntimePanel({
   onPeriodChange,
   onLevelChange,
   onSave,
+  canSave = true,
 }: ServiceRuntimePanelProps) {
   const { t } = useTranslation();
   const period = Number(config.logger_period) > 0 ? Number(config.logger_period) : 10;
@@ -135,7 +137,7 @@ export function ServiceRuntimePanel({
 
       <div className="settings-split__footer">
         <p className="settings-split__note">{t("settings.runtimeSaveNote")}</p>
-        <Button variant="primary" onClick={onSave} loading={saving} disabled={loading}>
+        <Button variant="primary" onClick={onSave} loading={saving} disabled={loading || !canSave}>
           {t("settings.saveSettings")}
         </Button>
       </div>

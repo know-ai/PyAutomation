@@ -9,14 +9,12 @@ SYSTEM_USERNAME = "system"
 SYSTEM_USER_ALLOWED_PREFIXES = (
     "/api/users/",
     "/api/health/",
+    "/api/healthcheck/",
     "/api/system/",
+    "/api/authz/",
 )
 
-SYSTEM_USER_DENIED_EXACT = frozenset(
-    {
-        "/api/users/create_tpt",
-    }
-)
+SYSTEM_USER_DENIED_EXACT = frozenset()
 
 
 def is_system_username(username: str | None) -> bool:

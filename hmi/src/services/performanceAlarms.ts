@@ -1,7 +1,7 @@
 import type { Alarm } from "./alarms";
 import api from "./api";
 import type { PerfAlarmCatalogEntry, PerfAlarmKey, PerfAlarmsCatalog } from "./performance";
-import { canViewOpsAdmin } from "../utils/access";
+import { hasAction, VIEW_IDS, type AuthzActionsMap } from "../utils/access";
 
 export type PerformanceAlarmConfig = PerfAlarmsCatalog & {
   enabled?: boolean;
@@ -42,8 +42,8 @@ export function toneFromLifecycle(life: PerfAlarmLifecycle, fallback: TileTone =
   return fallback;
 }
 
-export function canConfigurePerformanceAlarms(role?: string | null): boolean {
-  return canViewOpsAdmin(role);
+export function canConfigurePerformanceAlarms(views?: AuthzActionsMap | null): boolean {
+  return hasAction(views || undefined, VIEW_IDS.performance, "use");
 }
 
 export function formatThresholdLabel(threshold?: number | null, unit?: string): string {

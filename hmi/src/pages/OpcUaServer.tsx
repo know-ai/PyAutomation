@@ -4,11 +4,13 @@ import { Button } from "../components/Button";
 import { getOpcUaServerAttributes, updateOpcUaServerAccessType, type OpcUaServerAttribute } from "../services/opcua";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
+import { useAuthz } from "../hooks/useAuthz";
 
 const ACCESS_TYPE_OPTIONS: ("Read" | "Write" | "ReadWrite")[] = ["Read", "Write", "ReadWrite"];
 
 export function OpcUaServer() {
   const { t } = useTranslation();
+  const { canExportCsv } = useAuthz();
   const [attributes, setAttributes] = useState<OpcUaServerAttribute[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +130,7 @@ export function OpcUaServer() {
 
   // Exportar a CSV
   const handleExportCSV = () => {
+    if (!canExportCsv()) return;
     if (!attributes || attributes.length === 0) {
       showToast(t("opcuaServer.noDataToExport"), "error");
       return;
@@ -189,16 +192,18 @@ export function OpcUaServer() {
   const cardTitle = (
     <div className="d-flex justify-content-between align-items-center w-100">
       <h3 className="card-title m-0">{t("communications.opcuaServer")}</h3>
-      <Button
-        variant="success"
-        onClick={handleExportCSV}
-        className="btn-sm"
-        disabled={loading || attributes.length === 0}
-        title={t("opcuaServer.exportCSV")}
-      >
-        <i className="bi bi-download me-1"></i>
-        {t("common.csv")}
-      </Button>
+      {canExportCsv() && (
+        <Button
+          variant="success"
+          onClick={handleExportCSV}
+          className="btn-sm"
+          disabled={loading || attributes.length === 0}
+          title={t("opcuaServer.exportCSV")}
+        >
+          <i className="bi bi-download me-1"></i>
+          {t("common.csv")}
+        </Button>
+      )}
     </div>
   );
 

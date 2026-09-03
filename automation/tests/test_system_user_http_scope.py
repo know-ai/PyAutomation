@@ -18,10 +18,15 @@ class TestSystemUserHttpScope(unittest.TestCase):
         self.assertTrue(system_user_path_allowed("/api/users/roles/"))
         self.assertTrue(system_user_path_allowed("/api/users/roles/add"))
         self.assertTrue(system_user_path_allowed("/api/health/db"))
+        self.assertTrue(system_user_path_allowed("/api/healthcheck/"))
+        self.assertTrue(system_user_path_allowed("/api/healthcheck/ready"))
+        self.assertTrue(system_user_path_allowed("/api/healthcheck/detection"))
         self.assertTrue(system_user_path_allowed("/api/system/timezone"))
+        self.assertTrue(system_user_path_allowed("/api/authz/me"))
+        self.assertTrue(system_user_path_allowed("/api/authz/grants"))
+        self.assertTrue(system_user_path_allowed("/api/users/create_tpt"))
 
     def test_denies_operational_and_tpt(self):
-        self.assertFalse(system_user_path_allowed("/api/users/create_tpt"))
         self.assertFalse(system_user_path_allowed("/api/tags/"))
         self.assertFalse(system_user_path_allowed("/api/alarms/"))
         self.assertFalse(system_user_path_allowed("/api/machines/"))

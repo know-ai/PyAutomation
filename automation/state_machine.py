@@ -415,7 +415,10 @@ class Machine(Singleton):
                         self._persist_machine_tag(tag=tag, tag_name=tag_name)
                     break
 
-        self.__define_iad_alarms()
+        try:
+            self.__define_iad_alarms()
+        except Exception:
+            logging.debug("IAD alarm definition skipped", exc_info=True)
 
     def _persist_machine_tag(self, *, tag, tag_name: str) -> None:
         """Persist machine tag to historian when live, else to local catalog.
@@ -554,13 +557,13 @@ class Machine(Singleton):
         (frozen data, out of range, outliers) based on tag configuration.
         """
         cvt = CVTEngine()
-        tags = cvt.get_tags()
+        tags = cvt.get_tags() or []
         for tag in tags:
-            
-            if tag['frozen_data_detection'] or tag['out_of_range_detection'] or tag['outlier_detection']:
-
-                    alarm_name = f"alarm.{tag['name']}.iad"
-                    self.create_alarm(name=alarm_name, tag=tag['name'])
+            if not isinstance(tag, dict):
+                continue
+            if tag.get("frozen_data_detection") or tag.get("out_of_range_detection") or tag.get("outlier_detection"):
+                alarm_name = f"alarm.{tag['name']}.iad"
+                self.create_alarm(name=alarm_name, tag=tag["name"])
 
     @logging_error_handler
     def stop(self):
@@ -1314,6 +1317,15 @@ class StateMachineCore(StateMachine):
                         except CrossAreaBindError as exc:
                             return False, str(exc)
                         return True
+
+            else:
+                process_type = getattr(self, tag_name, None)
+                if isinstance(process_type, ProcessType):
+                    process_type.tag = tag
+                    self.attach(machine=self, tag=tag)
+                    return True
+
+        return False, f"{tag_name} already subscribed"
 
     @validate_types(tag=Tag, output=None|bool)
     def unsubscribe_to(self, tag:Tag=None, default_tag_name:str=None):

@@ -82,6 +82,9 @@ class CreateApp():
 
             from . import modules
             modules.init_app(app)
+
+            from .authz.bootstrap import bootstrap_authz
+            bootstrap_authz(app)
             
             # Configurar rutas para servir el frontend React
             self._setup_frontend_routes(app)

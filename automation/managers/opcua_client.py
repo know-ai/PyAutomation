@@ -176,27 +176,11 @@ class OPCUAClientManager:
             from automation import PyAutomation
 
             app = PyAutomation()
-            for tag_obj in self.cvt.iter_tags_for_opcua_client(client_name, endpoint_url):
-                namespace = tag_obj.get_node_namespace()
-                if not namespace:
-                    continue
-                address = tag_obj.get_opcua_address() or endpoint_url
-                app.subscribe_opcua(
-                    tag=tag_obj,
-                    opcua_address=address,
-                    node_namespace=namespace,
-                    scan_time=tag_obj.get_scan_time(),
-                    reload=True,
-                )
-                try:
-                    self.das.restart_buffer(tag=tag_obj)
-                except Exception:
-                    logging.getLogger("pyautomation").debug(
-                        "DAS buffer restart skipped tag=%s",
-                        getattr(tag_obj, "name", None),
-                        exc_info=True,
-                    )
-        
+            app.resubscribe_mapped_tags_for_opcua_client(
+                client_name=client_name,
+                server_url=endpoint_url,
+            )
+
             return True, message
         else:
             # Si la conexión falló, aún así agregamos el cliente para poder actualizarlo
@@ -240,11 +224,34 @@ class OPCUAClientManager:
             try:
                 from ..utils.connection_alarms import remove_opcua_connection_alarm
 
+                server_url = None
+                try:
+                    server_url = self._clients[client_name].serialize().get("server_url")
+                except Exception:
+                    server_url = None
+                self.das.reset_client(client_name)
                 opcua_client = self._clients.pop(client_name)
                 opcua_client._audit_source = "client-remove"
                 opcua_client._suppress_connection_alarm = True
                 opcua_client.disconnect()
                 remove_opcua_connection_alarm(client_name)
+                try:
+                    marked = self.cvt.mark_opcua_client_tags_stale(
+                        client_name,
+                        server_url=server_url,
+                    )
+                    if marked:
+                        logging.getLogger("pyautomation").info(
+                            "Marked %s OPC-mapped tag(s) stale after removing client=%s",
+                            marked,
+                            client_name,
+                        )
+                except Exception:
+                    logging.getLogger("pyautomation").debug(
+                        "OPC tag stale mark skipped client=%s",
+                        client_name,
+                        exc_info=True,
+                    )
                 # DATABASE PERSISTENCY
                 opcua = OPCUA.get_by_client_name(client_name=client_name)
                 if opcua:

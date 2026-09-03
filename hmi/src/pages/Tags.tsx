@@ -12,6 +12,8 @@ import { VirtualizedCombobox, type ComboboxItem } from "../components/Virtualize
 import { WaveletFilterPanel } from "../components/WaveletFilterPanel";
 import { QualityBadge } from "../components/QualityBadge";
 import { isFilteredDerivativeName } from "../utils/filteredTags";
+import { useAuthz } from "../hooks/useAuthz";
+import { VIEW_IDS } from "../utils/access";
 
 // Memoized row component to prevent unnecessary re-renders
 const TagTableRow = memo(({ 
@@ -21,7 +23,8 @@ const TagTableRow = memo(({
   opcuaClientAddresses,
   opcuaNodeDisplayNames,
   onEdit,
-  onDelete 
+  onDelete,
+  canMutate = true,
 }: {
   tag: Tag;
   tagValues: Record<string, Tag>;
@@ -30,6 +33,7 @@ const TagTableRow = memo(({
   opcuaNodeDisplayNames: Record<string, string>;
   onEdit: (tag: Tag) => void;
   onDelete: (tag: Tag) => void;
+  canMutate?: boolean;
 }) => {
   const { t } = useTranslation();
   const isFilteredRow = isFilteredDerivativeName(tag.name);
@@ -110,7 +114,7 @@ const TagTableRow = memo(({
             className="btn-sm"
             onClick={() => onEdit(tag)}
             title={isFilteredRow ? t("tags.filteredRowHint") : t("tags.editTag")}
-            disabled={isFilteredRow}
+            disabled={isFilteredRow || !canMutate}
           >
             <i className="bi bi-pencil"></i>
           </Button>
@@ -119,7 +123,7 @@ const TagTableRow = memo(({
             className="btn-sm"
             onClick={() => onDelete(tag)}
             title={isFilteredRow ? t("tags.filteredRowHint") : t("tags.deleteTag")}
-            disabled={isFilteredRow}
+            disabled={isFilteredRow || !canMutate}
           >
             <i className="bi bi-trash"></i>
           </Button>
@@ -161,6 +165,7 @@ const TagTableRow = memo(({
     prevProps.tag.node_namespace === nextProps.tag.node_namespace &&
     prevProps.tag.scan_time === nextProps.tag.scan_time &&
     prevProps.tag.dead_band === nextProps.tag.dead_band &&
+    prevProps.canMutate === nextProps.canMutate &&
     prevProps.opcuaClientAddresses === nextProps.opcuaClientAddresses
   );
 });
@@ -169,6 +174,8 @@ TagTableRow.displayName = "TagTableRow";
 
 export function Tags() {
   const { t } = useTranslation();
+  const { canUse, canExportCsv } = useAuthz();
+  const canMutate = canUse(VIEW_IDS.tagsDefinitions);
   const tagValues = useAppSelector((state) => state.tags.tagValues);
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(false);
@@ -695,6 +702,7 @@ export function Tags() {
   };
 
   const handleExportCSV = async () => {
+    if (!canExportCsv()) return;
     try {
       setError(null);
       // Obtener todos los tags (sin paginación) usando el servicio
@@ -1156,19 +1164,22 @@ export function Tags() {
             <div className="d-flex justify-content-between align-items-center w-100">
               <span>{t("navigation.tags")}</span>
               <div className="d-flex gap-2">
-                <Button
-                  variant="secondary"
-                  className="btn-sm"
-                  onClick={handleExportCSV}
-                  disabled={loading || tags.length === 0}
-                >
-                  <i className="bi bi-download me-1"></i>
-                  {t("tags.exportCSV")}
-                </Button>
+                {canExportCsv() && (
+                  <Button
+                    variant="secondary"
+                    className="btn-sm"
+                    onClick={handleExportCSV}
+                    disabled={loading || tags.length === 0}
+                  >
+                    <i className="bi bi-download me-1"></i>
+                    {t("tags.exportCSV")}
+                  </Button>
+                )}
                 <Button
                   variant="success"
                   className="btn-sm"
                   onClick={() => setShowCreateModal(true)}
+                  disabled={!canMutate}
                 >
                   <i className="bi bi-plus-circle me-1"></i>
                   {t("tags.createTag")}
@@ -1436,6 +1447,7 @@ export function Tags() {
                         opcuaNodeDisplayNames={opcuaNodeDisplayNames}
                         onEdit={handleEditTag}
                         onDelete={handleDeleteTag}
+                        canMutate={canMutate}
                       />
                     ));
                   })()}

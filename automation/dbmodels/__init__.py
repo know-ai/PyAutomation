@@ -18,6 +18,7 @@ from .alarms import (
 
 from .opcua import OPCUA
 from .users import Roles, Users
+from .authz import AuthzGrant
 from .events import Events
 from .logs import Logs
 from .machines import Machines, TagsMachines

@@ -36,8 +36,8 @@ WORKER_ALIASES = {
     "saf": "ReplicationWorker",
 }
 
-CONTROL_ROLES = frozenset({"admin", "supervisor", "sudo"})
-DESTRUCTIVE_ROLES = frozenset({"admin", "sudo"})
+CONTROL_ROLES = frozenset({"admin", "supervisor", "sudo", "integrator"})
+DESTRUCTIVE_ROLES = frozenset({"admin", "sudo", "integrator"})
 AGE_CHOICES = (5, 10, 30, 60)
 
 

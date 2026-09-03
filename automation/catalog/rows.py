@@ -220,6 +220,18 @@ def _find_by_unique_lookup(model_cls: type[Model], payload: dict) -> Model | Non
             return model_cls.get_or_none(
                 (model_cls.tag == tag) & (model_cls.machine == machine)
             )
+    if table == "authz_grants":
+        stype = payload.get("subject_type")
+        sid = payload.get("subject_id")
+        resource_key = payload.get("resource_key")
+        action = payload.get("action")
+        if stype is not None and sid is not None and resource_key is not None and action is not None:
+            return model_cls.get_or_none(
+                (model_cls.subject_type == stype)
+                & (model_cls.subject_id == sid)
+                & (model_cls.resource_key == resource_key)
+                & (model_cls.action == action)
+            )
     return None
 
 

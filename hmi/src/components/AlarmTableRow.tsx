@@ -17,6 +17,8 @@ type AlarmTableRowProps = {
   tagStaleAgeMs?: number | null;
   onEdit: (alarm: Alarm) => void;
   onDelete: (alarm: Alarm) => void;
+  canConfigure?: boolean;
+  canAct?: boolean;
   getStateBadgeClass: (state: any) => string;
   getStateLabel: (state: any) => string;
   actions: { [key: string]: string } | undefined;
@@ -40,6 +42,8 @@ export const AlarmTableRow = memo(
     tagStaleAgeMs,
     onEdit,
     onDelete,
+    canConfigure = true,
+    canAct = true,
     getStateBadgeClass,
     getStateLabel,
     actions,
@@ -123,6 +127,7 @@ export const AlarmTableRow = memo(
               className="btn-sm"
               onClick={() => onEdit(currentAlarm)}
               title={t("alarms.editAlarm")}
+              disabled={!canConfigure}
             >
               <i className="bi bi-pencil"></i>
             </Button>
@@ -131,6 +136,7 @@ export const AlarmTableRow = memo(
               className="btn-sm"
               onClick={() => onDelete(currentAlarm)}
               title={t("alarms.deleteAlarm")}
+              disabled={!canConfigure}
             >
               <i className="bi bi-trash"></i>
             </Button>
@@ -145,7 +151,7 @@ export const AlarmTableRow = memo(
                     onLoadActions(currentAlarm.name);
                   }
                 }}
-                disabled={executingAction}
+                disabled={executingAction || !canAct}
                 title={t("alarms.alarmActions")}
               >
                 {loadingActions ? (
@@ -214,7 +220,9 @@ export const AlarmTableRow = memo(
       JSON.stringify(prevProps.actions) === JSON.stringify(nextProps.actions) &&
       prevProps.loadingActions === nextProps.loadingActions &&
       prevProps.executingAction === nextProps.executingAction &&
-      prevProps.isActionDropdownOpen === nextProps.isActionDropdownOpen
+      prevProps.isActionDropdownOpen === nextProps.isActionDropdownOpen &&
+      prevProps.canConfigure === nextProps.canConfigure &&
+      prevProps.canAct === nextProps.canAct
     );
   }
 );

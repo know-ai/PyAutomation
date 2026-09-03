@@ -1,12 +1,17 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getUsers, changePassword, resetPassword, updateUserRole, getRoles, getAllRoles, createRole, type User, type UsersResponse, type Role, type CreateRolePayload } from "../services/users";
 import { axiosErrorMessage } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
+import { useAuthz } from "../hooks/useAuthz";
+import { VIEW_IDS } from "../utils/access";
 
 export function UserManagement() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { canView, isSystem } = useAuthz();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,13 +78,15 @@ export function UserManagement() {
     const loadRoles = async () => {
       try {
         const roles = await getRoles();
-        setAvailableRoles(roles);
+        setAvailableRoles(
+          isSystem ? roles : roles.filter((role) => String(role.name || "").toLowerCase() !== "integrator")
+        );
       } catch (e: any) {
         console.error("Error al cargar roles:", e);
       }
     };
     loadRoles();
-  }, []);
+  }, [isSystem]);
 
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.pages) {
@@ -302,7 +309,19 @@ export function UserManagement() {
           title={
             <div className="d-flex justify-content-between align-items-center w-100">
               <h3 className="card-title m-0">{t("navigation.userManagement")}</h3>
-              <Button
+              <div className="d-flex gap-2">
+                {canView(VIEW_IDS.authz) && (
+                  <Button
+                    variant="secondary"
+                    className="btn-sm"
+                    onClick={() => navigate("/user-management/access")}
+                    title={t("navigation.accessControl")}
+                  >
+                    <i className="bi bi-shield-lock me-1"></i>
+                    {t("navigation.accessControl")}
+                  </Button>
+                )}
+                <Button
                 variant="secondary"
                 className="btn-sm"
                 onClick={handleOpenRolesManagement}
@@ -311,6 +330,7 @@ export function UserManagement() {
                 <i className="bi bi-shield-check me-1"></i>
                 {t("userManagement.manageRoles")}
               </Button>
+              </div>
             </div>
           }
           footer={

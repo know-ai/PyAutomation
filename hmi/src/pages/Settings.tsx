@@ -10,6 +10,8 @@ import { SettingsChapter } from "../components/SettingsChapter";
 import { getSettings, updateSettings, exportConfig, importConfig, type AppConfig } from "../services/settings";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
+import { useAuthz } from "../hooks/useAuthz";
+import { VIEW_IDS } from "../utils/access";
 
 const TOC = [
   { href: "#settings-station", labelKey: "settings.navStation" },
@@ -23,6 +25,8 @@ const TOC = [
 
 export function Settings() {
   const { t } = useTranslation();
+  const { canUse } = useAuthz();
+  const canMutate = canUse(VIEW_IDS.settings);
   const [config, setConfig] = useState<AppConfig>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -190,6 +194,7 @@ export function Settings() {
           onPeriodChange={(value) => handleInputChange("logger_period", value)}
           onLevelChange={(value) => handleInputChange("log_level", value)}
           onSave={() => void handleSave()}
+          canSave={canMutate}
         />
       </SettingsChapter>
 
@@ -206,10 +211,10 @@ export function Settings() {
             <p className="settings-backup__hint">{t("settings.backupCardHint")}</p>
           </div>
           <div className="settings-backup__actions">
-            <Button variant="secondary" onClick={handleImportClick} loading={importing}>
+            <Button variant="secondary" onClick={handleImportClick} loading={importing} disabled={!canMutate}>
               {t("settings.importConfig")}
             </Button>
-            <Button variant="secondary" onClick={handleExport} loading={exporting}>
+            <Button variant="secondary" onClick={handleExport} loading={exporting} disabled={!canMutate}>
               {t("settings.exportConfig")}
             </Button>
           </div>

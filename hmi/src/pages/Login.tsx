@@ -7,9 +7,11 @@ import { login } from "../services/auth";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { loginFailure, loginStart, loginSuccess } from "../store/slices/authSlice";
+import { loadAuthzMe } from "../store/slices/authzSlice";
 import { showToast } from "../utils/toast";
 import { useTranslation } from "../hooks/useTranslation";
 import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
+import { firstAllowedPath } from "../utils/access";
 
 const REMEMBER_USERNAME_KEY = "pyautomation.rememberUsername";
 
@@ -90,6 +92,8 @@ export function Login() {
   const existingToken = useAppSelector((s) => s.auth.token);
   const authStatus = useAppSelector((s) => s.auth.status);
   const existingUser = useAppSelector((s) => s.auth.user);
+  const authzViews = useAppSelector((s) => s.authz.views);
+  const authzStatus = useAppSelector((s) => s.authz.status);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -114,12 +118,19 @@ export function Login() {
   }, []);
 
   useEffect(() => {
-    if (authStatus === "authenticated" && existingToken) {
-      navigate(isSystemUser(existingUser) ? SYSTEM_HOME_PATH : "/communications", {
-        replace: true,
-      });
+    if (authStatus !== "authenticated" || !existingToken) return;
+    if (isSystemUser(existingUser)) {
+      navigate(SYSTEM_HOME_PATH, { replace: true });
+      return;
     }
-  }, [authStatus, existingToken, existingUser, navigate]);
+    if (authzStatus === "idle" || authzStatus === "error") {
+      void dispatch(loadAuthzMe());
+      return;
+    }
+    if (authzStatus === "ready") {
+      navigate(firstAllowedPath(authzViews, false), { replace: true });
+    }
+  }, [authStatus, existingToken, existingUser, authzStatus, authzViews, dispatch, navigate]);
 
   useEffect(() => {
     const showPendingToast = () => {
@@ -177,7 +188,16 @@ export function Login() {
         // ignore storage errors
       }
       dispatch(loginSuccess({ token, user }));
-      navigate(isSystemUser(user) ? SYSTEM_HOME_PATH : "/communications");
+      if (isSystemUser(user)) {
+        navigate(SYSTEM_HOME_PATH);
+      } else {
+        try {
+          const me = await dispatch(loadAuthzMe()).unwrap();
+          navigate(firstAllowedPath(me.views, false));
+        } catch {
+          navigate("/no-access");
+        }
+      }
     } catch (err: unknown) {
       const resolved = resolveLoginError(err);
       if (resolved.kind === "database") {

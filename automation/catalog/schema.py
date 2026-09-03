@@ -25,6 +25,7 @@ SYNC_ORDER: tuple[CatalogTable, ...] = (
     CatalogTable("units"),
     CatalogTable("segment"),
     CatalogTable("users"),
+    CatalogTable("authz_grants"),
     CatalogTable("nodes"),
     CatalogTable("tags"),
     CatalogTable("machines"),
@@ -62,6 +63,7 @@ LOOKUP_TABLES: frozenset[str] = frozenset(
         "units",
         "segment",
         "users",
+        "authz_grants",
     }
 )
 
@@ -117,6 +119,7 @@ def historian_models():
         Units,
         Users,
         Variables,
+        AuthzGrant,
     )
 
     return {
@@ -130,6 +133,7 @@ def historian_models():
         "units": Units,
         "segment": Segment,
         "users": Users,
+        "authz_grants": AuthzGrant,
         "tags": Tags,
         "opcua": OPCUA,
         "opcuaserver": OPCUAServer,

@@ -337,15 +337,10 @@ export function Communications() {
   const { t } = useTranslation();
   const [clients, setClients] = useState<OpcUaClient[]>([]);
   const [clientConnectionStatus, setClientConnectionStatus] = useState<Record<string, boolean>>({});
-  const [selectedClient, setSelectedClient] = useState<string>(() => {
-    // Cargar cliente seleccionado previamente desde localStorage
-    try {
-      const saved = localStorage.getItem(SELECTED_CLIENT_STORAGE_KEY);
-      return saved || "";
-    } catch {
-      return "";
-    }
-  });
+  // No hidratar desde localStorage en el primer render: dispara loadTree antes de
+  // validar contra /opcua/clients/ y produce 404 client_not_found con nombres obsoletos.
+  const [selectedClient, setSelectedClient] = useState<string>("");
+  const [clientsReady, setClientsReady] = useState(false);
   const [tree, setTree] = useState<OpcUaTreeNode[]>([]);
   const [loadingTree, setLoadingTree] = useState(false);
   const [loadingClients, setLoadingClients] = useState(false);
@@ -545,6 +540,7 @@ export function Communications() {
       localStorage.removeItem(SELECTED_CLIENT_STORAGE_KEY);
       setClientConnectionStatus({});
     } finally {
+      setClientsReady(true);
       setLoadingClients(false);
     }
   };
@@ -574,6 +570,15 @@ export function Communications() {
       const treeArray = Array.isArray(treeNodes) ? treeNodes : treeNodes ? [treeNodes] : [];
       setTree(treeArray);
     } catch (e: any) {
+      const code = e?.response?.data?.code;
+      if (code === "client_not_found") {
+        try {
+          localStorage.removeItem(SELECTED_CLIENT_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+        setSelectedClient("");
+      }
       setTreeError(translateOpcUaError(t, e, "communications.errors.browse_failed"));
       setTree([]);
     } finally {
@@ -682,9 +687,18 @@ export function Communications() {
     }
   }, [selectedClient]);
 
-  // Cargar árbol automáticamente cuando se selecciona un cliente
+  // Cargar árbol automáticamente cuando se selecciona un cliente (tras validar la lista)
   useEffect(() => {
-    if (selectedClient) {
+    if (selectedClient && clientsReady) {
+      const client = clients.find((c) => c.name === selectedClient);
+      if (!client) {
+        setTree([]);
+        setTreeError({
+          title: t("communications.errors.browse_failed"),
+          detail: t("communications.errors.clientName", { client: selectedClient }),
+        });
+        return;
+      }
       // Guardar cliente seleccionado en localStorage
       try {
         localStorage.setItem(SELECTED_CLIENT_STORAGE_KEY, selectedClient);
@@ -693,6 +707,14 @@ export function Communications() {
       }
       // Verificar estado de conexión del cliente seleccionado
       checkClientConnection(selectedClient);
+      if (!client.is_opened) {
+        setTree([]);
+        setTreeError({
+          title: t("communications.errors.browse_failed"),
+          detail: t("communications.errors.not_connected"),
+        });
+        return;
+      }
       // Cargar el árbol del cliente seleccionado
       loadTree(selectedClient);
       
@@ -709,7 +731,7 @@ export function Communications() {
       // Si no hay cliente seleccionado, limpiar el árbol
       setTree([]);
     }
-  }, [selectedClient, checkClientConnection]);
+  }, [selectedClient, clientsReady, clients, checkClientConnection, t]);
 
   // Polling de atributos cada segundo (usando /attrs para obtener timestamp y status)
   useEffect(() => {

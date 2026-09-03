@@ -126,8 +126,6 @@ export function pushRing(values: number[], next: number, max = SPARKLINE_POINTS)
   return out;
 }
 
-export { canViewPerformance, canControlOps, canDestroyOps } from "../utils/access";
-
 export async function getNodePerformance(): Promise<NodePerformanceSnapshot> {
   const { data } = await api.get("/health/node", { timeout: 4000 });
   return data as NodePerformanceSnapshot;

@@ -33,6 +33,7 @@ import {
   eventSeverityHintKey,
 } from "../utils/eventSeverity";
 import { translateEventClassification, translateEventMessage } from "../utils/eventCatalog";
+import { useAuthz } from "../hooks/useAuthz";
 
 type PresetDate = 
   | "Last Hour"
@@ -114,6 +115,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 
 export function Events() {
   const { t, locale } = useTranslation();
+  const { canExportCsv } = useAuthz();
   const { timeZone } = useDisplayTimezone();
   const plantAreas = usePlantAreas();
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
@@ -508,6 +510,7 @@ export function Events() {
   };
 
   const handleExportCommentsCSV = () => {
+    if (!canExportCsv()) return;
     if (!comments || comments.length === 0) {
       setError(t("events.noCommentsToExport"));
       return;
@@ -626,6 +629,7 @@ export function Events() {
   };
 
   const handleExportCSV = async () => {
+    if (!canExportCsv()) return;
     try {
       setError(null);
       
@@ -822,15 +826,17 @@ export function Events() {
                       </option>
                     ))}
                   </select>
-                  <Button
-                    variant="primary"
-                    className="btn-sm"
-                    onClick={handleExportCSV}
-                    disabled={events.length === 0}
-                  >
-                    <i className="bi bi-download me-1"></i>
-                    {t("common.csv")}
-                  </Button>
+                  {canExportCsv() && (
+                    <Button
+                      variant="primary"
+                      className="btn-sm"
+                      onClick={handleExportCSV}
+                      disabled={events.length === 0}
+                    >
+                      <i className="bi bi-download me-1"></i>
+                      {t("common.csv")}
+                    </Button>
+                  )}
                 </div>
               </div>
               {presetDate === "Custom" && (
@@ -1095,15 +1101,17 @@ export function Events() {
                       {t("events.commentsTitle", { id: selectedEventForComments.id || "N/A" })}
                     </h5>
                     <div className="d-flex align-items-center gap-2">
-                      <Button
-                        variant="primary"
-                        className="btn-sm"
-                        onClick={handleExportCommentsCSV}
-                        disabled={loadingComments || comments.length === 0}
-                      >
-                        <i className="bi bi-download me-1"></i>
-                        {t("common.csv")}
-                      </Button>
+                      {canExportCsv() && (
+                        <Button
+                          variant="primary"
+                          className="btn-sm"
+                          onClick={handleExportCommentsCSV}
+                          disabled={loadingComments || comments.length === 0}
+                        >
+                          <i className="bi bi-download me-1"></i>
+                          {t("common.csv")}
+                        </Button>
+                      )}
                       <button
                         type="button"
                         className="btn-close"

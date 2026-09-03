@@ -36,7 +36,8 @@ class TestSchemaOrder(unittest.TestCase):
 
     def test_parents_before_children(self):
         names = [t.name for t in SYNC_ORDER]
-        self.assertLess(names.index("roles"), names.index("users"))
+        self.assertLess(names.index("users"), names.index("authz_grants"))
+        self.assertIn("authz_grants", LOOKUP_TABLES)
         self.assertLess(names.index("units"), names.index("tags"))
         self.assertLess(names.index("datatypes"), names.index("tags"))
         self.assertLess(names.index("tags"), names.index("machines"))

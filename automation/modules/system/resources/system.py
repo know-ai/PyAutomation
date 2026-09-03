@@ -56,11 +56,13 @@ class SystemNodesResource(Resource):
 @ns.route("/reconnect_db")
 class SystemReconnectDbResource(Resource):
     @api.doc(
-        security=None,
+        security="apikey",
         description="Rebind the remote historian using the stored configuration. Does not accept credentials in the body.",
     )
     @api.response(200, "Reconnect succeeded")
+    @api.response(401, "Unauthorized")
     @api.response(503, "Remote database still unreachable")
+    @Api.token_required(auth=True)
     def post(self):
         """HMI 'Reconnect now' button. SAF journal is not reset."""
         provider = get_database_health_service()

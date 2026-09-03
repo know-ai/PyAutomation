@@ -53,8 +53,8 @@ function rowsFromConfig(config: PerformanceAlarmConfig): Row[] {
 
 export function PerformanceAlarmConfig() {
   const { t } = useTranslation();
-  const role = useAppSelector((state) => state.auth.user?.role);
-  const canEdit = canConfigurePerformanceAlarms(role);
+  const views = useAppSelector((state) => state.authz.views);
+  const canEdit = canConfigurePerformanceAlarms(views);
   const [enabled, setEnabled] = useState(true);
   const [debounce, setDebounce] = useState(3);
   const [rows, setRows] = useState<Row[]>(rowsFromConfig({}));

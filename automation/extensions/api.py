@@ -30,6 +30,13 @@ api = API(blueprint, version='1.0',
         authorizations=authorizations
     )
 
+
+@blueprint.before_request
+def _enforce_api_authz():
+    from ..authz.middleware import enforce_api_authz
+
+    return enforce_api_authz()
+
 users = CVTUsers()
 
 class Api(Singleton):
@@ -55,20 +62,25 @@ class Api(Singleton):
         return api
     
     @staticmethod
+    def decode_tpt(tpt: str):
+        """Decode a Third Party Token. Requires exp + role. Returns payload or None."""
+        from .. import server
+        try:
+            return jwt.decode(
+                tpt,
+                server.config["AUTOMATION_APP_SECRET_KEY"],
+                algorithms=["HS256"],
+                options={"require": ["exp", "role"]},
+            )
+        except Exception:
+            return None
+
+    @staticmethod
     def verify_tpt(tpt:str):
         r"""
         Verify Third Party Token
         """
-        from .. import server
-        try:
-
-            jwt.decode(tpt, server.config["AUTOMATION_APP_SECRET_KEY"], algorithms=["HS256"])
-
-            return True
-
-        except:
-
-            return 
+        return Api.decode_tpt(tpt) is not None 
         
     @classmethod
     def validate_reqparser(cls, reqparser):
@@ -91,7 +103,8 @@ class Api(Singleton):
         when the historian is unreachable.
 
         Returns ``(user, error_body, status_code)``. ``error_body`` is None on success.
-        For valid TPT tokens, ``user`` may be None with no error.
+        For valid TPT tokens, ``user`` is a synthetic principal bound to the JWT role.
+        Tokens without ``exp``/``role`` are rejected.
         """
         if not token:
             return None, {'message': 'Key is missing.', 'code': 'AUTH_KEY_MISSING'}, 401
@@ -159,8 +172,32 @@ class Api(Singleton):
                     exc_info=True,
                 )
 
-        if Api.verify_tpt(tpt=token):
-            return None, None, None
+        payload = Api.decode_tpt(token)
+        if payload:
+            role_name = payload.get("role")
+            if not role_name:
+                return None, {'message': 'TPT missing role', 'code': 'TPT_NO_ROLE'}, 401
+            try:
+                from ..modules.users.roles import roles as cvt_roles
+                from ..modules.users.users import User
+
+                role = cvt_roles.get_by_name(name=str(role_name))
+                if role is None:
+                    return None, {'message': 'TPT role unknown', 'code': 'TPT_BAD_ROLE'}, 401
+                tpt_user = User(
+                    username=f"tpt:{role.name}",
+                    role=role,
+                    email="",
+                    password="",
+                    identifier="tpt",
+                )
+                return tpt_user, None, None
+            except Exception:
+                logging.getLogger("pyautomation").debug("TPT role bind skipped", exc_info=True)
+                return None, {'message': 'TPT role unknown', 'code': 'TPT_BAD_ROLE'}, 401
+
+        if token and str(token).count(".") == 2:
+            return None, {'message': 'Invalid token', 'code': 'SESSION_INVALID'}, 401
 
         # Do not impersonate "logged in elsewhere" when the historian is down
         # and the in-memory session map no longer has this token.
@@ -207,55 +244,49 @@ class Api(Singleton):
         return _token_required
     
     @classmethod
-    def auth_roles(cls, role_names:list[str]):
-        r"""
-        Decorator that restricts access to endpoints based on a list of role names.
-        
-        **Parameters:**
-        
-        * **role_names** (list[str]): List of role names allowed to access the endpoint.
-        
-        **Usage:**
-        
-        ```python
-        @Api.token_required(auth=True)
-        @Api.auth_roles(['admin', 'supervisor'])
-        def post(self):
-            # Only users with role 'admin' or 'supervisor' can access
-            pass
-        ```
-        """
-        def _auth_roles(f):
+    def authorize(cls, resource_key=None, action=None):
+        """ACL check. ``resource_key=None`` uses ``rest:{METHOD} {rule}``. GET/HEAD=view."""
+        def _authorize(f):
             @wraps(f)
             def decorated(*args, **kwargs):
-                try:
-                    token = None
-                    
-                    if 'X-API-KEY' in request.headers:
-                        token = request.headers['X-API-KEY']
-                    elif 'Authorization' in request.headers:
-                        token = request.headers['Authorization'].split('Token ')[-1]
-                    
-                    current_user, err, status = cls._resolve_session_user(token)
-                    if err is not None:
-                        return err, status
-                    if not current_user:
-                        return {'message': 'Invalid token', 'code': 'SESSION_INVALID'}, 401
-                    
-                    user_role_name = current_user.role.name.upper()
-                    allowed_roles = [r.upper() for r in role_names]
-                    
-                    if user_role_name in allowed_roles:
-                        return f(*args, **kwargs)
-                    
-                    return {'message': f'Access denied. Required roles: {role_names}'}, 403
-                    
-                except Exception as err:
-                    logger = logging.getLogger("pyautomation")
-                    logger.error(str(err))
-                    return {'message': 'Internal server error'}, 500
-            
+                token = None
+                if 'X-API-KEY' in request.headers:
+                    token = request.headers['X-API-KEY']
+                elif 'Authorization' in request.headers:
+                    token = request.headers['Authorization'].split('Token ')[-1]
+                current_user, err, status = cls._resolve_session_user(token)
+                if err is not None:
+                    return err, status
+                if (
+                    current_user is not None
+                    and is_system_username(getattr(current_user, "username", None))
+                    and system_user_path_allowed(request.path)
+                ):
+                    return f(*args, **kwargs)
+                from ..authz.catalog import default_action, rest_key_from_request
+                from ..authz.engine import evaluate
+
+                key = resource_key or rest_key_from_request()
+                act = action or default_action(request.method)
+                if not current_user or not evaluate(current_user, key, act):
+                    return {
+                        "message": "Forbidden",
+                        "code": "AUTHZ_DENIED",
+                        "resource": key,
+                        "action": act,
+                    }, 403
+                return f(*args, **kwargs)
             return decorated
+        return _authorize
+
+    @classmethod
+    def auth_roles(cls, role_names:list[str]):
+        r"""
+        Deprecated: hardcoded role allowlists are no longer the authority.
+        Delegates to :meth:`authorize` (ACL engine).
+        """
+        def _auth_roles(f):
+            return cls.authorize()(f)
         return _auth_roles
     
     @classmethod

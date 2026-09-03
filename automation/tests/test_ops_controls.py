@@ -51,6 +51,10 @@ class TestOpsRoles(unittest.TestCase):
         require_control_role(_user("supervisor"))
         require_destructive_role(_user("admin"))
 
+    def test_integrator_can_control_and_destroy(self):
+        require_control_role(_user("integrator"))
+        require_destructive_role(_user("integrator"))
+
     def test_worker_name_aliases(self):
         self.assertEqual(normalize_worker_name("logger"), "LoggerWorker")
         self.assertEqual(normalize_worker_name("CatalogReplicatorWorker"), "CatalogReplicator")

@@ -9,11 +9,13 @@ import { useAppDispatch } from "../hooks/useAppDispatch";
 import { loadAllMachines } from "../store/slices/machinesSlice";
 import { socketService } from "../services/socket";
 import { translateMachineState, translateMachineClassification } from "../utils/domainI18n";
+import { useAuthz } from "../hooks/useAuthz";
 
 const ITEMS_PER_PAGE = 10;
 
 export function Machines() {
   const { t } = useTranslation();
+  const { canExportCsv } = useAuthz();
   const dispatch = useAppDispatch();
   const realTimeMachines = useAppSelector((state) => state.machines.machines);
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -358,6 +360,7 @@ export function Machines() {
 
   // Exportar a CSV
   const handleExportCSV = () => {
+    if (!canExportCsv()) return;
     if (!machines || machines.length === 0) {
       showToast(t("machines.noDataToExport"), "error");
       return;
@@ -431,16 +434,18 @@ export function Machines() {
   const cardTitle = (
     <div className="d-flex justify-content-between align-items-center w-100">
       <h3 className="card-title m-0">{t("navigation.machines")}</h3>
-      <Button
-        variant="success"
-        onClick={handleExportCSV}
-        className="btn-sm"
-        disabled={loading || machinesWithRealTime.length === 0}
-        title={t("machines.exportToCSV")}
-      >
-        <i className="bi bi-download me-1"></i>
-        CSV
-      </Button>
+      {canExportCsv() && (
+        <Button
+          variant="success"
+          onClick={handleExportCSV}
+          className="btn-sm"
+          disabled={loading || machinesWithRealTime.length === 0}
+          title={t("machines.exportToCSV")}
+        >
+          <i className="bi bi-download me-1"></i>
+          CSV
+        </Button>
+      )}
     </div>
   );
 

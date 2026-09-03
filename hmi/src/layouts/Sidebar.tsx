@@ -7,7 +7,8 @@ import { useAppSelector } from "../hooks/useAppSelector";
 import { logout as logoutAction } from "../store/slices/authSlice";
 import { closeSidebarOnMobile } from "./sidebarDom";
 import { isSystemUser, SYSTEM_HOME_PATH } from "../utils/systemUser";
-import { canViewPerformance, canViewSettings, canViewUserManagement } from "../utils/access";
+import { VIEW_IDS } from "../utils/access";
+import { useAuthz } from "../hooks/useAuthz";
 import { listHmiExtensions, type HmiMenuItem } from "../services/hmiExtensions";
 
 export function Sidebar() {
@@ -16,6 +17,7 @@ export function Sidebar() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const user = useAppSelector((s) => s.auth.user);
+  const { canView } = useAuthz();
   const systemOnly = isSystemUser(user);
   const [communicationsExpanded, setCommunicationsExpanded] = useState(
     location.pathname.startsWith("/communications")
@@ -29,6 +31,9 @@ export function Sidebar() {
   const [machinesExpanded, setMachinesExpanded] = useState(
     location.pathname.startsWith("/machines")
   );
+  const [administrationExpanded, setAdministrationExpanded] = useState(
+    location.pathname.startsWith("/user-management")
+  );
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [extensions, setExtensions] = useState<HmiMenuItem[]>([]);
@@ -37,36 +42,41 @@ export function Sidebar() {
   const isTagsActive = location.pathname.startsWith("/tags");
   const isAlarmsActive = location.pathname.startsWith("/alarms");
   const isMachinesActive = location.pathname.startsWith("/machines");
+  const isAdministrationActive = location.pathname.startsWith("/user-management");
 
   const navItems = [
-    { to: "/real-time-trends", icon: "bi bi-graph-up-arrow", labelKey: "navigation.realTimeTrends" },
+    { to: "/real-time-trends", icon: "bi bi-graph-up-arrow", labelKey: "navigation.realTimeTrends", view: VIEW_IDS.realTimeTrends },
     // { to: "/scada", icon: "bi bi-diagram-3", labelKey: "navigation.scada" },
-    { to: "/events", icon: "bi bi-calendar-event", labelKey: "navigation.events" },
-    { to: "/operational-logs", icon: "bi bi-journal-text", labelKey: "navigation.operationalLogs" },
-    { to: "/performance", icon: "bi bi-speedometer2", labelKey: "navigation.performance" },
-    { to: "/user-management", icon: "bi bi-people", labelKey: "navigation.userManagement" },
-    { to: "/settings", icon: "bi bi-gear", labelKey: "navigation.settings" },
+    { to: "/events", icon: "bi bi-calendar-event", labelKey: "navigation.events", view: VIEW_IDS.events },
+    { to: "/operational-logs", icon: "bi bi-journal-text", labelKey: "navigation.operationalLogs", view: VIEW_IDS.operationalLogs },
+    { to: "/performance", icon: "bi bi-speedometer2", labelKey: "navigation.performance", view: VIEW_IDS.performance },
+    { to: "/settings", icon: "bi bi-gear", labelKey: "navigation.settings", view: VIEW_IDS.settings },
   ];
 
   const tagsSubItems = [
-    { to: "/tags/definitions", labelKey: "sidebar.tags.definitions", icon: "bi bi-card-list" },
-    { to: "/tags/datalogger", labelKey: "sidebar.tags.dataLogger", icon: "bi bi-database" },
-    { to: "/tags/trends", labelKey: "sidebar.tags.trends", icon: "bi bi-graph-up" },
+    { to: "/tags/definitions", labelKey: "sidebar.tags.definitions", icon: "bi bi-card-list", view: VIEW_IDS.tagsDefinitions },
+    { to: "/tags/datalogger", labelKey: "sidebar.tags.dataLogger", icon: "bi bi-database", view: VIEW_IDS.tagsDatalogger },
+    { to: "/tags/trends", labelKey: "sidebar.tags.trends", icon: "bi bi-graph-up", view: VIEW_IDS.tagsTrends },
   ];
 
   const communicationsSubItems = [
-    { to: "/communications/clients", labelKey: "sidebar.communications.clients", icon: "bi bi-hdd-network" },
-    { to: "/communications/server", labelKey: "sidebar.communications.server", icon: "bi bi-server" },
+    { to: "/communications/clients", labelKey: "sidebar.communications.clients", icon: "bi bi-hdd-network", view: VIEW_IDS.communicationsClients },
+    { to: "/communications/server", labelKey: "sidebar.communications.server", icon: "bi bi-server", view: VIEW_IDS.communicationsServer },
   ];
 
   const alarmsSubItems = [
-    { to: "/alarms/definitions", labelKey: "sidebar.alarms.definitions", icon: "bi bi-list-check" },
-    { to: "/alarms/summary", labelKey: "sidebar.alarms.summary", icon: "bi bi-clipboard-data" },
+    { to: "/alarms/definitions", labelKey: "sidebar.alarms.definitions", icon: "bi bi-list-check", view: VIEW_IDS.alarmsDefinitions },
+    { to: "/alarms/summary", labelKey: "sidebar.alarms.summary", icon: "bi bi-clipboard-data", view: VIEW_IDS.alarmsSummary },
   ];
 
   const machinesSubItems = [
-    { to: "/machines/summary", labelKey: "sidebar.machines.summary", icon: "bi bi-list-ul" },
-    { to: "/machines/detailed", labelKey: "sidebar.machines.detailed", icon: "bi bi-diagram-3" },
+    { to: "/machines/summary", labelKey: "sidebar.machines.summary", icon: "bi bi-list-ul", view: VIEW_IDS.machinesSummary },
+    { to: "/machines/detailed", labelKey: "sidebar.machines.detailed", icon: "bi bi-diagram-3", view: VIEW_IDS.machinesDetailed },
+  ];
+
+  const administrationSubItems = [
+    { to: "/user-management", labelKey: "sidebar.administration.userManagement", icon: "bi bi-people", view: VIEW_IDS.userManagement },
+    { to: "/user-management/access", labelKey: "sidebar.administration.accessControl", icon: "bi bi-shield-lock", view: VIEW_IDS.authz },
   ];
 
   // Expandir automáticamente el menú de Communications cuando se navega a una ruta de communications
@@ -94,6 +104,13 @@ export function Sidebar() {
   useEffect(() => {
     if (location.pathname.startsWith("/machines")) {
       setMachinesExpanded(true);
+    }
+  }, [location.pathname]);
+
+  // Expandir automáticamente el menú de Administración cuando se navega a user-management
+  useEffect(() => {
+    if (location.pathname.startsWith("/user-management")) {
+      setAdministrationExpanded(true);
     }
   }, [location.pathname]);
 
@@ -176,7 +193,7 @@ export function Sidebar() {
           <ul className="nav sidebar-menu flex-column" role="menu" data-lte-toggle="treeview" aria-label="Main navigation">
             {!systemOnly && (
               <>
-            {/* Communications con submenu desplegable */}
+            {communicationsSubItems.some((item) => canView(item.view)) && (
             <li className={`nav-item ${communicationsExpanded ? "menu-open" : ""}`}>
               <a
                 href="#"
@@ -201,7 +218,7 @@ export function Sidebar() {
                 />
               </a>
               <ul className="nav nav-treeview" style={{ display: communicationsExpanded ? "block" : "none" }}>
-                {communicationsSubItems.map((subItem) => (
+                {communicationsSubItems.filter((subItem) => canView(subItem.view)).map((subItem) => (
                   <li className="nav-item" key={subItem.to}>
                     <NavLink
                       to={subItem.to}
@@ -216,8 +233,9 @@ export function Sidebar() {
                 ))}
               </ul>
             </li>
-            
-            {/* Tags con submenu desplegable */}
+            )}
+
+            {tagsSubItems.some((item) => canView(item.view)) && (
             <li className={`nav-item ${tagsExpanded ? "menu-open" : ""}`}>
               <a
                 href="#"
@@ -242,7 +260,7 @@ export function Sidebar() {
                 />
               </a>
               <ul className="nav nav-treeview" style={{ display: tagsExpanded ? "block" : "none" }}>
-                {tagsSubItems.map((subItem) => (
+                {tagsSubItems.filter((subItem) => canView(subItem.view)).map((subItem) => (
                   <li className="nav-item" key={subItem.to}>
                     <NavLink
                       to={subItem.to}
@@ -257,8 +275,9 @@ export function Sidebar() {
                 ))}
               </ul>
             </li>
+            )}
             
-            {/* Alarms con submenu desplegable */}
+            {alarmsSubItems.some((item) => canView(item.view)) && (
             <li className={`nav-item ${alarmsExpanded ? "menu-open" : ""}`}>
               <a
                 href="#"
@@ -283,7 +302,7 @@ export function Sidebar() {
                 />
               </a>
               <ul className="nav nav-treeview" style={{ display: alarmsExpanded ? "block" : "none" }}>
-                {alarmsSubItems.map((subItem) => (
+                {alarmsSubItems.filter((subItem) => canView(subItem.view)).map((subItem) => (
                   <li className="nav-item" key={subItem.to}>
                     <NavLink
                       to={subItem.to}
@@ -298,8 +317,9 @@ export function Sidebar() {
                 ))}
               </ul>
             </li>
+            )}
             
-            {/* Machines con submenu desplegable */}
+            {machinesSubItems.some((item) => canView(item.view)) && (
             <li className={`nav-item ${machinesExpanded ? "menu-open" : ""}`}>
               <a
                 href="#"
@@ -324,7 +344,7 @@ export function Sidebar() {
                 />
               </a>
               <ul className="nav nav-treeview" style={{ display: machinesExpanded ? "block" : "none" }}>
-                {machinesSubItems.map((subItem) => (
+                {machinesSubItems.filter((subItem) => canView(subItem.view)).map((subItem) => (
                   <li className="nav-item" key={subItem.to}>
                     <NavLink
                       to={subItem.to}
@@ -339,11 +359,57 @@ export function Sidebar() {
                 ))}
               </ul>
             </li>
+            )}
               </>
             )}
 
+            {(systemOnly || administrationSubItems.some((item) => canView(item.view))) && (
+            <li className={`nav-item ${administrationExpanded ? "menu-open" : ""}`}>
+              <a
+                href="#"
+                className={`nav-link ${isAdministrationActive ? "active" : ""} d-flex align-items-center justify-content-between`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setAdministrationExpanded(!administrationExpanded);
+                }}
+                style={{ paddingRight: "1rem" }}
+              >
+                <div className="d-flex align-items-center">
+                  <i className="nav-icon bi bi-shield-check" />
+                  <p className="mb-0">{t("sidebar.administration.title")}</p>
+                </div>
+                <i
+                  className={`bi ${administrationExpanded ? "bi-chevron-down" : "bi-chevron-right"}`}
+                  style={{
+                    fontSize: "0.875rem",
+                    transition: "transform 0.2s ease",
+                    marginLeft: "auto",
+                  }}
+                />
+              </a>
+              <ul className="nav nav-treeview" style={{ display: administrationExpanded ? "block" : "none" }}>
+                {(systemOnly
+                  ? administrationSubItems
+                  : administrationSubItems.filter((subItem) => canView(subItem.view))
+                ).map((subItem) => (
+                  <li className="nav-item" key={subItem.to}>
+                    <NavLink
+                      to={subItem.to}
+                      className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                      style={{ paddingLeft: "2rem" }}
+                      onClick={closeSidebarOnMobile}
+                    >
+                      <i className={`nav-icon ${subItem.icon}`} />
+                      <p>{t(subItem.labelKey)}</p>
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </li>
+            )}
+            
             {!systemOnly &&
-              canViewPerformance(user?.role) &&
+              canView(VIEW_IDS.ldsDashboard) &&
               extensions.map((item) => (
                 <li className="nav-item" key={item.id}>
                   <NavLink
@@ -357,16 +423,7 @@ export function Sidebar() {
                 </li>
               ))}
             
-            {/* Otros items del menú */}
-            {(systemOnly
-              ? navItems.filter((item) => item.to === SYSTEM_HOME_PATH)
-              : navItems.filter((item) => {
-                  if (item.to === "/performance") return canViewPerformance(user?.role);
-                  if (item.to === "/settings") return canViewSettings(user?.role);
-                  if (item.to === "/user-management") return canViewUserManagement(user?.role);
-                  return true;
-                })
-            ).map((item) => (
+            {(systemOnly ? [] : navItems.filter((item) => canView(item.view))).map((item) => (
               <li className="nav-item" key={item.to}>
                 <NavLink
                   to={item.to}

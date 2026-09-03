@@ -27,6 +27,7 @@ import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperator
 import { readSessionTags, writeSessionTags } from "../utils/sessionFilters";
 import { buildHistorianTagOptionLabel, resolveTagDisplayLabel } from "../utils/tagDisplayLabel";
 import { HistoricalQualityLegend } from "../components/HistoricalQualityLegend";
+import { useAuthz } from "../hooks/useAuthz";
 
 type PresetDate = 
   | "Last Minute"
@@ -162,6 +163,7 @@ const getPresetDateRange = (preset: PresetDate): { start: Date; end: Date } => {
 
 export function DataLogger() {
   const { t, locale } = useTranslation();
+  const { canExportCsv } = useAuthz();
   const { timeZone } = useDisplayTimezone();
   const plantAreas = usePlantAreas();
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
@@ -416,6 +418,7 @@ export function DataLogger() {
   };
 
   const handleExportCSV = async () => {
+    if (!canExportCsv()) return;
     if (!tabularData || !tabularData.values || tabularData.values.length === 0) {
       setError(t("dataLogger.noDataToExport"));
       return;
@@ -578,15 +581,17 @@ export function DataLogger() {
                       ))}
                     </select>
                   </div>
-                  <Button
-                    variant="primary"
-                    className="btn-sm"
-                    onClick={handleExportCSV}
-                    disabled={!tabularData || !tabularData.values || tabularData.values.length === 0}
-                  >
-                    <i className="bi bi-download me-1"></i>
-                    {t("common.csv")}
-                  </Button>
+                  {canExportCsv() && (
+                    <Button
+                      variant="primary"
+                      className="btn-sm"
+                      onClick={handleExportCSV}
+                      disabled={!tabularData || !tabularData.values || tabularData.values.length === 0}
+                    >
+                      <i className="bi bi-download me-1"></i>
+                      {t("common.csv")}
+                    </Button>
+                  )}
                 </div>
               </div>
               {selectedTags.length > 0 ? (

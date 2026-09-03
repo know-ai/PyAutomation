@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
-| **Fecha de compactación** | 2026-08-20 · **revisión suscripción/domain 2026-09-01** |
+| **Fecha de compactación** | 2026-08-20 · **revisión suscripción/domain 2026-09-01** · **auth/authz 2026-09-03** |
 | **Auditoría durabilidad disco** | 2026-08-28 — [AUDIT_DISK_DURABILITY.md](./AUDIT_DISK_DURABILITY.md); **A+ código/spec**; WD-01…10 PASS; soak 24 h planta pendiente ([SOAK_DISK_LAST_RUN.md](./SOAK_DISK_LAST_RUN.md)) |
 | **Puntos críticos de misión** | 2026-08-28 — [AUDIT_MISSION_CRITICAL.md](./AUDIT_MISSION_CRITICAL.md); CT-01…07; **A− / B+ código**; caos OT pendiente ([CHAOS_LAST_RUN.md](./CHAOS_LAST_RUN.md)) |
 | **Continuidad día-1000** | 2026-08-27 — [AUDIT_LONG_RUN_CONTINUITY.md](./AUDIT_LONG_RUN_CONTINUITY.md); hardening R1–R5 en código; deploy/soak planta pendiente |
@@ -15,7 +15,7 @@
 
 ---
 
-## Documentos canónicos (20)
+## Documentos canónicos (21)
 
 | Doc | Archivo | Absorbe | Veredicto vigente |
 |---|---|---|---|
@@ -39,6 +39,7 @@
 | **18 Continuidad 1–1000 días** | [AUDIT_LONG_RUN_CONTINUITY.md](./AUDIT_LONG_RUN_CONTINUITY.md) | baseline N1 2026-08-27 + SPEC_LONG_RUN R1–R5 (DLQ, compact catalog, drop SM, disco CRITICAL, config limpia) | Edge **A−** en código; PG **B−** (DBA); deploy + soak 24 h pendiente |
 | **19 Durabilidad disco / eficiencia escritura** | [AUDIT_DISK_DURABILITY.md](./AUDIT_DISK_DURABILITY.md) | Spec WD-01…10; G-DISK-01…09 cerrados en código (SOAK 24 h = plantilla) | **A+** código/spec · soak planta pendiente |
 | **20 Puntos críticos de misión** | [AUDIT_MISSION_CRITICAL.md](./AUDIT_MISSION_CRITICAL.md) | Spec CT-01…07; NTP gate, fsync, peer heartbeat, caos | **A− / B+** código · steal-tags y restart &lt; 10 s fuera de contrato · campaña OT pendiente |
+| **21 Autenticación y autorización** | [AUDIT_AUTH_AUTHORIZATION.md](./AUDIT_AUTH_AUTHORIZATION.md) | Login/sesión/TPT; ACL granular `authz_grants`; roles dinámicos baseline `guest`; Swagger `docs_auth`; bus Redis/PG | Auth **A−** · Authz **A−** — ACL fail-closed; panel HMI; Socket.IO por vista pendiente |
 
 ---
 
@@ -49,6 +50,7 @@
 3. El runbook operativo de deriva (RSS, OPC, SAF, conexiones, logs) vive en [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) § Runbook.
 4. Specs de arquitectura: `specs/01-MULTI-EDGE-ARCHITECTURE.md` (el estado de implementación real está en [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), no en el encabezado «propuesta» de la spec).
 5. Extensión de formularios de dominio en `/hmi/machines/detailed` (DIP/OCP, hardcodes producto, contrato Schema-Driven): [AUDIT_HMI_MACHINE_DOMAIN_EXTENSION.md](./AUDIT_HMI_MACHINE_DOMAIN_EXTENSION.md).
+6. Login, sesión, ACL REST/HMI (`authz_grants`, `/api/authz/me`): [AUDIT_AUTH_AUTHORIZATION.md](./AUDIT_AUTH_AUTHORIZATION.md).
 
 ---
 

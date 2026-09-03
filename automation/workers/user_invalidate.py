@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Listen for cross-edge user cache invalidation (PG NOTIFY + Redis Pub/Sub)."""
+"""Listen for cross-edge cache invalidation (PG NOTIFY + Redis Pub/Sub).
+
+One dedicated connection LISTENs both user and ACL channels so we do not
+spend a second historian slot (idle budget). Redis Pub/Sub is the local
+sidecar (intra-edge workers). PostgreSQL NOTIFY is the cross-edge bus.
+"""
 from __future__ import annotations
 
 import logging
@@ -7,6 +12,13 @@ import select
 import time
 
 from .worker import BaseWorker
+from ..authz.invalidate import (
+    PG_CHANNEL as AUTHZ_PG_CHANNEL,
+    REDIS_CHANNEL as AUTHZ_REDIS_CHANNEL,
+    apply_authz_invalidate,
+    parse_authz_payload,
+)
+from ..authz.store import PERIODIC_RELOAD_S, maybe_periodic_reload
 from ..catalog.user_cache import (
     PG_CHANNEL,
     REDIS_CHANNEL,
@@ -28,6 +40,7 @@ class UserInvalidateWorker(BaseWorker):
         self.daemon = True
         self._pg_conn = None
         self._redis_pubsub = None
+        self._authz_periodic_mono = time.monotonic()
 
     def stop(self) -> None:
         super().stop()
@@ -41,6 +54,7 @@ class UserInvalidateWorker(BaseWorker):
                 self._ensure_redis()
                 self._drain_pg()
                 self._drain_redis()
+                self._maybe_authz_heartbeat()
             except Exception:
                 _LOGGER.debug("user invalidate worker tick failed", exc_info=True)
                 self._close_pg()
@@ -48,6 +62,16 @@ class UserInvalidateWorker(BaseWorker):
                 self.stop_event.wait(_RECONNECT_S)
                 continue
             self.stop_event.wait(_POLL_S)
+
+    def _maybe_authz_heartbeat(self) -> None:
+        now = time.monotonic()
+        if (now - self._authz_periodic_mono) < PERIODIC_RELOAD_S:
+            return
+        self._authz_periodic_mono = now
+        try:
+            maybe_periodic_reload()
+        except Exception:
+            _LOGGER.debug("authz periodic reload skipped", exc_info=True)
 
     def _ensure_pg(self) -> None:
         if self._pg_conn is not None:
@@ -74,9 +98,14 @@ class UserInvalidateWorker(BaseWorker):
             conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
             cur = conn.cursor()
             cur.execute(f"LISTEN {PG_CHANNEL};")
+            cur.execute(f"LISTEN {AUTHZ_PG_CHANNEL};")
             cur.close()
             self._pg_conn = conn
-            _LOGGER.info("listening for user invalidation on PG channel %s", PG_CHANNEL)
+            _LOGGER.info(
+                "listening for invalidation on PG channels %s %s",
+                PG_CHANNEL,
+                AUTHZ_PG_CHANNEL,
+            )
         except Exception:
             self._pg_conn = None
             _LOGGER.debug("user invalidate PG LISTEN unavailable", exc_info=True)
@@ -91,7 +120,7 @@ class UserInvalidateWorker(BaseWorker):
             if client is None:
                 return
             pubsub = client.pubsub(ignore_subscribe_messages=True)
-            pubsub.subscribe(REDIS_CHANNEL)
+            pubsub.subscribe(REDIS_CHANNEL, AUTHZ_REDIS_CHANNEL)
             self._redis_pubsub = pubsub
         except Exception:
             self._redis_pubsub = None
@@ -108,7 +137,13 @@ class UserInvalidateWorker(BaseWorker):
             conn.poll()
             while conn.notifies:
                 notify = conn.notifies.pop(0)
-                username, origin = parse_invalidate_payload(getattr(notify, "payload", None))
+                channel = str(getattr(notify, "channel", "") or "")
+                payload = getattr(notify, "payload", None)
+                if channel == AUTHZ_PG_CHANNEL:
+                    version, origin = parse_authz_payload(payload)
+                    apply_authz_invalidate(version=version, origin=origin, reason="pg_notify")
+                    continue
+                username, origin = parse_invalidate_payload(payload)
                 if username:
                     apply_user_invalidate(username=username, origin=origin)
         except Exception:
@@ -127,7 +162,13 @@ class UserInvalidateWorker(BaseWorker):
                     break
                 if message.get("type") != "message":
                     continue
-                username, origin = parse_invalidate_payload(message.get("data"))
+                channel = str(message.get("channel") or "")
+                data = message.get("data")
+                if channel == AUTHZ_REDIS_CHANNEL:
+                    version, origin = parse_authz_payload(data)
+                    apply_authz_invalidate(version=version, origin=origin, reason="redis")
+                    continue
+                username, origin = parse_invalidate_payload(data)
                 if username:
                     apply_user_invalidate(username=username, origin=origin)
         except Exception:
