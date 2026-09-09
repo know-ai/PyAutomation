@@ -50,4 +50,5 @@ class ReplicationWorker(BaseWorker):
                 _LOGGER.error("SAF replication worker cycle failed; journal preserved", exc_info=True)
                 idle_s = 1.0
             self._wake.wait(timeout=idle_s)
+        self.release_historian_socket()
         _LOGGER.info("ReplicationWorker shutdown")

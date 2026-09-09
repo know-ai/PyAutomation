@@ -108,6 +108,24 @@ class TestApplyRemoteDbKwargs(unittest.TestCase):
         kwargs = apply_remote_db_kwargs("sqlite", {"dbfile": "app.db"})
         self.assertEqual(kwargs, {"dbfile": "app.db"})
 
+    def test_postgresql_carries_server_side_idle_guards(self):
+        """PostgreSQL debe poder matar backends que la app ya no puede cerrar."""
+        kwargs = apply_remote_db_kwargs("postgresql", {"host": "192.168.1.95"})
+        self.assertIn("idle_session_timeout=300000", kwargs["options"])
+        self.assertIn("idle_in_transaction_session_timeout=60000", kwargs["options"])
+
+    def test_idle_session_timeout_can_be_disabled(self):
+        from ..utils.db_io import idle_session_timeout_ms
+
+        with patch.dict(os.environ, {"AUTOMATION_DB_IDLE_SESSION_TIMEOUT_S": "0"}, clear=False):
+            self.assertEqual(idle_session_timeout_ms(), 0)
+            kwargs = apply_remote_db_kwargs("postgresql", {})
+            self.assertNotIn("idle_session_timeout", kwargs.get("options", ""))
+
+    def test_explicit_options_win(self):
+        kwargs = apply_remote_db_kwargs("postgresql", {"options": "-c statement_timeout=1000"})
+        self.assertEqual(kwargs["options"], "-c statement_timeout=1000")
+
 
 class TestRunUncooperativeDbCall(unittest.TestCase):
     def test_returns_function_result(self):
@@ -245,6 +263,120 @@ class TestConnectionRegistry(unittest.TestCase):
         db.is_closed.return_value = True
         close_current_greenlet_connection(db)
         db.close.assert_not_called()
+
+    def test_census_does_not_pin_socket_of_dead_greenlet(self):
+        """Planta: ~100 backends idle en 6 días. El censo no puede ser dueño del socket."""
+        import gc
+        import threading
+
+        closed = []
+
+        class FakeConn:
+            def close(self):
+                closed.append(True)
+
+        owner = object()
+
+        def ephemeral():
+            conn = FakeConn()
+            REGISTRY.register(conn, owner=owner, role="PyAutomationIO:edge:Ephemeral")
+
+        thread = threading.Thread(target=ephemeral, name="Ephemeral")
+        thread.start()
+        thread.join()
+        gc.collect()
+
+        self.assertEqual(REGISTRY.count(), 0)
+
+    def test_reap_abandoned_closes_socket_whose_greenlet_is_gone(self):
+        import threading
+
+        conn = MagicMock()
+        owner = object()
+
+        def ephemeral():
+            REGISTRY.register(conn, owner=owner, role="PyAutomationIO:edge:MetricsSamplerWorker")
+
+        thread = threading.Thread(target=ephemeral, name="MetricsSamplerWorker")
+        thread.start()
+        thread.join()
+
+        self.assertEqual(REGISTRY.count(), 1)
+        self.assertEqual(REGISTRY.reap_abandoned(), 1)
+        conn.close.assert_called_once()
+        self.assertEqual(REGISTRY.count(), 0)
+        self.assertGreaterEqual(REGISTRY.reaped_count(), 1)
+
+    def test_reap_keeps_socket_of_a_living_worker(self):
+        conn = MagicMock()
+        REGISTRY.register(conn, owner=object(), role="PyAutomationIO:edge:LoggerWorker")
+        self.assertEqual(REGISTRY.reap_abandoned(), 0)
+        conn.close.assert_not_called()
+
+    def test_connect_refused_above_hard_ceiling(self):
+        from peewee import OperationalError, PostgresqlDatabase
+
+        from ..utils.db_connections import TrackedPostgresqlDatabase, force_historian_connect
+
+        conns = [MagicMock() for _ in range(3)]
+        owner = object()
+        for conn in conns:
+            REGISTRY.register(conn, owner=owner, role="PyAutomationIO:edge:LoggerWorker")
+
+        db = TrackedPostgresqlDatabase(None)
+        with patch.dict(os.environ, {"AUTOMATION_DB_CONNECTIONS_MAX": "3"}, clear=False):
+            with force_historian_connect():
+                with patch.object(PostgresqlDatabase, "_connect") as connect:
+                    with self.assertRaises(OperationalError) as raised:
+                        db._connect()
+        self.assertIn("ceiling", str(raised.exception))
+        connect.assert_not_called()
+
+    def test_ceiling_reaps_before_refusing(self):
+        import threading
+
+        from peewee import PostgresqlDatabase
+
+        from ..utils.db_connections import TrackedPostgresqlDatabase, force_historian_connect
+
+        owner = object()
+        stale = [MagicMock() for _ in range(3)]
+
+        def ephemeral():
+            for conn in stale:
+                REGISTRY.register(conn, owner=owner, role="PyAutomationIO:edge:Ephemeral")
+
+        thread = threading.Thread(target=ephemeral, name="Ephemeral")
+        thread.start()
+        thread.join()
+
+        db = TrackedPostgresqlDatabase(None)
+        fresh = MagicMock()
+        with patch.dict(os.environ, {"AUTOMATION_DB_CONNECTIONS_MAX": "3"}, clear=False):
+            with force_historian_connect():
+                with patch.object(PostgresqlDatabase, "_connect", return_value=fresh):
+                    self.assertIs(db._connect(), fresh)
+        for conn in stale:
+            conn.close.assert_called_once()
+
+    def test_close_rolls_back_open_transaction_first(self):
+        """Peewee se niega a cerrar dentro de una transacción; el socket sobrevivía."""
+        db = MagicMock()
+        db.is_closed.return_value = False
+        db.in_transaction.return_value = True
+        close_current_greenlet_connection(db)
+        db.rollback.assert_called_once()
+        db.close.assert_called_once()
+
+    def test_census_reports_role_and_age(self):
+        conn = MagicMock()
+        REGISTRY.register(conn, owner=object(), role="PyAutomationIO:edge-Supe-Linea2:LoggerWorker")
+        rows = REGISTRY.census()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["role"], "PyAutomationIO:edge-Supe-Linea2:LoggerWorker")
+        self.assertFalse(rows[0]["owner_gone"])
+        self.assertEqual(REGISTRY.leaked(older_than_s=3600), [])
+        self.assertEqual(len(REGISTRY.leaked(older_than_s=0)), 1)
 
     def test_tracked_close_all_is_owner_scoped(self):
         from ..utils.db_connections import TrackedPostgresqlDatabase

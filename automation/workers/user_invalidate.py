@@ -87,6 +87,10 @@ class UserInvalidateWorker(BaseWorker):
             import psycopg2
             from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
+            from ..utils.db_connections import historian_application_name
+
+            # A LISTEN socket is idle by design: it must stay identifiable in
+            # pg_stat_activity and must not inherit idle_session_timeout.
             conn = psycopg2.connect(
                 host=cfg.get("host") or "127.0.0.1",
                 port=int(cfg.get("port") or 5432),
@@ -94,6 +98,11 @@ class UserInvalidateWorker(BaseWorker):
                 password=cfg.get("password") or "",
                 dbname=cfg.get("name") or cfg.get("dbname") or "app_db",
                 connect_timeout=3,
+                application_name=historian_application_name("UserInvalidateWorker"),
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=3,
             )
             conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
             cur = conn.cursor()

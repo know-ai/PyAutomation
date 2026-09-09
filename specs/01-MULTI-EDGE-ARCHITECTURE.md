@@ -588,6 +588,10 @@ Además de las variables de §4:
 |----------|---------|-----------|
 | `AUTOMATION_MULTI_EDGE_ENABLED` | `true` si hay clientes OPC con `owner_node` | Desactivar modo en desarrollo |
 | `AUTOMATION_DB_APPLICATION_NAME` | `PyAutomationIO:{node_id}:{rol}` | Generado; no requiere set manual |
+| `AUTOMATION_DB_CONNECTIONS_MAX` | `12` | Techo duro de sockets por proceso. Repartir `max_connections` entre edges × workers |
+| `AUTOMATION_DB_IDLE_SESSION_TIMEOUT_S` | `300` | `idle_session_timeout` que el edge pide al servidor (PG ≥ 14). `0` desactiva |
+| `AUTOMATION_DB_IDLE_IN_TRANSACTION_TIMEOUT_S` | `60` | `idle_in_transaction_session_timeout`. `0` desactiva |
+| `AUTOMATION_DB_LEAK_DETECTION_S` | `900` | Edad a partir de la cual un socket se reporta por rol en los logs |
 
 ---
 

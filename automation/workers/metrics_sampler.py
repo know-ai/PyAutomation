@@ -136,6 +136,7 @@ class MetricsSamplerWorker(BaseWorker):
             except Exception:
                 _LOGGER.warning("Metrics sampler tick failed", exc_info=True)
             self.stop_event.wait(self._interval_s)
+        self.release_historian_socket()
         _LOGGER.info("MetricsSamplerWorker stopped")
 
     def _prime_cpu(self) -> None:
@@ -397,6 +398,7 @@ class MetricsSamplerWorker(BaseWorker):
             from .. import PyAutomation
             from ..health import get_database_health_service
             from ..utils.db_connections import (
+                REGISTRY,
                 local_txn_commit_count,
                 query_pg_txn_counters,
                 snapshot_connection_metrics,
@@ -407,9 +409,15 @@ class MetricsSamplerWorker(BaseWorker):
             health = get_database_health_service().snapshot()
             payload["DB_LATENCY_MS"] = health.latency_ms
             db = getattr(app, "_db", None)
+            # Sockets whose greenlet is gone cannot close themselves. This is the
+            # only periodic sweep, so the census stays honest between restarts.
+            REGISTRY.reap_abandoned()
             conn = snapshot_connection_metrics(db)
             payload["DB_ACTIVE_CONNECTIONS"] = conn.get("DB_ACTIVE_CONNECTIONS")
             payload["DB_CONNECTIONS_LOCAL"] = conn.get("DB_CONNECTIONS_COUNT")
+            payload["DB_CONNECTIONS_MAX"] = conn.get("DB_CONNECTIONS_MAX")
+            payload["DB_CONNECTIONS_REAPED"] = conn.get("DB_CONNECTIONS_REAPED")
+            payload["DB_CONNECTIONS_LEAKED"] = conn.get("DB_CONNECTIONS_LEAKED")
             payload["DB_DISK_FREE_GB"] = None
             now = time.monotonic()
             local_commits = local_txn_commit_count()

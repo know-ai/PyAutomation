@@ -26,6 +26,8 @@ _LOGGER = logging.getLogger("pyautomation")
 DEFAULT_CONNECT_TIMEOUT_S = 5
 DEFAULT_PROBE_TIMEOUT_S = 2
 _MAX_CONNECT_TIMEOUT_S = 30
+DEFAULT_IDLE_SESSION_TIMEOUT_S = 300
+DEFAULT_IDLE_IN_TRANSACTION_TIMEOUT_S = 60
 
 _T = TypeVar("_T")
 _FALLBACK_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="db-io")
@@ -53,6 +55,52 @@ def probe_timeout_s() -> float:
     return max(0.2, min(value, float(_MAX_CONNECT_TIMEOUT_S)))
 
 
+def idle_session_timeout_ms() -> int:
+    """Server-side reaper for sockets the app can no longer close. 0 disables.
+
+    A backend orphaned by a SIGKILLed edge, or held by a greenlet that never
+    runs again, is invisible to the client census: only PostgreSQL can end it.
+    Every live PyAutomation socket touches the server well inside this window
+    (LoggerWorker every ``logger_period``, MetricsSampler every 5 s), so the
+    timeout only ever fires on something already abandoned.
+    """
+    raw = os.environ.get("AUTOMATION_DB_IDLE_SESSION_TIMEOUT_S", str(DEFAULT_IDLE_SESSION_TIMEOUT_S))
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        value = float(DEFAULT_IDLE_SESSION_TIMEOUT_S)
+    if value <= 0:
+        return 0
+    return int(max(60.0, value) * 1000)
+
+
+def idle_in_transaction_timeout_ms() -> int:
+    """Cap on ``idle in transaction``. A healthy edge never holds one open."""
+    raw = os.environ.get(
+        "AUTOMATION_DB_IDLE_IN_TRANSACTION_TIMEOUT_S",
+        str(DEFAULT_IDLE_IN_TRANSACTION_TIMEOUT_S),
+    )
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        value = float(DEFAULT_IDLE_IN_TRANSACTION_TIMEOUT_S)
+    if value <= 0:
+        return 0
+    return int(max(10.0, value) * 1000)
+
+
+def postgres_session_options() -> str:
+    """libpq ``options`` string carrying the server-enforced idle guards."""
+    parts = []
+    idle_ms = idle_session_timeout_ms()
+    if idle_ms:
+        parts.append(f"-c idle_session_timeout={idle_ms}")
+    txn_ms = idle_in_transaction_timeout_ms()
+    if txn_ms:
+        parts.append(f"-c idle_in_transaction_session_timeout={txn_ms}")
+    return " ".join(parts)
+
+
 def apply_remote_db_kwargs(dbtype: str, kwargs: dict[str, Any] | None) -> dict[str, Any]:
     """Copy kwargs and set fail-fast TCP options for PostgreSQL / MySQL.
 
@@ -68,6 +116,9 @@ def apply_remote_db_kwargs(dbtype: str, kwargs: dict[str, Any] | None) -> dict[s
         out.setdefault("keepalives_idle", 3)
         out.setdefault("keepalives_interval", 1)
         out.setdefault("keepalives_count", 3)
+        options = postgres_session_options()
+        if options:
+            out.setdefault("options", options)
     elif kind == "mysql":
         out.setdefault("connect_timeout", budget)
         out.setdefault("read_timeout", budget)

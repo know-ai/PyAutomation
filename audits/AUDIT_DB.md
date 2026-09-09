@@ -6,6 +6,7 @@
 | **Alcance** | Ciclo de vida Peewee/libpq bajo Gunicorn + gevent; reconexión; freeze del hub; censo idle; RAM atribuible a sockets |
 | **Fecha original** | 2026-08-14 … 2026-08-17 (seis auditorías) |
 | **Compactación** | 2026-08-18 — evidencia de código actualizada |
+| **Reapertura** | 2026-09-09 — incidente `too many clients already` en laboratorio (§1.5). El censo era **dueño** del socket |
 | **Fuentes absorbidas** | `AUDIT_DB_CONNECTIONS`, `AUDIT_DB_CONNECTIONS_ETERNAL`, `AUDIT_OPTIMAL_CONNECTIONS`, `AUDIT_DB_RECONNECT`, `AUDIT_NETWORK_TIMEOUT`, `AUDIT_DB_CONNECTION_MEMORY` |
 | **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) (BE-H4, RSS), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) (PENDING no se toca), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) (`application_name` con `node_id`) |
 | **Veredicto vigente** | Un objeto `Database`. Idle 1 worker: **1–3** sockets (techo **≤ 4**). Probes throwaway. Teardown HTTP. Reconnect owner-scoped + `SELECT 1` ligado. Pool Peewee **prohibido**. Historiador inalcanzable **no** puede congelar el hub ni `on.tag` |
@@ -72,6 +73,41 @@ Captura `pg_stat_activity` (host app `192.168.1.106`):
 Ninguna fila en `idle in transaction`. El conteo **no crecía** (conjunto fijo que reabre). Objetivo idle: **1** (`:LoggerWorker`). Techo **CA-OPT-1: ≤ 4**.
 
 `append_machine(..., mode='async')` es el default. Cada `SchedThread` que hace Peewee = 1 backend idle eterno hasta `ephemeral_historian`.
+
+### 1.5 `too many clients already` — el censo era dueño del socket (planta 2026-09-09)
+
+Seis días de operación continua; PostgreSQL 15 con `max_connections = 100` saturado hasta impedir el login de `postgres`. `ss -tnp | grep :5432 | wc -l` → **101**. Backends `idle` dominantes: `PyAutomationIO:edge-Supe-Linea2:LoggerWorker`, `PyAutomationIO:edge-Supe-Linea2:MetricsSamplerWorker` y conexiones **sin** `application_name`, desde `192.168.1.80` / `.81`.
+
+Este documento afirmaba «el día 1 y el día 1000 deben mostrar el mismo número de backends». Era **falso**, y la causa estaba en la propia pieza de censo:
+
+```python
+# ConnectionRegistry.register — antes
+self._by_owner.setdefault(oid, {})[id(conn)] = conn   # referencia FUERTE
+```
+
+`ConnectionRegistry` guardaba una referencia **fuerte** a cada socket. Cuando un greenlet moría sin `close()` — teardown que no corre, `atomic()` abortado, worker reiniciado — CPython ya no podía finalizar el objeto psycopg2, así que libpq nunca cerraba el descriptor y PostgreSQL conservaba el backend `idle` **para siempre**. El censo convirtió un fallo auto-reparable (el recolector cierra el socket) en una fuga permanente y monótona.
+
+Reproducción local contra `postgres:17-bullseye`, sin tocar la red de planta (`automation/tests/test_db_connection_soak.py`):
+
+| Escenario | Antes | Después |
+|---|---|---|
+| 12 greenlets efímeros que mueren sin `close()` | **12** backends idle permanentes | 0 |
+| Socket anclado por otra referencia, greenlet muerto | 1 permanente | 0 (`reap_abandoned`) |
+| 6.º socket con techo = 3 | se abre | `OperationalError` (fail-fast) |
+
+Causas concurrentes, todas confirmadas leyendo código:
+
+| # | Defecto | Efecto |
+|---|---|---|
+| L1 | Censo con referencia fuerte | Fuga permanente y creciente (**causa raíz**) |
+| L2 | `MetricsSamplerWorker` no cerraba su socket al salir de `run()` | 1 backend por reinicio del worker |
+| L3 | `ops_controls._restart_*` sustituía el worker sin recuperar su socket | 1 backend por reinicio desde `/performance` |
+| L4 | `close_current_greenlet_connection` tragaba el error de Peewee al cerrar dentro de una transacción | Backend `idle in transaction` eterno |
+| L5 | `UserInvalidateWorker` abría LISTEN sin `application_name` | Las «conexiones genéricas» del reporte; invisibles al censo |
+
+Correcciones: censo **débil** (`weakref`) + `reap_abandoned()` determinista, `BaseWorker.release_historian_socket()`, `_retire()` en los reinicios, `rollback` antes de `close`, `application_name` en el LISTEN, techo duro por proceso y guardas `idle_session_timeout` / `idle_in_transaction_session_timeout` del lado del servidor.
+
+**Lección:** un observador no puede ser propietario. Toda estructura que indexe recursos del sistema operativo se referencia débilmente o se convierte en el leak que pretendía medir.
 
 ### 1.3 `connection already closed` tras «Reconnection successfully» (17:47)
 
@@ -198,6 +234,9 @@ Un solo `Proxy`. Modelos que heredan `BaseModel` (Tags, TagValue, Alarms, AlarmS
 | `DB_CONNECTIONS_EXPECTED_MAX` | `(workers × 2) + 2` → **4** con 1 worker |
 | `DB_CONNECTIONS_ALERT_THRESHOLD` | default **6** (`AUTOMATION_DB_CONNECTIONS_ALERT`) |
 | `DB_CONNECTIONS_ALERT` | activas > umbral |
+| `DB_CONNECTIONS_MAX` | Techo duro por proceso; `connect()` falla rápido al alcanzarlo (`AUTOMATION_DB_CONNECTIONS_MAX`, default 12) |
+| `DB_CONNECTIONS_REAPED` | Sockets cerrados por `reap_abandoned()` desde el arranque. **Debe quedarse en 0** en un edge sano |
+| `DB_CONNECTIONS_LEAKED` | Sockets vivos más viejos que `AUTOMATION_DB_LEAK_DETECTION_S` (default 900 s) |
 | `DB_APPLICATION_NAME` | nombre de este greenlet |
 | `DB_INSTANCE_ID` | `id()` del handle Peewee |
 | `POOL_CONNECTIONS_USED` | **N/A / 0** (no hay pool). Ver 0 **no** prueba cero TCP |
@@ -258,6 +297,18 @@ No reintroducir pool sin: `connect`/`close` por request **y** soak signup×N baj
 | **CA-DB-ET-5** | Host inalcanzable ≤ 5 s | = CA-DB-3 |
 | **CA-DB-ET-6** | Soak 24 h | = CA-DB-6 |
 
+### Fuga permanente (§1.5)
+
+| ID | Criterio | Estado |
+|---|---|---|
+| **CA-DB-LEAK-1** | Un greenlet que muere sin `close()` no deja backend | `test_dead_greenlets_do_not_leave_idle_backends` (PG real) |
+| **CA-DB-LEAK-2** | `reap_abandoned()` cierra el socket de un greenlet muerto y respeta el de uno vivo | `test_reap_abandoned_*` / `test_reap_keeps_socket_of_a_living_worker` |
+| **CA-DB-LEAK-3** | El proceso nunca supera `DB_CONNECTIONS_MAX`; `connect()` falla rápido | `test_connect_refused_above_hard_ceiling` |
+| **CA-DB-LEAK-4** | Cerrar con transacción abierta hace `rollback` primero | `test_close_rolls_back_open_transaction_first` |
+| **CA-DB-LEAK-5** | PostgreSQL aplica `idle_session_timeout` / `idle_in_transaction_session_timeout` | `test_server_applies_idle_session_guards` |
+| **CA-DB-LEAK-6** | Toda conexión (incluido LISTEN) lleva `application_name` | Revisión de código + SQL §5 |
+| **CA-DB-LEAK-7** | Soak 7 días en planta: `DB_CONNECTIONS_REAPED = 0` y activas planas | **Pendiente planta** |
+
 ### Conteo óptimo
 
 | ID | Criterio | Estado |
@@ -311,7 +362,8 @@ Cobertura clave en `test_db_io.py`: `close_tracked` no mata otro owner; `Tracked
 
 ## 9. Runbook (operación)
 
-1. `GET /api/health/system` → `DB_CONNECTIONS_COUNT`, `DB_ACTIVE_CONNECTIONS`, `DB_NAMED_CONNECTIONS`, `DB_CONNECTIONS_ALERT`, `is_db_connected`.
+0. **Saturación (`too many clients already`)**: `DB_CONNECTIONS_REAPED > 0` señala greenlets que mueren sin cerrar; el log `Reaped abandoned historian socket role=… thread=…` nombra al culpable. `Historian socket ceiling reached` significa que el proceso ya está en el techo: es una fuga, no carga. Ver §1.5. Perillas: `AUTOMATION_DB_CONNECTIONS_MAX` (techo por proceso), `AUTOMATION_DB_IDLE_SESSION_TIMEOUT_S` (reaper del servidor, default 300 s), `AUTOMATION_DB_LEAK_DETECTION_S` (edad para reportar).
+1. `GET /api/health/system` → `DB_CONNECTIONS_COUNT`, `DB_ACTIVE_CONNECTIONS`, `DB_NAMED_CONNECTIONS`, `DB_CONNECTIONS_ALERT`, `DB_CONNECTIONS_MAX`, `DB_CONNECTIONS_REAPED`, `is_db_connected`.
 2. Alerta: SQL §5. Si PG >> métrica app: clientes externos o throwaway in-flight (transitorio). Si `DB_NAMED_CONNECTIONS` << activas: binario viejo u otra app en el mismo `datname`.
 3. Si la métrica app crece sola: HTTP sin teardown o Peewee otra vez en el threadpool.
 4. **No** reactivar `PooledPostgresqlDatabase` para «bajar el 18».
@@ -332,8 +384,11 @@ Signup/login timeout 15 s / 503 @ ~30 s con arranque OK → **BE-H4** (pool), no
 | ET-R1 | Si un motor escribe SQL fuera de `loop()`, reaparece un idle `SM-*` |
 | BE-H4 | Sin pool = riesgo de escalado (muchos workers/hilos), no bug activo a 1 worker |
 | ISO-R1 | Catálogo local: `atomic()` por fila (Bulkhead). No rollback de tabla; soak Txn/min = CA-ISOLATION-05 |
+| LEAK-R1 | El LISTEN de `UserInvalidateWorker` está idle por diseño y **no** lleva `idle_session_timeout`. Se identifica por `application_name`; no contarlo como fuga |
+| LEAK-R2 | `idle_session_timeout` exige PostgreSQL ≥ 14. En 12/13 la guarda del servidor no existe: el techo por proceso y el reaper siguen aplicando |
+| LEAK-R3 | Un socket de un hilo **vivo** pero inactivo para siempre no lo caza el reaper (el dueño existe). Lo cierran el techo duro y `idle_session_timeout` |
 
-**Cierre:** el circulatorio de PyAutomation es **un handle, sockets con dueño, probes desechables, reconexión que los modelos pueden usar, hub que no espera a libpq**. El día 1 y el día 1000 deben mostrar el mismo número de backends `PyAutomationIO` en idle.
+**Cierre:** el circulatorio de PyAutomation es **un handle, sockets con dueño, probes desechables, reconexión que los modelos pueden usar, hub que no espera a libpq**. El día 1 y el día 1000 deben mostrar el mismo número de backends `PyAutomationIO` en idle — y desde §1.5 el censo ya no es quien lo impide: observa con `weakref`, recolecta con `reap_abandoned()` y falla rápido en el techo.
 
 ---
 
@@ -347,6 +402,9 @@ Signup/login timeout 15 s / 503 @ ~30 s con arranque OK → **BE-H4** (pool), no
 | Watchdog | `automation/workers/logger.py` |
 | Probe logger | `automation/logger/core.py` |
 | `journal_then_remote` cierre efímero | `automation/persistence/outbox.py` |
+| Ciclo de vida del socket por worker | `automation/workers/worker.py` (`release_historian_socket`) |
+| Reinicio de workers sin dejar sockets | `automation/utils/ops_controls.py` (`_retire`) |
+| Soak contra PostgreSQL real (opt-in) | `automation/tests/test_db_connection_soak.py` |
 | SM wrap | `automation/workers/state_machine.py`, `automation/state_machine.py` |
 | Proxy único | `automation/dbmodels/core.py` |
 | Health | `automation/health/service.py`, `automation/modules/health/resources/health.py` |

@@ -37,6 +37,29 @@ class BaseWorker(Thread):
         """
         self.stop_event.set()
 
+    def release_historian_socket(self):
+        r"""
+        Returns this worker's greenlet-local historian socket to the server.
+
+        Peewee keeps the libpq socket in greenlet-local storage. A worker that
+        exits without calling this leaves an `idle` backend that only the
+        registry reaper or PostgreSQL can end, and every restart adds one more.
+        Call it on the way out of `run()`.
+        """
+        try:
+            from .. import PyAutomation
+            from ..utils.db_connections import close_current_greenlet_connection
+
+            close_current_greenlet_connection(getattr(PyAutomation(), "_db", None))
+        except Exception:
+            import logging
+
+            logging.getLogger("pyautomation").debug(
+                "worker historian socket release skipped name=%s",
+                getattr(self, "name", "?"),
+                exc_info=True,
+            )
+
     def __getstate__(self):
 
         state = self.__dict__.copy()

@@ -201,6 +201,29 @@ def restart_worker(name: str, *, user=None, reason: str | None = None) -> dict[s
     }
 
 
+def _retire(old) -> None:
+    """Stop a worker and make sure its historian socket does not outlive it.
+
+    ``join`` can time out with the worker blocked in libpq. Its greenlet-local
+    socket is then unreachable from here, so the census reaper closes it as soon
+    as the greenlet is gone. Without this, every restart left an idle backend.
+    """
+    if old is None:
+        return
+    old.stop()
+    old.join(timeout=8.0)
+    if old.is_alive():
+        _LOGGER.warning("worker %s did not stop within 8s; socket reaped when it exits", old.name)
+    try:
+        from .db_connections import REGISTRY
+
+        reaped = REGISTRY.reap_abandoned()
+        if reaped:
+            _LOGGER.info("reaped %s historian socket(s) from %s", reaped, old.name)
+    except Exception:
+        _LOGGER.debug("historian socket reap after worker stop skipped", exc_info=True)
+
+
 def _restart_logger() -> dict[str, Any]:
     from .. import PyAutomation
     from ..workers.logger import LoggerWorker
@@ -211,9 +234,7 @@ def _restart_logger() -> dict[str, Any]:
     manager = getattr(old, "_manager", None) or getattr(app, "db_manager", None)
     if manager is None:
         raise OpsControlError("LoggerWorker manager is not available")
-    if old is not None:
-        old.stop()
-        old.join(timeout=8.0)
+    _retire(old)
     new = LoggerWorker(manager, period=period)
     app.db_worker = new
     new.start()
@@ -235,9 +256,7 @@ def _restart_metrics() -> dict[str, Any]:
     app = PyAutomation()
     old = getattr(app, "metrics_worker", None)
     interval = getattr(old, "_interval_s", None)
-    if old is not None:
-        old.stop()
-        old.join(timeout=8.0)
+    _retire(old)
     new = MetricsSamplerWorker(interval_seconds=interval)
     app.metrics_worker = new
     new.start()
@@ -250,9 +269,7 @@ def _restart_replication() -> dict[str, Any]:
 
     app = PyAutomation()
     old = getattr(app, "replication_worker", None)
-    if old is not None:
-        old.stop()
-        old.join(timeout=8.0)
+    _retire(old)
     new = ReplicationWorker()
     app.replication_worker = new
     new.start()

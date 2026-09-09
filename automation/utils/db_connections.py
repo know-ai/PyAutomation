@@ -15,6 +15,8 @@ import logging
 import os
 import hashlib
 import threading
+import time
+import weakref
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -26,6 +28,8 @@ _LOGGER = logging.getLogger("pyautomation")
 APPLICATION_NAME = "PyAutomationIO"
 APPLICATION_NAME_PREFIX = "PyAutomationIO"
 DEFAULT_CONNECTIONS_ALERT = 6
+DEFAULT_CONNECTIONS_HARD_MAX = 12
+DEFAULT_LEAK_DETECTION_S = 900.0
 _CONNECT_GATE = threading.local()
 _TXN_LOCK = threading.Lock()
 _TXN_COMMITS = 0
@@ -124,18 +128,62 @@ def _reject_connect_during_outage() -> None:
             raise OperationalError("historian unreachable; connect skipped")
 
 
+def _enforce_connection_ceiling(role: str) -> None:
+    """Fail fast instead of walking the server to ``too many clients already``.
+
+    A process that already holds the ceiling is leaking, not busy: the steady
+    state is LoggerWorker + SafJournalFlusher + a handful of ephemeral sockets.
+    Reap first (a dead greenlet cannot close its own socket), then refuse.
+    """
+    ceiling = connections_hard_max()
+    if REGISTRY.count() < ceiling:
+        return
+    REGISTRY.reap_abandoned()
+    live = REGISTRY.count()
+    if live < ceiling:
+        return
+    _LOGGER.error(
+        "Historian socket ceiling reached (%s/%s); refusing connect for role=%s. Census: %s",
+        live,
+        ceiling,
+        role,
+        REGISTRY.census(),
+    )
+    raise OperationalError(
+        f"historian socket ceiling reached ({live}/{ceiling}); connect refused"
+    )
+
+
 def _open_tracked_connection(database) -> Any:
     """libpq/MySQL connect. Failures arm the outage gate so the hub is not retried."""
+    role = historian_application_name()
+    _enforce_connection_ceiling(role)
     params = getattr(database, "connect_params", None)
     if isinstance(params, dict):
-        params["application_name"] = historian_application_name()
+        params["application_name"] = role
     try:
         conn = super(type(database), database)._connect()
     except Exception:
         _mark_app_historian_dead()
         raise
-    REGISTRY.register(conn, owner=database)
+    REGISTRY.register(conn, owner=database, role=role)
+    _warn_on_socket_growth(role)
     return conn
+
+
+def _warn_on_socket_growth(role: str) -> None:
+    """``leak-detection-threshold``: name the sockets before the server runs out."""
+    live = REGISTRY.count()
+    if live <= connections_alert_threshold():
+        return
+    leaked = REGISTRY.leaked(leak_detection_s())
+    _LOGGER.warning(
+        "Historian sockets above alert threshold: live=%s threshold=%s opened_by=%s long_lived=%s",
+        live,
+        connections_alert_threshold(),
+        role,
+        leaked or "none",
+    )
 
 
 def _safe_application_token(value: str) -> str:
@@ -181,88 +229,213 @@ def historian_application_name(role: str | None = None) -> str:
     return f"{name[:54]}-{digest}"
 
 
+class _TrackedSocket:
+    """Weak handle on one libpq socket plus the identity of the greenlet that opened it.
+
+    The census must **observe** sockets, never own them. A strong reference here
+    keeps the psycopg2 object alive after its greenlet dies, so libpq never
+    finalizes and PostgreSQL keeps an ``idle`` backend forever. That turns a
+    self-healing miss into a permanent leak (planta: ~100 backends en 6 días).
+    """
+
+    __slots__ = ("_ref", "_strong", "role", "thread_ref", "thread_name", "opened_at")
+
+    def __init__(self, conn: Any, role: str, on_dead) -> None:
+        try:
+            self._ref = weakref.ref(conn, on_dead)
+            self._strong = None
+        except TypeError:
+            # Driver handle that refuses weak references. Keep the census exact:
+            # such a socket depends on close()/reap, never on the collector.
+            self._ref = None
+            self._strong = conn
+        self.role = role
+        thread = threading.current_thread()
+        self.thread_name = thread.name or "unknown"
+        try:
+            self.thread_ref = weakref.ref(thread)
+        except TypeError:
+            self.thread_ref = None
+        self.opened_at = time.monotonic()
+
+    def ref(self) -> Any:
+        return self._strong if self._ref is None else self._ref()
+
+    def release(self) -> None:
+        self._strong = None
+
+    def alive(self) -> bool:
+        return self.ref() is not None
+
+    def owner_is_gone(self) -> bool:
+        """True when the greenlet/thread that opened the socket can no longer close it."""
+        if self.thread_ref is None:
+            return False
+        thread = self.thread_ref()
+        if thread is None:
+            return True
+        return not bool(getattr(thread, "is_alive", lambda: True)())
+
+    def age_s(self) -> float:
+        return max(0.0, time.monotonic() - self.opened_at)
+
+
 class ConnectionRegistry:
     """Live-socket census keyed by Database instance.
 
     ``close_all`` on the *previous* handle must not kill sockets that belong
     to the *candidate* opened during reconnect.
+
+    Entries are weak: a socket dropped by a dead greenlet leaves the census on
+    its own. ``reap_abandoned`` closes them deterministically instead of waiting
+    for the garbage collector.
     """
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._by_owner: dict[int, dict[int, Any]] = {}
+        # Reentrant: a weakref callback can fire while this thread holds the lock.
+        self._lock = threading.RLock()
+        self._by_owner: dict[int, dict[int, _TrackedSocket]] = {}
         self._instance_id: int | None = None
+        self._reaped = 0
 
     def bind_instance(self, database: Any) -> None:
         with self._lock:
             self._instance_id = id(database)
 
-    def register(self, conn: Any, owner: Any | None = None) -> None:
-        oid = id(owner) if owner is not None else 0
+    def _forget(self, oid: int, key: int) -> None:
         with self._lock:
-            self._by_owner.setdefault(oid, {})[id(conn)] = conn
+            bucket = self._by_owner.get(oid)
+            if bucket is None:
+                return
+            entry = bucket.pop(key, None)
+            if entry is not None:
+                entry.release()
+            if not bucket:
+                self._by_owner.pop(oid, None)
+
+    def register(self, conn: Any, owner: Any | None = None, role: str | None = None) -> None:
+        oid = id(owner) if owner is not None else 0
+        key = id(conn)
+
+        def _on_dead(_ref, oid=oid, key=key) -> None:
+            self._forget(oid, key)
+
+        entry = _TrackedSocket(conn, role or historian_application_name(), _on_dead)
+        with self._lock:
+            self._by_owner.setdefault(oid, {})[key] = entry
 
     def unregister(self, conn: Any, owner: Any | None = None) -> None:
+        key = id(conn)
         with self._lock:
             if owner is not None:
-                bucket = self._by_owner.get(id(owner))
-                if not bucket:
-                    return
-                bucket.pop(id(conn), None)
-                if not bucket:
-                    self._by_owner.pop(id(owner), None)
+                self._forget(id(owner), key)
                 return
             for oid, bucket in list(self._by_owner.items()):
-                if id(conn) in bucket:
-                    bucket.pop(id(conn), None)
-                    if not bucket:
-                        self._by_owner.pop(oid, None)
+                if key in bucket:
+                    self._forget(oid, key)
                     return
 
-    def count(self) -> int:
+    def _live_entries(self) -> list[tuple[int, int, _TrackedSocket]]:
         with self._lock:
-            return sum(len(bucket) for bucket in self._by_owner.values())
+            out: list[tuple[int, int, _TrackedSocket]] = []
+            for oid, bucket in list(self._by_owner.items()):
+                for key, entry in list(bucket.items()):
+                    if entry.alive():
+                        out.append((oid, key, entry))
+                    else:
+                        self._forget(oid, key)
+            return out
+
+    def count(self) -> int:
+        return len(self._live_entries())
+
+    def reaped_count(self) -> int:
+        with self._lock:
+            return self._reaped
 
     def instance_id(self) -> int | None:
         with self._lock:
             return self._instance_id
 
-    def close_tracked(self, owner: Any | None = None) -> int:
-        with self._lock:
-            if owner is None:
-                items: list[tuple[int, Any]] = []
-                for bucket in self._by_owner.values():
-                    items.extend(bucket.items())
-                self._by_owner.clear()
-            else:
-                items = list(self._by_owner.pop(id(owner), {}).items())
+    def census(self) -> list[dict[str, Any]]:
+        """Per-socket census for logs and ``/api/health``. Never exposes the socket."""
+        return [
+            {
+                "role": entry.role,
+                "thread": entry.thread_name,
+                "age_s": round(entry.age_s(), 1),
+                "owner_gone": entry.owner_is_gone(),
+            }
+            for _oid, _key, entry in self._live_entries()
+        ]
+
+    def reap_abandoned(self) -> int:
+        """Close sockets whose greenlet died without ``close()``. Returns how many."""
+        doomed: list[tuple[int, int, _TrackedSocket]] = []
+        for oid, key, entry in self._live_entries():
+            if entry.owner_is_gone():
+                doomed.append((oid, key, entry))
         closed = 0
-        for _key, conn in items:
+        for oid, key, entry in doomed:
+            conn = entry.ref()
+            self._forget(oid, key)
+            if conn is None:
+                continue
+            try:
+                conn.close()
+                closed += 1
+                _LOGGER.warning(
+                    "Reaped abandoned historian socket role=%s thread=%s age_s=%.1f",
+                    entry.role,
+                    entry.thread_name,
+                    entry.age_s(),
+                )
+            except Exception:
+                _LOGGER.debug("abandoned historian socket close skipped", exc_info=True)
+        if closed:
+            with self._lock:
+                self._reaped += closed
+        return closed
+
+    def leaked(self, older_than_s: float) -> list[dict[str, Any]]:
+        """Sockets older than the leak threshold, newest last (``leak-detection-threshold``)."""
+        rows = [row for row in self.census() if row["age_s"] >= float(older_than_s)]
+        rows.sort(key=lambda row: row["age_s"])
+        return rows
+
+    def _drain(self, items: list[tuple[int, int, _TrackedSocket]], what: str) -> int:
+        closed = 0
+        for oid, key, entry in items:
+            conn = entry.ref()
+            self._forget(oid, key)
+            if conn is None:
+                continue
             try:
                 conn.close()
                 closed += 1
             except Exception:
-                _LOGGER.debug("tracked historian connection close skipped", exc_info=True)
+                _LOGGER.debug("%s close skipped", what, exc_info=True)
         return closed
+
+    def close_tracked(self, owner: Any | None = None) -> int:
+        oid_filter = None if owner is None else id(owner)
+        items = [
+            (oid, key, entry)
+            for oid, key, entry in self._live_entries()
+            if oid_filter is None or oid == oid_filter
+        ]
+        return self._drain(items, "tracked historian connection")
 
     def close_tracked_except(self, owner: Any, keep: Any | None = None) -> int:
         """Close sockets of ``owner`` except ``keep`` (this greenlet's handle)."""
         keep_id = id(keep) if keep is not None else None
-        with self._lock:
-            bucket = self._by_owner.get(id(owner), {})
-            items = [(key, conn) for key, conn in list(bucket.items()) if key != keep_id]
-            for key, _conn in items:
-                bucket.pop(key, None)
-            if not bucket:
-                self._by_owner.pop(id(owner), None)
-        closed = 0
-        for _key, conn in items:
-            try:
-                conn.close()
-                closed += 1
-            except Exception:
-                _LOGGER.debug("foreign historian connection close skipped", exc_info=True)
-        return closed
+        oid_filter = id(owner)
+        items = [
+            (oid, key, entry)
+            for oid, key, entry in self._live_entries()
+            if oid == oid_filter and key != keep_id
+        ]
+        return self._drain(items, "foreign historian connection")
 
 
 REGISTRY = ConnectionRegistry()
@@ -295,6 +468,31 @@ def connections_alert_threshold() -> int:
     return max(DEFAULT_CONNECTIONS_ALERT, connections_expected_max())
 
 
+def connections_hard_max() -> int:
+    """Sockets this process may ever hold. Beyond it, ``connect()`` fails fast.
+
+    Equivalent to ``maximum-pool-size`` without reintroducing a pool: the ceiling
+    is per process, so N edges × M gunicorn workers stay inside ``max_connections``.
+    """
+    raw = os.environ.get("AUTOMATION_DB_CONNECTIONS_MAX")
+    if raw:
+        try:
+            return max(2, min(int(raw), 256))
+        except (TypeError, ValueError):
+            pass
+    return max(DEFAULT_CONNECTIONS_HARD_MAX, connections_alert_threshold() * 2)
+
+
+def leak_detection_s() -> float:
+    """Age above which a socket is reported by name. Env: AUTOMATION_DB_LEAK_DETECTION_S."""
+    raw = os.environ.get("AUTOMATION_DB_LEAK_DETECTION_S")
+    try:
+        value = float(raw) if raw not in (None, "") else DEFAULT_LEAK_DETECTION_S
+    except (TypeError, ValueError):
+        value = DEFAULT_LEAK_DETECTION_S
+    return max(5.0, value)
+
+
 def snapshot_connection_metrics(db: Any | None = None) -> dict[str, Any]:
     client_count = REGISTRY.count()
     expected = connections_expected_max()
@@ -309,6 +507,9 @@ def snapshot_connection_metrics(db: Any | None = None) -> dict[str, Any]:
         "DB_CONNECTIONS_EXPECTED_MAX": expected,
         "DB_CONNECTIONS_ALERT": observed > threshold,
         "DB_CONNECTIONS_ALERT_THRESHOLD": threshold,
+        "DB_CONNECTIONS_MAX": connections_hard_max(),
+        "DB_CONNECTIONS_REAPED": REGISTRY.reaped_count(),
+        "DB_CONNECTIONS_LEAKED": len(REGISTRY.leaked(leak_detection_s())),
         "DB_INSTANCE_ID": REGISTRY.instance_id(),
         "DB_APPLICATION_NAME": historian_application_name(),
     }
@@ -410,10 +611,35 @@ def close_current_greenlet_connection(db: Any | None) -> None:
         closed = getattr(db, "is_closed", None)
         if callable(closed) and closed():
             return
+        _rollback_open_transaction(db)
         if hasattr(db, "close"):
             db.close()
     except Exception:
         _LOGGER.debug("request-scoped historian close skipped", exc_info=True)
+
+
+def _rollback_open_transaction(db: Any) -> None:
+    """Peewee refuses to ``close()`` inside a transaction; the socket would survive.
+
+    Teardown swallows that error, so an aborted ``atomic()`` used to leave the
+    greenlet's backend ``idle in transaction`` for good. Unwind before closing.
+    """
+    in_txn = getattr(db, "in_transaction", None)
+    if not callable(in_txn):
+        return
+    try:
+        if not in_txn():
+            return
+    except Exception:
+        return
+    try:
+        db.rollback()
+        _LOGGER.warning(
+            "Historian socket closed with an open transaction; rolled back first (role=%s)",
+            historian_application_name(),
+        )
+    except Exception:
+        _LOGGER.debug("historian rollback before close skipped", exc_info=True)
 
 
 def install_request_connection_teardown(flask_app) -> None:
