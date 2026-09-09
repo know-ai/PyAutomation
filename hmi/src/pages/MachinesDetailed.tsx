@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import type { JSX, CSSProperties } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
@@ -24,6 +24,10 @@ import { useShowInfraMachines } from "../hooks/useShowInfraMachines";
 import { loadShowInfraMachines, visibleMachineTabs } from "../utils/infraMachines";
 import { useAuthz } from "../hooks/useAuthz";
 import { VIEW_IDS } from "../utils/access";
+import { useAppDispatch } from "../hooks/useAppDispatch";
+import { useAppSelector } from "../hooks/useAppSelector";
+import { loadAllMachines } from "../store/slices/machinesSlice";
+import { PROCESS_RESTART_EVENT, readProcessRestart } from "../services/processRestart";
 
 const ITEMS_PER_PAGE = 10;
 const ACTIVE_TAB_STORAGE_KEY = "machinesDetailed_activeTab";
@@ -263,6 +267,8 @@ export function MachinesDetailed() {
   const { canUse } = useAuthz();
   const canMutate = canUse(VIEW_IDS.machinesDetailed);
   const { showInfra } = useShowInfraMachines();
+  const dispatch = useAppDispatch();
+  const realTimeMachines = useAppSelector((state) => state.machines.machines);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -369,14 +375,46 @@ export function MachinesDetailed() {
     return () => window.clearInterval(id);
   }, []);
 
-  // Cargar m?quinas al montar el componente
-  useEffect(() => {
-    const loadMachines = async () => {
-      setLoading(true);
-      setError(null);
+  const applyMachineCatalog = useCallback(
+    (data: Machine[]) => {
+      setMachines(data);
+      dispatch(loadAllMachines(data));
+      const visible = visibleMachineTabs(data, loadShowInfraMachines());
+      const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+      let tabToActivate: string | null = null;
+      if (savedActiveTab && visible.some((m) => m.name === savedActiveTab)) {
+        tabToActivate = savedActiveTab;
+      } else if (visible.length > 0 && visible[0].name) {
+        tabToActivate = visible[0].name;
+      }
+      if (!tabToActivate) return;
+      setActiveTab(tabToActivate);
+      const savedPage = localStorage.getItem(getPageStorageKey(tabToActivate));
+      if (savedPage) {
+        const page = parseInt(savedPage, 10);
+        if (!isNaN(page) && page > 0) {
+          setCurrentPage((prev) => ({ ...prev, [tabToActivate]: page }));
+        }
+      }
+    },
+    [dispatch]
+  );
+
+  const loadMachines = useCallback(
+    async (opts?: { silent?: boolean; replaceStore?: boolean }) => {
+      const silent = Boolean(opts?.silent);
+      const replaceStore = opts?.replaceStore !== false;
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
       try {
         const data = await getMachines();
-        setMachines(data);
+        if (replaceStore) {
+          applyMachineCatalog(data);
+        } else {
+          setMachines(data);
+        }
         try {
           const tags = await getTagsList();
           const catalog: Record<string, Tag> = {};
@@ -385,34 +423,13 @@ export function MachinesDetailed() {
           }
           setFieldTagCatalog(catalog);
         } catch {
-          setFieldTagCatalog({});
-        }
-        const visible = visibleMachineTabs(data, loadShowInfraMachines());
-        
-        // Intentar cargar el tab activo guardado en localStorage
-        const savedActiveTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-        
-        // Verificar si el tab guardado existe en las m?quinas visibles
-        let tabToActivate: string | null = null;
-        if (savedActiveTab && visible.some((m) => m.name === savedActiveTab)) {
-          tabToActivate = savedActiveTab;
-        } else if (visible.length > 0 && visible[0].name) {
-          // Si no hay tab guardado v?lido, usar el primero visible
-          tabToActivate = visible[0].name;
-        }
-        
-        if (tabToActivate) {
-          setActiveTab(tabToActivate);
-          // Cargar la p?gina guardada para el tab activo
-          const savedPage = localStorage.getItem(getPageStorageKey(tabToActivate));
-          if (savedPage) {
-            const page = parseInt(savedPage, 10);
-            if (!isNaN(page) && page > 0) {
-              setCurrentPage((prev) => ({ ...prev, [tabToActivate]: page }));
-            }
-          }
+          if (!silent) setFieldTagCatalog({});
         }
       } catch (err: any) {
+        if (silent) {
+          console.error("Error refreshing machines:", err);
+          return;
+        }
         const data = err?.response?.data;
         const backendMessage =
           (typeof data === "string" ? data : undefined) ??
@@ -425,12 +442,54 @@ export function MachinesDetailed() {
         showToast(errorMessage, "error");
         console.error("Error loading machines:", err);
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
-    };
+    },
+    [applyMachineCatalog, t]
+  );
 
-    loadMachines();
-  }, [t]);
+  useEffect(() => {
+    void loadMachines();
+  }, [loadMachines]);
+
+  useEffect(() => {
+    return socketService.onConnectionSnapshot((payload) => {
+      const snapshotMachines = Array.isArray(payload.machines) ? payload.machines : [];
+      if (snapshotMachines.length === 0) return;
+      setMachines((prev) => {
+        const machinesMap = new Map<string, Machine>();
+        prev.forEach((machine) => {
+          if (machine.name) machinesMap.set(machine.name, machine);
+        });
+        snapshotMachines.forEach((machine) => {
+          if (machine?.name) machinesMap.set(machine.name, machine);
+        });
+        return Array.from(machinesMap.values());
+      });
+    });
+  }, []);
+
+  // Tras reciclo/reconexión: el overlay se quita sin desmontar la ruta; hay que
+  // volver a pedir el catálogo para que aparezcan tabs de módulos recién activados.
+  useEffect(() => {
+    return socketService.onConnectionChange(({ connected, reconnect }) => {
+      if (!connected || !reconnect) return;
+      void loadMachines({ silent: true, replaceStore: false });
+    });
+  }, [loadMachines]);
+
+  useEffect(() => {
+    let hadRestart = Boolean(readProcessRestart());
+    const onRestartChange = () => {
+      const active = Boolean(readProcessRestart());
+      if (hadRestart && !active) {
+        void loadMachines({ silent: true, replaceStore: true });
+      }
+      hadRestart = active;
+    };
+    window.addEventListener(PROCESS_RESTART_EVENT, onRestartChange);
+    return () => window.removeEventListener(PROCESS_RESTART_EVENT, onRestartChange);
+  }, [loadMachines]);
 
   // Guardar el tab activo en localStorage cuando cambie
   useEffect(() => {
@@ -1337,12 +1396,23 @@ export function MachinesDetailed() {
   }, []); // Sin dependencias - se suscribe una sola vez
 
   // Obtener los nombres ?nicos de las m?quinas
+  const catalogMachines = useMemo(() => {
+    const machinesMap = new Map<string, Machine>();
+    machines.forEach((machine) => {
+      if (machine.name) machinesMap.set(machine.name, machine);
+    });
+    Object.values(realTimeMachines).forEach((machine) => {
+      if (machine.name) machinesMap.set(machine.name, machine);
+    });
+    return Array.from(machinesMap.values());
+  }, [machines, realTimeMachines]);
+
   const machineNames = useMemo(
     () =>
-      visibleMachineTabs(machines, showInfra)
+      visibleMachineTabs(catalogMachines, showInfra)
         .map((machine) => machine.name)
         .filter((name): name is string => !!name),
-    [machines, showInfra],
+    [catalogMachines, showInfra],
   );
 
   useEffect(() => {
