@@ -432,6 +432,20 @@ def ensure_performance_alarms(config: dict[str, Any] | None = None) -> bool:
         return False
 
 
+def _release_stuck_perf_alarm(app, spec: PerfAlarmSpec) -> None:
+    """Leave RTNUN/UNACK when the BOOL is already False (notify is skipped on no-op writes)."""
+    try:
+        alarm = app.alarm_manager.get_alarm_by_name(perf_alarm_name(spec.key))
+        if alarm is None:
+            return
+        current = (getattr(alarm.current_state, "name", None) or "").lower()
+        if current not in ("unack_alarm", "ack_alarm", "rtn_unack"):
+            return
+        alarm.normal_condition()
+    except Exception:
+        _LOGGER.debug("PERF auto-clear skipped for %s", spec.key, exc_info=True)
+
+
 def set_performance_alarm(key: str, active: bool, *, value: Any = None, threshold: Any = None) -> bool:
     """Drive one performance BOOL alarm. Returns True if the BOOL flipped. Never raises."""
     try:
@@ -449,6 +463,8 @@ def set_performance_alarm(key: str, active: bool, *, value: Any = None, threshol
                 previous = False
         _write_disconnected(tag_name, bool(active))
         flipped = previous is not bool(active)
+        if not active:
+            _release_stuck_perf_alarm(app, spec)
         if flipped:
             persist_system_event(
                 message=f"Performance alarm {spec.alarm_suffix} {'activated' if active else 'cleared'}",

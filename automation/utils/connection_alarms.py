@@ -276,6 +276,54 @@ def _ensure_bool_alarm(
         )
         return
 
+    bound = ""
+    subject = getattr(alarm, "tag", None)
+    if isinstance(subject, str):
+        bound = subject
+    elif subject is not None:
+        bound = str(getattr(subject, "name", "") or "")
+    trigger = getattr(alarm, "alarm_setpoint", None)
+    kind = getattr(getattr(trigger, "type", None), "value", None) or str(getattr(trigger, "type", "") or "")
+    if bound != tag_name or str(kind).upper() not in {"BOOL", "BOOLEAN"}:
+        _LOGGER.warning(
+            "Rebinding diagnostic alarm %s from %s/%s onto %s/BOOL",
+            alarm_name,
+            bound or "?",
+            kind or "?",
+            tag_name,
+        )
+        try:
+            app.update_alarm(
+                id=alarm.identifier,
+                tag=tag_name,
+                alarm_type=_ALARM_TYPE,
+                trigger_value=True,
+                description=alarm_description,
+            )
+        except Exception:
+            _LOGGER.warning("Diagnostic alarm rebind failed for %s", alarm_name, exc_info=True)
+            return
+        rebound = app.alarm_manager.get_alarm_by_name(alarm_name)
+        if rebound is not None:
+            try:
+                from datetime import datetime, timezone
+
+                current = (getattr(rebound.current_state, "name", None) or "").lower()
+                if current == "unack_alarm":
+                    rebound.normal_condition()
+                    current = (getattr(rebound.current_state, "name", None) or "").lower()
+                if current == "rtn_unack":
+                    rebound._apply_acknowledge(datetime.now(timezone.utc))
+                elif current == "ack_alarm":
+                    rebound.normal_condition()
+                value = getattr(tag, "value", None)
+                if value is not None:
+                    ts = getattr(tag, "timestamp", None) or datetime.now(timezone.utc)
+                    rebound.notify(tag=tag.name, value=value, timestamp=ts)
+            except Exception:
+                _LOGGER.debug("Diagnostic alarm rebind notify skipped for %s", alarm_name, exc_info=True)
+        return
+
     desired = (alarm_description or "").strip()
     current = (getattr(alarm, "description", None) or "").strip()
     if desired and desired != current:

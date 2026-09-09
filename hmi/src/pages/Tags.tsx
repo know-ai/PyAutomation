@@ -1817,12 +1817,17 @@ export function Tags() {
                         />
                       </div>
                       <div className="col-md-4">
-                        <label className="form-label">{t("tags.kp")}</label>
+                        <label className="form-label" title={t("tags.kpTooltip")}>
+                          {t("tags.kp")}
+                          <i className="bi bi-info-circle text-muted ms-1" aria-hidden="true" />
+                        </label>
                         <input
                           type="number"
                           className="form-control"
                           step="0.01"
                           value={formData.kp}
+                          title={t("tags.kpTooltip")}
+                          aria-label={t("tags.kp")}
                           onChange={(e) => setFormData({ ...formData, kp: e.target.value })}
                         />
                       </div>
@@ -2212,12 +2217,17 @@ export function Tags() {
                         />
                       </div>
                       <div className="col-md-4">
-                        <label className="form-label">{t("tags.kp")}</label>
+                        <label className="form-label" title={t("tags.kpTooltip")}>
+                          {t("tags.kp")}
+                          <i className="bi bi-info-circle text-muted ms-1" aria-hidden="true" />
+                        </label>
                         <input
                           type="number"
                           className="form-control"
                           step="0.01"
                           value={formData.kp}
+                          title={t("tags.kpTooltip")}
+                          aria-label={t("tags.kp")}
                           onChange={(e) => setFormData({ ...formData, kp: e.target.value })}
                         />
                       </div>

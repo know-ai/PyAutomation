@@ -163,23 +163,28 @@ class MetricsSamplerWorker(BaseWorker):
             self.last_cycle_utc = datetime.now(timezone.utc).isoformat()
 
     def _sample(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {}
-        self._sample_identity(payload)
-        self._sample_host(payload)
-        self._sample_http(payload)
-        self._sample_hmi(payload)
-        self._sample_db(payload)
-        self._sample_saf(payload)
-        self._sample_field(payload)
-        self._sample_hub(payload)
-        self._sample_catalog(payload)
-        self._sample_acquisition(payload)
-        self._sample_workers(payload)
-        self._sample_clock(payload)
-        self._sample_peers(payload)
-        self._sample_perf_alarms(payload)
-        self._record_trends(payload)
-        return payload
+        # Sampler is a Thread, but gunicorn patch_all() runs it on the hub.
+        # Exclude this tick so HUB_LAG_MS is event-loop lag, not metrics I/O.
+        from ..utils.hub_lag import exclude_from_hub_lag
+
+        with exclude_from_hub_lag():
+            payload: dict[str, Any] = {}
+            self._sample_identity(payload)
+            self._sample_hub(payload)
+            self._sample_host(payload)
+            self._sample_http(payload)
+            self._sample_hmi(payload)
+            self._sample_db(payload)
+            self._sample_saf(payload)
+            self._sample_field(payload)
+            self._sample_catalog(payload)
+            self._sample_acquisition(payload)
+            self._sample_workers(payload)
+            self._sample_clock(payload)
+            self._sample_peers(payload)
+            self._sample_perf_alarms(payload)
+            self._record_trends(payload)
+            return payload
 
     def _trend_maxlen(self) -> int:
         return max(16, int(TREND_WINDOW_S / max(self._interval_s, 1.0)) + 8)

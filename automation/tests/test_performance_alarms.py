@@ -324,5 +324,162 @@ class TestPerformanceTagsHistorian(unittest.TestCase):
         ensure.assert_called()
 
 
+class TestHubLagSnapshot(unittest.TestCase):
+    def tearDown(self) -> None:
+        from automation.utils.hub_lag import reset_hub_lag_for_tests
+
+        reset_hub_lag_for_tests()
+
+    def test_snapshot_drops_when_loop_is_on_time_again(self):
+        from automation.utils.hub_lag import inject_hub_lag_for_tests, snapshot_hub_lag_ms
+
+        inject_hub_lag_for_tests(lag_s=2.5)
+        self.assertGreaterEqual(snapshot_hub_lag_ms(), 2000.0)
+        inject_hub_lag_for_tests(lag_s=0.01)
+        self.assertLess(snapshot_hub_lag_ms(), 100.0)
+
+    def test_inflight_overshoot_counts_as_current_lag(self):
+        import time
+
+        from automation.utils.hub_lag import inject_hub_lag_for_tests, snapshot_hub_lag_ms
+
+        inject_hub_lag_for_tests(lag_s=0.0, interval_started=time.monotonic() - 2.4)
+        self.assertGreaterEqual(snapshot_hub_lag_ms(), 2000.0)
+
+    def test_sampler_pause_is_not_counted_as_hub_lag(self):
+        import time
+
+        from automation.utils.hub_lag import (
+            exclude_from_hub_lag,
+            inject_hub_lag_for_tests,
+            snapshot_hub_lag_ms,
+        )
+
+        inject_hub_lag_for_tests(lag_s=0.0, interval_started=time.monotonic() - 0.02)
+        with exclude_from_hub_lag():
+            time.sleep(0.25)
+            self.assertLess(snapshot_hub_lag_ms(), 100.0)
+
+    def test_evaluator_clears_hub_lag_below_threshold(self):
+        from automation.utils.hub_lag import snapshot_hub_lag_ms, inject_hub_lag_for_tests
+
+        cfg = load_performance_alarm_config(
+            {"perf_debounce_count": 1, "perf_hub_lag_threshold": 2000, "perf_hub_lag_enabled": True}
+        )
+        evaluator = PerfAlarmEvaluator(writer=lambda *args, **kwargs: True)
+        evaluator.reload(cfg)
+        inject_hub_lag_for_tests(lag_s=2.5)
+        evaluator.evaluate({"HUB_LAG_MS": snapshot_hub_lag_ms()})
+        self.assertTrue(evaluator._active["hub_lag"])
+        inject_hub_lag_for_tests(lag_s=0.02)
+        evaluator.evaluate({"HUB_LAG_MS": snapshot_hub_lag_ms()})
+        self.assertFalse(evaluator._active["hub_lag"])
+
+
+class TestPerfAlarmAutoClear(unittest.TestCase):
+    def test_hub_lag_returns_to_normal_when_loop_recovers(self):
+        """ALM.PERF.* auto-acks to Normal; process BOOL stays RTN Unack."""
+        from automation.alarms import Alarm
+        from automation.models import FloatType, IntegerType, StringType
+        from automation.tags.cvt import CVTEngine
+
+        cvt = CVTEngine()
+        cvt.set_tag(
+            name="sys_perf_hub_lag",
+            variable="Adimentional",
+            unit="adim",
+            data_type="boolean",
+            description="hub lag bool",
+        )
+        tag = cvt.get_tag_by_name(name="sys_perf_hub_lag")
+        alarm = Alarm(
+            name="Linea1.ALM.PERF.HUB_LAG",
+            tag=tag,
+            alarm_type=StringType("BOOL"),
+            alarm_setpoint=IntegerType(1),
+            alarm_on_delay=FloatType(0.0),
+            alarm_off_delay=FloatType(0.0),
+        )
+        alarm.enable_delay_wakeups = False
+        tag.set_value(value=True)
+        self.assertEqual(alarm.current_state.value.lower(), "unack_alarm")
+        tag.set_value(value=False)
+        self.assertEqual(alarm.current_state.value.lower(), "normal")
+
+    def test_release_stuck_rtn_unack_when_bool_already_false(self):
+        from unittest.mock import MagicMock
+
+        from automation.alarms import Alarm
+        from automation.models import FloatType, IntegerType, StringType
+        from automation.tags.cvt import CVTEngine
+        from automation.utils.performance_alarms import _release_stuck_perf_alarm, spec_for
+
+        cvt = CVTEngine()
+        cvt.set_tag(
+            name="sys_perf_hub_lag_stuck",
+            variable="Adimentional",
+            unit="adim",
+            data_type="boolean",
+            description="hub lag bool",
+        )
+        tag = cvt.get_tag_by_name(name="sys_perf_hub_lag_stuck")
+        alarm = Alarm(
+            name="Linea1.ALM.PERF.HUB_LAG",
+            tag=tag,
+            alarm_type=StringType("BOOL"),
+            alarm_setpoint=IntegerType(1),
+            alarm_on_delay=FloatType(0.0),
+            alarm_off_delay=FloatType(0.0),
+        )
+        alarm.enable_delay_wakeups = False
+        tag.set_value(value=True)
+        with patch.object(Alarm, "_is_auto_clear_alarm", return_value=False):
+            tag.set_value(value=False)
+        self.assertEqual(alarm.current_state.value.lower(), "rtn_unack")
+        app = MagicMock()
+        app.alarm_manager.get_alarm_by_name.return_value = alarm
+        _release_stuck_perf_alarm(app, spec_for("hub_lag"))
+        self.assertEqual(alarm.current_state.value.lower(), "normal")
+
+    def test_hub_lag_put_rebinds_off_leak_flow_tag(self):
+        """Historian/catalog can leave ALM.PERF.HUB_LAG watching a process PV (LL)."""
+        from automation.alarms import Alarm
+        from automation.alarms.trigger import TriggerType
+        from automation.models import FloatType, StringType
+        from automation.tags.cvt import CVTEngine
+
+        cvt = CVTEngine()
+        cvt.set_tag(
+            name="Supe.Linea1.LDS.leak_flow",
+            variable="Adimentional",
+            unit="adim",
+            data_type="float",
+            description="process",
+        )
+        cvt.set_tag(
+            name="Linea1.SYS.PERF.HUB_LAG",
+            variable="Adimentional",
+            unit="adim",
+            data_type="boolean",
+            description="hub lag bool",
+        )
+        leak = cvt.get_tag_by_name("Supe.Linea1.LDS.leak_flow")
+        hub = cvt.get_tag_by_name("Linea1.SYS.PERF.HUB_LAG")
+        alarm = Alarm(
+            name="Linea1.ALM.PERF.HUB_LAG",
+            tag=leak,
+            alarm_type=StringType("LOW-LOW"),
+            alarm_setpoint=FloatType(1.0),
+            alarm_on_delay=FloatType(0.0),
+            alarm_off_delay=FloatType(0.0),
+        )
+        alarm.enable_delay_wakeups = False
+        self.assertEqual(alarm.tag.name, "Supe.Linea1.LDS.leak_flow")
+        alarm.put(tag="Linea1.SYS.PERF.HUB_LAG", alarm_type=TriggerType.B, trigger_value=True)
+        self.assertEqual(alarm.tag.name, hub.name)
+        self.assertEqual(alarm.alarm_setpoint.type.value, "BOOL")
+        self.assertEqual(alarm.alarm_setpoint.value, True)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -362,6 +362,15 @@ class Alarm(StateMachine):
         name = (getattr(self, "name", None) or "").lower()
         return ".alm.quality." in name or name.startswith("alm.quality.")
 
+    def _is_performance_alarm(self) -> bool:
+        """Node diagnostic BOOL (ALM.PERF.*): hub lag, CPU, SAF, … — not a process trip."""
+        name = (getattr(self, "name", None) or "").lower()
+        return ".alm.perf." in name or name.startswith("alm.perf.")
+
+    def _is_auto_clear_alarm(self) -> bool:
+        """Leave Active as soon as the condition clears; do not latch RTN Unacknowledged."""
+        return self._is_quality_alarm() or self._is_performance_alarm()
+
     def _iad_condition_met(self) -> bool:
         """IAD alarms follow signal quality, not the analog PV as BOOL."""
         from ..signal_conditioning.quality import GOOD, is_good_quality
@@ -577,11 +586,11 @@ class Alarm(StateMachine):
         Triggers transition to normal or return-to-normal states.
 
         Process alarms: RTN Unacknowledged until the operator acks (ISA-18.2).
-        ``ALM.QUALITY.*`` auto-clears to Normal when the PV is GOOD again so
-        the HMI does not keep a diagnostic alarm after OPC recovers.
+        ``ALM.QUALITY.*`` and ``ALM.PERF.*`` auto-clear to Normal when the
+        condition is gone so diagnostic tiles do not stay Active/RTNUN.
         """
         current_state = self.current_state.name.lower()
-        auto_clear = self._is_quality_alarm()
+        auto_clear = self._is_auto_clear_alarm()
 
         if current_state=="unack_alarm":
 
@@ -810,9 +819,22 @@ class Alarm(StateMachine):
             message += f" name: {name}"
 
         if tag:
-
-            self._tag = tag
-            message += f" tag: {tag}"
+            if isinstance(tag, str):
+                resolved = self.tag_engine.get_tag_by_name(name=tag)
+                if resolved is None:
+                    return self, f"Tag '{tag}' does not exist"
+                tag = resolved
+            current = getattr(self, "tag", None)
+            current_name = getattr(current, "name", None) or (current if isinstance(current, str) else "")
+            new_name = getattr(tag, "name", "")
+            if current_name != new_name:
+                try:
+                    self.detach_from_tag()
+                except Exception:
+                    pass
+                self.tag = tag
+                self.attach(machine=self, tag=tag)
+            message += f" tag: {new_name}"
 
         if description:
 

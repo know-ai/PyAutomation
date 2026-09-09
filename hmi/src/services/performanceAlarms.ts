@@ -23,12 +23,27 @@ export function alarmNameMatches(alarmName: string | undefined, catalogName: str
 export function lifecycleOf(alarm: Alarm | undefined): PerfAlarmLifecycle {
   if (!alarm) return "normal";
   const state = alarm.state;
+  if (typeof state === "object" && state) {
+    const mnemonic = String(state.mnemonic || "").toUpperCase();
+    const label = String(state.state || "").toLowerCase();
+    const alarmStatus = String(state.alarm_status || "").toLowerCase();
+    if (mnemonic === "SHLVD" || label.includes("shelv")) return "shelved";
+    // RTN Unacknowledged: process already Normal / Not Active. Must run before
+    // the generic "unack" match — the label contains "unacknowledged".
+    if (mnemonic === "RTNUN" || label.includes("rtn") || alarmStatus === "not active") {
+      return "normal";
+    }
+    if (mnemonic === "UNACK") return "unack";
+    if (mnemonic === "ACKED" || mnemonic === "ACK") return "ack";
+    if (mnemonic === "NORM" || label.includes("normal")) return "normal";
+  }
   const raw =
     typeof state === "object"
       ? `${state.mnemonic || ""} ${state.state || ""} ${state.acknowledge_status || ""}`
       : String(state || "");
   const normalized = raw.toLowerCase();
   if (normalized.includes("shelv") || normalized.includes("shlvd")) return "shelved";
+  if (normalized.includes("rtn") || normalized.includes("rtnun")) return "normal";
   if (normalized.includes("unack")) return "unack";
   if (normalized.includes("ack")) return "ack";
   if (normalized.includes("normal") || normalized.includes("norm")) return "normal";

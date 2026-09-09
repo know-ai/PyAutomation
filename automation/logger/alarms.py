@@ -274,7 +274,12 @@ class AlarmsLogger(BaseLogger):
             if name:
                 fields["name"] = name
             if tag:
-                fields["tag"] = tag
+                from ..dbmodels.tags import Tags
+
+                tag_row = Tags.read_by_name(name=tag) if isinstance(tag, str) else tag
+                if tag_row is None:
+                    return None
+                fields["tag"] = tag_row
             if description:
                 fields["description"] = description
             if alarm_type:
