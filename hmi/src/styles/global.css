@@ -1062,6 +1062,17 @@ body.process-restart-lock #toast-container {
   min-height: 100%;
 }
 
+.rt-trends-width-probe {
+  height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.app-main:has(.rt-trends-page) {
+  scrollbar-gutter: stable;
+  overflow-y: scroll;
+}
+
 .app-main:has(.page-fit-viewport),
 .app-main:has(.trends-fit-viewport) {
   overflow: hidden;
@@ -3948,6 +3959,102 @@ html[data-hmi-density="control"] .card > .card-header {
   left: 0;
   max-height: 18rem;
   overflow-y: auto;
+}
+
+.rt-trends-page {
+  position: relative;
+  min-width: 0;
+}
+
+.rt-trends-page--editing {
+  background: color-mix(in srgb, var(--bs-secondary-bg, #e9ecef) 55%, transparent);
+  border-radius: 0.5rem;
+  padding: 0 0.5rem 0.75rem;
+}
+
+.rt-trends-toolbar {
+  z-index: 30;
+  background: var(--bs-body-bg);
+}
+
+.rt-trends-layout--editing .react-grid-item {
+  transition: none !important;
+}
+
+.rt-trends-layout .react-grid-item {
+  contain: layout size;
+}
+
+.rt-trends-layout .rt-trends-grid-item {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.rt-card-drag-handle {
+  height: 20px;
+  flex: 0 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  color: var(--bs-secondary-color, #6c757d);
+  background: color-mix(in srgb, var(--bs-secondary-bg, #dee2e6) 70%, transparent);
+  border-radius: 0.25rem 0.25rem 0 0;
+  user-select: none;
+}
+
+.rt-card-drag-handle:active {
+  cursor: grabbing;
+}
+
+.rt-stripchart {
+  min-height: 0;
+}
+
+.rt-stripchart-plotbox {
+  overflow: hidden;
+}
+
+.rt-stripchart-plotbox .js-plotly-plot,
+.rt-stripchart-plotbox .plot-container,
+.rt-stripchart-plotbox .svg-container {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.rt-stripchart-card {
+  flex: 1;
+  min-height: 0;
+}
+
+.rt-stripchart-picker {
+  min-width: 12rem;
+  max-width: 18rem;
+}
+
+.rt-stripchart-skeleton {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.75rem;
+  height: 100%;
+  padding: 1.5rem;
+}
+
+.rt-stripchart-skeleton-bar {
+  height: 0.65rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--bs-secondary-bg, #dee2e6) 25%, var(--bs-tertiary-bg, #f8f9fa) 50%, var(--bs-secondary-bg, #dee2e6) 75%);
+  background-size: 200% 100%;
+  animation: rt-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.rt-stripchart-skeleton-bar:nth-child(2) { width: 82%; }
+.rt-stripchart-skeleton-bar:nth-child(3) { width: 64%; }
+
+@keyframes rt-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .lds-dashboard-page {

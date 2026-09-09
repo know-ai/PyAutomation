@@ -30,9 +30,10 @@ class TestRealtimeTrendsWorkspace(unittest.TestCase):
         self.assertEqual(len(doc["charts"]), 24)
         self.assertEqual(len(doc["charts"][0]["title"]), 80)
         self.assertEqual(len(doc["charts"][0]["tagNames"]), 16)
-        self.assertEqual(doc["charts"][0]["w"], 4)
-        self.assertEqual(doc["charts"][0]["h"], 6)
+        self.assertEqual(doc["charts"][0]["w"], 16)
+        self.assertEqual(doc["charts"][0]["h"], 15)
         self.assertEqual(doc["charts"][0]["timeSpanMinutes"], 5)
+        self.assertTrue(doc["charts"][0]["showThresholds"])
         self.assertNotIn("bufferSize", doc["charts"][0])
 
     def test_sanitize_persists_time_span_minutes(self):
@@ -49,7 +50,8 @@ class TestRealtimeTrendsWorkspace(unittest.TestCase):
                 ],
             }
         )
-        self.assertEqual(doc["schemaVersion"], 2)
+        self.assertEqual(doc["schemaVersion"], 3)
+        self.assertEqual(doc["grid"]["cols"], 48)
         self.assertEqual(doc["charts"][0]["timeSpanMinutes"], 5)
 
     def test_sanitize_rejects_invalid_time_span(self):
@@ -74,6 +76,55 @@ class TestRealtimeTrendsWorkspace(unittest.TestCase):
                 self.assertEqual(saved["charts"][0]["tagNames"], ["PI_01"])
             finally:
                 os.chdir(cwd)
+
+    def test_v3_width_is_not_clamped_to_twelve(self):
+        doc = sanitize_workspace(
+            {
+                "schemaVersion": 3,
+                "grid": {"cols": 48, "rowHeight": 10},
+                "panelTitle": "Sala 1",
+                "charts": [
+                    {
+                        "id": "wide",
+                        "title": "Wide",
+                        "tagNames": ["FI_01"],
+                        "showThresholds": False,
+                        "x": 0,
+                        "y": 0,
+                        "w": 24,
+                        "h": 15,
+                    }
+                ],
+            }
+        )
+        self.assertEqual(doc["schemaVersion"], 3)
+        self.assertEqual(doc["panelTitle"], "Sala 1")
+        self.assertEqual(doc["charts"][0]["w"], 24)
+        self.assertFalse(doc["charts"][0]["showThresholds"])
+
+    def test_legacy_twelve_col_migrates_to_forty_eight(self):
+        doc = sanitize_workspace(
+            {
+                "schemaVersion": 2,
+                "charts": [
+                    {
+                        "id": "legacy",
+                        "title": "Legacy",
+                        "tagNames": [],
+                        "x": 3,
+                        "y": 6,
+                        "w": 6,
+                        "h": 6,
+                    }
+                ],
+            }
+        )
+        chart = doc["charts"][0]
+        self.assertEqual(chart["x"], 12)
+        self.assertEqual(chart["w"], 24)
+        self.assertEqual(chart["y"], 15)
+        self.assertEqual(chart["h"], 15)
+        self.assertEqual(doc["grid"]["cols"], 48)
 
 
 if __name__ == "__main__":

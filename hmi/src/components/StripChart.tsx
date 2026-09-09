@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from "react";
 import { Card } from "./Card";
 import { Button } from "./Button";
+import { OpsConfirmModal } from "./OpsConfirmModal";
+import { MultiSelectSearch, type MultiSelectOption } from "./MultiSelectSearch";
 import Plot from "react-plotly.js";
 import type { Data, Layout } from "plotly.js";
 import { useTheme } from "../hooks/useTheme";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { useTranslation } from "../hooks/useTranslation";
-import { getTagsList, type Tag } from "../services/tags";
 import { showToast } from "../utils/toast";
 import {
   DEFAULT_TIME_SPAN_MINUTES,
@@ -20,13 +21,14 @@ import {
   type TimeSpanMinutes,
 } from "../store/slices/tagsSlice";
 import { usePageHidden } from "../hooks/usePageHidden";
-import { VirtualList } from "./VirtualList";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { usePlotlyResize } from "../hooks/usePlotlyResize";
 import { toDisplayDate } from "../utils/timezone";
 import { resolveTagDisplayLabel } from "../utils/tagDisplayLabel";
 import { isFilteredDerivativeName, sourceTagName } from "../utils/filteredTags";
 import { isDisplayableThreshold, resolveTagThreshold } from "../utils/tagThreshold";
 import { QualityBadge } from "./QualityBadge";
+import type { Tag } from "../services/tags";
 
 /** @deprecated Usar timeSpanMinutes; conservado por compatibilidad de imports. */
 export const BUFFER_SIZE_MIN = 120;
@@ -55,6 +57,7 @@ export interface StripChartConfig {
   tagNames: string[];
   /** Ventana temporal visible (minutos): 1 | 2 | 3 | 5. */
   timeSpanMinutes: TimeSpanMinutes;
+  showThresholds?: boolean;
   x: number;
   y: number;
   w: number;
@@ -64,7 +67,9 @@ export interface StripChartConfig {
 interface StripChartProps {
   config: StripChartConfig;
   isEditMode: boolean;
-  showThresholds?: boolean;
+  layoutInteracting?: boolean;
+  availableTags?: Tag[];
+  loadingTags?: boolean;
   onConfigChange: (config: StripChartConfig) => void;
   onDelete: () => void;
 }
@@ -72,7 +77,9 @@ interface StripChartProps {
 function StripChartInner({
   config,
   isEditMode,
-  showThresholds = false,
+  layoutInteracting = false,
+  availableTags = [],
+  loadingTags = false,
   onConfigChange,
   onDelete,
 }: StripChartProps) {
@@ -84,6 +91,10 @@ function StripChartInner({
   const tagNamesKey = config.tagNames.join("|");
   const timeSpanMinutes = normalizeTimeSpanMinutes(config.timeSpanMinutes);
   const timeSpanMs = timeSpanMinutes * 60 * 1000;
+  const showThresholds = config.showThresholds !== false;
+  const plotBoxRef = useRef<HTMLDivElement>(null);
+  const plotSize = usePlotlyResize(plotBoxRef, layoutInteracting);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const histories = useAppSelector(
     (state) => config.tagNames.map((name) => state.tags.tagHistory[name]),
@@ -103,70 +114,6 @@ function StripChartInner({
     }, 200);
     return () => window.clearInterval(id);
   }, []);
-  const [showTagConfig, setShowTagConfig] = useState(false);
-  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [tagSearch, setTagSearch] = useState("");
-  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
-  const [loadingTags, setLoadingTags] = useState(false);
-  const tagConfigRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchDropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const loadTags = async () => {
-      setLoadingTags(true);
-      try {
-        const tags = await getTagsList();
-        setAvailableTags(tags || []);
-      } catch (err: any) {
-        console.error("Error loading tags:", err);
-        showToast(t("stripChart.errorLoadingTags"), "error");
-      } finally {
-        setLoadingTags(false);
-      }
-    };
-    loadTags();
-  }, []);
-
-  useEffect(() => {
-    if (!showTagConfig) return;
-
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (tagConfigRef.current && !tagConfigRef.current.contains(target)) {
-        setShowTagConfig(false);
-        setShowSearchDropdown(false);
-        return;
-      }
-      // Inside panel: close only the search list when clicking selected tags / elsewhere.
-      if (
-        showSearchDropdown &&
-        searchDropdownRef.current &&
-        !searchDropdownRef.current.contains(target) &&
-        searchInputRef.current &&
-        !searchInputRef.current.contains(target)
-      ) {
-        setShowSearchDropdown(false);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (showSearchDropdown) {
-        setShowSearchDropdown(false);
-        event.preventDefault();
-        return;
-      }
-      setShowTagConfig(false);
-    };
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [showTagConfig, showSearchDropdown]);
 
   useEffect(() => {
     const names = config.tagNames.filter(Boolean);
@@ -176,22 +123,9 @@ function StripChartInner({
     };
   }, [dispatch, tagNamesKey]);
 
-  const filteredTags = useMemo(() => {
-    if (!tagSearch.trim()) {
-      return availableTags;
-    }
-    const searchLower = tagSearch.toLowerCase();
-    return availableTags.filter(
-      (tag) =>
-        tag.name.toLowerCase().includes(searchLower) ||
-        tag.display_name?.toLowerCase().includes(searchLower) ||
-        tag.description?.toLowerCase().includes(searchLower)
-    );
-  }, [availableTags, tagSearch]);
-
-  const unselectedFilteredTags = useMemo(
-    () => filteredTags.filter((tag) => !config.tagNames.includes(tag.name)),
-    [filteredTags, config.tagNames]
+  const catalogNames = useMemo(
+    () => new Set(availableTags.map((tag) => tag.name)),
+    [availableTags]
   );
 
   const getTagMeta = useCallback(
@@ -224,6 +158,22 @@ function StripChartInner({
     (tagName: string) => resolveTagDisplayLabel(getTagMeta(tagName), tagName),
     [getTagMeta]
   );
+
+  const missingTags = useMemo(() => {
+    if (availableTags.length === 0) return [] as string[];
+    return config.tagNames.filter((name) => !catalogNames.has(name) && !catalogNames.has(sourceTagName(name)));
+  }, [availableTags.length, catalogNames, config.tagNames]);
+
+  const tagOptions = useMemo<MultiSelectOption[]>(() => {
+    return availableTags.map((tag) => {
+      const unit = tag.display_unit || tag.unit || "—";
+      return {
+        value: tag.name,
+        label: resolveTagDisplayLabel(tag, tag.name),
+        description: `${unit} · ${tag.name}`,
+      };
+    });
+  }, [availableTags]);
 
   const prunedHistories = useMemo(
     () =>
@@ -330,11 +280,16 @@ function StripChartInner({
       }
     });
 
+    const width = plotSize.width > 0 ? plotSize.width : undefined;
+    const height = plotSize.height > 0 ? plotSize.height : undefined;
+
     const layout: Partial<Layout> = {
-      autosize: true,
+      autosize: false,
+      width,
+      height,
       uirevision: config.id,
       datarevision: historyRevision(prunedHistories, timeSpanMinutes, nowMs),
-      margin: { l: 60, r: unitOrder.length > 1 ? 60 : 20, t: 40, b: 28 },
+      margin: { l: 56, r: unitOrder.length > 1 ? 56 : 16, t: 28, b: 40 },
       paper_bgcolor: mode === "dark" ? "#212529" : "#ffffff",
       plot_bgcolor: mode === "dark" ? "#2c3034" : "#f8f9fa",
       font: { color: mode === "dark" ? "#ffffff" : "#212529" },
@@ -353,10 +308,12 @@ function StripChartInner({
       },
       showlegend: config.tagNames.length > 1 || (showThresholds && traces.length > config.tagNames.length),
       legend: {
-        x: 1.02,
-        xanchor: "left",
+        orientation: "h",
+        x: 0,
         y: 1,
-        bgcolor: mode === "dark" ? "rgba(33, 37, 41, 0.8)" : "rgba(255, 255, 255, 0.8)",
+        xanchor: "left",
+        yanchor: "top",
+        bgcolor: "rgba(0,0,0,0)",
       },
     };
 
@@ -389,283 +346,205 @@ function StripChartInner({
     machines,
     liveTags,
     t,
+    plotSize.width,
+    plotSize.height,
   ]);
 
-  const handleTagToggle = (tagName: string) => {
-    const isSelected = config.tagNames.includes(tagName);
-    const unit = getTagUnit(tagName);
-
-    const currentUnits = new Set(config.tagNames.map(getTagUnit));
-    const wouldAddNewUnit = !isSelected && !currentUnits.has(unit);
-
-    if (wouldAddNewUnit && currentUnits.size >= 2) {
-      showToast(t("stripChart.maxUnitsPerChart"), "warning");
-      return;
+  const applyTagNames = (nextNames: string[]) => {
+    const accepted: string[] = [];
+    const units = new Set<string>();
+    let warnedSecond = false;
+    let blockedExtra = false;
+    for (const name of nextNames) {
+      const unit = getTagUnit(name);
+      if (!units.has(unit) && units.size >= 2) {
+        if (!blockedExtra) {
+          showToast(t("stripChart.maxUnitsPerChart"), "warning");
+          blockedExtra = true;
+        }
+        continue;
+      }
+      if (!units.has(unit) && units.size === 1 && !warnedSecond) {
+        showToast(t("stripChart.secondUnitWarning", { unit }), "info");
+        warnedSecond = true;
+      }
+      units.add(unit);
+      accepted.push(name);
     }
-
-    const newTagNames = isSelected
-      ? config.tagNames.filter((name) => name !== tagName)
-      : [...config.tagNames, tagName];
-
-    onConfigChange({
-      ...config,
-      tagNames: newTagNames,
-    });
+    onConfigChange({ ...config, tagNames: accepted });
   };
 
   const handleTimeSpanChange = (raw: string) => {
-    const next = normalizeTimeSpanMinutes(Number(raw));
     onConfigChange({
       ...config,
-      timeSpanMinutes: next,
+      timeSpanMinutes: normalizeTimeSpanMinutes(Number(raw)),
     });
   };
 
   const handleTitleChange = (newTitle: string) => {
-    onConfigChange({
-      ...config,
-      title: newTitle,
-    });
+    onConfigChange({ ...config, title: newTitle });
   };
 
+  const plotReady = plotSize.width > 8 && plotSize.height > 8;
+
   return (
-    <div style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}>
+    <div className="rt-stripchart" style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column" }}>
+      {isEditMode && (
+        <div
+          className="rt-card-drag-handle"
+          role="button"
+          tabIndex={0}
+          aria-label={t("realTimeTrends.dragHandle")}
+          aria-describedby="rt-trends-drag-instruction"
+        >
+          <i className="bi bi-grip-horizontal" aria-hidden="true" />
+        </div>
+      )}
       <Card
-        className="overflow-visible"
-        style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", overflow: "visible" }}
-        headerClassName="py-1 px-2 overflow-visible"
+        className="overflow-hidden rt-stripchart-card"
+        style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}
+        headerClassName="py-1 px-2"
         bodyClassName="p-0"
         title={
-          <div className="d-flex justify-content-between align-items-center w-100 drag-handle" style={{ cursor: isEditMode ? "move" : "default" }}>
-            <div className="d-flex align-items-center gap-2">
-              {isEditMode && <i className="bi bi-grip-vertical text-muted"></i>}
+          <div className="d-flex justify-content-between align-items-center w-100 gap-2">
+            <div className="d-flex align-items-center gap-2 min-w-0">
               {isEditMode ? (
                 <input
                   type="text"
                   className="form-control form-control-sm"
                   value={config.title}
                   onChange={(e) => handleTitleChange(e.target.value)}
+                  onMouseDown={(e) => e.stopPropagation()}
                   style={{ width: "auto", minWidth: "150px", maxWidth: "300px" }}
                   placeholder={t("stripChart.titlePlaceholder")}
-                  onClick={(e) => e.stopPropagation()}
                 />
               ) : (
                 <span className="d-inline-flex align-items-center gap-2 flex-wrap">
                   <span>{config.title || t("stripChart.defaultTitle")}</span>
                   {config.tagNames.map((tagName) => {
                     const live = liveTags[tagName];
+                    const missing = missingTags.includes(tagName);
                     return (
                       <span key={tagName} className="d-inline-flex align-items-center gap-1">
                         <span className="small text-muted">{getTagLabel(tagName)}</span>
-                        <QualityBadge
-                          quality={live?.quality}
-                          qualityLabel={live?.quality_label}
-                          substatus={live?.quality_substatus}
-                          stale={Boolean(live?.stale)}
-                          staleAgeMs={typeof live?.stale_age_ms === "number" ? live.stale_age_ms : null}
-                        />
+                        {missing ? (
+                          <span className="badge bg-warning text-dark">{t("stripChart.tagUnavailable")}</span>
+                        ) : (
+                          <QualityBadge
+                            quality={live?.quality}
+                            qualityLabel={live?.quality_label}
+                            substatus={live?.quality_substatus}
+                            stale={Boolean(live?.stale)}
+                            staleAgeMs={typeof live?.stale_age_ms === "number" ? live.stale_age_ms : null}
+                          />
+                        )}
                       </span>
                     );
                   })}
                 </span>
               )}
             </div>
-            <div className="d-flex gap-2 align-items-center position-relative" onClick={(e) => e.stopPropagation()}>
-              {isEditMode && (
-                <>
-                  <label className="small text-muted mb-0 d-none d-sm-inline" htmlFor={`time-span-${config.id}`}>
-                    {t("stripChart.timeSpanLabel")}
-                  </label>
-                  <select
-                    id={`time-span-${config.id}`}
-                    className="form-select form-select-sm"
-                    style={{ width: "auto", minWidth: "5.5rem" }}
-                    value={timeSpanMinutes}
-                    onChange={(e) => handleTimeSpanChange(e.target.value)}
-                    title={t("stripChart.timeSpanLabel")}
-                    aria-label={t("stripChart.timeSpanLabel")}
-                  >
-                    {TIME_SPAN_OPTIONS_MINUTES.map((mins) => (
-                      <option key={mins} value={mins}>
-                        {t("stripChart.timeSpanOption", { minutes: mins })}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              )}
-              {isEditMode && (
-                <>
-                  <Button
-                    variant="primary"
-                    className="btn-sm"
-                    onClick={() => {
-                      setShowTagConfig((open) => {
-                        const next = !open;
-                        if (next) {
-                          // If tags already selected, keep list closed so chips stay reachable.
-                          setShowSearchDropdown(config.tagNames.length === 0);
-                          setTagSearch("");
-                        } else {
-                          setShowSearchDropdown(false);
-                        }
-                        return next;
-                      });
-                    }}
-                    title={t("stripChart.configureTags")}
-                  >
-                    <i className="bi bi-tags me-1"></i>
-                    {t("stripChart.tags")} ({config.tagNames.length})
-                  </Button>
-                  <Button
-                    variant="danger"
-                    className="btn-sm"
-                    onClick={onDelete}
-                    title={t("stripChart.deleteChart")}
-                  >
-                    <i className="bi bi-trash"></i>
-                  </Button>
-                  {showTagConfig && (
-                    <div
-                      ref={tagConfigRef}
-                      className="stripchart-tag-config position-absolute bg-body border rounded shadow-lg p-3"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="mb-2 position-relative">
-                        <div className="d-flex justify-content-between align-items-center mb-1">
-                          <label className="form-label small mb-0">{t("stripChart.searchTag")}</label>
-                          {showSearchDropdown && (
-                            <button
-                              type="button"
-                              className="btn btn-link btn-sm p-0 text-decoration-none"
-                              onClick={() => setShowSearchDropdown(false)}
-                            >
-                              {t("stripChart.hideSearchList")}
-                            </button>
-                          )}
-                        </div>
-                        <input
-                          ref={searchInputRef}
-                          type="text"
-                          className="form-control form-control-sm"
-                          value={tagSearch}
-                          onChange={(e) => {
-                            setTagSearch(e.target.value);
-                            setShowSearchDropdown(true);
-                          }}
-                          placeholder={t("stripChart.searchPlaceholder")}
-                          onFocus={() => setShowSearchDropdown(true)}
-                          aria-expanded={showSearchDropdown}
-                          aria-controls="stripchart-tag-search-list"
-                        />
-                        {showSearchDropdown && (
-                          <div
-                            id="stripchart-tag-search-list"
-                            ref={searchDropdownRef}
-                            className="stripchart-tag-search-list position-absolute bg-body border rounded shadow-sm w-100"
-                          >
-                            {unselectedFilteredTags.length === 0 ? (
-                              <div className="text-muted small p-2">{t("stripChart.noTagsAvailable")}</div>
-                            ) : (
-                              <VirtualList
-                                items={unselectedFilteredTags}
-                                height={280}
-                                itemHeight={52}
-                                getKey={(tag) => tag.name}
-                                renderItem={(tag) => (
-                                  <div
-                                    className="p-2 border-bottom cursor-pointer"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => {
-                                      handleTagToggle(tag.name);
-                                      setShowSearchDropdown(false);
-                                      setTagSearch("");
-                                    }}
-                                  >
-                                    <div className="d-flex justify-content-between align-items-center">
-                                      <div>
-                                        <strong className="small">{resolveTagDisplayLabel(tag, tag.name)}</strong>
-                                        <br />
-                                        <span className="text-muted small">
-                                          {tag.name} · {getTagUnit(tag.name)}
-                                        </span>
-                                      </div>
-                                      <i className="bi bi-plus-circle text-primary"></i>
-                                    </div>
-                                  </div>
-                                )}
-                              />
-                            )}
-                          </div>
-                        )}
-                        <div className="form-text small text-muted mt-1">
-                          {t("stripChart.searchDismissHint")}
-                        </div>
-                      </div>
-                      <div
-                        className="mb-0"
-                        onMouseDown={() => {
-                          if (showSearchDropdown) setShowSearchDropdown(false);
-                        }}
-                      >
-                        <label className="form-label small d-flex justify-content-between align-items-center">
-                          <span>{t("stripChart.selectedTags")}</span>
-                          <span className="badge bg-secondary">
-                            {t("stripChart.unitsCount", {
-                              count: Array.from(new Set(config.tagNames.map(getTagUnit))).length,
-                            })}
-                          </span>
-                        </label>
-                        <div className="d-flex flex-wrap gap-1">
-                          {config.tagNames.map((tagName) => (
-                              <span key={tagName} className="badge bg-primary">
-                                {getTagLabel(tagName)}
-                                <button
-                                  type="button"
-                                  className="btn-close btn-close-white ms-1"
-                                  style={{ fontSize: "0.6rem" }}
-                                  onClick={() => handleTagToggle(tagName)}
-                                  aria-label="Remove"
-                                ></button>
-                              </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
+            {isEditMode && (
+              <div className="d-flex gap-2 align-items-center flex-shrink-0" onMouseDown={(e) => e.stopPropagation()}>
+                {missingTags.length > 0 && (
+                  <span className="badge bg-warning text-dark">{t("stripChart.tagUnavailable")}</span>
+                )}
+                <label className="small text-muted mb-0 d-none d-sm-inline" htmlFor={`time-span-${config.id}`}>
+                  {t("stripChart.timeSpanLabel")}
+                </label>
+                <select
+                  id={`time-span-${config.id}`}
+                  className="form-select form-select-sm"
+                  style={{ width: "auto", minWidth: "5.5rem" }}
+                  value={timeSpanMinutes}
+                  onChange={(e) => handleTimeSpanChange(e.target.value)}
+                  title={t("stripChart.timeSpanLabel")}
+                  aria-label={t("stripChart.timeSpanLabel")}
+                >
+                  {TIME_SPAN_OPTIONS_MINUTES.map((mins) => (
+                    <option key={mins} value={mins}>
+                      {t("stripChart.timeSpanOption", { minutes: mins })}
+                    </option>
+                  ))}
+                </select>
+                <div className="rt-stripchart-picker d-flex align-items-center gap-1">
+                  {loadingTags && (
+                    <span className="spinner-border spinner-border-sm" role="status" aria-label={t("stripChart.loadingTags")} />
                   )}
-                </>
-              )}
-            </div>
+                  <MultiSelectSearch
+                    options={tagOptions}
+                    selected={config.tagNames}
+                    onChange={applyTagNames}
+                    disabled={loadingTags}
+                    placeholder={
+                      loadingTags
+                        ? t("stripChart.loadingTags")
+                        : t("stripChart.tagsWithCount", { count: config.tagNames.length })
+                    }
+                    searchPlaceholder={t("stripChart.searchPlaceholder")}
+                    emptyText={t("stripChart.noTagsAvailable")}
+                    selectedCountLabel={(count) => t("stripChart.tagsWithCount", { count })}
+                  />
+                </div>
+                <Button
+                  variant="danger"
+                  className="btn-sm"
+                  onClick={() => setConfirmDelete(true)}
+                  title={t("stripChart.deleteChart")}
+                  aria-label={t("stripChart.deleteChart")}
+                >
+                  <i className="bi bi-trash"></i>
+                </Button>
+              </div>
+            )}
           </div>
         }
       >
-        <div style={{ width: "100%", flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }}>
+        <div
+          ref={plotBoxRef}
+          className="rt-stripchart-plotbox"
+          style={{ width: "100%", flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}
+        >
           {config.tagNames.length === 0 ? (
             <div className="text-center py-5 text-muted" style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <i className="bi bi-graph-up" style={{ fontSize: "3rem" }}></i>
               <p className="mt-3">{t("stripChart.emptyState")}</p>
             </div>
           ) : !hasAnyPointsInSpan ? (
-            <div className="text-center py-5 text-muted" style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <i className="bi bi-clock-history" style={{ fontSize: "3rem" }}></i>
-              <p className="mt-3">{t("stripChart.emptyTimeSpan")}</p>
+            <div className="rt-stripchart-skeleton" aria-busy="true" aria-label={t("stripChart.loadingData")}>
+              <div className="rt-stripchart-skeleton-bar" />
+              <div className="rt-stripchart-skeleton-bar" />
+              <div className="rt-stripchart-skeleton-bar" />
             </div>
-          ) : (
+          ) : plotReady ? (
             <Plot
               data={plotData.data}
               layout={plotData.layout}
               revision={String((plotData.layout as { datarevision?: string }).datarevision || "")}
               style={{ width: "100%", height: "100%" }}
               config={{
-                displayModeBar: true,
+                displayModeBar: isEditMode,
                 modeBarButtonsToRemove: ["lasso2d", "select2d"],
                 displaylogo: false,
-                responsive: true,
+                responsive: false,
               }}
-              useResizeHandler={true}
+              useResizeHandler={false}
             />
-          )}
+          ) : null}
         </div>
       </Card>
+      <OpsConfirmModal
+        open={confirmDelete}
+        danger
+        title={t("stripChart.deleteChart")}
+        body={t("stripChart.confirmDelete", { title: config.title || t("stripChart.defaultTitle") })}
+        confirmLabel={t("common.delete")}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          onDelete();
+        }}
+      />
     </div>
   );
 }

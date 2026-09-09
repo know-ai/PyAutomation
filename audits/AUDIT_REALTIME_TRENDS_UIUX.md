@@ -4,12 +4,12 @@
 |---|---|
 | **Producto** | PyAutomation HMI (`hmi/src`) |
 | **Alcance** | Estética, usabilidad, layout/canvas, edición de cards, picker de tags y granularidad de movimiento de la vista de tendencias en tiempo real. **No** cubre fidelidad de serie ni heap (eso vive en [AUDIT_HMI.md](./AUDIT_HMI.md)) |
-| **Fecha** | 2026-09-09 |
-| **Evidencia** | Código `hmi/src/pages/RealTimeTrends.tsx`, `StripChart.tsx`, `workspaceStore.ts`, `global.css`; reportes de operador en planta (modo edición) |
+| **Fecha** | 2026-09-09 · **implementación spec HMI 2.10** misma fecha |
+| **Evidencia** | Código `hmi/src/pages/RealTimeTrends.tsx`, `StripChart.tsx`, `workspaceStore.ts`, `realtimeTrendsGrid.ts`, `usePlotlyResize.ts`, `global.css`; backend `automation/modules/settings/workspace.py`; tests `test_realtime_trends_workspace.py` |
 | **Complementa** | [AUDIT_HMI.md](./AUDIT_HMI.md) (rendimiento RT / forma de onda), [AUDIT_TIMEZONE.md](./AUDIT_TIMEZONE.md), [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md) |
-| **Veredicto vigente** | **C+ / B−** como superficie de diseño de layout. Datos RT y workspace de estación son sólidos; la metáfora de edición (grid, resize, picker) es frágil y produce fallos graves de UX en el flujo normal de configuración |
+| **Veredicto vigente** | Layout **B+ (en implementación, código)** — módulos A–E de la spec UI/UX cerrados en esta entrega. Datos RT **A−** (vía AUDIT_HMI). Fuera de alcance: RT-LAY-02 (Ctrl+drag libre) y RT-EDIT-03 (guías). Verificación planta CA-RT-01…08 pendiente de corrida en HMI vivo |
 | **Clasificación** | Auditoría de frontend · UI/UX · layout · Confidencialidad interna |
-| **Estado** | Solo auditoría — **sin implementación** en este documento |
+| **Estado** | **En implementación** — schema v3 + canvas 48×10 + Plotly desacoplado + MultiSelectSearch + persistencia con circuit breaker |
 
 ---
 
@@ -325,7 +325,7 @@ La vista RT es la que **más necesita** un canvas de diseño y, a la vez, la que
 | UX-R1 | Fidelidad 1 Hz / huecos de serie → [AUDIT_HMI.md](./AUDIT_HMI.md), no UI |
 | UX-R2 | Coste de Plotly con muchos tags @ throttle 200 ms → performance, no estética |
 | UX-R3 | i18n de strings de banner socket vs copy del picker → menor |
-| UX-R4 | Decisión producto grid fino vs lienzo libre (**UX-RT-3**) bloquea implementación |
+| UX-R4 | RT-LAY-02 (lienzo libre px) y RT-EDIT-03 (guías) quedan **fuera** de HMI 2.10; granularidad = grid 48×10 (§11) |
 
 ---
 
@@ -339,4 +339,68 @@ La pantalla de tiempo real **cumple** como visor de series con workspace de esta
 
 Pros reales (workspace, empty states, límites, tema Plotly) no compensan esos tres puntos en la percepción del producto. El siguiente paso no es “pulir CSS”: es **cerrar el bucle de resize**, **sacar la lista de tags del overflow**, y **decidir el contrato de granularidad del canvas** antes de tocar código.
 
-**Veredicto:** UI/UX de layout **C+ / B−**; datos RT y persistencia **A−** (vía AUDIT_HMI + workspace). Prioridad de remedio: UX-RT-1 → UX-RT-2 → decisión UX-RT-3 → affordances de edición (UX-RT-4/6/5).
+**Veredicto (auditoría original):** UI/UX de layout **C+ / B−**; datos RT y persistencia **A−** (vía AUDIT_HMI + workspace). Prioridad de remedio: UX-RT-1 → UX-RT-2 → decisión UX-RT-3 → affordances de edición (UX-RT-4/6/5).
+
+La entrega posterior está en la **§11**.
+
+---
+
+## 11. Implementación 2026-09-09 — spec UI/UX HMI 2.10 (módulos A–E)
+
+**Decisión de producto:** grid canónico **48 columnas / `rowHeight=10`** en edición y visualización. Migración **una vez** al hidratar (schema 2 → 3). **No** se incluye RT-LAY-02 (Ctrl+drag libre en px) ni RT-EDIT-03 (guías de alineación). Flag Vite `VITE_RT_TRENDS_LAYOUT_V3` (default `true`).
+
+### 11.1 Contrato schema v3
+
+| Campo | Valor |
+|---|---|
+| `schemaVersion` | 3 |
+| `grid` | `{ cols: 48, rowHeight: 10 }` |
+| `panelTitle` | string opcional |
+| por card `showThresholds` | boolean, default `true` |
+| `minW` / `maxW` | 16 / 48 (1/3 visual del `minW=4` legado) |
+| `minH` / default | 15 / `w=24, h=15` (equivalencia en px del `h=6` legado ≈ 290 px) |
+| Migración | `x,w *= 4`; `y,h` por fórmula de píxeles (`rowHeight` 40→10, margin 10) |
+
+Backend `sanitize_workspace` y HMI `workspaceStore` + `realtimeTrendsGrid.ts` espejo. `MAX_GRID_W=48` — un PUT v3 **ya no** se recorta a 12.
+
+### 11.2 Remediación vs hallazgos
+
+| Hallazgo | Estado en código | Pieza |
+|---|---|---|
+| **UX-RT-1** lateo Plotly | Cerrado | `useResizeHandler={false}`, `autosize:false`, `usePlotlyResize` (ResizeObserver + debounce 200 ms, Δ>5 px, pausa en drag/resize), leyenda `orientation:'h'` `y:-0.18`, `transition: none` en `.rt-trends-layout--editing` |
+| **UX-RT-2** picker recortado | Cerrado | `MultiSelectSearch` en portal; `PANEL_MAX_HEIGHT=580` / `60vh` (≥10 filas de 48 px a 1080p) |
+| **UX-RT-3** snap grueso | Mitigado (opción A) | 48 cols ≈ **25 px** a 1200 px; vertical `rowHeight+margin=20` px. Libre px a px **fuera de alcance** |
+| **UX-RT-4** doble clic | Cerrado | Botón permanente «Editar panel»; Escape sale y hace flush |
+| **UX-RT-5** umbrales en planta | Cerrado | `showThresholds` persiste; toggle global escribe todos los cards; visibles fuera de edición |
+| **UX-RT-6** solapes | Mitigado | `getCompactor(null, allowOverlap, preventCollision)`; sin Alt, `preventCollision`; Alt+drag permite solape |
+| **UX-RT-7** header=drag | Cerrado | Franja `.rt-card-drag-handle` 20 px; input/Tags/trash con `stopPropagation` y `dragConfig.cancel` |
+| **UX-RT-8** mode bar planta | Cerrado | `displayModeBar: isEditMode` |
+| **UX-RT-10** sidebar | Cerrado | `ResizeObserver` en el canvas |
+| **UX-RT-11** API RGL v1 | Cerrado | `dragConfig` / `resizeConfig` / `compactor` como Performance/LDS |
+| **UX-RT-12** picker ad-hoc | Cerrado | `MultiSelectSearch` |
+| **UX-RT-13** borrar sin confirm | Cerrado | `OpsConfirmModal` |
+| **UX-RT-14** N× GET tags | Cerrado | `loadStationTagCatalog()` una vez al entrar en edición |
+| **UX-RT-18** aria | Parcial | `aria-label` en Agregar gráfico y drag handle |
+
+### 11.3 Criterios CA-RT (spec)
+
+| ID | Criterio | Código | Planta / lab |
+|---|---|---|---|
+| **CA-RT-01** | Tras el 1.er tag, el item RGL no oscila >1 px / 3 s | Implementado (desacople Plotly) | Lab Vite: card vacío estable (`h` px = 290). 1.er tag con serie viva pendiente de HMI con API |
+| **CA-RT-02** | Picker ≥10 filas, portal, no recortado | Implementado (`PANEL_MAX_HEIGHT=580` / 60vh, portal) | Lab: listbox portal fuera del card; lista vacía sin catálogo. Filas ≥10 pendiente de planta |
+| **CA-RT-03** | Paso ≤25 px a 1200 px de ancho | 48 cols | Lab: canvas ~630 px → paso ≈ 13 px; a 1200 px ≈ 25 px |
+| **CA-RT-04** | Botón Editar permanente | Implementado | **PASS** lab («Editar panel» / «Edit panel») |
+| **CA-RT-05** | Umbrales visibles en planta | Implementado (`showThresholds` persistido, switch global) | Toggle visible en edición; traza punteada pendiente de tags vivos |
+| **CA-RT-06** | Modal al borrar | Implementado | **PASS** lab (`¿Eliminar el gráfico «Chart 1»?`) |
+| **CA-RT-07** | Offline: localStorage + banner; 3 PUT fallidos → 5 min; timeout 10 s | Implementado | **PASS** lab (badge «Sin conexión al servidor» + banner local) |
+| **CA-RT-08** | 1 GET `/tags/list` al editar | Implementado (`loadStationTagCatalog`) | Lab sin API: un intento de catálogo al entrar en edición (fallido, toast) |
+
+### 11.4 Persistencia
+
+- Debounce 300 ms; localStorage primero; PUT con timeout 10 s.
+- Circuit breaker: 3 fallos → `offline` 5 min; `setInterval` 60 s para reintentar; banner «Cambios guardados localmente».
+- Export/import JSON v3 pasa por `sanitize` + `migrateLayout`.
+
+### 11.5 Fuera de esta entrega
+
+Fuse.js, `@floating-ui`, DOMPurify, pixel-perfect libre, snap guides, cifrado de localStorage, CSP nonce nuevo, `REACT_APP_GRID_V2`.

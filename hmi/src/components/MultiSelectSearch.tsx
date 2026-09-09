@@ -43,7 +43,7 @@ type PanelPosition = {
 
 import { readUiScale } from "../utils/displayDensity";
 
-const PANEL_MAX_HEIGHT = 320;
+const PANEL_MAX_HEIGHT = 580;
 const PANEL_MIN_WIDTH = 280;
 const VIEWPORT_GAP = 8;
 
@@ -115,13 +115,13 @@ export function MultiSelectSearch({
 
     const gap = scaledPx(VIEWPORT_GAP);
     const minWidth = scaledPx(PANEL_MIN_WIDTH);
-    const maxHeight = scaledPx(PANEL_MAX_HEIGHT);
     const flipBelow = scaledPx(180);
     const minPanel = scaledPx(160);
 
     const rect = trigger.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const viewportWidth = window.innerWidth;
+    const maxHeight = Math.min(scaledPx(PANEL_MAX_HEIGHT), Math.floor(viewportHeight * 0.6));
     const spaceBelow = viewportHeight - rect.bottom - gap;
     const spaceAbove = rect.top - gap;
     const placement: "bottom" | "top" =
@@ -273,6 +273,7 @@ export function MultiSelectSearch({
   const handlePanelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       close();
       triggerRef.current?.focus();
       return;
