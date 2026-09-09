@@ -27,6 +27,17 @@ def _role_id(user) -> str | None:
     return None
 
 
+def _role_name(user) -> str:
+    role = getattr(user, "role", None)
+    if role is None:
+        return ""
+    return str(getattr(role, "name", "") or "").strip().lower()
+
+
+def _is_integrator(user) -> bool:
+    return _role_name(user) == "integrator"
+
+
 def _direct_grant(user, resource_key: str, action: str) -> bool | None:
     """Explicit allow/deny from store. None = no explicit grant."""
     action_norm = str(action or "").strip().lower()
@@ -63,6 +74,10 @@ def evaluate(user, resource_key: str, action: str) -> bool:
     action_norm = str(action or "").strip().lower()
     if action_norm not in ACTIONS:
         return False
+    # Integrator is all-allow at runtime. Seed rows can lag behind new HMI
+    # views (e.g. view missing while use exists) and the sidebar only checks view.
+    if _is_integrator(user):
+        return True
     direct = _direct_grant(user, resource_key, action_norm)
     if direct is True:
         return True
@@ -92,6 +107,14 @@ def permissions_for(user, flask_app=None) -> dict:
         views = {key: list(ACTIONS) for key in SYSTEM_HMI_VIEWS}
         return {"views": views, "rest": {}}
     keys = all_resource_keys(flask_app)
+    if _is_integrator(user):
+        views = {
+            key: list(ACTIONS)
+            for key in keys
+            if key in HMI_VIEW_KEYS or str(key).startswith("hmi:")
+        }
+        rest = {key: list(ACTIONS) for key in keys if str(key).startswith("rest:")}
+        return {"views": views, "rest": rest}
     views = _pack([key for key in keys if key in HMI_VIEW_KEYS or key.startswith("hmi:")], user)
     rest = _pack([key for key in keys if key.startswith("rest:")], user)
     return {"views": views, "rest": rest}

@@ -1328,15 +1328,35 @@ function omitTransientKeys(values: Record<string, unknown>): Record<string, unkn
   return next;
 }
 
-function omitFileFields(
-  values: Record<string, unknown>,
-  fields: DomainConfigField[]
+const BAYES_CALIBRATION_KEY = /^bayes_(p|q|alpha)_(SS|SI|TS)$/;
+
+function pickDomainSavePayload(
+  fields: DomainConfigField[],
+  values: Record<string, unknown>
 ): Record<string, unknown> {
-  const next = { ...values };
-  for (const field of collectFileFields(fields)) {
-    delete next[field.key];
+  const keys = new Set(visibleEditableKeys(fields, values));
+  for (const key of Object.keys(values)) {
+    if (BAYES_CALIBRATION_KEY.test(key)) keys.add(key);
   }
-  return next;
+  let payload: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (INTERNAL_COMPARE_KEYS.has(key) || key.startsWith("_")) continue;
+    payload = setByPath(payload, key, getByPath(values, key));
+  }
+  return omitTransientKeys(payload);
+}
+
+function preserveLocalDomainEdits(
+  local: Record<string, unknown>,
+  server: Record<string, unknown>
+): Record<string, unknown> {
+  const merged = { ...local, ...server };
+  for (const key of Object.keys(local)) {
+    if (BAYES_CALIBRATION_KEY.test(key) || key.startsWith("threshold_") || key === "on_delay") {
+      merged[key] = local[key];
+    }
+  }
+  return merged;
 }
 
 function validatePendingFiles(
@@ -1645,13 +1665,12 @@ export function DomainConfigSlot({
         );
         if (uploaded.destination_path) destPaths.push(uploaded.destination_path);
         if (uploaded.config) {
-          latest = { ...latest, ...uploaded.config };
+          latest = preserveLocalDomainEdits(latest, uploaded.config as Record<string, unknown>);
           setValues(latest);
           onConfigUpdated?.(latest);
         }
       }
-      const { _reset: _ignoredReset, _set_factory: _ignoredFactory, ...rawPayload } = latest;
-      const payload = omitTransientKeys(omitFileFields(rawPayload, allFields));
+      const payload = pickDomainSavePayload(allFields, latest);
       const result = await putMachineDomainConfig(machineName, payload);
       const next = result.config || latest;
       setPendingFiles({});
@@ -1712,8 +1731,7 @@ export function DomainConfigSlot({
     }
     setSaving(true);
     try {
-      const { _reset: _ignoredReset, _set_factory: _ignoredFactory, ...rawPayload } = values;
-      const payload = omitTransientKeys(omitFileFields(rawPayload, allFields));
+      const payload = pickDomainSavePayload(allFields, values);
       const result = await putMachineDomainConfig(machineName, { ...payload, _set_factory: true });
       const next = result.config || values;
       await applyServerState(next);

@@ -64,6 +64,25 @@ class TestAuthzEngine(unittest.TestCase):
         self.assertTrue(evaluate(self.user, "hmi:view.tags.definitions", "view"))
         self.assertFalse(evaluate(self.user, "hmi:view.tags.definitions", "use"))
 
+    def test_integrator_evaluate_all_allow_without_grants(self):
+        user = _User("int1", _Role("INTEGRATOR", "roleint0", 0), identifier="int00001")
+        self.assertTrue(evaluate(user, "hmi:view.machines.detailed", "view"))
+        self.assertTrue(evaluate(user, "hmi:view.machines.detailed", "use"))
+        self.assertTrue(evaluate(user, "hmi:view.settings", "view"))
+        self.assertTrue(evaluate(user, "hmi:view.settings", "use"))
+        perms = permissions_for(user, server)
+        self.assertIn("view", perms["views"].get("hmi:view.machines.detailed") or [])
+        self.assertIn("view", perms["views"].get("hmi:view.settings") or [])
+
+    def test_integrator_evaluate_ignores_incomplete_or_deny_grants(self):
+        user = _User("int1", _Role("integrator", "roleint0", 0), identifier="int00001")
+        put_grant("role", "roleint0", "hmi:view.machines.detailed", "use", "allow")
+        put_grant("role", "roleint0", "hmi:view.settings", "use", "allow")
+        put_grant("role", "roleint0", "hmi:view.database", "view", "deny")
+        self.assertTrue(evaluate(user, "hmi:view.machines.detailed", "view"))
+        self.assertTrue(evaluate(user, "hmi:view.settings", "view"))
+        self.assertTrue(evaluate(user, "hmi:view.database", "view"))
+
 
 class TestAuthzSeedMatrix(unittest.TestCase):
     def test_integrator_allows_everything(self):

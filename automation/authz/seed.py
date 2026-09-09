@@ -232,7 +232,7 @@ def default_allows(role_name: str, resource_key: str, action: str) -> bool:
     return _default_allows_rest(role, method, path, action)
 
 
-def _persist_row(row: dict) -> None:
+def _persist_row(row: dict, *, overwrite: bool = False) -> None:
     try:
         from ..dbmodels.authz import AuthzGrant
 
@@ -245,8 +245,13 @@ def _persist_row(row: dict) -> None:
         if existing is None:
             AuthzGrant.create(**row)
         else:
-            if existing.effect != row["effect"]:
+            if existing.effect == row["effect"]:
+                pass
+            elif not overwrite:
                 return
+            else:
+                existing.effect = row["effect"]
+                existing.save()
     except Exception:
         _LOGGER.debug("authz historian persist skipped", exc_info=True)
     try:
@@ -309,23 +314,32 @@ def _role_rows() -> list[dict]:
 
 
 def _existing_tuple_set() -> set[tuple[str, str, str, str]]:
+    """Tuples already persisted in the store reload() will read.
+
+    Historian (Postgres) is the source of truth when connected. Unioning the
+    local catalog used to skip seeding rows that existed only in SQLite, so
+    Integrator could have ``use`` without ``view`` in Postgres and the HMI
+    hid Detallado / Configuración.
+    """
     existing: set[tuple[str, str, str, str]] = set()
-    for (stype, sid, key, action), _effect in store.snapshot().items():
-        existing.add((stype, sid, key, action))
     try:
+        from automation import PyAutomation
         from ..dbmodels.authz import AuthzGrant
 
-        for row in AuthzGrant.select().iterator():
-            existing.add(
-                (
-                    str(row.subject_type).lower(),
-                    str(row.subject_id).lower(),
-                    str(row.resource_key),
-                    str(row.action).lower(),
+        if bool(PyAutomation().is_db_connected()):
+            for row in AuthzGrant.select().iterator():
+                existing.add(
+                    (
+                        str(row.subject_type).lower(),
+                        str(row.subject_id).lower(),
+                        str(row.resource_key),
+                        str(row.action).lower(),
+                    )
                 )
-            )
+            return existing
     except Exception:
-        pass
+        _LOGGER.debug("authz existing grants from historian skipped", exc_info=True)
+        existing.clear()
     try:
         from ..catalog.local_provider import LocalCatalogProvider
 
@@ -338,8 +352,12 @@ def _existing_tuple_set() -> set[tuple[str, str, str, str]]:
                     str(row.get("action") or "").lower(),
                 )
             )
+        if existing:
+            return existing
     except Exception:
-        pass
+        _LOGGER.debug("authz existing grants from local catalog skipped", exc_info=True)
+    for (stype, sid, key, action), _effect in store.snapshot().items():
+        existing.add((stype, sid, key, action))
     return existing
 
 
@@ -473,6 +491,39 @@ def seed_grants_for_new_role(
     return created
 
 
+def _ensure_integrator_allows(
+    role_identifier: str,
+    keys: list[str],
+    *,
+    persist: bool,
+    put,
+    existing: set[tuple[str, str, str, str]],
+) -> int:
+    """Fill/repair Integrator to allow on every catalog key (view and use)."""
+    created = 0
+    for resource_key in keys:
+        for action in ACTIONS:
+            tuple_key = ("role", str(role_identifier).lower(), resource_key, action)
+            if store.lookup("role", role_identifier, resource_key, action) == "allow":
+                existing.add(tuple_key)
+                continue
+            put("role", role_identifier, resource_key, action, "allow")
+            if persist:
+                _persist_row(
+                    {
+                        "subject_type": "role",
+                        "subject_id": role_identifier,
+                        "resource_key": resource_key,
+                        "effect": "allow",
+                        "action": action,
+                    },
+                    overwrite=True,
+                )
+            existing.add(tuple_key)
+            created += 1
+    return created
+
+
 def seed_default_grants(
     flask_app: Any | None = None,
     *,
@@ -490,6 +541,15 @@ def seed_default_grants(
         identifier = role.get("identifier") or ""
         name = role.get("name") or ""
         if not identifier or not name:
+            continue
+        if str(name).lower() == "integrator":
+            created += _ensure_integrator_allows(
+                identifier,
+                keys,
+                persist=persist,
+                put=put_fn,
+                existing=existing,
+            )
             continue
         for resource_key in keys:
             for action in ACTIONS:

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
-import { getMachines, getMachineByName, transitionMachine, type Machine } from "../services/machines";
+import { getMachines, transitionMachine, type Machine } from "../services/machines";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
 import { useAppSelector } from "../hooks/useAppSelector";
@@ -31,14 +31,6 @@ export function Machines() {
     oldState: string;
     newState: string;
   } | null>(null);
-  
-  // Estado para el dropdown de acciones
-  const [actionsDropdownOpen, setActionsDropdownOpen] = useState<string | null>(null);
-  const [machineActions, setMachineActions] = useState<Record<string, string[]>>({});
-  const [loadingActions, setLoadingActions] = useState<Record<string, boolean>>({});
-  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; right: number } | null>(null);
-  const actionsDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const actionsButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Buffer para actualizaciones de máquinas en tiempo real (patrón de 1 segundo)
   const pendingMachineUpdatesRef = useRef<Map<string, Machine>>(new Map());
@@ -246,118 +238,6 @@ export function Machines() {
     setPendingTransition(null);
   };
 
-  // Cargar acciones de una máquina
-  const loadMachineActions = async (machineName: string) => {
-    if (machineActions[machineName]) {
-      // Si ya tenemos las acciones, solo abrir el dropdown
-      setActionsDropdownOpen(machineName);
-      return;
-    }
-
-    setLoadingActions((prev) => ({ ...prev, [machineName]: true }));
-    try {
-      const machineData = await getMachineByName(machineName);
-      const actions = machineData?.serialization?.actions || [];
-      setMachineActions((prev) => ({ ...prev, [machineName]: actions }));
-      setActionsDropdownOpen(machineName);
-    } catch (err: any) {
-      const data = err?.response?.data;
-      const backendMessage =
-        (typeof data === "string" ? data : undefined) ??
-        data?.message ??
-        data?.detail ??
-        data?.error;
-      const errorMessage = backendMessage || err?.message || t("machines.loadActionsError");
-      showToast(errorMessage, "error");
-      console.error("Error loading machine actions:", err);
-    } finally {
-      setLoadingActions((prev) => ({ ...prev, [machineName]: false }));
-    }
-  };
-
-  // Toggle dropdown de acciones
-  const toggleActionsDropdown = (machineName: string) => {
-    if (actionsDropdownOpen === machineName) {
-      setActionsDropdownOpen(null);
-      setDropdownPosition(null);
-    } else {
-      // Calcular posición del dropdown basado en el botón
-      const button = actionsButtonRefs.current[machineName];
-      if (button) {
-        const rect = button.getBoundingClientRect();
-        setDropdownPosition({
-          top: rect.bottom + window.scrollY + 4,
-          right: window.innerWidth - rect.right + window.scrollX,
-        });
-      }
-      loadMachineActions(machineName);
-    }
-  };
-
-  // Ejecutar acción (transición)
-  const handleExecuteAction = async (machineName: string, action: string) => {
-    setActionsDropdownOpen(null);
-    // Usar la misma lógica de transición que ya existe
-    const machine = machinesWithRealTime.find((m) => m.name === machineName);
-    if (machine) {
-      handleStateChange(machine, action);
-    }
-  };
-
-  // Cerrar dropdown al hacer clic fuera
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (actionsDropdownOpen) {
-        const ref = actionsDropdownRefs.current[actionsDropdownOpen];
-        const button = actionsButtonRefs.current[actionsDropdownOpen];
-        const target = event.target as Node;
-        if (
-          ref &&
-          !ref.contains(target) &&
-          button &&
-          !button.contains(target)
-        ) {
-          setActionsDropdownOpen(null);
-          setDropdownPosition(null);
-        }
-      }
-    };
-
-    if (actionsDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [actionsDropdownOpen]);
-
-  // Actualizar posición del dropdown al hacer scroll
-  useEffect(() => {
-    const handleScroll = () => {
-      if (actionsDropdownOpen) {
-        const button = actionsButtonRefs.current[actionsDropdownOpen];
-        if (button) {
-          const rect = button.getBoundingClientRect();
-          setDropdownPosition({
-            top: rect.bottom + window.scrollY + 4,
-            right: window.innerWidth - rect.right + window.scrollX,
-          });
-        }
-      }
-    };
-
-    if (actionsDropdownOpen) {
-      window.addEventListener("scroll", handleScroll, true);
-      window.addEventListener("resize", handleScroll);
-    }
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll, true);
-      window.removeEventListener("resize", handleScroll);
-    };
-  }, [actionsDropdownOpen]);
-
   // Exportar a CSV
   const handleExportCSV = () => {
     if (!canExportCsv()) return;
@@ -528,7 +408,6 @@ export function Machines() {
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.criticity")}</th>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.description")}</th>
                       <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.classification")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.actions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -568,69 +447,6 @@ export function Machines() {
                         </td>
                         <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
                           {machine.classification ? translateMachineClassification(t, machine.classification) : "-"}
-                        </td>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          <div
-                            ref={(el) => {
-                              if (el) {
-                                actionsButtonRefs.current[machine.name] = el.querySelector("button") as HTMLButtonElement;
-                              } else {
-                                delete actionsButtonRefs.current[machine.name];
-                              }
-                            }}
-                            style={{ position: "relative", display: "inline-block" }}
-                          >
-                            <Button
-                            variant="secondary"
-                            className="btn-sm"
-                              onClick={() => toggleActionsDropdown(machine.name)}
-                              title={t("machines.actions")}
-                          >
-                            <i className="bi bi-gear"></i>
-                          </Button>
-                            {actionsDropdownOpen === machine.name && dropdownPosition && (
-                              <div
-                                ref={(el) => {
-                                  if (el) {
-                                    actionsDropdownRefs.current[machine.name] = el;
-                                  } else {
-                                    delete actionsDropdownRefs.current[machine.name];
-                                  }
-                                }}
-                                className="dropdown-menu show"
-                                style={{
-                                  position: "fixed",
-                                  top: `${dropdownPosition.top}px`,
-                                  right: `${dropdownPosition.right}px`,
-                                  zIndex: 10000,
-                                  minWidth: "200px",
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {loadingActions[machine.name] ? (
-                                  <div className="dropdown-item-text">
-                                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                    {t("machines.loadingActions")}
-                                  </div>
-                                ) : machineActions[machine.name] && machineActions[machine.name].length > 0 ? (
-                                  machineActions[machine.name].map((action) => (
-                                    <button
-                                      key={action}
-                                      className="dropdown-item"
-                                      onClick={() => handleExecuteAction(machine.name, action)}
-                                      disabled={updatingMachine === machine.name}
-                                    >
-                                      {action}
-                                    </button>
-                                  ))
-                                ) : (
-                                  <div className="dropdown-item-text text-muted">
-                                    {t("machines.noActionsAvailable")}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
                         </td>
                       </tr>
                     ))}

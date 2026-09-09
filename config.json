@@ -1,0 +1,2400 @@
+{
+  "version": "2.0",
+  "exported_at": "2026-09-03T18:17:12.743878+00:00",
+  "node_scope": {
+    "node_id": "edge-Supe-Linea1",
+    "area": "Linea1",
+    "site": "Supe"
+  },
+  "data": {
+    "Manufacturer": [],
+    "Segment": [],
+    "Variables": [
+      {
+        "id": 1,
+        "name": "Temperature"
+      },
+      {
+        "id": 2,
+        "name": "Length"
+      },
+      {
+        "id": 3,
+        "name": "Current"
+      },
+      {
+        "id": 4,
+        "name": "Time"
+      },
+      {
+        "id": 5,
+        "name": "Pressure"
+      },
+      {
+        "id": 6,
+        "name": "Mass"
+      },
+      {
+        "id": 7,
+        "name": "Force"
+      },
+      {
+        "id": 8,
+        "name": "Power"
+      },
+      {
+        "id": 9,
+        "name": "VolumetricFlow"
+      },
+      {
+        "id": 10,
+        "name": "MassFlow"
+      },
+      {
+        "id": 11,
+        "name": "Density"
+      },
+      {
+        "id": 12,
+        "name": "Percentage"
+      },
+      {
+        "id": 13,
+        "name": "Adimentional"
+      },
+      {
+        "id": 14,
+        "name": "Volume"
+      }
+    ],
+    "Units": [
+      {
+        "id": 1,
+        "name": "degKelvin",
+        "variable": "Temperature",
+        "unit": "K"
+      },
+      {
+        "id": 2,
+        "name": "degCelsius",
+        "variable": "Temperature",
+        "unit": "C"
+      },
+      {
+        "id": 3,
+        "name": "degRankine",
+        "variable": "Temperature",
+        "unit": "R"
+      },
+      {
+        "id": 4,
+        "name": "degFarenheit",
+        "variable": "Temperature",
+        "unit": "F"
+      },
+      {
+        "id": 5,
+        "name": "fm",
+        "variable": "Length",
+        "unit": "fm"
+      },
+      {
+        "id": 6,
+        "name": "pm",
+        "variable": "Length",
+        "unit": "pm"
+      },
+      {
+        "id": 7,
+        "name": "nm",
+        "variable": "Length",
+        "unit": "nm"
+      },
+      {
+        "id": 8,
+        "name": "um",
+        "variable": "Length",
+        "unit": "um"
+      },
+      {
+        "id": 9,
+        "name": "mm",
+        "variable": "Length",
+        "unit": "mm"
+      },
+      {
+        "id": 10,
+        "name": "cm",
+        "variable": "Length",
+        "unit": "cm"
+      },
+      {
+        "id": 11,
+        "name": "m",
+        "variable": "Length",
+        "unit": "m"
+      },
+      {
+        "id": 12,
+        "name": "dam",
+        "variable": "Length",
+        "unit": "dam"
+      },
+      {
+        "id": 13,
+        "name": "hm",
+        "variable": "Length",
+        "unit": "hm"
+      },
+      {
+        "id": 14,
+        "name": "km",
+        "variable": "Length",
+        "unit": "km"
+      },
+      {
+        "id": 15,
+        "name": "Mm",
+        "variable": "Length",
+        "unit": "Mm"
+      },
+      {
+        "id": 16,
+        "name": "Gm",
+        "variable": "Length",
+        "unit": "Gm"
+      },
+      {
+        "id": 17,
+        "name": "Tm",
+        "variable": "Length",
+        "unit": "Tm"
+      },
+      {
+        "id": 18,
+        "name": "Pm",
+        "variable": "Length",
+        "unit": "Pm"
+      },
+      {
+        "id": 19,
+        "name": "inch",
+        "variable": "Length",
+        "unit": "inch"
+      },
+      {
+        "id": 20,
+        "name": "ft",
+        "variable": "Length",
+        "unit": "ft"
+      },
+      {
+        "id": 21,
+        "name": "yd",
+        "variable": "Length",
+        "unit": "yd"
+      },
+      {
+        "id": 22,
+        "name": "mi",
+        "variable": "Length",
+        "unit": "mi"
+      },
+      {
+        "id": 23,
+        "name": "nautMi",
+        "variable": "Length",
+        "unit": "nautMi"
+      },
+      {
+        "id": 24,
+        "name": "lightYear",
+        "variable": "Length",
+        "unit": "lightYear"
+      },
+      {
+        "id": 25,
+        "name": "A",
+        "variable": "Current",
+        "unit": "A"
+      },
+      {
+        "id": 26,
+        "name": "mA",
+        "variable": "Current",
+        "unit": "mA"
+      },
+      {
+        "id": 27,
+        "name": "kA",
+        "variable": "Current",
+        "unit": "kA"
+      },
+      {
+        "id": 28,
+        "name": "ms",
+        "variable": "Time",
+        "unit": "ms"
+      },
+      {
+        "id": 29,
+        "name": "s",
+        "variable": "Time",
+        "unit": "s"
+      },
+      {
+        "id": 30,
+        "name": "minute",
+        "variable": "Time",
+        "unit": "minute"
+      },
+      {
+        "id": 31,
+        "name": "hr",
+        "variable": "Time",
+        "unit": "hr"
+      },
+      {
+        "id": 32,
+        "name": "day",
+        "variable": "Time",
+        "unit": "day"
+      },
+      {
+        "id": 33,
+        "name": "bar",
+        "variable": "Pressure",
+        "unit": "bar"
+      },
+      {
+        "id": 34,
+        "name": "mbar",
+        "variable": "Pressure",
+        "unit": "mbar"
+      },
+      {
+        "id": 35,
+        "name": "ubar",
+        "variable": "Pressure",
+        "unit": "ubar"
+      },
+      {
+        "id": 36,
+        "name": "Pa",
+        "variable": "Pressure",
+        "unit": "Pa"
+      },
+      {
+        "id": 37,
+        "name": "hPa",
+        "variable": "Pressure",
+        "unit": "hPa"
+      },
+      {
+        "id": 38,
+        "name": "kPa",
+        "variable": "Pressure",
+        "unit": "kPa"
+      },
+      {
+        "id": 39,
+        "name": "MPa",
+        "variable": "Pressure",
+        "unit": "MPa"
+      },
+      {
+        "id": 40,
+        "name": "kgcm2",
+        "variable": "Pressure",
+        "unit": "kgcm2"
+      },
+      {
+        "id": 41,
+        "name": "atm",
+        "variable": "Pressure",
+        "unit": "atm"
+      },
+      {
+        "id": 42,
+        "name": "mmHg",
+        "variable": "Pressure",
+        "unit": "mmHg"
+      },
+      {
+        "id": 43,
+        "name": "mmH2O",
+        "variable": "Pressure",
+        "unit": "mmH2O"
+      },
+      {
+        "id": 44,
+        "name": "mH2O",
+        "variable": "Pressure",
+        "unit": "mH2O"
+      },
+      {
+        "id": 45,
+        "name": "psi",
+        "variable": "Pressure",
+        "unit": "psi"
+      },
+      {
+        "id": 46,
+        "name": "ftH2O",
+        "variable": "Pressure",
+        "unit": "ftH2O"
+      },
+      {
+        "id": 47,
+        "name": "inH2O",
+        "variable": "Pressure",
+        "unit": "inH2O"
+      },
+      {
+        "id": 48,
+        "name": "inHg",
+        "variable": "Pressure",
+        "unit": "inHg"
+      },
+      {
+        "id": 49,
+        "name": "kg",
+        "variable": "Mass",
+        "unit": "kg"
+      },
+      {
+        "id": 50,
+        "name": "g",
+        "variable": "Mass",
+        "unit": "g"
+      },
+      {
+        "id": 51,
+        "name": "mg",
+        "variable": "Mass",
+        "unit": "mg"
+      },
+      {
+        "id": 52,
+        "name": "lb",
+        "variable": "Mass",
+        "unit": "lb"
+      },
+      {
+        "id": 53,
+        "name": "metricTon",
+        "variable": "Mass",
+        "unit": "metricTon"
+      },
+      {
+        "id": 54,
+        "name": "oz",
+        "variable": "Mass",
+        "unit": "oz"
+      },
+      {
+        "id": 55,
+        "name": "grain",
+        "variable": "Mass",
+        "unit": "grain"
+      },
+      {
+        "id": 56,
+        "name": "shortTon",
+        "variable": "Mass",
+        "unit": "shortTon"
+      },
+      {
+        "id": 57,
+        "name": "longTon",
+        "variable": "Mass",
+        "unit": "longTon"
+      },
+      {
+        "id": 58,
+        "name": "slug",
+        "variable": "Mass",
+        "unit": "slug"
+      },
+      {
+        "id": 59,
+        "name": "N",
+        "variable": "Force",
+        "unit": "N"
+      },
+      {
+        "id": 60,
+        "name": "kN",
+        "variable": "Force",
+        "unit": "kN"
+      },
+      {
+        "id": 61,
+        "name": "MN",
+        "variable": "Force",
+        "unit": "MN"
+      },
+      {
+        "id": 62,
+        "name": "GN",
+        "variable": "Force",
+        "unit": "GN"
+      },
+      {
+        "id": 63,
+        "name": "gf",
+        "variable": "Force",
+        "unit": "gf"
+      },
+      {
+        "id": 64,
+        "name": "kgf",
+        "variable": "Force",
+        "unit": "kgf"
+      },
+      {
+        "id": 65,
+        "name": "dyn",
+        "variable": "Force",
+        "unit": "dyn"
+      },
+      {
+        "id": 66,
+        "name": "Jm",
+        "variable": "Force",
+        "unit": "J/m"
+      },
+      {
+        "id": 67,
+        "name": "Jcm",
+        "variable": "Force",
+        "unit": "J/cm"
+      },
+      {
+        "id": 68,
+        "name": "shortTonF",
+        "variable": "Force",
+        "unit": "shortTonF"
+      },
+      {
+        "id": 69,
+        "name": "longTonF",
+        "variable": "Force",
+        "unit": "longTonF"
+      },
+      {
+        "id": 70,
+        "name": "kipf",
+        "variable": "Force",
+        "unit": "kipf"
+      },
+      {
+        "id": 71,
+        "name": "lbf",
+        "variable": "Force",
+        "unit": "lbf"
+      },
+      {
+        "id": 72,
+        "name": "ozf",
+        "variable": "Force",
+        "unit": "ozf"
+      },
+      {
+        "id": 73,
+        "name": "pdl",
+        "variable": "Force",
+        "unit": "pdl"
+      },
+      {
+        "id": 74,
+        "name": "kW",
+        "variable": "Power",
+        "unit": "kW"
+      },
+      {
+        "id": 75,
+        "name": "BTU_hr",
+        "variable": "Power",
+        "unit": "BTU/hr"
+      },
+      {
+        "id": 76,
+        "name": "BTU_min",
+        "variable": "Power",
+        "unit": "BTU/min"
+      },
+      {
+        "id": 77,
+        "name": "BTU_sec",
+        "variable": "Power",
+        "unit": "BTU/sec"
+      },
+      {
+        "id": 78,
+        "name": "cal_sec",
+        "variable": "Power",
+        "unit": "cal/sec"
+      },
+      {
+        "id": 79,
+        "name": "cal_min",
+        "variable": "Power",
+        "unit": "cal/min"
+      },
+      {
+        "id": 80,
+        "name": "cal_hr",
+        "variable": "Power",
+        "unit": "cal/hr"
+      },
+      {
+        "id": 81,
+        "name": "erg_sec",
+        "variable": "Power",
+        "unit": "erg/sec"
+      },
+      {
+        "id": 82,
+        "name": "erg_min",
+        "variable": "Power",
+        "unit": "erg/min"
+      },
+      {
+        "id": 83,
+        "name": "erg_hr",
+        "variable": "Power",
+        "unit": "erg/hr"
+      },
+      {
+        "id": 84,
+        "name": "ftlb_sec",
+        "variable": "Power",
+        "unit": "ftlb/sec"
+      },
+      {
+        "id": 85,
+        "name": "GW",
+        "variable": "Power",
+        "unit": "GW"
+      },
+      {
+        "id": 86,
+        "name": "MW",
+        "variable": "Power",
+        "unit": "MW"
+      },
+      {
+        "id": 87,
+        "name": "kCal_sec",
+        "variable": "Power",
+        "unit": "kCal/sec"
+      },
+      {
+        "id": 88,
+        "name": "kCal_min",
+        "variable": "Power",
+        "unit": "kCal/min"
+      },
+      {
+        "id": 89,
+        "name": "kCal_hr",
+        "variable": "Power",
+        "unit": "kCal/hr"
+      },
+      {
+        "id": 90,
+        "name": "mW",
+        "variable": "Power",
+        "unit": "mW"
+      },
+      {
+        "id": 91,
+        "name": "W",
+        "variable": "Power",
+        "unit": "W"
+      },
+      {
+        "id": 92,
+        "name": "VA",
+        "variable": "Power",
+        "unit": "VA"
+      },
+      {
+        "id": 93,
+        "name": "hp_mech",
+        "variable": "Power",
+        "unit": "hp_mech"
+      },
+      {
+        "id": 94,
+        "name": "hp_ele",
+        "variable": "Power",
+        "unit": "hp_ele"
+      },
+      {
+        "id": 95,
+        "name": "hp_metric",
+        "variable": "Power",
+        "unit": "hp_metric"
+      },
+      {
+        "id": 96,
+        "name": "metric_ton_ref",
+        "variable": "Power",
+        "unit": "metric_ton_ref"
+      },
+      {
+        "id": 97,
+        "name": "US_ton_ref",
+        "variable": "Power",
+        "unit": "US_ton_ref"
+      },
+      {
+        "id": 98,
+        "name": "J_sec",
+        "variable": "Power",
+        "unit": "J/sec"
+      },
+      {
+        "id": 99,
+        "name": "J_min",
+        "variable": "Power",
+        "unit": "J/min"
+      },
+      {
+        "id": 100,
+        "name": "J_hr",
+        "variable": "Power",
+        "unit": "J/hr"
+      },
+      {
+        "id": 101,
+        "name": "kgfm_sec",
+        "variable": "Power",
+        "unit": "kgf-m/sec"
+      },
+      {
+        "id": 102,
+        "name": "bbl_day",
+        "variable": "VolumetricFlow",
+        "unit": "bbl/day"
+      },
+      {
+        "id": 103,
+        "name": "bbl_hr",
+        "variable": "VolumetricFlow",
+        "unit": "bbl/hr"
+      },
+      {
+        "id": 104,
+        "name": "bbl_min",
+        "variable": "VolumetricFlow",
+        "unit": "bbl/min"
+      },
+      {
+        "id": 105,
+        "name": "bbl_sec",
+        "variable": "VolumetricFlow",
+        "unit": "bbl/sec"
+      },
+      {
+        "id": 106,
+        "name": "gal_day",
+        "variable": "VolumetricFlow",
+        "unit": "gal/day"
+      },
+      {
+        "id": 107,
+        "name": "gal_hr",
+        "variable": "VolumetricFlow",
+        "unit": "gal/hr"
+      },
+      {
+        "id": 108,
+        "name": "gal_min",
+        "variable": "VolumetricFlow",
+        "unit": "gal/min"
+      },
+      {
+        "id": 109,
+        "name": "gal_sec",
+        "variable": "VolumetricFlow",
+        "unit": "gal/sec"
+      },
+      {
+        "id": 110,
+        "name": "cubic_meter_day",
+        "variable": "VolumetricFlow",
+        "unit": "m3/day"
+      },
+      {
+        "id": 111,
+        "name": "cubic_meter_hr",
+        "variable": "VolumetricFlow",
+        "unit": "m3/hr"
+      },
+      {
+        "id": 112,
+        "name": "cubic_meter_min",
+        "variable": "VolumetricFlow",
+        "unit": "m3/min"
+      },
+      {
+        "id": 113,
+        "name": "cubic_meter_sec",
+        "variable": "VolumetricFlow",
+        "unit": "m3/sec"
+      },
+      {
+        "id": 114,
+        "name": "liter_day",
+        "variable": "VolumetricFlow",
+        "unit": "lt/day"
+      },
+      {
+        "id": 115,
+        "name": "liter_hr",
+        "variable": "VolumetricFlow",
+        "unit": "lt/hr"
+      },
+      {
+        "id": 116,
+        "name": "liter_min",
+        "variable": "VolumetricFlow",
+        "unit": "lt/min"
+      },
+      {
+        "id": 117,
+        "name": "liter_sec",
+        "variable": "VolumetricFlow",
+        "unit": "lt/sec"
+      },
+      {
+        "id": 118,
+        "name": "cubic_centimeter_day",
+        "variable": "VolumetricFlow",
+        "unit": "cc/day"
+      },
+      {
+        "id": 119,
+        "name": "cubic_centimeter_hr",
+        "variable": "VolumetricFlow",
+        "unit": "cc/hr"
+      },
+      {
+        "id": 120,
+        "name": "cubic_centimeter_min",
+        "variable": "VolumetricFlow",
+        "unit": "cc/min"
+      },
+      {
+        "id": 121,
+        "name": "cubic_centimeter_sec",
+        "variable": "VolumetricFlow",
+        "unit": "cc/sec"
+      },
+      {
+        "id": 122,
+        "name": "kg_day",
+        "variable": "MassFlow",
+        "unit": "kg/day"
+      },
+      {
+        "id": 123,
+        "name": "kg_hr",
+        "variable": "MassFlow",
+        "unit": "kg/hr"
+      },
+      {
+        "id": 124,
+        "name": "kg_min",
+        "variable": "MassFlow",
+        "unit": "kg/min"
+      },
+      {
+        "id": 125,
+        "name": "kg_sec",
+        "variable": "MassFlow",
+        "unit": "kg/sec"
+      },
+      {
+        "id": 126,
+        "name": "g_day",
+        "variable": "MassFlow",
+        "unit": "g/day"
+      },
+      {
+        "id": 127,
+        "name": "g_hr",
+        "variable": "MassFlow",
+        "unit": "g/hr"
+      },
+      {
+        "id": 128,
+        "name": "g_min",
+        "variable": "MassFlow",
+        "unit": "g/min"
+      },
+      {
+        "id": 129,
+        "name": "g_sec",
+        "variable": "MassFlow",
+        "unit": "g/sec"
+      },
+      {
+        "id": 130,
+        "name": "mg_day",
+        "variable": "MassFlow",
+        "unit": "mg/day"
+      },
+      {
+        "id": 131,
+        "name": "mg_hr",
+        "variable": "MassFlow",
+        "unit": "mg/hr"
+      },
+      {
+        "id": 132,
+        "name": "mg_min",
+        "variable": "MassFlow",
+        "unit": "mg/min"
+      },
+      {
+        "id": 133,
+        "name": "mg_sec",
+        "variable": "MassFlow",
+        "unit": "mg/sec"
+      },
+      {
+        "id": 134,
+        "name": "lb_day",
+        "variable": "MassFlow",
+        "unit": "lb/day"
+      },
+      {
+        "id": 135,
+        "name": "lb_hr",
+        "variable": "MassFlow",
+        "unit": "lb/hr"
+      },
+      {
+        "id": 136,
+        "name": "lb_min",
+        "variable": "MassFlow",
+        "unit": "lb/min"
+      },
+      {
+        "id": 137,
+        "name": "lb_sec",
+        "variable": "MassFlow",
+        "unit": "lb/sec"
+      },
+      {
+        "id": 138,
+        "name": "metricTon_day",
+        "variable": "MassFlow",
+        "unit": "metricTon/day"
+      },
+      {
+        "id": 139,
+        "name": "metricTon_hr",
+        "variable": "MassFlow",
+        "unit": "metricTon/hr"
+      },
+      {
+        "id": 140,
+        "name": "metricTon_min",
+        "variable": "MassFlow",
+        "unit": "metricTon/min"
+      },
+      {
+        "id": 141,
+        "name": "metricTon_sec",
+        "variable": "MassFlow",
+        "unit": "metricTon/sec"
+      },
+      {
+        "id": 142,
+        "name": "kg_bbl",
+        "variable": "Density",
+        "unit": "kg/bbl"
+      },
+      {
+        "id": 143,
+        "name": "kg_gal",
+        "variable": "Density",
+        "unit": "kg/gal"
+      },
+      {
+        "id": 144,
+        "name": "kg_m3",
+        "variable": "Density",
+        "unit": "kg/m3"
+      },
+      {
+        "id": 145,
+        "name": "kg_lt",
+        "variable": "Density",
+        "unit": "kg/lt"
+      },
+      {
+        "id": 146,
+        "name": "kg_ml",
+        "variable": "Density",
+        "unit": "kg/ml"
+      },
+      {
+        "id": 147,
+        "name": "g_bbl",
+        "variable": "Density",
+        "unit": "g/bbl"
+      },
+      {
+        "id": 148,
+        "name": "g_gal",
+        "variable": "Density",
+        "unit": "g/gal"
+      },
+      {
+        "id": 149,
+        "name": "g_m3",
+        "variable": "Density",
+        "unit": "g/m3"
+      },
+      {
+        "id": 150,
+        "name": "g_lt",
+        "variable": "Density",
+        "unit": "g/lt"
+      },
+      {
+        "id": 151,
+        "name": "g_ml",
+        "variable": "Density",
+        "unit": "g/ml"
+      },
+      {
+        "id": 152,
+        "name": "mg_bbl",
+        "variable": "Density",
+        "unit": "mg/bbl"
+      },
+      {
+        "id": 153,
+        "name": "mg_gal",
+        "variable": "Density",
+        "unit": "mg/gal"
+      },
+      {
+        "id": 154,
+        "name": "mg_m3",
+        "variable": "Density",
+        "unit": "kmg/m3"
+      },
+      {
+        "id": 155,
+        "name": "mg_lt",
+        "variable": "Density",
+        "unit": "mg/lt"
+      },
+      {
+        "id": 156,
+        "name": "mg_ml",
+        "variable": "Density",
+        "unit": "mg/ml"
+      },
+      {
+        "id": 157,
+        "name": "lb_bbl",
+        "variable": "Density",
+        "unit": "lb/bbl"
+      },
+      {
+        "id": 158,
+        "name": "lb_gal",
+        "variable": "Density",
+        "unit": "lb/gal"
+      },
+      {
+        "id": 159,
+        "name": "lb_m3",
+        "variable": "Density",
+        "unit": "lb/m3"
+      },
+      {
+        "id": 160,
+        "name": "lb_lt",
+        "variable": "Density",
+        "unit": "lb/lt"
+      },
+      {
+        "id": 161,
+        "name": "lb_ml",
+        "variable": "Density",
+        "unit": "lb/ml"
+      },
+      {
+        "id": 162,
+        "name": "metricTon_bbl",
+        "variable": "Density",
+        "unit": "metricTon/bbl"
+      },
+      {
+        "id": 163,
+        "name": "metricTon_gal",
+        "variable": "Density",
+        "unit": "metricTon/gal"
+      },
+      {
+        "id": 164,
+        "name": "metricTon_m3",
+        "variable": "Density",
+        "unit": "metricTon/m3"
+      },
+      {
+        "id": 165,
+        "name": "metricTon_lt",
+        "variable": "Density",
+        "unit": "metricTon/lt"
+      },
+      {
+        "id": 166,
+        "name": "metricTon_ml",
+        "variable": "Density",
+        "unit": "metricTon/ml"
+      },
+      {
+        "id": 167,
+        "name": "percentage",
+        "variable": "Percentage",
+        "unit": "%"
+      },
+      {
+        "id": 168,
+        "name": "adim",
+        "variable": "Adimentional",
+        "unit": "adim"
+      },
+      {
+        "id": 169,
+        "name": "bbl",
+        "variable": "Volume",
+        "unit": "bbl"
+      },
+      {
+        "id": 170,
+        "name": "gal",
+        "variable": "Volume",
+        "unit": "gal"
+      },
+      {
+        "id": 171,
+        "name": "cubic_meter",
+        "variable": "Volume",
+        "unit": "m3"
+      },
+      {
+        "id": 172,
+        "name": "milliliter",
+        "variable": "Volume",
+        "unit": "ml"
+      }
+    ],
+    "DataTypes": [
+      {
+        "id": 1,
+        "name": "float"
+      },
+      {
+        "id": 2,
+        "name": "integer"
+      },
+      {
+        "id": 3,
+        "name": "boolean"
+      },
+      {
+        "id": 4,
+        "name": "string"
+      }
+    ],
+    "Tags": [
+      {
+        "id": "d7e828cc",
+        "name": "Linea1.SYS.CATALOG.LocalOnly",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when this edge has used only the local catalog for over one hour",
+        "display_name": "Linea1 \u00b7 Catalog local only",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "850369bc",
+        "name": "Linea1.SYS.CATALOG.SyncFailed",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when catalog sync failed repeatedly",
+        "display_name": "Linea1 \u00b7 Catalog sync failed",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "4d4c9cc4",
+        "name": "Linea1.SYS.DB.Disconnected",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when the historian database is disconnected",
+        "display_name": "Linea1 \u00b7 Database Disconnected",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "699e6aee",
+        "name": "Linea1.SYS.PERF.CPU",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when host CPU stays above the performance threshold",
+        "display_name": "Linea1 \u00b7 CPU High",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "93d03790",
+        "name": "Linea1.SYS.PERF.DISK",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when host disk usage stays above the performance threshold",
+        "display_name": "Linea1 \u00b7 Disk High",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "213c0b2c",
+        "name": "Linea1.SYS.PERF.SAF_QUEUE",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when the SAF journal queue stays above the performance threshold",
+        "display_name": "Linea1 \u00b7 SAF Queue High",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "9fd5df30",
+        "name": "Linea1.SYS.PERF.SAF_LAG",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when SAF replication lag stays above the performance threshold",
+        "display_name": "Linea1 \u00b7 SAF Lag High",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "72aaa461",
+        "name": "Linea1.SYS.PERF.METRICS_AGE",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when the metrics snapshot is older than the performance threshold",
+        "display_name": "Linea1 \u00b7 Metrics Stale",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "b3be0d63",
+        "name": "Linea1.SYS.PERF.DB_CONN",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when PostgreSQL backends stay above the performance threshold",
+        "display_name": "Linea1 \u00b7 DB Connections High",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "6300cc6f",
+        "name": "Linea1.SYS.PERF.HTTP_5XX",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when HTTP 5xx/min stays above the performance threshold",
+        "display_name": "Linea1 \u00b7 HTTP 5xx High",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "6fc6b662",
+        "name": "Linea1.SYS.PERF.FIELD_STALE",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when a field tag age exceeds 3\u00d7 scan_time (floor 5 s), even if Socket.IO is connected",
+        "display_name": "Linea1 \u00b7 Field Stale",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "3ff09f02",
+        "name": "Linea1.SYS.PERF.SAF_DEADLETTER",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when poison journal rows have been dead-lettered after repeated failed drains",
+        "display_name": "Linea1 \u00b7 SAF Dead-letter",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "91ad5199",
+        "name": "Linea1.SYS.PERF.HUB_LAG",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when the gevent event-loop lag stays above the performance threshold",
+        "display_name": "Linea1 \u00b7 Hub Lag High",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "36f23a7e",
+        "name": "Linea1.SYS.PERF.SAF_SHED",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when analog tag history is being shed to protect alarm/event durability",
+        "display_name": "Linea1 \u00b7 SAF History Shed",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "250cd87a",
+        "name": "Linea1.SYS.PERF.SAF_INGEST",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when DAQ is running but no new domain=tag journal row arrived",
+        "display_name": "Linea1 \u00b7 SAF Ingest Stale",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "6dd15de7",
+        "name": "Linea1.SYS.PERF.SAF_RATE",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when SAF drain rate stays below ingest rate with the queue already above Low",
+        "display_name": "Linea1 \u00b7 SAF Drain Lagging",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "f54754c8",
+        "name": "Linea1.SYS.PERF.SSD",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when SSD wear or temperature exceeds AUTOMATION_SSD_WEAR_WARN / AUTOMATION_SSD_TEMP_WARN",
+        "display_name": "Linea1 \u00b7 SSD SMART",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "3640641d",
+        "name": "Linea1.SYS.PERF.NTP",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when abs(HOST_NTP_OFFSET_MS) stays above the early-warning threshold (default 100 ms)",
+        "display_name": "Linea1 \u00b7 NTP Offset High",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "179c0e31",
+        "name": "Linea1.SYS.PERF.NODE_DOWN",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when another registered edge has last_seen older than AUTOMATION_PEER_STALE_S",
+        "display_name": "Linea1 \u00b7 Peer Node Down",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "75332742",
+        "name": "Linea1.SYS.NTP.OutOfSync",
+        "unit": "adim",
+        "data_type": "boolean",
+        "description": "True when the edge clock is out of sync with plant NTP",
+        "display_name": "Linea1 \u00b7 NTP Out Of Sync",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "8295e250",
+        "name": "Supe.Linea1.T2",
+        "unit": "C",
+        "data_type": "float",
+        "description": null,
+        "display_name": "T2",
+        "display_unit": "C",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Temperature",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "6ba1df92",
+        "name": "Supe.Linea1.Bool1",
+        "unit": "adim",
+        "data_type": "float",
+        "description": null,
+        "display_name": "Bool1",
+        "display_unit": "adim",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Adimentional",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "b5afdd03",
+        "name": "Supe.Linea1.TankLevel",
+        "unit": "m",
+        "data_type": "float",
+        "description": null,
+        "display_name": "TankLevel",
+        "display_unit": "m",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Length",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "2fa9d8ed",
+        "name": "Supe.Linea1.PT-101",
+        "unit": "bar",
+        "data_type": "float",
+        "description": null,
+        "display_name": "PT-101",
+        "display_unit": "bar",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Pressure",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "cf646a79",
+        "name": "Supe.Linea1.TT-202",
+        "unit": "C",
+        "data_type": "float",
+        "description": null,
+        "display_name": "TT-202",
+        "display_unit": "F",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Temperature",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      },
+      {
+        "id": "6297f10b",
+        "name": "Supe.Linea1.Tag_Delete",
+        "unit": "m",
+        "data_type": "float",
+        "description": null,
+        "display_name": "Tag_Delete",
+        "display_unit": "m",
+        "opcua_address": null,
+        "opcua_client_name": null,
+        "node_namespace": null,
+        "scan_time": null,
+        "dead_band": null,
+        "kp": null,
+        "variable": "Length",
+        "active": true,
+        "filter_enabled": false,
+        "filter_wavelet": "db4",
+        "filter_level": 4,
+        "filter_threshold_factor": 3.0,
+        "filter_persist": false,
+        "out_of_range_detection": false,
+        "frozen_data_detection": false,
+        "outlier_detection": false,
+        "area": "Linea1",
+        "owner_node": "edge-Supe-Linea1",
+        "segment": "",
+        "manufacturer": ""
+      }
+    ],
+    "AlarmTypes": [
+      {
+        "id": 1,
+        "name": "HIGH-HIGH"
+      },
+      {
+        "id": 2,
+        "name": "HIGH"
+      },
+      {
+        "id": 3,
+        "name": "LOW"
+      },
+      {
+        "id": 4,
+        "name": "LOW-LOW"
+      },
+      {
+        "id": 5,
+        "name": "BOOL"
+      },
+      {
+        "id": 6,
+        "name": "NOT DEFINED"
+      }
+    ],
+    "AlarmStates": [
+      {
+        "id": 1,
+        "name": "Normal",
+        "mnemonic": "NORM",
+        "condition": "Normal",
+        "status": "Not Active"
+      },
+      {
+        "id": 2,
+        "name": "Unacknowledged",
+        "mnemonic": "UNACK",
+        "condition": "Abnormal",
+        "status": "Active"
+      },
+      {
+        "id": 3,
+        "name": "Acknowledged",
+        "mnemonic": "ACKED",
+        "condition": "Abnormal",
+        "status": "Active"
+      },
+      {
+        "id": 4,
+        "name": "RTN Unacknowledged",
+        "mnemonic": "RTNUN",
+        "condition": "Normal",
+        "status": "Not Active"
+      },
+      {
+        "id": 5,
+        "name": "Shelved",
+        "mnemonic": "SHLVD",
+        "condition": "Normal",
+        "status": "Not Active or Active"
+      },
+      {
+        "id": 6,
+        "name": "Suppressed By Design",
+        "mnemonic": "DSUPR",
+        "condition": "Normal",
+        "status": "Not Active or Active"
+      },
+      {
+        "id": 7,
+        "name": "Out Of Service",
+        "mnemonic": "OOSRV",
+        "condition": "Normal",
+        "status": "Not Active or Active"
+      }
+    ],
+    "Alarms": [
+      {
+        "identifier": "97becea7",
+        "name": "Linea1.ALM.CATALOG.LocalOnly",
+        "tag": "Linea1.SYS.CATALOG.LocalOnly",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "Catalog local-only too long",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "4d0a33e3",
+        "name": "Linea1.ALM.CATALOG.SyncFailed",
+        "tag": "Linea1.SYS.CATALOG.SyncFailed",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "Catalog sync failed",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "f8e87d1c",
+        "name": "Linea1.ALM.DB.Connection",
+        "tag": "Linea1.SYS.DB.Disconnected",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "Historian database connection lost",
+        "state": "RTN Unacknowledged",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "eed56ad2",
+        "name": "Linea1.ALM.PERF.CPU",
+        "tag": "Linea1.SYS.PERF.CPU",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 CPU high. Triggers when HOST_CPU_PERCENT \u2265 85%.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "4fd3cb6e",
+        "name": "Linea1.ALM.PERF.DISK",
+        "tag": "Linea1.SYS.PERF.DISK",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 Disk high. Triggers when HOST_DISK_USED_PERCENT \u2265 90%.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "f9bb0278",
+        "name": "Linea1.ALM.PERF.SAF_QUEUE",
+        "tag": "Linea1.SYS.PERF.SAF_QUEUE",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 SAF queue high. Triggers when SAF_QUEUE_DEPTH \u2265 5000.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "76d29654",
+        "name": "Linea1.ALM.PERF.SAF_LAG",
+        "tag": "Linea1.SYS.PERF.SAF_LAG",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 SAF lag high. Triggers when SAF_REPLICATION_LAG_MS \u2265 10000ms.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "18791453",
+        "name": "Linea1.ALM.PERF.METRICS_AGE",
+        "tag": "Linea1.SYS.PERF.METRICS_AGE",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 Metrics snapshot stale. Triggers when METRICS_AGE_MS \u2265 30000ms.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "bf59fce8",
+        "name": "Linea1.ALM.PERF.DB_CONN",
+        "tag": "Linea1.SYS.PERF.DB_CONN",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 Historian connections high. Triggers when DB_ACTIVE_CONNECTIONS \u2265 10.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "05d267d4",
+        "name": "Linea1.ALM.PERF.HTTP_5XX",
+        "tag": "Linea1.SYS.PERF.HTTP_5XX",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 HTTP 5xx high. Triggers when HTTP_5XX_1M \u2265 5/min.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "46c667cd",
+        "name": "Linea1.ALM.PERF.FIELD_STALE",
+        "tag": "Linea1.SYS.PERF.FIELD_STALE",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 Field values stale. Triggers when FIELD_STALE \u2265 1.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "b7a31903",
+        "name": "Linea1.ALM.PERF.SAF_DEADLETTER",
+        "tag": "Linea1.SYS.PERF.SAF_DEADLETTER",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 SAF dead-letter. Triggers when SAF_DEADLETTER_COUNT \u2265 1.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "280f23bc",
+        "name": "Linea1.ALM.PERF.HUB_LAG",
+        "tag": "Linea1.SYS.PERF.HUB_LAG",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 Hub event-loop lag. Triggers when HUB_LAG_MS \u2265 2000ms.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "23f128d5",
+        "name": "Linea1.ALM.PERF.SAF_SHED",
+        "tag": "Linea1.SYS.PERF.SAF_SHED",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 SAF analog shed. Triggers when SAF_SHED \u2265 1.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "d9182e40",
+        "name": "Linea1.ALM.PERF.SAF_INGEST",
+        "tag": "Linea1.SYS.PERF.SAF_INGEST",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 SAF ingest heartbeat lost. Triggers when SAF_INGEST_AGE_MS \u2265 15000ms.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "aef469d5",
+        "name": "Linea1.ALM.PERF.SAF_RATE",
+        "tag": "Linea1.SYS.PERF.SAF_RATE",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 SAF drain slower than ingest. Triggers when SAF_RATE_MISMATCH \u2265 1.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "7ccbf4a0",
+        "name": "Linea1.ALM.PERF.SSD",
+        "tag": "Linea1.SYS.PERF.SSD",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 SSD SMART warning. Triggers when HOST_SSD_ALARM \u2265 1.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "12c2ed69",
+        "name": "Linea1.ALM.PERF.NTP",
+        "tag": "Linea1.SYS.PERF.NTP",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 NTP offset high. Triggers when HOST_NTP_ABS_OFFSET_MS \u2265 100ms.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "a62de942",
+        "name": "Linea1.ALM.PERF.NODE_DOWN",
+        "tag": "Linea1.SYS.PERF.NODE_DOWN",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "System \u00b7 peer edge heartbeat lost. Triggers when HOST_PEER_DOWN \u2265 1.",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "61bf315f",
+        "name": "Linea1.ALM.NTP.OutOfSync",
+        "tag": "Linea1.SYS.NTP.OutOfSync",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "Edge clock out of sync with plant NTP",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "8563a866",
+        "name": "alarm.Supe.Linea1.alarm_LL",
+        "tag": "Supe.Linea1.T2",
+        "alarm_type": "LOW-LOW",
+        "trigger_value": 10.0,
+        "description": "",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "5da36fec",
+        "name": "alarm.Supe.Linea1.alarm_L",
+        "tag": "Supe.Linea1.T2",
+        "alarm_type": "LOW",
+        "trigger_value": 20.0,
+        "description": "",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "e635afe1",
+        "name": "alarm.Supe.Linea1.alarm_H",
+        "tag": "Supe.Linea1.T2",
+        "alarm_type": "HIGH",
+        "trigger_value": 30.0,
+        "description": "",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "9f083722",
+        "name": "alarm.Supe.Linea1.alarm_HH",
+        "tag": "Supe.Linea1.T2",
+        "alarm_type": "HIGH-HIGH",
+        "trigger_value": 50.0,
+        "description": "",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      },
+      {
+        "identifier": "01251fb7",
+        "name": "alarm.Supe.Linea1.alarm_B",
+        "tag": "Supe.Linea1.Bool1",
+        "alarm_type": "BOOL",
+        "trigger_value": 1.0,
+        "description": "",
+        "state": "Normal",
+        "timestamp": null,
+        "area": "Linea1",
+        "on_delay": 0.0,
+        "off_delay": 0.0,
+        "on_delay_units": "seconds",
+        "off_delay_units": "seconds"
+      }
+    ],
+    "Roles": [
+      {
+        "id": 1,
+        "identifier": "roleint0",
+        "name": "INTEGRATOR",
+        "level": 0
+      },
+      {
+        "id": 2,
+        "identifier": "2dd26d5f",
+        "name": "SUDO",
+        "level": 0
+      },
+      {
+        "id": 3,
+        "identifier": "252e9a11",
+        "name": "ADMIN",
+        "level": 1
+      },
+      {
+        "id": 4,
+        "identifier": "22485ab7",
+        "name": "SUPERVISOR",
+        "level": 2
+      },
+      {
+        "id": 5,
+        "identifier": "f50c3acd",
+        "name": "OPERATOR",
+        "level": 10
+      },
+      {
+        "id": 6,
+        "identifier": "6cd6775c",
+        "name": "AUDITOR",
+        "level": 100
+      },
+      {
+        "id": 7,
+        "identifier": "fb6af491",
+        "name": "GUEST",
+        "level": 256
+      }
+    ],
+    "Users": [
+      {
+        "id": 1,
+        "identifier": "31258b0e",
+        "username": "system",
+        "email": "system@intelcon.com",
+        "role": {
+          "id": 2,
+          "identifier": "2dd26d5f",
+          "name": "SUDO",
+          "level": 0
+        },
+        "name": "System",
+        "lastname": "Intelcon",
+        "password": "scrypt:32768:8:1$FquJAiT9ofQb5XbO$9ab8fecff12ed54ee41d779ce323b2f82da15fc4dedd815328878891066283e009ade497fc1b1b0b8f23cc94d40cbbb2e912688789b260a7331ed07d8b7b1936"
+      }
+    ],
+    "OPCUA": [],
+    "AccessType": [],
+    "OPCUAServer": [],
+    "Machines": [],
+    "TagsMachines": [],
+    "LinearReferencingGeospatial": []
+  }
+}
