@@ -31,15 +31,19 @@ class HmiSessionSyncWorker(BaseWorker):
     def run(self) -> None:
         while not self.stop_event.is_set():
             try:
-                node_id, _ = node_identity()
-                synced = sync_sessions_to_pg(node_id)
-                if synced:
-                    _LOGGER.debug("HMI session PG snapshot wrote %s rows node=%s", synced, node_id)
-                self._ticks += 1
-                if self._ticks % _CLEANUP_EVERY_N == 0:
-                    removed = cleanup_stale_sessions(stale_seconds=_STALE_SECONDS)
-                    if removed:
-                        _LOGGER.debug("HMI session cleanup removed %s stale sids", removed)
+                with self.historian_cycle():
+                    node_id, _ = node_identity()
+                    synced = sync_sessions_to_pg(node_id)
+                    if synced:
+                        _LOGGER.debug(
+                            "HMI session PG snapshot wrote %s rows node=%s", synced, node_id
+                        )
+                    self._ticks += 1
+                    if self._ticks % _CLEANUP_EVERY_N == 0:
+                        removed = cleanup_stale_sessions(stale_seconds=_STALE_SECONDS)
+                        if removed:
+                            _LOGGER.debug("HMI session cleanup removed %s stale sids", removed)
             except Exception:
                 _LOGGER.exception("Sync session to PG failed")
             self.stop_event.wait(self._interval_s)
+        self.release_historian_socket()

@@ -108,6 +108,116 @@ class TestHistorianBackendCensus(unittest.TestCase):
         self.assertEqual(REGISTRY.reap_abandoned(), 1)
         self.assertEqual(self._backends(), 0)
 
+    def test_idle_socket_of_a_living_worker_is_returned_before_the_server_kills_it(self):
+        """CA-DB-ET-4: un worker lento vivo no debe donar un backend ``idle``.
+
+        ``NtpMonitorWorker`` revisa cada hora; con el socket tomado, el
+        ``idle_session_timeout`` del servidor lo cierra por detrás y el
+        siguiente ciclo corre sobre un handle muerto.
+        """
+        import time
+
+        from ..utils.db_connections import REGISTRY, idle_socket_budget_s
+
+        db = self._database()
+        stop = threading.Event()
+        ready = threading.Event()
+
+        def slow_worker():
+            db.execute_sql("SELECT 1")
+            ready.set()
+            stop.wait(30)
+
+        worker = threading.Thread(target=slow_worker, name="NtpMonitorWorker")
+        worker.start()
+        self.assertTrue(ready.wait(10))
+        self.assertEqual(self._backends(), 1)
+
+        budget = idle_socket_budget_s()
+        for entry in REGISTRY._index.values():
+            entry.last_used = time.monotonic() - (budget + 60.0)
+
+        # El dueño sigue vivo, así que reap_abandoned no lo ve: este es el caso
+        # que sólo el presupuesto de inactividad puede cerrar.
+        self.assertEqual(REGISTRY.reap_abandoned(), 0)
+        self.assertEqual(REGISTRY.reap_idle(budget), 1)
+        self.assertEqual(self._backends(), 0)
+        stop.set()
+        worker.join(10)
+
+    def test_resident_worker_keeps_its_socket(self):
+        """CA-DB-ET-5: el reaper de inactividad nunca toca a un residente."""
+        import time
+
+        from ..utils.db_connections import REGISTRY, idle_socket_budget_s
+
+        db = self._database()
+        stop = threading.Event()
+        ready = threading.Event()
+
+        def resident():
+            db.execute_sql("SELECT 1")
+            ready.set()
+            stop.wait(30)
+
+        worker = threading.Thread(target=resident, name="LoggerWorker")
+        worker.start()
+        self.assertTrue(ready.wait(10))
+
+        for entry in REGISTRY._index.values():
+            entry.last_used = time.monotonic() - 4000.0
+        self.assertEqual(REGISTRY.reap_idle(idle_socket_budget_s()), 0)
+        self.assertEqual(self._backends(), 1)
+        stop.set()
+        worker.join(10)
+
+    def test_a_query_reprieves_the_socket_from_the_idle_reaper(self):
+        """CA-DB-ET-6: ``execute_sql`` sella ``last_used``; lo que se usa no se cosecha."""
+        import time
+
+        from ..utils.db_connections import REGISTRY, idle_socket_budget_s
+
+        db = self._database()
+        db.execute_sql("SELECT 1")
+        for entry in REGISTRY._index.values():
+            entry.last_used = time.monotonic() - 4000.0
+
+        db.execute_sql("SELECT 1")
+
+        self.assertEqual(REGISTRY.reap_idle(idle_socket_budget_s()), 0)
+        self.assertEqual(self._backends(), 1)
+
+    def test_pooled_thread_reports_a_stable_application_name(self):
+        """CA-DB-ET-7: ``pg_stat_activity`` nombra el subsistema, no ``Dummy-9``."""
+        import psycopg2
+
+        from ..utils.db_connections import historian_application_name, historian_role_scope
+
+        seen: dict[str, str] = {}
+
+        def pooled():
+            threading.current_thread().name = "Dummy-9"
+            seen["plain"] = historian_application_name()
+            with historian_role_scope("CatalogReplicator"):
+                seen["scoped"] = historian_application_name()
+
+        worker = threading.Thread(target=pooled)
+        worker.start()
+        worker.join()
+
+        self.assertNotIn("Dummy", seen["plain"])
+        self.assertTrue(seen["scoped"].endswith("CatalogReplicator"))
+
+        conn = psycopg2.connect(
+            dbname=self.name, application_name=seen["scoped"], **self.cfg
+        )
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT current_setting('application_name')")
+                self.assertEqual(cursor.fetchone()[0], seen["scoped"])
+        finally:
+            conn.close()
+
     def test_server_applies_idle_session_guards(self):
         import psycopg2
 

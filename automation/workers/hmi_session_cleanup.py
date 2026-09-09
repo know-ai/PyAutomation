@@ -34,9 +34,11 @@ class HmiSessionCleanupWorker(BaseWorker):
     def run(self) -> None:
         while not self.stop_event.is_set():
             try:
-                removed = cleanup_stale_sessions(stale_seconds=self._stale_seconds)
-                if removed:
-                    _LOGGER.debug("HMI session cleanup removed %s stale sids", removed)
+                with self.historian_cycle():
+                    removed = cleanup_stale_sessions(stale_seconds=self._stale_seconds)
+                    if removed:
+                        _LOGGER.debug("HMI session cleanup removed %s stale sids", removed)
             except Exception:
                 _LOGGER.debug("HMI session cleanup worker tick failed", exc_info=True)
             self.stop_event.wait(self._interval_s)
+        self.release_historian_socket()

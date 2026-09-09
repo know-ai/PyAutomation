@@ -231,7 +231,18 @@ class TestConnectionRegistry(unittest.TestCase):
         self.assertTrue(snap["DB_CONNECTIONS_ALERT"])
         self.assertTrue(snap["DB_APPLICATION_NAME"].startswith("PyAutomationIO"))
         self.assertEqual(snap["DB_ACTIVE_CONNECTIONS"], snap["DB_CONNECTIONS_COUNT"])
-        self.assertEqual(snap["DB_CONNECTIONS_EXPECTED_MAX"], 4)
+        # The budget follows the resident roster, not the web concurrency.
+        from ..utils.db_connections import (
+            gunicorn_worker_count,
+            resident_socket_roles,
+            transient_socket_headroom,
+        )
+
+        self.assertEqual(
+            snap["DB_CONNECTIONS_EXPECTED_MAX"],
+            len(resident_socket_roles()) + transient_socket_headroom() + gunicorn_worker_count(),
+        )
+        self.assertEqual(snap["DB_CONNECTIONS_RESIDENT_MAX"], len(resident_socket_roles()))
 
     def test_close_tracked_except_keeps_current(self):
         owner = object()
@@ -377,6 +388,71 @@ class TestConnectionRegistry(unittest.TestCase):
         self.assertFalse(rows[0]["owner_gone"])
         self.assertEqual(REGISTRY.leaked(older_than_s=3600), [])
         self.assertEqual(len(REGISTRY.leaked(older_than_s=0)), 1)
+
+    def test_census_reports_idle_and_residency(self):
+        conn = MagicMock()
+        REGISTRY.register(conn, owner=object(), role="PyAutomationIO:edge:HmiSessionSyncWorker")
+        row = REGISTRY.census()[0]
+        self.assertIn("idle_s", row)
+        self.assertIn("resident", row)
+        self.assertFalse(row["resident"])
+        self.assertEqual(REGISTRY.overstaying(budget_s=3600), [])
+
+        self._age_socket(conn, idle_s=400.0)
+        self.assertEqual(len(REGISTRY.overstaying(budget_s=180.0)), 1)
+
+    def test_reap_idle_returns_non_resident_socket_past_budget(self):
+        conn = MagicMock()
+        REGISTRY.register(conn, owner=object(), role="PyAutomationIO:edge:NtpMonitorWorker")
+        self._age_socket(conn, idle_s=400.0)
+
+        self.assertEqual(REGISTRY.reap_idle(budget_s=180.0), 1)
+        conn.close.assert_called_once()
+        self.assertEqual(REGISTRY.count(), 0)
+        self.assertGreaterEqual(REGISTRY.idle_reaped_count(), 1)
+
+    def test_reap_idle_keeps_resident_socket(self):
+        from ..utils.db_connections import current_socket_role
+
+        conn = MagicMock()
+        REGISTRY.register(conn, owner=object(), role="PyAutomationIO:edge:LoggerWorker")
+        self._age_socket(conn, idle_s=4000.0)
+
+        roster = current_socket_role()
+        with patch.dict(os.environ, {"AUTOMATION_DB_RESIDENT_ROLES": roster}, clear=False):
+            self.assertEqual(REGISTRY.reap_idle(budget_s=60.0), 0)
+        conn.close.assert_not_called()
+
+    def test_touch_protects_a_socket_in_use(self):
+        conn = MagicMock()
+        REGISTRY.register(conn, owner=object(), role="PyAutomationIO:edge:ReplicationWorker")
+        self._age_socket(conn, idle_s=400.0)
+
+        REGISTRY.touch(conn)
+
+        self.assertEqual(REGISTRY.reap_idle(budget_s=180.0), 0)
+        conn.close.assert_not_called()
+
+    def test_execute_sql_touches_the_bound_socket(self):
+        from peewee import PostgresqlDatabase
+
+        from ..utils.db_connections import TrackedPostgresqlDatabase
+
+        conn = MagicMock()
+        db = TrackedPostgresqlDatabase(None)
+        REGISTRY.register(conn, owner=db, role="PyAutomationIO:edge:ReplicationWorker")
+        self._age_socket(conn, idle_s=400.0)
+        db._state.conn = conn
+
+        with patch.object(PostgresqlDatabase, "execute_sql", return_value=None):
+            db.execute_sql("SELECT 1")
+
+        self.assertEqual(REGISTRY.reap_idle(budget_s=180.0), 0)
+
+    def _age_socket(self, conn, idle_s):
+        """Pretend the socket has not been used for ``idle_s`` seconds."""
+        entry = REGISTRY._index[id(conn)]
+        entry.last_used = time.monotonic() - idle_s
 
     def test_tracked_close_all_is_owner_scoped(self):
         from ..utils.db_connections import TrackedPostgresqlDatabase
@@ -729,6 +805,171 @@ class TestAcquisitionWithoutHistorian(unittest.TestCase):
                 app.acquisition_ready,
                 app.node_scope,
             ) = previous
+
+
+class TestSocketRoleNaming(unittest.TestCase):
+    """``pg_stat_activity`` must name a subsystem, never a rotating thread id."""
+
+    def test_anonymous_thread_reports_a_stable_role(self):
+        import threading
+
+        from ..utils.db_connections import current_socket_role
+
+        seen = {}
+
+        def work():
+            threading.current_thread().name = "Dummy-9"
+            seen["role"] = current_socket_role()
+
+        thread = threading.Thread(target=work)
+        thread.start()
+        thread.join()
+
+        self.assertEqual(seen["role"], "pool")
+
+    def test_role_scope_names_offloaded_pool_work(self):
+        from ..utils.db_connections import current_socket_role, historian_role_scope
+
+        with historian_role_scope("CatalogReplicator"):
+            self.assertEqual(current_socket_role(), "CatalogReplicator")
+
+    def test_role_scope_restores_the_previous_role(self):
+        from ..utils.db_connections import current_socket_role, historian_role_scope
+
+        before = current_socket_role()
+        with historian_role_scope("CatalogReplicator"):
+            pass
+        self.assertEqual(current_socket_role(), before)
+
+    def test_resident_roster_drives_keep_historian_socket(self):
+        from ..utils.db_connections import current_socket_role, keep_historian_socket
+
+        self.assertFalse(keep_historian_socket())
+        with patch.dict(
+            os.environ, {"AUTOMATION_DB_RESIDENT_ROLES": current_socket_role()}, clear=False
+        ):
+            self.assertTrue(keep_historian_socket())
+
+
+class TestSocketBudget(unittest.TestCase):
+    """A healthy edge must sit *below* the alert threshold, or the alert is noise."""
+
+    def test_expected_max_covers_the_resident_roster_plus_burst(self):
+        from ..utils.db_connections import (
+            connections_expected_max,
+            resident_socket_roles,
+            transient_socket_headroom,
+        )
+
+        self.assertGreater(connections_expected_max(), len(resident_socket_roles()))
+        self.assertGreaterEqual(
+            connections_expected_max(),
+            len(resident_socket_roles()) + transient_socket_headroom(),
+        )
+
+    def test_ceiling_leaves_room_above_the_alert_threshold(self):
+        from ..utils.db_connections import connections_alert_threshold, connections_hard_max
+
+        self.assertGreater(connections_hard_max(), connections_alert_threshold())
+
+    def test_idle_budget_stays_under_the_server_timeout(self):
+        from ..utils.db_connections import idle_socket_budget_s
+        from ..utils.db_io import idle_session_timeout_ms
+
+        with patch.dict(
+            os.environ, {"AUTOMATION_DB_IDLE_SESSION_TIMEOUT_S": "300"}, clear=False
+        ):
+            os.environ.pop("AUTOMATION_DB_IDLE_SOCKET_S", None)
+            budget = idle_socket_budget_s()
+            self.assertLess(budget, idle_session_timeout_ms() / 1000.0)
+            self.assertGreater(budget, 0.0)
+
+    def test_idle_budget_has_a_floor_when_the_server_guard_is_off(self):
+        from ..utils.db_connections import idle_socket_budget_s
+
+        with patch.dict(os.environ, {"AUTOMATION_DB_IDLE_SESSION_TIMEOUT_S": "0"}, clear=False):
+            os.environ.pop("AUTOMATION_DB_IDLE_SOCKET_S", None)
+            self.assertGreaterEqual(idle_socket_budget_s(), 30.0)
+
+
+class TestSocketWarnings(unittest.TestCase):
+    """Alarms fire on broken invariants, not on a normal socket count."""
+
+    def setUp(self):
+        REGISTRY.close_tracked()
+        self._reset_warn_state()
+
+    def tearDown(self):
+        REGISTRY.close_tracked()
+        self._reset_warn_state()
+
+    @staticmethod
+    def _reset_warn_state():
+        from ..utils import db_connections
+
+        with db_connections._WARN_LOCK:
+            db_connections._WARN_LAST.clear()
+            db_connections._SOCKET_HIGH_WATER = 0
+
+    def test_a_healthy_census_is_silent(self):
+        from ..utils import db_connections
+
+        REGISTRY.register(MagicMock(), owner=object(), role="PyAutomationIO:edge:LoggerWorker")
+        with patch.object(db_connections, "_LOGGER") as logger:
+            db_connections._warn_on_socket_growth("PyAutomationIO:edge:LoggerWorker")
+        logger.warning.assert_not_called()
+        logger.error.assert_not_called()
+
+    def test_abandoned_socket_is_reported_as_an_error(self):
+        import threading
+
+        from ..utils import db_connections
+
+        conn = MagicMock()
+        owner = object()
+
+        def ephemeral():
+            REGISTRY.register(conn, owner=owner, role="PyAutomationIO:edge:Ephemeral")
+
+        thread = threading.Thread(target=ephemeral, name="Ephemeral")
+        thread.start()
+        thread.join()
+
+        with patch.object(db_connections, "_LOGGER") as logger:
+            db_connections._warn_on_socket_growth("PyAutomationIO:edge:Ephemeral")
+        logger.error.assert_called_once()
+        self.assertIn("abandoned", logger.error.call_args[0][0])
+
+    def test_overstaying_socket_warns_once_per_window(self):
+        from ..utils import db_connections
+
+        conn = MagicMock()
+        REGISTRY.register(conn, owner=object(), role="PyAutomationIO:edge:NtpMonitorWorker")
+        REGISTRY._index[id(conn)].last_used = time.monotonic() - 4000.0
+
+        with patch.object(db_connections, "_LOGGER") as logger:
+            db_connections._warn_on_socket_growth("PyAutomationIO:edge:NtpMonitorWorker")
+            db_connections._warn_on_socket_growth("PyAutomationIO:edge:NtpMonitorWorker")
+        self.assertEqual(logger.warning.call_count, 1)
+        self.assertIn("idle budget", logger.warning.call_args[0][0])
+
+    def test_high_water_mark_only_reports_a_new_peak(self):
+        from ..utils import db_connections
+
+        owner = object()
+        # Hold the mocks: the census is weak by design, so an unreferenced
+        # socket disappears before the warning can see it.
+        conns = [MagicMock() for _ in range(db_connections.connections_alert_threshold() + 1)]
+        for conn in conns:
+            REGISTRY.register(conn, owner=owner, role="PyAutomationIO:edge:LoggerWorker")
+
+        with patch.object(db_connections, "_LOGGER") as logger:
+            db_connections._warn_on_socket_growth("PyAutomationIO:edge:LoggerWorker")
+        self.assertEqual(logger.warning.call_count, 1)
+
+        with patch.object(db_connections, "_LOGGER") as logger:
+            db_connections._warn_on_socket_growth("PyAutomationIO:edge:LoggerWorker")
+        logger.warning.assert_not_called()
 
 
 def connections_over_threshold():

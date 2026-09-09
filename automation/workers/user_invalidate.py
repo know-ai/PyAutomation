@@ -69,7 +69,10 @@ class UserInvalidateWorker(BaseWorker):
             return
         self._authz_periodic_mono = now
         try:
-            maybe_periodic_reload()
+            # The reload is minutes apart and is the only Peewee work this
+            # worker does; the LISTEN socket below is a separate, raw handle.
+            with self.historian_cycle():
+                maybe_periodic_reload()
         except Exception:
             _LOGGER.debug("authz periodic reload skipped", exc_info=True)
 

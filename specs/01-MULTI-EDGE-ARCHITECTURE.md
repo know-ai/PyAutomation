@@ -592,6 +592,9 @@ Además de las variables de §4:
 | `AUTOMATION_DB_IDLE_SESSION_TIMEOUT_S` | `300` | `idle_session_timeout` que el edge pide al servidor (PG ≥ 14). `0` desactiva |
 | `AUTOMATION_DB_IDLE_IN_TRANSACTION_TIMEOUT_S` | `60` | `idle_in_transaction_session_timeout`. `0` desactiva |
 | `AUTOMATION_DB_LEAK_DETECTION_S` | `900` | Edad a partir de la cual un socket se reporta por rol en los logs |
+| `AUTOMATION_DB_RESIDENT_ROLES` | `LoggerWorker,SafJournalFlusher,MetricsSamplerWorker` | Roles que conservan un socket entre ciclos. El resto lo devuelve al cerrar el ciclo. Sólo añadir roles cuyo periodo sea muy inferior a `AUTOMATION_DB_IDLE_SESSION_TIMEOUT_S` |
+| `AUTOMATION_DB_TRANSIENT_HEADROOM` | `4` | Aperturas simultáneas de corta vida que se toleran (máquinas de estado, HTTP, trabajo delegado a pool) antes de considerar el conteo anómalo |
+| `AUTOMATION_DB_IDLE_SOCKET_S` | 60 % de `AUTOMATION_DB_IDLE_SESSION_TIMEOUT_S` (→ `180`) | Presupuesto de inactividad del cliente. Un socket no residente que lo supere se devuelve **antes** de que el servidor lo cierre |
 
 ---
 

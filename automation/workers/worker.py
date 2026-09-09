@@ -3,6 +3,7 @@
 
 This module implements the base class for all worker threads in the system.
 """
+from contextlib import contextmanager
 from threading import Thread
 from threading import Event as ThreadEvent
 
@@ -59,6 +60,34 @@ class BaseWorker(Thread):
                 getattr(self, "name", "?"),
                 exc_info=True,
             )
+
+    @contextmanager
+    def historian_cycle(self):
+        r"""
+        Wraps one worker cycle so the historian socket goes back when it ends.
+
+        Only the resident roles (`RESIDENT_SOCKET_ROLES`) may hold a socket
+        between cycles, because they touch the server every few seconds. A
+        worker that idles minutes between ticks and keeps its socket costs a
+        permanent `idle` backend and, worse, PostgreSQL's `idle_session_timeout`
+        closes it underneath: the next tick then runs on a dead handle. Wrap the
+        body of `run()`'s loop in this and the socket lives exactly as long as
+        the work does.
+        """
+        try:
+            yield
+        finally:
+            if not self._historian_socket_is_resident():
+                self.release_historian_socket()
+
+    @staticmethod
+    def _historian_socket_is_resident():
+        try:
+            from ..utils.db_connections import keep_historian_socket
+
+            return keep_historian_socket()
+        except Exception:
+            return False
 
     def __getstate__(self):
 

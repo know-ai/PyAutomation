@@ -241,7 +241,7 @@ class CatalogReplicatorWorker(BaseWorker):
             _LOGGER.warning("Catalog sync still running in OS thread; skip overlapping cycle")
             return {"skipped": True, "reason": "overlap"}
         try:
-            from ..utils.db_connections import ephemeral_historian
+            from ..utils.db_connections import ephemeral_historian, historian_role_scope
 
             replica = ensure_replica_database()
             primary = None
@@ -251,9 +251,12 @@ class CatalogReplicatorWorker(BaseWorker):
                 primary = getattr(PyAutomation(), "_db", None)
             except Exception:
                 primary = None
-            with ephemeral_historian(replica):
-                with ephemeral_historian(primary):
-                    return self.cycle(force=force)
+            # The pool thread reports itself as ``Dummy-9``; name the subsystem
+            # so pg_stat_activity attributes the socket to catalog sync.
+            with historian_role_scope("CatalogReplicator"):
+                with ephemeral_historian(replica):
+                    with ephemeral_historian(primary):
+                        return self.cycle(force=force)
         except Exception:
             _LOGGER.exception("Catalog sync in thread failed")
             raise

@@ -87,10 +87,19 @@ class TestAcceptanceCriteria(unittest.TestCase):
         self.assertTrue(scope_b.owns_tag(tag_b))
 
     def test_ca_edge_7_connection_budget_is_advertised(self):
-        from ..utils.db_connections import snapshot_connection_metrics
+        from ..utils.db_connections import (
+            gunicorn_worker_count,
+            resident_socket_roles,
+            snapshot_connection_metrics,
+            transient_socket_headroom,
+        )
 
         metrics = snapshot_connection_metrics(None)
-        self.assertEqual(metrics["DB_CONNECTIONS_EXPECTED_MAX"], 4)
+        self.assertEqual(
+            metrics["DB_CONNECTIONS_EXPECTED_MAX"],
+            len(resident_socket_roles()) + transient_socket_headroom() + gunicorn_worker_count(),
+        )
+        self.assertLess(metrics["DB_CONNECTIONS_EXPECTED_MAX"], metrics["DB_CONNECTIONS_MAX"])
         self.assertIn("DB_APPLICATION_NAME", metrics)
 
     def test_ca_edge_8_api_hides_foreign_resources(self):

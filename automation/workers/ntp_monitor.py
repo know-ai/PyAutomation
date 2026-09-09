@@ -363,7 +363,10 @@ class NtpMonitorWorker(BaseWorker):
         while True:
             cycle_started = time.monotonic()
             try:
-                self._run_check()
+                # Checks are an hour apart by default: holding the socket in
+                # between would just donate an idle backend to the server.
+                with self.historian_cycle():
+                    self._run_check()
             except Exception:
                 _LOGGER.error("NTP monitor cycle failed", exc_info=True)
             if self.stop_event.is_set():

@@ -399,6 +399,7 @@ class MetricsSamplerWorker(BaseWorker):
             from ..health import get_database_health_service
             from ..utils.db_connections import (
                 REGISTRY,
+                idle_socket_budget_s,
                 local_txn_commit_count,
                 query_pg_txn_counters,
                 snapshot_connection_metrics,
@@ -412,12 +413,20 @@ class MetricsSamplerWorker(BaseWorker):
             # Sockets whose greenlet is gone cannot close themselves. This is the
             # only periodic sweep, so the census stays honest between restarts.
             REGISTRY.reap_abandoned()
+            # Second net: a socket whose owner is still alive but has not used it
+            # inside the idle budget. Returning it here beats letting the server's
+            # idle_session_timeout close it behind the owner's back.
+            REGISTRY.reap_idle(idle_socket_budget_s())
             conn = snapshot_connection_metrics(db)
             payload["DB_ACTIVE_CONNECTIONS"] = conn.get("DB_ACTIVE_CONNECTIONS")
             payload["DB_CONNECTIONS_LOCAL"] = conn.get("DB_CONNECTIONS_COUNT")
             payload["DB_CONNECTIONS_MAX"] = conn.get("DB_CONNECTIONS_MAX")
             payload["DB_CONNECTIONS_REAPED"] = conn.get("DB_CONNECTIONS_REAPED")
+            payload["DB_CONNECTIONS_IDLE_REAPED"] = conn.get("DB_CONNECTIONS_IDLE_REAPED")
             payload["DB_CONNECTIONS_LEAKED"] = conn.get("DB_CONNECTIONS_LEAKED")
+            payload["DB_CONNECTIONS_ABANDONED"] = conn.get("DB_CONNECTIONS_ABANDONED")
+            payload["DB_CONNECTIONS_OVERSTAYING"] = conn.get("DB_CONNECTIONS_OVERSTAYING")
+            payload["DB_CONNECTIONS_HIGH_WATER"] = conn.get("DB_CONNECTIONS_HIGH_WATER")
             payload["DB_DISK_FREE_GB"] = None
             now = time.monotonic()
             local_commits = local_txn_commit_count()

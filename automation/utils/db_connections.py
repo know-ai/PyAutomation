@@ -30,9 +30,27 @@ APPLICATION_NAME_PREFIX = "PyAutomationIO"
 DEFAULT_CONNECTIONS_ALERT = 6
 DEFAULT_CONNECTIONS_HARD_MAX = 12
 DEFAULT_LEAK_DETECTION_S = 900.0
+DEFAULT_TRANSIENT_HEADROOM = 4
 _CONNECT_GATE = threading.local()
+_ROLE_SCOPE = threading.local()
 _TXN_LOCK = threading.Lock()
 _TXN_COMMITS = 0
+_WARN_LOCK = threading.Lock()
+_WARN_LAST: dict[str, float] = {}
+_WARN_EVERY_S = 300.0
+_SOCKET_HIGH_WATER = 0
+
+# Roles whose greenlet keeps one socket for the life of the process. They touch
+# the server every few seconds, so the backend is never idle long enough for
+# ``idle_session_timeout`` to reach it. Every other role must return the socket
+# at the end of its cycle: a worker that idles minutes between ticks and keeps
+# the socket makes the census grow with the roster instead of with the load,
+# and PostgreSQL closes the backend underneath it.
+RESIDENT_SOCKET_ROLES = frozenset({"LoggerWorker", "SafJournalFlusher", "MetricsSamplerWorker"})
+
+# ``threading.current_thread().name`` for a gevent greenlet or a pooled OS
+# thread. The number rotates between runs, so it is useless in pg_stat_activity.
+_ANONYMOUS_THREAD_PREFIXES = ("Dummy-", "ThreadPoolExecutor", "ThreadPoolExecutor-")
 
 
 def note_local_commit() -> None:
@@ -172,18 +190,83 @@ def _open_tracked_connection(database) -> Any:
 
 
 def _warn_on_socket_growth(role: str) -> None:
-    """``leak-detection-threshold``: name the sockets before the server runs out."""
+    """Report violated invariants, not the socket count.
+
+    The count crossing a threshold is normal: residents plus a burst of
+    short-lived openers is what a healthy edge looks like, and warning on every
+    ``connect()`` above it produced a wall of identical lines that buried the
+    one event that mattered. Warn only when an invariant actually breaks —
+    a socket nobody can close, a non-resident role that kept one, or a new
+    high-water mark against the ceiling — and rate-limit the rest.
+    """
     live = REGISTRY.count()
-    if live <= connections_alert_threshold():
+    abandoned = REGISTRY.abandoned()
+    overstaying = REGISTRY.overstaying(idle_socket_budget_s())
+    ceiling = connections_hard_max()
+    high_water = _note_socket_high_water(live)
+
+    if abandoned:
+        _LOGGER.error(
+            "Historian sockets abandoned by their owner: count=%s live=%s opened_by=%s detail=%s",
+            len(abandoned),
+            live,
+            role,
+            abandoned,
+        )
         return
-    leaked = REGISTRY.leaked(leak_detection_s())
-    _LOGGER.warning(
-        "Historian sockets above alert threshold: live=%s threshold=%s opened_by=%s long_lived=%s",
-        live,
-        connections_alert_threshold(),
-        role,
-        leaked or "none",
-    )
+    if overstaying and _warning_is_due("overstay"):
+        _LOGGER.warning(
+            "Non-resident historian sockets held past the idle budget: budget_s=%.0f "
+            "live=%s opened_by=%s detail=%s",
+            idle_socket_budget_s(),
+            live,
+            role,
+            overstaying,
+        )
+        return
+    if live >= ceiling - 1:
+        _LOGGER.error(
+            "Historian sockets approaching the ceiling: live=%s ceiling=%s opened_by=%s census=%s",
+            live,
+            ceiling,
+            role,
+            REGISTRY.census(),
+        )
+        return
+    if high_water and live > connections_alert_threshold() and _warning_is_due("high_water"):
+        _LOGGER.warning(
+            "Historian socket high-water mark: live=%s threshold=%s ceiling=%s opened_by=%s census=%s",
+            live,
+            connections_alert_threshold(),
+            ceiling,
+            role,
+            REGISTRY.census(),
+        )
+
+
+def _note_socket_high_water(live: int) -> bool:
+    """True when ``live`` beats every count seen so far in this process."""
+    global _SOCKET_HIGH_WATER
+    with _WARN_LOCK:
+        if live <= _SOCKET_HIGH_WATER:
+            return False
+        _SOCKET_HIGH_WATER = live
+        return True
+
+
+def socket_high_water_mark() -> int:
+    with _WARN_LOCK:
+        return _SOCKET_HIGH_WATER
+
+
+def _warning_is_due(kind: str) -> bool:
+    """Rate-limit one warning family so a repeating condition logs once per window."""
+    now = time.monotonic()
+    with _WARN_LOCK:
+        if (now - _WARN_LAST.get(kind, 0.0)) < _WARN_EVERY_S:
+            return False
+        _WARN_LAST[kind] = now
+        return True
 
 
 def _safe_application_token(value: str) -> str:
@@ -198,6 +281,46 @@ def historian_node_name_prefix() -> str:
     if scope.enabled and scope.node_id:
         return f"{APPLICATION_NAME_PREFIX}:{_safe_application_token(scope.node_id)}"
     return APPLICATION_NAME_PREFIX
+
+
+@contextmanager
+def historian_role_scope(role: str) -> Iterator[None]:
+    """Name the *purpose* of a pooled OS thread for ``pg_stat_activity``.
+
+    Work offloaded to a threadpool runs on a thread ``threading`` did not
+    create, so it reports itself as ``Dummy-9``: a label that rotates between
+    runs and hides which subsystem opened the socket. Wrap the offloaded call
+    and the census, the logs and the DBA all see the same name.
+    """
+    previous = getattr(_ROLE_SCOPE, "role", None)
+    _ROLE_SCOPE.role = role
+    try:
+        yield
+    finally:
+        _ROLE_SCOPE.role = previous
+
+
+def current_socket_role() -> str:
+    """Stable role for this greenlet/thread, independent of the thread's name."""
+    scoped = getattr(_ROLE_SCOPE, "role", None)
+    if scoped:
+        return str(scoped)
+    name = threading.current_thread().name or ""
+    if not name or name.startswith(_ANONYMOUS_THREAD_PREFIXES):
+        return _anonymous_role_name()
+    return name
+
+
+def _anonymous_role_name() -> str:
+    """A greenlet with no thread identity is either an HTTP request or pool work."""
+    try:
+        from flask import has_request_context
+
+        if has_request_context():
+            return "http"
+    except Exception:
+        pass
+    return "pool"
 
 
 def historian_application_name(role: str | None = None) -> str:
@@ -215,7 +338,7 @@ def historian_application_name(role: str | None = None) -> str:
             else APPLICATION_NAME_PREFIX
         )
     node_id = scope.node_id
-    role_name = safe(role or threading.current_thread().name or "unknown")
+    role_name = safe(role or current_socket_role() or "unknown")
     # Las conexiones previas a la validación de adquisición conservan el
     # identificador legacy; una identidad configurada siempre usa node + rol.
     name = (
@@ -238,7 +361,16 @@ class _TrackedSocket:
     self-healing miss into a permanent leak (planta: ~100 backends en 6 días).
     """
 
-    __slots__ = ("_ref", "_strong", "role", "thread_ref", "thread_name", "opened_at")
+    __slots__ = (
+        "_ref",
+        "_strong",
+        "role",
+        "thread_ref",
+        "thread_name",
+        "opened_at",
+        "owner_role",
+        "last_used",
+    )
 
     def __init__(self, conn: Any, role: str, on_dead) -> None:
         try:
@@ -250,6 +382,7 @@ class _TrackedSocket:
             self._ref = None
             self._strong = conn
         self.role = role
+        self.owner_role = current_socket_role()
         thread = threading.current_thread()
         self.thread_name = thread.name or "unknown"
         try:
@@ -257,6 +390,7 @@ class _TrackedSocket:
         except TypeError:
             self.thread_ref = None
         self.opened_at = time.monotonic()
+        self.last_used = self.opened_at
 
     def ref(self) -> Any:
         return self._strong if self._ref is None else self._ref()
@@ -268,7 +402,14 @@ class _TrackedSocket:
         return self.ref() is not None
 
     def owner_is_gone(self) -> bool:
-        """True when the greenlet/thread that opened the socket can no longer close it."""
+        """True when the greenlet/thread that opened the socket can no longer close it.
+
+        Blind spot: a socket opened on a pooled OS thread reports a
+        ``threading._DummyThread``, whose ``is_alive()`` answers True forever.
+        A dead greenlet's dummy is collected, so the weak reference still
+        catches it; a *pooled* thread that exits while its dummy is referenced
+        is not caught here. ``reap_idle`` is the net for that case.
+        """
         if self.thread_ref is None:
             return False
         thread = self.thread_ref()
@@ -276,8 +417,15 @@ class _TrackedSocket:
             return True
         return not bool(getattr(thread, "is_alive", lambda: True)())
 
+    def is_resident(self) -> bool:
+        """True for roles allowed to hold a socket between cycles."""
+        return self.owner_role in resident_socket_roles()
+
     def age_s(self) -> float:
         return max(0.0, time.monotonic() - self.opened_at)
+
+    def idle_s(self) -> float:
+        return max(0.0, time.monotonic() - self.last_used)
 
 
 class ConnectionRegistry:
@@ -295,8 +443,12 @@ class ConnectionRegistry:
         # Reentrant: a weakref callback can fire while this thread holds the lock.
         self._lock = threading.RLock()
         self._by_owner: dict[int, dict[int, _TrackedSocket]] = {}
+        # Flat id(conn) -> entry index so stamping last_used on every query
+        # stays O(1) instead of walking the owner buckets.
+        self._index: dict[int, _TrackedSocket] = {}
         self._instance_id: int | None = None
         self._reaped = 0
+        self._idle_reaped = 0
 
     def bind_instance(self, database: Any) -> None:
         with self._lock:
@@ -310,6 +462,8 @@ class ConnectionRegistry:
             entry = bucket.pop(key, None)
             if entry is not None:
                 entry.release()
+                if self._index.get(key) is entry:
+                    self._index.pop(key, None)
             if not bucket:
                 self._by_owner.pop(oid, None)
 
@@ -323,6 +477,13 @@ class ConnectionRegistry:
         entry = _TrackedSocket(conn, role or historian_application_name(), _on_dead)
         with self._lock:
             self._by_owner.setdefault(oid, {})[key] = entry
+            self._index[key] = entry
+
+    def touch(self, conn: Any) -> None:
+        """Stamp a socket as used. Feeds ``reap_idle``; must stay off the lock's hot path."""
+        entry = self._index.get(id(conn))
+        if entry is not None:
+            entry.last_used = time.monotonic()
 
     def unregister(self, conn: Any, owner: Any | None = None) -> None:
         key = id(conn)
@@ -364,6 +525,8 @@ class ConnectionRegistry:
                 "role": entry.role,
                 "thread": entry.thread_name,
                 "age_s": round(entry.age_s(), 1),
+                "idle_s": round(entry.idle_s(), 1),
+                "resident": entry.is_resident(),
                 "owner_gone": entry.owner_is_gone(),
             }
             for _oid, _key, entry in self._live_entries()
@@ -397,11 +560,68 @@ class ConnectionRegistry:
                 self._reaped += closed
         return closed
 
+    def idle_reaped_count(self) -> int:
+        with self._lock:
+            return self._idle_reaped
+
+    def reap_idle(self, budget_s: float) -> int:
+        """Return non-resident sockets idle beyond ``budget_s``. Returns how many.
+
+        ``idle_session_timeout`` means PostgreSQL will close these backends
+        anyway; the client just would not know until the next query failed.
+        Closing them ourselves, ahead of the server, turns that race into a
+        no-op: Peewee reopens on demand and the next query never sees a dead
+        handle. A hit here is a defect — some role held a socket it was not
+        entitled to keep — so it is named at WARNING.
+        """
+        budget = max(5.0, float(budget_s))
+        doomed = [
+            (oid, key, entry)
+            for oid, key, entry in self._live_entries()
+            if not entry.is_resident() and entry.idle_s() >= budget
+        ]
+        closed = 0
+        for oid, key, entry in doomed:
+            conn = entry.ref()
+            self._forget(oid, key)
+            if conn is None:
+                continue
+            try:
+                conn.close()
+                closed += 1
+                _LOGGER.warning(
+                    "Returned idle historian socket ahead of the server: role=%s "
+                    "thread=%s idle_s=%.1f budget_s=%.1f (role is not resident)",
+                    entry.role,
+                    entry.thread_name,
+                    entry.idle_s(),
+                    budget,
+                )
+            except Exception:
+                _LOGGER.debug("idle historian socket close skipped", exc_info=True)
+        if closed:
+            with self._lock:
+                self._idle_reaped += closed
+        return closed
+
     def leaked(self, older_than_s: float) -> list[dict[str, Any]]:
         """Sockets older than the leak threshold, newest last (``leak-detection-threshold``)."""
         rows = [row for row in self.census() if row["age_s"] >= float(older_than_s)]
         rows.sort(key=lambda row: row["age_s"])
         return rows
+
+    def abandoned(self) -> list[dict[str, Any]]:
+        """Sockets whose owner can no longer close them. Non-empty means a real leak."""
+        return [row for row in self.census() if row["owner_gone"]]
+
+    def overstaying(self, budget_s: float) -> list[dict[str, Any]]:
+        """Non-resident sockets idle beyond the budget: a role that forgot to release."""
+        budget = max(5.0, float(budget_s))
+        return [
+            row
+            for row in self.census()
+            if not row["resident"] and row["idle_s"] >= budget
+        ]
 
     def _drain(self, items: list[tuple[int, int, _TrackedSocket]], what: str) -> int:
         closed = 0
@@ -453,9 +673,36 @@ def gunicorn_worker_count() -> int:
     return 1
 
 
+def resident_socket_roles() -> frozenset[str]:
+    """Roles entitled to hold a socket between cycles. Env: AUTOMATION_DB_RESIDENT_ROLES."""
+    raw = os.environ.get("AUTOMATION_DB_RESIDENT_ROLES")
+    if not raw:
+        return RESIDENT_SOCKET_ROLES
+    roles = {token.strip() for token in raw.split(",") if token.strip()}
+    return frozenset(roles) if roles else RESIDENT_SOCKET_ROLES
+
+
+def transient_socket_headroom() -> int:
+    """Concurrent short-lived openers to tolerate: state machines, HTTP, pool work."""
+    raw = os.environ.get("AUTOMATION_DB_TRANSIENT_HEADROOM")
+    if raw:
+        try:
+            return max(1, min(int(raw), 64))
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_TRANSIENT_HEADROOM
+
+
 def connections_expected_max() -> int:
-    """Idle ceiling: (workers * 2) + 2. One worker → 4 (LoggerWorker + burst)."""
-    return gunicorn_worker_count() * 2 + 2
+    """Residents (one socket each, for the life of the process) plus burst headroom.
+
+    Deriving this from the gunicorn worker count alone was wrong: the resident
+    population scales with the *worker roster*, not with the web concurrency, so
+    a healthy edge sat permanently above the threshold and the warning became
+    background noise. Count the residents and add room for the openers that do
+    return their socket within one cycle.
+    """
+    return len(resident_socket_roles()) + transient_socket_headroom() + gunicorn_worker_count()
 
 
 def connections_alert_threshold() -> int:
@@ -480,7 +727,28 @@ def connections_hard_max() -> int:
             return max(2, min(int(raw), 256))
         except (TypeError, ValueError):
             pass
-    return max(DEFAULT_CONNECTIONS_HARD_MAX, connections_alert_threshold() * 2)
+    return max(DEFAULT_CONNECTIONS_HARD_MAX, connections_alert_threshold() + 4)
+
+
+def idle_socket_budget_s() -> float:
+    """How long a non-resident socket may sit idle before the client returns it.
+
+    Kept under the server's ``idle_session_timeout`` on purpose: whoever closes
+    the backend first decides whether the next query sees a live handle or an
+    error. We want that to be us. Env: AUTOMATION_DB_IDLE_SOCKET_S.
+    """
+    from .db_io import idle_session_timeout_ms
+
+    raw = os.environ.get("AUTOMATION_DB_IDLE_SOCKET_S")
+    if raw:
+        try:
+            return max(10.0, float(raw))
+        except (TypeError, ValueError):
+            pass
+    server_ms = idle_session_timeout_ms()
+    if server_ms <= 0:
+        return 180.0
+    return max(30.0, (server_ms / 1000.0) * 0.6)
 
 
 def leak_detection_s() -> float:
@@ -509,10 +777,26 @@ def snapshot_connection_metrics(db: Any | None = None) -> dict[str, Any]:
         "DB_CONNECTIONS_ALERT_THRESHOLD": threshold,
         "DB_CONNECTIONS_MAX": connections_hard_max(),
         "DB_CONNECTIONS_REAPED": REGISTRY.reaped_count(),
+        "DB_CONNECTIONS_IDLE_REAPED": REGISTRY.idle_reaped_count(),
         "DB_CONNECTIONS_LEAKED": len(REGISTRY.leaked(leak_detection_s())),
+        "DB_CONNECTIONS_ABANDONED": len(REGISTRY.abandoned()),
+        "DB_CONNECTIONS_OVERSTAYING": len(REGISTRY.overstaying(idle_socket_budget_s())),
+        "DB_CONNECTIONS_RESIDENT_MAX": len(resident_socket_roles()),
+        "DB_CONNECTIONS_HIGH_WATER": socket_high_water_mark(),
+        "DB_SOCKET_IDLE_BUDGET_S": round(idle_socket_budget_s(), 1),
         "DB_INSTANCE_ID": REGISTRY.instance_id(),
         "DB_APPLICATION_NAME": historian_application_name(),
     }
+
+
+def _touch_bound_socket(database) -> None:
+    """Stamp this greenlet's socket as used, so an active one is never reaped."""
+    try:
+        conn = database._state.conn
+    except Exception:
+        return
+    if conn is not None:
+        REGISTRY.touch(conn)
 
 
 class TrackedPostgresqlDatabase(PostgresqlDatabase):
@@ -525,6 +809,11 @@ class TrackedPostgresqlDatabase(PostgresqlDatabase):
     def _close(self, conn):
         REGISTRY.unregister(conn, owner=self)
         return super()._close(conn)
+
+    def execute_sql(self, *args, **kwargs):
+        result = super().execute_sql(*args, **kwargs)
+        _touch_bound_socket(self)
+        return result
 
     def commit(self):
         super().commit()
@@ -547,6 +836,11 @@ class TrackedMySQLDatabase(MySQLDatabase):
     def _close(self, conn):
         REGISTRY.unregister(conn, owner=self)
         return super()._close(conn)
+
+    def execute_sql(self, *args, **kwargs):
+        result = super().execute_sql(*args, **kwargs)
+        _touch_bound_socket(self)
+        return result
 
     def commit(self):
         super().commit()
@@ -759,9 +1053,12 @@ def _ping_mysql(database: str, params: dict[str, Any]) -> None:
 
 
 def keep_historian_socket() -> bool:
-    """True for the long-lived replication worker that owns the idle socket."""
-    name = threading.current_thread().name or ""
-    return name in {"LoggerWorker", "SafJournalFlusher"} or name.startswith("LoggerWorker")
+    """True for the resident roles entitled to hold a socket between cycles."""
+    role = current_socket_role()
+    residents = resident_socket_roles()
+    return role in residents or any(
+        role.startswith(resident) for resident in residents
+    )
 
 
 def count_active_backends(db: Any | None) -> int | None:

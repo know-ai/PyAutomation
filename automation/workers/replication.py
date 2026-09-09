@@ -46,6 +46,9 @@ class ReplicationWorker(BaseWorker):
                     gateway.reclaim_idle()
                     self.last_cycle_utc = datetime.now(timezone.utc).isoformat()
                     idle_s = 5.0
+                    # Nothing to drain: an empty journal can stay empty for
+                    # hours, so give the socket back instead of parking it.
+                    self.release_historian_socket()
             except Exception:
                 _LOGGER.error("SAF replication worker cycle failed; journal preserved", exc_info=True)
                 idle_s = 1.0
