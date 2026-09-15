@@ -14,7 +14,6 @@ import logging
 import threading
 import time
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -346,10 +345,17 @@ class CatalogReplicatorWorker(BaseWorker):
         }
 
     def _recycle_replica_handle(self) -> None:
-        """Drop a dead Peewee/libpq socket so the next I/O opens a fresh replica."""
+        """Drop dead Peewee/libpq sockets (replica + this thread's primary)."""
         if self._recycled_this_cycle:
             return
         self._recycled_this_cycle = True
+        try:
+            from automation import PyAutomation
+            from ..utils.db_connections import close_current_greenlet_connection
+
+            close_current_greenlet_connection(getattr(PyAutomation(), "_db", None))
+        except Exception:
+            _LOGGER.debug("catalog primary socket recycle skipped", exc_info=True)
         try:
             reset_replica_database()
             close_replica_thread_connection()
@@ -385,6 +391,7 @@ class CatalogReplicatorWorker(BaseWorker):
                 cancel = getattr(future, "cancel", None)
                 if callable(cancel):
                     cancel()
+                reset_replica_database()
             except TimeoutError:
                 _LOGGER.warning(
                     "Catalog sync thread timeout, skipping cycle. (limit=%.1fs)",
@@ -393,6 +400,7 @@ class CatalogReplicatorWorker(BaseWorker):
                 cancel = getattr(future, "cancel", None)
                 if callable(cancel):
                     cancel()
+                reset_replica_database()
             except BaseException as exc:
                 if type(exc).__name__ in ("Timeout", "TimeoutError"):
                     _LOGGER.warning(
@@ -402,6 +410,7 @@ class CatalogReplicatorWorker(BaseWorker):
                     cancel = getattr(future, "cancel", None)
                     if callable(cancel):
                         cancel()
+                    reset_replica_database()
                 elif isinstance(exc, Exception):
                     _LOGGER.exception("Catalog sync thread exception.")
                     self._failures += 1
@@ -412,7 +421,12 @@ class CatalogReplicatorWorker(BaseWorker):
             self.stop_event.wait(self._wait_interval())
 
     def _historian_ready(self) -> bool:
-        """Prefer dedicated replica handle; do not poke the API proxy."""
+        """Replica can read and this thread's primary handle can write.
+
+        Row pushes use the model proxy (primary), not the replica. A live
+        ``SELECT 1`` on the replica with a dead primary is what produced
+        ``catalog sync row skipped`` on a healthy plant.
+        """
         try:
             db = ensure_replica_database()
             if db is None:
@@ -420,9 +434,48 @@ class CatalogReplicatorWorker(BaseWorker):
             if getattr(db, "is_closed", lambda: True)():
                 db.connect(reuse_if_open=True)
             db.execute_sql("SELECT 1")
-            return True
         except Exception:
             return False
+        return self._heal_primary_socket()
+
+    def _heal_primary_socket(self) -> bool:
+        """Prove DML on the primary proxy; close and reopen once if stale."""
+        try:
+            from automation import PyAutomation
+            from ..utils.db_connections import (
+                close_current_greenlet_connection,
+                ensure_bound_connection,
+            )
+
+            db = getattr(PyAutomation(), "_db", None)
+            if db is None:
+                return True
+            try:
+                ensure_bound_connection(db)
+                self._probe_primary_dml(db)
+                return True
+            except Exception:
+                close_current_greenlet_connection(db)
+                ensure_bound_connection(db)
+                self._probe_primary_dml(db)
+                return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _probe_primary_dml(db) -> None:
+        try:
+            db.execute_sql("UPDATE catalog_versions SET version = version WHERE FALSE")
+        except Exception as exc:
+            text = str(exc).lower()
+            name = type(exc).__name__.lower()
+            if "catalog_versions" in text and (
+                "does not exist" in text
+                or "undefined" in text
+                or "undefinedtable" in name
+            ):
+                return
+            raise
 
     def _probe_replica_writable(self) -> bool:
         """True only if DML can land. ``SELECT 1`` is not enough on a half-open tunnel."""
@@ -578,42 +631,39 @@ class CatalogReplicatorWorker(BaseWorker):
         remote_rows_by_table: dict[str, list] = {}
         row_errors = 0
         tables = self._tables_this_cycle()
-        replica = ensure_replica_database()
-        load_txn = replica.atomic() if replica is not None else nullcontext()
-        with load_txn:
-            for table in tables:
-                if self._transient_remote_errors:
+        for table in tables:
+            if self._transient_remote_errors:
+                remote_rows_by_table[table] = []
+                continue
+            if table in CHILD_TABLES and self._parent_load_failed:
+                remote_rows_by_table[table] = []
+                _LOGGER.warning(
+                    "Skipping pull of %s this cycle: tags/machines connection error; "
+                    "retrying next cycle with tags prioritized",
+                    table,
+                )
+                continue
+            try:
+                if table in PUSH_ONLY_TABLES:
+                    # Disaster backup lives on the historian; this edge never
+                    # hydrates local catalog.db from remote address-space rows.
                     remote_rows_by_table[table] = []
                     continue
-                if table in CHILD_TABLES and self._parent_load_failed:
-                    remote_rows_by_table[table] = []
-                    _LOGGER.warning(
-                        "Skipping pull of %s this cycle: tags/machines connection error; "
-                        "retrying next cycle with tags prioritized",
-                        table,
-                    )
-                    continue
-                try:
-                    if table in PUSH_ONLY_TABLES:
-                        # Disaster backup lives on the historian; this edge never
-                        # hydrates local catalog.db from remote address-space rows.
-                        remote_rows_by_table[table] = []
-                        continue
-                    remote_rows_by_table[table] = self._load_remote_rows(
-                        table, full_scan=full_scan, since_ms=since_ms
-                    )
-                except Exception as exc:
-                    remote_rows_by_table[table] = []
-                    if _is_transient_connection_error(exc):
-                        self._transient_remote_errors += 1
-                        if table in PARENT_TABLES:
-                            self._parent_load_failed = True
-                            self._tags_sync_pending = True
-                        self._recycle_replica_handle()
-                        _LOGGER.warning("catalog load skipped (remote connection) table=%s", table)
-                    else:
-                        row_errors += 1
-                        _LOGGER.exception("catalog load failed table=%s", table)
+                remote_rows_by_table[table] = self._load_remote_rows(
+                    table, full_scan=full_scan, since_ms=since_ms
+                )
+            except Exception as exc:
+                remote_rows_by_table[table] = []
+                if _is_transient_connection_error(exc):
+                    self._transient_remote_errors += 1
+                    if table in PARENT_TABLES:
+                        self._parent_load_failed = True
+                        self._tags_sync_pending = True
+                    self._recycle_replica_handle()
+                    _LOGGER.warning("catalog load skipped (remote connection) table=%s", table)
+                else:
+                    row_errors += 1
+                    _LOGGER.exception("catalog load failed table=%s", table)
         for table in REPLICATED_TABLES:
             remote_rows_by_table.setdefault(table, [])
         local_index = {
@@ -1451,21 +1501,22 @@ class CatalogReplicatorWorker(BaseWorker):
                 continue
             local_pk = str((local_row or {}).get("_pk") or (local_row or {}).get("id") or "")
             remote_pk = str((remote_row or {}).get("_pk") or (remote_row or {}).get("id") or "")
+            sync_kwargs = dict(
+                table=table,
+                key=key,
+                local_row=local_row,
+                remote_row=remote_row,
+                local_pk=local_pk,
+                remote_pk=remote_pk,
+                local_by_id=local_by_id,
+                remote_by_id=remote_by_id,
+                local_index=local_index,
+                remote_index=remote_index,
+                edge=edge,
+            )
             try:
                 with self._local.atomic():
-                    p, u, c = self._sync_one_key(
-                        table,
-                        key=key,
-                        local_row=local_row,
-                        remote_row=remote_row,
-                        local_pk=local_pk,
-                        remote_pk=remote_pk,
-                        local_by_id=local_by_id,
-                        remote_by_id=remote_by_id,
-                        local_index=local_index,
-                        remote_index=remote_index,
-                        edge=edge,
-                    )
+                    p, u, c = self._sync_one_key(**sync_kwargs)
                 pushed += p
                 pulled += u
                 conflicts += c
@@ -1482,10 +1533,25 @@ class CatalogReplicatorWorker(BaseWorker):
                     )
                     continue
                 if _is_transient_connection_error(exc):
+                    self._recycle_replica_handle()
+                    try:
+                        RemoteCatalogProvider._ensure_remote_socket()
+                        with self._local.atomic():
+                            p, u, c = self._sync_one_key(**sync_kwargs)
+                        pushed += p
+                        pulled += u
+                        conflicts += c
+                        continue
+                    except Exception as retry_exc:
+                        if not _is_transient_connection_error(retry_exc):
+                            errors += 1
+                            _LOGGER.exception(
+                                "catalog sync row failed table=%s key=%s", table, key
+                            )
+                            continue
                     self._transient_remote_errors += 1
                     if table in PUSH_ONLY_TABLES:
                         self._cycle_backup_skips += 1
-                    self._recycle_replica_handle()
                     log = (
                         _LOGGER.warning
                         if self._transient_remote_errors <= 1

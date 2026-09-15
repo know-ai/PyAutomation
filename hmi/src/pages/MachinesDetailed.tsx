@@ -262,6 +262,67 @@ function hasGenericAttributes(details: MachineDetailedData | undefined): boolean
   );
 }
 
+type TemporalBaseline = {
+  customized: boolean;
+  execution: number | null;
+  sample: number | null;
+  overrides: Record<string, number>;
+};
+
+function optionalNumber(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = typeof raw === "number" ? raw : parseFloat(String(raw));
+  return Number.isFinite(n) ? n : null;
+}
+
+function sameOptionalNumber(left: number | null, right: number | null): boolean {
+  if (left === null && right === null) return true;
+  if (left === null || right === null) return false;
+  return Math.abs(left - right) < 1e-9;
+}
+
+function numericOverrides(raw: Record<string, unknown> | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  Object.entries(raw || {}).forEach(([key, value]) => {
+    const n = optionalNumber(value);
+    if (n !== null) out[key] = n;
+  });
+  return out;
+}
+
+function sameOverrides(left: Record<string, number>, right: Record<string, number>): boolean {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    if (!sameOptionalNumber(left[key] ?? null, right[key] ?? null)) return false;
+  }
+  return true;
+}
+
+function temporalDraftFromForm(
+  customized: boolean,
+  executionRaw: string,
+  sampleRaw: string,
+  overrideRaw: Record<string, string> | undefined
+): TemporalBaseline {
+  return {
+    customized,
+    execution: optionalNumber(executionRaw),
+    sample: customized ? optionalNumber(sampleRaw) : null,
+    overrides: customized ? numericOverrides(overrideRaw) : {},
+  };
+}
+
+function isTemporalDirty(baseline: TemporalBaseline | undefined, draft: TemporalBaseline): boolean {
+  if (!baseline) return false;
+  if (draft.customized !== baseline.customized) return true;
+  if (!sameOptionalNumber(draft.execution, baseline.execution)) return true;
+  if (!draft.customized) return false;
+  return (
+    !sameOptionalNumber(draft.sample, baseline.sample) ||
+    !sameOverrides(draft.overrides, baseline.overrides)
+  );
+}
+
 export function MachinesDetailed() {
   const { t } = useTranslation();
   const { canUse } = useAuthz();
@@ -295,6 +356,7 @@ export function MachinesDetailed() {
   const [sampleIntervalValue, setSampleIntervalValue] = useState<Record<string, string>>({});
   const [executionIntervalValue, setExecutionIntervalValue] = useState<Record<string, string>>({});
   const [sampleOverrideValue, setSampleOverrideValue] = useState<Record<string, Record<string, string>>>({});
+  const [temporalBaseline, setTemporalBaseline] = useState<Record<string, TemporalBaseline>>({});
   const [savingTemporal, setSavingTemporal] = useState<Record<string, boolean>>({});
   // Estado para el modal de confirmaci?n
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -1023,19 +1085,30 @@ export function MachinesDetailed() {
         if (!temporalHydratedRef.current.has(machineName)) {
           const sample = serialization.sample_interval;
           const customized = sample !== null && sample !== undefined;
+          const overrides = serialization.sample_overrides || {};
           setCustomizeSampling((prev) => ({
             ...prev,
             [machineName]: customized,
           }));
           if (customized) {
             setSampleIntervalValue((prev) => ({ ...prev, [machineName]: String(sample) }));
+          } else {
+            setSampleIntervalValue((prev) => ({ ...prev, [machineName]: "" }));
           }
-          const overrides = serialization.sample_overrides || {};
           setSampleOverrideValue((prev) => ({
             ...prev,
             [machineName]: Object.fromEntries(
               Object.entries(overrides).map(([k, v]) => [k, String(v)])
             ),
+          }));
+          setTemporalBaseline((prev) => ({
+            ...prev,
+            [machineName]: {
+              customized,
+              execution: optionalNumber(execution),
+              sample: customized ? optionalNumber(sample) : null,
+              overrides: numericOverrides(overrides as Record<string, unknown>),
+            },
           }));
           temporalHydratedRef.current.add(machineName);
         }
@@ -2258,6 +2331,15 @@ export function MachinesDetailed() {
                                 const value = parseFloat(raw);
                                 return isNaN(value) || value < scanTimeSeconds(payload?.scan_time);
                               });
+                              const temporalDirty = isTemporalDirty(
+                                temporalBaseline[machineName],
+                                temporalDraftFromForm(
+                                  customized,
+                                  execRaw,
+                                  globalSampleRaw,
+                                  sampleOverrideValue[machineName]
+                                )
+                              );
                               return (
                             <Card
                               className="timing-config-card"
@@ -2515,7 +2597,12 @@ export function MachinesDetailed() {
                                 </Button>
                                 <Button
                                   onClick={() => handleSaveTemporalConfig(machineName)}
-                                  disabled={Boolean(savingTemporal[machineName]) || overrideInvalid || !canMutate}
+                                  disabled={
+                                    Boolean(savingTemporal[machineName]) ||
+                                    overrideInvalid ||
+                                    !canMutate ||
+                                    !temporalDirty
+                                  }
                                 >
                                   {savingTemporal[machineName]
                                     ? t("machines.updating")

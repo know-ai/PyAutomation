@@ -877,6 +877,55 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
         worker._catch_up = True
         self.assertEqual(worker._wait_interval(), _BACKOFF_INTERVALS_S[worker._backoff_step])
 
+    def test_unwritable_primary_does_not_enter_row_sync(self):
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        with patch.object(worker, "_is_remote_available", return_value=True), patch.object(
+            worker, "_historian_ready", return_value=False
+        ), patch.object(worker, "_sync_table") as sync_table, patch(
+            "automation.catalog.replicator.refresh_catalog_source", return_value="remote"
+        ):
+            result = worker.cycle(force=True)
+        self.assertEqual(result.get("reason"), "historian-not-ready")
+        sync_table.assert_not_called()
+
+    def test_transient_row_retry_recovers_without_aborting_table(self):
+        from contextlib import nullcontext
+
+        from automation.catalog.replicator import CatalogReplicatorWorker
+
+        class InterfaceError(Exception):
+            pass
+
+        worker = CatalogReplicatorWorker(sync_interval=300.0, startup_grace_s=0.0)
+        calls = {"n": 0}
+
+        def _one(**_kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise InterfaceError("connection already closed")
+            return (1, 0, 0)
+
+        local_rows = [{"id": "edge-Supe-Linea1", "_pk": "edge-Supe-Linea1"}]
+        with patch.object(worker, "_sync_one_key", side_effect=_one), patch.object(
+            worker, "_recycle_replica_handle"
+        ) as recycle, patch(
+            "automation.catalog.remote_provider.RemoteCatalogProvider._ensure_remote_socket"
+        ), patch.object(worker._local, "atomic", return_value=nullcontext()):
+            pushed, _pulled, _conflicts, errors = worker._sync_table(
+                "nodes",
+                local_rows=local_rows,
+                remote_rows=[],
+                local_index={"nodes": {}},
+                remote_index={"nodes": {}},
+            )
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(pushed, 1)
+        self.assertEqual(errors, 0)
+        self.assertEqual(worker._transient_remote_errors, 0)
+        recycle.assert_called()
+
     def test_successful_cycle_clears_connection_backoff(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
 

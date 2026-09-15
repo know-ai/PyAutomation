@@ -20,6 +20,22 @@ class RemoteCatalogProvider:
     def __init__(self, *, prefer_replica_reads: bool = True):
         self._prefer_replica_reads = bool(prefer_replica_reads)
 
+    @staticmethod
+    def _ensure_remote_socket() -> None:
+        """Reopen this thread's primary historian socket if it is half-dead.
+
+        Catalog pushes use the model proxy (not the replica handle). A closed
+        socket must be healed here; swallowing that failure used to let the
+        upsert hit a dead libpq handle and log ``sync row skipped``.
+        """
+        from automation import PyAutomation
+        from ..utils.db_connections import ensure_bound_connection
+
+        db = getattr(PyAutomation(), "_db", None)
+        if db is None:
+            return
+        ensure_bound_connection(db)
+
     def is_available(self) -> bool:
         """Lightweight historian reachability check on the replica handle."""
         from .provider import refresh_catalog_source
@@ -84,6 +100,7 @@ class RemoteCatalogProvider:
         return row_to_raw(row) if row is not None else None
 
     def upsert(self, table: str, row: dict, *, node_id: str | None = None, version: int | None = None) -> str:
+        self._ensure_remote_socket()
         model = historian_models().get(table)
         if model is None:
             raise KeyError(table)

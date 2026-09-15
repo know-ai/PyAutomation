@@ -1961,13 +1961,15 @@
         "minReady": "{{engine}} tiene las suscripciones mínimas para operar."
       },
       "lds": {
-        "usesFlows": "LDS usa caudal de entrada y salida para clasificar el régimen del ducto (estable, transitorio o cerrado) y para el balance másico.",
-        "densityNote": "Si el caudal es volumétrico, la densidad es obligatoria. Si es másico, la densidad es opcional para identificar el fluido y reportar volumen.",
-        "volHasDensity": "{{flow}} es volumétrico y ya tiene {{density}}.",
-        "volNeedDensity": "{{flow}} es volumétrico: suscribe {{density}} (obligatorio para que LDS opere con ese caudal).",
-        "massHasDensity": "{{flow}} es másico y {{density}} está suscrita.",
-        "massOptionalDensity": "{{flow}} es másico: LDS puede clasificar el régimen. Suscribe {{density}} si quieres identificar el fluido y reportar volumen.",
-        "unknownKind": "Si {{flow}} es volumétrico, suscribe también {{density}}. Si es másico, la densidad es opcional.",
+        "usesFlows": "LDS necesita un caudal, de entrada o de salida, para clasificar el régimen del ducto (estable, transitorio o cerrado). No hace balance másico.",
+        "needOneFlow": "Falta suscribir un caudal (entrada o salida).",
+        "needOneDensity": "También necesita una densidad (entrada o salida). Si el caudal es volumétrico, la densidad convierte a masa; si es másico, sirve para identificar el fluido.",
+        "densityNote": "También necesita una densidad (entrada o salida). Si el caudal es volumétrico, la densidad convierte a masa; si es másico, sirve para identificar el fluido.",
+        "volHasDensity": "El caudal es volumétrico y ya hay una densidad para convertirlo.",
+        "volNeedDensity": "El caudal es volumétrico: suscribe una densidad (entrada o salida).",
+        "massHasDensity": "El caudal es másico y ya hay una densidad para identificar el fluido.",
+        "massOptionalDensity": "El caudal es másico: LDS puede clasificar el régimen. Una densidad (entrada o salida) identifica el fluido.",
+        "unknownKind": "Si el caudal es volumétrico, suscribe una densidad (entrada o salida). Si es másico, la densidad identifica el fluido.",
         "minReady": "LDS tiene las suscripciones mínimas para operar."
       }
     },

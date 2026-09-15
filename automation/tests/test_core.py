@@ -253,10 +253,11 @@ class TestCore(unittest.TestCase):
             self.assertEqual(alarm_B.state.alarm_status, "Active")
 
         # DELETE TAG
-        self.app.delete_alarm(id=alarm_LL.identifier)
-        self.app.delete_alarm(id=alarm_L.identifier)
-        self.app.delete_alarm(id=alarm_H.identifier)
-        self.app.delete_alarm(id=alarm_HH.identifier)
+        self.assertIs(self.app.delete_alarm(id=alarm_LL.identifier), True)
+        self.assertIs(self.app.delete_alarm(id=alarm_L.identifier), True)
+        self.assertIs(self.app.delete_alarm(id=alarm_H.identifier), True)
+        self.assertIs(self.app.delete_alarm(id=alarm_HH.identifier), True)
+        self.assertIs(self.app.delete_alarm(id="missing-alarm"), False)
         self.app.delete_tag(id=tag.id)
 
     def test_linear_referencing_geospatial(self):

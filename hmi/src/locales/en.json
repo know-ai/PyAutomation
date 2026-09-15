@@ -1961,13 +1961,15 @@
         "minReady": "{{engine}} has the minimum subscriptions to operate."
       },
       "lds": {
-        "usesFlows": "LDS uses inlet and outlet flow to classify pipeline regime (steady, transient or shut-in) and for mass balance.",
-        "densityNote": "If flow is volumetric, density is required. If it is mass flow, density is optional to identify the fluid and report volume.",
-        "volHasDensity": "{{flow}} is volumetric and already has {{density}}.",
-        "volNeedDensity": "{{flow}} is volumetric: subscribe {{density}} (required for LDS to operate with that flow).",
-        "massHasDensity": "{{flow}} is mass flow and {{density}} is subscribed.",
-        "massOptionalDensity": "{{flow}} is mass flow: LDS can classify regime. Subscribe {{density}} to identify the fluid and report volume.",
-        "unknownKind": "If {{flow}} is volumetric, also subscribe {{density}}. If it is mass flow, density is optional.",
+        "usesFlows": "LDS needs one flow, inlet or outlet, to classify pipeline regime (steady, transient or shut-in). It does not perform mass balance.",
+        "needOneFlow": "Subscribe one flow (inlet or outlet).",
+        "needOneDensity": "It also needs one density (inlet or outlet). If flow is volumetric, density converts it to mass; if it is mass flow, density identifies the fluid.",
+        "densityNote": "It also needs one density (inlet or outlet). If flow is volumetric, density converts it to mass; if it is mass flow, density identifies the fluid.",
+        "volHasDensity": "Flow is volumetric and a density is already subscribed to convert it.",
+        "volNeedDensity": "Flow is volumetric: subscribe one density (inlet or outlet).",
+        "massHasDensity": "Flow is mass flow and a density is already subscribed to identify the fluid.",
+        "massOptionalDensity": "Flow is mass flow: LDS can classify regime. One density (inlet or outlet) identifies the fluid.",
+        "unknownKind": "If flow is volumetric, subscribe one density (inlet or outlet). If it is mass flow, density identifies the fluid.",
         "minReady": "LDS has the minimum subscriptions to operate."
       }
     },

@@ -88,6 +88,12 @@ def reset_replica_database() -> None:
     if db is None:
         return
     try:
+        from ..utils.db_connections import close_current_greenlet_connection
+
+        close_current_greenlet_connection(db)
+    except Exception:
+        _LOGGER.debug("catalog replica rollback-before-reset skipped", exc_info=True)
+    try:
         closer = getattr(db, "close_all", None)
         if callable(closer):
             closer()

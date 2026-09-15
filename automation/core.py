@@ -1487,7 +1487,7 @@ class PyAutomation(Singleton):
         ]
 
     @logging_error_handler
-    @validate_types(id=str, output=None|str)
+    @validate_types(id=str, user=User|type(None), output=None|str)
     def delete_tag(self, id:str, user:User|None=None)->None|str:
         r"""
         Deletes a tag from the system by its ID.
@@ -1791,7 +1791,7 @@ class PyAutomation(Singleton):
         worker.sync_from_tag(tag, sample_interval=default_interval)
 
     @logging_error_handler
-    @validate_types(name=str, output=None|str)
+    @validate_types(name=str, user=User|type(None), output=None|str)
     def delete_tag_by_name(self, name:str, user:User|None=None):
         r"""
         Deletes a tag from the system by its name.
@@ -5930,8 +5930,8 @@ class PyAutomation(Singleton):
         return self.alarm_manager.get_alarms_by_kp_range(kp_min=kp_min, kp_max=kp_max, segment=segment)
 
     @logging_error_handler
-    @validate_types(id=str, user=User|type(None), output=None)
-    def delete_alarm(self, id:str, user:User=None):
+    @validate_types(id=str, user=User|type(None), output=bool)
+    def delete_alarm(self, id:str, user:User=None)->bool:
         r"""
         Deletes an alarm from the system.
 
@@ -5939,6 +5939,10 @@ class PyAutomation(Singleton):
 
         * **id** (str): Alarm ID.
         * **user** (User, optional): User performing the deletion.
+
+        **Returns:**
+
+        * **bool**: True if the alarm existed and was deleted, False if it was not found.
         """
         alarm = self.get_alarm(id=id)
         if alarm is None:
