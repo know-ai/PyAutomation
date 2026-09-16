@@ -7,7 +7,7 @@
 | **Versión** | 1.0 |
 | **Fecha** | 2026-08-19 |
 | **Estado** | Implementado (P0 + P1 + P2 txn/min). Soak 24 h pendiente. |
-| **Auditoría** | [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](../audits/AUDIT_NODE_PERFORMANCE_DASHBOARD.md) |
+| **Auditoría** | [AUDIT_PERFORMANCE.md](../audits/AUDIT_PERFORMANCE.md) |
 | **Runbook** | [docs/node-performance-runbook.md](../docs/node-performance-runbook.md) |
 
 ## Alcance
@@ -40,7 +40,7 @@ Pantalla de rendimiento por edge: CPU, RAM, disco, HTTP, HMI, BD, SAF y adquisic
 
 ## Criterios de aceptación
 
-CA-NPD-01 … CA-NPD-15. Evidencia en la [auditoría §4](../audits/AUDIT_NODE_PERFORMANCE_DASHBOARD.md).
+CA-NPD-01 … CA-NPD-15. Evidencia en la [auditoría §4](../audits/AUDIT_PERFORMANCE.md).
 
 Alarmas ISA-18.2 del nodo: [06-PERFORMANCE-ALARMS.md](./06-PERFORMANCE-ALARMS.md) (CA-PERF-09…14).
 

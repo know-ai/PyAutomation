@@ -4,7 +4,7 @@
 |---|---|
 | **Producto** | PyAutomationIO |
 | **Spec** | [11-CATALOG-SQLITE-LOCAL.md](../specs/11-CATALOG-SQLITE-LOCAL.md) |
-| **Auditoría** | [AUDIT_CATALOG_SQLITE_LOCAL.md](../audits/AUDIT_CATALOG_SQLITE_LOCAL.md) |
+| **Auditoría** | [AUDIT_TAGS.md](../audits/AUDIT_TAGS.md) |
 | **Runbook operativo** | [catalog-sqlite-runbook.md](./catalog-sqlite-runbook.md) |
 | **Audiencia** | Arquitectura · desarrollo · integración |
 | **Estado** | Implementado en código (2026-08-21); soak 24 h pendiente |

@@ -59,7 +59,7 @@ Métricas: `GET /api/health/system` → `CATALOG_SOURCE`, `CATALOG_SYNC_*`.
 | **CA-CATALOG-09** | Apagar espejo (solo remoto) y volver | Sin pérdida de catálogo |
 | **CA-CATALOG-14** | Dos edges editan la misma entidad offline | Central resuelve por timestamp; ambos convergen |
 
-Sin soak formal el veredicto de autonomía permanece **A−** (código verificado); **A+** pendiente de planta. Ver [AUDIT_CATALOG_SQLITE_LOCAL.md](../audits/AUDIT_CATALOG_SQLITE_LOCAL.md).
+Sin soak formal el veredicto de autonomía permanece **A−** (código verificado); **A+** pendiente de planta. Ver [AUDIT_TAGS.md](../audits/AUDIT_TAGS.md).
 
 ## 6. Controles desde Rendimiento del nodo
 

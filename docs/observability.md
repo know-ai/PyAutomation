@@ -16,7 +16,7 @@ Requiere el mismo TLS y token de operador que la HMI. No scrapear `/api/health/s
 
 ## Loki
 
-Los logs van a **stdout** del contenedor (`docker logs`). Un Promtail/Alloy en el host puede enviarlos a Loki. No hay agente Loki embebido (veredicto C en [AUDIT_LOGGING.md](../audits/AUDIT_LOGGING.md)).
+Los logs van a **stdout** del contenedor (`docker logs`). Un Promtail/Alloy en el host puede enviarlos a Loki. No hay agente Loki embebido (veredicto C en [AUDIT_RELIABILITY.md](../audits/AUDIT_RELIABILITY.md)).
 
 ## Alarmas
 

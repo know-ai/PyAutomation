@@ -8,8 +8,8 @@
 | **Fecha** | 2026-08-20 |
 | **Producto** | PyAutomationIO (`automation/` + HMI React) |
 | **Estado** | **Implementado** — P0/P1 cerrados (calidad OPC → CVT → alarmas → HMI; stale disconnect; Login `event_id`; banner degradado) |
-| **Auditoría** | [AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md](../audits/AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md) (verificación post-impl 2026-08-21) |
-| **Complementa** | [08-WAVELET-RPA-RT.md](./08-WAVELET-RPA-RT.md), [AUDIT_SIGNAL_CONDITIONING.md](../audits/AUDIT_SIGNAL_CONDITIONING.md), [AUDIT_DB.md](../audits/AUDIT_DB.md), [AUDIT_STORE_AND_FORWARD.md](../audits/AUDIT_STORE_AND_FORWARD.md) |
+| **Auditoría** | [AUDIT_TAGS.md](../audits/AUDIT_TAGS.md) (verificación post-impl 2026-08-21) |
+| **Complementa** | [08-WAVELET-RPA-RT.md](./08-WAVELET-RPA-RT.md), [AUDIT_TAGS.md](../audits/AUDIT_TAGS.md), [AUDIT_DB.md](../audits/AUDIT_DB.md) |
 | **Normas de referencia** | OPC UA Part 4 (StatusCodes), ISA-18.2, prácticas DCS (hold-last, inhibit, stale PV, degraded mode) |
 | **Veredicto baseline** | **B−** operativo / **D** en calidad de señal (pre-impl) |
 | **Veredicto post-impl** | **A−** disponibilidad · **B+** calidad · **A−** Login/UX degradada |
@@ -220,4 +220,4 @@ Tests previstos: `automation/tests/test_opc_quality.py` (nuevo), extensión de t
 | Calidad de señal (StatusCode → CVT → alarmas → HMI) | **D** | **B+ / A−** | **B+** |
 | Trazabilidad Login / modo degradado UX | **B** | **A−** | **A−** |
 
-**Estado:** Fases 1–3 implementadas. Detalle y evidencia: [AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md](../audits/AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md).
+**Estado:** Fases 1–3 implementadas. Detalle y evidencia: [AUDIT_TAGS.md](../audits/AUDIT_TAGS.md).

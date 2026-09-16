@@ -1,4 +1,30 @@
-# Auditoría compacta: base de datos, conexiones, reconexión y timeout de red
+# Auditoría: Base de datos, Store-and-Forward y durabilidad de disco
+
+| Campo | Valor |
+|---|---|
+| **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
+| **Documento canónico** | 04 / 10 |
+| **Fecha de agrupación** | 2026-09-16 |
+| **Fuentes absorbidas** | `AUDIT_DB`, `AUDIT_DB_CONNECTIONS*`, `AUDIT_OPTIMAL_CONNECTIONS`, `AUDIT_DB_RECONNECT`, `AUDIT_NETWORK_TIMEOUT`, `AUDIT_DB_CONNECTION_MEMORY`, `AUDIT_STORE_AND_FORWARD`, `PERSISTENCE_FLOW`, `AUDIT_DISK_DURABILITY`, `T01_SOAK_LAST_RUN`, `SOAK_DISK_LAST_RUN` |
+| **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), [AUDIT_TAGS.md](./AUDIT_TAGS.md), [AUDIT_RELIABILITY.md](./AUDIT_RELIABILITY.md), [AUDIT_ALARMS.md](./AUDIT_ALARMS.md) |
+| **Veredicto vigente** | Conexiones: un handle Peewee; idle 1 worker **1–3** (techo **≤ 4**); pool **prohibido**. SAF **A+** durabilidad / **A** Bulkhead. Disco **A+** código/spec; soak 24 h planta pendiente |
+| **Clasificación** | Auditoría de contraste código vs diseño. IDs de hallazgos conservados. |
+
+
+Este archivo agrupa **todas** las auditorías del dominio. Cada parte conserva el texto original.
+
+## Índice de partes
+
+- [Parte A — Base de datos, conexiones, reconexión y timeout](#parte-a-base-de-datos-conexiones-reconexión-y-timeout)
+- [Parte B — Store-and-Forward y flujo de persistencia](#parte-b-store-and-forward-y-flujo-de-persistencia)
+- [Parte C — Durabilidad de disco / eficiencia de escritura](#parte-c-durabilidad-de-disco-eficiencia-de-escritura)
+- [Parte D — Plantilla soak disco / SAF 24 h](#parte-d-plantilla-soak-disco-saf-24-h)
+
+---
+
+## Parte A — Base de datos, conexiones, reconexión y timeout
+
+> Fuente original: `AUDIT_DB.md` — contenido íntegro, sin omisiones.
 
 | Campo | Valor |
 |---|---|
@@ -8,15 +34,15 @@
 | **Compactación** | 2026-08-18 — evidencia de código actualizada |
 | **Reapertura** | 2026-09-09 — incidente `too many clients already` en laboratorio (§1.5). El censo era **dueño** del socket |
 | **Segunda reapertura** | 2026-09-09 (post-arreglo) — `sockets above alert threshold` crónico (§1.6). No había fuga: el presupuesto medía la concurrencia web y los workers de ciclo lento retenían el socket |
-| **SAF nuclear** | 2026-09-15 — `already closed` es RETRYABLE (attempts intactos, DLQ=0). Ver [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) §3.5 |
+| **SAF nuclear** | 2026-09-15 — `already closed` es RETRYABLE (attempts intactos, DLQ=0). Ver [AUDIT_DB.md](./AUDIT_DB.md) §3.5 |
 | **Fuentes absorbidas** | `AUDIT_DB_CONNECTIONS`, `AUDIT_DB_CONNECTIONS_ETERNAL`, `AUDIT_OPTIMAL_CONNECTIONS`, `AUDIT_DB_RECONNECT`, `AUDIT_NETWORK_TIMEOUT`, `AUDIT_DB_CONNECTION_MEMORY` |
-| **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) (BE-H4, RSS), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) (PENDING no se toca), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) (`application_name` con `node_id`) |
+| **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) (BE-H4, RSS), [AUDIT_DB.md](./AUDIT_DB.md) (PENDING no se toca), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) (`application_name` con `node_id`) |
 | **Veredicto vigente** | Un objeto `Database`. Población idle = **roster residente declarado** (3 por defecto), más ráfagas transitorias; techo duro **12** por proceso. Probes throwaway. Teardown HTTP. Reconnect owner-scoped + `SELECT 1` ligado. Pool Peewee **prohibido**. Historiador inalcanzable **no** puede congelar el hub ni `on.tag`. Ningún socket inactivo sobrevive al presupuesto del cliente, que va por delante del `idle_session_timeout` del servidor |
 | **Clasificación** | Auditoría de arquitectura · conexiones · Confidencialidad interna |
 
 ---
 
-## 0. Respuesta directa
+### 0. Respuesta directa
 
 | Pregunta | Respuesta (código 2026-08-18) |
 |---|---|
@@ -50,9 +76,9 @@ Contrato A+:
 
 ---
 
-## 1. Diagnóstico fusionado (evidencia de planta)
+### 1. Diagnóstico fusionado (evidencia de planta)
 
-### 1.1 18 backends — Directiva de Conexiones Eternas (2026-08-17)
+#### 1.1 18 backends — Directiva de Conexiones Eternas (2026-08-17)
 
 Un objeto `PostgresqlDatabase` **sí** era singleton. Las 18 conexiones eran **sockets por greenlet/hilo** sin `close()`, agravadas por probes Peewee en el threadpool del hub (`run_uncooperative_db_call(lambda: db.execute_sql("SELECT 1"))` asociaba el TCP al **hilo OS** del pool).
 
@@ -64,7 +90,7 @@ Un objeto `PostgresqlDatabase` **sí** era singleton. Las 18 conexiones eran **s
 | Hub threadpool (probes) | **Nunca** Peewee; solo `ping_throwaway` |
 | Health `/api/health/db` | Throwaway |
 
-### 1.2 8 idle estables — Conexiones Estables (planta 2026-08-17 18:28, `idetect_db`)
+#### 1.2 8 idle estables — Conexiones Estables (planta 2026-08-17 18:28, `idetect_db`)
 
 Captura `pg_stat_activity` (host app `192.168.1.106`):
 
@@ -79,7 +105,7 @@ Ninguna fila en `idle in transaction`. El conteo **no crecía** (conjunto fijo q
 
 `append_machine(..., mode='async')` es el default. Cada `SchedThread` que hace Peewee = 1 backend idle eterno hasta `ephemeral_historian`.
 
-### 1.5 `too many clients already` — el censo era dueño del socket (planta 2026-09-09)
+#### 1.5 `too many clients already` — el censo era dueño del socket (planta 2026-09-09)
 
 Seis días de operación continua; PostgreSQL 15 con `max_connections = 100` saturado hasta impedir el login de `postgres`. `ss -tnp | grep :5432 | wc -l` → **101**. Backends `idle` dominantes: `PyAutomationIO:edge-Supe-Linea2:LoggerWorker`, `PyAutomationIO:edge-Supe-Linea2:MetricsSamplerWorker` y conexiones **sin** `application_name`, desde `192.168.1.80` / `.81`.
 
@@ -114,7 +140,7 @@ Correcciones: censo **débil** (`weakref`) + `reap_abandoned()` determinista, `B
 
 **Lección:** un observador no puede ser propietario. Toda estructura que indexe recursos del sistema operativo se referencia débilmente o se convierte en el leak que pretendía medir.
 
-### 1.6 `sockets above alert threshold` — la alarma medía la plantilla, no la carga (planta 2026-09-09, post-§1.5)
+#### 1.6 `sockets above alert threshold` — la alarma medía la plantilla, no la carga (planta 2026-09-09, post-§1.5)
 
 Con el arreglo de §1.5 desplegado, el backend dejó de fugar pero empezó a gritar. Muestra de 24 minutos continuos:
 
@@ -153,7 +179,7 @@ Validado contra `postgres:17-bullseye` (`automation/tests/test_db_connection_soa
 
 **Lección:** una alarma que suena en operación normal no es una alarma, es ruido — y en un sistema 24/7 el ruido es peor que el silencio, porque entierra el único evento que importaba. El umbral debe derivarse de la arquitectura real (cuántos sockets *deben* existir), y la alarma debe disparar sobre invariantes violados, no sobre un contador cruzando una línea.
 
-### 1.3 `connection already closed` tras «Reconnection successfully» (17:47)
+#### 1.3 `connection already closed` tras «Reconnection successfully» (17:47)
 
 ```
 CRITICAL: Reconnection successfully
@@ -163,11 +189,11 @@ SAF replication failed for domain tag | event | alarm_summary_update
 
 Causa raíz: `previous.close_all()` llamaba `REGISTRY.close_tracked()` **sin owner** y mataba el socket del **candidato** recién abierto. El ping throwaway veía el host up → CRITICAL. Los modelos usaban un handle Peewee con TCP ya cerrado. El SAF **hizo lo correcto**: no ACK, filas PENDING.
 
-**2026-09-15:** ese mismo síntoma (`connection already closed`) **no** puede quemar `attempts` ni pasar a `DEAD_LETTER`. `classify_saf_error` lo marca RETRYABLE; `_ensure_connection` reconecta el handle ligado. Detalle: [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) §3.5.
+**2026-09-15:** ese mismo síntoma (`connection already closed`) **no** puede quemar `attempts` ni pasar a `DEAD_LETTER`. `classify_saf_error` lo marca RETRYABLE; `_ensure_connection` reconecta el handle ligado. Detalle: [AUDIT_DB.md](./AUDIT_DB.md) §3.5.
 
 Hipótesis «el proxy no se actualiza»: **falsa en el mecanismo**. Hay un solo `Proxy` (`automation/dbmodels/core.py`). `set_db` ya hacía `proxy.initialize(candidate)` antes de `connect()`.
 
-### 1.4 HMI congelada solo con BD remota (timeout de red)
+#### 1.4 HMI congelada solo con BD remota (timeout de red)
 
 | Escenario | `connect()` / `SELECT 1` | Hub gevent | HMI | Journal |
 |---|---|---|---|---|
@@ -180,7 +206,7 @@ Hipótesis «el proxy no se actualiza»: **falsa en el mecanismo**. Hay un solo 
 
 ---
 
-## 2. Política vigente (quién abre, quién cierra)
+### 2. Política vigente (quién abre, quién cierra)
 
 Regla: **quien abre, cierra**, salvo los roles del roster residente.
 
@@ -243,7 +269,7 @@ Watchdog (`LoggerWorker`): `replicate_once()` **primero** (el journal no espera 
 
 ---
 
-## 3. Timeout de red vs hub (contrato extra al SAF)
+### 3. Timeout de red vs hub (contrato extra al SAF)
 
 No se usa `with gevent.Timeout: connect()` como cierre: **no corta libpq**.
 
@@ -267,19 +293,19 @@ Residual NT:
 
 ---
 
-## 4. Reconexión efectiva
+### 4. Reconexión efectiva
 
-### 4.1 Censo por owner
+#### 4.1 Censo por owner
 
 `ConnectionRegistry` (`automation/utils/db_connections.py`): `_by_owner: dict[owner_id, {conn_id: conn}]`. `close_all()` cierra el socket de **este** greenlet y luego `REGISTRY.close_tracked(owner=self)`. `close_tracked()` sin owner queda para tests / shutdown global.
 
 Así `previous.close_all()` no mata el TCP del candidato.
 
-### 4.2 `_historian_is_live`
+#### 4.2 `_historian_is_live`
 
 Deja de fiarse solo del ping throwaway. Llama `ensure_bound_connection` sobre `db_manager.get_db()` / `self._db`. El throwaway queda para «¿el host responde?» sin tocar un socket medio-abierto.
 
-### 4.3 Health post-reconnect
+#### 4.3 Health post-reconnect
 
 | Endpoint | Qué mide |
 |---|---|
@@ -292,7 +318,7 @@ Un solo `Proxy`. Modelos que heredan `BaseModel` (Tags, TagValue, Alarms, AlarmS
 
 ---
 
-## 5. Métricas (`GET /api/health/system`)
+### 5. Métricas (`GET /api/health/system`)
 
 | Clave | Fuente / techo vigente |
 |---|---|
@@ -334,7 +360,7 @@ Un `application_name` con forma `Dummy-N` no debe existir: significa trabajo del
 
 ---
 
-## 6. Memoria RAM ↔ conexiones (actualizado)
+### 6. Memoria RAM ↔ conexiones (actualizado)
 
 **La conexión BD no es un motor típico de +300 MB/día.** Coste cliente ~0.5–3 MB/socket. El número de sockets se acota por **concurrencia de greenlets que tocaron Peewee**, no por uptime.
 
@@ -354,9 +380,9 @@ No reintroducir pool sin: `connect`/`close` por request **y** soak signup×N baj
 
 ---
 
-## 7. Criterios de aceptación (IDs conservados)
+### 7. Criterios de aceptación (IDs conservados)
 
-### Conexiones eternas / censo
+#### Conexiones eternas / censo
 
 | ID | Criterio | Estado |
 |---|---|---|
@@ -373,7 +399,7 @@ No reintroducir pool sin: `connect`/`close` por request **y** soak signup×N baj
 | **CA-DB-ET-5** | Host inalcanzable ≤ 5 s | = CA-DB-3 |
 | **CA-DB-ET-6** | Soak 24 h | = CA-DB-6 |
 
-### Fuga permanente (§1.5)
+#### Fuga permanente (§1.5)
 
 | ID | Criterio | Estado |
 |---|---|---|
@@ -385,7 +411,7 @@ No reintroducir pool sin: `connect`/`close` por request **y** soak signup×N baj
 | **CA-DB-LEAK-6** | Toda conexión (incluido LISTEN) lleva `application_name` | Revisión de código + SQL §5 |
 | **CA-DB-LEAK-7** | Soak 7 días en planta: `DB_CONNECTIONS_REAPED = 0` y activas planas | **Pendiente planta** |
 
-### Socket 24/7 (§1.6)
+#### Socket 24/7 (§1.6)
 
 | ID | Criterio | Estado |
 |---|---|---|
@@ -399,7 +425,7 @@ No reintroducir pool sin: `connect`/`close` por request **y** soak signup×N baj
 | **CA-DB-24X7-8** | Workers de ciclo lento devuelven el socket al cerrar el ciclo | `historian_cycle()` en `ntp_monitor`, `hmi_session_sync`, `hmi_session_cleanup`, `user_invalidate`, `replication` |
 | **CA-DB-24X7-9** | Soak 7 días: `DB_CONNECTIONS_HIGH_WATER` plano, `DB_CONNECTIONS_ABANDONED = 0`, `DB_CONNECTIONS_IDLE_REAPED = 0`, cero warnings de socket | **Pendiente planta** |
 
-### Conteo óptimo
+#### Conteo óptimo
 
 | ID | Criterio | Estado |
 |---|---|---|
@@ -409,7 +435,7 @@ No reintroducir pool sin: `connect`/`close` por request **y** soak signup×N baj
 | **CA-OPT-4** | Estable 24 h | Pendiente soak |
 | **CA-OPT-5** | Reconnect no aumenta el conteo | Owner-scoped + cierre efímero; validar en planta |
 
-### Reconexión
+#### Reconexión
 
 | ID | Criterio | Estado |
 |---|---|---|
@@ -419,7 +445,7 @@ No reintroducir pool sin: `connect`/`close` por request **y** soak signup×N baj
 | **CA-REC-4** | Health refleja `is_db_connected` y activas | Implementado |
 | **CA-REC-5** | 10 ciclos outage/restore sin fuga | Pendiente soak planta |
 
-### Memoria ↔ BD
+#### Memoria ↔ BD
 
 | ID | Criterio |
 |---|---|
@@ -431,7 +457,7 @@ No reintroducir pool sin: `connect`/`close` por request **y** soak signup×N baj
 
 ---
 
-## 8. Pruebas y staging
+### 8. Pruebas y staging
 
 ```bash
 python -m unittest \
@@ -450,7 +476,7 @@ Cobertura clave en `test_db_io.py`: `close_tracked` no mata otro owner; `Tracked
 
 ---
 
-## 9. Runbook (operación)
+### 9. Runbook (operación)
 
 0. **Saturación (`too many clients already`)**: `DB_CONNECTIONS_REAPED > 0` señala greenlets que mueren sin cerrar; el log `Reaped abandoned historian socket role=… thread=…` nombra al culpable. `Historian socket ceiling reached` significa que el proceso ya está en el techo: es una fuga, no carga. Ver §1.5. Perillas: `AUTOMATION_DB_CONNECTIONS_MAX` (techo por proceso), `AUTOMATION_DB_IDLE_SESSION_TIMEOUT_S` (reaper del servidor, default 300 s), `AUTOMATION_DB_LEAK_DETECTION_S` (edad para reportar).
 0.b **Cómo leer los mensajes de socket (§1.6).** El orden de gravedad es:
@@ -472,7 +498,7 @@ Signup/login timeout 15 s / 503 @ ~30 s con arranque OK → **BE-H4** (pool), no
 
 ---
 
-## 10. Residual
+### 10. Residual
 
 | ID | Nota |
 |---|---|
@@ -493,7 +519,7 @@ Signup/login timeout 15 s / 503 @ ~30 s con arranque OK → **BE-H4** (pool), no
 
 ---
 
-## 11. Archivos clave
+### 11. Archivos clave
 
 | Pieza | Ruta |
 |---|---|
@@ -513,3 +539,590 @@ Signup/login timeout 15 s / 503 @ ~30 s con arranque OK → **BE-H4** (pool), no
 | Health | `automation/health/service.py`, `automation/modules/health/resources/health.py` |
 | `on.tag` (sin BD) | `automation/tags/cvt.py` |
 | Tests | `automation/tests/test_db_io.py` |
+
+
+## Parte B — Store-and-Forward y flujo de persistencia
+
+> Fuente original: `AUDIT_STORE_AND_FORWARD.md` — contenido íntegro, sin omisiones.
+
+| Campo | Valor |
+|---|---|
+| **Producto** | PyAutomationIO (`automation/`) |
+| **Alcance** | Durabilidad ante caída de BD; camino TagValue/Alarmas/Eventos/Logs; exact-once; T-01 |
+| **Fecha baseline** | 2026-08-13 (cola RAM = C+ / B−) |
+| **Re-auditoría** | 2026-08-13 (Directiva Fénix + Exact-Once + Ciclo Atómico + Milisegundo Exacto) |
+| **Compactación** | 2026-08-18 |
+| **Aislamiento Bulkhead** | 2026-08-25 — replicación por dominio y por muestra; drop de tags ausentes a 3 reintentos |
+| **Blindaje nuclear** | 2026-09-15 — clasificador retryable/poison/idempotente; attempts desacoplados del circuito; prune archiva (no DELETE de proceso); shed no dropea campo/leak; `saf/retry` resucita DLQ; dominio `leak` por registry; `/health/ready` DEGRADED sin restart Docker |
+| **Controles ops** | 2026-08-25 — `POST /api/admin/saf/retry` y `/saf/reset` desde `/performance`; `drop_unsent(confirm=True)` es el único discard intencional de PENDING. **2026-09-15:** retry = resurrect DLQ + reset circuito + catch-up; **no** usar reset como “fix” de outage |
+| **Fuentes absorbidas** | `STORE_AND_FORWARD`, `PERSISTENCE_FLOW`, `T01_SOAK_LAST_RUN` |
+| **Complementa** | [AUDIT_DB.md](./AUDIT_DB.md) (hub/reconnect no revocan A+), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) (journal por `node_id`), [AUDIT_TAGS.md](./AUDIT_TAGS.md) (sync por fila), [AUDIT_RELIABILITY.md](./AUDIT_RELIABILITY.md) (DLQ archivada), [AUDIT_ALARMS.md](./AUDIT_ALARMS.md) (GATE-37 restart PG lab: seed sobrevive; SAF replay DAS vivo pendiente) |
+| **Veredicto** | **A+** durabilidad (incluye outage PG / handle stale: no DLQ). **A** aislamiento de fallos en código (CA-ISOLATION-01…04 + P0-1…P0-8). **A−** planta: CA-ISOLATION-05 (Txn/min 1 h) pendiente |
+| **Clasificación** | Auditoría de arquitectura de datos |
+
+---
+
+### 0. Contrato vigente (post-Fénix)
+
+El historiador remoto (PostgreSQL / MySQL / SQLite de aplicación) es el **plan de distribución**. SQLite WAL es el **Plan A de durabilidad**.
+
+```
+Hot path (CVT / Alarmas / Eventos / Logs)
+        │  IPersistenceGateway.enqueue()
+        ▼
+┌─────────────────────────────────────────┐
+│  Ring RAM acotado (solo tags, ≤10 ms)   │
+│  JournalWriter SQLite WAL + FULL sync   │  ← source of truth
+│  persistence_journal                    │
+│  PENDING / REPLICATING / SENT           │
+│  DEAD_LETTER (solo poison) / ARCHIVED   │
+│  path: ./db/saf/<node_id>/journal.db    │  (legacy: ./db/saf/journal.db)
+│  archive: journal-archive.db            │
+└───────────────┬─────────────────────────┘
+                │ ReplicationWorker (LoggerWorker)
+                │ classify_saf_error por fila
+                │ retryable → PENDING, attempts intactos
+                │ poison → attempts++; DLQ a 5
+                │ UNIQUE TagValue → SENT (idempotente)
+                │ batch + rate limit + circuit breaker
+                ▼
+        Remote DB  ──ACK──►  status=SENT  ──GC SENT only──►
+```
+
+**OPC UA no habilita el historiador.** OPC es un **productor de valores** hacia el CVT. El historiador se dispara por cualquier `Tag.set_value` → `notify` → `TagObserver` cuando el tag tiene observer (`db_manager.attach` al crear/cargar con BD conectada). Tags internos de iDetectFugas (`leak`, `threshold`, …) se historizan **sin** `opcua_address`.
+
+La cola RAM `_tag_queue` quedó **huérfana** para escritura. `TagObserver.update()` no escribe ahí. El worker llama `replicate_once()` sobre el journal.
+
+Adquisición **nunca espera a la red**. Enqueue extranjero en multi-edge se rechaza; si falta `owner_node` en un persistable crítico (incl. `leak`), se **sella** el scope del edge en lugar de `SAF rejected foreign` ([AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md)).
+
+---
+
+### 1. SOLID
+
+| Letra | Componente |
+|---|---|
+| **S** | `JournalWriter` (disco) ≠ `RemoteReplicator` (red) ≠ `IdempotentBatchInserter` |
+| **O** | `IPersistable` / `PersistableRecord` para tag, alarma, evento, log, **leak** (producto) |
+| **L** | `IRemoteDB` + `NullRemoteDB` / `FakeRemote` en tests de caos |
+| **I** | `IHealthProbe` separado de `IReplicationWorker` |
+| **D** | CVT no importa sqlite3/psycopg2; `TagObserver` usa `get_persistence_gateway()`. SQL de `leaks` **no** vive en el core: `register_domain_writer("leak", fn)` |
+
+Capas: CVT = valor actual; `Tag.notify` = notificación; `PersistableRecord` = JSON canónico; journal = verdad local; replicator = PENDING→remoto; mapper = JSON→fila; inserter = SQL exact-once; `DataLogger.read_*` = lectura HMI.
+
+---
+
+### 2. Baseline (antes de Fénix) — por qué no era SAF
+
+Se conserva como contraste. Hoy **no** es el camino activo.
+
+1. Cola **solo RAM**, **sin límite**, **sin spill**.
+2. Drain **antes del ACK**: si `insert_many` fallaba tras vaciar, las muestras se **perdían**.
+3. Alarmas / eventos / logs **sin** cola: BD caída → dato descartado.
+4. Reinicio del proceso **borraba** el buffer.
+5. Mantenimiento SQLite >1 GB **borraba** históricos en vivo tras backup.
+
+Eso era **best-effort buffering de tags**, no garantía de entrega durable.
+
+Scorecard de clase mundial (hoy todos ✅ salvo residual de retención a años):
+
+| ID | Capacidad | Post-Fénix |
+|---|---|---|
+| SAF-01 | Hot path no espera a la red | ✅ Tags vía ring; críticos COMMIT local síncrono |
+| SAF-02 | Memoria acotada | ✅ Ring + `JournalBackpressureError` |
+| SAF-03 | Spill / journal disco | ✅ WAL `PRAGMA synchronous=FULL` |
+| SAF-04 | Sobrevive restart | ✅ Replay PENDING (T-02) |
+| SAF-05 | ACK post-commit | ✅ SENT solo tras `write_batch` exitoso |
+| SAF-06 | Idempotencia | ✅ UNIQUE journal + `(tag_id, timestamp)` + `sample_uuid`; `ON CONFLICT DO NOTHING` / `INSERT IGNORE` |
+| SAF-07 | Multi-path | ✅ Tags, alarmas, eventos, logs, **leak** (writer de producto) |
+| SAF-08 | Replay controlado | ✅ Batch + rate limit + circuit breaker **desacoplado de attempts** |
+| SAF-09 | Observabilidad | ✅ `/api/health/saf` (503 si critical); `/api/health/ready` siempre 200 (`DEGRADED` si circuito OPEN) |
+| SAF-10 | Retención | ✅ `VACUUM INTO` + checksum; GC **solo SENT**; prune DLQ **archiva**, no borra proceso |
+| SAF-11 | Outage ≠ veneno | ✅ `classify_saf_error`: retryable no incrementa attempts; DLQ solo poison |
+
+Nota ponderada ≈ 4.8 / 5 → **A+**.
+
+**Descartar PENDING** no forma parte del hot path. `JournalWriter.drop_unsent(confirm=True)` (API `POST /api/admin/saf/reset`, rol admin/sudo, modal `CONFIRMAR` en `/performance`) es la única vía operativa de **borrado**. Forzar un ciclo **sin perder histórico**: `POST /api/admin/saf/retry` → `resurrect_dead_letters` + `circuit.reset` + `replicate_catchup`. **No** usar `/saf/reset` para recuperar un outage de PG. Auditoría: Events `SAF queue emptied` / `SAF retry requested`. Runbook: [docs/node-performance-runbook.md](../docs/node-performance-runbook.md). Tests: `test_ops_controls.py`, `TestSafNuclearP0`.
+
+#### Hallazgos cerrados
+
+| ID | Original | Cierre |
+|---|---|---|
+| C-01 | Cola RAM ilimitada | Journal WAL; ring `saf_ring_maxsize` |
+| C-02 | Drain-before-ACK | PENDING si remoto falla; ACK = SENT |
+| SAF-06 | Duplicados TagValue | `IdempotentBatchInserter` + UNIQUE + `sample_uuid` |
+| C-03 | DELETE masivo histórico | `VACUUM INTO` + SHA-256; nunca truncar en vivo |
+| H-01 | Alarmas/eventos/logs drop | Mismo outbox (`ALARM_SUMMARY`, `EVENT`, `LOG`) |
+| H-02 | OPC UA audit fail-open | `EventsLogger.create` → journal |
+| M-01 | Sin métricas | `SAF_QUEUE_DEPTH`, `SAF_REPLICATION_LAG`, `SAF_DROPPED_FULL`, `SAF_CYCLE_DUPES_DROPPED` |
+| M-04 | Flush sin throttle | RateLimiter 10k rec/s + CircuitBreaker |
+
+---
+
+### 3. Operaciones de cierre A+
+
+#### 3.1 Exact-Once
+
+- `TagValue.timestamp` resolución **ms** (`TimestampField(resolution=3)`). Ticks legacy µs se normalizan en `ensure_schema` (colapsa pares del mismo ms y luego ÷1000).
+- Firma atómica: `sample_uuid` (idempotency_key del journal).
+- `IdempotentBatchInserter` es la **única** clase que habla de conflictos SQL. `RemoteReplicator.flush()` solo llama `IRemoteDB.batch_insert_with_dedupe`.
+
+**Criterio:** tras SIGKILL y reconexión, el historiador contiene exactamente las muestras durable del journal; un segundo flush no crea duplicados.
+
+#### 3.2 Ciclo Atómico
+
+El framework inyecta `machine.cycle_timestamp` antes de `machine.loop()` y un filtro de dedupe en el gateway. Las máquinas **no** se modifican.
+
+| Fase | Capa | Efecto |
+|---|---|---|
+| 1 | `stamp_machine_cycle` + `ProcessType.set_value` | Escrituras del mismo `loop()` comparten UTC. UNIQUE remoto colapsa micro-duplicados |
+| 2 | `CycleSampleCache` en `enqueue` | 2ª muestra mismo tag/valor/ciclo **no entra al journal**. Métrica `SAF_CYCLE_DUPES_DROPPED`. TTL 2 s |
+
+El histórico refleja el valor por ciclo de procesamiento, no cada `set_value`.
+
+#### 3.3 Milisegundo Exacto
+
+Payload journal de tags en ms (`timebase.TAGVALUE_TIMESTAMP_RESOLUTION = 3`). Residuos 73–403 µs caen en el mismo tick. Events / AlarmSummary / Logs: resolución por defecto Peewee (AlarmSummary ya escala a ms en `ensure_schema`). Lecturas HMI aceptan ticks legacy s / ms / µs (`DataLogger._as_epoch_seconds`).
+
+#### 3.4 Bulkhead — aislamiento de fallos (2026-08-25)
+
+Un tag inexistente en el remoto, un evento fallido o un `IntegrityError` de alarma **no** deben detener los demás dominios ni las demás muestras del mismo ciclo.
+
+| Principio | Implementación |
+|---|---|
+| Aislamiento por dominio | `RemoteReplicator.replicate_once` itera `_ordered_domain_batches` (`tag` → alarmas → events → logs). Excepción o PENDING de un dominio no aborta los demás |
+| Aislamiento por muestra | `write_batch_outcomes` devuelve `RowOutcome` (`ok` + `error`) por elemento, con adaptador `list[bool]`; `mark_sent` / `mark_pending` son por id y **por dominio**. Un fallo de `event` no toca attempts de `tag`. Insert de TagValue: lote, y si falla, reintento **por fila** |
+| Degradación controlada | Tag ausente en `Tags` remoto: PENDING hasta 3 misses, luego ACK + log `Dropping sample for missing tag … after 3 retries` + `request_full_sync` (no bloquea el hot path) |
+| Eventos / alarmas / logs | `_write_*_outcomes` captura excepción **por muestra**; no hay transacción global del lote |
+
+| ID | Criterio | Resultado | Evidencia |
+|---|---|---|---|
+| **CA-ISOLATION-01** | Tag inexistente no bloquea eventos ni alarmas del mismo ciclo | **PASS** | `TestReplicatorDomainIsolation.test_missing_tag_does_not_block_events_or_alarms` |
+| **CA-ISOLATION-05** | Txn/min en reposo < 50 con errores de integridad persistentes | **PENDIENTE** | Soak planta 1 h + dashboard `DB_TXN_PER_MIN` (proceso, no clúster) |
+
+**No A+ de aislamiento de planta** hasta CA-ISOLATION-05. El A+ de durabilidad (T-01 / exact-once / outage≠DLQ) no se revoca.
+
+#### 3.5 Blindaje nuclear — outage ≠ veneno (2026-09-15)
+
+Lab 192.168.1.80/.81: filas `FI_`/`PI_`/`DI_`/`leak` válidas acababan en `DEAD_LETTER` tras 5 attempts con `connection already closed`. El prune **DELETE** borraba histórico de proceso. Eso violaba el contrato “PENDING sagrado”.
+
+Clasificador `automation/persistence/errors.py` → `classify_saf_error(exc)`:
+
+| Categoría | Ejemplos | Acción |
+|---|---|---|
+| **RETRYABLE** | `connection already closed`, timeout, unreachable, SSL EOF, `OperationalError`/`InterfaceError` | `mark_pending(..., increment_attempts=False)`; `circuit.failure()`. Circuito OPEN: reconnect only, **cero** attempts |
+| **IDEMPOTENT_OK** | UNIQUE / `duplicate key` / `ON CONFLICT` TagValue `sample_uuid` | ACK → **SENT**. **No** es poison |
+| **POISON** | JSON irrecuperable, schema, FK real, `TypeError` de contrato | `attempts++`; a 5 → `DEAD_LETTER` |
+
+`PeeweeRemoteDB._ensure_connection()` hace `SELECT 1` en el handle ligado (`ensure_bound_connection`); `is_reachable()` no puede devolver True con socket muerto. Excepción de mapa/insert retryable **no** cuenta como miss de tag ausente.
+
+`prune_dead_letters()` copia a `journal-archive.db` y pasa el status a `ARCHIVED`. El count de `DEAD_LETTER` baja por reclasificación, no por pérdida. TTL 7 d / cap 10k se mantienen.
+
+Shed (`_tag_history_shed_locked`): **nunca** aplica a `leak`, alarmas, eventos, logs, tags `*.leak*` ni campo `FI_`/`PI_`/`DI_`/`TI_` (ni `criticity=critical`). Solo puede pausar historización no crítica (`SYS.PERF.*`). Alarma `SAF_SHED` sigue indicando presión de cola.
+
+Dominio `leak`: `DOMAIN.LEAK` en `_CRITICAL` y `_DOMAIN_FLUSH_ORDER`. iDetectFugas registra el writer al boot (`LeakPersistenceService.register_saf_writer`). El core **no** embebe SQL de `Leaks`.
+
+Hidratación: `load_db_to_alarm_manager` salta `tag` que no es `str` (WARNING + `continue`). `local_alarm_payloads` indexa tags por `_pk` **y** `id`.
+
+Ops / HMI: badge “condición activa” (`condition_met`) distinto del estado ISA. Histéresis DLQ (`perf_saf_deadletter_clear_threshold=0`): miles de DLQ permanecen; replay a 0 → Normal. `GET /api/health/ready` HTTP **200** con `status=DEGRADED` si circuito OPEN / PG down / pending. Healthcheck Docker **sigue** `/api/health/ping` (restart on OPEN es anti-patrón). Script `check_docker_bridges.sh`: lista bridges DOWN `172.21/172.22`; **sin** `docker network rm` automático.
+
+**Fuera de alcance (explícito):** `POST /saf/reset` como fix, `dead_letter_attempts=50`, tocar `set_value`, desactivar shed sin alternativa, borrar PENDING a mano en .80/.81.
+
+| ID spec | Criterio | Resultado | Evidencia |
+|---|---|---|---|
+| **P0-1** | 10 flushes `connection already closed` → attempts=0, DLQ=0 | **PASS** | `TestSafNuclearP0.test_p0_1_stale_handle_does_not_increment_attempts` |
+| **P0-2** | Fallo event no incrementa attempts de tag | **PASS** | `test_p0_2_event_failure_does_not_increment_tag_attempts` |
+| **P0-3** | Outage simulado → `deadletter_count==0` | **PASS** | `test_p0_3_outage_never_dead_letters` |
+| **P0-4** | Prune archiva, no DELETE de tags de proceso | **PASS** | `test_p0_4_prune_archives_process_rows` + `test_long_run_hardening` |
+| **P0-5** | Circuito OPEN, 10 ciclos, attempts invariantes | **PASS** | `test_p0_5_open_circuit_leaves_attempts_intact` |
+| **P0-6** | Stale handle → reconnect y SENT sin attempts++ | **PASS** | `test_p0_6_stale_reconnect_sends_without_attempts` |
+| **P0-7** | Resurrect DLQ → PENDING, count=0 | **PASS** | `test_p0_7_resurrect_dead_letters` |
+| **P0-8** | pending alto: FI_02/PI_02/DI_02 encolados | **PASS** | `test_p0_8_shed_never_drops_field_tags` |
+| **P1** | Journal leak con area/owner_node; writer `Leaks` | **PASS** | `app/tests/test_leak_persistence_service.py` |
+| **P1** | 34 alarmas locales hidratan `tag` str | **PASS** | `TestLocalAlarmHydrate` |
+| **P2** | Histéresis DLQ a 0 tras replay | **PASS** | `test_deadletter_hysteresis_clears_only_at_zero` |
+
+El clasificador y `_ensure_connection` viven solo en LoggerWorker/replicator (CA-G-7/G-8: no I/O de PG en el tick de motores).
+
+---
+
+### 4. Flujo activo (paradoja OPC)
+
+#### 4.1 Creencia vs código
+
+| Creencia legado | Implementación |
+|---|---|
+| OPC subscription → CVT → cola → BD | **Cualquier** `set_value` → Observer → journal → Postgres |
+| Sin `opcua_address` no hay histórico | Sin OPC no hay adquisición de PLC; sí hay persistencia si alguien escribe el Tag |
+| LoggerWorker drena `_tag_queue` | Cola muerta. Worker = `replicate_once()` |
+
+Habilitación:
+
+```
+create_tag / load_db_to_cvt
+  if is_db_connected():
+      logger_engine.set_tag(tag)     → metadata tabla Tags
+      db_manager.attach(tag_name)    → TagObserver  ← AQUÍ nace el histórico
+  if opcua_address and node_namespace:
+      subscribe_opcua(...)           → opcional
+```
+
+`DBManager.attach` **no** comprueba `opcua_address`. `AlarmManager.attach` puede poner **otro** `TagObserver` (attach de DB es idempotente, BE-M5).
+
+Productores de valor: OPC datachange, `POST /api/tags/write_value`, state machines / `ProcessType`, tests/scripts.
+
+Si el negocio exigiera «solo historizar tags mapeados a OPC», habría que condicionar `attach` o el `enqueue`. Hoy el diseño es deliberado: **historizar todo tag adjunto que cambie**. SAF no inventó el registro sin OPC; **dejó de perderse**.
+
+Verificación planta (ej. `LDS.leak`): ¿tiene namespace OPC? Si no, no viene del PLC. ¿Hay journal `domain=tag`? Sí ⇒ alguien llamó `set_value`. Buscar en la app `ProcessType` ligado.
+
+#### 4.2 Hot path TagValue
+
+```
+Productores → CVTEngine.set_value / set_value_fast
+  → deadband opcional → Tag.set_value → notify()
+  → TagObserver: PersistableRecord.tag_sample (tag, value, timestamp, sample_uuid)
+  → gateway.enqueue (rechazo foreign; CycleSampleCache)
+  → ring / WAL PENDING
+  → LoggerWorker.replicate_once
+  → PeeweeRemoteDB + TagValuePayloadMapper + IdempotentBatchInserter
+  → INSERT TagValue ON CONFLICT DO NOTHING
+  → mark_sent
+```
+
+`set_value_fast` es el camino DAS (lock por tag). CRUD administrativo sigue la cola request/response del engine.
+
+#### 4.3 Alarmas / eventos / logs
+
+Mismo outbox, dominios distintos. Críticos: COMMIT síncrono local (`is_critical`). `journal_then_remote` cierra el socket Peewee del caller si no es LoggerWorker ([AUDIT_DB.md](./AUDIT_DB.md)).
+
+Bitácora operacional journaliza con historiador caído ([AUDIT_RELIABILITY.md](./AUDIT_RELIABILITY.md) CA-OL-1).
+
+---
+
+### 5. Caps, métricas, health
+
+| Guardrail | Default | Comportamiento |
+|---|---|---|
+| `ring_maxsize` | 50 000 | Drop + backpressure |
+| `max_pending_rows` | 5e6 | `JournalBackpressureError`; `SAF_PENDING_CAP_HITS` |
+| `max_disk_bytes` | 10 GiB | Evict SENT; si no basta → `JournalDiskFullError` + Event `SAF disk full` (cooldown 60 s) |
+| `gc_sent_after_s` | 3600 | GC post-ACK |
+| `replicate_rate_per_s` | 10 000 | Rate limit |
+
+`GET /api/health/saf`: `SAF_QUEUE_DEPTH`, `SAF_REPLICATION_LAG`, `SAF_DROPPED_FULL`, `SAF_CYCLE_DUPES_DROPPED`, `PENDING_ROWS`, `SAF_CIRCUIT`, `SAF_DEADLETTER_COUNT`. 503 si estado crítico.
+
+`GET /api/health/ready`: siempre **200**. Cuerpo `ok` o `DEGRADED` (circuito OPEN, PG down, pending/DLQ). **No** usarlo como probe `restart: always`. Liveness Docker = `/api/health/ping`.
+
+---
+
+### 6. T-01 Soak — last run certificada
+
+Parámetros registrados:
+
+- tags=1000 hz=100.0 duration_s=2.0 kill_at_s=1.000
+- achieved_tick_hz=0.00 (ventana corta + SIGKILL)
+- generated_fsync=0, journal_durable=0, ring_lag_samples=0
+- replicated=0, remote_rows_first_pass=0, remote_rows_after_retry=0
+- pending_after=0
+- **exact_once=True**
+- **remote_equals_durable=True**
+
+El ring lag es la ventana hardware del flusher in-memory (≤ `tag_flush_interval_s`). Esas muestras **nunca** llegaron al WAL antes del SIGKILL: **única pérdida aceptable**.
+
+Soak planta sugerido: `SAF_SOAK_SECONDS=1800 python -m unittest automation.tests.test_store_and_forward.TestT01Apocalypse`.
+
+---
+
+### 7. Criterio de aceptación y tests
+
+> Tras SIGKILL y reconexión, el historiador remoto contiene exactamente las muestras durable del journal; un segundo flush no crea duplicados.
+
+```bash
+python -m unittest automation.tests.test_store_and_forward.TestSafNuclearP0 -v
+python -m unittest automation.tests.test_store_and_forward.TestReplicatorDomainIsolation -v
+python -m unittest automation.tests.test_store_and_forward.TestSafJournal -v
+```
+
+Aislamiento: `test_missing_tag_does_not_block_events_or_alarms` (CA-ISOLATION-01). DataLogger/Machines: `automation.tests.test_filtered_tag_integrity` (CA-ISOLATION-03/04). Poison legado: `test_dead_letter_escapes_poison_and_leaves_pending`.
+
+Outage de cable: HMI viva + PENDING creciente + replica al volver = [AUDIT_DB.md](./AUDIT_DB.md) (timeout). `connection already closed` post-CRITICAL = handle muerto, **retryable** (attempts intactos, DLQ=0). No es fallo de journal.
+
+**No hacer:** borrar PENDING; `gevent.Timeout` alrededor de libpq; segundo `Proxy`; pool Peewee; tratar UNIQUE TagValue como poison; `restart: always` sobre `/health/ready` o `/health/saf` cuando el circuito está OPEN.
+
+---
+
+### 8. Archivos clave
+
+| Pieza | Ruta |
+|---|---|
+| Contratos | `automation/persistence/contracts.py` |
+| Config / path journal | `automation/persistence/config.py` |
+| Clasificador retryable/poison | `automation/persistence/errors.py` |
+| Journal WAL | `automation/persistence/journal.py` (`resurrect_dead_letters`, archive) |
+| Replicador | `automation/persistence/replicator.py` |
+| Gateway / enqueue / shed | `automation/persistence/orchestrator.py` |
+| Outbox `journal_then_remote` | `automation/persistence/outbox.py` (`increment_attempts=False` si retryable) |
+| Cycle stamp | `automation/workers/state_machine.py` |
+| Cycle timestamp | `automation/models.py` |
+| Cycle dedupe | `automation/persistence/cycle_dedupe.py` |
+| Remote + `_ensure_connection` + `register_domain_writer` | `automation/persistence/remote.py` |
+| Exact-once SQL | `automation/persistence/idempotent_insert.py` |
+| Timebase | `automation/timebase.py` |
+| T-01 producer | `automation/persistence/soak_producer.py` |
+| TagObserver | `automation/tags/tag.py` |
+| Events / Alarms / Logs | `automation/logger/{events,alarms,logs}.py` |
+| Attach | `automation/managers/db.py` |
+| Worker | `automation/workers/logger.py` |
+| Hydrate alarmas | `automation/catalog/hydrate.py` · `core.py` `load_db_to_alarm_manager` |
+| Health | `GET /api/health/saf`, `GET /api/health/ready` |
+| Controles ops | `POST /api/admin/saf/retry` (resurrect+reset+catchup), `POST /api/admin/saf/reset` · `ops_controls.py` |
+| Leak writer (producto) | `gitlab/intelcon/idetectfugas/app/services/leak_persistence.py` |
+| Bridges huérfanos | `check_docker_bridges.sh` (PyAutomation) · `deploy/check_docker_bridges.sh` (iDetectFugas) |
+| Tests | `test_store_and_forward.py` (`TestSafNuclearP0`) + `test_ops_controls.py` + `test_long_run_hardening.py` + leak service |
+
+
+## Parte C — Durabilidad de disco / eficiencia de escritura
+
+> Fuente original: `AUDIT_DISK_DURABILITY.md` — contenido íntegro, sin omisiones.
+
+| Campo | Valor |
+|---|---|
+| **Productos** | PyAutomationIO (`automation/`) + iDetectFugas (`gitlab/intelcon/idetectfugas`) |
+| **Alcance** | Store-and-Forward, SQLite (journal + catalog), hot path CVT, OS/hardware, SMART, pruebas |
+| **Metodología** | Caja de cristal + implementación de gaps G-DISK-01…09 |
+| **Fecha baseline** | 2026-08-28 (auditoría A− / B) |
+| **Fecha de cierre de gaps** | 2026-08-28 |
+| **Fuentes cruzadas** | [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_TAGS.md](./AUDIT_TAGS.md), [HARDWARE_REQUIREMENTS.md](../docs/HARDWARE_REQUIREMENTS.md); iDetectFugas `06`/`07`/`08` |
+| **Veredicto global** | **A+ en código y especificación de borde.** Soak 24 h de planta (**G-DISK-08**) sigue pendiente — no sustituye los tests de caos. |
+
+---
+
+### 1. Resumen ejecutivo
+
+El stack SAF de PyAutomationIO ya desacoplaba el hot path del disco (ring RAM + flusher WAL `synchronous=FULL`) y replicaba por lotes con ACK exact-once. Esta ronda cierra los gaps que impedían el checklist WD de clase mundial:
+
+| Antes (2026-08-28 AM) | Después |
+|---|---|
+| Sin BOM de SSD industrial | [docs/HARDWARE_REQUIREMENTS.md](../docs/HARDWARE_REQUIREMENTS.md) + `deploy/HARDWARE_REQUIREMENTS.md` |
+| Solo `% uso` de disco | SMART wear/temp + `ALM.PERF.SSD` + tile HMI |
+| `JournalDiskFullError` sin test | Tests de guardia y de llenado real |
+| Journal sin `cache_size`/`mmap_size` | `cache_size=-64000`, `mmap_size=256 MiB` |
+| catalog sin `temp_store=MEMORY` | PRAGMA añadido |
+| Doble `set_value` umbral (mixin / apply 1 Hz) | Apply solo si cambió; publish heartbeat 10 s si apply no escribió |
+| Healthcheck ciego al montaje | Warning `noatime` (no tumba el contenedor) |
+
+**Puntuación WD-01…WD-10:** 10 / 10 **PASS** en código y documentación. Certificación operativa 24 h: plantilla [AUDIT_DB.md](./AUDIT_DB.md) (pendiente de rellenar).
+
+---
+
+### 2. Criterios WD-01…WD-10
+
+| ID | Criterio | Estado | Evidencia |
+|---|---|---|---|
+| **WD-01** | Hot path sin E/S síncrona | ✅ PASS | `TagObserver` → `enqueue` → ring; flush en `SafJournalFlusher` (`journal.py` `_flush_loop`) |
+| **WD-02** | Buffer en memoria | ✅ PASS | `_ring` `deque`, `ring_maxsize=100_000`; `CycleSampleCache` |
+| **WD-03** | Journal durable WAL + FULL | ✅ PASS | `PRAGMA journal_mode=WAL`, `synchronous=FULL` |
+| **WD-04** | Escritura por lotes | ✅ PASS | `tag_batch_size=256`, `replicate_batch_size=1000` |
+| **WD-05** | Exact-once + ACK | ✅ PASS | `mark_sent` post-outcomes; T-01 SIGKILL |
+| **WD-06** | Capacidad journal + no llenar disco | ✅ PASS | `max_disk_bytes=10 GiB`, `max_pending_rows=5e6`; evict SENT; `JournalDiskFullError`; tests `test_disk_full_error_*` |
+| **WD-07** | Frecuencia de escritura | ✅ PASS | Umbrales 10 s / on-change; `_set_process_tag_if_changed`; mixin no republica el mismo tick |
+| **WD-08** | Pruebas de caos | ✅ PASS | Red/BD existentes + **disco lleno** + pragmas; soak 24 h es G-DISK-08 (planta) |
+| **WD-09** | Hardware aprobado | ✅ PASS | Spec SSD TBW/temp/OP + fstab `noatime` + scheduler; warning en healthcheck/sampler |
+| **WD-10** | Monitoreo activo | ✅ PASS | Cola SAF + `% disco` + `HOST_DISK_NOATIME` + SMART + `ALM.PERF.SSD` |
+
+**Nota WD-09/WD-10:** el código no puede certificar el SKU físico de planta. PASS = especificación + instrumentación + alarmas. El operador debe cumplir el checklist de [HARDWARE_REQUIREMENTS.md](../docs/HARDWARE_REQUIREMENTS.md) y definir `AUTOMATION_SSD_DEVICE`. Sin `smartctl`, las métricas SSD quedan `null` y **no** hay falso positivo.
+
+---
+
+### 3. Hallazgos detallados (lista §3 original)
+
+#### 3.1 Store-and-Forward
+
+Todos los controles de arquitectura **cumplen** (hot path, ring, WAL, batch, ACK, circuit breaker, topes). El journal **no** descarta PENDING para hacer sitio: primero evict SENT; si no basta, `JournalDiskFullError`. Eso protege integridad frente a un ring buffer clásico que pisaría datos no ACK.
+
+#### 3.2 SQLite
+
+| PRAGMA | journal.db | catalog.db |
+|---|---|---|
+| `journal_mode` | WAL | WAL |
+| `synchronous` | FULL | NORMAL (1) — correcto: no es Plan A de muestras |
+| `temp_store` | MEMORY | MEMORY |
+| `cache_size` | −64000 (64 MiB) | −8000 |
+| `mmap_size` | 256 MiB (hint) | — |
+| `auto_vacuum` | INCREMENTAL + `reclaim_idle` | INCREMENTAL + `compact_catalog_idle` |
+
+#### 3.3 Hot path iDetectFugas
+
+- Umbrales: `_publish_threshold_tags` on-change o 10 s.
+- `leak` una vez por ciclo (`07-AUDIT_CVT.md`).
+- `Leaks.put` fingerprint.
+- Alarmas SocketIO en flanco.
+- **G-DISK-07 cerrado:** `_set_process_tag_if_changed` + `_finish_threshold_sync` (PPA, NPW, PFM, Observer, mixin).
+
+#### 3.4 OS / hardware
+
+Documentado y medido; no impuesto por Docker. `healthcheck.py` avisa si falta `noatime` y **sigue devolviendo 200** si `/api/health/ping` responde.
+
+#### 3.5 Pruebas
+
+| Prueba | Archivo |
+|---|---|
+| Disco lleno (guardia + append) | `test_store_and_forward.py` `test_disk_full_error_*` |
+| PRAGMAs journal | `test_journal_pragmas_durable_and_cached` |
+| Mount / SMART / sampler | `test_disk_durability.py` |
+| catalog `temp_store` | `test_long_run_hardening.py` `test_catalog_temp_store_memory` |
+| Umbral una escritura/tick | iDetectFugas `test_threshold_publish.py` |
+| Caos red/BD / T-01 | `test_store_and_forward.py` (ya existía) |
+
+---
+
+### 4. Gaps G-DISK-01…09 — estado post-implementación
+
+| ID | Pri. | Estado | Acción realizada |
+|---|---|---|---|
+| G-DISK-01 | P0 | ✅ Cerrado | `docs/HARDWARE_REQUIREMENTS.md` + `idetectfugas/deploy/HARDWARE_REQUIREMENTS.md` |
+| G-DISK-02 | P0 | ✅ Cerrado | `ssd_health.py` + sampler 60 s + `ALM.PERF.SSD` + HMI `/performance` |
+| G-DISK-03 | P1 | ✅ Cerrado | Tests `JournalDiskFullError` |
+| G-DISK-04 | P1 | ✅ Cerrado | Spec fstab/scheduler; `disk_mount.py`; warning healthcheck; `deploy/README.md` |
+| G-DISK-05 | P2 | ✅ Cerrado | `PRAGMA cache_size=-64000`, `mmap_size=268435456` |
+| G-DISK-06 | P2 | ✅ Cerrado | Tabla de roles en [AUDIT_TAGS.md](./AUDIT_TAGS.md) |
+| G-DISK-07 | P2 | ✅ Cerrado | Apply on-change; publish solo si apply no escribió |
+| G-DISK-08 | P3 | ⏳ Planta | Plantilla [AUDIT_DB.md](./AUDIT_DB.md) |
+| G-DISK-09 | P3 | ✅ Cerrado | `temp_store=MEMORY` en `open_catalog_db` |
+
+---
+
+### 5. Evidencia de implementación (diff lógico)
+
+#### PyAutomationIO
+
+| Archivo | Cambio |
+|---|---|
+| `automation/persistence/journal.py` | `cache_size`, `mmap_size` |
+| `automation/catalog/local_db.py` | `temp_store=MEMORY` |
+| `automation/utils/disk_mount.py` | **nuevo** — `/proc/self/mountinfo`, scheduler |
+| `automation/utils/ssd_health.py` | **nuevo** — parse `smartctl -j` |
+| `automation/workers/metrics_sampler.py` | mount + SMART + evento SSD |
+| `automation/utils/performance_alarms.py` | `ALM.PERF.SSD` |
+| `automation/utils/performance_alarm_config.py` | `perf_ssd_*` |
+| `healthcheck.py` | warning `noatime` (no fail) |
+| `docs/HARDWARE_REQUIREMENTS.md` | BOM SSD / fstab / SMART |
+| `hmi/src/pages/Performance.tsx` | tile SSD |
+| `automation/tests/test_disk_durability.py` | **nuevo** |
+| `automation/tests/test_store_and_forward.py` | disco lleno + pragmas |
+
+#### iDetectFugas
+
+| Archivo | Cambio |
+|---|---|
+| `app/core.py` | `_set_process_tag_if_changed`, `_finish_threshold_sync` |
+| `app/modules/motor_threshold_mixin.py` | no republica si apply escribió |
+| `app/modules/ppa|npw|pfm|observer` | apply on-change + finish sync |
+| `app/tests/test_threshold_publish.py` | **nuevo** |
+| `deploy/HARDWARE_REQUIREMENTS.md` | copia planta |
+| `deploy/README.md` | sección almacenamiento |
+
+#### Referencias de código (puntos de partida)
+
+```863:869:github/PyAutomation/automation/persistence/journal.py
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=FULL")
+            self._conn.execute("PRAGMA temp_store=MEMORY")
+            self._conn.execute("PRAGMA cache_size=-64000")
+            self._conn.execute("PRAGMA mmap_size=268435456")
+            self._conn.execute(f"PRAGMA wal_autocheckpoint={int(self.config.wal_autocheckpoint)}")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+```
+
+Variables de entorno SSD: `AUTOMATION_SSD_DEVICE`, `AUTOMATION_SSD_WEAR_WARN` (80), `AUTOMATION_SSD_TEMP_WARN` (65).
+
+---
+
+### 6. Lecciones aprendidas
+
+1. **Distroless no tiene `smartctl`.** El sampler debe degradar a `available=false` sin alarmar. El dispositivo se lee en el host o con bind-mount documentado.
+2. **No tumbar el HEALTHCHECK por `noatime`.** Un bind Docker hereda el fstab del host; fallar el ping dejaría el stack `unhealthy` en labs que aún no tunearon el disco.
+3. **PENDING no se pisa.** El “ring buffer de disco” de clase mundial para DAQ es tope + error controlado, no overwrite de filas sin ACK.
+4. **El residual bayesiano no era solo el mixin.** PPA/NPW ya no llamaban `_publish` desde `_sync`; el 1 Hz venía de `_apply` → `set_value` cada tick. El arreglo real es skip-if-unchanged + heartbeat 10 s.
+
+---
+
+### 7. Conclusión
+
+**A+ (clase mundial) en software:** WD-01…WD-10 PASS con evidencia en código, tests y especificación de hardware. El sistema está diseñado para 24/7/365 en borde industrial con SSD de alto TBW, journal WAL durable, backpressure y monitoreo SMART.
+
+**Pendiente operativo (no bloquea el veredicto de código):** ejecutar y archivar la campaña de [AUDIT_DB.md](./AUDIT_DB.md) (24 h + outage PG 4 h) y confirmar SMART visible en cada edge de planta.
+
+
+## Parte D — Plantilla soak disco / SAF 24 h
+
+> Fuente original: `SOAK_DISK_LAST_RUN.md` — contenido íntegro, sin omisiones.
+
+| Campo | Valor |
+|---|---|
+| **Producto** | PyAutomationIO + iDetectFugas |
+| **Alcance** | 24 h (ideal 5 días) con outage PostgreSQL 4 h |
+| **Estado** | **Pendiente de ejecución en planta** (G-DISK-08) |
+| **Fecha de esta plantilla** | 2026-08-28 |
+| **Runbook** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) §4.3 · iDetectFugas `06-AUDIT_PERFORMANCE.md` Parte B |
+
+Esta campaña **no se simula en CI**. Rellenar la tabla tras una corrida real y enlazarla desde [AUDIT_DB.md](./AUDIT_DB.md).
+
+### Cómo ejecutar
+
+```bash
+# Backend 24 h (framework)
+PERF_SOAK_SECONDS=86400 python -m unittest automation.tests.test_performance_soak
+
+# SAF apocalypse (opcional, más corto)
+SAF_SOAK_SECONDS=1800 SAF_SOAK_TAGS=1000 SAF_SOAK_HZ=100 \
+  python -m unittest automation.tests.test_store_and_forward.TestT01Apocalypse
+```
+
+En lab 2-edge: dejar ambos nodos 24 h, cortar PG 4 h, restaurar, confirmar `SAF_QUEUE_DEPTH → 0`.
+
+### Resultados (rellenar)
+
+| Métrica | Resultado | Umbral | OK |
+|---|---|---|---|
+| Fecha / operator | _pendiente_ | — | ☐ |
+| Duración | | ≥ 24 h | ☐ |
+| RSS_MB | | ±10 % vs baseline | ☐ |
+| SAF_QUEUE_DEPTH (régimen) | | < 1000 | ☐ |
+| Outage PG 4 h — cola pico | | < cap 5e6 | ☐ |
+| Outage PG 4 h — drenaje post-ACK | | cola → 0 | ☐ |
+| `JournalDiskFullError` | no debe aparecer si disco ≥ 256 GB | 0 | ☐ |
+| HOST_DISK_USED_PERCENT | | < 85 % | ☐ |
+| HOST_SSD_WEAR_PERCENT / TEMP | | < warn | ☐ |
+| OPC_MONITORED_COUNT | | constante | ☐ |
+| Exact-once post-replay | | sin duplicados TagValue | ☐ |
+
+### Evidencia
+
+Adjuntar: `GET /api/health/node` T0/T24, `/api/health/saf`, Events `Disk usage critical` / `SSD SMART` (no deben disparar), logs gunicorn.
+
+Última corrida T-01 (SIGKILL, no 24 h): [AUDIT_DB.md](./AUDIT_DB.md).
+
+
+## Parte F — T-01 Soak last run (regenerado por tests)
+
+El bloque entre marcadores lo reescribe `automation/tests/test_store_and_forward.py`.
+
+<!-- T01_SOAK_LAST_RUN:start -->
+# T-01 Soak — last run
+
+- tags=50 hz=20.0 duration_s=2.0 kill_at_s=1.000
+- achieved_tick_hz=0.00
+- generated_fsync=0
+- journal_durable=0
+- ring_lag_samples=0
+- replicated=0
+- remote_rows_first_pass=0
+- remote_rows_after_retry=0
+- pending_after=0
+- exact_once=True
+- remote_equals_durable=True
+
+Ring lag is the hardware window of the in-memory flusher (≤ tag_flush_interval_s).
+Those samples never reached WAL before SIGKILL; they are the only acceptable loss.
+<!-- T01_SOAK_LAST_RUN:end -->
+

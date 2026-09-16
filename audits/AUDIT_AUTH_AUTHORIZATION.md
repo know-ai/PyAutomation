@@ -2,11 +2,14 @@
 
 | Campo | Valor |
 |---|---|
+| **Documento canónico** | 09 / 10 |
+| **Fecha de agrupación** | 2026-09-16 |
+| **Fuentes absorbidas (esta compactación)** | (ya era único) |
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
 | **Alcance** | Login, sesión, token, roles, ACL REST/HMI, guards HMI, Swagger, roles dinámicos |
 | **Fecha** | 2026-09-03 · **reimpl. ACL 2026-09-03** · **bus invalidación ACL 2026-09-03** · **roles dinámicos + docs 2026-09-03** · **`GET /health/ready` público 2026-09-15** |
 | **Evidencia** | Código del árbol + `automation/tests/test_authz.py` + `test_authz_invalidate.py` + `test_authz_app_hooks.py` + `test_docs_auth.py` |
-| **Complementa** | [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md), [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) |
+| **Complementa** | [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_TAGS.md](./AUDIT_TAGS.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) |
 | **Veredicto autenticación** | **A−** — TPT con `exp`+rol y principal sintético; database config/connect y `reconnect_db` autenticados; signup público y sesión sin TTL siguen abiertos |
 | **Veredicto autorización** | **A−** — ACL persistido fail-closed; panel HMI; semilla por rol built-in; roles dinámicos heredan `guest`; bootstrap con hooks de producto; Swagger con sesión aparte. Socket.IO aún no filtra por vista |
 | **Clasificación** | Auditoría de seguridad de aplicación · planificación y seguimiento post-implementación |
@@ -98,7 +101,7 @@ Política: un login nuevo revoca sesiones previas del mismo usuario. HMI persist
 
 ### 2.3 Canal Socket.IO
 
-`hmi_socket_audit.resolve_connect_user`: mismo token, fail-closed. **No aplica ACL por vista:** token válido → snapshot completo. Ver [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md).
+`hmi_socket_audit.resolve_connect_user`: mismo token, fail-closed. **No aplica ACL por vista:** token válido → snapshot completo. Ver [AUDIT_HMI.md](./AUDIT_HMI.md).
 
 ### 2.4 Usuario `system`
 

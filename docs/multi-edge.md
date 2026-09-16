@@ -126,7 +126,7 @@ Checklist NTP por edge:
 3. `GET /api/health/system` → bloque `clock.synced=true`.
 4. Mismos servidores que el resto de la planta (no `pool.ntp.org` en producción).
 
-Runbook detallado: [ntp-deployment.md](./ntp-deployment.md). Auditoría: [audits/AUDIT_NTP_TIME_SYNC.md](../audits/AUDIT_NTP_TIME_SYNC.md).
+Runbook detallado: [ntp-deployment.md](./ntp-deployment.md). Auditoría: [audits/AUDIT_TIME.md](../audits/AUDIT_TIME.md).
 
 ## Dashboard de rendimiento por edge
 

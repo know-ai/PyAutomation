@@ -204,6 +204,11 @@ class Alarms(BaseModel):
     off_delay = FloatField(default=DEFAULT_ALARM_DELAY_S)
     on_delay_units = CharField(default=DEFAULT_ALARM_DELAY_UNITS, max_length=16)
     off_delay_units = CharField(default=DEFAULT_ALARM_DELAY_UNITS, max_length=16)
+    priority = IntegerField(default=3)
+    latching = BooleanField(default=True)
+    ack_required = BooleanField(default=True)
+    chattering = BooleanField(default=False)
+    chatter_count = IntegerField(default=0)
 
     class Meta:
         indexes = ((("area", "name"), False),)
@@ -351,6 +356,9 @@ class Alarms(BaseModel):
             'off_delay': self.off_delay if self.off_delay is not None else DEFAULT_ALARM_DELAY_S,
             'on_delay_units': self.on_delay_units or DEFAULT_ALARM_DELAY_UNITS,
             'off_delay_units': self.off_delay_units or DEFAULT_ALARM_DELAY_UNITS,
+            'priority': getattr(self, 'priority', 3) or 3,
+            'latching': bool(getattr(self, 'latching', True)),
+            'ack_required': bool(getattr(self, 'ack_required', True)),
         }
     
 
@@ -371,6 +379,11 @@ def ensure_alarm_delay_schema(db) -> None:
         ("last_transition_ts", Alarms.last_transition_ts),
         ("last_transition_from", Alarms.last_transition_from),
         ("last_transition_to", Alarms.last_transition_to),
+        ("priority", Alarms.priority),
+        ("latching", Alarms.latching),
+        ("ack_required", Alarms.ack_required),
+        ("chattering", Alarms.chattering),
+        ("chatter_count", Alarms.chatter_count),
     )
     pending = [(name, field) for name, field in additions if name not in existing]
     if not pending:
@@ -1023,6 +1036,12 @@ class AlarmSummary(BaseModel):
         except Exception:
             logger.debug("alarm_summary event_time index skipped", exc_info=True)
         cls._ensure_query_indexes()
+        try:
+            from .alarm_p2 import ensure_p2_schema
+
+            ensure_p2_schema(database)
+        except Exception:
+            logger.debug("p2 schema skipped", exc_info=True)
 
     @classmethod
     def _ensure_query_indexes(cls) -> None:
@@ -1037,6 +1056,7 @@ class AlarmSummary(BaseModel):
             f"CREATE INDEX IF NOT EXISTS idx_{table}_to_state ON {table} (to_state, event_time)",
             f"CREATE INDEX IF NOT EXISTS idx_{alarms_table}_tag ON {alarms_table} (tag_id)",
             f"CREATE INDEX IF NOT EXISTS idx_{alarms_table}_state_time ON {alarms_table} (state_id, last_transition_ts)",
+            f"CREATE INDEX IF NOT EXISTS idx_{alarms_table}_priority_time ON {alarms_table} (priority, last_transition_ts)",
         )
         logger = logging.getLogger("pyautomation")
         for sql in statements:

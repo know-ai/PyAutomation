@@ -204,6 +204,7 @@ class AlarmsFooterResource(Resource):
                     "timestamp": item.get("timestamp"),
                     "delay_phase": item.get("delay_phase"),
                     "description": item.get("description"),
+                    "priority": item.get("priority", 3),
                 })
             else:
                 compact.append(item)
@@ -256,6 +257,7 @@ class AlarmHistoryResource(Resource):
     parser.add_argument('page', type=int, location='args', default=1)
     parser.add_argument('limit', type=int, location='args', default=100)
     parser.add_argument('page_size', type=int, location='args', default=None)
+    parser.add_argument('include_archive', type=bool, location='args', default=False)
 
     @api.doc(security='apikey', description="Paginated history of one alarm. page_size ≤ 100.")
     @api.response(200, "Success")

@@ -8,7 +8,7 @@
 | **Fecha** | 2026-08-19 |
 | **Estado** | Implementado (fuente HMI) |
 | **Alcance** | Refactor de `/performance`. No modifica evaluación ni muestreo del backend. |
-| **Auditoría** | [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](../audits/AUDIT_NODE_PERFORMANCE_DASHBOARD.md) |
+| **Auditoría** | [AUDIT_PERFORMANCE.md](../audits/AUDIT_PERFORMANCE.md) |
 | **Depende de** | [05](./05-NODE-PERFORMANCE-DASHBOARD.md) · [06](./06-PERFORMANCE-ALARMS.md) |
 
 ## Premisas

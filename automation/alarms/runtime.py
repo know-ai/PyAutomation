@@ -16,6 +16,12 @@ from typing import Any
 from threading import Event, Thread
 
 from ..utils import Observer
+from .p2.chatter import ChatterDetector
+from .p2.kpi import KPICollector
+from .p2.partition import PartitionManager
+from .p2.priority import PriorityManager
+from .p2.retention import RetentionArchiver
+from .p2.suppression import SuppressionManager
 
 _LOGGER = logging.getLogger("pyautomation")
 
@@ -66,67 +72,6 @@ class LatencyWindow:
             return data[idx]
 
         return {"p50": _at(0.50), "p99": _at(0.99), "p999": _at(0.999)}
-
-
-class ChatterDetector:
-    """O(1) per transition: increment a per-alarm counter in a 60 s window."""
-
-    __slots__ = ("_counts", "_window_start")
-
-    def __init__(self):
-        self._counts: dict[str, int] = {}
-        self._window_start: dict[str, float] = {}
-
-    def on_transition(self, alarm_id: str, now: float | None = None) -> bool:
-        now = time.monotonic() if now is None else now
-        start = self._window_start.get(alarm_id)
-        if start is None or (now - start) >= _CHATTER_WINDOW_S:
-            self._window_start[alarm_id] = now
-            self._counts[alarm_id] = 1
-            return False
-        self._counts[alarm_id] = self._counts.get(alarm_id, 0) + 1
-        return self._counts[alarm_id] >= _CHATTER_THRESHOLD
-
-
-class SuppressionManager:
-    """In-memory hash map. Never hits the database on the hot path."""
-
-    __slots__ = ("_suppressed",)
-
-    def __init__(self):
-        self._suppressed: dict[str, str] = {}
-
-    def is_suppressed(self, alarm_id: str) -> bool:
-        return alarm_id in self._suppressed
-
-    def update(self, alarm_id: str, state: str | None) -> None:
-        if state:
-            self._suppressed[alarm_id] = state
-        else:
-            self._suppressed.pop(alarm_id, None)
-
-
-class KPICollector:
-    """Incremental counters — never SELECT COUNT(*) over history."""
-
-    __slots__ = ("transitions_total", "by_to_state", "chatter_detected_total")
-
-    def __init__(self):
-        self.transitions_total = 0
-        self.by_to_state: dict[str, int] = defaultdict(int)
-        self.chatter_detected_total = 0
-
-    def record_transition(self, to_state: str | None = None) -> None:
-        self.transitions_total += 1
-        if to_state:
-            self.by_to_state[to_state] += 1
-
-
-class RetentionArchiver:
-    """Background-only. Must never run on DAS or TransitionWorker."""
-
-    def run(self, limit: int = 0) -> int:
-        return 0
 
 
 class AlarmTagObserver(Observer):
@@ -236,6 +181,11 @@ class AlarmRuntime:
         self.suppression = SuppressionManager()
         self.kpi = KPICollector()
         self.archiver = RetentionArchiver()
+        self.priority = PriorityManager()
+        self.partitions = PartitionManager()
+        from .p2.kpi import KPIHistoryRepository
+
+        self.kpi_history = KPIHistoryRepository()
         self.history_rows_total = 0
         self._count_active = 0
         self._count_by_state: dict[str, int] = defaultdict(int)
@@ -420,13 +370,13 @@ class AlarmRuntime:
             )
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         self.record_latency.observe_us(elapsed_ms * 1000.0)
-        ident = getattr(alarm, "identifier", None) or getattr(alarm, "name", "")
         if kind in (KIND_ABNORMAL, KIND_NORMAL):
-            chattering = self.chatter.on_transition(str(ident))
-            if chattering:
-                self.kpi.chatter_detected_total += 1
-            to_state = getattr(alarm, "last_transition_to", None)
-            self.kpi.record_transition(to_state)
+            to_state = getattr(alarm, "last_transition_to", None) or ""
+            self.kpi.record_event(to_state)
+            if to_state == "Unack Alarm":
+                self.kpi.record_activation(alarm)
+            elif to_state == "Ack Alarm":
+                self.kpi.record_ack(alarm, 0.0)
             self.sync_alarm(alarm)
 
     def note_history_insert(self) -> None:

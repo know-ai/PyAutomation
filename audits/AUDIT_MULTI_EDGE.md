@@ -2,14 +2,17 @@
 
 | Campo | Valor |
 |---|---|
+| **Documento canónico** | 06 / 10 |
+| **Fecha de agrupación** | 2026-09-16 |
+| **Fuentes absorbidas (esta compactación)** | (ya era único; catálogo SQLite y consistencia de planta viven en AUDIT_TAGS) |
 | **Producto** | PyAutomationIO (`automation/`) |
 | **Alcance** | N equipos edge, cada uno con una instancia de PyAutomation + un servidor OPC UA de línea, historiador PostgreSQL **compartido** |
 | **Premisa de planta** | 2 secciones / líneas; ~20 puntos por línea (P, T, Q, ρ); persistencia en la misma BD; el cliente exige un edge por línea |
 | **Fecha original** | 2026-08-18 (baseline: hidratación `read_all()`, sin identidad de nodo) |
-| **Planta 2-edge** | 2026-08-25 — consistencia de catálogo: [AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md](./AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md) |
+| **Planta 2-edge** | 2026-08-25 — consistencia de catálogo: [AUDIT_TAGS.md](./AUDIT_TAGS.md) |
 | **Compactación** | 2026-08-18 — este archivo ya era el documento único del dominio; se actualizaron enlaces y el contraste con specs |
 | **Tipo** | Auditoría de contraste · arquitectura · nomenclatura industrial · backlog de grado nuclear |
-| **Complementa** | `specs/01-MULTI-EDGE-ARCHITECTURE.md`, `docs/multi-edge.md`, [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_DB.md](./AUDIT_DB.md) |
+| **Complementa** | `specs/01-MULTI-EDGE-ARCHITECTURE.md`, `docs/multi-edge.md`, [AUDIT_DB.md](./AUDIT_DB.md) (conexiones + SAF + disco) |
 | **Veredicto** | **Fase 1 está en código.** Prevención de binds cruzados **CA-CODE-01…05 PASS**. DAQ por área **CA-DAQ-01** (`LineaN.DAQ-{ms}`). `opcuaserver` **push-only** **CA-OPC-PUSH-01**. Planta 2-edge: wipe+redeploy pendiente (**CA-CODE-06**) |
 | **Clasificación** | Confidencialidad interna · grado de diseño (ISA-95 / IEC 62264) |
 
@@ -147,7 +150,7 @@ Evidencia contra proceso real (`./docker-entrypoint.sh`, venv con copia de `auto
 | Hidratar alarmas: `KeyError: 'area'` en `create_alarm(reload=True, **alarm)` | `@validate_types` no declaraba `area` | **Cerrado** — `core.create_alarm` |
 | Mensaje genérico «missing NODE_ID/AREA» con esas vars definidas | `SITE` residual ≠ `MANUFACTURER` se trataba como conflicto de identidad | **Cerrado** — mismatch de sitio no fail-close; `blocked_reason` es específico |
 | Fuga disparada, HMI sin alarma; log `get_alarm_by_name` → `NoneType` | `create_alarm` exigía `Linea1.` y iDetectFugas usa `alarm.{máquina}.leak`; `validate_types(output=Alarm)` no admitía `None` | **Cerrado** — frontera = tag; lookup admite `None` |
-| Log inundado `[ERROR] …` 1 Hz | `validate_types` hacía `print` además de `logger.error`; el `print` bypasea `DedupeFilter` | **Cerrado** — ver `AUDIT_LOGGING.md` LOG-M3 |
+| Log inundado `[ERROR] …` 1 Hz | `validate_types` hacía `print` además de `logger.error`; el `print` bypasea `DedupeFilter` | **Cerrado** — ver `AUDIT_RELIABILITY.md` LOG-M3 |
 | Trends/Events cargan; `alarms/summary` vacío | `AlarmSummary` se persistía con `area` NULL; el GET inyectaba `area=Linea1` | **Cerrado** — sello en write + backfill; **Fase 2:** el GET ya no inyecta área (lectura de planta) |
 | `Cannot get geospatial from KP` al pasar a leaking | KP estimado fuera de la tabla de referenciación lineal de `Linea1` | **Abierto** (dato de planta, no partición) |
 | `0 tags found for state machine Test.Linea1.LDS` | `TagsMachines` vacío; los tags internos se hidratan por otro loader | **Esperado** |
@@ -176,7 +179,7 @@ Supuesto: Edge A `NODE_ID=edge-linea1` `SEGMENT=Linea1`, Edge B `NODE_ID=edge-li
 
 **Conclusión de escenario:** el aislamiento de **aplicación** está. El aislamiento de **planta** (red, BD, tiempo, operación 24/7, evidencia 2-edge) no.
 
-El Bulkhead de 2026-08-25 ([AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) §3.4, [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md) CA-ISOLATION-02…04) aísla **fallos de entidad** (tag ausente, fila huérfana, FK) para que no bloqueen otros flujos del mismo edge. **No** sustituye VLAN, RLS ni soak 2-edge.
+El Bulkhead de 2026-08-25 ([AUDIT_DB.md](./AUDIT_DB.md) §3.4, [AUDIT_TAGS.md](./AUDIT_TAGS.md) CA-ISOLATION-02…04) aísla **fallos de entidad** (tag ausente, fila huérfana, FK) para que no bloqueen otros flujos del mismo edge. **No** sustituye VLAN, RLS ni soak 2-edge.
 
 ---
 

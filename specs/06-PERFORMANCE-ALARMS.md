@@ -7,7 +7,7 @@
 | **Versión** | 1.0 |
 | **Fecha** | 2026-08-19 |
 | **Estado** | Implementado (P0 + P1) |
-| **Auditoría** | [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](../audits/AUDIT_NODE_PERFORMANCE_DASHBOARD.md) |
+| **Auditoría** | [AUDIT_PERFORMANCE.md](../audits/AUDIT_PERFORMANCE.md) |
 | **Runbook** | [docs/node-performance-runbook.md](../docs/node-performance-runbook.md) |
 
 ## Alcance

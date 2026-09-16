@@ -494,12 +494,9 @@ class AlarmManager(Singleton):
             if _scope_owns_alarm(alarm)
         ]
 
-        def _sort_key(elem):
-            return elem.get("last_transition_ts") or elem.get("timestamp") or ""
+        from ..alarms.p2.footer import select_footer
 
-        sorted_list = sorted(serialized, key=_sort_key, reverse=True)
-        if lasts and len(sorted_list) > lasts:
-            sorted_list = sorted_list[:lasts]
+        sorted_list = select_footer(serialized, limit=lasts or min(len(serialized), 100))
         return sorted_list
 
     def on_tag_value(self, tag, value=None) -> None:

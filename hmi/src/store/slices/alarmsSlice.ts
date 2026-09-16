@@ -53,6 +53,9 @@ function isLiveAlarm(alarm: Alarm): boolean {
 }
 
 function sortByTransition(a: Alarm, b: Alarm): number {
+  const pa = Number(a.priority ?? 3);
+  const pb = Number(b.priority ?? 3);
+  if (pa !== pb) return pa - pb;
   const aTime = Date.parse(String(a.last_transition_ts || a.timestamp || "")) || 0;
   const bTime = Date.parse(String(b.last_transition_ts || b.timestamp || "")) || 0;
   return bTime - aTime;

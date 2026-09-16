@@ -152,6 +152,12 @@ class Alarm(StateMachine):
         self.alarm_off_delay = FloatType(clamp_alarm_delay(alarm_off_delay))
         self.on_delay_units = normalize_delay_units(on_delay_units)
         self.off_delay_units = normalize_delay_units(off_delay_units)
+        self.priority = 3
+        self.latching = True
+        self.ack_required = True
+        self.chattering = False
+        self.chatter_count = 0
+        self.last_chatter_ts = None
         self._condition_met = False
         self._on_timer_start = None
         self._off_timer_start = None
@@ -317,6 +323,16 @@ class Alarm(StateMachine):
             return False
         if from_state == to_state:
             return False
+        from .p2.latching import LatchingPolicyRegistry
+
+        policy = LatchingPolicyRegistry.for_alarm(self)
+        to_state = policy.adjust_target_state(from_state, to_state)
+        if not policy.should_record(from_state, to_state):
+            return False
+        runtime = get_alarm_runtime()
+        if (from_state, to_state) in (("Unack Alarm", "RTN Unack"), ("RTN Unack", "Unack Alarm")):
+            if runtime.chatter.on_transition(self, from_state, to_state):
+                runtime.kpi.record_chatter(1)
         if to_state in HISTORY_SUPPRESSED:
             logging.getLogger("pyautomation").warning(
                 "ALM.SUPPRESSED.Skipped history for %s alarm=%s",
@@ -397,6 +413,8 @@ class Alarm(StateMachine):
         if self.timestamp is None:
             self.timestamp = quantize_datetime_ms(stamp)
         self._record_transition(prior, HISTORY_UNACK)
+        if not bool(getattr(self, "ack_required", True)):
+            self._apply_acknowledge(datetime.now(timezone.utc))
 
     @logging_error_handler
     @put_alarm_state
@@ -421,7 +439,8 @@ class Alarm(StateMachine):
             return
         prior = self._last_history_state or HISTORY_UNACK
         self.state = AlarmState.RTNUN
-        self._record_transition(prior, HISTORY_RTNUN)
+        if bool(getattr(self, "latching", True)):
+            self._record_transition(prior, HISTORY_RTNUN)
 
     @logging_error_handler
     @put_alarm_state
@@ -517,6 +536,10 @@ class Alarm(StateMachine):
                 return KIND_UNSHELVE
             return None
         if state in (AlarmState.DSUPR, AlarmState.OOSRV):
+            return None
+        runtime = get_alarm_runtime()
+        ident = getattr(self, "identifier", None) or getattr(self, "name", None)
+        if ident and runtime.suppression.is_suppressed(ident):
             return None
         if self._is_iad_alarm():
             condition_met = self._iad_condition_met()
@@ -707,6 +730,10 @@ class Alarm(StateMachine):
             "delay_phase": self._delay_phase(),
             "condition_met": bool(self._condition_met),
             "description": self.description,
+            "priority": int(getattr(self, "priority", 3) or 3),
+            "latching": bool(getattr(self, "latching", True)),
+            "ack_required": bool(getattr(self, "ack_required", True)),
+            "chattering": bool(getattr(self, "chattering", False)),
         }
 
     def _emit_runtime_state(self) -> None:
@@ -809,7 +836,7 @@ class Alarm(StateMachine):
 
             transition_name = f'{current_state}_to_rtn_unack'
             self.__transition(transition_name=transition_name)
-            if auto_clear:
+            if auto_clear or not bool(getattr(self, "latching", True)):
                 self._apply_acknowledge(datetime.now(timezone.utc))
 
         elif current_state=="ack_alarm":

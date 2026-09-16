@@ -9,7 +9,7 @@
 | **Producto** | PyAutomationIO (`automation/` + HMI React) |
 | **Estado** | **Implementado** (Fases 1–4 en código; soak 24 h de planta **pendiente**) |
 | **Amplía** | [09-OPC-QUALITY-AND-DEGRADED-STARTUP.md](./09-OPC-QUALITY-AND-DEGRADED-STARTUP.md) (P0/P1 baseline B+) |
-| **Auditoría** | [AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md](../audits/AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md) |
+| **Auditoría** | [AUDIT_TAGS.md](../audits/AUDIT_TAGS.md) |
 | **Runbook** | [opc-quality-runbook.md](../docs/opc-quality-runbook.md) |
 | **Normas** | OPC UA Part 4 · ISA-18.2 · IEC 61508 (SIL-ready, no certificación) · IEC 62443 · ISO 13849 (contraste) |
 | **Filosofía** | El operador nunca debe ser engañado por una señal que no refleja la realidad del proceso. |

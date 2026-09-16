@@ -1,4 +1,156 @@
-# Auditoría compacta: sincronización NTP y reloj de sistema en despliegues multi-edge
+# Auditoría: Tiempo (husos y NTP / reloj de edge)
+
+| Campo | Valor |
+|---|---|
+| **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
+| **Documento canónico** | 07 / 10 |
+| **Fecha de agrupación** | 2026-09-16 |
+| **Fuentes absorbidas** | `AUDIT_TIMEZONE`, `AUDIT_NTP_TIME_SYNC` |
+| **Complementa** | [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_RELIABILITY.md](./AUDIT_RELIABILITY.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) |
+| **Veredicto vigente** | Hora Única: UTC en wire; selector planta/local en HMI. NTP **A** — monitor v2.0; soak 2-edge pendiente (A+) |
+| **Clasificación** | Auditoría de contraste código vs diseño. IDs de hallazgos conservados. |
+
+
+Este archivo agrupa **todas** las auditorías del dominio. Cada parte conserva el texto original.
+
+## Índice de partes
+
+- [Parte A — Husos horarios (Operación Hora Única)](#parte-a-husos-horarios-operación-hora-única)
+- [Parte B — NTP / reloj de edge](#parte-b-ntp-reloj-de-edge)
+
+---
+
+## Parte A — Husos horarios (Operación Hora Única)
+
+> Fuente original: `AUDIT_TIMEZONE.md` — contenido íntegro, sin omisiones.
+
+| Campo | Valor |
+|---|---|
+| **Producto** | PyAutomationIO (`automation/`) + HMI React (`hmi/`) |
+| **Alcance** | Captura OPC UA → CVT/Socket → historiador → consultas HMI |
+| **Fecha original** | 2026-08-14 (tres relojes de presentación) |
+| **Compactación** | 2026-08-18 — evidencia de código: sockets ISO-UTC; selector planta/local; AlarmSummary respeta TZ de request |
+| **Caso observado (pre-fix)** | Laptop `America/Caracas`; planta `America/Lima`; Δ = 1 h entre pantallas |
+| **Veredicto vigente** | Storage UTC **correcto**. Presentación unificada: wire ISO-8601 UTC; HMI convierte con selector **Planta** (`AUTOMATION_TIMEZONE`) vs **Local** (navegador). Badge visible |
+| **Clasificación** | Auditoría de arquitectura temporal |
+
+---
+
+### 0. Contrato vigente (2026-08-18)
+
+| Capa | Política |
+|---|---|
+| Campo / OPC | UTC (`ensure_utc`) |
+| Disco / SAF / PG | UTC (epoch ms o ISO-Z) |
+| API JSON / Socket.IO | ISO-8601 con offset (`+00:00` o `Z`) |
+| HMI | Operador elige `display_timezone` = `plant` \| `local` (`localStorage`). Default: local si el browser tiene IANA, si no planta |
+| Informes / serialize histórico | Parámetro `timezone` del request; fallback `AUTOMATION_TIMEZONE` |
+
+`AUTOMATION_TIMEZONE` es el **huso de planta**. No cambia storage ni lógica (alarmas, detección, cálculos). En compose, `TIMEZONE` es solo alias: `AUTOMATION_TIMEZONE: ${AUTOMATION_TIMEZONE:-${TIMEZONE}}`. El proceso Python lee **solo** `AUTOMATION_TIMEZONE` (default código `America/Caracas`).
+
+`GET /api/system/timezone` → `{ "timezone": "<IANA>", "role": "plant" }`.
+
+Tests: `automation.tests.test_timezone_hora_unica`.
+
+---
+
+### 1. Diagnóstico original (por qué se vio 1 h)
+
+Se conserva: explica el síntoma Caracas vs Lima **antes** de Hora Única.
+
+Tres canales de display:
+
+| Canal | Quién decidía | Efecto en la prueba |
+|---|---|---|
+| **A** — Históricos parametrizados | HMI mandaba `timezone` = `Intl` del navegador | DataLogger / Trends / Events / Operational Logs = **Caracas** |
+| **B** — Socket.IO | Servidor hacía `astimezone(TIMEZONE)` y emitía string **naive** | Real-Time Trends / alarmas vivas = **Lima** |
+| **C** — AlarmSummary | `serialize()` forzaba `TIMEZONE` e **ignoraba** el TZ del filtro | Alarms Summary = **Lima**. Default HMI `timezones[0]` = **`Africa/Abidjan`** si no había TZ guardada |
+
+El campo llegaba en UTC y TagValue se guardaba en UTC. El fallo era **política de presentación**, no OPC.
+
+Matriz (evento 15:00:00 UTC, pre-fix):
+
+| Pantalla | Plant TZ = Lima | Operator TZ = Caracas | **Actual entonces** |
+|---|---|---|---|
+| Trends / DataLogger / Events | 10:00 Lima | 11:00 Caracas | **11:00 Caracas** |
+| Real-Time Trends | 10:00 Lima | 11:00 Caracas | **10:00 Lima** |
+| Alarms Summary | 10:00 Lima | 11:00 Caracas | **10:00 Lima** |
+
+---
+
+### 2. Hallazgos (IDs) y estado
+
+| ID | Sev. original | Hallazgo | Estado 2026-08-18 |
+|---|---|---|---|
+| **TZ-C1** | Alta | Dos políticas (navegador vs planta) sin documentar | **Cerrado** — selector explícito + badge |
+| **TZ-C2** | Alta | `AlarmSummary.serialize` ignoraba el TZ del request | **Cerrado** — `serialize(timezone=…)` + `format_display_datetime` |
+| **TZ-C3** | Media | Socket timestamps naive ya convertidos | **Cerrado** — `serialize_socket` / `iso_millis` ISO con offset UTC |
+| **TZ-H1** | Media | AlarmsSummary default `Africa/Abidjan` | **Cerrado** — no usar `pytz.all_timezones[0]` |
+| **TZ-H2** | Media | Trends parseaba wall-clock como Date local | Mitigado si el wire trae offset (ISO) |
+| **TZ-B1** | Baja | `SourceTimestamp.replace(tzinfo=UTC)` vs `astimezone` | `ensure_utc` en tests; revisar DAS usa `ensure_utc` |
+| **TZ-B2** | Baja | Docs mezclan `TIMEZONE` y `AUTOMATION_TIMEZONE` | Documentado: compose alias; código solo el segundo |
+| **TZ-OK1** | — | TagValue / SAF UTC ms | Sigue vigente |
+
+Estándar de referencia (sin cambio): OPC UA timestamps UTC; ISA-18.2 marca inequívoca; historiadores store UTC / display plant or operator; ISO-8601 con Z u offset.
+
+**No hacer:** «arreglar» solo poniendo `.env` a Caracas. Eso alinea la laptop de prueba y deja el bug de política en planta Lima.
+
+---
+
+### 3. Cadena de tiempo (actual)
+
+```
+OPC UA SourceTimestamp
+    → ensure_utc → CVT / SAF / TagValue (epoch ms UTC)
+    → serialize_socket: iso_millis → "…+00:00" / "…Z"
+    → HMI: Date parse + format en plant | local
+Historiador
+    → filter_by / trends: rango convertido a UTC
+    → serialize(timezone=payload o planta)
+```
+
+AlarmSummary: resolución ms en `alarm_time` / `ack_time` (`ensure_schema` escala ticks legacy en segundos).
+
+---
+
+### 4. Checklist
+
+```text
+[x] TagValue / Events / AlarmSummary en BD en UTC
+[x] GET/POST históricos Caracas vs Lima → Δ 1 h
+[x] AlarmSummary output respeta timezone del request (fallback planta)
+[x] on.tag / on.alarm ISO-8601 UTC; RT trends siguen el selector
+[x] UI badge Planta vs Local (`display_timezone`)
+[x] Default AlarmsSummary ≠ Africa/Abidjan
+[x] README/docs: AUTOMATION_TIMEZONE vs TIMEZONE
+[x] Tests test_timezone_hora_unica
+```
+
+Validación rápida:
+
+```bash
+python -m unittest automation.tests.test_timezone_hora_unica -v
+curl -k https://localhost:8050/api/system/timezone
+```
+
+---
+
+### 5. Archivos clave
+
+| Área | Archivo |
+|---|---|
+| Env | `automation/__init__.py` |
+| Timebase | `automation/timebase.py` (`iso_millis`, `ensure_utc`, `format_display_datetime`) |
+| Socket tags | `automation/tags/tag.py` `serialize_socket` |
+| AlarmSummary | `automation/dbmodels/alarms.py` |
+| API timezone | `automation/modules/system/resources/system.py` |
+| HMI selector / format | `hmi/src/utils/timezone.ts`, `hmi/src/hooks/useDisplayTimezone.ts`, `TimezoneBadge` |
+| Tests | `automation/tests/test_timezone_hora_unica.py` |
+
+
+## Parte B — NTP / reloj de edge
+
+> Fuente original: `AUDIT_NTP_TIME_SYNC.md` — contenido íntegro, sin omisiones.
 
 | Campo | Valor |
 |---|---|
@@ -6,13 +158,13 @@
 | **Alcance** | Disciplina del reloj del SO/host; verificación periódica; visibilidad operativa; correlación temporal entre N edges contra un historiador compartido |
 | **Fecha** | 2026-08-19 (Fase A+B+v2.0 monitor universal) |
 | **Spec** | [specs/03-NTP-EDGE-CLOCK-MONITOR.md](../specs/03-NTP-EDGE-CLOCK-MONITOR.md) v2.0 |
-| **Complementa** | [AUDIT_TIMEZONE.md](./AUDIT_TIMEZONE.md) (presentación IANA), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) §3 («tiempo» en backlog de planta), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) (timestamps UTC en journal), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) (alarma de sistema) |
+| **Complementa** | [AUDIT_TIME.md](./AUDIT_TIME.md) (presentación IANA), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) §3 («tiempo» en backlog de planta), [AUDIT_DB.md](./AUDIT_DB.md) (timestamps UTC en journal), [AUDIT_RELIABILITY.md](./AUDIT_RELIABILITY.md) (alarma de sistema) |
 | **Veredicto vigente** | **A** — Monitor universal v2.0: IPv4/IPv6 (`getaddrinfo`), reintentos backoff, detección salto brusco, diagnóstico HMI/API, runbook `docs/ntp-deployment.md`. **A+** tras soak 2-edge (CA-NTP-20). Auth simétrica/NTS = P3 |
 | **Clasificación** | Auditoría de arquitectura temporal · multi-edge · operación 24/7 |
 
 ---
 
-## 0. Respuesta directa
+### 0. Respuesta directa
 
 | Pregunta | Respuesta (código 2026-08-19) |
 |---|---|
@@ -25,9 +177,9 @@
 | ¿Scheduler no bloqueante configurable? | **Implementado.** `NtpMonitorWorker` (hilo daemon); probe UDP en threadpool (`run_uncooperative_db_call`); intervalo 60–86400 s (default 3600). **No** en hot path OPC/CVT |
 | ¿Estrategia clase mundial / grado nuclear? | **Capas:** (1) PTP/IEEE 1588 o NTP Stratum bajo en red OT; (2) chrony/w32time en host con `makestep` acotado; (3) contenedor hereda reloj del host; (4) PyAutomation **verifica** offset y eleva alarma; (5) historiador correlaciona por `node_id` + timestamp; (6) consola central agrega salud temporal de todos los edges |
 
-### 0.1 Distinción crítica: «Hora Única» ≠ «Reloj sincronizado»
+#### 0.1 Distinción crítica: «Hora Única» ≠ «Reloj sincronizado»
 
-| Capacidad | [AUDIT_TIMEZONE.md](./AUDIT_TIMEZONE.md) | Esta auditoría |
+| Capacidad | [AUDIT_TIME.md](./AUDIT_TIME.md) | Esta auditoría |
 |---|---|---|
 | Almacenar en UTC | ✅ | Prerrequisito |
 | Mostrar planta vs local en HMI | ✅ | Independiente |
@@ -38,7 +190,7 @@
 
 Un edge con reloj adelantado 45 s **sigue guardando «UTC»** en TagValue, pero es **UTC incorrecto**. Dos edges desincronizados producen historiales **no correlacionables** en el mismo PostgreSQL aunque la partición multi-edge sea correcta.
 
-### 0.2 Integración con cualquier servidor NTP (guía operativa)
+#### 0.2 Integración con cualquier servidor NTP (guía operativa)
 
 | Tema | Detalle |
 |---|---|
@@ -53,7 +205,7 @@ Un edge con reloj adelantado 45 s **sigue guardando «UTC»** en TagValue, pero 
 
 ---
 
-## 1. Por qué importa en multi-edge
+### 1. Por qué importa en multi-edge
 
 Escenario: Edge A (`edge-linea1`) y Edge B (`edge-linea2`), historiador compartido, ~20 tags/línea, detección iDetectFugas con timestamps de alarma y TagValue en ms.
 
@@ -79,9 +231,9 @@ Edge A (reloj +30 s)          Historiador PG          Edge B (reloj OK)
 
 ---
 
-## 2. Inventario de código (evidencia 2026-08-19)
+### 2. Inventario de código (evidencia 2026-08-19)
 
-### 2.1 Componentes NTP en producto (vigente)
+#### 2.1 Componentes NTP en producto (vigente)
 
 | Artefacto | Estado |
 |---|---|
@@ -97,7 +249,7 @@ Edge A (reloj +30 s)          Historiador PG          Edge B (reloj OK)
 | Tests | ✅ `test_ntp_monitor.py` — **18 tests** CA-NTP-01…06, 14…18 |
 | Docs | ✅ `docs/ntp-deployment.md`, § NTP en `docs/multi-edge.md` |
 
-### 2.2 De dónde sale el tiempo hoy
+#### 2.2 De dónde sale el tiempo hoy
 
 | Origen | Mecanismo | Dependencia del reloj SO |
 |---|---|---|
@@ -110,7 +262,7 @@ Edge A (reloj +30 s)          Historiador PG          Edge B (reloj OK)
 
 **Conclusión:** PyAutomation **verifica** el reloj del sistema; **no** lo disciplina. Sin chrony/w32time correcto en el host, el monitor detectará desfase pero no lo corregirá.
 
-### 2.3 Imagen Docker
+#### 2.3 Imagen Docker
 
 | Aspecto | Estado | Riesgo |
 |---|---|---|
@@ -121,7 +273,7 @@ Edge A (reloj +30 s)          Historiador PG          Edge B (reloj OK)
 
 ---
 
-## 3. Estándares de referencia (grado industrial / nuclear)
+### 3. Estándares de referencia (grado industrial / nuclear)
 
 | Estándar / práctica | Relevancia |
 |---|---|
@@ -134,7 +286,7 @@ Edge A (reloj +30 s)          Historiador PG          Edge B (reloj OK)
 | **NERC CIP / IEC 62443** | Servidores NTP en zona OT; no depender de Internet en producción |
 | **Vendor SCADA (PI, Ignition, WinCC)** | NTP en SO + indicador de sync en consola; la app **no** reemplaza chrony |
 
-### 3.1 Objetivos numéricos recomendados (planta típica multi-edge)
+#### 3.1 Objetivos numéricos recomendados (planta típica multi-edge)
 
 | Clase | \|offset\| vs NTP planta | \|offset\| entre edges | Acción |
 |---|---|---|---|
@@ -145,7 +297,7 @@ Edge A (reloj +30 s)          Historiador PG          Edge B (reloj OK)
 
 Ajustar con ingeniería de planta. iDetectFugas con ventanas de segundos tolera ~100 ms; correlación de alarmas entre líneas exige **< 1 s** entre edges.
 
-### 3.2 Limitaciones del monitor SNTP v2.0 (no «infalible»)
+#### 3.2 Limitaciones del monitor SNTP v2.0 (no «infalible»)
 
 | Limitación | Impacto | Mitigación / estado v2.0 |
 |---|---|---|
@@ -162,7 +314,7 @@ Ajustar con ingeniería de planta. iDetectFugas con ventanas de segundos tolera 
 
 ---
 
-## 4. Estrategia recomendada — arquitectura en capas
+### 4. Estrategia recomendada — arquitectura en capas
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -200,7 +352,7 @@ Ajustar con ingeniería de planta. iDetectFugas con ventanas de segundos tolera 
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.1 Qué NO hacer (anti-patrones)
+#### 4.1 Qué NO hacer (anti-patrones)
 
 | Anti-patrón | Por qué |
 |---|---|
@@ -212,7 +364,7 @@ Ajustar con ingeniería de planta. iDetectFugas con ventanas de segundos tolera 
 | Probe NTP en hot path OPC | Bloquearía adquisición; viola [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) |
 | Asumir que PyAutomation «se conecta a cualquier NTP» sin red/firewall | UDP 123 debe estar permitido; Windows Server debe estar **configurado** como servidor |
 
-### 4.2 Piezas implementadas en PyAutomation
+#### 4.2 Piezas implementadas en PyAutomation
 
 | Pieza | Ruta | Rol |
 |---|---|---|
@@ -224,7 +376,7 @@ Ajustar con ingeniería de planta. iDetectFugas con ventanas de segundos tolera 
 | HMI | `ClockSyncPanel.tsx`, `ClockBadge.tsx` | Config + estado; texto: disciplina = SO |
 | Tests | `automation/tests/test_ntp_monitor.py` | CA-NTP-01 … CA-NTP-06 |
 
-### 4.3 Compatibilidad Linux / Windows Server (servidor NTP)
+#### 4.3 Compatibilidad Linux / Windows Server (servidor NTP)
 
 | Plataforma | Rol típico | Requisitos para que el monitor PyAutomation funcione |
 |---|---|---|
@@ -238,9 +390,9 @@ PyAutomation **no distingue** SO del servidor: envía paquete SNTP estándar y p
 
 ---
 
-## 5. Diseño de producto (implementado)
+### 5. Diseño de producto (implementado)
 
-### 5.1 Configuración (HMI + env bootstrap)
+#### 5.1 Configuración (HMI + env bootstrap)
 
 | Parámetro | Default | Descripción |
 |---|---|---|
@@ -261,7 +413,7 @@ PyAutomation **no distingue** SO del servidor: envía paquete SNTP estándar y p
 - Badge en header (`ClockBadge`)
 - Texto: «La disciplina del reloj la realiza el sistema operativo (chrony). PyAutomation verifica el cumplimiento. No hace falta definir variables de entorno.»
 
-### 5.2 API (implementada)
+#### 5.2 API (implementada)
 
 ```
 GET  /api/system/clock              → snapshot completo
@@ -291,7 +443,7 @@ Payload ejemplo:
 }
 ```
 
-### 5.3 Scheduler no bloqueante (implementado)
+#### 5.3 Scheduler no bloqueante (implementado)
 
 ```
 NtpMonitorWorker (Thread daemon)
@@ -312,7 +464,7 @@ NtpMonitorWorker (Thread daemon)
 | Failover multi-servidor | ✅ Primer servidor que responde |
 | Probe manual | ✅ `POST /api/system/clock/check` (60 s rate limit) |
 
-### 5.4 Alarma de planta (implementada)
+#### 5.4 Alarma de planta (implementada)
 
 | Artefacto | Nombre |
 |---|---|
@@ -321,13 +473,13 @@ NtpMonitorWorker (Thread daemon)
 | Verdadero cuando | `\|offset_ms\| > alarm_threshold` **o** 3 probes fallidos consecutivos |
 | HMI | `ClockBadge` + banner alarmas scoped al edge |
 
-### 5.5 Multi-edge: consola central (Fase C — pendiente)
+#### 5.5 Multi-edge: consola central (Fase C — pendiente)
 
 Extender agregación planta con `max_inter_edge_skew_ms` y vista HMI multi-nodo. Columnas `Nodes.ntp_*` ya persisten por edge.
 
 ---
 
-## 6. Hallazgos (IDs) y estado
+### 6. Hallazgos (IDs) y estado
 
 | ID | Sev. | Hallazgo | Estado |
 |---|---|---|---|
@@ -348,9 +500,9 @@ Extender agregación planta con `max_inter_edge_skew_ms` y vista HMI multi-nodo.
 
 ---
 
-## 7. Roadmap de implementación
+### 7. Roadmap de implementación
 
-### Fase A — Monitor mínimo viable (P0) ✅
+#### Fase A — Monitor mínimo viable (P0) ✅
 
 | Entrega | Estado |
 |---|---|
@@ -358,7 +510,7 @@ Extender agregación planta con `max_inter_edge_skew_ms` y vista HMI multi-nodo.
 | Health + API clock | ✅ |
 | `test_ntp_monitor.py` CA-NTP-01…06 | ✅ |
 
-### Fase B — HMI y settings (P1) ✅
+#### Fase B — HMI y settings (P1) ✅
 
 | Entrega | Estado |
 |---|---|
@@ -366,7 +518,7 @@ Extender agregación planta con `max_inter_edge_skew_ms` y vista HMI multi-nodo.
 | PUT settings clock (admin) | ✅ |
 | Config HMI > env (sin obligar `.env`) | ✅ |
 
-### Fase B+ — Monitor universal v2.0 (P0/P1) ✅
+#### Fase B+ — Monitor universal v2.0 (P0/P1) ✅
 
 | Entrega | Evidencia |
 |---|---|
@@ -377,7 +529,7 @@ Extender agregación planta con `max_inter_edge_skew_ms` y vista HMI multi-nodo.
 | Runbook + multi-edge doc | `docs/ntp-deployment.md` |
 | Tests | 18 tests OK en `test_ntp_monitor.py` |
 
-### Fase C — Planta multi-edge (P2) — pendiente
+#### Fase C — Planta multi-edge (P2) — pendiente
 
 | Entrega | Superficie |
 |---|---|
@@ -387,7 +539,7 @@ Extender agregación planta con `max_inter_edge_skew_ms` y vista HMI multi-nodo.
 | **CA-NTP-06** | Dos edges, mismo NTP; `\|offset_A - offset_B\| < 100 ms` tras 24 h |
 | **CA-NTP-07** | Edge A chrony detenido 10 min → alarma + evento; B sin afectación |
 
-### Fase D — Endurecimiento protocolo (P3) — opcional
+#### Fase D — Endurecimiento protocolo (P3) — opcional
 
 | Entrega | Notas |
 |---|---|
@@ -398,9 +550,9 @@ Extender agregación planta con `max_inter_edge_skew_ms` y vista HMI multi-nodo.
 
 ---
 
-## 8. Despliegue recomendado (documentación operativa)
+### 8. Despliegue recomendado (documentación operativa)
 
-### 8.1 Host Linux (edge bare-metal o VM)
+#### 8.1 Host Linux (edge bare-metal o VM)
 
 ```ini
 # /etc/chrony/chrony.conf (ejemplo planta)
@@ -418,7 +570,7 @@ chronyc sources -v
 
 **Hipervisor:** desactivar sincronización de reloj invasiva si compite con chrony.
 
-### 8.2 Host Windows (edge)
+#### 8.2 Host Windows (edge)
 
 ```powershell
 # Sincronizar contra servidores de planta (ejemplo)
@@ -429,7 +581,7 @@ w32tm /query /status
 
 Usar **los mismos servidores** que en HMI → Configuración → Sincronización NTP.
 
-### 8.3 Windows Server como servidor NTP (para edges)
+#### 8.3 Windows Server como servidor NTP (para edges)
 
 | Paso | Acción |
 |---|---|
@@ -439,7 +591,7 @@ Usar **los mismos servidores** que en HMI → Configuración → Sincronización
 | Prueba | Desde edge Linux: `ntpdate -q 192.168.10.5` o botón «Comprobar ahora» en HMI |
 | Dominio | Si solo responde a miembros AD, usar servidor NTP Linux dedicado para edges OT |
 
-### 8.4 Docker Compose
+#### 8.4 Docker Compose
 
 ```yaml
 # El contenedor NO lleva chrony. El HOST debe estar sincronizado.
@@ -451,7 +603,7 @@ services:
       - ot_vlan   # debe permitir UDP 123 saliente hacia servidores NTP
 ```
 
-### 8.5 Checklist de aceptación en planta
+#### 8.5 Checklist de aceptación en planta
 
 **Red y servidores NTP**
 
@@ -492,19 +644,19 @@ services:
 
 ---
 
-## 9. Relación con auditorías existentes
+### 9. Relación con auditorías existentes
 
 | Auditoría | Interacción |
 |---|---|
-| [AUDIT_TIMEZONE.md](./AUDIT_TIMEZONE.md) | Complementaria. TZ = presentación; NTP = epoch. `ClockBadge` coexiste con selector planta/local |
+| [AUDIT_TIME.md](./AUDIT_TIME.md) | Complementaria. TZ = presentación; NTP = epoch. `ClockBadge` coexiste con selector planta/local |
 | [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) | Cierra hueco «tiempo» monitor. `NODE_ID` en payload clock. `ntp_fail_closed` suma a `ACQUISITION_BLOCKED_REASON` |
-| [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) | Timestamps journal UTC del SO; NTP reduce colisiones `(tag_id, timestamp)` por salto |
-| [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) | Eventos sync/unsync → L3 Events |
+| [AUDIT_DB.md](./AUDIT_DB.md) | Timestamps journal UTC del SO; NTP reduce colisiones `(tag_id, timestamp)` por salto |
+| [AUDIT_RELIABILITY.md](./AUDIT_RELIABILITY.md) | Eventos sync/unsync → L3 Events |
 | [AUDIT_STATE_MACHINES.md](./AUDIT_STATE_MACHINES.md) | `cycle_timestamp` depende del reloj; monitor no cambia tres relojes SM |
 
 ---
 
-## 10. Archivos clave
+### 10. Archivos clave
 
 | Área | Implementado |
 |---|---|
@@ -524,7 +676,7 @@ services:
 
 ---
 
-## 11. Veredicto y scorecard
+### 11. Veredicto y scorecard
 
 | ID | Capacidad | Pre-implementación | Vigente (2026-08-19) | Objetivo clase mundial |
 |---|---|---|---|---|
@@ -546,13 +698,14 @@ services:
 
 ---
 
-## 12. Respuesta ejecutiva para el equipo
+### 12. Respuesta ejecutiva para el equipo
 
 1. **Sí**, todos los edges deben apuntar al **mismo par de servidores NTP de planta**, configurados en el **SO** (chrony en Linux, w32time en Windows), **no** como disciplinador dentro del proceso Python.
 2. **Sí**, PyAutomation incorpora un **monitor SNTP ligero** (implementado): scheduler no bloqueante, intervalo configurable desde HMI, alarma cuando el edge está fuera de sync o no alcanza los servidores.
 3. **No**, no se necesitan **credenciales** para NTP estándar en VLAN OT (UDP 123). Servidores con autenticación obligatoria (claves simétricas, NTS) **no** están soportados hoy.
 4. **Sí**, el monitor funciona con servidores **Linux y Windows Server** siempre que respondan SNTP/NTP en UDP/123; Windows requiere configuración explícita de servidor y firewall.
 5. **No**, la estrategia **no es infalible** solo con PyAutomation: la fiabilidad industrial exige **red OT + NTP redundante + disciplina en el host + monitor con alarmas**. PyAutomation detecta; chrony/w32time corrige.
-6. La operación «Hora Única» ([AUDIT_TIMEZONE.md](./AUDIT_TIMEZONE.md)) **no sustituye** esta capacidad; ambas son necesarias para multi-edge de clase mundial.
+6. La operación «Hora Única» ([AUDIT_TIME.md](./AUDIT_TIME.md)) **no sustituye** esta capacidad; ambas son necesarias para multi-edge de clase mundial.
 
 **Próximo paso:** Fase C — soak 2-edge en planta (CA-NTP-20). Opcional P3: autenticación symmetric/NTS.
+

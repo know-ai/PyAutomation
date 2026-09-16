@@ -5,7 +5,7 @@
 | **Versión** | 2.0 |
 | **Fecha** | 2026-08-19 |
 | **Estado** | Implementado (Fase A+B+v2 universal) |
-| **Auditoría** | [AUDIT_NTP_TIME_SYNC.md](../audits/AUDIT_NTP_TIME_SYNC.md) |
+| **Auditoría** | [AUDIT_TIME.md](../audits/AUDIT_TIME.md) |
 
 ## Alcance
 

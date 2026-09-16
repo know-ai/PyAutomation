@@ -99,6 +99,6 @@ ORDER BY last_heartbeat DESC;
 
 ## Referencias
 
-- Auditoría: [audits/AUDIT_HMI_SOCKET_TRACEABILITY.md](../audits/AUDIT_HMI_SOCKET_TRACEABILITY.md)
+- Auditoría: [audits/AUDIT_HMI.md](../audits/AUDIT_HMI.md)
 - Spec: [specs/04-HMI-SOCKET-TRACEABILITY.md](../specs/04-HMI-SOCKET-TRACEABILITY.md)
 - Events (dev): [docs/Developments_Guide/API/events.md](../docs/Developments_Guide/API/events.md)

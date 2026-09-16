@@ -5,7 +5,7 @@
 | **Versión** | 2.1 |
 | **Producto** | PyAutomationIO (`automation/` + HMI React) |
 | **Estado** | Implementado en código (2026-08-19) |
-| **Auditoría** | [audits/AUDIT_HMI_SOCKET_TRACEABILITY.md](../audits/AUDIT_HMI_SOCKET_TRACEABILITY.md) |
+| **Auditoría** | [audits/AUDIT_HMI.md](../audits/AUDIT_HMI.md) |
 | **Runbook** | [docs/hmi-connectivity-runbook.md](../docs/hmi-connectivity-runbook.md) |
 
 ## Objetivo

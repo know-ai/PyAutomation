@@ -1343,32 +1343,38 @@ class TestT01Apocalypse(unittest.TestCase):
         pending_after = journal.pending_count()
         ring_lag = max(0, generated - durable)
         achieved_hz = (generated / n_tags / max(duration / 2.0, 0.001)) if n_tags else 0.0
-        report = os.path.join(repo, "audits", "T01_SOAK_LAST_RUN.md")
-        os.makedirs(os.path.dirname(report), exist_ok=True)
+        report = os.path.join(repo, "audits", "AUDIT_DB.md")
+        start = "<!-- T01_SOAK_LAST_RUN:start -->"
+        end = "<!-- T01_SOAK_LAST_RUN:end -->"
+        body = "\n".join(
+            [
+                "# T-01 Soak — last run",
+                "",
+                f"- tags={n_tags} hz={hz} duration_s={duration} kill_at_s={duration/2:.3f}",
+                f"- achieved_tick_hz={achieved_hz:.2f}",
+                f"- generated_fsync={generated}",
+                f"- journal_durable={durable}",
+                f"- ring_lag_samples={ring_lag}",
+                f"- replicated={total}",
+                f"- remote_rows_first_pass={first_remote}",
+                f"- remote_rows_after_retry={second_remote}",
+                f"- pending_after={pending_after}",
+                f"- exact_once={first_remote == second_remote}",
+                f"- remote_equals_durable={first_remote == durable}",
+                "",
+                "Ring lag is the hardware window of the in-memory flusher (≤ tag_flush_interval_s).",
+                "Those samples never reached WAL before SIGKILL; they are the only acceptable loss.",
+                "",
+            ]
+        )
+        with open(report, encoding="utf-8") as handle:
+            text = handle.read()
+        if start not in text or end not in text:
+            raise AssertionError("AUDIT_DB.md missing T01 soak markers")
+        pre, rest = text.split(start, 1)
+        _, post = rest.split(end, 1)
         with open(report, "w", encoding="utf-8") as handle:
-            handle.write(
-                "\n".join(
-                    [
-                        "# T-01 Soak — last run",
-                        "",
-                        f"- tags={n_tags} hz={hz} duration_s={duration} kill_at_s={duration/2:.3f}",
-                        f"- achieved_tick_hz={achieved_hz:.2f}",
-                        f"- generated_fsync={generated}",
-                        f"- journal_durable={durable}",
-                        f"- ring_lag_samples={ring_lag}",
-                        f"- replicated={total}",
-                        f"- remote_rows_first_pass={first_remote}",
-                        f"- remote_rows_after_retry={second_remote}",
-                        f"- pending_after={pending_after}",
-                        f"- exact_once={first_remote == second_remote}",
-                        f"- remote_equals_durable={first_remote == durable}",
-                        "",
-                        "Ring lag is the hardware window of the in-memory flusher (≤ tag_flush_interval_s).",
-                        "Those samples never reached WAL before SIGKILL; they are the only acceptable loss.",
-                        "",
-                    ]
-                )
-            )
+            handle.write(pre + start + "\n" + body + "\n" + end + post)
         journal.stop()
         self.assertGreater(generated, 0)
         self.assertGreater(durable, 0)

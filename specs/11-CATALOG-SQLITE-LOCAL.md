@@ -10,8 +10,8 @@
 | **Estado** | **Implementado** (Fases 1–8 y 10 en código; soak 24 h **pendiente**) |
 | **Runbook** | [catalog-sqlite-runbook.md](../docs/catalog-sqlite-runbook.md) |
 | **Documentación feature** | [catalog-sqlite.md](../docs/catalog-sqlite.md) |
-| **Auditoría** | [AUDIT_CATALOG_SQLITE_LOCAL.md](../audits/AUDIT_CATALOG_SQLITE_LOCAL.md) |
-| **Complementa** | [01-MULTI-EDGE-ARCHITECTURE.md](./01-MULTI-EDGE-ARCHITECTURE.md), [09-OPC-QUALITY-AND-DEGRADED-STARTUP.md](./09-OPC-QUALITY-AND-DEGRADED-STARTUP.md), [AUDIT_DB.md](../audits/AUDIT_DB.md), [AUDIT_STORE_AND_FORWARD.md](../audits/AUDIT_STORE_AND_FORWARD.md) |
+| **Auditoría** | [AUDIT_TAGS.md](../audits/AUDIT_TAGS.md) |
+| **Complementa** | [01-MULTI-EDGE-ARCHITECTURE.md](./01-MULTI-EDGE-ARCHITECTURE.md), [09-OPC-QUALITY-AND-DEGRADED-STARTUP.md](./09-OPC-QUALITY-AND-DEGRADED-STARTUP.md), [AUDIT_DB.md](../audits/AUDIT_DB.md) |
 | **Normas** | ISA-95 · IEC 61508 (SIL-ready, no certificación) · ISA-18.2 · IEC 62443 |
 | **Audiencia** | Arquitectura de software · ingeniería de procesos · operaciones OT |
 | **Filosofía** | El edge debe ser autónomo por diseño: opera, alarme y autentique aunque el mundo exterior se desvanezca. La sincronización con el central es un proceso de fondo, nunca una dependencia. |

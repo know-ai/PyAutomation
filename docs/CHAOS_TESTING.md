@@ -4,7 +4,7 @@
 |---|---|
 | **Objetivo** | Validar RTO/RPO y recuperación automática ante fallos de red, disco, nodo y energía |
 | **Audiencia** | Laboratorio OT, no CI de cada commit |
-| **Evidencia** | [audits/CHAOS_LAST_RUN.md](../audits/CHAOS_LAST_RUN.md) |
+| **Evidencia** | [audits/AUDIT_RELIABILITY.md](../audits/AUDIT_RELIABILITY.md) |
 | **Fecha** | 2026-08-28 |
 
 Estas pruebas **no se simulan como “planta 24 h” en GitLab CI**. Los unitarios cubren el mecanismo; la campaña de laboratorio rellena el artefacto.
@@ -73,4 +73,4 @@ No habilitar soak 24 h en el pipeline de merge.
 
 ## Tras cada campaña de lab
 
-Copiar resultados a [audits/CHAOS_LAST_RUN.md](../audits/CHAOS_LAST_RUN.md). Enlazar desde [AUDIT_MISSION_CRITICAL.md](../audits/AUDIT_MISSION_CRITICAL.md).
+Copiar resultados a la Parte D de [audits/AUDIT_RELIABILITY.md](../audits/AUDIT_RELIABILITY.md) (plantilla de campaña CT-07).

@@ -2,10 +2,13 @@
 
 | Campo | Valor |
 |---|---|
+| **Documento canónico** | 08 / 10 |
+| **Fecha de agrupación** | 2026-09-16 |
+| **Fuentes absorbidas (esta compactación)** | (ya era único) |
 | **Producto** | PyAutomationIO (`automation/state_machine.py`, `automation/workers/state_machine.py`, `automation/opcua/subscription.py`, `automation/tags/`) |
 | **Alcance** | Ciclo de vida de una SM; `machine_interval`; buffers de variables suscritas; relación con CVT, DAS, DAQ y OPC UA; versatilidad de periodos por capa |
 | **Fecha** | 2026-08-18 — evidencia de código; **re-auditoría post spec 02** (desacoplamiento temporal) |
-| **Complementa** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), `specs/02-STATE-MACHINE-TEMPORAL-DECOUPLING.md` |
+| **Complementa** | [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_TAGS.md](./AUDIT_TAGS.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), `specs/02-STATE-MACHINE-TEMPORAL-DECOUPLING.md` |
 | **Consumidor de referencia** | iDetectFugas — **dual-path**: legado si `sample_interval IS NULL`; migrado lee `self.data` (`app/sampling.py`) |
 | **Veredicto** | **A−** con tres relojes. SM-H1 **cerrado** si `sample_interval` está definido (`SampleSchedThread` → `_push_to_buffer`). Modo legado = comportamiento pre-spec. Regla de oro `execution ≥ sample ≥ scan` rechazada en API (400) |
 | **Clasificación** | Auditoría de arquitectura · runtime de control |
@@ -127,7 +130,7 @@ Cambio de intervalo en runtime (`set_interval` / API): se lee `get_interval()` *
 
 ### 2.4 Sello de ciclo (relación con el historiador)
 
-Antes de `loop()`, `stamp_machine_cycle` pone `machine.cycle_timestamp` (UTC, milisegundo). Todo `ProcessType.set_value` **de salida** en ese tick comparte ese instante salvo timestamp explícito. UNIQUE `(tag_id, timestamp)` colapsa reescrituras del mismo tag en el mismo ciclo. Eso **no** es el timestamp de campo (`data_timestamp` / `SourceTimestamp` OPC). Detalle: [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md).
+Antes de `loop()`, `stamp_machine_cycle` pone `machine.cycle_timestamp` (UTC, milisegundo). Todo `ProcessType.set_value` **de salida** en ese tick comparte ese instante salvo timestamp explícito. UNIQUE `(tag_id, timestamp)` colapsa reescrituras del mismo tag en el mismo ciclo. Eso **no** es el timestamp de campo (`data_timestamp` / `SourceTimestamp` OPC). Detalle: [AUDIT_DB.md](./AUDIT_DB.md).
 
 ---
 
@@ -217,7 +220,7 @@ DAQ respeta `node_scope` (multi-edge): no escribe tags de otra área.
 
 Memoria de proceso. Una escritura = valor actual + notify de observers (SM, alarmas, `TagObserver` → SAF, `on.tag` SocketIO).
 
-Deadband en `Tag.set_value` **corta** el ingest wavelet y los observers. El `ProcessType` de la SM se queda en el último valor que pasó la banda. Ver [AUDIT_SIGNAL_CONDITIONING.md](./AUDIT_SIGNAL_CONDITIONING.md).
+Deadband en `Tag.set_value` **corta** el ingest wavelet y los observers. El `ProcessType` de la SM se queda en el último valor que pasó la banda. Ver [AUDIT_TAGS.md](./AUDIT_TAGS.md).
 
 El filtrado wavelet actúa **off-thread** en tag `.f`; la SM suscrita consume el valor filtrado, no el raw del hot path.
 

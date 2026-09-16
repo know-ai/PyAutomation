@@ -40,6 +40,10 @@ export type Alarm = {
   on_timer_remaining?: number | null;
   off_timer_remaining?: number | null;
   delay_phase?: "pending" | "clearing" | null;
+  priority?: number;
+  latching?: boolean;
+  ack_required?: boolean;
+  chattering?: boolean;
   [key: string]: any;
 };
 
