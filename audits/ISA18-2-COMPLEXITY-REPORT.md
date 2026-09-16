@@ -63,7 +63,7 @@ Selector `selectActiveAlarmsPreview` lee `top3Active.slice(0,3)` (O(1) acotado).
 | GATE-19 T-60…T-66 | **PARCIAL** — T-60/T-64/T-80 PASS con presupuesto CI 250 µs. T-61…T-63 (100–10 k alarmas **en el mismo tag**) no pueden ser 10 µs en Python (O(k) comparaciones). T-65/T-66 1 M no corridos. |
 | GATE-20 T-70…T-76 | **PARCIAL** — T-74/75/76 PASS. T-70…T-73 1 M filas PG **pendientes lab**. |
 | GATE-21 T-80 | **PASS** relativo (p99 no empeora al crecer el catálogo). |
-| GATE-22 EXPLAIN | **PASS SQLite** (índices). 1 M filas PostgreSQL pendiente. |
+| GATE-22 EXPLAIN | **PASS SQLite** + **PASS PG 1 M** — [ISA18-2-EXPLAIN-PG.md](./ISA18-2-EXPLAIN-PG.md) GATE-30 verde. |
 | GATE-23 `/api/health/alarms` | **PASS código** — 10 campos + `violations`. |
 | GATE-24 alertas prod | **PENDIENTE** planta (la API ya marca `unhealthy` si p99>10). |
 | GATE-25 AP-21…35 grep | **PASS** con waivers AP-26 (HMI store) y AP-30 (on_enter en worker, no DAS). |

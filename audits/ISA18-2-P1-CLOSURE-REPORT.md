@@ -1,29 +1,43 @@
-# ISA18-2-P1-CLOSURE-REPORT — SPEC-ISA18-2-CLOSURE-v3
+# ISA18-2-P1-CLOSURE-REPORT — v3 + SPEC-ISA18-2-PG-CLOSURE-v2
 
 | Campo | Valor |
 |---|---|
-| **Spec** | SPEC-ISA18-2-CLOSURE-v3 |
+| **Spec** | SPEC-ISA18-2-CLOSURE-v3 + SPEC-ISA18-2-PG-CLOSURE-v2 |
 | **Fecha** | 2026-09-16 |
+| **SHA** | `7ee3df9527c5141e8bc963b856cd569f95aa8a1e` |
 | **Host** | CPython 3.12, venv del repo |
-| **Alcance** | P1 Priority 1 (cola, health, flag, T-64 sintético, frontend acotado). **No P2.** |
+| **Lab** | `app_db` PG17 :32800 · Redis `compose-redis-session-1` · `opcua_simulator` :4840 |
+| **Alcance** | P1 cola/health/HMI + cierre GATE-30 lab + E2E local. **No P2.** |
 
 ## Resumen ejecutivo
 
-P1 v3 cierra cola acotada, health del worker, drenaje prohibido en producción, lookup sintético a 1 M keys y HMI paginado. El laboratorio PostgreSQL 1 M filas **no está disponible** en esta sesión: GATE-30 queda **ROJO con waiver**. El resto de gates de código están verdes.
+GATE-30 (EXPLAIN ANALYZE 1 M filas, 0 Seq Scan) está **VERDE**. Eso desbloqueaba el P1 v3 de código.
 
-**No se declara «Terminado» v3 §6ter** mientras GATE-30 no tenga EXPLAIN ANALYZE en lab.
+El ciclo ISA A→B→D→B→C→E produce **5 filas** con `check_condition` real. El simulador OPC **no permite escribir** PV. Redis **no** está en el hot path de alarmas (INV-64). Restart de `app_db` conserva el seed. Paginación OFFSET 450 = 2.92 ms.
 
-## 7 gates
+**Terminado v3 pleno: NO** (gates E2E OPC-write / SAF-replay / Playwright / PK `event_time` no verdes).
+**Terminado v3 con waivers firmados: SÍ** (§15 punto 1: verde o waiver con evidencia de intento).
 
-| Gate | Criterio | Resultado |
+## Gates GATE-22…GATE-38
+
+| Gate | Descripción | Resultado |
 |---|---|---|
-| GATE-26 | Cola maxlen 100 000, overflow, backlog | **VERDE** — T-90, T-91, T-95 |
-| GATE-27 | `transition_worker_alive` + `worker_lag_ms` | **VERDE** — T-92, T-94 |
-| GATE-28 | `ALARM_SYNC_DRAIN` doble barrera | **VERDE** — T-93, T-96, T-97 |
-| GATE-29 | T-64 1 M keys, p99 ≤ 50 µs | **VERDE** — p50=0.9 µs, p99=2.0 µs, 79.9 MB |
-| GATE-30 | EXPLAIN PG 1 M sin Seq Scan | **ROJO** — no hay lab PG (`psql`/driver ausentes) |
-| GATE-31 | Frontend acotado INV-43…46 | **VERDE** — store top-3 + page≤50 + history≤100 |
-| GATE-32 | Paginación forzosa API | **VERDE** — T-98, T-99, clamp en resources |
+| GATE-22-PG | Índices en PG real | **VERDE** — 5+ índices en `alarms`/`alarmsummary` |
+| GATE-26 | Cola maxlen 100 000 | **VERDE** — T-90, T-91, T-95 |
+| GATE-27 | worker alive + lag | **VERDE** — T-92, T-94 |
+| GATE-28 | `ALARM_SYNC_DRAIN` | **VERDE** — T-93, T-96, T-97 |
+| GATE-29 | T-64 1 M keys p99 ≤ 50 µs | **VERDE** — p99=2.0 µs |
+| GATE-29b | T-64b N=500 Alarm reales | **VERDE** — p99=23.7 µs max=42.6 µs |
+| GATE-30 | EXPLAIN PG 1 M sin Seq Scan | **VERDE** — Q1 0.10 ms … Q6 2.67 ms |
+| GATE-31 | Frontend acotado | **VERDE** — store + unittest (Playwright waiver) |
+| GATE-32 | Paginación API | **VERDE** — T-98/T-99 |
+| GATE-32-PG | Paginación 1 M | **VERDE** — OFFSET 450 = 2.92 ms |
+| GATE-33 | Partition readiness | **PARCIAL / waiver W-PG-06** — PK bigint, 0 FK; PK sin `event_time` |
+| GATE-34 | E2E OPC ciclo | **PARCIAL / waiver W-PG-01** — read OK, write denied |
+| GATE-35 | Hot path 100/500/1000 ms | **PARCIAL / waiver W-PG-02** — INV-55 PASS; CA-F6 50 µs FAIL |
+| GATE-36 | Multiworker Redis | **VERDE (INV-64)** — 0 redis en runtime; 2 drainers 0 dup |
+| GATE-37 | Restart PG | **PARCIAL / waiver W-PG-04** — seed sobrevive; SAF replay no |
+| GATE-38 | Ciclo ISA 5 filas | **VERDE** SQLite; PG lab INSERT. SAF vivo waiver W-PG-05 |
 
 ## 11 tests T-90…T-100
 
@@ -37,101 +51,65 @@ P1 v3 cierra cola acotada, health del worker, drenaje prohibido en producción, 
 | T-95 | **PASS** | `_pending_max_seen` conserva el pico |
 | T-96 | **PASS** | `AUTOMATION_ENV=test` + `ALARM_SYNC_DRAIN=true` drena |
 | T-97 | **PASS** | producción ignora el flag (log WARNING) |
-| T-98 | **PASS** | `page_size=100` → 50 |
+| T-98 | **PASS** | `page_size=100` → 50 (también contra PG lab) |
 | T-99 | **PASS** | `page_size=500` → 100 |
 | T-100 | **PASS** | `serialize_socket()` ≤ 2 KB |
 
-ISA T-01…T-11 + I-01 + complexity T-60/T-64/T-80 + delays: **PASS**.
+T-64b **PASS**. ISA T-01…T-11 + I-01 + T-60/T-64/T-80: **PASS** (sesión v3).
 
-## INV-36…INV-50
+## INV-36…INV-65
 
-| ID | Estado | Evidencia |
-|---|---|---|
-| INV-36 | PASS | `deque(maxlen=100_000)` |
-| INV-37 | PASS | T-90 CRITICAL + flag PERF |
-| INV-38 | PASS | T-91 WARNING una vez, histéresis umbral/2 |
-| INV-39 | PASS | health `transition_worker_alive` |
-| INV-40 | PASS | health `worker_lag_ms` |
-| INV-41 | PASS | default producción false |
-| INV-42 | PASS | T-93 no drena |
-| INV-43 | PASS | Redux `top3Active` + `countByState`; connect ya no manda catálogo |
-| INV-44 | PASS | `/api/alarms` clampea ≤ 50; UI sin option 100 |
-| INV-45 | PASS | historial clampea ≤ 100 |
-| INV-46 | PASS | clamp en list/history/lasts/active |
-| INV-47 | PASS | T-100 `on.alarm` compacto |
-| INV-48 | PASS | `on.tag` típico 194 B (< 500 B) |
-| INV-49 | PASS | T-94 |
-| INV-50 | PASS | T-95 |
+INV-36…INV-50: **PASS** (cierre v3). INV-51…INV-65: tabla en [ISA18-2-E2E-REPORT.md](./ISA18-2-E2E-REPORT.md). Destacados: INV-54/55/57/62/64 **PASS**; INV-53/58/60/63 waiver.
 
-## AP-36…AP-45 (grep)
+## AP-36…AP-45 (grep) y AP-46…AP-65
 
-| AP | Resultado |
+AP-36…AP-45: **0 hits** (cierre v3). AP-46…AP-55 no están enumerados en el cuerpo de PG-CLOSURE-v2; los anti-patrones ejecutables de esta entrega son AP-56…AP-65:
+
+| AP | Verificación |
 |---|---|
-| AP-36 `deque()` sin maxlen en cola | **0 hits** — cola usa `deque(maxlen=100_000)` |
-| AP-37 drain silencioso en prod | **cerrado** — doble barrera |
-| AP-38 store = catálogo | **cerrado** — no hay `alarms: Record` |
-| AP-39 `/alarms` sin página | **cerrado** |
-| AP-40 historial sin página | **cerrado** — export pagina de 100 |
-| AP-41 API sin limit | **cerrado** en list/history/lasts/active/footer |
-| AP-42 socket con catálogo | **cerrado** — `on_connection.alarms = []` |
-| AP-43 health `COUNT(*)` | **0 hits** en `health.py` |
-| AP-44 `ALARM_SYNC_DRAIN=true` en prod | **ignorado** + WARNING |
-| AP-45 flag sin default seguro | **cerrado** — default false |
+| AP-56 E2E sin OPC | **evitado** — simulador healthy, lectura `FI_01=0.0` |
+| AP-57 Redis DB compartida | **evitado** — `redis-cli -n 15` + FLUSHDB |
+| AP-58 restart sin reconexión | **evitado** — wait ≤ 45 s; reconectó en 1.8 s |
+| AP-59 hot path sin warmup | **parcial** — 50 muestras @ 100 ms; p99 estable vs p50 |
+| AP-60 ignorar Seq Scan | **evitado** — analizador FAIL si Seq Scan |
+| AP-61 E2E PASS sin PG | **evitado** — round-trip PG documentado; SAF vivo no se declara PASS |
+| AP-62 multiworker sin aislamiento | **evitado** — runtime reset + db15 |
+| AP-63 frontend sin eventos | **parcial** — 1000 eventos en reducer unittest; no Playwright |
+| AP-64 waiver sin intento | **evitado** — cada waiver cita comando/error |
+| AP-65 Terminado con gate rojo | **respetado** — no se declara Terminado pleno |
 
-## Benchmark T-64 (N vs p99)
-
-Lookup sintético (`dict.get` + `_evaluate_condition` en SimpleNamespace). 10 000 muestras. `time.perf_counter_ns`.
-
-| N keys | p50 (µs) | p99 (µs) | Memoria dict |
-|---|---|---|---|
-| 1 000 | ~0.9 | ≤ 2.0 | — |
-| 1 000 000 | 0.9 | **2.0** | **79.9 MB** |
+## Benchmarks
 
 ```
-p99 (µs)
-2.0 |                *  N=1M
-    |
-0.9 |  *              N=1k
-    +----------------------
-      1k            1M
+T-64  N=1M keys     p50=0.9µs  p99=2.0µs   mem=79.9MB
+T-64b N=500 Alarm   p50=12.3µs p99=23.7µs  max=42.6µs
+on_tag_value+OPC    100ms p99=106.4µs  500ms p99=68.8µs  1000ms p99=100.2µs
+EXPLAIN Q1–Q4/Q6    0.10 / 0.22 / 0.18 / 0.06 / 2.67 ms   0 Seq Scan
+OFFSET 450          2.92 ms
 ```
 
-Degradación N=1k → N=1M ≤ 10 % (PASS). Presupuesto v3 50 µs: **holgura ×25**.
+## Informes
 
-Hot path real `on_tag_value` (CPython, 1 alarma/tag) permanece ~50–56 µs p99 (medición v2). Eso es O(1) en N; el presupuesto de planta 50 µs p99 es **marginal en el intérprete**, no en el índice. GATE-29 evalúa el lookup sintético, no el SM.
+- [ISA18-2-EXPLAIN-PG.md](./ISA18-2-EXPLAIN-PG.md) + dump [ISA18-2-EXPLAIN-PG-raw.txt](./ISA18-2-EXPLAIN-PG-raw.txt)
+- [ISA18-2-E2E-REPORT.md](./ISA18-2-E2E-REPORT.md)
+- [ISA18-2-PARTITION-PLAN.md](./ISA18-2-PARTITION-PLAN.md)
+- [AUDIT_ISA18_2_ALARMS.md](./AUDIT_ISA18_2_ALARMS.md)
 
-## EXPLAIN PG
-
-Ver [ISA18-2-EXPLAIN-PG.md](./ISA18-2-EXPLAIN-PG.md). Scripts listos: `scripts/seed_alarms_1m.sql`, `scripts/explain_alarms_pg.sql`. Lab **no ejecutado**.
-
-## Frontend no-explosión
-
-- `hmi/src/store/slices/__tests__/alarmsSlice.test.ts` (especificación TS).
-- `automation/tests/test_alarms_frontend_bounds.py` corre en CI (unittest): 1000 sockets → top3 ≤ 3; page ≤ 50; history ≤ 100.
-- Logout limpia page/top3 y conserva `countByState`.
-
-## Waivers firmados 2026-09-16
-
-1. **GATE-30 EXPLAIN PostgreSQL 1 M filas:** no hay `psql` ni driver en esta sesión. Gate **ROJO**. SQLite covering indexes siguen en [ISA18-2-EXPLAIN.md](./ISA18-2-EXPLAIN.md).
-2. **Query 4 `priority` ISA:** columna `priority` es P2; el script usa `last_transition_ts` (índice v2).
-3. **Query 5 `COUNT(*)`:** prohibido en `/api/health/alarms`. El script lo deja solo como anti-patrón de lab.
-4. **Vitest:** no se añadió dependencia. El test de no-explosión corre en unittest Python + archivo TS de referencia.
-5. **p99 `on_tag_value` real ~55 µs vs 50 µs v3:** no bloquea GATE-29 (sintético 2 µs). Se acepta ruido de host CPython; CPU a 10 Hz×500 tags ≈ 27 % de un core vs 25 % de diseño.
-6. **GET `/alarms/active_alarms`:** ahora objeto paginado (`items`, `page_size`≤50), no lista cruda. El HMI no lo consumía.
-
-## Definición «Terminado» v3 (§6ter)
+## Definición «Terminado» v3 (§15)
 
 | # | Punto | Estado |
 |---|---|---|
-| 1 | GATE-26…32 verdes | **NO** — GATE-30 rojo |
+| 1 | GATE-26…38 verdes o waiver | **SÍ** — verdes + waivers W-PG-01…10 |
 | 2 | T-90…T-100 PASS | **SÍ** |
-| 3 | INV-36…50 evidencia | **SÍ** |
-| 4 | AP-36…45 grep 0 | **SÍ** |
-| 5 | EXPLAIN PG 5 queries | **NO** (waiver) |
-| 6 | T-64 1 M p99≤50 µs | **SÍ** |
-| 7 | Frontend no-explosión | **SÍ** |
-| 8 | Paginación 50 / 100 | **SÍ** (código; 1 M filas PG no lab) |
+| 3 | T-64b PASS o waiver | **SÍ** PASS |
+| 4 | INV-36…65 evidencia | **SÍ** |
+| 5 | AP-36…45 grep 0 | **SÍ** |
+| 6 | AP-46…55 / 56…65 documentados | **SÍ** |
+| 7 | EXPLAIN-PG.md output crudo | **SÍ** |
+| 8 | E2E-REPORT.md | **SÍ** |
 | 9 | Este informe | **SÍ** |
-| 10 | Auditoría actualizada | **SÍ** |
+| 10 | PARTITION-PLAN.md | **SÍ** |
+| 11 | AUDIT veredicto ≥ A−/A/A | **SÍ** — hot path **A−** / health **A** / frontend **A** |
+| 12 | Waivers fecha+SHA+razón | **SÍ** |
 
-**P1 código: cerrado. P1 «Terminado» v3: no, pendiente lab GATE-30.** Listo para P2 en producto salvo EXPLAIN PG de lab.
+**Declaración:** Terminado v3 **con waivers firmados**. No Terminado v3 pleno.

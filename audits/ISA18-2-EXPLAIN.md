@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | **Fecha** | 2026-09-16 |
-| **Motor** | SQLite `:memory:` (Peewee). PostgreSQL 1 M filas **pendiente lab**. |
+| **Motor** | SQLite `:memory:` (Peewee). PostgreSQL 1 M: **lab ejecutado** — [ISA18-2-EXPLAIN-PG.md](./ISA18-2-EXPLAIN-PG.md) GATE-30 **VERDE**. |
 | **Tabla real** | `alarms`, `alarmsummary` (Peewee no usa snake_case `alarm_summary`) |
 
 `AlarmSummary.ensure_schema()` crea:
@@ -60,4 +60,4 @@ El footer de runtime **no** ejecuta este SQL: usa `AlarmRuntime._annunciated` O(
 
 ## Nota PostgreSQL
 
-GATE-22 con 1 M filas y `EXPLAIN ANALYZE` (Seq Scan = rojo) queda para el lab. Esta evidencia cubre el contrato de índices en el dialecto de tests.
+GATE-22/GATE-30 con 1 M filas y `EXPLAIN ANALYZE` están **verdes** en lab `app_db` :32800. 0 Seq Scan. Dump: [ISA18-2-EXPLAIN-PG.md](./ISA18-2-EXPLAIN-PG.md). Esta evidencia SQLite cubre el dialecto de tests.

@@ -11,7 +11,7 @@
 | **Blindaje nuclear** | 2026-09-15 — clasificador retryable/poison/idempotente; attempts desacoplados del circuito; prune archiva (no DELETE de proceso); shed no dropea campo/leak; `saf/retry` resucita DLQ; dominio `leak` por registry; `/health/ready` DEGRADED sin restart Docker |
 | **Controles ops** | 2026-08-25 — `POST /api/admin/saf/retry` y `/saf/reset` desde `/performance`; `drop_unsent(confirm=True)` es el único discard intencional de PENDING. **2026-09-15:** retry = resurrect DLQ + reset circuito + catch-up; **no** usar reset como “fix” de outage |
 | **Fuentes absorbidas** | `STORE_AND_FORWARD`, `PERSISTENCE_FLOW`, `T01_SOAK_LAST_RUN` |
-| **Complementa** | [AUDIT_DB.md](./AUDIT_DB.md) (hub/reconnect no revocan A+), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) (journal por `node_id`), [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md) (sync por fila), [AUDIT_LONG_RUN_CONTINUITY.md](./AUDIT_LONG_RUN_CONTINUITY.md) (DLQ archivada) |
+| **Complementa** | [AUDIT_DB.md](./AUDIT_DB.md) (hub/reconnect no revocan A+), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) (journal por `node_id`), [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md) (sync por fila), [AUDIT_LONG_RUN_CONTINUITY.md](./AUDIT_LONG_RUN_CONTINUITY.md) (DLQ archivada), [AUDIT_ISA18_2_ALARMS.md](./AUDIT_ISA18_2_ALARMS.md) (GATE-37 restart PG lab: seed sobrevive; SAF replay DAS vivo pendiente) |
 | **Veredicto** | **A+** durabilidad (incluye outage PG / handle stale: no DLQ). **A** aislamiento de fallos en código (CA-ISOLATION-01…04 + P0-1…P0-8). **A−** planta: CA-ISOLATION-05 (Txn/min 1 h) pendiente |
 | **Clasificación** | Auditoría de arquitectura de datos |
 

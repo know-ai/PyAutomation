@@ -1,74 +1,3 @@
-# ISA18-2-EXPLAIN-PG — GATE-30 (SPEC-ISA18-2-PG-CLOSURE-v2)
-
-| Campo | Valor |
-|---|---|
-| **Fecha** | 2026-09-16 |
-| **SHA** | `7ee3df9527c5141e8bc963b856cd569f95aa8a1e` |
-| **Lab** | PostgreSQL 17 · contenedor `app_db` · host `localhost:32800` · database `app_db` |
-| **Seed** | 500 filas `alarms` + 1 000 000 `alarmsummary` (`scripts/seed_alarms_pg_1m.sql`) |
-| **Scripts** | `scripts/explain_alarms_pg.sql` · `scripts/analyze_explain.py` |
-| **Dump crudo** | [ISA18-2-EXPLAIN-PG-raw.txt](./ISA18-2-EXPLAIN-PG-raw.txt) |
-| **Veredicto** | GATE-30 **VERDE** — Q1–Q4 y Q6 Index Scan, 0 Seq Scan, umbrales cumplidos. Q5 N/A (`COUNT(*)` anti-patrón) |
-
-Contenedor de la spec (`idetect_db`) no existía. Instancia real: `app_db` (mapeo 32800→5432). Tablas de producto no existían; el seed crea DDL lab ISA v2 + copias `*_seed` para EXPLAIN.
-
-## Output del analizador (crudo)
-
-```
-Encontrados 6 bloques EXPLAIN
-
-Query  Seq Scan   Exec (ms)    Índices                                    Veredicto
-====================================================================================================
-Q1     False      0.10         idx_summary_event_time                     PASS
-Q2     False      0.22         idx_summary_alarm_time                     PASS
-Q3     False      0.18         idx_summary_to_state                       PASS
-Q4     False      0.06         idx_alarms_seed_state_time                 PASS
-Q5     False      129.03       idx_summary_event_time                     N/A (COUNT(*) anti-pattern)
-Q6     False      2.67         idx_summary_event_time                     PASS
-```
-
-## Veredicto por query
-
-| Query | Plan | Index Name | Execution Time (ms) | Umbral | Resultado |
-|---|---|---|---|---|---|
-| Q1 historial reciente LIMIT 3 | Limit → **Index Scan** | `idx_summary_event_time` | **0.098** | 5.0 | **PASS** |
-| Q2 por `alarm_id` LIMIT 20 | Limit → **Index Scan** | `idx_summary_alarm_time` | **0.220** | 5.0 | **PASS** |
-| Q3 por `to_state` LIMIT 20 | Limit → **Index Scan** | `idx_summary_to_state` | **0.179** | 10.0 | **PASS** |
-| Q4 footer catálogo `state_id` | Limit → **Index Scan** (Backward) | `idx_alarms_seed_state_time` | **0.059** | 5.0 | **PASS** |
-| Q5 `COUNT(*)` | Aggregate → Gather → **Index Only Scan** | `idx_summary_event_time` | 129.025 | N/A | **N/A** (AP-43; no va en `/api/health/alarms`) |
-| Q6 OFFSET 450 LIMIT 100 | Limit → **Index Scan** | `idx_summary_event_time` | **2.670** | 10.0 | **PASS** |
-
-CA-F3-1: Q1–Q4 y Q6 PASS. Q5 no es query de health-path.
-CA-F3-2: **ningún Seq Scan** en los 6 planes.
-
-Q5 usa Index Only Scan paralelo (no Seq Scan) y tarda 129 ms: confirma por qué `COUNT(*)` está prohibido en health.
-
-## Índices verificados (GATE-22-PG)
-
-```
-tablename          | indexname
-alarms             | alarms_pkey, alarms_identifier_key, alarms_name_key, idx_alarms_state_time, idx_alarms_tag
-alarmsummary       | alarmsummary_pkey, idx_alarmsummary_alarm_time, idx_alarmsummary_event_time, idx_alarmsummary_to_state
-```
-
-Los 5+ índices de contrato v1 están presentes.
-
-## Anexo — extractos JSON (Execution Time)
-
-Q1 `"Index Name": "idx_summary_event_time"` `"Execution Time": 0.098`
-Q2 `"Index Name": "idx_summary_alarm_time"` `"Execution Time": 0.220`
-Q3 `"Index Name": "idx_summary_to_state"` `"Execution Time": 0.179`
-Q4 `"Index Name": "idx_alarms_seed_state_time"` `"Execution Time": 0.059`
-Q5 `"Node Type": "Index Only Scan"` `"Execution Time": 129.025`
-Q6 `"Index Name": "idx_summary_event_time"` `"Execution Time": 2.670`
-
-JSON completo de `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` en el anexo siguiente y en [ISA18-2-EXPLAIN-PG-raw.txt](./ISA18-2-EXPLAIN-PG-raw.txt).
-
-SQLite covering indexes permanecen en [ISA18-2-EXPLAIN.md](./ISA18-2-EXPLAIN.md).
-
-## Anexo — output crudo completo (EXPLAIN ANALYZE JSON)
-
-```json
 [
   {
     "Plan": {
@@ -577,4 +506,3 @@ SQLite covering indexes permanecen en [ISA18-2-EXPLAIN.md](./ISA18-2-EXPLAIN.md)
     "Execution Time": 2.670
   }
 ]
-```

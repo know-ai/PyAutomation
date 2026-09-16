@@ -199,6 +199,6 @@ Evidencia de código: `hmi/src/hooks/useSocket.ts` (`pendingHistoryUpdatesRef`, 
 | `document.hidden` | `hmi/src/hooks/usePageHidden.ts` |
 | Footer / alarmas | `hmi/src/layouts/Footer.tsx`, `hmi/src/store/slices/alarmsSlice.ts` |
 | AlarmTableRow | `hmi/src/components/AlarmTableRow.tsx` — **2026-09-15:** badge “condición activa” (`condition_met`) distinto de ack ISA-18.2. Contrato: [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) §3.5 |
-| Footer «últimas 3» | `hmi/src/layouts/Footer.tsx` — RTN Unack en Redux; orden `last_transition_ts`; B/C/D con color distinto. Ver [AUDIT_ISA18_2_ALARMS.md](./AUDIT_ISA18_2_ALARMS.md) |
+| Footer «últimas 3» | `hmi/src/layouts/Footer.tsx` — RTN Unack en Redux; orden `last_transition_ts`; B/C/D con color distinto. Cotas store `top3Active`≤3 / page≤50 / history≤100 (unittest). Playwright E2E con tráfico OPC: **waiver W-PG-07**. Ver [AUDIT_ISA18_2_ALARMS.md](./AUDIT_ISA18_2_ALARMS.md) · [ISA18-2-E2E-REPORT.md](./ISA18-2-E2E-REPORT.md) |
 | Watchdog | `hmi/src/hooks/useMemoryWatchdog.ts` |
 | OPC → CVT → emit | `automation/opcua/subscription.py`, `automation/tags/cvt.py` |

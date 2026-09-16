@@ -41,7 +41,7 @@
 | **20 Puntos críticos de misión** | [AUDIT_MISSION_CRITICAL.md](./AUDIT_MISSION_CRITICAL.md) | Spec CT-01…07; NTP gate, fsync, peer heartbeat, caos | **A− / B+** código · steal-tags y restart &lt; 10 s fuera de contrato · campaña OT pendiente |
 | **21 Autenticación y autorización** | [AUDIT_AUTH_AUTHORIZATION.md](./AUDIT_AUTH_AUTHORIZATION.md) | Login/sesión/TPT; ACL granular `authz_grants`; roles dinámicos baseline `guest`; Swagger `docs_auth`; bus Redis/PG | Auth **A−** · Authz **A−** — ACL fail-closed; panel HMI; Socket.IO por vista pendiente |
 | **22 UI/UX Tendencias RT** | [AUDIT_REALTIME_TRENDS_UIUX.md](./AUDIT_REALTIME_TRENDS_UIUX.md) | (nuevo 2026-09-09; spec HMI 2.10 en código) Layout 48×10, Plotly sin feedback loop, picker portal, persistencia v3 | Layout **B+ código** · datos RT **A−** — UX-RT-1…3 remedidos en esta entrega; CA-RT planta pendiente |
-| **23 ISA 18.2 alarmas** | [AUDIT_ISA18_2_ALARMS.md](./AUDIT_ISA18_2_ALARMS.md) | P0/P1 historial + O(1) v2 + **P1 v3 paginación/cola** ([ISA18-2-P1-CLOSURE-REPORT.md](./ISA18-2-P1-CLOSURE-REPORT.md)) | SM **B+** · historial **B** · footer/frontend **A** · hot path **A−**; GATE-30 PG lab pendiente |
+| **23 ISA 18.2 alarmas** | [AUDIT_ISA18_2_ALARMS.md](./AUDIT_ISA18_2_ALARMS.md) | P0/P1 historial + O(1) v2 + P1 v3 + **PG lab GATE-30** ([ISA18-2-P1-CLOSURE-REPORT.md](./ISA18-2-P1-CLOSURE-REPORT.md), [ISA18-2-EXPLAIN-PG.md](./ISA18-2-EXPLAIN-PG.md), [ISA18-2-E2E-REPORT.md](./ISA18-2-E2E-REPORT.md)) | SM **B+** · historial **B** · footer **A** · hot path **A−**; GATE-30 **verde**; Terminado v3 **con waivers** |
 
 ---
 

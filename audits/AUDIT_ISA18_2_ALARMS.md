@@ -5,12 +5,12 @@
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
 | **Alcance** | Máquina de estados, historial `AlarmSummary`, acknowledgment, RTN Unack, re-disparo, footer «últimas 3» |
 | **Norma** | ANSI/ISA-18.2-2016 — Management of Alarm Systems for the Process Industries (§9 presentación, §11 historial) |
-| **Fecha** | 2026-09-16 (auditoría) · **remediación P0/P1 2026-09-16** · **cierre O(1) v2 2026-09-16** · **cierre P1 v3 2026-09-16** |
-| **Evidencia** | Código del árbol + T-01…T-11 + T-90…T-100 + T-64 sintético 1 M keys + tests de cotas HMI |
+| **Fecha** | 2026-09-16 (auditoría) · **remediación P0/P1 2026-09-16** · **cierre O(1) v2 2026-09-16** · **cierre P1 v3 2026-09-16** · **cierre PG lab v2 2026-09-16** |
+| **Evidencia** | Código + T-01…T-11 + T-90…T-100 + T-64/T-64b + EXPLAIN PG 1 M + E2E OPC/Redis/restart |
 | **Sustituye** | `docs/auditoria-modulo-alarmas-isa-18-2.md` (2026-06-20; delays/RTNUN/HMI desactualizados) |
 | **Complementa** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) (`condition_met`), [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md), [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](./AUDIT_NODE_PERFORMANCE_DASHBOARD.md) |
-| **Informe de remediación** | [ISA18-2-P0P1-REPORT.md](./ISA18-2-P0P1-REPORT.md) · [ISA18-2-COMPLEXITY-REPORT.md](./ISA18-2-COMPLEXITY-REPORT.md) · [ISA18-2-EXPLAIN.md](./ISA18-2-EXPLAIN.md) · [ISA18-2-EXPLAIN-PG.md](./ISA18-2-EXPLAIN-PG.md) · [ISA18-2-P1-CLOSURE-REPORT.md](./ISA18-2-P1-CLOSURE-REPORT.md) · baseline [ISA18-2-BASELINE.md](./ISA18-2-BASELINE.md) |
-| **Veredicto** | **B+** SM. **B** historial. **A** footer/frontend acotado. **A−** hot path (O(1) en N; T-64 p99=2 µs; `on_tag_value` CPython ~55 µs vs 50 µs v3). GATE-30 PG **rojo**. |
+| **Informe de remediación** | [ISA18-2-P0P1-REPORT.md](./ISA18-2-P0P1-REPORT.md) · [ISA18-2-COMPLEXITY-REPORT.md](./ISA18-2-COMPLEXITY-REPORT.md) · [ISA18-2-EXPLAIN.md](./ISA18-2-EXPLAIN.md) · [ISA18-2-EXPLAIN-PG.md](./ISA18-2-EXPLAIN-PG.md) · [ISA18-2-E2E-REPORT.md](./ISA18-2-E2E-REPORT.md) · [ISA18-2-PARTITION-PLAN.md](./ISA18-2-PARTITION-PLAN.md) · [ISA18-2-P1-CLOSURE-REPORT.md](./ISA18-2-P1-CLOSURE-REPORT.md) · baseline [ISA18-2-BASELINE.md](./ISA18-2-BASELINE.md) |
+| **Veredicto** | **B+** SM. **B** historial. **A** footer/frontend acotado. **A−** hot path (O(1); T-64 p99=2 µs; T-64b p99=23.7 µs; `on_tag_value`+OPC p99=106 µs ≤ INV-55 150 µs). GATE-30 PG **verde**. Terminado v3 **con waivers**. |
 | **Clasificación** | Auditoría de conformidad + gap analysis + cierre P0/P1 + P1 v3 |
 
 ---
@@ -228,11 +228,12 @@ Footer CA:
 |---|---|---|
 | **P0-1…P0-6** | timestamp, CSS, filtro, INSERT, tests, ack no-op | **Hecho** |
 | **P1-1…P1-3 schema** | schema v2, operator_id, reload SM | **Hecho** |
-| **P1 v3 cola/health/flag/HMI** | maxlen, worker health, `ALARM_SYNC_DRAIN`, paginación | **Hecho** (GATE-30 PG pendiente lab) |
-| **P2-1** | Latching por alarma; retención ≥ 1 año (tabla archivo) | Abierto |
+| **P1 v3 cola/health/flag/HMI** | maxlen, worker health, `ALARM_SYNC_DRAIN`, paginación | **Hecho** |
+| **P1 lab PG (PG-CLOSURE-v2)** | GATE-30 EXPLAIN 1 M, T-64b, paginación OFFSET, índices | **Hecho** (GATE-30 verde) |
+| **P2-1** | Latching por alarma; retención ≥ 1 año (tabla archivo) | Abierto — plan en [ISA18-2-PARTITION-PLAN.md](./ISA18-2-PARTITION-PLAN.md) |
 | **P2-2** | silence / disable / priority ISA | Abierto |
 | **P2-3** | Coalescing de chatter | Abierto |
-| **Planta** | GATE-30 EXPLAIN PG 1 M, GATE-3 PG, GATE-4 p95/heap, GATE-5 Playwright, GATE-7/8 soak-smoke | Abierto |
+| **Planta / E2E residual** | OPC write, SAF replay, Playwright footer 2 s, 500 tags×100 ms | Abierto (waivers W-PG-01…09) |
 
 P0-4 no mezcló reset SAF ni `ProcessType.set_value`.
 
@@ -251,7 +252,7 @@ P0-4 no mezcló reset SAF ni `ProcessType.set_value`.
 | API ack + lista activa | `modules/alarms/resources/alarms.py` |
 | Footer | `hmi/src/layouts/Footer.tsx` · `store/slices/alarmsSlice.ts` |
 | CSS / i18n | `hmi/src/styles/global.css` · `locales/{es,en}.json` |
-| Tests | `test_alarms_isa18_history.py` · `test_alarms_complexity.py` · `test_alarms_complexity_scale.py` · `test_alarms_p1_closure.py` |
+| Tests | `test_alarms_isa18_history.py` · `test_alarms_complexity.py` · `test_alarms_complexity_scale.py` · `test_alarms_p1_closure.py` · `test_alarms_pg_real_objects.py` · `test_alarms_e2e_opc.py` · `test_alarms_hot_path_real_scan.py` · `test_alarms_multiworker_pg_redis.py` · `test_alarms_pg_restart.py` · `test_alarms_pg_pagination.py` |
 | Runtime O(1) | `automation/alarms/runtime.py` · `GET /api/health/alarms` |
 | Paginación | `automation/alarms/pagination.py` · `alarms/config.py` · `GET /api/alarms/footer` |
 
@@ -261,9 +262,28 @@ P0-4 no mezcló reset SAF ni `ProcessType.set_value`.
 
 Hot path DAS: enqueue **sin lock**, `deque(maxlen=100_000)`, sin drain en producción. Worker con heartbeat; health expone `transition_worker_alive` y `worker_lag_ms` p50/p95/p99. Store HMI: `top3Active` ≤ 3, `page` ≤ 50, `history` ≤ 100.
 
-Evidencia: [ISA18-2-P1-CLOSURE-REPORT.md](./ISA18-2-P1-CLOSURE-REPORT.md). GATE-26…29 y 31…32 verdes. GATE-30 rojo (lab PG).
+Evidencia: [ISA18-2-P1-CLOSURE-REPORT.md](./ISA18-2-P1-CLOSURE-REPORT.md). GATE-26…32 y GATE-30 **verdes**. GATE-33…38: ver [ISA18-2-E2E-REPORT.md](./ISA18-2-E2E-REPORT.md).
 
-Veredicto v3: **A− hot path / A health / A frontend**.
+Veredicto v3: **A− hot path / A health / A frontend**. GATE-30 **verde**.
+
+---
+
+## 13. Cierre PG lab (SPEC-ISA18-2-PG-CLOSURE-v2)
+
+Stack local real (nombres ≠ spec): `app_db` :32800, `compose-redis-session-1`, `opcua_simulator` :4840. Seed 500 + 1 000 010 historial.
+
+| Gate | Veredicto |
+|---|---|
+| GATE-22-PG / GATE-30 | **VERDE** — 0 Seq Scan; Q1 0.10 ms … Q6 2.67 ms |
+| GATE-29b T-64b | **VERDE** — p99=23.7 µs N=500 |
+| GATE-32-PG | **VERDE** — OFFSET 450 = 2.92 ms |
+| GATE-33 | PARCIAL — PK `bigint`, 0 FK; falta `event_time` en unique |
+| GATE-34 / 38 | Ciclo 5 filas SQLite **PASS**; OPC write `BadUserAccessDenied` |
+| GATE-35 | INV-55 **PASS** (p99 106 µs ≤ 150); CA-F6 50 µs **FAIL** CPython |
+| GATE-36 | Redis **no** en hot path; 2 drainers 100/100 |
+| GATE-37 | `docker restart app_db` filas=1 000 010; SAF replay no |
+
+**Terminado v3 con waivers** (SHA `7ee3df9527c5141e8bc963b856cd569f95aa8a1e`). No pleno.
 
 ---
 
@@ -288,3 +308,4 @@ CVT / `ProcessType.set_value` **no se tocaron**.
 | 2026-09-16 | Remediación SPEC-ISA18-2-P0P1. Historial append-only, footer RTN, filtro B∪C∪D, reload SM. T-01…T-11 SQLite real PASS. Veredicto **B+ / B / A−**. Soak/smoke pendientes. |
 | 2026-09-16 | SPEC-ISA18-2-CLOSURE-v2: cola + worker, `check_condition` O(1) en N, `/api/health/alarms`, índices. p99 ~55 µs CPython (waiver 10 µs). |
 | 2026-09-16 | SPEC-ISA18-2-CLOSURE-v3: maxlen 100k, health worker/lag, flag doble barrera, T-64 1M keys p99=2 µs, HMI paginado. GATE-30 PG waiver. Veredicto hot path **A−** / frontend **A**. |
+| 2026-09-16 | SPEC-ISA18-2-PG-CLOSURE-v2: GATE-30 **verde** (EXPLAIN 1 M, 0 Seq Scan). T-64b p99=23.7 µs. E2E OPC read OK / write denied. Terminado v3 **con waivers**. SHA `7ee3df9527c5141e8bc963b856cd569f95aa8a1e`. |

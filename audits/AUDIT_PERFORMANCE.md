@@ -25,6 +25,8 @@ OPC UA datachange → DAS → CVTEngine.set_value_fast [lock por tag]
   → AlarmTransitionWorker (SM + historial + on.alarm compacto) fuera del DAS
 ```
 
+Lab 2026-09-16 (OPC `FI_01` @ 100 ms): `on_tag_value` p99=106.4 µs (INV-55 ≤150 µs PASS; presupuesto planta 50 µs no en CPython). T-64b p99=23.7 µs. GATE-30 EXPLAIN PG 1 M **verde**.
+
 **Objetivo de aceptación 30 días:** RSS del worker gunicorn ±15 % vs baseline; p99 de `set_value` estable; `SAF_QUEUE_DEPTH` y `DAS.monitored_items` / `OPC_MONITORED_COUNT` sin crecimiento monotónico; `TAG_OBSERVER_COUNT` estable con catálogo fijo.
 
 BE-H4 (pool PG) se **revirtió** el 2026-08-13 tras signup/login 503 @ 30 s. No reintroducir. Detalle y teardown posterior: [AUDIT_DB.md](./AUDIT_DB.md).
@@ -270,9 +272,9 @@ Idle persistente 1 worker: **1** (`…:LoggerWorker`). Techo **≤ 4**. Detalle 
 | Tag lock / observers / serialize_socket | `automation/tags/tag.py` |
 | Buffer | `automation/buffer.py` |
 | DAS | `automation/opcua/subscription.py` |
-| Alarmas | `automation/managers/alarms.py` |
+| Alarmas | `automation/managers/alarms.py` · `automation/alarms/runtime.py` |
 | Attach idempotente | `automation/managers/db.py` |
 | `set_db` / sin pool | `automation/core.py` |
 | Health | `automation/modules/health/resources/health.py` |
-| Tests | `test_performance_hotpath.py`, `test_performance_soak.py`, `test_observer_lifecycle.py` |
+| Tests | `test_performance_hotpath.py`, `test_performance_soak.py`, `test_observer_lifecycle.py`, `test_alarms_hot_path_real_scan.py` |
 | HMI historial / socket | `hmi/src/store/slices/tagsSlice.ts`, `hmi/src/services/socket.ts` |
