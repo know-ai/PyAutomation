@@ -64,6 +64,23 @@ class TestPerfAlarmEvaluator(unittest.TestCase):
         evaluator.evaluate({"HOST_CPU_PERCENT": 10})
         self.assertFalse(evaluator._active["cpu"])
 
+    def test_deadletter_hysteresis_clears_only_at_zero(self):
+        cfg = load_performance_alarm_config(
+            {
+                "perf_debounce_count": 1,
+                "perf_saf_deadletter_threshold": 1,
+                "perf_saf_deadletter_clear_threshold": 0,
+            }
+        )
+        evaluator = PerfAlarmEvaluator(writer=lambda *args, **kwargs: True)
+        evaluator.reload(cfg)
+        evaluator.evaluate({"SAF_DEADLETTER_COUNT": 5000})
+        self.assertTrue(evaluator._active["saf_deadletter"])
+        evaluator.evaluate({"SAF_DEADLETTER_COUNT": 12})
+        self.assertTrue(evaluator._active["saf_deadletter"])
+        evaluator.evaluate({"SAF_DEADLETTER_COUNT": 0})
+        self.assertFalse(evaluator._active["saf_deadletter"])
+
     def test_disabled_forces_inactive(self):
         cfg = load_performance_alarm_config({"perf_alarms_enabled": False, "perf_cpu_threshold": 1})
         evaluator = PerfAlarmEvaluator(writer=lambda *args, **kwargs: True)

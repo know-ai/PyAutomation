@@ -182,12 +182,15 @@ class AlarmSummaryInserter:
         sample_uuid = row.get("sample_uuid")
         if sample_uuid and self._exists_by_uuid(model, sample_uuid):
             return True
-        alarm_id = row.get("alarm")
-        state_id = row.get("state")
-        alarm_time = row.get("alarm_time")
-        if alarm_id is not None and state_id is not None and alarm_time is not None:
-            if self._exists_by_natural_key(model, alarm_id, state_id, alarm_time):
-                return True
+        # INV-01: distinct transitions in the same millisecond must INSERT.
+        # Natural-key collapse was valid for schema v1 (one row per activation).
+        if not sample_uuid:
+            alarm_id = row.get("alarm")
+            state_id = row.get("state")
+            alarm_time = row.get("alarm_time")
+            if alarm_id is not None and state_id is not None and alarm_time is not None:
+                if self._exists_by_natural_key(model, alarm_id, state_id, alarm_time):
+                    return True
         try:
             model.insert(dict(row)).on_conflict_ignore().execute()
             return True

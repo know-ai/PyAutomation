@@ -1,5 +1,4 @@
-import { useEffect, useMemo } from "react";
-import { createSelector } from "@reduxjs/toolkit";
+import { useEffect, useMemo, useState } from "react";
 import { getAlarms, type Alarm } from "../services/alarms";
 import {
   alarmNameMatches,
@@ -8,10 +7,7 @@ import {
 } from "../services/performanceAlarms";
 import type { PerfAlarmCatalogEntry, PerfAlarmKey, PerfAlarmsCatalog } from "../services/performance";
 import { PERF_ALARM_KEYS } from "../services/performance";
-import { updateAlarmsBatch } from "../store/slices/alarmsSlice";
-import { useAppDispatch } from "./useAppDispatch";
 import { useAppSelector } from "./useAppSelector";
-import type { RootState } from "../store/store";
 
 export type PerfAlarmBinding = {
   key: PerfAlarmKey;
@@ -20,27 +16,34 @@ export type PerfAlarmBinding = {
   lifecycle: PerfAlarmLifecycle;
 };
 
-const selectAlarmMap = (state: RootState) => state.alarms.alarms;
-
-const selectAlarmList = createSelector([selectAlarmMap], (alarms) => Object.values(alarms));
-
 export function usePerformanceAlarms(catalog?: PerfAlarmsCatalog | null): Record<PerfAlarmKey, PerfAlarmBinding> {
-  const dispatch = useAppDispatch();
-  const alarms = useAppSelector(selectAlarmList);
+  const [pageAlarms, setPageAlarms] = useState<Alarm[]>([]);
+  const top3 = useAppSelector((state) => state.alarms.top3Active);
 
   useEffect(() => {
     let cancelled = false;
-    getAlarms(1, 500)
+    getAlarms(1, 50, { q: "ALM.PERF" })
       .then((response) => {
         if (!cancelled && response?.data?.length) {
-          dispatch(updateAlarmsBatch(response.data));
+          setPageAlarms(response.data.slice(0, 50));
         }
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [dispatch]);
+  }, []);
+
+  const alarms = useMemo(() => {
+    const byName = new Map<string, Alarm>();
+    for (const alarm of pageAlarms) {
+      if (alarm.name) byName.set(alarm.name, alarm);
+    }
+    for (const alarm of top3) {
+      if (alarm.name) byName.set(alarm.name, alarm);
+    }
+    return Array.from(byName.values());
+  }, [pageAlarms, top3]);
 
   return useMemo(() => {
     const byKey = {} as Record<PerfAlarmKey, PerfAlarmBinding>;

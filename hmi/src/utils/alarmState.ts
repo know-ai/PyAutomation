@@ -91,6 +91,19 @@ export function alarmMatchesSearch(
   return haystack.includes(needle);
 }
 
+export function normalizeAlarmState(state: AlarmStateLike): string {
+  if (alarmStateMatches(state, "RTN Unacknowledged")) return "RTN Unack";
+  if (alarmStateMatches(state, "Unacknowledged")) return "Unack Alarm";
+  if (alarmStateMatches(state, "Acknowledged")) return "Ack Alarm";
+  if (alarmStateMatches(state, "Shelved")) return "Shelved";
+  if (alarmStateMatches(state, "Suppressed By Design")) return "Suppressed By Design";
+  if (alarmStateMatches(state, "Out Of Service")) return "Out Of Service";
+  if (alarmStateMatches(state, "Normal")) return "Normal";
+  const tokens = stateTokens(state);
+  if (tokens.includes("cleared") || tokens.includes("rtn unack")) return tokens.includes("cleared") ? "Cleared" : "RTN Unack";
+  return tokens[0] ? tokens[0].replace(/\b\w/g, (c) => c.toUpperCase()) : "Normal";
+}
+
 export function isUnacknowledgedAlarm(state: AlarmStateLike): boolean {
   return (
     alarmStateMatches(state, "Unacknowledged") ||
@@ -117,6 +130,10 @@ export function alarmStateBadgeClass(state: AlarmStateLike): string {
     return "alarm-state-badge alarm-state-badge--unknown";
   }
   return BADGE_BY_KEY[normalize(state)] || "alarm-state-badge alarm-state-badge--unknown";
+}
+
+export function alarmConditionActive(alarm: { condition_met?: boolean } | null | undefined): boolean {
+  return Boolean(alarm?.condition_met);
 }
 
 export type AlarmDelayPhase = "pending" | "clearing" | null | undefined;

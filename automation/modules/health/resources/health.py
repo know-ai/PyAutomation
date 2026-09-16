@@ -354,3 +354,47 @@ class HealthSafResource(Resource):
         return snapshot, status_code
 
 
+@ns.route("/ready")
+class HealthReadyResource(Resource):
+    @api.doc(description="SAF/historian readiness. Always HTTP 200; status may be DEGRADED (do not use as Docker restart).")
+    @api.response(200, "Readiness snapshot")
+    def get(self):
+        """Operator/API readiness. Circuit OPEN is DEGRADED, never a container kill."""
+        from ....persistence import get_persistence_gateway
+
+        snapshot = dict(get_persistence_gateway().snapshot())
+        circuit = str(snapshot.get("SAF_CIRCUIT") or "unknown")
+        pending = int(snapshot.get("SAF_QUEUE_DEPTH") or 0)
+        deadletter = int(snapshot.get("SAF_DEADLETTER_COUNT") or 0)
+        db_connected = False
+        try:
+            db_connected = bool(app.is_db_connected())
+        except Exception:
+            db_connected = False
+        degraded = circuit == "open" or (not db_connected) or pending > 0 or deadletter > 0
+        status = "DEGRADED" if degraded else "ok"
+        return {
+            "status": status,
+            "circuit": circuit,
+            "pg_connected": db_connected,
+            "pending": pending,
+            "deadletter": deadletter,
+            "SAF_QUEUE_DEPTH": pending,
+            "SAF_CIRCUIT": circuit,
+            "SAF_DEADLETTER_COUNT": deadletter,
+        }, 200
+
+
+@ns.route("/alarms")
+class HealthAlarmsResource(Resource):
+    @api.doc(description="O(1) alarm subsystem health (hot-path p99, queue, counters).")
+    @api.response(200, "Alarm runtime snapshot")
+    @api.response(503, "Hot-path O(1) violation")
+    def get(self):
+        from ....alarms.runtime import get_alarm_runtime
+
+        snapshot = get_alarm_runtime().snapshot()
+        status_code = 503 if snapshot.get("status") == "unhealthy" else 200
+        return snapshot, status_code
+
+

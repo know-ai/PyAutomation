@@ -5,7 +5,7 @@
 | **Producto** | PyAutomationIO (`automation/`) + despliegue planta iDetectFugas |
 | **Alcance** | Degradación a 1 / 10 / 100 / 1000 días: disco, RAM, CPU, locks, colas, historiador, catálogo, logs. Contraste código vs operación 24/7. Retención PG = DBA (fuera del edge). |
 | **Fecha baseline** | 2026-08-27 (hallazgo N1 disco ≠ cola) |
-| **Hardening código** | 2026-08-27 — SPEC_LONG_RUN_SOFTWARE_HARDENING (R1–R5) en checkout |
+| **Hardening código** | 2026-08-27 — SPEC_LONG_RUN_SOFTWARE_HARDENING (R1–R5) en checkout · **2026-09-15** prune DLQ archiva (no DELETE de proceso) |
 | **Complementa** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md), [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](./AUDIT_NODE_PERFORMANCE_DASHBOARD.md) |
 | **Evidencia planta** | N1 `intelcon2` / 192.168.1.80 · `journal.db` 331 MiB + WAL 50 MiB · PENDING=45 · SENT=190 712 · freelist 217 MiB · `auto_vacuum=0` (imagen `3.0.0` **sin** hardening) |
 | **Veredicto** | Edge local (proceso + disco SAF/catálogo/DLQ) **A− en código**. Hot path O(1) + reclaim unificado + DLQ acotada + alerta disco + fuga SM cerrada. Historiador PG **B−** (retención = DBA). Certificado día-1000 **pendiente deploy + soak 24 h**. |
@@ -55,9 +55,9 @@ Objetivo de aceptación (alineado con [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE
 | Ring RAM tags | 100 000 | `SafConfig.ring_maxsize` |
 | PENDING durable | 5 000 000 → backpressure | `max_pending_rows` |
 | Disco journal (hard) | 10 GiB | `max_disk_bytes`; evict SENT; si no basta → `JournalDiskFullError` |
-| Shed analog history | high 50k / low 10k | tags pausados; eventos/alarmas siguen |
+| Shed analog history | high 50k / low 10k | solo tags no críticos (`SYS.PERF.*`); **nunca** campo `FI_`/`PI_`/`DI_`/`TI_`, `*.leak*`, alarmas/eventos/logs |
 | SENT | GC TTL **1 h**, lotes 5 000 | `gc_sent` |
-| **DEAD_LETTER** | **TTL 7 d + cap 10 000** | `prune_dead_letters` en `reclaim_idle` |
+| **DEAD_LETTER** | **TTL 7 d + cap 10 000** | `prune_dead_letters` **archiva** a `journal-archive.db` (`ARCHIVED`); no DELETE de proceso |
 | Journal freelist / WAL | TRUNCATE + VACUUM idle | `reclaim_idle` (pending ≤ 256, freelist ≥ 64 MiB, ≤ 1/h) |
 | **catalog.db** | Mismo umbral, **lock propio** | `compact_catalog_idle` fuera del `RLock` del journal |
 | CycleSampleCache | TTL 2 s | `cycle_dedupe.py` |
@@ -93,7 +93,7 @@ t=0      Cola drenada → PENDING ≈ flujo vivo
 t≈0+     TRUNCATE WAL (journal + catalog) → baja WAL
 t≈1 h    GC SENT → freelist grande
 t≥1 h    VACUUM idle (ambos .db) → SO recupera el pico
-continuo prune_dead_letters (TTL 7 d / cap 10k)
+continuo prune_dead_letters (TTL 7 d / cap 10k → ARCHIVED, no DELETE)
 ```
 
 VACUUM del journal sigue bajo el `RLock` (trade-off conocido: segundos en idle, ≤ 1/h). El VACUUM de `catalog.db` **no** comparte ese lock.
@@ -108,7 +108,7 @@ Orden ejecutado: R3 → R5 → R2 → R1 → R4 (+ docs sampler).
 
 | ID | Requerimiento | Evidencia en código | Tests |
 |---|---|---|---|
-| **R1 / LR-DLQ-1** | DLQ acotada | `JournalWriter.prune_dead_letters()`: DELETE por `created_at` (TTL default 7 d) y por exceso sobre `dead_letter_max_rows` (default 10 000). Llamado desde `reclaim_idle()`. Config: `saf_dead_letter_ttl_s`, `saf_dead_letter_max_rows`. | `test_prune_dead_letters_caps_max_rows`, `test_prune_dead_letters_ttl` |
+| **R1 / LR-DLQ-1** | DLQ acotada **sin perder proceso** | `JournalWriter.prune_dead_letters()`: copia a `journal-archive.db` y `status=ARCHIVED` por `created_at` (TTL default 7 d) y por exceso sobre `dead_letter_max_rows` (default 10 000). Llamado desde `reclaim_idle()`. Config: `saf_dead_letter_ttl_s`, `saf_dead_letter_max_rows`. Replay: `resurrect_dead_letters` vía `POST /api/admin/saf/retry`. | `test_prune_dead_letters_caps_max_rows`, `test_prune_dead_letters_ttl`, `test_p0_4_prune_archives_process_rows`, `test_p0_7_resurrect_dead_letters` |
 | **R2 / LR-CAT-1** (+ compact journal) | Compactación unificada | Tras compactar journal, si `pending ≤ compact_max_pending`, `compact_catalog_idle()` en `catalog/local_db.py` con `_compact_lock` propio: checkpoint TRUNCATE + VACUUM condicional. | `test_compact_catalog_idle_vacuums_freelist`, `test_reclaim_idle_*` |
 | **R3 / LR-MEM-1** | Fuga SM | `AsyncStateMachineWorker.drop()` hace `_machines.remove(machine)` y `sched_to_drop.stop()`. | `test_drop_removes_from_registry` |
 | **R4 / LR-DEP-1** | Alarma disco host | Sampler mide volumen de datos (`journal_path` dir o `AUTOMATION_DATA_DIR`). Snapshot: `HOST_DISK_USED_PERCENT`, `HOST_DISK_CRITICAL` (> `host_disk_critical_percent` default 85). Flanco → `persist_system_event("Disk usage critical")` cooldown 3600 s. HMI: tile rojo si critical. | `test_host_disk_critical_*`, `test_psutil_fields_when_available` |
@@ -141,7 +141,7 @@ El coste O(n tags) de `/health/system` y `_sample_field` **permanece**; la mitig
 
 | ID | Riesgo | Estado |
 |---|---|---|
-| **LR-DLQ-1** | DEAD_LETTER sin tope | **Cerrado** — TTL 7 d + cap 10k |
+| **LR-DLQ-1** | DEAD_LETTER sin tope **ni pérdida de proceso** | **Cerrado** — TTL 7 d + cap 10k; prune **archiva** |
 | **LR-CAT-1** | catalog.db sin compact | **Cerrado** — `compact_catalog_idle` |
 | **LR-MEM-1** | `drop()` no limpia `_machines` | **Cerrado** |
 | **LR-CFG-1** | Config huérfana | **Cerrado** — eliminada |
@@ -157,7 +157,7 @@ El coste O(n tags) de `/health/system` y `_sample_field` **permanece**; la mitig
 | **LR-BKP-1** | `sqlite_db_backup` sin poda | Historiador SQLite legado; planta usa PG. Spec: backups historiador fuera de alcance. |
 | **LR-SYS-1** | `/health/system` O(n) | Documentado; dashboard usa `/health/node`. |
 | **LR-CTR-1** | Contadores monotónicos | Usar rates, no totales. |
-| **LR-IDX-1** | Índice UNIQUE mientras fila viva | SENT 1 h; DL ahora podada. |
+| **LR-IDX-1** | Índice UNIQUE mientras fila viva | SENT 1 h; DL ahora archivada (no borrada). |
 
 ### 5.3 Ya no son el problema
 
@@ -182,7 +182,7 @@ El coste O(n tags) de `/health/system` y `_sample_field` **permanece**; la mitig
 | Sampler PERF / FIELD_STALE | O(tags) / 5 s | Crece con catálogo, no con el calendario |
 | VACUUM journal | O(fichero), bajo lock | Raro; log `elapsed_s` |
 | VACUUM catalog | O(fichero), lock propio | No bloquea enqueue SAF |
-| `prune_dead_letters` | O(borrados), idle | Capado a ≥ 60 s entre podas |
+| `prune_dead_letters` | O(archivados), idle | Capado a ≥ 60 s entre podas; UPDATE ARCHIVED, no DELETE proceso |
 
 **Invariante:** ninguna lógica R1–R5 corre dentro de `Tag.set_value`.
 
@@ -192,9 +192,9 @@ El coste O(n tags) de `/health/system` y `_sample_field` **permanece**; la mitig
 
 | Escenario | Día 1 | Día 1000 (código nuevo) |
 |---|---|---|
-| PG caído 1 h | PENDING crece; shed tags | Tras recuperar: catch-up + SENT TTL + reclaim |
-| PG caído muchos días | Cap 5e6 / 10 GiB | Backpressure; PENDING sagrado; ops retry/reset |
-| Poison row | → DLQ | DLQ se poda sola (TTL/cap) |
+| PG caído 1 h | PENDING crece; shed **no crítico** | Tras recuperar: catch-up + SENT TTL + reclaim. Campo/leak **siguen encolándose**. Retryable **no** va a DLQ |
+| PG caído muchos días | Cap 5e6 / 10 GiB | Backpressure; PENDING sagrado; ops **retry** (resurrect); **no** reset |
+| Poison row | → DLQ | DLQ se **archiva** sola (TTL/cap); resurrect con retry |
 | Catálogo a ratos | Backoff 30→900 s | `catalog.db` compacta en idle |
 | Disco host ≥ 85 % | — | `HOST_DISK_CRITICAL` + Event |
 | Restart gunicorn | Hidrata contadores | Arranque con journal gordo: COUNT una vez |
@@ -236,7 +236,7 @@ El coste O(n tags) de `/health/system` y `_sample_field` **permanece**; la mitig
 
 | ID | Criterio | Estado |
 |---|---|---|
-| **CA-LR-01** (spec: DLQ ≤ 10k / ≤ 7 d) | `prune_dead_letters` | **PASS** unit (`test_long_run_hardening`) |
+| **CA-LR-01** (spec: DLQ ≤ 10k / ≤ 7 d, **sin DELETE de proceso**) | `prune_dead_letters` archiva | **PASS** unit (`test_long_run_hardening`, `test_p0_4_prune_archives_process_rows`) |
 | **CA-LR-02** | `reclaim_idle` compacta journal **y** catalog con PENDING ≤ 256 | **PASS** unit; **pendiente planta** |
 | **CA-LR-03** | `drop()` decrementa `_machines` | **PASS** `test_drop_removes_from_registry` |
 | **CA-LR-04** | `/health/node` expone `HOST_DISK_*` + CRITICAL | **PASS** unit (psutil skip si no instalado) |

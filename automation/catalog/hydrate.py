@@ -10,7 +10,15 @@ _LOGGER = logging.getLogger("pyautomation")
 
 
 def _index(rows: list[dict]) -> dict[str, dict]:
-    return {str(row.get("_pk")): row for row in rows}
+    indexed: dict[str, dict] = {}
+    for row in rows:
+        pk = row.get("_pk")
+        if pk is not None:
+            indexed[str(pk)] = row
+        rid = row.get("id")
+        if rid is not None:
+            indexed[str(rid)] = row
+    return indexed
 
 
 def fill_roles_from_local() -> int:
@@ -151,7 +159,14 @@ def local_machine_payloads() -> list[dict]:
 
 
 def local_alarm_payloads() -> list[dict]:
-    tags = {str(t.get("_pk")): t for t in LocalCatalogProvider().read_all("tags")}
+    tags: dict[str, dict] = {}
+    for tag_row in LocalCatalogProvider().read_all("tags"):
+        pk = tag_row.get("_pk")
+        if pk is not None:
+            tags[str(pk)] = tag_row
+        rid = tag_row.get("id")
+        if rid is not None:
+            tags[str(rid)] = tag_row
     types = _index(LocalCatalogProvider().read_all("alarmtypes"))
     states = _index(LocalCatalogProvider().read_all("alarmstates"))
     payloads = []

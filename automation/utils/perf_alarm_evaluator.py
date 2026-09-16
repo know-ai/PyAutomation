@@ -66,8 +66,21 @@ class PerfAlarmEvaluator:
                 self._counts[spec.key] = min(debounce, self._counts[spec.key] + 1)
                 next_active = self._counts[spec.key] >= debounce
             else:
-                self._counts[spec.key] = 0
-                next_active = False
+                clear_key = f"perf_{spec.key}_clear_threshold"
+                clear_threshold = cfg.get(clear_key)
+                if clear_threshold is None and spec.key == "saf_deadletter":
+                    clear_threshold = 0.0
+                still_latched = False
+                if self._active[spec.key] and clear_threshold is not None:
+                    try:
+                        still_latched = float(raw) > float(clear_threshold)
+                    except (TypeError, ValueError):
+                        still_latched = False
+                if still_latched:
+                    next_active = True
+                else:
+                    self._counts[spec.key] = 0
+                    next_active = False
             self._writer(spec.key, next_active, value=raw, threshold=threshold)
             self._active[spec.key] = next_active
         return dict(self._active)

@@ -27,6 +27,7 @@ class DOMAIN:
     ALARM_SUMMARY_UPDATE = "alarm_summary_update"
     EVENT = "event"
     LOG = "log"
+    LEAK = "leak"
 
 
 _CRITICAL = {
@@ -34,6 +35,7 @@ _CRITICAL = {
     DOMAIN.ALARM_SUMMARY_UPDATE,
     DOMAIN.EVENT,
     DOMAIN.LOG,
+    DOMAIN.LEAK,
 }
 
 
@@ -77,6 +79,9 @@ def _scope_metadata(
     if area is None:
         area = "System"
     return area, owner_node
+
+
+scope_metadata = _scope_metadata
 
 
 @dataclass(frozen=True)
@@ -195,9 +200,16 @@ class PersistableRecord:
         trigger_type: str | None = None,
         trigger_value: Any = None,
         description: str | None = None,
+        from_state: str | None = None,
+        to_state: str | None = None,
+        operator_id: int | None = None,
+        condition_met: bool | None = None,
+        condition_value: Any = None,
+        schema_version: int = 2,
     ) -> "PersistableRecord":
         ts = iso(timestamp)
-        key = f"alarm:{name}:{ts}:{state}"
+        event_uuid = str(uuid.uuid4())
+        key = f"alarm:{name}:{ts}:{state}:{from_state}:{to_state}:{event_uuid}"
         area, owner_node = _scope_metadata(area, owner_node)
         return cls(
             domain_name=DOMAIN.ALARM_SUMMARY,
@@ -214,7 +226,13 @@ class PersistableRecord:
                 "trigger_type": trigger_type,
                 "trigger_value": trigger_value,
                 "description": description,
-                "sample_uuid": canonical_sample_uuid(key),
+                "from_state": from_state,
+                "to_state": to_state,
+                "operator_id": operator_id,
+                "condition_met": condition_met,
+                "condition_value": condition_value,
+                "schema_version": schema_version,
+                "sample_uuid": canonical_sample_uuid(event_uuid),
             },
             key=key,
             critical=True,

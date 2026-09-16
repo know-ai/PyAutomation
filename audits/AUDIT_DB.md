@@ -8,6 +8,7 @@
 | **Compactación** | 2026-08-18 — evidencia de código actualizada |
 | **Reapertura** | 2026-09-09 — incidente `too many clients already` en laboratorio (§1.5). El censo era **dueño** del socket |
 | **Segunda reapertura** | 2026-09-09 (post-arreglo) — `sockets above alert threshold` crónico (§1.6). No había fuga: el presupuesto medía la concurrencia web y los workers de ciclo lento retenían el socket |
+| **SAF nuclear** | 2026-09-15 — `already closed` es RETRYABLE (attempts intactos, DLQ=0). Ver [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) §3.5 |
 | **Fuentes absorbidas** | `AUDIT_DB_CONNECTIONS`, `AUDIT_DB_CONNECTIONS_ETERNAL`, `AUDIT_OPTIMAL_CONNECTIONS`, `AUDIT_DB_RECONNECT`, `AUDIT_NETWORK_TIMEOUT`, `AUDIT_DB_CONNECTION_MEMORY` |
 | **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) (BE-H4, RSS), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) (PENDING no se toca), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) (`application_name` con `node_id`) |
 | **Veredicto vigente** | Un objeto `Database`. Población idle = **roster residente declarado** (3 por defecto), más ráfagas transitorias; techo duro **12** por proceso. Probes throwaway. Teardown HTTP. Reconnect owner-scoped + `SELECT 1` ligado. Pool Peewee **prohibido**. Historiador inalcanzable **no** puede congelar el hub ni `on.tag`. Ningún socket inactivo sobrevive al presupuesto del cliente, que va por delante del `idle_session_timeout` del servidor |
@@ -161,6 +162,8 @@ SAF replication failed for domain tag | event | alarm_summary_update
 ```
 
 Causa raíz: `previous.close_all()` llamaba `REGISTRY.close_tracked()` **sin owner** y mataba el socket del **candidato** recién abierto. El ping throwaway veía el host up → CRITICAL. Los modelos usaban un handle Peewee con TCP ya cerrado. El SAF **hizo lo correcto**: no ACK, filas PENDING.
+
+**2026-09-15:** ese mismo síntoma (`connection already closed`) **no** puede quemar `attempts` ni pasar a `DEAD_LETTER`. `classify_saf_error` lo marca RETRYABLE; `_ensure_connection` reconecta el handle ligado. Detalle: [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) §3.5.
 
 Hipótesis «el proxy no se actualiza»: **falsa en el mecanismo**. Hay un solo `Proxy` (`automation/dbmodels/core.py`). `set_db` ya hacía `proxy.initialize(candidate)` antes de `connect()`.
 
@@ -411,7 +414,7 @@ No reintroducir pool sin: `connect`/`close` por request **y** soak signup×N baj
 | ID | Criterio | Estado |
 |---|---|---|
 | **CA-REC-1** | Proxy + `SELECT 1` ligado post-reconnect | Código + tests. Planta: 10 min sin `already closed` |
-| **CA-REC-2** | SAF (`tag`/`event`/`alarm_summary`) reanuda sin reiniciar proceso | Código. Planta: `PENDING_ROWS` baja |
+| **CA-REC-2** | SAF (`tag`/`event`/`alarm_summary`/`leak`) reanuda sin reiniciar proceso; retryable no DLQ | Código. Planta: `PENDING_ROWS` baja; `SAF_DEADLETTER_COUNT` no crece por outage |
 | **CA-REC-3** | Cero `connection already closed` tras CRITICAL | Causa raíz eliminada |
 | **CA-REC-4** | Health refleja `is_db_connected` y activas | Implementado |
 | **CA-REC-5** | 10 ciclos outage/restore sin fuga | Pendiente soak planta |

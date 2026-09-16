@@ -16,6 +16,7 @@ export type SocketConnectionSnapshot = {
   machines?: Machine[];
   last_alarms?: unknown[];
   last_active_alarms?: Alarm[];
+  count_by_state?: Record<string, number>;
   last_events?: unknown[];
   last_logs?: unknown[];
 };

@@ -2,13 +2,13 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { AlarmTableRow } from "../components/AlarmTableRow";
-import { getAlarms, createAlarm, updateAlarm, deleteAlarm, getAlarmByName, executeAlarmAction, shelveAlarm, acknowledgeAllAlarms, type Alarm, type AlarmsResponse } from "../services/alarms";
+import { getAlarms, createAlarm, updateAlarm, deleteAlarm, getAlarmByName, executeAlarmAction, shelveAlarm, acknowledgeAllAlarms, collectAlarmsPages, type Alarm, type AlarmsResponse } from "../services/alarms";
 import { getTags, type Tag } from "../services/tags";
 import { getNodeIdentity, type NodeIdentity } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { useAppDispatch } from "../hooks/useAppDispatch";
-import { updateAlarmsBatch } from "../store/slices/alarmsSlice";
+import { setAlarmsPage, setPageMeta } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { formatTimestamp } from "../utils/timezone";
@@ -186,7 +186,16 @@ export function Alarms() {
     setTagSearchTerm(nextTag);
   };
 
-  const realTimeAlarms = useAppSelector((state) => state.alarms.alarms);
+  const realTimeAlarmsList = useAppSelector((state) => state.alarms.page);
+  const top3Active = useAppSelector((state) => state.alarms.top3Active);
+  const realTimeAlarms = useMemo(() => {
+    const map: Record<string, Alarm> = {};
+    for (const alarm of [...realTimeAlarmsList, ...top3Active]) {
+      const key = alarm.identifier || alarm.id || alarm.name;
+      if (key) map[String(key)] = alarm;
+    }
+    return map;
+  }, [realTimeAlarmsList, top3Active]);
   const tagValues = useAppSelector((state) => state.tags.tagValues);
 
   const listFilters = useMemo(
@@ -202,16 +211,20 @@ export function Alarms() {
     setError(null);
     try {
       const response: AlarmsResponse = await getAlarms(page, limit, listFilters);
-      const loadedAlarms = response.data || [];
+      const loadedAlarms = (response.data || []).slice(0, 50);
       setAlarms(loadedAlarms);
       setPagination(response.pagination || {
         page: page,
-        limit: limit,
+        limit: Math.min(limit, 50),
         total: 0,
         pages: 0,
       });
-      
-      dispatch(updateAlarmsBatch(loadedAlarms));
+      dispatch(setAlarmsPage(loadedAlarms));
+      dispatch(setPageMeta({
+        pageNumber: page,
+        pageSize: Math.min(limit, 50),
+        hasNext: Boolean(response.pagination && (response.pagination.page < response.pagination.pages)),
+      }));
     } catch (e: any) {
       const data = e?.response?.data;
       const backendMessage =
@@ -453,7 +466,7 @@ export function Alarms() {
 
   const handleLimitChange = (newLimit: number) => {
     if (newLimit > 0) {
-      loadAlarms(1, newLimit);
+      loadAlarms(1, Math.min(newLimit, 50));
     }
   };
 
@@ -495,8 +508,7 @@ export function Alarms() {
     try {
       setError(null);
       // Obtener todas las alarmas (sin paginación)
-      const response = await getAlarms(1, 10000, listFilters);
-      const allAlarms = response.data || [];
+      const allAlarms = await collectAlarmsPages(listFilters);
       
       if (!allAlarms || allAlarms.length === 0) {
         setError(t("alarms.noAlarmsToExport"));
@@ -969,7 +981,6 @@ export function Alarms() {
                   <option value={10}>10</option>
                   <option value={20}>20</option>
                   <option value={50}>50</option>
-                  <option value={100}>100</option>
                 </select>
               </div>
               <div className="d-flex align-items-center gap-2">

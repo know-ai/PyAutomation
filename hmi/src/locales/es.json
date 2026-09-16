@@ -1245,6 +1245,7 @@
     "noAlarmsMatchFilter": "No hay alarmas que coincidan con el filtro",
     "pendingOnDelay": "Pending (On-Delay: {{seconds}}s)",
     "clearingOffDelay": "Clearing (Off-Delay: {{seconds}}s)",
+    "conditionActive": "Condición activa",
     "onDelay": "On-Delay",
     "offDelay": "Off-Delay",
     "onDelayTooltip": "On-Delay: Tiempo que la condición debe permanecer activa antes de disparar la alarma. Útil para filtrar picos transitorios.",
@@ -1350,6 +1351,10 @@
       "Unacknowledged": "Sin reconocer",
       "Acknowledged": "Reconocida",
       "RTN Unacknowledged": "RTN sin reconocer",
+      "Unack Alarm": "Sin reconocer",
+      "Ack Alarm": "Reconocida",
+      "RTN Unack": "RTN sin reconocer",
+      "Cleared": "Cerrada",
       "Shelved": "En espera",
       "Suppressed By Design": "Suprimida por diseño",
       "Out Of Service": "Fuera de servicio"

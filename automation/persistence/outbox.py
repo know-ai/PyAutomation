@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Sequence
 
+from .errors import IDEMPOTENT_OK, POISON, classify_saf_error
 from .orchestrator import get_persistence_gateway
 from .records import PersistableRecord
 
@@ -113,7 +114,11 @@ def journal_then_remote(
         result = remote_write()
         if _remote_failed(result):
             if journal_id:
-                gateway.mark_pending([journal_id], error="remote-write-returned-empty")
+                gateway.mark_pending(
+                    [journal_id],
+                    error="remote-write-returned-empty",
+                    increment_attempts=False,
+                )
             return result, True
         if journal_id:
             gateway.mark_sent([journal_id])
@@ -122,7 +127,15 @@ def journal_then_remote(
         from ..utils.db_io import is_stale_historian_handle, log_historian_link_issue
 
         if journal_id:
-            gateway.mark_pending([journal_id], error=str(err))
+            category = classify_saf_error(err)
+            if category == IDEMPOTENT_OK:
+                gateway.mark_sent([journal_id])
+            else:
+                gateway.mark_pending(
+                    [journal_id],
+                    error=str(err),
+                    increment_attempts=(category == POISON),
+                )
         log_historian_link_issue(_LOGGER, err, where="journal_then_remote", action="write")
         if is_stale_historian_handle(err):
             _mark_app_historian_down()
@@ -164,7 +177,11 @@ def journal_then_remote_batch(
         result = remote_write()
         if _remote_failed(result) or (isinstance(result, int) and result <= 0):
             if journal_ids:
-                gateway.mark_pending(journal_ids, error="remote-write-returned-empty")
+                gateway.mark_pending(
+                    journal_ids,
+                    error="remote-write-returned-empty",
+                    increment_attempts=False,
+                )
             return result, True
         if journal_ids:
             gateway.mark_sent(journal_ids)
@@ -173,7 +190,15 @@ def journal_then_remote_batch(
         from ..utils.db_io import is_stale_historian_handle, log_historian_link_issue
 
         if journal_ids:
-            gateway.mark_pending(journal_ids, error=str(err))
+            category = classify_saf_error(err)
+            if category == IDEMPOTENT_OK:
+                gateway.mark_sent(journal_ids)
+            else:
+                gateway.mark_pending(
+                    journal_ids,
+                    error=str(err),
+                    increment_attempts=(category == POISON),
+                )
         log_historian_link_issue(_LOGGER, err, where="journal_then_remote_batch", action="write")
         if is_stale_historian_handle(err):
             _mark_app_historian_down()

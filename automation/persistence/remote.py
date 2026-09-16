@@ -12,9 +12,24 @@ import threading
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
 
+from .errors import IDEMPOTENT_OK, RowOutcome, classify_saf_error
 from .idempotent_insert import AlarmSummaryInserter, IdempotentBatchInserter, IIdempotentInserter
 from .records import DOMAIN, canonical_sample_uuid
 from ..timebase import epoch_seconds_from_db_tick, quantize_datetime_ms
+
+_DOMAIN_WRITERS: dict[str, Callable] = {}
+
+
+def register_domain_writer(domain: str, fn: Callable) -> None:
+    """Install a product-owned SAF writer (e.g. leak). Framework stays SQL-free."""
+    name = str(domain or "").strip()
+    if not name or not callable(fn):
+        raise ValueError("register_domain_writer requires a domain name and callable")
+    _DOMAIN_WRITERS[name] = fn
+
+
+def unregister_domain_writer(domain: str) -> None:
+    _DOMAIN_WRITERS.pop(str(domain or ""), None)
 
 VALUE_KEYS = ("value", "val", "v", "magnitude", "value_str")
 TIMESTAMP_KEYS = ("timestamp", "ts", "time")
@@ -288,33 +303,56 @@ class PeeweeRemoteDB:
         self._tag_mapper = tag_mapper or TagValuePayloadMapper()
         self._alarm_inserter = alarm_inserter or AlarmSummaryInserter()
 
+    def _historian_handle(self):
+        try:
+            from .. import PyAutomation
+
+            app = PyAutomation()
+            db = None
+            try:
+                db = app.db_manager.get_db()
+            except Exception:
+                db = None
+            if db is None:
+                db = getattr(app, "_db", None)
+            return db
+        except Exception:
+            return None
+
+    def _ensure_connection(self) -> None:
+        """SELECT 1 on the bound Peewee handle; reconnect via the audited path."""
+        db = self._historian_handle()
+        if db is None:
+            return
+        from ..utils.db_connections import ensure_bound_connection
+
+        ensure_bound_connection(db)
+
     def is_reachable(self) -> bool:
         try:
-            from ..logger.datalogger import DataLoggerEngine
-
-            logger = DataLoggerEngine().logger
-            return bool(logger.check_connectivity())
+            self._ensure_connection()
+            return True
         except Exception:
             return False
 
     def write_batch(self, domain: str, payloads: Sequence[Mapping]) -> int:
         if not payloads:
             return 0
-        if domain == DOMAIN.TAG:
-            return self.batch_insert_with_dedupe(payloads)
-        if domain == DOMAIN.EVENT:
-            return self._write_events(payloads)
-        if domain == DOMAIN.ALARM_SUMMARY:
-            return self._write_alarm_creates(payloads)
-        if domain == DOMAIN.ALARM_SUMMARY_UPDATE:
-            return self._write_alarm_updates(payloads)
-        if domain == DOMAIN.LOG:
-            return self._write_logs(payloads)
-        raise ValueError(f"Unsupported SAF domain: {domain}")
+        outcomes = self.write_batch_outcomes(domain, payloads)
+        return sum(1 for item in outcomes if item)
 
-    def write_batch_outcomes(self, domain: str, payloads: Sequence[Mapping]) -> list[bool]:
+    def write_batch_outcomes(self, domain: str, payloads: Sequence[Mapping]) -> list[RowOutcome]:
         if not payloads:
             return []
+        try:
+            self._ensure_connection()
+        except Exception as exc:
+            return [RowOutcome(False, exc) for _ in payloads]
+        writer = _DOMAIN_WRITERS.get(str(domain))
+        if writer is not None:
+            from .errors import normalize_outcomes
+
+            return normalize_outcomes(writer(payloads), len(payloads))
         if domain == DOMAIN.TAG:
             return self._tag_value_outcomes(payloads)
         if domain == DOMAIN.EVENT:
@@ -327,12 +365,12 @@ class PeeweeRemoteDB:
             return self._write_log_outcomes(payloads)
         raise ValueError(f"Unsupported SAF domain: {domain}")
 
-    def _tag_value_outcomes(self, payloads: Sequence[Mapping]) -> list[bool]:
+    def _tag_value_outcomes(self, payloads: Sequence[Mapping]) -> list[RowOutcome]:
         """Per-sample ACK. Missing remote tags drop after 3 misses so the SAF ring drains."""
         logger = logging.getLogger("pyautomation")
         tag_cache: dict[Any, Any] = {}
         unit_cache: dict[Any, Any] = {}
-        outcomes: list[bool] = [False] * len(payloads)
+        outcomes: list[RowOutcome] = [RowOutcome(False, "remote skipped") for _ in payloads]
         to_insert: list[dict[str, Any]] = []
         insert_at: list[int] = []
         for index, item in enumerate(payloads):
@@ -341,32 +379,42 @@ class PeeweeRemoteDB:
                 row = self._tag_mapper._map_one(item, logger, tag_cache, unit_cache)
                 if row is None:
                     if tag_name in tag_cache and tag_cache.get(tag_name) is None:
-                        outcomes[index] = _missing_tag_should_drop(str(tag_name or ""))
+                        dropped = _missing_tag_should_drop(str(tag_name or ""))
+                        outcomes[index] = RowOutcome(dropped, None if dropped else "tag not in remote Tags")
                     else:
                         # Unmappable payload (no timestamp / value / unit) must
                         # drain. Retrying it 5× only dead-letters the journal.
-                        outcomes[index] = True
+                        outcomes[index] = RowOutcome(True)
                     continue
                 _clear_missing_tag(str(tag_name or ""))
                 insert_at.append(index)
                 to_insert.append(row)
             except Exception as exc:
                 logger.warning("SAF tag sample map failed: %s", exc)
+                outcomes[index] = RowOutcome(False, exc)
         if not to_insert:
             return outcomes
         try:
             self._tag_inserter.insert_tag_values(to_insert)
             for index in insert_at:
-                outcomes[index] = True
+                outcomes[index] = RowOutcome(True)
             return outcomes
-        except Exception:
+        except Exception as batch_exc:
+            if classify_saf_error(batch_exc) == IDEMPOTENT_OK:
+                for index in insert_at:
+                    outcomes[index] = RowOutcome(True)
+                return outcomes
             logger.debug("SAF tag batch insert failed; retrying per sample", exc_info=True)
         for index, row in zip(insert_at, to_insert):
             try:
                 self._tag_inserter.insert_tag_values([row])
-                outcomes[index] = True
+                outcomes[index] = RowOutcome(True)
             except Exception as exc:
-                logger.warning("SAF tag sample insert failed: %s", exc)
+                if classify_saf_error(exc) == IDEMPOTENT_OK:
+                    outcomes[index] = RowOutcome(True)
+                else:
+                    logger.warning("SAF tag sample insert failed: %s", exc)
+                    outcomes[index] = RowOutcome(False, exc)
         return outcomes
 
     def batch_insert_with_dedupe(self, payloads: Sequence[Mapping]) -> int:
@@ -378,16 +426,16 @@ class PeeweeRemoteDB:
     def _write_events(self, payloads: Sequence[Mapping]) -> int:
         return sum(self._write_event_outcomes(payloads))
 
-    def _write_event_outcomes(self, payloads: Sequence[Mapping]) -> list[bool]:
+    def _write_event_outcomes(self, payloads: Sequence[Mapping]) -> list[RowOutcome]:
         from ..dbmodels.events import Events
 
-        outcomes: list[bool] = []
+        outcomes: list[RowOutcome] = []
         logger = logging.getLogger("pyautomation")
         for item in payloads:
             try:
                 user = _user_for_username(item.get("username") or "system")
                 if user is None:
-                    outcomes.append(False)
+                    outcomes.append(RowOutcome(False, "user not found"))
                     continue
                 kwargs = dict(
                     message=item.get("message"),
@@ -400,10 +448,10 @@ class PeeweeRemoteDB:
                 )
                 kwargs.update(_partition_kwargs(Events, item))
                 created, _ = Events.create(**kwargs)
-                outcomes.append(created is not None)
+                outcomes.append(RowOutcome(created is not None, None if created is not None else "event create skipped"))
             except Exception as exc:
                 logger.warning("SAF event sample failed: %s", exc)
-                outcomes.append(False)
+                outcomes.append(RowOutcome(False, exc))
         return outcomes
 
     def _write_alarm_creates(self, payloads: Sequence[Mapping]) -> int:
@@ -420,11 +468,16 @@ class PeeweeRemoteDB:
     def _alarm_summary_row(self, item: Mapping) -> dict[str, Any] | None:
         from ..dbmodels.alarms import AlarmStates, AlarmSummary, Alarms
 
+        from ..alarms.states import isa_name_from_history
+
         name = item.get("name")
         state_name = item.get("state")
         area = item.get("area")
         alarm = Alarms.read_by_name(name=name, area=area)
-        state = AlarmStates.read_by_name(name=state_name) if state_name else None
+        lookup = isa_name_from_history(state_name) if state_name else None
+        state = AlarmStates.read_by_name(name=lookup) if lookup else None
+        if state is None and state_name:
+            state = AlarmStates.read_by_name(name=state_name)
         if not alarm or not state:
             return None
         timestamp = _parse_dt(item.get("timestamp"))
@@ -443,83 +496,50 @@ class PeeweeRemoteDB:
             sample_uuid=canonical_sample_uuid(
                 item.get("sample_uuid") or item.get("idempotency_key")
             ),
+            from_state=item.get("from_state"),
+            to_state=item.get("to_state"),
+            event_time=timestamp,
+            operator_id=item.get("operator_id"),
+            condition_met=item.get("condition_met"),
+            condition_value=item.get("condition_value"),
+            schema_version=item.get("schema_version") or 2,
         )
         row.update(_partition_kwargs(AlarmSummary, item))
         return row
 
-    def _write_alarm_create_outcomes(self, payloads: Sequence[Mapping]) -> list[bool]:
-        outcomes: list[bool] = []
+    def _write_alarm_create_outcomes(self, payloads: Sequence[Mapping]) -> list[RowOutcome]:
+        outcomes: list[RowOutcome] = []
         logger = logging.getLogger("pyautomation")
         for item in payloads:
             try:
                 if _ensure_alarm_catalog(item) is None:
-                    outcomes.append(False)
+                    outcomes.append(RowOutcome(False, "alarm catalog missing"))
                     continue
                 row = self._alarm_summary_row(item)
                 if row is None:
-                    outcomes.append(False)
+                    outcomes.append(RowOutcome(False, "alarm summary row unmappable"))
                     continue
-                outcomes.append(self._alarm_inserter.insert_one(row))
+                ok = self._alarm_inserter.insert_one(row)
+                outcomes.append(RowOutcome(bool(ok), None if ok else "alarm insert skipped"))
             except Exception as exc:
                 logger.warning("SAF alarm_summary sample failed: %s", exc)
-                outcomes.append(False)
+                outcomes.append(RowOutcome(False, exc))
         return outcomes
 
     def _write_alarm_updates(self, payloads: Sequence[Mapping]) -> int:
         return sum(self._write_alarm_update_outcomes(payloads))
 
-    def _write_alarm_update_outcomes(self, payloads: Sequence[Mapping]) -> list[bool]:
-        from ..dbmodels.alarms import AlarmStates, AlarmSummary
-
-        outcomes: list[bool] = []
-        skipped = []
-        logger = logging.getLogger("pyautomation")
-        for item in payloads:
-            try:
-                _ensure_alarm_catalog(item)
-                alarm = AlarmSummary.read_by_name(
-                    name=item.get("name"),
-                    area=item.get("area"),
-                )
-                if not alarm:
-                    skipped.append(item.get("name"))
-                    outcomes.append(False)
-                    continue
-                fields = {}
-                if item.get("ack_timestamp"):
-                    ack_stamp = _parse_dt(item.get("ack_timestamp"))
-                    if ack_stamp is not None:
-                        fields["ack_time"] = quantize_datetime_ms(ack_stamp)
-                if item.get("state"):
-                    alarm_state = AlarmStates.get_or_none(name=item["state"])
-                    if alarm_state:
-                        fields["state"] = alarm_state
-                if fields:
-                    AlarmSummary.put(id=alarm.id, **fields)
-                    outcomes.append(True)
-                else:
-                    skipped.append(item.get("name"))
-                    outcomes.append(False)
-            except Exception as exc:
-                logger.warning("SAF alarm_summary_update sample failed: %s", exc)
-                skipped.append(item.get("name"))
-                outcomes.append(False)
-        if skipped:
-            logging.getLogger("pyautomation").error(
-                "SAF alarm_summary_update skipped %s/%s (summary missing): %s",
-                len(skipped),
-                len(payloads),
-                skipped[:20],
-            )
-        return outcomes
+    def _write_alarm_update_outcomes(self, payloads: Sequence[Mapping]) -> list[RowOutcome]:
+        """Legacy ALARM_SUMMARY_UPDATE journal rows become append-only INSERTs."""
+        return self._write_alarm_create_outcomes(payloads)
 
     def _write_logs(self, payloads: Sequence[Mapping]) -> int:
         return sum(self._write_log_outcomes(payloads))
 
-    def _write_log_outcomes(self, payloads: Sequence[Mapping]) -> list[bool]:
+    def _write_log_outcomes(self, payloads: Sequence[Mapping]) -> list[RowOutcome]:
         from ..dbmodels.logs import Logs
 
-        outcomes: list[bool] = []
+        outcomes: list[RowOutcome] = []
         logger = logging.getLogger("pyautomation")
         for item in payloads:
             try:
@@ -540,10 +560,10 @@ class PeeweeRemoteDB:
                 )
                 kwargs.update(_partition_kwargs(Logs, item))
                 created, _ = Logs.create(**kwargs)
-                outcomes.append(created is not None)
+                outcomes.append(RowOutcome(created is not None, None if created is not None else "log create skipped"))
             except Exception as exc:
                 logger.warning("SAF log sample failed: %s", exc)
-                outcomes.append(False)
+                outcomes.append(RowOutcome(False, exc))
         return outcomes
 
 

@@ -17,7 +17,7 @@
 
 | Pregunta | Respuesta |
 |---|---|
-| ¿La HMI puede vivir 365 días en la misma pestaña? | Diseño acotado: historial 720×64, EventBus (1 listener nativo/evento), pestaña oculta pausa Plotly/polls, Footer no hidrata 10k alarmas. Falta soak 24 h en planta |
+| ¿La HMI puede vivir 365 días en la misma pestaña? | Diseño acotado: historial 720×64, EventBus (1 listener nativo/evento), pestaña oculta pausa Plotly/polls, Footer hidrata `GET /alarms/footer` (top 3). Falta soak 24 h en planta |
 | ¿Por qué StripChart mostraba tramos a ~4 s si TagValue está a 1 Hz? | El socket recibía 1 Hz. Un `Map` last-wins + flush 5 s en `document.hidden` **descartaba** muestras. La BD no usa ese Map |
 | ¿Eso se corrigió? | **Sí (2026-08-14).** Valor actual sigue last-wins (barato). Historial: cola por tag (máx. 20/flush), flush 1 s aunque hidden, vaciado inmediato al volver a primer plano |
 
@@ -29,7 +29,7 @@ Objetivo: día 365, heap y frame time de Trends RT dentro de ±20 % del día 1.
 
 | Letra | Violación original | Estado |
 |---|---|---|
-| **S** | Footer hidrataba 10k alarmas + preview de 3 | Preview top 3 (`selectActiveAlarmsPreview`) |
+| **S** | Footer hidrataba 10k alarmas + preview de 3 | Preview `top3Active` (`selectActiveAlarmsPreview`) + `GET /alarms/footer` |
 | **O** | `tagHistory` hasta 10k/tag sin política de suscripción | 720 pts × 64 tags LRU |
 | **L** | Selector de historial global: coste crece con N | Selector por `config.tagNames` |
 | **I** | StripChart pedía todo el historial; `useAuth` todo `auth` | Selectores estrechos |
@@ -58,7 +58,7 @@ Si el componente se desmontaba antes del `connect`, el `once` no se cancelaba �
 | ID | Hallazgo | Hecho |
 |---|---|---|
 | **HMI-H1** | StripChart selector global; sin memo; Plotly en cada tag ajeno | Selector por `tagNames`; `React.memo(StripChart)`; throttle 300 ms; freeze si `document.hidden`; `useLongTaskObserver(50)` en RealTimeTrends |
-| **HMI-H2** | Footer `getAlarms(1, 10000)` | Preview top 3 |
+| **HMI-H2** | Footer `getAlarms(1, 10000)` | **Cerrado v3:** `getAlarmsFooter()` + store `top3Active` ≤ 3. `/alarms` pagina ≤ 50. |
 | **HMI-H3** | Cero `document.hidden` | Flush valor 1 s → 5 s en background; health/machines/communications/Plotly pausan; **el socket sigue recibiendo** |
 | **HMI-H4** | `AlarmTableRow` definido *dentro* de `Alarms()` → memo inútil | Módulo propio + `React.memo` |
 | **HMI-H5** | Communications poll 1 s escribía `localStorage` | Persistencia debounce 500 ms en onChange; ticker solo UI |
@@ -198,6 +198,7 @@ Evidencia de código: `hmi/src/hooks/useSocket.ts` (`pendingHistoryUpdatesRef`, 
 | RealTimeTrends | `hmi/src/pages/RealTimeTrends.tsx` |
 | `document.hidden` | `hmi/src/hooks/usePageHidden.ts` |
 | Footer / alarmas | `hmi/src/layouts/Footer.tsx`, `hmi/src/store/slices/alarmsSlice.ts` |
-| AlarmTableRow | `hmi/src/components/AlarmTableRow.tsx` |
+| AlarmTableRow | `hmi/src/components/AlarmTableRow.tsx` — **2026-09-15:** badge “condición activa” (`condition_met`) distinto de ack ISA-18.2. Contrato: [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) §3.5 |
+| Footer «últimas 3» | `hmi/src/layouts/Footer.tsx` — RTN Unack en Redux; orden `last_transition_ts`; B/C/D con color distinto. Ver [AUDIT_ISA18_2_ALARMS.md](./AUDIT_ISA18_2_ALARMS.md) |
 | Watchdog | `hmi/src/hooks/useMemoryWatchdog.ts` |
 | OPC → CVT → emit | `automation/opcua/subscription.py`, `automation/tags/cvt.py` |

@@ -19,6 +19,9 @@ export type Alarm = {
     acknowledge_status?: string;
   } | string;
   timestamp?: string;
+  last_transition_ts?: string | null;
+  last_transition_from?: string | null;
+  last_transition_to?: string | null;
   ack_timestamp?: string;
   segment?: string;
   manufacturer?: string;
@@ -55,6 +58,14 @@ export type AlarmsListFilter = {
   state?: string;
 };
 
+export const CATALOG_PAGE_SIZE_MAX = 50;
+export const HISTORY_PAGE_SIZE_MAX = 100;
+
+export type AlarmsFooterResponse = {
+  top_3_active: Alarm[];
+  count_by_state: Record<string, number>;
+};
+
 /**
  * Obtiene la lista de alarmas con paginación
  */
@@ -63,7 +74,8 @@ export const getAlarms = async (
   limit: number = 20,
   filters: AlarmsListFilter = {}
 ): Promise<AlarmsResponse> => {
-  const params: Record<string, string | number> = { page, limit };
+  const pageSize = Math.min(Math.max(1, limit), CATALOG_PAGE_SIZE_MAX);
+  const params: Record<string, string | number> = { page, limit: pageSize, page_size: pageSize };
   const query = filters.q?.trim();
   const state = filters.state?.trim();
   if (query) params.q = query;
@@ -71,6 +83,26 @@ export const getAlarms = async (
   const { data } = await api.get("/alarms/", { params });
   return data;
 };
+
+export const getAlarmsFooter = async (): Promise<AlarmsFooterResponse> => {
+  const { data } = await api.get("/alarms/footer");
+  return data;
+};
+
+export async function collectAlarmsPages(
+  filters: AlarmsListFilter = {},
+  pageSize: number = CATALOG_PAGE_SIZE_MAX
+): Promise<Alarm[]> {
+  const size = Math.min(pageSize, CATALOG_PAGE_SIZE_MAX);
+  const all: Alarm[] = [];
+  for (let page = 1; page <= 200; page += 1) {
+    const response = await getAlarms(page, size, filters);
+    const items = response.data || [];
+    all.push(...items);
+    if (items.length < size) break;
+  }
+  return all;
+}
 
 /**
  * Crea una nueva alarma
@@ -129,6 +161,11 @@ export type AlarmSummary = {
   area?: string | null;
   alarm_time: string;
   ack_time?: string | null;
+  from_state?: string | null;
+  to_state?: string | null;
+  event_time?: string | null;
+  operator_id?: number | null;
+  schema_version?: number | null;
   has_comments?: boolean;
 };
 
@@ -165,7 +202,11 @@ export const filterAlarmsSummary = async (
   filters: AlarmSummaryFilter,
   config?: AxiosRequestConfig
 ): Promise<AlarmSummaryResponse> => {
-  const { data } = await api.post("/alarms/summary/filter_by", filters, config);
+  const payload = {
+    ...filters,
+    limit: Math.min(Math.max(1, Number(filters.limit || 20)), HISTORY_PAGE_SIZE_MAX),
+  };
+  const { data } = await api.post("/alarms/summary/filter_by", payload, config);
   return data;
 };
 

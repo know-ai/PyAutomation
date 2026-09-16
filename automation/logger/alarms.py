@@ -6,6 +6,7 @@ alarm status history, and summaries to the database.
 """
 from datetime import datetime
 import logging
+import uuid
 from ..dbmodels import Alarms, AlarmSummary, AlarmTypes, AlarmStates
 from .core import BaseEngine, BaseLogger
 from ..alarms.trigger import TriggerType
@@ -352,6 +353,16 @@ class AlarmsLogger(BaseLogger):
             trigger_value=None,
             description:str=None,
             area:str=None,
+            from_state:str=None,
+            to_state:str=None,
+            event_time:datetime=None,
+            operator_id:int=None,
+            condition_met:bool=None,
+            condition_value=None,
+            schema_version:int=2,
+            last_transition_ts:datetime=None,
+            last_transition_from:str=None,
+            last_transition_to:str=None,
         ):
         r"""
         Creates a new entry in the Alarm Summary (history log).
@@ -381,80 +392,61 @@ class AlarmsLogger(BaseLogger):
             trigger_type=trigger_type,
             trigger_value=trigger_value,
             description=description,
+            from_state=from_state,
+            to_state=to_state,
+            operator_id=operator_id,
+            condition_met=condition_met,
+            condition_value=condition_value,
+            schema_version=schema_version,
         )
 
         def _write():
             from ..persistence.remote import _ensure_alarm_catalog
 
-            _ensure_alarm_catalog(record.payload())
-            return AlarmSummary.create(
+            payload = record.payload()
+            _ensure_alarm_catalog(payload)
+            created = AlarmSummary.create(
                 name=name,
                 state=state,
-                timestamp=timestamp,
+                timestamp=event_time or timestamp,
                 ack_timestamp=ack_timestamp,
-                area=record.payload().get("area") or area,
-                sample_uuid=record.payload().get("sample_uuid") or record.idempotency_key(),
+                area=payload.get("area") or area,
+                sample_uuid=payload.get("sample_uuid") or record.idempotency_key(),
+                from_state=from_state,
+                to_state=to_state,
+                event_time=event_time or timestamp,
+                operator_id=operator_id,
+                condition_met=condition_met,
+                condition_value=condition_value,
+                schema_version=schema_version,
             )
+            alarm_row = Alarms.read_by_identifier(identifier=identifier) if identifier else None
+            if alarm_row is None:
+                alarm_row = Alarms.read_by_name(name=name, area=payload.get("area") or area)
+            if alarm_row is not None:
+                fields = {}
+                alarm_state = AlarmStates.get_or_none(name=state)
+                if alarm_state is None and to_state:
+                    from ..alarms.states import isa_name_from_history
+
+                    alarm_state = AlarmStates.get_or_none(name=isa_name_from_history(to_state))
+                if alarm_state is not None:
+                    fields["state"] = alarm_state
+                stamp = last_transition_ts or event_time or timestamp
+                if stamp is not None:
+                    fields["last_transition_ts"] = stamp
+                if last_transition_from or from_state:
+                    fields["last_transition_from"] = last_transition_from or from_state
+                if last_transition_to or to_state:
+                    fields["last_transition_to"] = last_transition_to or to_state
+                if fields:
+                    Alarms.put(id=alarm_row.id, **fields)
+            return created
 
         result, _ = journal_then_remote(record, _write, self.check_connectivity())
         return result
 
     @db_rollback
-    def put_record_on_alarm_summary(
-            self,
-            name:str,
-            state:str=None,
-            ack_timestamp:datetime=None,
-            identifier:str=None,
-            tag:str=None,
-            area:str=None,
-        ):
-        r"""
-        Updates the latest record in the Alarm Summary for a given alarm.
-
-        **Parameters:**
-
-        * **name** (str): Alarm name.
-        * **state** (str, optional): New state.
-        * **ack_timestamp** (datetime, optional): Acknowledgment timestamp.
-        """
-        if not self.is_history_logged:
-
-            return None
-
-        from ..persistence.outbox import journal_then_remote
-        from ..persistence.records import PersistableRecord
-
-        record = PersistableRecord.alarm_update(
-            name=name,
-            state=state,
-            ack_timestamp=ack_timestamp,
-            area=area,
-            identifier=identifier,
-            tag=tag,
-        )
-
-        def _write():
-            fields = dict()
-            alarm = AlarmSummary.read_by_name(name=name, area=record.payload().get("area") or area)
-            if not alarm:
-                return None
-            if ack_timestamp:
-                from ..timebase import quantize_datetime_ms
-                stamp = ack_timestamp
-                if isinstance(stamp, datetime):
-                    stamp = quantize_datetime_ms(stamp)
-                fields["ack_time"] = stamp
-            if state:
-                alarm_state = AlarmStates.get_or_none(name=state)
-                fields["state"] = alarm_state
-            if not fields:
-                return None
-            return AlarmSummary.put(id=alarm.id, **fields)
-
-        result, _ = journal_then_remote(record, _write, self.check_connectivity())
-        return result
-
     def acknowledge_many(self, updates:list[dict]|None=None):
         r"""
         Persist a bulk acknowledge with one journal COMMIT and one remote transaction.
@@ -474,13 +466,20 @@ class AlarmsLogger(BaseLogger):
         records = []
         if self.is_history_logged:
             records = [
-                PersistableRecord.alarm_update(
+                PersistableRecord.alarm_create(
                     name=item.get("name"),
                     state=item.get("state"),
+                    timestamp=item.get("ack_timestamp"),
                     ack_timestamp=item.get("ack_timestamp"),
                     area=item.get("area"),
                     identifier=item.get("id"),
                     tag=item.get("tag"),
+                    from_state=item.get("from_state"),
+                    to_state=item.get("to_state"),
+                    operator_id=item.get("operator_id"),
+                    condition_met=item.get("condition_met"),
+                    condition_value=item.get("condition_value"),
+                    schema_version=2,
                 )
                 for item in items
                 if item.get("name")
@@ -566,37 +565,38 @@ class AlarmsLogger(BaseLogger):
                 Alarms.update(state=state_id).where(Alarms.id.in_(ids)).execute()
                 written += len(ids)
 
-            if self.is_history_logged and alarm_pks and ack_time is not None:
-                latest = list(
-                    AlarmSummary
-                    .select(AlarmSummary.alarm, fn.MAX(AlarmSummary.id).alias("max_id"))
-                    .where(AlarmSummary.alarm.in_(alarm_pks))
-                    .group_by(AlarmSummary.alarm)
-                )
-                max_ids = [row.max_id for row in latest if getattr(row, "max_id", None)]
-                if max_ids:
-                    summaries = list(
-                        AlarmSummary
-                        .select(AlarmSummary, Alarms)
-                        .join(Alarms)
-                        .where(AlarmSummary.id.in_(max_ids))
+            if self.is_history_logged:
+                for row in catalog:
+                    item = _update_for(row)
+                    if not item:
+                        continue
+                    stamp = item.get("ack_timestamp") or ack_time
+                    if isinstance(stamp, datetime):
+                        stamp = quantize_datetime_ms(stamp)
+                    AlarmSummary.create(
+                        name=row.name,
+                        state=item.get("state"),
+                        timestamp=stamp,
+                        ack_timestamp=stamp,
+                        area=item.get("area") or row.area,
+                        sample_uuid=str(uuid.uuid4()),
+                        from_state=item.get("from_state"),
+                        to_state=item.get("to_state"),
+                        event_time=stamp,
+                        operator_id=item.get("operator_id"),
+                        condition_met=item.get("condition_met"),
+                        condition_value=item.get("condition_value"),
+                        schema_version=2,
                     )
-                    summary_by_state: dict[int, list[int]] = {}
-                    for summary in summaries:
-                        item = by_name.get(summary.alarm.name)
-                        if not item:
-                            continue
-                        state_row = _state(item.get("state"))
-                        if state_row is None:
-                            continue
-                        summary_by_state.setdefault(state_row.id, []).append(summary.id)
-                    for state_id, ids in summary_by_state.items():
-                        if not ids:
-                            continue
-                        AlarmSummary.update(
-                            ack_time=ack_time,
-                            state=state_id,
-                        ).where(AlarmSummary.id.in_(ids)).execute()
+                    trans_fields = {}
+                    if stamp is not None:
+                        trans_fields["last_transition_ts"] = stamp
+                    if item.get("from_state"):
+                        trans_fields["last_transition_from"] = item.get("from_state")
+                    if item.get("to_state"):
+                        trans_fields["last_transition_to"] = item.get("to_state")
+                    if trans_fields:
+                        Alarms.put(id=row.id, **trans_fields)
             return written
 
     @db_rollback
@@ -764,6 +764,7 @@ class AlarmsLoggerEngine(BaseEngine):
         trigger_value=None,
         description:str=None,
         area:str=None,
+        **extra,
         ):
         r"""
         Thread-safe creation of alarm history record.
@@ -781,31 +782,8 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["trigger_value"] = trigger_value
         _query["parameters"]["description"] = description
         _query["parameters"]["area"] = area
+        _query["parameters"].update(extra)
         
-        return self.query(_query)
-    
-    def put_record_on_alarm_summary(
-        self,
-        name:str,
-        state:str=None,
-        ack_timestamp:datetime=None,
-        identifier:str=None,
-        tag:str=None,
-        area:str=None,
-        ):
-        r"""
-        Thread-safe update of alarm history record.
-        """
-        _query = dict()
-        _query["action"] = "put_record_on_alarm_summary"
-        _query["parameters"] = dict()
-        _query["parameters"]["name"] = name
-        _query["parameters"]["state"] = state
-        _query["parameters"]["ack_timestamp"] = ack_timestamp
-        _query["parameters"]["identifier"] = identifier
-        _query["parameters"]["tag"] = tag
-        _query["parameters"]["area"] = area
-
         return self.query(_query)
 
     def acknowledge_many(self, updates:list[dict]|None=None):

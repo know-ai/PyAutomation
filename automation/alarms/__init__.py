@@ -1,7 +1,20 @@
+import logging
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
-from .states import AlarmState, AlarmAttrs
+from .states import (
+    AlarmState,
+    AlarmAttrs,
+    history_name_from_isa,
+    HISTORY_CLEARED,
+    HISTORY_NORMAL,
+    HISTORY_UNACK,
+    HISTORY_ACK,
+    HISTORY_RTNUN,
+    HISTORY_SUPPRESSED,
+    sm_value_from_isa,
+    isa_name_from_history,
+)
 from .trigger import Trigger, TriggerType
 from .delays import (
     DEFAULT_ALARM_DELAY_S,
@@ -9,7 +22,16 @@ from .delays import (
     clamp_alarm_delay,
     normalize_delay_units,
 )
-from ..tags.tag import Tag, MachineObserver
+from ..tags.tag import Tag
+from .runtime import (
+    AlarmTagObserver,
+    KIND_ABNORMAL,
+    KIND_EMIT,
+    KIND_NORMAL,
+    KIND_UNSHELVE,
+    get_alarm_runtime,
+)
+from .config import AlarmConfig
 from ..tags.cvt import CVTEngine
 from ..modules.users.users import User
 from ..utils.decorators import validate_types, logging_error_handler, set_event, put_alarm_state
@@ -75,6 +97,7 @@ class Alarm(StateMachine):
 
     # ISA-18.2 On-Delay / Off-Delay. Tests may disable wall-clock wakeups.
     enable_delay_wakeups = True
+    _quality_fns = None
 
     def __init__(
             self,
@@ -163,13 +186,24 @@ class Alarm(StateMachine):
             'hours': 0,
             'weeks': 0
         }
+        catalog_state = state
         transitions = []
-        for state in self.states:
-            transitions.extend(state.transitions)
+        for sm_state in self.states:
+            transitions.extend(sm_state.transitions)
         self.transitions = transitions
         self.sio:SocketIO|None = None
         self._defer_persist = False
+        self._suppress_enter_hooks = True
+        self._last_history_state = HISTORY_NORMAL
+        self._pending_operator_id = None
+        self.last_transition_ts = None
+        self.last_transition_from = None
+        self.last_transition_to = None
+        self._runtime = get_alarm_runtime()
         super(Alarm, self).__init__()
+        self._suppress_enter_hooks = False
+        if reload and catalog_state and str(catalog_state) not in ("Normal", HISTORY_NORMAL, ""):
+            self._force_state(catalog_state)
 
     def catalog_payload(self) -> dict:
         r"""Fields needed to persist this alarm definition to the historian catalog."""
@@ -208,79 +242,187 @@ class Alarm(StateMachine):
             "off_delay_units": self.off_delay_units,
         }
 
+    def _current_condition_value(self):
+        tag = getattr(self, "tag", None)
+        if tag is None:
+            return None
+        value = getattr(tag, "value", None)
+        if value is None:
+            return None
+        numeric = getattr(value, "value", value)
+        try:
+            return float(numeric)
+        except (TypeError, ValueError):
+            return None
+
+    def _operator_pk(self, user:User=None, operator_id:int=None):
+        if operator_id is not None:
+            try:
+                return int(operator_id)
+            except (TypeError, ValueError):
+                return None
+        if user is None:
+            return None
+        for attr in ("pk", "id"):
+            raw = getattr(user, attr, None)
+            if isinstance(raw, int):
+                return raw
+        username = getattr(user, "username", None)
+        if not username:
+            return None
+        try:
+            from ..dbmodels.users import Users
+
+            row = Users.read_by_username(username=username)
+            if row is not None:
+                return row.id
+        except Exception:
+            return None
+        return None
+
+    def _force_state(self, state:str) -> None:
+        """Restore SM from catalog without on_enter_* / history (P1-3)."""
+        history = history_name_from_isa(state)
+        sm_value = sm_value_from_isa(state)
+        self._suppress_enter_hooks = True
+        try:
+            self.current_state_value = sm_value
+        except Exception:
+            pass
+        self._suppress_enter_hooks = False
+        isa = isa_name_from_history(history)
+        mapped = None
+        try:
+            mapped = AlarmState.get_state_by_name(isa) if isa else None
+        except Exception:
+            mapped = None
+        if mapped is not None:
+            self.state = mapped
+        elif history == HISTORY_UNACK:
+            self.state = AlarmState.UNACK
+        elif history == HISTORY_ACK:
+            self.state = AlarmState.ACKED
+        elif history == HISTORY_RTNUN:
+            self.state = AlarmState.RTNUN
+        else:
+            self.state = AlarmState.NORM
+        self._last_history_state = HISTORY_NORMAL if history == HISTORY_CLEARED else history
+
+    def _record_transition(self, from_state:str, to_state:str, *, operator_id:int=None) -> bool:
+        """Single writer for alarm_summary. INV-01, INV-02, INV-07."""
+        if getattr(self, "_suppress_enter_hooks", False):
+            return False
+        if getattr(self, "_defer_persist", False):
+            self._last_history_state = to_state if to_state != HISTORY_CLEARED else HISTORY_NORMAL
+            return False
+        if from_state == to_state:
+            return False
+        if to_state in HISTORY_SUPPRESSED:
+            logging.getLogger("pyautomation").warning(
+                "ALM.SUPPRESSED.Skipped history for %s alarm=%s",
+                to_state,
+                self.name,
+            )
+            self._last_history_state = to_state
+            return False
+        from ..timebase import quantize_datetime_ms
+
+        now = quantize_datetime_ms(datetime.now(timezone.utc))
+        self.last_transition_ts = now
+        self.last_transition_from = from_state
+        self.last_transition_to = to_state
+        ack_ts = self.ack_timestamp if to_state in (HISTORY_ACK, HISTORY_CLEARED) else None
+        catalog = self.catalog_payload()
+        persist_state = isa_name_from_history(to_state)
+        self.alarm_engine.create_record_on_alarm_summary(
+            name=self.name,
+            state=persist_state,
+            timestamp=now,
+            ack_timestamp=ack_ts,
+            identifier=catalog.get("identifier"),
+            tag=catalog.get("tag"),
+            trigger_type=catalog.get("trigger_type"),
+            trigger_value=catalog.get("trigger_value"),
+            description=catalog.get("description"),
+            area=catalog.get("area"),
+            from_state=from_state,
+            to_state=to_state,
+            event_time=now,
+            operator_id=operator_id if operator_id is not None else self._pending_operator_id,
+            condition_met=bool(self._condition_met),
+            condition_value=self._current_condition_value(),
+            schema_version=2,
+            last_transition_ts=now,
+            last_transition_from=from_state,
+            last_transition_to=to_state,
+        )
+        self._last_history_state = HISTORY_NORMAL if to_state == HISTORY_CLEARED else to_state
+        self._pending_operator_id = None
+        try:
+            runtime = get_alarm_runtime()
+            runtime.note_history_insert()
+            runtime.sync_alarm(self)
+        except Exception:
+            pass
+        return True
+
     @logging_error_handler
     @put_alarm_state
     def on_enter_normal(self):
+        if getattr(self, "_suppress_enter_hooks", False):
+            self.state = AlarmState.NORM
+            return
+        prior = self._last_history_state or HISTORY_NORMAL
         self.state = AlarmState.NORM
-        self.timestamp = None 
         self.ack_timestamp = None
         self._reset_delay_timers()
+        if prior in (HISTORY_ACK, HISTORY_RTNUN, HISTORY_UNACK):
+            self.timestamp = None
+            self._record_transition(prior, HISTORY_CLEARED)
+        elif prior not in HISTORY_SUPPRESSED:
+            self.timestamp = None
 
     @logging_error_handler
     @put_alarm_state
     def on_enter_unack_alarm(self):
-
-        self.state = AlarmState.UNACK
+        if getattr(self, "_suppress_enter_hooks", False):
+            self.state = AlarmState.UNACK
+            return
         from ..timebase import quantize_datetime_ms
+        prior = self._last_history_state or HISTORY_NORMAL
+        self.state = AlarmState.UNACK
         stamp = getattr(self, "_Alarm__timestamp", None)
         if not isinstance(stamp, datetime):
             stamp = datetime.now(timezone.utc)
-        self.timestamp = quantize_datetime_ms(stamp)
-        if getattr(self, "_defer_persist", False):
-            return
-        catalog = self.catalog_payload()
-        self.alarm_engine.create_record_on_alarm_summary(
-                name=self.name, 
-                state=self.state.state, 
-                timestamp=self.timestamp,
-                ack_timestamp=self.ack_timestamp,
-                identifier=catalog.get("identifier"),
-                tag=catalog.get("tag"),
-                trigger_type=catalog.get("trigger_type"),
-                trigger_value=catalog.get("trigger_value"),
-                description=catalog.get("description"),
-                area=catalog.get("area"),
-            )
+        if self.timestamp is None:
+            self.timestamp = quantize_datetime_ms(stamp)
+        self._record_transition(prior, HISTORY_UNACK)
 
     @logging_error_handler
     @put_alarm_state
     def on_enter_ack_alarm(self):
-
-        self.state = AlarmState.ACKED
+        if getattr(self, "_suppress_enter_hooks", False):
+            self.state = AlarmState.ACKED
+            return
         from ..timebase import quantize_datetime_ms
+        prior = self._last_history_state or HISTORY_UNACK
+        self.state = AlarmState.ACKED
         stamp = getattr(self, "_Alarm__timestamp", None)
         if not isinstance(stamp, datetime):
             stamp = datetime.now(timezone.utc)
         self.ack_timestamp = quantize_datetime_ms(stamp)
-        if getattr(self, "_defer_persist", False):
-            return
-        catalog = self.catalog_payload()
-        self.alarm_engine.put_record_on_alarm_summary(
-            name=self.name, 
-            state=self.state.state, 
-            ack_timestamp=self.ack_timestamp,
-            tag=catalog.get("tag"),
-            identifier=catalog.get("identifier"),
-            area=catalog.get("area"),
-        )
-    
+        self._record_transition(prior, HISTORY_ACK, operator_id=self._pending_operator_id)
+
     @logging_error_handler
     @put_alarm_state
     def on_enter_rtn_unack(self):
-        
-        self.timestamp = None
-        self.state = AlarmState.RTNUN
-        if getattr(self, "_defer_persist", False):
+        if getattr(self, "_suppress_enter_hooks", False):
+            self.state = AlarmState.RTNUN
             return
-        catalog = self.catalog_payload()
-        self.alarm_engine.put_record_on_alarm_summary(
-            name=self.name, 
-            state=self.state.state,
-            tag=catalog.get("tag"),
-            identifier=catalog.get("identifier"),
-            area=catalog.get("area"),
-        )
-    
+        prior = self._last_history_state or HISTORY_UNACK
+        self.state = AlarmState.RTNUN
+        self._record_transition(prior, HISTORY_RTNUN)
+
     @logging_error_handler
     @put_alarm_state
     def on_enter_shelved(self):
@@ -339,19 +481,54 @@ class Alarm(StateMachine):
         """ 
         if timestamp is None:
             return
+        numeric = getattr(value, "value", value)
+        self.check_condition(numeric, timestamp)
+
+    def check_condition(self, pv_value, timestamp=None) -> str | None:
+        """O(1) condition + delay tick. No SM, no INSERT, no socket.
+
+        Returns a queued kind or None. SPEC-ISA18-2-CLOSURE-v2 INV-21.
+        """
+        runtime = get_alarm_runtime()
+        started = time.perf_counter()
+        try:
+            return self._check_condition_impl(pv_value, timestamp)
+        finally:
+            runtime.latency.observe_us((time.perf_counter() - started) * 1_000_000.0)
+            # INV-42: production never drains on the hot path.
+            if AlarmConfig.is_sync_drain_allowed() and not runtime.is_worker_alive_recently():
+                runtime.drain()
+
+    def check_condition_from_tag(self, tag) -> str | None:
+        timestamp = getattr(tag, "timestamp", None)
+        value = getattr(tag, "value", None)
+        numeric = getattr(value, "value", value) if value is not None else None
+        return self.check_condition(numeric, timestamp)
+
+    def _check_condition_impl(self, pv_value, timestamp) -> str | None:
+        if timestamp is None:
+            return None
         self.__timestamp = timestamp
-        if self.state not in (AlarmState.DSUPR, AlarmState.SHLVD, AlarmState.OOSRV):
-            if self._is_iad_alarm():
-                self._evaluate_delays(self._iad_condition_met(), timestamp)
-            elif self._quality_allows_process_evaluation():
-                condition_met = self._process_condition_met(value.value)
-                self._evaluate_delays(condition_met, timestamp)
+        state = self.state
+        if state == AlarmState.SHLVD:
+            until = getattr(self, "_shelved_until", None)
+            if until is not None and datetime.now(timezone.utc) >= until:
+                self._enqueue_hotpath(KIND_UNSHELVE)
+                return KIND_UNSHELVE
+            return None
+        if state in (AlarmState.DSUPR, AlarmState.OOSRV):
+            return None
+        if self._is_iad_alarm():
+            condition_met = self._iad_condition_met()
+        elif self._quality_allows_process_evaluation():
+            condition_met = self._process_condition_met(pv_value)
+        else:
+            return None
+        return self._evaluate_delays(condition_met, timestamp)
 
-        if self.state==AlarmState.SHLVD:
-
-            if datetime.now(timezone.utc) >= self._shelved_until:
-
-                self.unshelve(current_value=value)
+    def _enqueue_hotpath(self, kind: str) -> None:
+        runtime = getattr(self, "_runtime", None) or get_alarm_runtime()
+        runtime.enqueue(self, kind)
 
     def _is_iad_alarm(self) -> bool:
         name = (getattr(self, "name", None) or "").lower()
@@ -400,6 +577,8 @@ class Alarm(StateMachine):
         return current.lower() in ("unack_alarm", "ack_alarm")
 
     def _process_condition_met(self, numeric_value) -> bool:
+        if numeric_value is None:
+            return False
         kind = self.alarm_setpoint.type
         setpoint = self.alarm_setpoint.value
         deadband = float(getattr(self.alarm_deadband, "value", self.alarm_deadband) or 0.0)
@@ -506,16 +685,40 @@ class Alarm(StateMachine):
             return
         self.notify(tag=name, value=value, timestamp=datetime.now(timezone.utc))
 
+    def serialize_socket(self):
+        """INV-47: compact on.alarm payload (≤ 2 KB). HMI-compatible top-level keys."""
+        from ..timebase import iso_millis
+
+        state = self.state
+        state_payload = state.serialize() if hasattr(state, "serialize") else str(state)
+        return {
+            "event": "state_change",
+            "identifier": self.identifier,
+            "id": self.identifier,
+            "name": self.name,
+            "tag": getattr(self.tag, "name", None),
+            "state": state_payload,
+            "last_transition_ts": iso_millis(getattr(self, "last_transition_ts", None)),
+            "last_transition_from": getattr(self, "last_transition_from", None),
+            "last_transition_to": getattr(self, "last_transition_to", None),
+            "from_state": getattr(self, "last_transition_from", None),
+            "to_state": getattr(self, "last_transition_to", None),
+            "timestamp": iso_millis(self.timestamp),
+            "delay_phase": self._delay_phase(),
+            "condition_met": bool(self._condition_met),
+            "description": self.description,
+        }
+
     def _emit_runtime_state(self) -> None:
         sio = getattr(self, "sio", None)
         if not sio:
             return
         try:
-            sio.emit("on.alarm", data=self.serialize())
+            sio.emit("on.alarm", data=self.serialize_socket())
         except Exception:
             pass
 
-    def _evaluate_delays(self, condition_met: bool, timestamp: datetime) -> None:
+    def _evaluate_delays(self, condition_met: bool, timestamp: datetime) -> str | None:
         previous_phase = self._delay_phase()
         now = self._epoch(timestamp)
         self._last_eval_epoch = now
@@ -523,6 +726,7 @@ class Alarm(StateMachine):
         alarm_active = self._is_process_active()
         on_delay = self._on_delay_s()
         off_delay = self._off_delay_s()
+        intent = None
 
         if condition_met:
             self._off_timer_start = None
@@ -530,7 +734,7 @@ class Alarm(StateMachine):
                 if self._on_timer_start is None:
                     self._on_timer_start = now
                 if (now - self._on_timer_start) >= on_delay:
-                    self.abnormal_condition()
+                    intent = KIND_ABNORMAL
                     self._on_timer_start = None
                     self._off_timer_start = None
             else:
@@ -541,31 +745,40 @@ class Alarm(StateMachine):
                 if self._off_timer_start is None:
                     self._off_timer_start = now
                 if (now - self._off_timer_start) >= off_delay:
-                    self.normal_condition()
+                    intent = KIND_NORMAL
                     self._off_timer_start = None
                     self._on_timer_start = None
             else:
                 self._off_timer_start = None
 
-        self._schedule_delay_wakeup()
+        if on_delay or off_delay:
+            self._schedule_delay_wakeup()
         phase = self._delay_phase()
-        if phase or previous_phase:
-            self._emit_runtime_state()
+        if intent:
+            self._enqueue_hotpath(intent)
+        elif phase or previous_phase:
+            self._enqueue_hotpath(KIND_EMIT)
+        return intent
 
     def _quality_allows_process_evaluation(self) -> bool:
         """Gate process setpoints on PV quality (ISA-18.2 inhibit on Bad)."""
-        from ..signal_conditioning.quality import is_process_alarm_allowed
+        fns = Alarm._quality_fns
+        if fns is None:
+            from ..signal_conditioning.quality import (
+                get_inhibit_uncertain_quality,
+                is_process_alarm_allowed,
+            )
 
+            Alarm._quality_fns = (is_process_alarm_allowed, get_inhibit_uncertain_quality)
+            fns = Alarm._quality_fns
+        is_allowed, get_inhibit = fns
         subject = getattr(self, "tag", None)
         quality = getattr(subject, "quality", None) if subject is not None else None
-        inhibit_uncertain = False
         try:
-            from ..signal_conditioning.quality import get_inhibit_uncertain_quality
-
-            inhibit_uncertain = bool(get_inhibit_uncertain_quality())
+            inhibit_uncertain = bool(get_inhibit())
         except Exception:
             inhibit_uncertain = False
-        return is_process_alarm_allowed(quality, inhibit_uncertain=inhibit_uncertain)
+        return is_allowed(quality, inhibit_uncertain=inhibit_uncertain)
 
     @logging_error_handler
     def abnormal_condition(self):
@@ -636,7 +849,7 @@ class Alarm(StateMachine):
 
     @logging_error_handler
     @set_event(message="Alarm acknowledged", classification="Control", priority=2, criticity=3)
-    def acknowledge(self, user:User=None):
+    def acknowledge(self, user:User=None, operator_id:int=None):
         r"""
         Acknowledges the alarm.
 
@@ -646,17 +859,19 @@ class Alarm(StateMachine):
         """
         from ..timebase import quantize_datetime_ms
 
+        current = (getattr(self.current_state, "name", None) or "").lower()
+        if current not in ("unack_alarm", "rtn_unack"):
+            logging.getLogger("pyautomation").debug(
+                "ALM.ACK.Noop state=%s alarm=%s",
+                current,
+                self.name,
+            )
+            return False
         now = quantize_datetime_ms(datetime.now(timezone.utc))
-        catalog = self.catalog_payload()
-        self.alarm_engine.put_record_on_alarm_summary(
-            name=self.name,
-            ack_timestamp=now,
-            tag=catalog.get("tag"),
-            identifier=catalog.get("identifier"),
-            area=catalog.get("area"),
-        )
+        self._pending_operator_id = self._operator_pk(user=user, operator_id=operator_id)
         if not self._apply_acknowledge(now):
-            return None
+            self._pending_operator_id = None
+            return False
         return self, f"{self.tag.get_name()}"
 
     @logging_error_handler
@@ -744,7 +959,7 @@ class Alarm(StateMachine):
 
     @logging_error_handler
     def attach(self, machine, tag:Tag):
-        observer = MachineObserver(machine)
+        observer = AlarmTagObserver(machine)
         self._machine_observer = observer
         query = dict()
         query["action"] = "attach_observer"
@@ -979,6 +1194,9 @@ class Alarm(StateMachine):
             "segment": self.segment,
             "manufacturer": self.manufacturer,
             "timestamp": timestamp,
+            "last_transition_ts": iso_millis(getattr(self, "last_transition_ts", None)),
+            "last_transition_from": getattr(self, "last_transition_from", None),
+            "last_transition_to": getattr(self, "last_transition_to", None),
             "name": self.name,
             "display_name": getattr(self, "display_name", None),
             "tag": self.tag.name,

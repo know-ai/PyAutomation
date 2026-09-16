@@ -17,12 +17,61 @@ from .cycle_dedupe import CycleSampleCache
 from .health import SafHealthProbe
 from .idempotent_insert import IdempotentBatchInserter
 from .journal import JournalWriter
-from .records import DOMAIN
+from .records import DOMAIN, scope_metadata
 from .remote import PeeweeRemoteDB
 from .replicator import RemoteReplicator
 
 _lock = threading.Lock()
 _gateway: PersistenceOrchestrator | None = None
+
+
+_FIELD_TAG_MARKERS = ("FI_", "PI_", "DI_", "TI_")
+
+
+def _stamp_persistable_scope(persistable: IPersistable) -> None:
+    """Seal missing area/owner_node on critical persistables with this edge's scope."""
+    try:
+        payload = persistable.payload()
+    except Exception:
+        return
+    if not isinstance(payload, dict):
+        return
+    domain = persistable.domain()
+    critical = False
+    try:
+        critical = bool(persistable.is_critical())
+    except Exception:
+        critical = domain != DOMAIN.TAG
+    if not critical and domain != DOMAIN.LEAK:
+        return
+    if payload.get("owner_node") and payload.get("area"):
+        return
+    area, owner_node = scope_metadata(payload.get("area"), payload.get("owner_node"))
+    if not payload.get("area"):
+        payload["area"] = area
+    if not payload.get("owner_node"):
+        payload["owner_node"] = owner_node
+    inner = payload.get("payload")
+    if isinstance(inner, dict):
+        inner.setdefault("area", payload.get("area"))
+        inner.setdefault("owner_node", payload.get("owner_node"))
+
+
+def _tag_protected_from_shed(persistable: IPersistable) -> bool:
+    if persistable.domain() != DOMAIN.TAG:
+        return True
+    payload = persistable.payload() if hasattr(persistable, "payload") else {}
+    tag = str((payload or {}).get("tag") or persistable.entity_id() or "")
+    name = tag.upper()
+    if "LEAK" in name:
+        return True
+    if any(marker in name for marker in _FIELD_TAG_MARKERS):
+        return True
+    criticity = (payload or {}).get("criticity")
+    if criticity is None:
+        return False
+    text = str(criticity).strip().lower()
+    return text in {"critical", "5"}
 
 
 def _scope_owns_persistable(persistable: IPersistable) -> bool:
@@ -91,6 +140,7 @@ class PersistenceOrchestrator:
         threading.Thread(target=_run, name="SafForceFlush", daemon=True).start()
 
     def enqueue(self, persistable: IPersistable) -> int:
+        _stamp_persistable_scope(persistable)
         if not _scope_owns_persistable(persistable):
             logging.getLogger("pyautomation").error(
                 "SAF rejected foreign record domain=%s entity=%s area=%s owner_node=%s",
@@ -103,13 +153,15 @@ class PersistenceOrchestrator:
         if self.cycle_cache.should_drop(persistable):
             return 0
         if persistable.domain() == DOMAIN.TAG and self._tag_history_shed_locked():
-            self.shed_dropped += 1
-            return 0
+            if not _tag_protected_from_shed(persistable):
+                self.shed_dropped += 1
+                return 0
         return self.journal.append(persistable)
 
     def enqueue_many(self, persistables: Sequence[IPersistable]) -> list[int]:
         owned: list[IPersistable] = []
         for persistable in persistables:
+            _stamp_persistable_scope(persistable)
             if not _scope_owns_persistable(persistable):
                 logging.getLogger("pyautomation").error(
                     "SAF rejected foreign record domain=%s entity=%s area=%s owner_node=%s",
@@ -122,8 +174,9 @@ class PersistenceOrchestrator:
             if self.cycle_cache.should_drop(persistable):
                 continue
             if persistable.domain() == DOMAIN.TAG and self._tag_history_shed_locked():
-                self.shed_dropped += 1
-                continue
+                if not _tag_protected_from_shed(persistable):
+                    self.shed_dropped += 1
+                    continue
             owned.append(persistable)
         if not owned:
             return []
@@ -135,8 +188,8 @@ class PersistenceOrchestrator:
     def mark_replicating(self, journal_ids: Sequence[int]) -> None:
         self.journal.mark_replicating(journal_ids)
 
-    def mark_pending(self, journal_ids: Sequence[int], error: str = "") -> None:
-        self.journal.mark_pending(journal_ids, error=error)
+    def mark_pending(self, journal_ids: Sequence[int], error: str = "", **kwargs) -> None:
+        self.journal.mark_pending(journal_ids, error=error, **kwargs)
 
     def pending_count(self) -> int:
         return self.journal.pending_count()

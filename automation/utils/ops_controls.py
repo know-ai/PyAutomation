@@ -281,6 +281,7 @@ def saf_retry(*, user=None, reason: str | None = None) -> dict[str, Any]:
     from ..persistence import get_persistence_gateway
 
     replicated = 0
+    resurrected = 0
     app = PyAutomation()
     logger = getattr(app, "db_worker", None)
     request = getattr(logger, "request_cycle", None)
@@ -291,18 +292,31 @@ def saf_retry(*, user=None, reason: str | None = None) -> dict[str, Any]:
     if callable(wake):
         wake()
     try:
-        replicated = int(get_persistence_gateway().replicate_catchup() or 0)
+        gateway = get_persistence_gateway()
+        journal = getattr(gateway, "journal", None)
+        resurrect = getattr(journal, "resurrect_dead_letters", None)
+        if callable(resurrect):
+            try:
+                resurrected = int(resurrect() or 0)
+            except (TypeError, ValueError):
+                resurrected = 0
+        circuit = getattr(getattr(gateway, "replicator", None), "circuit", None)
+        reset = getattr(circuit, "reset", None)
+        if callable(reset):
+            reset()
+        replicated = int(gateway.replicate_catchup() or 0)
     except Exception:
         _LOGGER.warning("SAF retry replicate_once failed; LoggerWorker will retry", exc_info=True)
     who = _username(user)
     _audit(
         "SAF retry requested",
-        f"User {who} forced SAF replication ({reason or 'queue depth'}); written={replicated}",
+        f"User {who} forced SAF replication ({reason or 'queue depth'}); "
+        f"resurrected={resurrected} written={replicated}",
         user=user,
         criticity=2,
     )
     _refresh_metrics()
-    return {"ok": True, "replicated": replicated}
+    return {"ok": True, "replicated": replicated, "resurrected": resurrected}
 
 
 def saf_reset(*, confirm: bool, user=None, reason: str | None = None) -> dict[str, Any]:

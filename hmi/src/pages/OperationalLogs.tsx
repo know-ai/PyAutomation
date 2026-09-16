@@ -11,7 +11,7 @@ import {
   type LogFilter,
 } from "../services/logs";
 import { getAllUsers, type User } from "../services/users";
-import { getAlarms, type Alarm } from "../services/alarms";
+import { collectAlarmsPages, type Alarm } from "../services/alarms";
 import { isDbUnavailableError } from "../services/health";
 import { socketService } from "../services/socket";
 import { useTranslation } from "../hooks/useTranslation";
@@ -221,8 +221,8 @@ export function OperationalLogs() {
 
       // Cargar nombres de alarmas
       try {
-        const alarmsResponse = await getAlarms(1, 5000);
-        const alarmNames = alarmsResponse.data?.map((alarm: Alarm) => alarm.name).filter(Boolean) || [];
+        const alarmItems = await collectAlarmsPages();
+        const alarmNames = alarmItems.map((alarm: Alarm) => alarm.name).filter(Boolean);
         const uniqueAlarmNames = Array.from(new Set(alarmNames));
         setAvailableAlarmNames(uniqueAlarmNames);
       } catch (e) {

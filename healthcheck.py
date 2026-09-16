@@ -77,6 +77,8 @@ def main():
     port = os.environ.get("AUTOMATION_PORT") or os.environ.get("PORT", "8050")
     use_ssl = _ssl_enabled()
     scheme = "https" if use_ssl else "http"
+    # Liveness only. Do not probe /health/ready here: circuit OPEN is DEGRADED
+    # in the API body and must not restart the container.
     health_url = f"{scheme}://127.0.0.1:{port}/api/health/ping"
     root_url = f"{scheme}://127.0.0.1:{port}/"
     ctx = None

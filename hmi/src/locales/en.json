@@ -1245,6 +1245,7 @@
     "noAlarmsMatchFilter": "No alarms match the filter",
     "pendingOnDelay": "Pending (On-Delay: {{seconds}}s)",
     "clearingOffDelay": "Clearing (Off-Delay: {{seconds}}s)",
+    "conditionActive": "Condition active",
     "onDelay": "On-Delay",
     "offDelay": "Off-Delay",
     "onDelayTooltip": "On-Delay: Time the condition must remain active before the alarm trips. Filters fleeting peaks.",
@@ -1350,6 +1351,10 @@
       "Unacknowledged": "Unacknowledged",
       "Acknowledged": "Acknowledged",
       "RTN Unacknowledged": "RTN Unacknowledged",
+      "Unack Alarm": "Unacknowledged",
+      "Ack Alarm": "Acknowledged",
+      "RTN Unack": "RTN unacknowledged",
+      "Cleared": "Cleared",
       "Shelved": "Shelved",
       "Suppressed By Design": "Suppressed By Design",
       "Out Of Service": "Out Of Service"

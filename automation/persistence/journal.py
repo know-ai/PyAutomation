@@ -15,7 +15,8 @@ import threading
 import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
-from typing import Any, Sequence
+from pathlib import Path
+from typing import Any, Mapping, Sequence
 
 from .config import SafConfig
 from .contracts import IPersistable
@@ -26,6 +27,11 @@ STATUS_PENDING = "PENDING"
 STATUS_REPLICATING = "REPLICATING"
 STATUS_SENT = "SENT"
 STATUS_DEAD_LETTER = "DEAD_LETTER"
+STATUS_ARCHIVED = "ARCHIVED"
+
+_PROCESS_DOMAINS = frozenset(
+    {"tag", "event", "leak", "alarm_summary", "alarm_summary_update", "log"}
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS persistence_journal (
@@ -288,41 +294,100 @@ class JournalWriter:
     def mark_replicating(self, journal_ids: Sequence[int]) -> None:
         self._set_status(journal_ids, STATUS_REPLICATING)
 
-    def mark_pending(self, journal_ids: Sequence[int], error: str = "") -> None:
+    def mark_pending(
+        self,
+        journal_ids: Sequence[int],
+        error: str = "",
+        *,
+        increment_attempts: bool = True,
+        errors: Mapping[int, str] | None = None,
+    ) -> None:
         if not journal_ids:
             return
         now = utc_now().isoformat()
         max_attempts = int(getattr(self.config, "dead_letter_attempts", 5) or 5)
         ids = [int(jid) for jid in journal_ids]
+        default_error = str(error or "")[:512]
         with self._lock:
             self._ensure_open_locked()
-            self._conn.executemany(
-                """
-                UPDATE persistence_journal
-                SET status = ?, updated_at = ?, attempts = attempts + 1, last_error = ?
-                WHERE id = ?
-                """,
-                [(STATUS_PENDING, now, error[:512], jid) for jid in ids],
-            )
-            placeholders = ",".join("?" * len(ids))
-            cur = self._conn.execute(
-                f"""
-                UPDATE persistence_journal
-                SET status = ?, updated_at = ?
-                WHERE id IN ({placeholders}) AND attempts >= ?
-                """,
-                [STATUS_DEAD_LETTER, now, *ids, max_attempts],
-            )
-            flipped = int(cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else self._changes_locked())
-            if flipped > 0:
-                self.deadletter_count += flipped
-                self._pending_durable = max(0, self._pending_durable - flipped)
-                logging.getLogger("pyautomation").error(
-                    "SAF dead-lettered %s journal row(s) after %s attempts",
-                    flipped,
-                    max_attempts,
+            rows = []
+            for jid in ids:
+                row_error = default_error
+                if errors and jid in errors:
+                    row_error = str(errors[jid] or "")[:512]
+                rows.append((STATUS_PENDING, now, row_error, jid))
+            if increment_attempts:
+                self._conn.executemany(
+                    """
+                    UPDATE persistence_journal
+                    SET status = ?, updated_at = ?, attempts = attempts + 1, last_error = ?
+                    WHERE id = ?
+                    """,
+                    rows,
+                )
+                placeholders = ",".join("?" * len(ids))
+                cur = self._conn.execute(
+                    f"""
+                    UPDATE persistence_journal
+                    SET status = ?, updated_at = ?
+                    WHERE id IN ({placeholders}) AND attempts >= ?
+                    """,
+                    [STATUS_DEAD_LETTER, now, *ids, max_attempts],
+                )
+                flipped = int(
+                    cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else self._changes_locked()
+                )
+                if flipped > 0:
+                    self.deadletter_count += flipped
+                    self._pending_durable = max(0, self._pending_durable - flipped)
+                    logging.getLogger("pyautomation").error(
+                        "SAF dead-lettered %s journal row(s) after %s attempts",
+                        flipped,
+                        max_attempts,
+                    )
+            else:
+                self._conn.executemany(
+                    """
+                    UPDATE persistence_journal
+                    SET status = ?, updated_at = ?, last_error = ?
+                    WHERE id = ?
+                    """,
+                    rows,
                 )
             self._commit_locked()
+
+    def resurrect_dead_letters(self, domain: str | None = None) -> int:
+        """Move DEAD_LETTER rows back to PENDING and reset attempts (operator replay)."""
+        with self._lock:
+            self._ensure_open_locked()
+            now = utc_now().isoformat()
+            if domain:
+                cur = self._conn.execute(
+                    """
+                    UPDATE persistence_journal
+                    SET status = ?, updated_at = ?, attempts = 0
+                    WHERE status = ? AND domain = ?
+                    """,
+                    (STATUS_PENDING, now, STATUS_DEAD_LETTER, str(domain)),
+                )
+            else:
+                cur = self._conn.execute(
+                    """
+                    UPDATE persistence_journal
+                    SET status = ?, updated_at = ?, attempts = 0
+                    WHERE status = ?
+                    """,
+                    (STATUS_PENDING, now, STATUS_DEAD_LETTER),
+                )
+            restored = int(cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else self._changes_locked())
+            self._commit_locked()
+            self._hydrate_counters_locked()
+            if restored:
+                logging.getLogger("pyautomation").warning(
+                    "SAF resurrected %s dead-letter row(s) to PENDING",
+                    restored,
+                )
+            return restored
 
     def mark_sent(self, journal_ids: Sequence[int]) -> None:
         self._set_status(journal_ids, STATUS_SENT)
@@ -362,8 +427,8 @@ class JournalWriter:
             dropped_ring = len(self._ring)
             self._ring.clear()
             cur = self._conn.execute(
-                "DELETE FROM persistence_journal WHERE status IN (?, ?, ?)",
-                (STATUS_PENDING, STATUS_REPLICATING, STATUS_DEAD_LETTER),
+                "DELETE FROM persistence_journal WHERE status IN (?, ?, ?, ?)",
+                (STATUS_PENDING, STATUS_REPLICATING, STATUS_DEAD_LETTER, STATUS_ARCHIVED),
             )
             deleted = int(cur.rowcount if cur.rowcount is not None else 0)
             self._pending_durable = 0
@@ -383,8 +448,74 @@ class JournalWriter:
         with self._lock:
             return self._disk_bytes_cached_locked()
 
+    def _archive_path(self) -> Path:
+        return Path(self.config.journal_path).with_name(
+            f"{Path(self.config.journal_path).stem}-archive.db"
+        )
+
+    def _archive_dead_letter_rows_locked(self, rows: list) -> int:
+        if not rows:
+            return 0
+        archive_path = self._archive_path()
+        archive = sqlite3.connect(str(archive_path), check_same_thread=False, timeout=5.0)
+        try:
+            archive.execute("PRAGMA journal_mode=WAL")
+            archive.execute(
+                """
+                CREATE TABLE IF NOT EXISTS persistence_journal_archive (
+                    id INTEGER NOT NULL,
+                    domain TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    archived_at TEXT NOT NULL,
+                    PRIMARY KEY (id)
+                )
+                """
+            )
+            now = datetime.now(timezone.utc).isoformat()
+            archive.executemany(
+                """
+                INSERT OR REPLACE INTO persistence_journal_archive (
+                    id, domain, entity_id, idempotency_key, payload, status,
+                    created_at, updated_at, attempts, last_error, archived_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        int(row["id"]),
+                        str(row["domain"]),
+                        str(row["entity_id"]),
+                        str(row["idempotency_key"]),
+                        str(row["payload"]),
+                        STATUS_DEAD_LETTER,
+                        str(row["created_at"]),
+                        str(row["updated_at"]),
+                        int(row["attempts"] or 0),
+                        row["last_error"],
+                        now,
+                    )
+                    for row in rows
+                ],
+            )
+            archive.commit()
+        finally:
+            archive.close()
+        ids = [int(row["id"]) for row in rows]
+        placeholders = ",".join("?" * len(ids))
+        self._conn.execute(
+            f"UPDATE persistence_journal SET status = ?, updated_at = ? WHERE id IN ({placeholders})",
+            [STATUS_ARCHIVED, datetime.now(timezone.utc).isoformat(), *ids],
+        )
+        return len(ids)
+
     def prune_dead_letters(self) -> int:
-        """Bound DEAD_LETTER by TTL and max rows. Idle path only."""
+        """Bound DEAD_LETTER by TTL and max rows. Process rows are archived, never DELETE."""
         ttl_s = float(getattr(self.config, "dead_letter_ttl_s", 7 * 86400.0) or 0.0)
         max_rows = int(getattr(self.config, "dead_letter_max_rows", 10_000) or 0)
         now = time.monotonic()
@@ -392,17 +523,19 @@ class JournalWriter:
             return 0
         with self._lock:
             self._ensure_open_locked()
-            deleted = 0
+            archived = 0
             if ttl_s > 0:
                 cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_s)
-                cur = self._conn.execute(
-                    "DELETE FROM persistence_journal WHERE status = ? AND created_at < ?",
+                rows = self._conn.execute(
+                    """
+                    SELECT id, domain, entity_id, idempotency_key, payload, status,
+                           created_at, updated_at, attempts, last_error
+                    FROM persistence_journal
+                    WHERE status = ? AND created_at < ?
+                    """,
                     (STATUS_DEAD_LETTER, cutoff.isoformat()),
-                )
-                gone = cur.rowcount if cur.rowcount is not None else 0
-                if gone < 0:
-                    gone = self._changes_locked()
-                deleted += int(gone)
+                ).fetchall()
+                archived += self._archive_dead_letter_rows_locked(rows)
             row = self._conn.execute(
                 "SELECT COUNT(*) FROM persistence_journal WHERE status = ?",
                 (STATUS_DEAD_LETTER,),
@@ -410,36 +543,34 @@ class JournalWriter:
             count = int(row[0] if row else 0)
             if max_rows > 0 and count > max_rows:
                 extra = count - max_rows
-                cur = self._conn.execute(
+                rows = self._conn.execute(
                     """
-                    DELETE FROM persistence_journal
-                    WHERE id IN (
-                        SELECT id FROM persistence_journal
-                        WHERE status = ?
-                        ORDER BY created_at ASC, id ASC
-                        LIMIT ?
-                    )
+                    SELECT id, domain, entity_id, idempotency_key, payload, status,
+                           created_at, updated_at, attempts, last_error
+                    FROM persistence_journal
+                    WHERE status = ?
+                    ORDER BY created_at ASC, id ASC
+                    LIMIT ?
                     """,
                     (STATUS_DEAD_LETTER, extra),
-                )
-                gone = cur.rowcount if cur.rowcount is not None else 0
-                if gone < 0:
-                    gone = self._changes_locked()
-                deleted += int(gone)
+                ).fetchall()
+                archived += self._archive_dead_letter_rows_locked(rows)
                 count = max_rows
-            if deleted:
-                self.deadletter_count = count
-                self._commit_locked()
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM persistence_journal WHERE status = ?",
+                (STATUS_DEAD_LETTER,),
+            ).fetchone()
+            count = int(row[0] if row else 0)
+            self.deadletter_count = count
+            self._commit_locked()
+            self._last_dlq_prune_mono = now
+            if archived:
                 logging.getLogger("pyautomation").warning(
-                    "SAF dead-letter pruned deleted=%s remaining=%s",
-                    deleted,
+                    "SAF dead-letter pruned archived=%s remaining=%s",
+                    archived,
                     count,
                 )
-            else:
-                self.deadletter_count = count
-                self._conn.commit()
-            self._last_dlq_prune_mono = now
-            return int(deleted)
+            return int(archived)
 
     def reclaim_idle(self) -> dict[str, int]:
         """Slow path: GC SENT, truncate WAL, compact freelist back to the OS.

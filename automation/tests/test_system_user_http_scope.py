@@ -18,6 +18,7 @@ class TestSystemUserHttpScope(unittest.TestCase):
         self.assertTrue(system_user_path_allowed("/api/users/roles/"))
         self.assertTrue(system_user_path_allowed("/api/users/roles/add"))
         self.assertTrue(system_user_path_allowed("/api/health/db"))
+        self.assertTrue(system_user_path_allowed("/api/health/ready"))
         self.assertTrue(system_user_path_allowed("/api/healthcheck/"))
         self.assertTrue(system_user_path_allowed("/api/healthcheck/ready"))
         self.assertTrue(system_user_path_allowed("/api/healthcheck/detection"))

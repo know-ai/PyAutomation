@@ -8,13 +8,13 @@ import {
   isTagHistoryTracked,
   updateTagValuesBatch,
 } from "../store/slices/tagsSlice";
-import { loadAllAlarms, updateAlarmsBatch } from "../store/slices/alarmsSlice";
+import { setCountByState, setTop3Active, updateAlarmsBatch } from "../store/slices/alarmsSlice";
 import { loadAllMachines, updateMachinesBatch } from "../store/slices/machinesSlice";
 import { useAppSelector } from "./useAppSelector";
 import { store } from "../store/store";
 import { batch } from "react-redux";
 import type { Tag } from "../services/tags";
-import { getAlarms, type Alarm } from "../services/alarms";
+import { getAlarmsFooter, type Alarm } from "../services/alarms";
 import type { Machine } from "../services/machines";
 import { isPageHidden } from "./usePageHidden";
 import { isSystemUser } from "../utils/systemUser";
@@ -69,14 +69,11 @@ export function useSocket() {
       const machines = Array.isArray(payload.machines) ? payload.machines : [];
 
       batch(() => {
-        if (Array.isArray(payload.alarms)) {
-          // Full catalog snapshot (may be empty) replaces stale session state.
-          dispatch(loadAllAlarms(payload.alarms));
-        } else if (
-          Array.isArray(payload.last_active_alarms) &&
-          payload.last_active_alarms.length > 0
-        ) {
-          dispatch(updateAlarmsBatch(payload.last_active_alarms));
+        if (Array.isArray(payload.last_active_alarms)) {
+          dispatch(setTop3Active(payload.last_active_alarms.slice(0, 3)));
+        }
+        if (payload.count_by_state && typeof payload.count_by_state === "object") {
+          dispatch(setCountByState(payload.count_by_state));
         }
         if (tags.length > 0) {
           dispatch(updateTagValuesBatch(tags));
@@ -89,9 +86,12 @@ export function useSocket() {
 
     const hydrateAlarmsFromRest = async () => {
       try {
-        const response = await getAlarms(1, 10000);
-        if (Array.isArray(response?.data)) {
-          dispatch(loadAllAlarms(response.data));
+        const response = await getAlarmsFooter();
+        if (Array.isArray(response?.top_3_active)) {
+          dispatch(setTop3Active(response.top_3_active.slice(0, 3)));
+        }
+        if (response?.count_by_state) {
+          dispatch(setCountByState(response.count_by_state));
         }
       } catch {
         // Offline / historian-less nodes still get on_connection when available.

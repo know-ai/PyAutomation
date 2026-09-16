@@ -183,8 +183,17 @@ class MetricsSamplerWorker(BaseWorker):
             self._sample_clock(payload)
             self._sample_peers(payload)
             self._sample_perf_alarms(payload)
+            self._sample_alarm_worker()
             self._record_trends(payload)
             return payload
+
+    def _sample_alarm_worker(self) -> None:
+        try:
+            from ..jobs.alarm_health_check import check_worker_health
+
+            check_worker_health()
+        except Exception:
+            _LOGGER.debug("Alarm worker health check skipped", exc_info=True)
 
     def _trend_maxlen(self) -> int:
         return max(16, int(TREND_WINDOW_S / max(self._interval_s, 1.0)) + 8)

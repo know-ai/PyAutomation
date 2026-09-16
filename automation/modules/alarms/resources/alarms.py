@@ -6,6 +6,13 @@ from ....extensions import _api as Api
 from ....utils.system_event_audit import persist_system_event
 from ..filters import filter_serialized_alarms
 from ....alarms.delays import clamp_alarm_delay, normalize_delay_units
+from ....alarms.pagination import (
+    FOOTER_TOP_N,
+    clamp_active_page_size,
+    clamp_catalog_page_size,
+    clamp_history_page_size,
+)
+from ....alarms.runtime import get_alarm_runtime
 
 
 ns = Namespace('Alarms', description='Alarm Management Resources')
@@ -105,6 +112,7 @@ class AlarmsCollection(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('page', type=int, location='args', help='Page number', default=1)
     parser.add_argument('limit', type=int, location='args', help='Items per page', default=20)
+    parser.add_argument('page_size', type=int, location='args', help='Alias of limit (INV-44, max 50)', default=None)
     parser.add_argument(
         'q',
         type=str,
@@ -134,7 +142,8 @@ class AlarmsCollection(Resource):
         """
         args = self.parser.parse_args()
         page = args.get('page', 1)
-        limit = args.get('limit', 20)
+        raw_size = args.get('page_size') if args.get('page_size') not in (None, 0) else args.get('limit', 20)
+        limit = clamp_catalog_page_size(raw_size, default=20)
         query = str(args.get('q') or "").strip()
         state = str(args.get('state') or "").strip()
         
@@ -159,6 +168,10 @@ class AlarmsCollection(Resource):
         
         return {
             'data': paginated_alarms,
+            'items': paginated_alarms,
+            'page': page,
+            'page_size': limit,
+            'has_next': end_idx < total,
             'pagination': {
                 'page': page,
                 'limit': limit,
@@ -167,23 +180,105 @@ class AlarmsCollection(Resource):
             }
         }, 200
     
+@ns.route('/footer')
+class AlarmsFooterResource(Resource):
+
+    @api.doc(security='apikey', description="Minimal footer payload: top 3 active + count_by_state.")
+    @api.response(200, "Success")
+    @Api.token_required(auth=True)
+    def get(self):
+        runtime = get_alarm_runtime()
+        top_3 = app.alarm_manager.get_lasts_active_alarms(lasts=FOOTER_TOP_N) or []
+        compact = []
+        for item in top_3[:FOOTER_TOP_N]:
+            if isinstance(item, dict):
+                compact.append({
+                    "id": item.get("identifier") or item.get("id"),
+                    "identifier": item.get("identifier") or item.get("id"),
+                    "name": item.get("name"),
+                    "tag": item.get("tag"),
+                    "state": item.get("state"),
+                    "last_transition_ts": item.get("last_transition_ts"),
+                    "last_transition_from": item.get("last_transition_from"),
+                    "last_transition_to": item.get("last_transition_to"),
+                    "timestamp": item.get("timestamp"),
+                    "delay_phase": item.get("delay_phase"),
+                    "description": item.get("description"),
+                })
+            else:
+                compact.append(item)
+        return {
+            "top_3_active": compact,
+            "count_by_state": runtime.count_by_state(),
+        }, 200
+
+
 @ns.route('/active_alarms')
 class ActiveAlarmsCollection(Resource):
 
-    @api.doc(security='apikey', description="Checks if there are any active alarms.")
-    @api.response(200, "Success", model=fields.Boolean)
+    parser = reqparse.RequestParser()
+    parser.add_argument('page', type=int, location='args', default=1)
+    parser.add_argument('limit', type=int, location='args', default=50)
+    parser.add_argument('page_size', type=int, location='args', default=None)
+
+    @api.doc(security='apikey', description="Annunciated alarms (ISA 18.2 B ∪ C ∪ D), paginated.")
+    @api.response(200, "Success")
+    @ns.expect(parser)
     @Api.token_required(auth=True)
     def get(self):
         """
-        Check for active alarms.
+        Return alarms that require operator attention.
 
-        Returns True if there is at least one alarm in an active state, False otherwise.
+        Filter is ``annunciate_status == Annunciated`` (Unack Alarm, Ack Alarm,
+        RTN Unack). Does not use ``alarm_status`` (which excludes RTN Unack).
         """
-        if app.alarm_manager.get_lasts_active_alarms(lasts=1):
-            
-            return True, 200
-        
-        return False, 200
+        args = self.parser.parse_args()
+        page = max(1, int(args.get("page") or 1))
+        raw_size = args.get("page_size") if args.get("page_size") not in (None, 0) else args.get("limit", 50)
+        limit = clamp_active_page_size(raw_size, default=50)
+        items = app.alarm_manager.get_lasts_active_alarms(lasts=max(page * limit, limit)) or []
+        start = (page - 1) * limit
+        page_items = items[start:start + limit]
+        return {
+            "data": page_items,
+            "items": page_items,
+            "page": page,
+            "page_size": limit,
+            "has_next": len(items) > start + limit,
+        }, 200
+
+
+@ns.route('/<id>/history')
+@api.param('id', 'The alarm identifier')
+class AlarmHistoryResource(Resource):
+
+    parser = reqparse.RequestParser()
+    parser.add_argument('page', type=int, location='args', default=1)
+    parser.add_argument('limit', type=int, location='args', default=100)
+    parser.add_argument('page_size', type=int, location='args', default=None)
+
+    @api.doc(security='apikey', description="Paginated history of one alarm. page_size ≤ 100.")
+    @api.response(200, "Success")
+    @ns.expect(parser)
+    @Api.token_required(auth=True)
+    def get(self, id):
+        args = self.parser.parse_args()
+        page = max(1, int(args.get("page") or 1))
+        raw_size = args.get("page_size") if args.get("page_size") not in (None, 0) else args.get("limit", 100)
+        page_size = clamp_history_page_size(raw_size, default=100)
+        alarm = app.alarm_manager.peek_alarm(id=id) or app.get_alarm(id)
+        name = getattr(alarm, "name", None) if alarm is not None else None
+        if not name:
+            return {"message": f"Alarm ID {id} does not exist"}, 400
+        payload = app.filter_alarms_by(names=[name], page=page, limit=page_size) or {}
+        items = payload.get("data") or []
+        pagination = payload.get("pagination") or {}
+        return {
+            "items": items,
+            "page": page,
+            "page_size": page_size,
+            "has_next": bool(pagination.get("has_next")),
+        }, 200
 
     
 @ns.route('/kp_range')
@@ -290,7 +385,7 @@ class AckAlarmByNameResource(Resource):
 
             if alarm.state in [AlarmState.UNACK, AlarmState.RTNUN]:
                 user = Api.get_current_user()
-                alarm.acknowledge(user=user)
+                alarm.acknowledge(user=user, operator_id=getattr(user, "id", None) if user else None)
                 result['message'] = f"{alarm.name} was acknowledged successfully"
                 result['data'] = alarm.serialize()
 

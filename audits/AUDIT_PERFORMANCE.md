@@ -7,7 +7,7 @@
 | **Fecha original** | 2026-08-13 / 14 |
 | **Compactación** | 2026-08-18 |
 | **Fuentes absorbidas** | `AUDIT_BACKEND_PERFORMANCE`, `AUDIT_MEMORY`, `PERFORMANCE_RUNBOOK` |
-| **Complementa** | [AUDIT_DB.md](./AUDIT_DB.md) (BE-H4, sockets), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) |
+| **Complementa** | [AUDIT_DB.md](./AUDIT_DB.md) (BE-H4, sockets), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md), [AUDIT_ISA18_2_ALARMS.md](./AUDIT_ISA18_2_ALARMS.md) (cola de transiciones O(1)) |
 | **Veredicto** | Hot path **A−** (P0/P1/P2 cerrados; **BE-H4 revertido**). Ciclo de vida observers **cerrado** (A− estático). Certificado RSS 24 h (**CA-MEM-1**) y soak 24 h/7 d **pendientes de planta** |
 | **Clasificación** | Auditoría de rendimiento · memoria · operación |
 
@@ -21,7 +21,8 @@ La durabilidad (SAF) y el hot path de adquisición son problemas distintos. El c
 OPC UA datachange → DAS → CVTEngine.set_value_fast [lock por tag]
   → Tag.set_value → Buffer deque O(1)
   → TagObserver → CycleSampleCache → JournalWriter
-  → Alarm MachineObserver → SocketIO serialize_socket mínimo
+  → AlarmTagObserver.check_condition (O(K), enqueue maxlen=100k, sin lock)
+  → AlarmTransitionWorker (SM + historial + on.alarm compacto) fuera del DAS
 ```
 
 **Objetivo de aceptación 30 días:** RSS del worker gunicorn ±15 % vs baseline; p99 de `set_value` estable; `SAF_QUEUE_DEPTH` y `DAS.monitored_items` / `OPC_MONITORED_COUNT` sin crecimiento monotónico; `TAG_OBSERVER_COUNT` estable con catálogo fijo.

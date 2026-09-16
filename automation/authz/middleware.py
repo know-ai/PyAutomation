@@ -18,7 +18,9 @@ _PUBLIC_EXACT = frozenset(
         ("GET", "/api/health/readiness"),
         ("GET", "/api/health/db"),
         ("GET", "/api/health/saf"),
+        ("GET", "/api/health/ready"),
         ("GET", "/api/health/system"),
+        ("GET", "/api/health/alarms"),
         ("GET", "/api/system/timezone"),
     }
 )

@@ -116,7 +116,7 @@ export function AlarmsSummary() {
     const savedLimit = localStorage.getItem("alarms_summary_limit");
     return {
       page: savedPage ? Number(savedPage) : 1,
-      limit: savedLimit ? Number(savedLimit) : 20,
+      limit: savedLimit ? Math.min(Number(savedLimit), 100) : 20,
     };
   });
 
@@ -403,9 +403,10 @@ export function AlarmsSummary() {
 
   const handleLimitChange = (newLimit: number) => {
     if (newLimit > 0) {
-      setFilters({ ...filters, page: 1, limit: newLimit });
+      const limit = Math.min(newLimit, 100);
+      setFilters({ ...filters, page: 1, limit });
       localStorage.setItem("alarms_summary_page", "1");
-      localStorage.setItem("alarms_summary_limit", String(newLimit));
+      localStorage.setItem("alarms_summary_limit", String(limit));
       schedule(FILTER_INSTANT_MS);
     }
   };
@@ -573,34 +574,40 @@ export function AlarmsSummary() {
       setError(null);
       
       // Obtener todos los datos con los filtros actuales (sin límite de página)
-      const payload: AlarmSummaryFilter = {
-        ...filters,
-        page: 1,
-        limit: 10000, // Obtener todos los registros
-      };
+      const allRows: AlarmSummary[] = [];
+      for (let page = 1; page <= 200; page += 1) {
+        const payload: AlarmSummaryFilter = {
+          ...filters,
+          page,
+          limit: 100,
+        };
 
-      if (selectedStates.length > 0) {
-        payload.states = selectedStates;
-      }
-      if (startDate) {
-        payload.greater_than_timestamp = formatDateTimeForBackend(startDate);
-      }
-      if (endDate) {
-        payload.less_than_timestamp = formatDateTimeForBackend(endDate);
-      }
-      if (timeZone) {
-        payload.timezone = timeZone;
-      }
-      if (selectedArea) {
-        payload.area = selectedArea;
-      }
-      const trimmedSearch = debouncedSearchTerm.trim();
-      if (trimmedSearch) {
-        payload.q = trimmedSearch;
-      }
+        if (selectedStates.length > 0) {
+          payload.states = selectedStates;
+        }
+        if (startDate) {
+          payload.greater_than_timestamp = formatDateTimeForBackend(startDate);
+        }
+        if (endDate) {
+          payload.less_than_timestamp = formatDateTimeForBackend(endDate);
+        }
+        if (timeZone) {
+          payload.timezone = timeZone;
+        }
+        if (selectedArea) {
+          payload.area = selectedArea;
+        }
+        const trimmedSearch = debouncedSearchTerm.trim();
+        if (trimmedSearch) {
+          payload.q = trimmedSearch;
+        }
 
-      const response: AlarmSummaryResponse = await filterAlarmsSummary(payload);
-      const allAlarms = response.data || [];
+        const response = await filterAlarmsSummary(payload);
+        const chunk = response.data || [];
+        allRows.push(...chunk);
+        if (chunk.length < 100 || !response.pagination?.has_next) break;
+      }
+      const allAlarms = allRows;
 
       if (!allAlarms || allAlarms.length === 0) {
         setError(t("alarmsSummary.noDataToExport"));

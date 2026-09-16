@@ -4,7 +4,7 @@
 |---|---|
 | **Producto** | PyAutomationIO (`automation/`) + HMI React (`hmi/src/`) |
 | **Alcance** | Visibilidad en tiempo real del rendimiento por edge/nodo — sin degradar el hot path de adquisición ni el consumo del propio nodo al mostrar métricas |
-| **Fecha** | 2026-08-19 (dashboard P0+P1 + alarmas ISA-18.2 + UI spec 07) · **controles ops 2026-08-25** |
+| **Fecha** | 2026-08-19 (dashboard P0+P1 + alarmas ISA-18.2 + UI spec 07) · **controles ops 2026-08-25** · **SAF nuclear 2026-09-15** (retry=resurrect DLQ; histéresis DLQ; badge condición activa; `/health/ready`) |
 | **Spec** | [specs/05-NODE-PERFORMANCE-DASHBOARD.md](../specs/05-NODE-PERFORMANCE-DASHBOARD.md) v1.0 · [specs/06-PERFORMANCE-ALARMS.md](../specs/06-PERFORMANCE-ALARMS.md) v1.0 · [specs/07-PERFORMANCE-DASHBOARD-UI.md](../specs/07-PERFORMANCE-DASHBOARD-UI.md) v3.0 · spec complementaria de controles en `/performance` |
 | **Runbook** | [docs/node-performance-runbook.md](../docs/node-performance-runbook.md) · índice [docs/runbook.md](../docs/runbook.md) |
 | **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md), [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md), [AUDIT_LOGGING.md](./AUDIT_LOGGING.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) |
@@ -424,7 +424,7 @@ Descripción persistida: `System · …`. El modelo `Alarms` **no** tiene column
 
 ### 11.2 Evaluación
 
-`PerfAlarmEvaluator` corre **solo** en el sampler (O(7) por tick). Activación con debounce; retorno a normal inmediato. `None` no dispara. PUT Settings llama `metrics_worker.reconfigure()` y reevalúa el último snapshot **en el mismo ciclo** (CA-PERF-12).
+`PerfAlarmEvaluator` corre **solo** en el sampler (O(7) por tick). Activación con debounce; retorno a normal inmediato **salvo** `SAF_DEADLETTER` (2026-09-15): histéresis `perf_saf_deadletter_clear_threshold=0` — miles de DLQ **permanecen** alarmadas; replay a 0 → Normal. `None` no dispara. PUT Settings llama `metrics_worker.reconfigure()` y reevalúa el último snapshot **en el mismo ciclo** (CA-PERF-12).
 
 `GET /health/node` no evalúa umbrales. Incluye `PERF_ALARMS` (catálogo + umbrales + nombres) en el dict precomputado.
 
@@ -438,7 +438,7 @@ Descripción persistida: `System · …`. El modelo `Alarms` **no** tiene column
 | `PerformanceThresholdModal` | Umbral, debounce, habilitado; PUT `/settings/performance`; preview would-alarm vs último snapshot |
 | `usePerformanceAlarms` | Selector Redux + hidrata `GET /alarms/?limit=500` |
 | `PerformanceAlarmConfig` | Settings capítulo 03; enabled, debounce, umbral por alarma (admin/supervisor/sudo) |
-| Página Alarmas | Misma instancia; sync vía `alarmsSlice` (CA-PERF-14) |
+| Página Alarmas | Misma instancia; sync vía `alarmsSlice` (CA-PERF-14). **2026-09-15:** badge “condición activa” (`condition_met`) distinto de ack ISA-18.2 — ack no apaga la fila si la condición sigue viva |
 
 `POST /api/alarms/unshelve/<name>` envuelve `Alarm.unshelve()` (antes no había ruta HTTP).
 
@@ -496,7 +496,7 @@ Observabilidad y acción en el mismo lugar. No hay vista de administración sepa
 
 Endpoints: `POST /api/admin/workers/restart`, `/saf/retry`, `/saf/reset`, `/catalog/sync`, `/catalog/clean-orphans`, `/tags/rebuild-derived`, `/settings/update`.
 
-Métricas nuevas en el snapshot: `WORKERS`, `CATALOG_ORPHAN_ROWS`, `DERIVED_TAGS_COUNT`. PENDING del journal sigue sagrado en el hot path; `JournalWriter.drop_unsent(confirm=True)` es el único discard intencional.
+Métricas nuevas en el snapshot: `WORKERS`, `CATALOG_ORPHAN_ROWS`, `DERIVED_TAGS_COUNT`. PENDING del journal sigue sagrado en el hot path; `JournalWriter.drop_unsent(confirm=True)` es el único discard intencional. `POST /api/admin/saf/retry` (2026-09-15) **resucita** `DEAD_LETTER` → PENDING, resetea el circuito y hace catch-up; **no** es un reset.
 
 Los IDs de la spec complementaria (**CA-PERF-01…05**) se registran aquí como **CA-OPS-01…05** para no chocar con CA-PERF-09…14 (alarmas ISA-18.2).
 
@@ -523,3 +523,4 @@ Los IDs de la spec complementaria (**CA-PERF-01…05**) se registran aquí como 
 | 2026-08-19 | UI profesional `/performance` (spec 07); CA-UI-06…10; umbrales PUT para supervisor; veredicto **A−** |
 | 2026-08-19 | Catálogo `SYS.PERF.*` persistido en `Tags` al conectar/reconectar (CA-SAF-TAGS-01…02); evita PENDING eterno de `alarm_summary` |
 | 2026-08-25 | Controles ops en `/performance` (`/api/admin/…`, roles, modales, Events); CA-OPS-01…05. Los IDs de la spec (CA-PERF-01…05) se aliasan a CA-OPS para no chocar con CA-PERF-09…14 de alarmas ISA-18.2 |
+| 2026-09-15 | SAF nuclear: `saf/retry` resucita `DEAD_LETTER` (no es reset); histéresis DLQ; badge `condition_met` en Alarmas; `GET /api/health/ready` 200 DEGRADED. Contrato: [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) §3.5 |

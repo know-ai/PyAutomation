@@ -5,7 +5,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import type { Alarm } from "../services/alarms";
 import type { Tag } from "../services/tags";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
-import { alarmDelayBadgeClass, formatDelayRemaining } from "../utils/alarmState";
+import { alarmConditionActive, alarmDelayBadgeClass, formatDelayRemaining } from "../utils/alarmState";
 
 type AlarmTableRowProps = {
   alarm: Alarm;
@@ -116,8 +116,15 @@ export const AlarmTableRow = memo(
         <td>{triggerValue}</td>
         <td>{translateAlarmDescription(currentAlarm.description, currentAlarm.name, t)}</td>
         <td>
-          <span className={`badge ${delayBadge || getStateBadgeClass(currentAlarm.state)}`}>
-            {delayLabel || getStateLabel(currentAlarm.state)}
+          <span className="d-inline-flex align-items-center gap-1 flex-wrap">
+            <span className={`badge ${delayBadge || getStateBadgeClass(currentAlarm.state)}`}>
+              {delayLabel || getStateLabel(currentAlarm.state)}
+            </span>
+            {alarmConditionActive(currentAlarm) ? (
+              <span className="badge alarm-state-badge alarm-state-badge--condition">
+                {t("alarms.conditionActive")}
+              </span>
+            ) : null}
           </span>
         </td>
         <td>

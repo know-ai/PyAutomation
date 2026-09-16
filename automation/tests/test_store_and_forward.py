@@ -13,7 +13,7 @@ from ..persistence import reset_persistence_gateway
 from ..persistence.config import SafConfig
 from ..persistence.contracts import NullRemoteDB
 from ..persistence.exceptions import JournalBackpressureError, JournalDiskFullError
-from ..persistence.journal import JournalWriter, STATUS_DEAD_LETTER, STATUS_PENDING
+from ..persistence.journal import JournalWriter, STATUS_ARCHIVED, STATUS_DEAD_LETTER, STATUS_PENDING
 from ..persistence.cycle_dedupe import CycleSampleCache
 from ..persistence.orchestrator import PersistenceOrchestrator
 from ..persistence.records import DOMAIN, PersistableRecord
@@ -1376,3 +1376,298 @@ class TestT01Apocalypse(unittest.TestCase):
         self.assertEqual(first_remote, durable)
         self.assertEqual(second_remote, first_remote)
         self.assertGreaterEqual(ring_lag, 0)
+
+
+class _ClosedRemote:
+    def is_reachable(self) -> bool:
+        return True
+
+    def write_batch_outcomes(self, domain, payloads):
+        raise Exception("InterfaceError: connection already closed")
+
+    def write_batch(self, domain, payloads):
+        raise Exception("InterfaceError: connection already closed")
+
+    def batch_insert_with_dedupe(self, payloads):
+        raise Exception("InterfaceError: connection already closed")
+
+
+class _StaleThenOkRemote:
+    def __init__(self):
+        self.calls = 0
+        self.ensures = 0
+
+    def _ensure_connection(self):
+        self.ensures += 1
+
+    def is_reachable(self) -> bool:
+        return True
+
+    def write_batch_outcomes(self, domain, payloads):
+        self.calls += 1
+        if self.calls == 1:
+            raise Exception("connection already closed")
+        return [True] * len(payloads)
+
+    def write_batch(self, domain, payloads):
+        return sum(self.write_batch_outcomes(domain, payloads))
+
+    def batch_insert_with_dedupe(self, payloads):
+        return self.write_batch("tag", payloads)
+
+
+def _journal_attempts(journal, journal_id: int) -> int:
+    with journal._lock:
+        journal._ensure_open_locked()
+        row = journal._conn.execute(
+            "SELECT attempts, status FROM persistence_journal WHERE id = ?",
+            (int(journal_id),),
+        ).fetchone()
+    return int(row["attempts"] or 0)
+
+
+def _journal_status(journal, journal_id: int) -> str:
+    with journal._lock:
+        journal._ensure_open_locked()
+        row = journal._conn.execute(
+            "SELECT status FROM persistence_journal WHERE id = ?",
+            (int(journal_id),),
+        ).fetchone()
+    return str(row["status"])
+
+
+class TestSafNuclearP0(unittest.TestCase):
+    def setUp(self):
+        reset_persistence_gateway()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.config = SafConfig(
+            journal_path=os.path.join(self.tmp.name, "journal.db"),
+            tag_flush_interval_s=0.005,
+            replicate_batch_size=100,
+            replicate_rate_per_s=10_000,
+            circuit_fail_threshold=5,
+            circuit_open_s=60.0,
+            shed_high=10,
+            shed_low=5,
+            dead_letter_attempts=5,
+        )
+        self.journal = JournalWriter(self.config)
+        self.journal.start()
+        self._scope_patch = patch(
+            "automation.persistence.replicator._node_scope",
+            return_value=None,
+        )
+        self._clock_patch = patch(
+            "automation.persistence.replicator._live_clock_status",
+            return_value=None,
+        )
+        self._scope_patch.start()
+        self._clock_patch.start()
+
+    def tearDown(self):
+        self._clock_patch.stop()
+        self._scope_patch.stop()
+        self.journal.stop()
+        self.tmp.cleanup()
+        reset_persistence_gateway()
+
+    def test_p0_1_stale_handle_does_not_increment_attempts(self):
+        rec = PersistableRecord.tag_sample("FI_01", 1.0, datetime.now(timezone.utc))
+        self.journal.append(rec)
+        self.journal.flush_sync()
+        jid = int(self.journal.fetch_pending(10)[0]["id"])
+        replicator = RemoteReplicator(self.journal, _ClosedRemote(), self.config)
+        for _ in range(10):
+            replicator.replicate_once()
+        self.assertEqual(_journal_attempts(self.journal, jid), 0)
+        self.assertEqual(self.journal.deadletter_count, 0)
+        self.assertEqual(_journal_status(self.journal, jid), STATUS_PENDING)
+
+    def test_p0_2_event_failure_does_not_increment_tag_attempts(self):
+        class EventFailRemote(FakeRemote):
+            def write_batch_outcomes(self, domain, payloads):
+                if domain == DOMAIN.EVENT:
+                    raise Exception("connection already closed")
+                return super().write_batch_outcomes(domain, payloads)
+
+        self.journal.append(
+            PersistableRecord.tag_sample("FI_02", 2.0, datetime.now(timezone.utc))
+        )
+        self.journal.append(PersistableRecord.event(message="evt", username="system"))
+        self.journal.flush_sync()
+        by_domain = {row["domain"]: int(row["id"]) for row in self.journal.fetch_pending(10)}
+        tag = by_domain[DOMAIN.TAG]
+        event = by_domain[DOMAIN.EVENT]
+        replicator = RemoteReplicator(self.journal, EventFailRemote(), self.config)
+        replicator.replicate_once()
+        self.assertEqual(_journal_attempts(self.journal, tag), 0)
+        self.assertEqual(_journal_status(self.journal, tag), "SENT")
+        self.assertEqual(_journal_attempts(self.journal, event), 0)
+        self.assertEqual(_journal_status(self.journal, event), STATUS_PENDING)
+
+    def test_p0_3_outage_never_dead_letters(self):
+        self.journal.append(PersistableRecord.tag_sample("PI_02", 1.0, datetime.now(timezone.utc)))
+        self.journal.flush_sync()
+        replicator = RemoteReplicator(self.journal, _ClosedRemote(), self.config)
+        for _ in range(12):
+            replicator.replicate_once()
+        self.assertEqual(self.journal.deadletter_count, 0)
+
+    def test_p0_4_prune_archives_process_rows(self):
+        rec = PersistableRecord.tag_sample("DI_02", 1.0, datetime.now(timezone.utc))
+        self.journal.append(rec)
+        self.journal.flush_sync()
+        jid = int(self.journal.fetch_pending(10)[0]["id"])
+        for _ in range(int(self.config.dead_letter_attempts)):
+            self.journal.mark_pending([jid], error="poison schema", increment_attempts=True)
+        self.assertEqual(_journal_status(self.journal, jid), STATUS_DEAD_LETTER)
+        old = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()
+        with self.journal._lock:
+            self.journal._conn.execute(
+                "UPDATE persistence_journal SET created_at = ? WHERE id = ?",
+                (old, jid),
+            )
+            self.journal._commit_locked()
+        self.journal._last_dlq_prune_mono = 0.0
+        archived = self.journal.prune_dead_letters()
+        self.assertGreaterEqual(archived, 1)
+        self.assertEqual(_journal_status(self.journal, jid), STATUS_ARCHIVED)
+        with self.journal._lock:
+            remaining = self.journal._conn.execute(
+                "SELECT COUNT(*) FROM persistence_journal WHERE id = ?",
+                (jid,),
+            ).fetchone()[0]
+        self.assertEqual(int(remaining), 1)
+        archive_path = self.journal._archive_path()
+        self.assertTrue(archive_path.exists())
+
+    def test_p0_5_open_circuit_leaves_attempts_intact(self):
+        self.journal.append(
+            PersistableRecord.tag_sample("TI_02", 1.0, datetime.now(timezone.utc))
+        )
+        self.journal.flush_sync()
+        jid = int(self.journal.fetch_pending(10)[0]["id"])
+        replicator = RemoteReplicator(self.journal, _ClosedRemote(), self.config)
+        replicator.circuit.state = "open"
+        replicator.circuit.opened_at = time.monotonic()
+        before = _journal_attempts(self.journal, jid)
+        for _ in range(10):
+            self.assertEqual(replicator.replicate_once(), 0)
+        self.assertEqual(_journal_attempts(self.journal, jid), before)
+        self.assertEqual(self.journal.deadletter_count, 0)
+
+    def test_p0_6_stale_reconnect_sends_without_attempts(self):
+        self.journal.append(
+            PersistableRecord.tag_sample("FI_02", 3.0, datetime.now(timezone.utc))
+        )
+        self.journal.flush_sync()
+        jid = int(self.journal.fetch_pending(10)[0]["id"])
+        remote = _StaleThenOkRemote()
+        replicator = RemoteReplicator(self.journal, remote, self.config)
+        replicator.replicate_once()
+        self.assertEqual(_journal_attempts(self.journal, jid), 0)
+        self.assertEqual(_journal_status(self.journal, jid), STATUS_PENDING)
+        replicator.replicate_once()
+        self.assertEqual(_journal_status(self.journal, jid), "SENT")
+        self.assertEqual(_journal_attempts(self.journal, jid), 0)
+        self.assertGreaterEqual(remote.ensures, 0)
+
+    def test_p0_7_resurrect_dead_letters(self):
+        jid = self.journal.append(PersistableRecord.event(message="dlq", username="system"))
+        self.journal.flush_sync()
+        for _ in range(int(self.config.dead_letter_attempts)):
+            self.journal.mark_pending([jid], error="poison")
+        self.assertGreaterEqual(self.journal.deadletter_count, 1)
+        restored = self.journal.resurrect_dead_letters()
+        self.assertGreaterEqual(restored, 1)
+        self.assertEqual(self.journal.deadletter_count, 0)
+        self.assertEqual(_journal_status(self.journal, jid), STATUS_PENDING)
+        self.assertEqual(_journal_attempts(self.journal, jid), 0)
+
+    def test_p0_8_shed_never_drops_field_tags(self):
+        config = SafConfig(
+            journal_path=os.path.join(self.tmp.name, "shed.db"),
+            tag_flush_interval_s=0.005,
+            shed_high=10,
+            shed_low=5,
+        )
+        orch = PersistenceOrchestrator(config=config, remote=FakeRemote())
+        ts = datetime(2026, 9, 15, 12, 0, 0, tzinfo=timezone.utc)
+        for i in range(20):
+            orch.enqueue(
+                PersistableRecord.tag_sample(
+                    f"SYS.PERF.x{i}",
+                    float(i),
+                    ts + timedelta(milliseconds=i),
+                )
+            )
+        orch.flush_sync()
+        self.assertTrue(orch._shed_active)
+        before = orch.pending_count()
+        orch.enqueue(PersistableRecord.tag_sample("FI_02", 1.0, ts + timedelta(seconds=1)))
+        orch.enqueue(PersistableRecord.tag_sample("Linea1.PI_02", 2.0, ts + timedelta(seconds=2)))
+        orch.enqueue(PersistableRecord.tag_sample("DI_02", 3.0, ts + timedelta(seconds=3)))
+        orch.flush_sync()
+        self.assertGreater(orch.pending_count(), before)
+        pending = {row["entity_id"] for row in orch.journal.fetch_pending(100)}
+        self.assertTrue(any("FI_02" in name for name in pending))
+        self.assertTrue(any("PI_02" in name for name in pending))
+        self.assertTrue(any("DI_02" in name for name in pending))
+        extra_perf = orch.enqueue(
+            PersistableRecord.tag_sample("SYS.PERF.dropme", 9.0, ts + timedelta(seconds=9))
+        )
+        self.assertEqual(extra_perf, 0)
+        orch.close()
+
+    def test_classify_unique_is_idempotent_ok(self):
+        from ..persistence.errors import IDEMPOTENT_OK, POISON, RETRYABLE, classify_saf_error
+
+        self.assertEqual(classify_saf_error(Exception("connection already closed")), RETRYABLE)
+        self.assertEqual(classify_saf_error(Exception("duplicate key value violates unique constraint")), IDEMPOTENT_OK)
+
+        class IntegrityError(Exception):
+            pass
+
+        IntegrityError.__name__ = "IntegrityError"
+        self.assertEqual(classify_saf_error(IntegrityError("foreign key violation")), POISON)
+        self.assertEqual(classify_saf_error(TypeError("create_alarm() tag must be str")), POISON)
+
+
+class TestLocalAlarmHydrate(unittest.TestCase):
+    def test_join_by_pk_and_id_yields_string_tags(self):
+        from ..catalog.hydrate import local_alarm_payloads
+
+        tags = [{"_pk": i + 1, "id": 1000 + i, "name": f"Tag_{i}"} for i in range(34)]
+        alarms = []
+        for i in range(34):
+            tag_ref = tags[i]["_pk"] if i % 2 == 0 else tags[i]["id"]
+            alarms.append(
+                {
+                    "identifier": f"id{i}",
+                    "name": f"Alarm_{i}",
+                    "tag_id": tag_ref,
+                    "trigger_type_id": 1,
+                    "state_id": 1,
+                    "trigger_value": True,
+                    "description": "hydrate",
+                    "area": "Linea1",
+                }
+            )
+        catalog = {
+            "tags": tags,
+            "alarms": alarms,
+            "alarmtypes": [{"_pk": 1, "id": 1, "name": "BOOL"}],
+            "alarmstates": [{"_pk": 1, "id": 1, "name": "Normal"}],
+        }
+
+        class _Provider:
+            def read_all(self, kind):
+                return catalog[kind]
+
+        with patch("automation.catalog.hydrate.LocalCatalogProvider", return_value=_Provider()):
+            payloads = local_alarm_payloads()
+        self.assertEqual(len(payloads), 34)
+        for item in payloads:
+            self.assertIsInstance(item["tag"], str)
+            self.assertTrue(item["tag"])
+

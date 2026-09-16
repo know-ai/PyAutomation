@@ -1,6 +1,6 @@
 import logging
 import pytz
-from peewee import CharField, FloatField, ForeignKeyField, TimestampField, fn
+from peewee import BooleanField, CharField, FloatField, ForeignKeyField, IntegerField, TimestampField, fn
 from ..dbmodels.core import BaseModel 
 from datetime import datetime
 from .tags import Tags
@@ -197,6 +197,9 @@ class Alarms(BaseModel):
     description = CharField(null=True, max_length=256)
     state = ForeignKeyField(AlarmStates, backref='alarms')
     timestamp = TimestampField(utc=True, null=True)
+    last_transition_ts = TimestampField(utc=True, null=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
+    last_transition_from = CharField(max_length=24, null=True)
+    last_transition_to = CharField(max_length=24, null=True)
     on_delay = FloatField(default=DEFAULT_ALARM_DELAY_S)
     off_delay = FloatField(default=DEFAULT_ALARM_DELAY_S)
     on_delay_units = CharField(default=DEFAULT_ALARM_DELAY_UNITS, max_length=16)
@@ -337,6 +340,12 @@ class Alarms(BaseModel):
             'description': self.description,
             'state': self.state.name,
             'timestamp': timestamp,
+            'last_transition_ts': (
+                self.last_transition_ts.strftime(tag_engine.DATETIME_FORMAT)
+                if self.last_transition_ts else None
+            ),
+            'last_transition_from': self.last_transition_from,
+            'last_transition_to': self.last_transition_to,
             'area': self.area,
             'on_delay': self.on_delay if self.on_delay is not None else DEFAULT_ALARM_DELAY_S,
             'off_delay': self.off_delay if self.off_delay is not None else DEFAULT_ALARM_DELAY_S,
@@ -359,6 +368,9 @@ def ensure_alarm_delay_schema(db) -> None:
         ("off_delay", Alarms.off_delay),
         ("on_delay_units", Alarms.on_delay_units),
         ("off_delay_units", Alarms.off_delay_units),
+        ("last_transition_ts", Alarms.last_transition_ts),
+        ("last_transition_from", Alarms.last_transition_from),
+        ("last_transition_to", Alarms.last_transition_to),
     )
     pending = [(name, field) for name, field in additions if name not in existing]
     if not pending:
@@ -413,6 +425,13 @@ class AlarmSummary(BaseModel):
     ack_time = TimestampField(utc=True, null=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
     area = CharField(max_length=64, null=True, index=True)
     sample_uuid = CharField(max_length=255, null=True)
+    from_state = CharField(max_length=24, null=True)
+    to_state = CharField(max_length=24, null=True)
+    event_time = TimestampField(utc=True, null=True, resolution=TAGVALUE_TIMESTAMP_RESOLUTION)
+    operator_id = IntegerField(null=True)
+    condition_met = BooleanField(null=True)
+    condition_value = FloatField(null=True)
+    schema_version = IntegerField(default=2)
 
     @classmethod
     @logging_error_handler
@@ -424,6 +443,13 @@ class AlarmSummary(BaseModel):
         ack_timestamp:datetime=None,
         area:str=None,
         sample_uuid:str=None,
+        from_state:str=None,
+        to_state:str=None,
+        event_time:datetime=None,
+        operator_id:int=None,
+        condition_met:bool=None,
+        condition_value=None,
+        schema_version:int=2,
     ):
         r"""
         Creates a new entry in the alarm summary.
@@ -435,8 +461,13 @@ class AlarmSummary(BaseModel):
         * **timestamp** (datetime): Time of occurrence.
         * **ack_timestamp** (datetime, optional): Acknowledgment time.
         """
+        from ..alarms.states import isa_name_from_history, history_name_from_isa
+
         _alarm = Alarms.read_by_name(name=name, area=area)
-        _state = AlarmStates.read_by_name(name=state)
+        isa_state = isa_name_from_history(state)
+        _state = AlarmStates.read_by_name(name=isa_state)
+        if _state is None:
+            _state = AlarmStates.read_by_name(name=state)
         
         if not _alarm:
             logging.getLogger("pyautomation").error(
@@ -456,8 +487,24 @@ class AlarmSummary(BaseModel):
             timestamp = quantize_datetime_ms(timestamp)
         if isinstance(ack_timestamp, datetime):
             ack_timestamp = quantize_datetime_ms(ack_timestamp)
+        if event_time is None:
+            event_time = timestamp
+        elif isinstance(event_time, datetime):
+            event_time = quantize_datetime_ms(event_time)
+        to_state = to_state or history_name_from_isa(state)
+        from_state = from_state or to_state
 
         area = area or getattr(_alarm, "area", None)
+
+        extras = {
+            "from_state": from_state,
+            "to_state": to_state,
+            "event_time": event_time,
+            "operator_id": operator_id,
+            "condition_met": condition_met,
+            "condition_value": condition_value,
+            "schema_version": 1 if schema_version is None else schema_version,
+        }
 
         if sample_uuid:
             from ..persistence.idempotent_insert import AlarmSummaryInserter
@@ -471,6 +518,7 @@ class AlarmSummary(BaseModel):
                 "area": area,
                 "sample_uuid": canonical_sample_uuid(sample_uuid),
             }
+            row.update(extras)
             if AlarmSummaryInserter().insert_one(row):
                 if row.get("sample_uuid"):
                     existing = cls.get_or_none(cls.sample_uuid == row["sample_uuid"])
@@ -494,6 +542,7 @@ class AlarmSummary(BaseModel):
             alarm_time=timestamp,
             ack_time=ack_timestamp,
             area=area,
+            **extras,
         )
         query.save()
 
@@ -738,6 +787,9 @@ class AlarmSummary(BaseModel):
         
         query = query.order_by(cls.id.desc())
         
+        from ..alarms.pagination import clamp_history_page_size
+        limit = clamp_history_page_size(limit, default=20)
+        
         total_records = query.count()
         
         if limit <= 0: limit = 20
@@ -817,6 +869,13 @@ class AlarmSummary(BaseModel):
             'area': self.area,
             'alarm_time': alarm_time,
             'ack_time': ack_time,
+            'from_state': getattr(self, "from_state", None),
+            'to_state': getattr(self, "to_state", None),
+            'event_time': format_display_datetime(getattr(self, "event_time", None) or self.alarm_time, timezone),
+            'operator_id': getattr(self, "operator_id", None),
+            'condition_met': getattr(self, "condition_met", None),
+            'condition_value': getattr(self, "condition_value", None),
+            'schema_version': getattr(self, "schema_version", None),
             'has_comments': True if self.logs else False
         }
 
@@ -842,6 +901,7 @@ class AlarmSummary(BaseModel):
                 )
         cls._backfill_area_from_alarm()
         cls._ensure_text_search_indexes()
+        cls._ensure_v2_columns()
 
     @classmethod
     def _ensure_text_search_indexes(cls) -> None:
@@ -885,4 +945,103 @@ class AlarmSummary(BaseModel):
             )
         except Exception:
             logger.warning("AlarmSummary area backfill skipped", exc_info=True)
+
+    @classmethod
+    def _ensure_v2_columns(cls) -> None:
+        """Additive ISA-18.2 history columns (schema_version 2). Idempotent."""
+        database = cls._meta.database
+        if database is None:
+            return
+        table = cls._meta.table_name
+        logger = logging.getLogger("pyautomation")
+        try:
+            existing = {column.name for column in database.get_columns(table)}
+        except Exception:
+            return
+        additions = (
+            ("from_state", cls.from_state),
+            ("to_state", cls.to_state),
+            ("event_time", cls.event_time),
+            ("operator_id", cls.operator_id),
+            ("condition_met", cls.condition_met),
+            ("condition_value", cls.condition_value),
+            ("schema_version", cls.schema_version),
+        )
+        pending = [(name, field) for name, field in additions if name not in existing]
+        if pending:
+            try:
+                from peewee import MySQLDatabase, PostgresqlDatabase, SqliteDatabase
+                from playhouse.migrate import (
+                    MySQLMigrator,
+                    PostgresqlMigrator,
+                    SqliteMigrator,
+                    migrate,
+                )
+            except Exception:
+                logger.debug("alarm_summary v2 migrate skipped (playhouse unavailable)", exc_info=True)
+                return
+            if isinstance(database, SqliteDatabase):
+                migrator = SqliteMigrator(database)
+            elif isinstance(database, PostgresqlDatabase):
+                migrator = PostgresqlMigrator(database)
+            elif isinstance(database, MySQLDatabase):
+                migrator = MySQLMigrator(database)
+            else:
+                logger.warning("alarm_summary v2 migrate skipped: %s", type(database).__name__)
+                return
+            for field_name, field in pending:
+                cloned = field.clone()
+                cloned.index = False
+                try:
+                    migrate(migrator.add_column(table, field_name, cloned))
+                except Exception:
+                    logger.warning("alarm_summary column %s add skipped", field_name, exc_info=True)
+        try:
+            database.execute_sql(
+                f"UPDATE {table} SET to_state = ("
+                f"SELECT s.name FROM {AlarmStates._meta.table_name} AS s "
+                f"WHERE s.id = {table}.state_id"
+                f") WHERE to_state IS NULL"
+            )
+            database.execute_sql(
+                f"UPDATE {table} SET from_state = to_state "
+                f"WHERE from_state IS NULL AND to_state IS NOT NULL"
+            )
+            database.execute_sql(
+                f"UPDATE {table} SET event_time = alarm_time "
+                f"WHERE event_time IS NULL AND alarm_time IS NOT NULL"
+            )
+            database.execute_sql(
+                f"UPDATE {table} SET schema_version = 1 WHERE schema_version IS NULL"
+            )
+        except Exception:
+            logger.warning("alarm_summary v2 backfill skipped", exc_info=True)
+        try:
+            database.execute_sql(
+                f"CREATE INDEX IF NOT EXISTS idx_{table}_event_time ON {table} (event_time)"
+            )
+        except Exception:
+            logger.debug("alarm_summary event_time index skipped", exc_info=True)
+        cls._ensure_query_indexes()
+
+    @classmethod
+    def _ensure_query_indexes(cls) -> None:
+        """INV-24/INV-25: BTREE indexes for append-only history and footer."""
+        database = cls._meta.database
+        if database is None:
+            return
+        table = cls._meta.table_name
+        alarms_table = Alarms._meta.table_name
+        statements = (
+            f"CREATE INDEX IF NOT EXISTS idx_{table}_alarm_time ON {table} (alarm_id, event_time)",
+            f"CREATE INDEX IF NOT EXISTS idx_{table}_to_state ON {table} (to_state, event_time)",
+            f"CREATE INDEX IF NOT EXISTS idx_{alarms_table}_tag ON {alarms_table} (tag_id)",
+            f"CREATE INDEX IF NOT EXISTS idx_{alarms_table}_state_time ON {alarms_table} (state_id, last_transition_ts)",
+        )
+        logger = logging.getLogger("pyautomation")
+        for sql in statements:
+            try:
+                database.execute_sql(sql)
+            except Exception:
+                logger.debug("alarm index skipped sql=%s", sql, exc_info=True)
     

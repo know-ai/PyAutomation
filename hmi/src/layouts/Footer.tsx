@@ -13,7 +13,7 @@ import { translateAlarmDescription } from "../utils/alarmCatalog";
 import {
   alarmDelayBadgeClass,
   formatDelayRemaining,
-  isUnacknowledgedAlarm,
+  normalizeAlarmState,
 } from "../utils/alarmState";
 
 const MENU_WIDTH = 240;
@@ -104,13 +104,9 @@ export function Footer() {
       });
     }
     const state = alarm.state;
-    if (typeof state === "object") {
-      const raw = state.mnemonic || state.state || "-";
-      return t(`alarms.states.${raw}`) !== `alarms.states.${raw}` ? t(`alarms.states.${raw}`) : String(raw);
-    }
-    const raw = String(state || "-");
-    const key = `alarms.states.${raw}`;
-    return t(key) !== key ? t(key) : raw;
+    const canonical = normalizeAlarmState(state);
+    const key = `alarms.states.${canonical}`;
+    return t(key) !== key ? t(key) : canonical;
   };
 
   const handleRowClick = () => {
@@ -265,7 +261,13 @@ export function Footer() {
               );
             }
 
-            const isUnack = isUnacknowledgedAlarm(alarm.state);
+            const canonical = normalizeAlarmState(alarm.state);
+            const isaRowClass =
+              canonical === "RTN Unack"
+                ? "footer-alarm-row--rtnun"
+                : canonical === "Ack Alarm"
+                  ? "footer-alarm-row--acked"
+                  : "footer-alarm-row--unack";
             const alarmType = alarm.alarm_type || alarm.alarm_setpoint?.type || "-";
             const triggerValue =
               alarm.trigger_value !== undefined
@@ -274,25 +276,24 @@ export function Footer() {
                   ? String(alarm.alarm_setpoint.value)
                   : "-";
             const delayPhase = alarm.delay_phase;
-            const rowColor =
-              delayPhase === "pending" ? "#f9a825" : delayPhase === "clearing" ? "#29b6f6" : "#dc3545";
-            const rowText = delayPhase === "pending" || delayPhase === "clearing" ? "#212121" : "#fff";
             const delayBadge = alarmDelayBadgeClass(delayPhase);
+            const useDelayColor = delayPhase === "pending" || delayPhase === "clearing";
+            const rowColor = delayPhase === "pending" ? "#f9a825" : delayPhase === "clearing" ? "#29b6f6" : undefined;
+            const rowText = useDelayColor ? "#212121" : undefined;
 
             return (
               <tr
                 key={alarm.identifier || alarm.id || alarm.name}
-                className={`footer-alarm-row ${isUnack ? "alarm-unacknowledged" : "alarm-acknowledged"}`}
+                className={`footer-alarm-row ${isaRowClass}`}
                 onClick={handleRowClick}
                 onDoubleClick={() => handleRowDoubleClick(alarm)}
                 onContextMenu={(e) => handleRowContextMenu(e, alarm)}
                 style={{
                   cursor: "pointer",
-                  backgroundColor: rowColor,
-                  color: rowText,
+                  ...(useDelayColor ? { backgroundColor: rowColor, color: rowText } : {}),
                 }}
               >
-                <td style={{ backgroundColor: rowColor, color: rowText }}>
+                <td style={useDelayColor ? { backgroundColor: rowColor, color: rowText } : undefined}>
                   <span
                     title={translateAlarmDescription(alarm.description, alarm.name, t)}
                     style={{ cursor: alarm.tag || alarm.description ? "help" : "default", color: rowText }}

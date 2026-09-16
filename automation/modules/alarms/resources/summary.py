@@ -121,7 +121,9 @@ class LastsAlarmsResource(Resource):
         Optional query parameter ``area`` restricts to one line; omit for the whole plant.
         """
         args = lasts_parser.parse_args()
-        return app.get_lasts_alarms(lasts=int(lasts), area=args.get("area"))
+        from ....alarms.pagination import clamp_history_page_size
+        lasts_n = clamp_history_page_size(lasts, default=10)
+        return app.get_lasts_alarms(lasts=lasts_n, area=args.get("area"))
     
 
 @ns.route('/<id>/comments')

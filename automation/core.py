@@ -493,6 +493,8 @@ class PyAutomation(Singleton):
             if not attempt_hmi_socket_connect(auth=auth, sid=request.sid):
                 raise ConnectionRefusedError("Authentication failed")
 
+            from .alarms.runtime import get_alarm_runtime
+
             scope = self._refresh_node_scope()
             local_area = scope.area if scope.enabled else None
             def _safe_hist(loader, default=None):
@@ -502,12 +504,18 @@ class PyAutomation(Singleton):
                     logging.debug("Socket on_connection hydrate skipped", exc_info=True)
                     return default
 
+            try:
+                count_by_state = get_alarm_runtime().count_by_state()
+            except Exception:
+                count_by_state = {}
+
             payload = {
                 "tags": self.get_tags() or list(),
-                "alarms": self.serialize_alarms() or list(),
+                "alarms": list(),  # INV-43: never hydrate the full catalog over the socket
                 "machines": self.serialize_machines() or list(),
                 "last_alarms": _safe_hist(lambda: self.get_lasts_alarms(lasts=10, area=local_area), list()),
                 "last_active_alarms": _safe_hist(lambda: self.get_lasts_active_alarms(lasts=3), list()),
+                "count_by_state": count_by_state,
                 "last_events": _safe_hist(lambda: self.get_lasts_events(lasts=10, area=local_area), list()),
                 "last_logs": _safe_hist(lambda: self.get_lasts_logs(lasts=10, area=local_area), list()),
             }
@@ -5019,10 +5027,27 @@ class PyAutomation(Singleton):
         print(_colorize_message(f"[{str_date}] [INFO] {len(alarms)} alarms found in database", "INFO"))
         if alarms:
             for alarm in alarms:
-
-                self.create_alarm(reload=True, **alarm)
-                logging.info(f"Alarm {alarm['name']} loaded from database")
-                print(_colorize_message(f"[{str_date}] [INFO] Alarm {alarm['name']} loaded from database", "INFO"))
+                try:
+                    payload = alarm if isinstance(alarm, dict) else None
+                    if payload is None:
+                        serialize = getattr(alarm, "serialize", None)
+                        payload = serialize() if callable(serialize) else None
+                    if not isinstance(payload, dict):
+                        logging.warning("Skipping alarm hydrate: payload is not a dict")
+                        continue
+                    tag = payload.get("tag")
+                    if not isinstance(tag, str) or not tag.strip():
+                        logging.warning(
+                            "Skipping alarm hydrate: tag is not str name=%s tag=%r",
+                            payload.get("name"),
+                            tag,
+                        )
+                        continue
+                    self.create_alarm(reload=True, **payload)
+                    logging.info(f"Alarm {payload['name']} loaded from database")
+                    print(_colorize_message(f"[{str_date}] [INFO] Alarm {payload['name']} loaded from database", "INFO"))
+                except Exception:
+                    logging.warning("Skipping alarm hydrate after error", exc_info=True)
         else:
             logging.info(f"No alarms found in database")
             print(_colorize_message(f"[{str_date}] [INFO] No alarms found in database", "INFO"))
@@ -5635,8 +5660,9 @@ class PyAutomation(Singleton):
         ```
         """
         if self.is_db_connected():
+            from .alarms.pagination import clamp_history_page_size
             return self.alarms_engine.get_lasts(
-                lasts=lasts,
+                lasts=clamp_history_page_size(lasts, default=10),
                 area=optional_area(area),
             )
         
@@ -5675,6 +5701,8 @@ class PyAutomation(Singleton):
             # Ensure pagination parameters are present or defaulted
             if 'page' not in fields: fields['page'] = 1
             if 'limit' not in fields: fields['limit'] = 20
+            from .alarms.pagination import clamp_history_page_size
+            fields['limit'] = clamp_history_page_size(fields.get('limit'), default=20)
             if "area" in fields:
                 fields["area"] = optional_area(fields.get("area"))
 
@@ -6467,6 +6495,13 @@ class PyAutomation(Singleton):
 
             self.metrics_worker = MetricsSamplerWorker()
             self.metrics_worker.start()
+
+            try:
+                from .alarms.runtime import get_alarm_runtime
+
+                self.alarm_transition_worker = get_alarm_runtime().start_worker()
+            except Exception:
+                logging.debug("alarm transition worker startup skipped", exc_info=True)
 
             self.replication_worker = ReplicationWorker()
             self.replication_worker.start()

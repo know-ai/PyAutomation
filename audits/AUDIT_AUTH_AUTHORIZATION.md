@@ -4,7 +4,7 @@
 |---|---|
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
 | **Alcance** | Login, sesión, token, roles, ACL REST/HMI, guards HMI, Swagger, roles dinámicos |
-| **Fecha** | 2026-09-03 · **reimpl. ACL 2026-09-03** · **bus invalidación ACL 2026-09-03** · **roles dinámicos + docs 2026-09-03** |
+| **Fecha** | 2026-09-03 · **reimpl. ACL 2026-09-03** · **bus invalidación ACL 2026-09-03** · **roles dinámicos + docs 2026-09-03** · **`GET /health/ready` público 2026-09-15** |
 | **Evidencia** | Código del árbol + `automation/tests/test_authz.py` + `test_authz_invalidate.py` + `test_authz_app_hooks.py` + `test_docs_auth.py` |
 | **Complementa** | [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md), [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) |
 | **Veredicto autenticación** | **A−** — TPT con `exp`+rol y principal sintético; database config/connect y `reconnect_db` autenticados; signup público y sesión sin TTL siguen abiertos |
@@ -218,7 +218,7 @@ Prefijo `/api`. Clasificación por **middleware + ACL** actual.
 | Método | Ruta | Nota |
 |---|---|---|
 | POST | `/users/login`, `/users/signup` | Auth |
-| GET | `/health/ping`, `/liveness`, `/readiness`, `/db`, `/saf`, `/system` | Probes |
+| GET | `/health/ping`, `/liveness`, `/readiness`, `/ready`, `/db`, `/saf`, `/system` | Probes. `/ready` = 200 + `DEGRADED` (no restart Docker) |
 | GET | `/system/timezone` | Presentación |
 
 ### 4.2 Autenticado, sin evaluación ACL adicional

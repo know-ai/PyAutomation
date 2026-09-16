@@ -178,7 +178,7 @@ def put_alarm_state(func, args, kwargs):
         state=alarm.state.state
     )
     if alarm.sio:
-        alarm.sio.emit("on.alarm", data=alarm.serialize())
+        alarm.sio.emit("on.alarm", data=alarm.serialize_socket())
         
     return result
 

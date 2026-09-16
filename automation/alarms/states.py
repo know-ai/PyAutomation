@@ -132,6 +132,95 @@ class AlarmAttrs:
         }
 
 
+# Canonical names persisted in alarm_summary.from_state / to_state (SPEC-ISA18-2-P0P1 §3.1).
+HISTORY_NORMAL = "Normal"
+HISTORY_UNACK = "Unack Alarm"
+HISTORY_ACK = "Ack Alarm"
+HISTORY_RTNUN = "RTN Unack"
+HISTORY_CLEARED = "Cleared"
+HISTORY_SHELVED = "Shelved"
+HISTORY_DSUPR = "Suppressed By Design"
+HISTORY_OOSRV = "Out Of Service"
+
+HISTORY_SUPPRESSED = frozenset({HISTORY_SHELVED, HISTORY_DSUPR, HISTORY_OOSRV})
+HISTORY_ANNUNCIATED = frozenset({HISTORY_UNACK, HISTORY_ACK, HISTORY_RTNUN})
+ACKABLE_HISTORY = frozenset({HISTORY_UNACK, HISTORY_ACK, HISTORY_RTNUN})
+
+_SM_TO_HISTORY = {
+    "normal": HISTORY_NORMAL,
+    "unack_alarm": HISTORY_UNACK,
+    "ack_alarm": HISTORY_ACK,
+    "rtn_unack": HISTORY_RTNUN,
+    "shelved": HISTORY_SHELVED,
+    "suppressed_by_design": HISTORY_DSUPR,
+    "out_of_service": HISTORY_OOSRV,
+}
+
+_ISA_TO_HISTORY = {
+    "Normal": HISTORY_NORMAL,
+    "Unacknowledged": HISTORY_UNACK,
+    "Acknowledged": HISTORY_ACK,
+    "RTN Unacknowledged": HISTORY_RTNUN,
+    "Shelved": HISTORY_SHELVED,
+    "Suppressed By Design": HISTORY_DSUPR,
+    "Out Of Service": HISTORY_OOSRV,
+    HISTORY_UNACK: HISTORY_UNACK,
+    HISTORY_ACK: HISTORY_ACK,
+    HISTORY_RTNUN: HISTORY_RTNUN,
+    HISTORY_CLEARED: HISTORY_CLEARED,
+}
+
+_HISTORY_TO_ISA = {
+    HISTORY_NORMAL: "Normal",
+    HISTORY_UNACK: "Unacknowledged",
+    HISTORY_ACK: "Acknowledged",
+    HISTORY_RTNUN: "RTN Unacknowledged",
+    HISTORY_CLEARED: "Normal",
+    HISTORY_SHELVED: "Shelved",
+    HISTORY_DSUPR: "Suppressed By Design",
+    HISTORY_OOSRV: "Out Of Service",
+}
+
+_HISTORY_TO_SM = {
+    HISTORY_NORMAL: "normal",
+    HISTORY_UNACK: "unack_alarm",
+    HISTORY_ACK: "ack_alarm",
+    HISTORY_RTNUN: "rtn_unack",
+    HISTORY_CLEARED: "normal",
+    HISTORY_SHELVED: "shelved",
+    HISTORY_DSUPR: "suppressed_by_design",
+    HISTORY_OOSRV: "out_of_service",
+}
+
+
+def history_name_from_sm(sm_name: str | None) -> str:
+    if not sm_name:
+        return HISTORY_NORMAL
+    return _SM_TO_HISTORY.get(str(sm_name).lower(), HISTORY_NORMAL)
+
+
+def history_name_from_isa(name: str | None) -> str:
+    if not name:
+        return HISTORY_NORMAL
+    return _ISA_TO_HISTORY.get(str(name), str(name))
+
+
+def isa_name_from_history(name: str | None) -> str:
+    if not name:
+        return "Normal"
+    return _HISTORY_TO_ISA.get(str(name), str(name))
+
+
+def sm_value_from_history(name: str | None) -> str:
+    if not name:
+        return "normal"
+    return _HISTORY_TO_SM.get(str(name), "normal")
+
+
+def sm_value_from_isa(name: str | None) -> str:
+    return sm_value_from_history(history_name_from_isa(name))
+
+
 class AlarmState:
     r"""
     Static definitions of all standard alarm states with their attributes.

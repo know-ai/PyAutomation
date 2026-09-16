@@ -6,9 +6,11 @@ handling alarm events, and interacting with the Current Value Table (CVT) and Da
 """
 from datetime import datetime
 import queue
+import time
 from ..singleton import Singleton
 from ..tags import CVTEngine, TagObserver
 from ..alarms import AlarmState, Alarm
+from ..alarms.runtime import get_alarm_runtime
 from ..dbmodels.alarms import AlarmSummary
 from ..modules.users.users import User
 from ..models import FloatType, StringType
@@ -65,6 +67,7 @@ class AlarmManager(Singleton):
         # Kept with maxsize=1 so a future reactivation cannot grow unbounded.
         self._tag_queue = queue.Queue(maxsize=1)
         self.tag_engine = CVTEngine()
+        self._runtime = get_alarm_runtime()
 
     def _index_alarm(self, alarm: Alarm) -> None:
         if alarm is None:
@@ -76,6 +79,10 @@ class AlarmManager(Singleton):
         bucket = self._by_tag_name.setdefault(tag_name, [])
         if alarm not in bucket:
             bucket.append(alarm)
+        try:
+            get_alarm_runtime().sync_alarm(alarm)
+        except Exception:
+            pass
 
     def _unindex_alarm(self, alarm: Alarm) -> None:
         if alarm is None:
@@ -460,26 +467,68 @@ class AlarmManager(Singleton):
         }
 
     @logging_error_handler
+    def raise_perf_alarm(self, name: str, severity: str, value) -> None:
+        get_alarm_runtime().raise_perf_alarm(name=name, severity=severity, value=value)
+
     def get_lasts_active_alarms(self, lasts:int=None)->list:
         r"""
-        Retrieves the most recent active alarms.
+        Retrieves the most recent annunciated alarms (B ∪ C ∪ D).
 
-        **Parameters:**
-
-        * **lasts** (int, optional): Number of alarms to retrieve.
-
-        **Returns:**
-
-        * **list**: List of serialized active alarms sorted by timestamp.
+        Uses the in-memory annunciated index (O(A), A bounded) when populated.
         """
-        original_list = [alarm.serialize() for _, alarm in self.get_alarms().items()]
-        filtered_list = [elem for elem in original_list if elem['state']['alarm_status'].lower()=="active"]
-        sorted_list = sorted(filtered_list, key=lambda x: x['timestamp'] if x['timestamp'] else '')
-        if lasts and len(sorted_list) > lasts:
-            # Newest active alarms for footer / on_connection hydrate.
-            sorted_list = sorted_list[-lasts:]
+        runtime = get_alarm_runtime()
+        cap = lasts or 50
+        candidates = runtime.active_alarms(limit=max(cap, 50))
+        if not candidates:
+            candidates = [
+                alarm
+                for alarm in self.get_alarms().values()
+                if str(getattr(getattr(alarm, "state", None), "annunciate_status", "") or "").lower()
+                == "annunciated"
+            ]
+            for alarm in candidates:
+                runtime.sync_alarm(alarm)
+        serialized = [
+            alarm.serialize_socket() if hasattr(alarm, "serialize_socket") else alarm.serialize()
+            for alarm in candidates
+            if _scope_owns_alarm(alarm)
+        ]
 
+        def _sort_key(elem):
+            return elem.get("last_transition_ts") or elem.get("timestamp") or ""
+
+        sorted_list = sorted(serialized, key=_sort_key, reverse=True)
+        if lasts and len(sorted_list) > lasts:
+            sorted_list = sorted_list[:lasts]
         return sorted_list
+
+    def on_tag_value(self, tag, value=None) -> None:
+        """Hot-path entry: O(1) hash lookup + per-tag checks. INV-21.
+
+        Does not INSERT, UPDATE, or emit on.alarm.
+        """
+        started = time.perf_counter()
+        tag_name = tag if isinstance(tag, str) else _normalize_tag_name(tag)
+        alarms = self._by_tag_name.get(tag_name) or ()
+        tag_obj = None if isinstance(tag, str) else tag
+        for alarm in alarms:
+            if tag_obj is not None:
+                alarm.check_condition_from_tag(tag_obj)
+            else:
+                alarm.check_condition(value)
+        elapsed_us = (time.perf_counter() - started) * 1_000_000.0
+        runtime = get_alarm_runtime()
+        runtime.latency.observe_us(elapsed_us)
+        return elapsed_us
+
+    def count_active(self) -> int:
+        return int(get_alarm_runtime()._count_active)
+
+    def count_by_state(self, state: str | None = None):
+        counts = dict(get_alarm_runtime()._count_by_state)
+        if state is None:
+            return counts
+        return int(counts.get(state, 0))
 
     @logging_error_handler
     def serialize(self)->list:
@@ -518,22 +567,40 @@ class AlarmManager(Singleton):
             return None
 
         payloads = []
+        operator_id = None
+        try:
+            operator_id = acknowledged[0]._operator_pk(user=user)
+        except Exception:
+            operator_id = None
         for alarm in acknowledged:
             catalog = alarm.catalog_payload()
+            isa_state = alarm.state.state
+            if isa_state == "Acknowledged":
+                from_state, to_state = "Unack Alarm", "Ack Alarm"
+            else:
+                from_state, to_state = "RTN Unack", "Cleared"
             payloads.append(
                 {
                     "id": alarm.identifier,
                     "name": alarm.name,
-                    "state": alarm.state.state,
+                    "state": isa_state,
                     "ack_timestamp": now,
                     "area": catalog.get("area"),
                     "tag": catalog.get("tag"),
+                    "from_state": from_state,
+                    "to_state": to_state,
+                    "operator_id": operator_id,
+                    "condition_met": bool(getattr(alarm, "_condition_met", False)),
+                    "condition_value": alarm._current_condition_value(),
+                    "last_transition_ts": now,
+                    "last_transition_from": from_state,
+                    "last_transition_to": to_state,
                 }
             )
         AlarmsLoggerEngine().acknowledge_many(payloads)
         for alarm in acknowledged:
             if alarm.sio:
-                alarm.sio.emit("on.alarm", data=alarm.serialize())
+                alarm.sio.emit("on.alarm", data=alarm.serialize_socket())
         return self, len(acknowledged), f"{len(acknowledged)} alarms acknowledged"
 
     @logging_error_handler

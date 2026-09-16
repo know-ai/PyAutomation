@@ -55,7 +55,6 @@ class TestAcknowledgeAll(unittest.TestCase):
         self.user.username = "operator"
         for target in (
             "automation.logger.alarms.AlarmsLoggerEngine.put",
-            "automation.logger.alarms.AlarmsLoggerEngine.put_record_on_alarm_summary",
             "automation.logger.alarms.AlarmsLoggerEngine.create_record_on_alarm_summary",
             "automation.managers.alarms._scope_owns_alarm",
         ):

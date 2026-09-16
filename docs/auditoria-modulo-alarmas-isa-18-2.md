@@ -1,5 +1,7 @@
 # Auditoría del módulo de alarmas — cumplimiento ISA-18.2
 
+> **2026-09-16 — documento no canónico.** El informe vigente está en [`audits/AUDIT_ISA18_2_ALARMS.md`](../audits/AUDIT_ISA18_2_ALARMS.md) (P0/P1 + O(1) hot path v2). Este archivo (2026-06-20) se conserva como contexto.
+
 **Proyecto:** PyAutomation (`automation/`)  
 **Fecha:** 2026-06-20  
 **Alcance:** `automation/alarms/`, `automation/managers/alarms.py`, `automation/logger/alarms.py`, `automation/modules/alarms/`, documentación API y tests asociados  

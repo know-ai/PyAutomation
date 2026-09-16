@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
-| **Fecha de compactación** | 2026-08-20 · **revisión suscripción/domain 2026-09-01** · **auth/authz 2026-09-03** · **UI/UX Real-Time Trends 2026-09-09** |
+| **Fecha de compactación** | 2026-08-20 · **revisión suscripción/domain 2026-09-01** · **auth/authz 2026-09-03** · **UI/UX Real-Time Trends 2026-09-09** · **SAF nuclear 2026-09-15** · **ISA 18.2 alarmas 2026-09-16** |
 | **Auditoría durabilidad disco** | 2026-08-28 — [AUDIT_DISK_DURABILITY.md](./AUDIT_DISK_DURABILITY.md); **A+ código/spec**; WD-01…10 PASS; soak 24 h planta pendiente ([SOAK_DISK_LAST_RUN.md](./SOAK_DISK_LAST_RUN.md)) |
 | **Puntos críticos de misión** | 2026-08-28 — [AUDIT_MISSION_CRITICAL.md](./AUDIT_MISSION_CRITICAL.md); CT-01…07; **A− / B+ código**; caos OT pendiente ([CHAOS_LAST_RUN.md](./CHAOS_LAST_RUN.md)) |
 | **Continuidad día-1000** | 2026-08-27 — [AUDIT_LONG_RUN_CONTINUITY.md](./AUDIT_LONG_RUN_CONTINUITY.md); hardening R1–R5 en código; deploy/soak planta pendiente |
@@ -11,11 +11,11 @@
 | **Revisión controles `/performance`** | 2026-08-25 — CA-OPS-01…04 en código; CA-OPS-02/05 HMI planta |
 | **Auditoría consistencia catálogo planta** | 2026-08-25 — 2 edges reales + PG; ver [AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md](./AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md) |
 | **Alcance** | Contraste código vs diseño; no son especificaciones de producto (`specs/` y `docs/` cubren eso) |
-| **Regla** | Un documento por dominio. Lo desactualizado se actualiza contra evidencia de código (última revisión **2026-09-01**) |
+| **Regla** | Un documento por dominio. Lo desactualizado se actualiza contra evidencia de código (última revisión **2026-09-16** ISA 18.2 alarmas) |
 
 ---
 
-## Documentos canónicos (22)
+## Documentos canónicos (23)
 
 | Doc | Archivo | Absorbe | Veredicto vigente |
 |---|---|---|---|
@@ -23,7 +23,7 @@
 | **02 BD y conexiones** | [AUDIT_DB.md](./AUDIT_DB.md) | `AUDIT_DB_CONNECTIONS`, `AUDIT_DB_CONNECTIONS_ETERNAL`, `AUDIT_OPTIMAL_CONNECTIONS`, `AUDIT_DB_RECONNECT`, `AUDIT_NETWORK_TIMEOUT`, `AUDIT_DB_CONNECTION_MEMORY` | Un handle Peewee; idle 1 worker **1–3** (techo **≤ 4**); pool Peewee **prohibido**; reconexión owner-scoped |
 | **03 Rendimiento y memoria** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) | `AUDIT_BACKEND_PERFORMANCE`, `AUDIT_MEMORY`, `PERFORMANCE_RUNBOOK` | Hot path **A−**; ciclo de vida observers cerrado; soak 24 h **pendiente** |
 | **04 HMI** | [AUDIT_HMI.md](./AUDIT_HMI.md) | `AUDIT_HMI_PERFORMANCE`, `AUDIT_RT_TRENDS` | Heap acotado **A**; forma de onda RT con cola por tag (no last-wins en historial) |
-| **05 Store-and-Forward** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) | `STORE_AND_FORWARD`, `PERSISTENCE_FLOW`, `T01_SOAK_LAST_RUN` | **A+** durabilidad; **A** aislamiento Bulkhead (código); CA-ISOLATION-05 planta pendiente |
+| **05 Store-and-Forward** | [AUDIT_STORE_AND_FORWARD.md](./AUDIT_STORE_AND_FORWARD.md) | `STORE_AND_FORWARD`, `PERSISTENCE_FLOW`, `T01_SOAK_LAST_RUN` | **A+** durabilidad (outage≠DLQ, prune archiva); **A** aislamiento Bulkhead + P0-1…P0-8 (código); CA-ISOLATION-05 planta pendiente |
 | **06 Multi-edge** | [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md) | (ya era único) | Fase 1 en código; **planta 2-edge 2026-08-25**: 3 binds Linea2→DAQ Linea1 ([AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md](./AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md)); RLS y soak 24 h pendientes |
 | **07 Logs, eventos y bitácora** | [AUDIT_LOGGING.md](./AUDIT_LOGGING.md) | `AUDIT_USER_EVENTS`, `AUDIT_OPERATIONAL_LOGS` | **Log aplicación ≠ Eventos**; pantalla HMI dedicada pendiente (LOG-GUI); export Loki **C** |
 | **08 Tiempo (presentación)** | [AUDIT_TIMEZONE.md](./AUDIT_TIMEZONE.md) | (ya era único; actualizado) | Operación «Hora Única»: UTC en wire; selector planta/local en HMI |
@@ -31,16 +31,17 @@
 | **10 Máquinas de estado** | [AUDIT_STATE_MACHINES.md](./AUDIT_STATE_MACHINES.md) | (nuevo 2026-08-18; spec 02) | Tres relojes; SM-H1 cerrado en modo `sample_interval`; iDetectFugas dual-path |
 | **11 NTP / reloj edge** | [AUDIT_NTP_TIME_SYNC.md](./AUDIT_NTP_TIME_SYNC.md) | (nuevo 2026-08-19) | **A** — monitor universal v2.0 (IPv4/IPv6, backoff, salto, runbook); soak 2-edge **pendiente** (A+) |
 | **12 Trazabilidad Socket HMI** | [AUDIT_HMI_SOCKET_TRACEABILITY.md](./AUDIT_HMI_SOCKET_TRACEABILITY.md) | Spec [04-HMI-SOCKET-TRACEABILITY](../specs/04-HMI-SOCKET-TRACEABILITY.md) | **A+** — PG `hmi_sessions`, fail-closed, TLS/IP, heartbeat; soak 2-edge **pendiente** |
-| **13 Dashboard performance nodo** | [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](./AUDIT_NODE_PERFORMANCE_DASHBOARD.md) | Specs [05](../specs/05-NODE-PERFORMANCE-DASHBOARD.md) + [06](../specs/06-PERFORMANCE-ALARMS.md) + controles ops 2026-08-25 | **A−** — snapshot O(1), sampler, `/performance`, alarmas `ALM.PERF.*`, controles `/api/admin`; soak 24 h / 2-edge / HMI planta (CA-OPS-02/05) **pendientes** (A+) |
+| **13 Dashboard performance nodo** | [AUDIT_NODE_PERFORMANCE_DASHBOARD.md](./AUDIT_NODE_PERFORMANCE_DASHBOARD.md) | Specs [05](../specs/05-NODE-PERFORMANCE-DASHBOARD.md) + [06](../specs/06-PERFORMANCE-ALARMS.md) + controles ops 2026-08-25 · **retry=resurrect 2026-09-15** | **A−** — snapshot O(1), sampler, `/performance`, alarmas `ALM.PERF.*`, controles `/api/admin`; soak 24 h / 2-edge / HMI planta (CA-OPS-02/05) **pendientes** (A+) |
 | **14 Calidad OPC + arranque degradado** | [AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md](./AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP.md) | Specs [09](../specs/09-OPC-QUALITY-AND-DEGRADED-STARTUP.md) + [10](../specs/10-OPC-QUALITY-A-PLUS.md) — verificación 2026-08-21 | **A− disponibilidad** / **A− calidad** (A+ condicionado a soak) / **A Login-UX** — CA-OQ-01…12 PASS; soak 13–15 pendiente |
 | **15 Catálogo local SQLite** | [AUDIT_CATALOG_SQLITE_LOCAL.md](./AUDIT_CATALOG_SQLITE_LOCAL.md) | Spec [11](../specs/11-CATALOG-SQLITE-LOCAL.md) — verificación 2026-08-21 P0 + Bulkhead 2026-08-25 | **A autonomía + integridad reinicio (código)** / **A separación SAF** / **A HMI-API** / **A aislamiento por fila** / **A− sync planta** — CA-01…06/10…13/15…18 + CA-ISOLATION-02…04 PASS; soak 07–09/14 + CA-ISOLATION-05 pendiente |
 | **16 Consistencia catálogo planta** | [AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md](./AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE.md) | Corrida 19:15 + 22:36 · CA-DAQ-01 vivo en planta · CA-CATALOG-NOISE-01/02 en código | **A catálogo de proceso** / **B− sidecar .81** — SyncFailed era umbral, no outage |
 | **17 Extensión HMI machines/domain** | [AUDIT_HMI_MACHINE_DOMAIN_EXTENSION.md](./AUDIT_HMI_MACHINE_DOMAIN_EXTENSION.md) | (nuevo 2026-08-26; Fase A 2026-08-26; Fase B iDetectFugas 2026-08-26; filtrado tags **2026-09-01**) | **A** contrato Schema-Driven — Fase A+B cerradas en código árbol; wheel 2.8.1 puede ir detrás |
-| **18 Continuidad 1–1000 días** | [AUDIT_LONG_RUN_CONTINUITY.md](./AUDIT_LONG_RUN_CONTINUITY.md) | baseline N1 2026-08-27 + SPEC_LONG_RUN R1–R5 (DLQ, compact catalog, drop SM, disco CRITICAL, config limpia) | Edge **A−** en código; PG **B−** (DBA); deploy + soak 24 h pendiente |
+| **18 Continuidad 1–1000 días** | [AUDIT_LONG_RUN_CONTINUITY.md](./AUDIT_LONG_RUN_CONTINUITY.md) | baseline N1 2026-08-27 + SPEC_LONG_RUN R1–R5 (DLQ, compact catalog, drop SM, disco CRITICAL, config limpia) · **DLQ archiva 2026-09-15** | Edge **A−** en código (prune ya no DELETE proceso); PG **B−** (DBA); deploy + soak 24 h pendiente |
 | **19 Durabilidad disco / eficiencia escritura** | [AUDIT_DISK_DURABILITY.md](./AUDIT_DISK_DURABILITY.md) | Spec WD-01…10; G-DISK-01…09 cerrados en código (SOAK 24 h = plantilla) | **A+** código/spec · soak planta pendiente |
 | **20 Puntos críticos de misión** | [AUDIT_MISSION_CRITICAL.md](./AUDIT_MISSION_CRITICAL.md) | Spec CT-01…07; NTP gate, fsync, peer heartbeat, caos | **A− / B+** código · steal-tags y restart &lt; 10 s fuera de contrato · campaña OT pendiente |
 | **21 Autenticación y autorización** | [AUDIT_AUTH_AUTHORIZATION.md](./AUDIT_AUTH_AUTHORIZATION.md) | Login/sesión/TPT; ACL granular `authz_grants`; roles dinámicos baseline `guest`; Swagger `docs_auth`; bus Redis/PG | Auth **A−** · Authz **A−** — ACL fail-closed; panel HMI; Socket.IO por vista pendiente |
 | **22 UI/UX Tendencias RT** | [AUDIT_REALTIME_TRENDS_UIUX.md](./AUDIT_REALTIME_TRENDS_UIUX.md) | (nuevo 2026-09-09; spec HMI 2.10 en código) Layout 48×10, Plotly sin feedback loop, picker portal, persistencia v3 | Layout **B+ código** · datos RT **A−** — UX-RT-1…3 remedidos en esta entrega; CA-RT planta pendiente |
+| **23 ISA 18.2 alarmas** | [AUDIT_ISA18_2_ALARMS.md](./AUDIT_ISA18_2_ALARMS.md) | P0/P1 historial + O(1) v2 + **P1 v3 paginación/cola** ([ISA18-2-P1-CLOSURE-REPORT.md](./ISA18-2-P1-CLOSURE-REPORT.md)) | SM **B+** · historial **B** · footer/frontend **A** · hot path **A−**; GATE-30 PG lab pendiente |
 
 ---
 
