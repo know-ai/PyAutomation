@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useId,
@@ -10,6 +11,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { VirtualList } from "./VirtualList";
+import { TAG_PICKER_ITEM_HEIGHT } from "./tagPicker";
+import { firstUnselectedIndex, sortTagsWithSelectedFirst } from "../utils/tagSort";
+import { readUiScale } from "../utils/displayDensity";
 
 export type MultiSelectOption = {
   value: string;
@@ -27,6 +31,8 @@ type MultiSelectSearchProps = {
   selectAllLabel?: string;
   clearLabel?: string;
   selectedCountLabel?: (count: number) => string;
+  selectedGroupLabel?: string;
+  otherGroupLabel?: string;
   disabled?: boolean;
   className?: string;
   style?: CSSProperties;
@@ -41,8 +47,6 @@ type PanelPosition = {
   placement: "bottom" | "top";
 };
 
-import { readUiScale } from "../utils/displayDensity";
-
 const PANEL_MAX_HEIGHT = 580;
 const PANEL_MIN_WIDTH = 280;
 const VIEWPORT_GAP = 8;
@@ -51,7 +55,22 @@ function scaledPx(base: number): number {
   return Math.round(base * readUiScale());
 }
 
-export function MultiSelectSearch({
+function sameIds(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameOptions(left: MultiSelectOption[], right: MultiSelectOption[]): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  return left.every(
+    (option, index) =>
+      option.value === right[index].value &&
+      option.label === right[index].label &&
+      option.description === right[index].description
+  );
+}
+
+function MultiSelectSearchInner({
   options,
   selected,
   onChange,
@@ -61,6 +80,8 @@ export function MultiSelectSearch({
   selectAllLabel = "Select all",
   clearLabel = "Clear",
   selectedCountLabel,
+  selectedGroupLabel,
+  otherGroupLabel,
   disabled = false,
   className,
   style,
@@ -71,11 +92,6 @@ export function MultiSelectSearch({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  /** Only keyboard navigation should scroll the list to the highlight. */
-  const keyboardNavRef = useRef(false);
-  const scrollingRef = useRef(false);
-  const scrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -83,6 +99,11 @@ export function MultiSelectSearch({
   const [position, setPosition] = useState<PanelPosition | null>(null);
   /** Bumped only on keyboard nav so VirtualList scrolls without fighting the wheel. */
   const [keyboardScrollToken, setKeyboardScrollToken] = useState(0);
+
+  if (import.meta.env.DEV && typeof window !== "undefined") {
+    const w = window as Window & { __pickerRenderCount?: number };
+    w.__pickerRenderCount = (w.__pickerRenderCount || 0) + 1;
+  }
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
@@ -96,15 +117,22 @@ export function MultiSelectSearch({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((option) => {
-      return (
-        option.label.toLowerCase().includes(q) ||
-        option.value.toLowerCase().includes(q) ||
-        (option.description ? option.description.toLowerCase().includes(q) : false)
-      );
-    });
-  }, [options, query]);
+    const matches = q
+      ? options.filter((option) => {
+          return (
+            option.label.toLowerCase().includes(q) ||
+            option.value.toLowerCase().includes(q) ||
+            (option.description ? option.description.toLowerCase().includes(q) : false)
+          );
+        })
+      : options;
+    return sortTagsWithSelectedFirst(matches, selected);
+  }, [options, query, selected]);
+
+  const unselectedStart = useMemo(
+    () => firstUnselectedIndex(filtered, selected),
+    [filtered, selected]
+  );
 
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((option) => selectedSet.has(option.value));
@@ -127,10 +155,7 @@ export function MultiSelectSearch({
     const placement: "bottom" | "top" =
       spaceBelow < flipBelow && spaceAbove > spaceBelow ? "top" : "bottom";
     const available = placement === "bottom" ? spaceBelow : spaceAbove;
-    const width = Math.min(
-      Math.max(rect.width, minWidth),
-      viewportWidth - gap * 2
-    );
+    const width = Math.min(Math.max(rect.width, minWidth), viewportWidth - gap * 2);
     let left = rect.left;
     if (left + width > viewportWidth - gap) {
       left = Math.max(gap, viewportWidth - gap - width);
@@ -149,30 +174,10 @@ export function MultiSelectSearch({
     setOpen(false);
     setQuery("");
     setHighlightIndex(0);
-    keyboardNavRef.current = false;
     onClose?.();
   }, [onClose]);
 
-  const markListScrolling = useCallback(() => {
-    scrollingRef.current = true;
-    if (scrollIdleTimerRef.current) {
-      clearTimeout(scrollIdleTimerRef.current);
-    }
-    scrollIdleTimerRef.current = setTimeout(() => {
-      scrollingRef.current = false;
-      scrollIdleTimerRef.current = null;
-    }, 120);
-  }, []);
-
-  const highlightFromMouse = useCallback((index: number) => {
-    // While the user is scrolling, ignore hover highlights — they fight scrollIntoView
-    // and pull the list back toward the cursor position (usually the top of the panel).
-    if (scrollingRef.current || keyboardNavRef.current) return;
-    setHighlightIndex(index);
-  }, []);
-
   const highlightFromKeyboard = useCallback((index: number) => {
-    keyboardNavRef.current = true;
     setHighlightIndex(index);
     setKeyboardScrollToken((token) => token + 1);
   }, []);
@@ -222,7 +227,6 @@ export function MultiSelectSearch({
     };
 
     const onReposition = (event: Event) => {
-      // Ignore scrolls inside the dropdown panel — they must not reset layout/scroll.
       const target = event.target;
       if (
         target instanceof Node &&
@@ -243,24 +247,12 @@ export function MultiSelectSearch({
       document.removeEventListener("mousedown", onPointerDown);
       window.removeEventListener("resize", onReposition);
       window.removeEventListener("scroll", onReposition, true);
-      if (scrollIdleTimerRef.current) {
-        clearTimeout(scrollIdleTimerRef.current);
-        scrollIdleTimerRef.current = null;
-      }
     };
   }, [close, open, updatePosition]);
 
   useEffect(() => {
     setHighlightIndex(0);
-    keyboardNavRef.current = false;
   }, [query]);
-
-  useEffect(() => {
-    if (!open || !keyboardNavRef.current) return;
-    keyboardNavRef.current = false;
-    const el = optionRefs.current[highlightIndex];
-    el?.scrollIntoView({ block: "nearest" });
-  }, [highlightIndex, keyboardScrollToken, open]);
 
   const handleTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (disabled) return;
@@ -297,6 +289,72 @@ export function MultiSelectSearch({
     }
   };
 
+  const itemHeight = scaledPx(TAG_PICKER_ITEM_HEIGHT);
+
+  const renderTagItem = useCallback(
+    (option: MultiSelectOption, index: number) => {
+      const isSelected = selectedSet.has(option.value);
+      const isHighlighted = index === highlightIndex;
+      const showValue = option.label !== option.value;
+      const showSelectedHeader = index === 0 && isSelected && Boolean(selectedGroupLabel);
+      const showOtherHeader =
+        index === unselectedStart && unselectedStart > 0 && Boolean(otherGroupLabel);
+      const showDivider =
+        !showOtherHeader && unselectedStart > 0 && index === unselectedStart;
+      return (
+        <div
+          className={`multi-select-search-item${
+            showSelectedHeader || showOtherHeader ? " has-header" : ""
+          }${showDivider ? " has-divider" : ""}`}
+        >
+          {showSelectedHeader && (
+            <div className="multi-select-search__group" role="presentation">
+              {selectedGroupLabel}
+            </div>
+          )}
+          {showOtherHeader && (
+            <div className="multi-select-search__group" role="presentation">
+              {otherGroupLabel}
+            </div>
+          )}
+          <button
+            type="button"
+            role="option"
+            aria-selected={isSelected}
+            className={`multi-select-search__option${isSelected ? " is-selected" : ""}${
+              isHighlighted ? " is-highlighted" : ""
+            }`}
+            onClick={() => toggleOption(option.value)}
+          >
+            <span
+              className={`multi-select-search__check${isSelected ? " is-on" : ""}`}
+              aria-hidden="true"
+            >
+              {isSelected ? <i className="bi bi-check-lg" /> : null}
+            </span>
+            <span className="multi-select-search__option-text">
+              <span className="multi-select-search__option-label">{option.label}</span>
+              {showValue && (
+                <span className="multi-select-search__option-value">{option.value}</span>
+              )}
+              {option.description && (
+                <span className="multi-select-search__option-desc">{option.description}</span>
+              )}
+            </span>
+          </button>
+        </div>
+      );
+    },
+    [
+      highlightIndex,
+      otherGroupLabel,
+      selectedGroupLabel,
+      selectedSet,
+      toggleOption,
+      unselectedStart,
+    ]
+  );
+
   const summary = (() => {
     if (selected.length === 0) {
       return <span className="multi-select-search__placeholder">{placeholder}</span>;
@@ -323,9 +381,7 @@ export function MultiSelectSearch({
             style={{
               top: position.placement === "bottom" ? position.top : undefined,
               bottom:
-                position.placement === "top"
-                  ? window.innerHeight - position.top
-                  : undefined,
+                position.placement === "top" ? window.innerHeight - position.top : undefined,
               left: position.left,
               width: position.width,
               maxHeight: position.maxHeight,
@@ -335,6 +391,9 @@ export function MultiSelectSearch({
             aria-multiselectable="true"
             aria-labelledby={triggerId}
             onKeyDown={handlePanelKeyDown}
+            onWheel={(event) => event.stopPropagation()}
+            onScroll={(event) => event.stopPropagation()}
+            onMouseMove={(event) => event.stopPropagation()}
           >
             <div className="multi-select-search__search">
               <i className="bi bi-search" aria-hidden="true" />
@@ -381,54 +440,16 @@ export function MultiSelectSearch({
             {filtered.length === 0 ? (
               <div className="multi-select-search__empty">{emptyText}</div>
             ) : (
-            <VirtualList
-              className="multi-select-search__list"
-              items={filtered}
-              height={Math.max(scaledPx(160), position.maxHeight - scaledPx(96))}
-              itemHeight={scaledPx(48)}
-              highlightedIndex={highlightIndex}
-              scrollToIndexToken={keyboardScrollToken}
-              onScroll={markListScrolling}
-              getKey={(option) => option.value}
-              renderItem={(option, index) => {
-                const isSelected = selectedSet.has(option.value);
-                const isHighlighted = index === highlightIndex;
-                const showValue = option.label !== option.value;
-                return (
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    ref={(el) => {
-                      optionRefs.current[index] = el;
-                    }}
-                    className={`multi-select-search__option${
-                      isSelected ? " is-selected" : ""
-                    }${isHighlighted ? " is-highlighted" : ""}`}
-                    onMouseEnter={() => highlightFromMouse(index)}
-                    onClick={() => toggleOption(option.value)}
-                  >
-                    <span
-                      className={`multi-select-search__check${isSelected ? " is-on" : ""}`}
-                      aria-hidden="true"
-                    >
-                      {isSelected ? <i className="bi bi-check-lg" /> : null}
-                    </span>
-                    <span className="multi-select-search__option-text">
-                      <span className="multi-select-search__option-label">{option.label}</span>
-                      {showValue && (
-                        <span className="multi-select-search__option-value">{option.value}</span>
-                      )}
-                      {option.description && (
-                        <span className="multi-select-search__option-desc">
-                          {option.description}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                );
-              }}
-            />
+              <VirtualList
+                className="multi-select-search__list multi-select-search-list"
+                items={filtered}
+                height={Math.max(scaledPx(160), position.maxHeight - scaledPx(96))}
+                itemHeight={itemHeight}
+                highlightedIndex={highlightIndex}
+                scrollToIndexToken={keyboardScrollToken}
+                getKey={(option) => option.value}
+                renderItem={renderTagItem}
+              />
             )}
           </div>,
           document.body
@@ -469,3 +490,23 @@ export function MultiSelectSearch({
     </div>
   );
 }
+
+export const MultiSelectSearch = memo(MultiSelectSearchInner, (prev, next) => {
+  return (
+    prev.disabled === next.disabled &&
+    prev.placeholder === next.placeholder &&
+    prev.searchPlaceholder === next.searchPlaceholder &&
+    prev.emptyText === next.emptyText &&
+    prev.selectAllLabel === next.selectAllLabel &&
+    prev.clearLabel === next.clearLabel &&
+    prev.selectedGroupLabel === next.selectedGroupLabel &&
+    prev.otherGroupLabel === next.otherGroupLabel &&
+    prev.className === next.className &&
+    prev.onChange === next.onChange &&
+    prev.onClose === next.onClose &&
+    prev.selectedCountLabel === next.selectedCountLabel &&
+    sameIds(prev.selected, next.selected) &&
+    sameOptions(prev.options, next.options)
+  );
+});
+MultiSelectSearch.displayName = "MultiSelectSearch";

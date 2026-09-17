@@ -52,6 +52,7 @@ export const VIEW_PATHS: Array<{ view: ViewId; path: string }> = [
 ];
 
 export type AuthzActionsMap = Record<string, string[]>;
+export type AuthzRestMap = Record<string, boolean>;
 
 export function hasAction(
   map: AuthzActionsMap | undefined,
@@ -61,13 +62,30 @@ export function hasAction(
   return Boolean(map?.[resourceKey]?.includes(action));
 }
 
+export function restResourceAction(resourceKey: string): "view" | "use" {
+  if (!resourceKey.startsWith("rest:")) return "use";
+  const method = resourceKey.slice(5).split(" ")[0]?.toUpperCase() || "";
+  return method === "GET" || method === "HEAD" ? "view" : "use";
+}
+
+export function restHasAccess(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  return Array.isArray(value) && value.length > 0;
+}
+
 export function hasRestFragment(
-  rest: AuthzActionsMap | undefined,
+  rest: AuthzRestMap | AuthzActionsMap | undefined,
   fragment: string,
   action: "view" | "use" = "use"
 ): boolean {
   if (!rest) return false;
-  return Object.entries(rest).some(([key, acts]) => key.includes(fragment) && acts.includes(action));
+  return Object.entries(rest).some(([key, value]) => {
+    if (!key.includes(fragment)) return false;
+    if (typeof value === "boolean") {
+      return value && restResourceAction(key) === action;
+    }
+    return Array.isArray(value) && value.includes(action);
+  });
 }
 
 export function viewForPath(path: string): ViewId | null {

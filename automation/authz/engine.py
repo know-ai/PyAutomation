@@ -6,7 +6,13 @@ Precedence: deny user > allow user > deny role > allow role > deny.
 from __future__ import annotations
 
 from . import store
-from .catalog import ACTIONS, HMI_VIEW_KEYS, SYSTEM_HMI_VIEWS, all_resource_keys
+from .catalog import (
+    ACTIONS,
+    HMI_VIEW_KEYS,
+    SYSTEM_HMI_VIEWS,
+    all_resource_keys,
+    rest_action_from_key,
+)
 from .view_bundles import views_implying_rest
 
 
@@ -88,7 +94,7 @@ def evaluate(user, resource_key: str, action: str) -> bool:
     return False
 
 
-def _pack(keys: list[str], user) -> dict[str, list[str]]:
+def _pack_views(keys: list[str], user) -> dict[str, list[str]]:
     packed: dict[str, list[str]] = {}
     for key in keys:
         allowed = [action for action in ACTIONS if evaluate(user, key, action)]
@@ -97,8 +103,20 @@ def _pack(keys: list[str], user) -> dict[str, list[str]]:
     return packed
 
 
+def _pack_rest(keys: list[str], user) -> dict[str, bool]:
+    """REST: one boolean per resource (true = can invoke that METHOD+path)."""
+    packed: dict[str, bool] = {}
+    for key in keys:
+        packed[key] = bool(evaluate(user, key, rest_action_from_key(key)))
+    return packed
+
+
 def permissions_for(user, flask_app=None) -> dict:
-    """Allowed view/use actions for one subject (omits denials)."""
+    """Effective permissions.
+
+    ``views`` keep ``view``/``use`` lists (embedded HMI menu and mutate).
+    ``rest`` is ``resource_key → bool`` (invoke that METHOD+path or not).
+    """
     if user is None:
         return {"views": {}, "rest": {}}
     from ..utils.system_user import is_system_username
@@ -107,14 +125,16 @@ def permissions_for(user, flask_app=None) -> dict:
         views = {key: list(ACTIONS) for key in SYSTEM_HMI_VIEWS}
         return {"views": views, "rest": {}}
     keys = all_resource_keys(flask_app)
+    rest_keys = [key for key in keys if str(key).startswith("rest:")]
     if _is_integrator(user):
         views = {
             key: list(ACTIONS)
             for key in keys
             if key in HMI_VIEW_KEYS or str(key).startswith("hmi:")
         }
-        rest = {key: list(ACTIONS) for key in keys if str(key).startswith("rest:")}
-        return {"views": views, "rest": rest}
-    views = _pack([key for key in keys if key in HMI_VIEW_KEYS or key.startswith("hmi:")], user)
-    rest = _pack([key for key in keys if key.startswith("rest:")], user)
-    return {"views": views, "rest": rest}
+        return {"views": views, "rest": {key: True for key in rest_keys}}
+    views = _pack_views(
+        [key for key in keys if key in HMI_VIEW_KEYS or key.startswith("hmi:")],
+        user,
+    )
+    return {"views": views, "rest": _pack_rest(rest_keys, user)}

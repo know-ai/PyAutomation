@@ -38,17 +38,34 @@ SYSTEM_HMI_VIEWS: tuple[str, ...] = (
 ACTIONS: tuple[str, ...] = ("view", "use")
 
 
+def canonical_rest_method(method: str) -> str:
+    """HEAD is Flask's automatic twin of GET; ACL and catalog use GET."""
+    method_u = str(method or "GET").upper()
+    if method_u == "HEAD":
+        return "GET"
+    return method_u or "GET"
+
+
 def rest_resource_key(method: str, rule: str) -> str:
     normalized_rule = str(rule or "")
     if normalized_rule and not normalized_rule.startswith("/"):
         normalized_rule = "/" + normalized_rule
     if normalized_rule and not normalized_rule.startswith("/api"):
         normalized_rule = "/api" + normalized_rule
-    return f"rest:{str(method or 'GET').upper()} {normalized_rule}"
+    return f"rest:{canonical_rest_method(method)} {normalized_rule}"
 
 
 def default_action(method: str) -> str:
     return "view" if str(method or "").upper() in {"GET", "HEAD"} else "use"
+
+
+def rest_action_from_key(resource_key: str) -> str:
+    """REST keys encode the verb; ACL uses one action (GET/HEAD=view, else use)."""
+    body = str(resource_key or "")
+    if body.startswith("rest:"):
+        body = body[5:]
+    method, _, _ = body.partition(" ")
+    return default_action(method)
 
 
 def rest_key_from_request() -> str | None:
@@ -60,6 +77,95 @@ def rest_key_from_request() -> str | None:
     if not rule:
         rule = str(request.path or "")
     return rest_resource_key(request.method, rule)
+
+
+# Paths the middleware never sends through evaluate(). Hidden from the ACL
+# catalog so Access Control does not show them as Deny.
+PUBLIC_REST_EXACT = frozenset(
+    {
+        ("POST", "/api/users/login"),
+        ("POST", "/api/users/signup"),
+        ("POST", "/api/users/credentials_are_valid"),
+        ("GET", "/api/health/ping"),
+        ("GET", "/api/healthcheck/"),
+        ("GET", "/api/health/liveness"),
+        ("GET", "/api/health/readiness"),
+        ("GET", "/api/health/db"),
+        ("GET", "/api/health/saf"),
+        ("GET", "/api/health/ready"),
+        ("GET", "/api/health/system"),
+        ("GET", "/api/health/alarms"),
+        ("GET", "/api/system/timezone"),
+    }
+)
+PUBLIC_REST_PREFIXES: tuple[str, ...] = ()
+AUTHENTICATED_ALWAYS_REST = frozenset(
+    {
+        ("POST", "/api/users/logout"),
+        ("POST", "/api/users/change_password"),
+        ("GET", "/api/authz/me"),
+    }
+)
+
+
+def normalize_api_path(path: str) -> str:
+    if not path:
+        return "/"
+    normalized = "/" + str(path).lstrip("/")
+    if len(normalized) > 1:
+        normalized = normalized.rstrip("/")
+    return normalized or "/"
+
+
+def _norm_method_path(method: str, path: str) -> tuple[str, str]:
+    method_u = str(method or "").upper()
+    if method_u == "HEAD":
+        method_u = "GET"
+    return method_u, normalize_api_path(path)
+
+
+_PUBLIC_REST_NORM = frozenset(_norm_method_path(method, path) for method, path in PUBLIC_REST_EXACT)
+_AUTHENTICATED_ALWAYS_NORM = frozenset(
+    _norm_method_path(method, path) for method, path in AUTHENTICATED_ALWAYS_REST
+)
+
+
+def is_public_rest(method: str, path: str) -> bool:
+    pair = _norm_method_path(method, path)
+    if pair in _PUBLIC_REST_NORM:
+        return True
+    method_u, exact = pair
+    raw = str(path or "")
+    if (method_u, raw) in PUBLIC_REST_EXACT:
+        return True
+    for prefix in PUBLIC_REST_PREFIXES:
+        base = str(prefix or "").rstrip("/")
+        if not base:
+            continue
+        if exact == base or exact.startswith(base + "/") or raw.startswith(prefix):
+            return True
+    return False
+
+
+def is_session_always_rest(method: str, path: str) -> bool:
+    pair = _norm_method_path(method, path)
+    if pair in _AUTHENTICATED_ALWAYS_NORM:
+        return True
+    method_u = pair[0]
+    return (method_u, str(path or "")) in AUTHENTICATED_ALWAYS_REST
+
+
+def rest_key_is_acl_governed(resource_key: str) -> bool:
+    """False for public or session-only REST keys (middleware skips evaluate)."""
+    key = str(resource_key or "")
+    if not key.startswith("rest:"):
+        return True
+    method, _, path = key[5:].partition(" ")
+    if str(method).upper() in {"OPTIONS", "HEAD"}:
+        return False
+    if not path:
+        return True
+    return not (is_public_rest(method, path) or is_session_always_rest(method, path))
 
 
 def collect_rest_keys(flask_app: Any | None = None) -> list[str]:
@@ -74,19 +180,18 @@ def collect_rest_keys(flask_app: Any | None = None) -> list[str]:
         except Exception:
             app = None
     keys: set[str] = set(extra_rest_keys())
-    if app is None:
-        return sorted(keys)
-    try:
-        for rule in app.url_map.iter_rules():
-            pattern = str(rule.rule or "")
-            if "/api/" not in pattern and not pattern.startswith("/api"):
-                continue
-            methods = set(rule.methods or ()) - {"OPTIONS"}
-            for method in sorted(methods):
-                keys.add(rest_resource_key(method, pattern))
-    except Exception:
-        return sorted(keys)
-    return sorted(keys)
+    if app is not None:
+        try:
+            for rule in app.url_map.iter_rules():
+                pattern = str(rule.rule or "")
+                if "/api/" not in pattern and not pattern.startswith("/api"):
+                    continue
+                methods = set(rule.methods or ()) - {"OPTIONS", "HEAD"}
+                for method in sorted(methods):
+                    keys.add(rest_resource_key(method, pattern))
+        except Exception:
+            pass
+    return sorted(key for key in keys if rest_key_is_acl_governed(key))
 
 
 def all_resource_keys(flask_app: Any | None = None) -> list[str]:
@@ -113,7 +218,7 @@ def catalog_tree(flask_app: Any | None = None) -> dict:
             {
                 "resource_key": key,
                 "kind": "rest",
-                "actions": list(ACTIONS),
+                "actions": [rest_action_from_key(key)],
             }
         )
     return {

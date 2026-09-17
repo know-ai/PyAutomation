@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode, type UIEvent } from "react";
+import { useEffect, useRef, useState, type ReactNode, type UIEvent, type WheelEvent } from "react";
+import { useTagPickerScroll } from "../hooks/useTagPickerScroll";
 
 export const VIRTUALIZE_AFTER = 200;
 
@@ -16,7 +17,7 @@ type VirtualListProps<T> = {
    * Do not scroll on every highlight change (e.g. mouse hover while scrolling).
    */
   scrollToIndexToken?: number;
-  onScroll?: () => void;
+  onScroll?: (event: UIEvent<HTMLDivElement>) => void;
 };
 
 export function shouldVirtualize(count: number): boolean {
@@ -35,41 +36,53 @@ export function VirtualList<T>({
   scrollToIndexToken,
   onScroll: onScrollProp,
 }: VirtualListProps<T>) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
+  const { listRef, handleScroll } = useTagPickerScroll();
   const [scrollTop, setScrollTop] = useState(0);
+  const highlightedIndexRef = useRef(highlightedIndex);
+  highlightedIndexRef.current = highlightedIndex;
 
   useEffect(() => {
     if (scrollToIndexToken == null) {
       return;
     }
-    if (highlightedIndex == null || highlightedIndex < 0) {
+    const index = highlightedIndexRef.current;
+    if (index == null || index < 0) {
       return;
     }
-    const el = scrollerRef.current;
+    const el = listRef.current;
     if (!el) {
       return;
     }
-    const top = highlightedIndex * itemHeight;
+    const top = index * itemHeight;
     const bottom = top + itemHeight;
     if (top < el.scrollTop) {
       el.scrollTop = top;
     } else if (bottom > el.scrollTop + el.clientHeight) {
       el.scrollTop = bottom - el.clientHeight;
     }
-  }, [scrollToIndexToken, highlightedIndex, itemHeight]);
+  }, [scrollToIndexToken, itemHeight, listRef]);
 
-  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
-    setScrollTop(event.currentTarget.scrollTop);
-    onScrollProp?.();
+  const onScroll = (event: UIEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    handleScroll(event);
+    if (shouldVirtualize(items.length)) {
+      setScrollTop(event.currentTarget.scrollTop);
+    }
+    onScrollProp?.(event);
+  };
+
+  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
+    event.stopPropagation();
   };
 
   if (!shouldVirtualize(items.length)) {
     return (
       <div
-        ref={scrollerRef}
+        ref={listRef}
         className={className}
         style={{ maxHeight: height, overflowY: "auto" }}
-        onScroll={() => onScrollProp?.()}
+        onScroll={onScroll}
+        onWheel={onWheel}
       >
         {items.map((item, index) => (
           <div key={getKey(item, index)}>{renderItem(item, index)}</div>
@@ -86,10 +99,11 @@ export function VirtualList<T>({
 
   return (
     <div
-      ref={scrollerRef}
+      ref={listRef}
       className={className}
       style={{ height, overflowY: "auto" }}
-      onScroll={handleScroll}
+      onScroll={onScroll}
+      onWheel={onWheel}
     >
       <div style={{ height: padTop }} aria-hidden="true" />
       {items.slice(start, end).map((item, offset) => {

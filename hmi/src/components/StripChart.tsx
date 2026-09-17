@@ -26,7 +26,6 @@ import { usePlotlyResize } from "../hooks/usePlotlyResize";
 import { toDisplayDate } from "../utils/timezone";
 import { resolveTagDisplayLabel } from "../utils/tagDisplayLabel";
 import { isFilteredDerivativeName, sourceTagName } from "../utils/filteredTags";
-import { isDisplayableThreshold, resolveTagThreshold } from "../utils/tagThreshold";
 import { QualityBadge } from "./QualityBadge";
 import type { Tag } from "../services/tags";
 
@@ -57,7 +56,6 @@ export interface StripChartConfig {
   tagNames: string[];
   /** Ventana temporal visible (minutos): 1 | 2 | 3 | 5. */
   timeSpanMinutes: TimeSpanMinutes;
-  showThresholds?: boolean;
   x: number;
   y: number;
   w: number;
@@ -91,7 +89,6 @@ function StripChartInner({
   const tagNamesKey = config.tagNames.join("|");
   const timeSpanMinutes = normalizeTimeSpanMinutes(config.timeSpanMinutes);
   const timeSpanMs = timeSpanMinutes * 60 * 1000;
-  const showThresholds = config.showThresholds !== false;
   const plotBoxRef = useRef<HTMLDivElement>(null);
   const plotSize = usePlotlyResize(plotBoxRef, layoutInteracting);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -102,7 +99,6 @@ function StripChartInner({
       left.length === right.length && left.every((item, index) => item === right[index])
   );
   const liveTags = useAppSelector((state) => state.tags.tagValues);
-  const machines = useAppSelector((state) => state.machines.machines);
   const historiesRef = useRef(histories);
   historiesRef.current = histories;
   const [throttledHistories, setThrottledHistories] = useState(histories);
@@ -240,38 +236,6 @@ function StripChartInner({
       } as Data;
     });
 
-    if (showThresholds) {
-      const thresholdColor = mode === "dark" ? "#adb5bd" : "#999999";
-      config.tagNames.forEach((tagName, index) => {
-        const threshold = resolveTagThreshold(tagName, machines, liveTags[tagName]);
-        if (!isDisplayableThreshold(threshold)) return;
-
-        const bufferSlice = prunedHistories[index] || [];
-        const unit = getTagUnit(tagName);
-        const x =
-          bufferSlice.length >= 2
-            ? displayTz
-              ? [
-                  toDisplayDate(bufferSlice[0].timestamp, displayTz),
-                  toDisplayDate(bufferSlice[bufferSlice.length - 1].timestamp, displayTz),
-                ]
-              : [bufferSlice[0].timestamp, bufferSlice[bufferSlice.length - 1].timestamp]
-            : xRange;
-
-        traces.push({
-          x,
-          y: [threshold, threshold],
-          type: "scatter",
-          mode: "lines",
-          name: t("stripChart.thresholdLegend", { tag: getTagLabel(tagName) }),
-          line: { color: thresholdColor, width: 1, dash: "dash" },
-          opacity: 0.5,
-          yaxis: unitAxis[unit] || "y",
-          hovertemplate: `${t("stripChart.thresholdLine")}: ${threshold}<extra></extra>`,
-        } as Data);
-      });
-    }
-
     const axisColors: Record<string, string> = {};
     traces.forEach((tr) => {
       const axis = (tr as any).yaxis || "y";
@@ -306,7 +270,7 @@ function StripChartInner({
         color: axisColors["y"] || (mode === "dark" ? "#ffffff" : "#212529"),
         gridcolor: mode === "dark" ? "#495057" : "#dee2e6",
       },
-      showlegend: config.tagNames.length > 1 || (showThresholds && traces.length > config.tagNames.length),
+      showlegend: config.tagNames.length > 1,
       legend: {
         orientation: "h",
         x: 0,
@@ -342,37 +306,42 @@ function StripChartInner({
     prunedHistories,
     pageHidden,
     timeZone,
-    showThresholds,
-    machines,
-    liveTags,
     t,
     plotSize.width,
     plotSize.height,
   ]);
 
-  const applyTagNames = (nextNames: string[]) => {
-    const accepted: string[] = [];
-    const units = new Set<string>();
-    let warnedSecond = false;
-    let blockedExtra = false;
-    for (const name of nextNames) {
-      const unit = getTagUnit(name);
-      if (!units.has(unit) && units.size >= 2) {
-        if (!blockedExtra) {
-          showToast(t("stripChart.maxUnitsPerChart"), "warning");
-          blockedExtra = true;
+  const applyTagNames = useCallback(
+    (nextNames: string[]) => {
+      const accepted: string[] = [];
+      const units = new Set<string>();
+      let warnedSecond = false;
+      let blockedExtra = false;
+      for (const name of nextNames) {
+        const unit = getTagUnit(name);
+        if (!units.has(unit) && units.size >= 2) {
+          if (!blockedExtra) {
+            showToast(t("stripChart.maxUnitsPerChart"), "warning");
+            blockedExtra = true;
+          }
+          continue;
         }
-        continue;
+        if (!units.has(unit) && units.size === 1 && !warnedSecond) {
+          showToast(t("stripChart.secondUnitWarning", { unit }), "info");
+          warnedSecond = true;
+        }
+        units.add(unit);
+        accepted.push(name);
       }
-      if (!units.has(unit) && units.size === 1 && !warnedSecond) {
-        showToast(t("stripChart.secondUnitWarning", { unit }), "info");
-        warnedSecond = true;
-      }
-      units.add(unit);
-      accepted.push(name);
-    }
-    onConfigChange({ ...config, tagNames: accepted });
-  };
+      onConfigChange({ ...config, tagNames: accepted });
+    },
+    [config, getTagUnit, onConfigChange, t]
+  );
+
+  const selectedCountLabel = useCallback(
+    (count: number) => t("stripChart.tagsWithCount", { count }),
+    [t]
+  );
 
   const handleTimeSpanChange = (raw: string) => {
     onConfigChange({
@@ -467,7 +436,11 @@ function StripChartInner({
                     </option>
                   ))}
                 </select>
-                <div className="rt-stripchart-picker d-flex align-items-center gap-1">
+                <div
+                  className="rt-stripchart-picker d-flex align-items-center gap-1"
+                  onMouseMove={(event) => event.stopPropagation()}
+                  onMouseEnter={(event) => event.stopPropagation()}
+                >
                   {loadingTags && (
                     <span className="spinner-border spinner-border-sm" role="status" aria-label={t("stripChart.loadingTags")} />
                   )}
@@ -483,7 +456,9 @@ function StripChartInner({
                     }
                     searchPlaceholder={t("stripChart.searchPlaceholder")}
                     emptyText={t("stripChart.noTagsAvailable")}
-                    selectedCountLabel={(count) => t("stripChart.tagsWithCount", { count })}
+                    selectedCountLabel={selectedCountLabel}
+                    selectedGroupLabel={t("stripChart.selectedGroup")}
+                    otherGroupLabel={t("stripChart.otherGroup")}
                   />
                 </div>
                 <Button

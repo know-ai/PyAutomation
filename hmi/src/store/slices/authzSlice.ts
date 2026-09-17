@@ -1,10 +1,10 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { getAuthzMe, type AuthzActionsMap } from "../../services/authz";
+import { getAuthzMe, type AuthzActionsMap, type AuthzRestMap } from "../../services/authz";
 import { loginStart, logout } from "./authSlice";
 
 export type AuthzState = {
   views: AuthzActionsMap;
-  rest: AuthzActionsMap;
+  rest: AuthzRestMap;
   status: "idle" | "loading" | "ready" | "error";
 };
 

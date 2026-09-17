@@ -12,6 +12,42 @@ export function tagNameBaseSegment(name: string): string {
   return parts.length ? parts[parts.length - 1] : (name || "").trim();
 }
 
+/** Prefix shown in the create-tag name input: ``Manufacturer.Segment.`` */
+export function edgeTagNamePrefix(site: string, area: string): string {
+  if (!site || !area) return "";
+  return `${site}.${area}.`;
+}
+
+/**
+ * Keep the Edge Device prefix in the name input while the user completes the base.
+ * If they type a bare name, it is appended after the prefix.
+ */
+export function applyCreateTagNamePrefix(
+  rawName: string,
+  site: string,
+  area: string,
+  previousName = ""
+): string {
+  const prefix = edgeTagNamePrefix(site, area);
+  if (!prefix) return rawName;
+  if (rawName.startsWith(prefix)) return rawName;
+  if (!rawName.trim()) return prefix;
+  const deletingIntoPrefix =
+    previousName.startsWith(prefix) &&
+    rawName.length === previousName.length - 1 &&
+    prefix.startsWith(rawName);
+  if (deletingIntoPrefix) return prefix;
+  const parts = rawName.split(".").filter(Boolean);
+  if (parts.length <= 1) return `${prefix}${parts[0] || ""}`;
+  return rawName;
+}
+
+function isIncompleteEdgePrefix(raw: string, site: string, area: string): boolean {
+  if (!site || !area) return false;
+  const parts = raw.split(".").filter(Boolean);
+  return parts.length === 2 && parts[0] === site && parts[1] === area;
+}
+
 export function validateUserTagNameInput(
   name: string,
   site: string,
@@ -27,6 +63,10 @@ export function validateUserTagNameInput(
 
   const prefix = `${site}.${area}`;
   const parts = raw.split(".").filter(Boolean);
+
+  if (isIncompleteEdgePrefix(raw, site, area)) {
+    return { ok: false, message: "incomplete" };
+  }
 
   if (parts.length === 1) {
     const base = parts[0];

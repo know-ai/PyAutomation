@@ -223,6 +223,13 @@ def default_allows(role_name: str, resource_key: str, action: str) -> bool:
         return False
     if role not in BUILTIN_SEED_ROLES:
         return default_allows(BASELINE_ROLE, resource_key, action)
+    from .app_hooks import extra_default_allows
+
+    extra = extra_default_allows(role, resource_key, action)
+    if extra is True:
+        return True
+    if extra is False:
+        return False
     if resource_key.startswith("hmi:"):
         return _default_allows_hmi(role, resource_key, action)
 

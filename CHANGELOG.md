@@ -1,7 +1,9 @@
 # Changelog
 
-## 2.8.2
-
+- HMI Tags: los filtros de columna se aplican al catálogo completo y luego se pagina. Con 5 coincidencias y 20 por página hay una sola página; ya no hay que subir el tamaño de página para reunir resultados repartidos.
+- Panel ACL REST: omite verbos `HEAD` (Flask los añade a cada GET; Swagger no los documenta). Un HEAD real usa el grant del GET. Omite también rutas públicas (login, signup, credentials_are_valid, health, timezone) y las de sesión sin ACL (logout, change_password, `/authz/me`).
+- ACL: `register_default_allows` permite que el producto (p. ej. iDetectFugas) añada filas Allow de semilla sin tocar la matriz core.
+- Panel ACL REST: una sola columna Permitir/Denegar (sin Ver); el grant usa `view` o `use` según el verbo HTTP de la clave.
 - Suscripción a máquina: ya no fuerza `frozen` / `out_of_range` / `outlier` en el tag (default `false`). HMI Tags: checkboxes IAD visibles pero deshabilitados (motor IAD comentado en CVT).
 - HMI `/alarms/definitions`: editar alarma rellena tipo, disparo, delays y descripción actuales (BOOL como true/false, no `1`).
 - Alarmas `.iad`: la condición es calidad Bad/stale (On-Delay), no el PV analógico como BOOL. Al volver a Good (Acked) pasan a Normal; no se re-disparan mientras la señal siga Good.

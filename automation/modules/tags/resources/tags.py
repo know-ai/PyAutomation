@@ -7,6 +7,7 @@ from ....extensions import _api as Api
 from ...health.require_db import require_remote_db
 from .... import _TIMEZONE, TIMEZONE
 from ....variables import VARIABLES
+from ..filters import filter_serialized_tags
 
 ns = Namespace('Tags', description='Tag Management and Real-time Data')
 app = PyAutomation()
@@ -145,6 +146,14 @@ class TagsCollection(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('page', type=int, location='args', help='Page number', default=1)
     parser.add_argument('limit', type=int, location='args', help='Items per page', default=20)
+    parser.add_argument('name', type=str, location='args', required=False, default='')
+    parser.add_argument('variable', type=str, location='args', required=False, default='')
+    parser.add_argument('value', type=str, location='args', required=False, default='')
+    parser.add_argument('display_unit', type=str, location='args', required=False, default='')
+    parser.add_argument('opcua_client', type=str, location='args', required=False, default='')
+    parser.add_argument('node', type=str, location='args', required=False, default='')
+    parser.add_argument('scan_time', type=str, location='args', required=False, default='')
+    parser.add_argument('dead_band', type=str, location='args', required=False, default='')
 
     @api.doc(security='apikey', description="Retrieves all available tags with pagination support.")
     @api.response(200, "Success")
@@ -156,6 +165,8 @@ class TagsCollection(Resource):
 
         Retrieves a paginated list of all tags currently defined in the system.
         Supports pagination via query parameters: page (default: 1) and limit (default: 20).
+        Optional column filters (name, variable, value, display_unit, opcua_client,
+        node, scan_time, dead_band) are applied to the full catalog before paging.
         """
         args = self.parser.parse_args()
         page = args.get('page', 1)
@@ -167,11 +178,22 @@ class TagsCollection(Resource):
         if limit < 1:
             return {'message': 'Limit must be greater than 0'}, 400
         
-        # Get all tags
-        all_tags = app.get_tags()
+        all_tags = filter_serialized_tags(
+            app.get_tags(),
+            name=args.get('name') or '',
+            variable=args.get('variable') or '',
+            value=args.get('value') or '',
+            display_unit=args.get('display_unit') or '',
+            opcua_client=args.get('opcua_client') or '',
+            node=args.get('node') or '',
+            scan_time=args.get('scan_time') or '',
+            dead_band=args.get('dead_band') or '',
+        )
         total = len(all_tags)
+        pages = (total + limit - 1) // limit if total > 0 else 0
+        if page > pages and pages > 0:
+            page = pages
         
-        # Calculate pagination
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
         paginated_tags = all_tags[start_idx:end_idx]
@@ -182,7 +204,7 @@ class TagsCollection(Resource):
                 'page': page,
                 'limit': limit,
                 'total': total,
-                'pages': (total + limit - 1) // limit if total > 0 else 0
+                'pages': pages
             }
         }, 200
 

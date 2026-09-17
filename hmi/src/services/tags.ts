@@ -42,15 +42,45 @@ export type TagsResponse = {
   };
 };
 
+export type TagsListFilter = {
+  name?: string;
+  variable?: string;
+  value?: string;
+  displayUnit?: string;
+  opcuaClientName?: string;
+  nodeNamespace?: string;
+  scanTime?: string;
+  deadBand?: string;
+};
+
 /**
- * Obtiene la lista de tags con paginación
+ * Obtiene la lista de tags con paginación.
+ * Los filtros de columna se aplican al catálogo completo antes de paginar.
  */
 export const getTags = async (
   page: number = 1,
-  limit: number = 20
+  limit: number = 20,
+  filters: TagsListFilter = {}
 ): Promise<TagsResponse> => {
+  const params: Record<string, string | number> = { page, limit };
+  const name = filters.name?.trim();
+  const variable = filters.variable?.trim();
+  const value = filters.value?.trim();
+  const displayUnit = filters.displayUnit?.trim();
+  const opcuaClient = filters.opcuaClientName?.trim();
+  const node = filters.nodeNamespace?.trim();
+  const scanTime = filters.scanTime?.trim();
+  const deadBand = filters.deadBand?.trim();
+  if (name) params.name = name;
+  if (variable) params.variable = variable;
+  if (value) params.value = value;
+  if (displayUnit) params.display_unit = displayUnit;
+  if (opcuaClient) params.opcua_client = opcuaClient;
+  if (node) params.node = node;
+  if (scanTime) params.scan_time = scanTime;
+  if (deadBand) params.dead_band = deadBand;
   const { data } = await api.get("/tags/", {
-    params: { page, limit },
+    params,
   });
   return data;
 };

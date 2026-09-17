@@ -7,7 +7,7 @@
 | **Fecha de agrupación** | 2026-09-16 |
 | **Fuentes absorbidas** | `AUDIT_HMI`, `AUDIT_HMI_PERFORMANCE`, `AUDIT_RT_TRENDS`, `AUDIT_REALTIME_TRENDS_UIUX`, `AUDIT_HMI_SOCKET_TRACEABILITY`, `AUDIT_HMI_MACHINE_DOMAIN_EXTENSION` |
 | **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_TIME.md](./AUDIT_TIME.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_ALARMS.md](./AUDIT_ALARMS.md), [AUDIT_AUTH_AUTHORIZATION.md](./AUDIT_AUTH_AUTHORIZATION.md) |
-| **Veredicto vigente** | Heap **A** · forma de onda RT cola por tag · layout RT **B+ código** / datos **A−** · socket **A+** código · machines/domain **A** Schema-Driven |
+| **Veredicto vigente** | Heap **A** · forma de onda RT cola por tag · layout RT **B+ código** / picker **A−** (I-1…I-4 + I-2b hover 2026-09-16) · datos **A−** · socket **A+** código · machines/domain **A** Schema-Driven |
 | **Clasificación** | Auditoría de contraste código vs diseño. IDs de hallazgos conservados. |
 
 
@@ -590,7 +590,7 @@ La entrega posterior está en la **§11**.
 | `schemaVersion` | 3 |
 | `grid` | `{ cols: 48, rowHeight: 10 }` |
 | `panelTitle` | string opcional |
-| por card `showThresholds` | boolean, default `true` |
+| por card `showThresholds` | **obsoleto 2026-09-16** — se ignora al hidratar y no se reescribe (I-4) |
 | `minW` / `maxW` | 16 / 48 (1/3 visual del `minW=4` legado) |
 | `minH` / default | 15 / `w=24, h=15` (equivalencia en px del `h=6` legado ≈ 290 px) |
 | Migración | `x,w *= 4`; `y,h` por fórmula de píxeles (`rowHeight` 40→10, margin 10) |
@@ -603,9 +603,10 @@ Backend `sanitize_workspace` y HMI `workspaceStore` + `realtimeTrendsGrid.ts` es
 |---|---|---|
 | **UX-RT-1** lateo Plotly | Cerrado | `useResizeHandler={false}`, `autosize:false`, `usePlotlyResize` (ResizeObserver + debounce 200 ms, Δ>5 px, pausa en drag/resize), leyenda `orientation:'h'` `y:-0.18`, `transition: none` en `.rt-trends-layout--editing` |
 | **UX-RT-2** picker recortado | Cerrado | `MultiSelectSearch` en portal; `PANEL_MAX_HEIGHT=580` / `60vh` (≥10 filas de 48 px a 1080p) |
+| **UX-RT-2b** scroll-reset por hover | **Cerrado 2026-09-16 (FIX-02)** | Causa A: `onMouseEnter` → `setHighlightIndex` + `VirtualList` scrolleaba al índice. Hover ahora es CSS (`:hover`, solo `background-color`). `scrollToIndexToken` es la única dep de scroll-into-view. Filas `height: 48px` fijas. `onWheel`/`onScroll` no propagan. |
 | **UX-RT-3** snap grueso | Mitigado (opción A) | 48 cols ≈ **25 px** a 1200 px; vertical `rowHeight+margin=20` px. Libre px a px **fuera de alcance** |
 | **UX-RT-4** doble clic | Cerrado | Botón permanente «Editar panel»; Escape sale y hace flush |
-| **UX-RT-5** umbrales en planta | Cerrado | `showThresholds` persiste; toggle global escribe todos los cards; visibles fuera de edición |
+| **UX-RT-5** umbrales en planta | **Superseded / Cerrado I-4** | Producto 2026-09-16: umbrales **eliminados** de Tendencias RT. `showThresholds` se ignora al hidratar y se omite en el próximo PUT. |
 | **UX-RT-6** solapes | Mitigado | `getCompactor(null, allowOverlap, preventCollision)`; sin Alt, `preventCollision`; Alt+drag permite solape |
 | **UX-RT-7** header=drag | Cerrado | Franja `.rt-card-drag-handle` 20 px; input/Tags/trash con `stopPropagation` y `dragConfig.cancel` |
 | **UX-RT-8** mode bar planta | Cerrado | `displayModeBar: isEditMode` |
@@ -624,7 +625,7 @@ Backend `sanitize_workspace` y HMI `workspaceStore` + `realtimeTrendsGrid.ts` es
 | **CA-RT-02** | Picker ≥10 filas, portal, no recortado | Implementado (`PANEL_MAX_HEIGHT=580` / 60vh, portal) | Lab: listbox portal fuera del card; lista vacía sin catálogo. Filas ≥10 pendiente de planta |
 | **CA-RT-03** | Paso ≤25 px a 1200 px de ancho | 48 cols | Lab: canvas ~630 px → paso ≈ 13 px; a 1200 px ≈ 25 px |
 | **CA-RT-04** | Botón Editar permanente | Implementado | **PASS** lab («Editar panel» / «Edit panel») |
-| **CA-RT-05** | Umbrales visibles en planta | Implementado (`showThresholds` persistido, switch global) | Toggle visible en edición; traza punteada pendiente de tags vivos |
+| **CA-RT-05** | Umbrales en RT Trends | **Eliminados** (I-4, 2026-09-16). Schema v3 hidrata ignorando `showThresholds`; PUT no lo reescribe | Lab: sin switch «Mostrar umbrales»; Plot sin traza punteada |
 | **CA-RT-06** | Modal al borrar | Implementado | **PASS** lab (`¿Eliminar el gráfico «Chart 1»?`) |
 | **CA-RT-07** | Offline: localStorage + banner; 3 PUT fallidos → 5 min; timeout 10 s | Implementado | **PASS** lab (badge «Sin conexión al servidor» + banner local) |
 | **CA-RT-08** | 1 GET `/tags/list` al editar | Implementado (`loadStationTagCatalog`) | Lab sin API: un intento de catálogo al entrar en edición (fallido, toast) |
@@ -632,12 +633,51 @@ Backend `sanitize_workspace` y HMI `workspaceStore` + `realtimeTrendsGrid.ts` es
 #### 11.4 Persistencia
 
 - Debounce 300 ms; localStorage primero; PUT con timeout 10 s.
-- Circuit breaker: 3 fallos → `offline` 5 min; `setInterval` 60 s para reintentar; banner «Cambios guardados localmente».
-- Export/import JSON v3 pasa por `sanitize` + `migrateLayout`.
+- **Flush inmediato** al borrar card, al salir de edición, `beforeunload` y `pagehide`.
+- Circuit breaker: 3 fallos → `offline` 5 min; `setInterval` 60 s para reintentar; banner «Cambios guardados localmente»; toast «Reintentar» si el PUT falla.
+- Hidratación: si `local.updatedAt` es más reciente que el servidor, gana local (evita que un PUT perdido restaure un card borrado).
+- Tags huérfanos: al cargar el catálogo se filtran `tagNames` que no existen.
+- Export/import JSON v3 pasa por `sanitize` + `migrateLayout`. `showThresholds` se elimina al persistir.
 
 #### 11.5 Fuera de esta entrega
 
 Fuse.js, `@floating-ui`, DOMPurify, pixel-perfect libre, snap guides, cifrado de localStorage, CSP nonce nuevo, `REACT_APP_GRID_V2`.
+
+#### 11.6 SPEC-HMI-RT-TRENDS-FIX — 2026-09-16 (I-1…I-4)
+
+| ID | Issue | Estado | Pieza |
+|---|---|---|---|
+| **I-1** | Scroll-jump del dropdown de tags | **Cerrado** | `MultiSelectSearch` con `React.memo` custom; `useTagPickerScroll` restaura `scrollTop` en `useLayoutEffect`; `onScroll` solo muta un ref; `VirtualList` no resetea a 0 |
+| **I-2b** | Scroll-reset por hover (FIX-02) | **Cerrado** | Causa A confirmada. Sin `setState` en mouseenter; CSS `:hover` sin cambio de altura; `itemHeight=48`; `VirtualList` scrollea solo si cambia `scrollToIndexToken`; `stopPropagation` en listbox/padre. I-1 intacto (`useTagPickerScroll` sigue restaurando en cada commit) |
+| **I-2** | Tags seleccionados no van primero | **Cerrado** | `sortTagsWithSelectedFirst` (inserción + `localeCompare` es-ES `sensitivity: 'base'`); grupos «Seleccionados / Otros»; filtro aplica a ambos |
+| **I-3** | Persistencia / borrado de card | **Cerrado** | PUT inmediato al borrar; `pagehide`+`beforeunload`; local más reciente gana al hidratar; filtro de huérfanos; toast Reintentar |
+| **I-4** | «Mostrar umbrales» | **Cerrado** | Switch y trazas Plotly eliminados. Schema v3 se conserva; el campo se ignora y no se vuelve a persistir |
+
+Contratos que **no** cambian: schema v3 (48×10), key `pyautomation.workspace.realtime-trends.v1`, GET/PUT `/settings/workspace/realtime-trends`, cotas Redux, circuit breaker 3→5 min.
+
+Tests: `hmi/src/utils/tagSort.test.ts`, `hmi/src/utils/sanitize.test.ts`, `hmi/src/components/tagPicker.test.ts`, `automation/tests/test_realtime_trends_workspace.py`. Playwright hover: `hmi/e2e/rt-trends-picker-hover.spec.ts` (archivo listo; el `package.json` del HMI aún no tiene runner Playwright en CI).
+
+#### 11.7 SPEC-HMI-RT-TRENDS-FIX-02 — scroll-reset por hover (2026-09-16)
+
+| Causa | Verificación | Resultado |
+|---|---|---|
+| **A** Hover `setState` | `onMouseEnter` / `setHovered` en picker | **Confirmada** — `highlightFromMouse` → `setHighlightIndex` + `VirtualList` `useEffect` dependía de `highlightedIndex` → `scrollTop = index * itemHeight` y el scroll subía. Eliminado `onMouseEnter`; scroll-into-view solo con `scrollToIndexToken` (teclado). |
+| **B** CSS `:hover` cambia altura | `:hover` en items del picker | **Parcial** — `:hover` ya era solo `background-color`; las cabeceras de grupo **sí** añadían altura extra y desalineaban `itemHeight`. Filas ahora `height: calc(48px * var(--hmi-ui-scale, 1))`; grupo en overlay; `:hover` solo color. |
+| **C** `items` sin `useMemo` | `filtered` / `items=` | **No confirmada** — `filtered` ya era `useMemo`. Se estabilizó `renderItem` con `useCallback`. |
+| **D** Tooltip en hover | `Tooltip` / `title=` en items | **No confirmada** — 0 hits en items del picker. |
+| **E** Padre `onMouseMove` | `StripChart.tsx` | **No confirmada** — el panel va en portal a `document.body`. Defensa: `stopPropagation` en panel y en `.rt-stripchart-picker`. |
+
+| ID | Criterio | Estado |
+|---|---|---|
+| **CA-HOVER-1** | Hover 5 s no cambia `scrollTop` | Código: sin setState de hover ni scroll-into-view por índice. Playwright en `hmi/e2e/rt-trends-picker-hover.spec.ts` (CI runner pendiente) |
+| **CA-HOVER-2/3** | ≤2 re-renders en 5 s de hover | `onMouseEnter` eliminado; contador DEV `__pickerRenderCount` |
+| **CA-HOVER-4** | `itemHeight` numérico constante | `TAG_PICKER_ITEM_HEIGHT = 48` |
+| **CA-HOVER-5** | `:hover` sin padding/height/margin/transform | PASS en `global.css` |
+| **CA-HOVER-6** | Scroll del listbox no propaga | `onWheel`/`onScroll` `stopPropagation` |
+| **CA-HOVER-7** | `scrollTop` se restaura al remount | `useTagPickerScroll` (I-1) |
+| **CA-HOVER-8** | Fix I-1 (stream `on.tag`) intacto | `useTagPickerScroll` sigue restaurando en cada commit; `React.memo` del picker sin cambios de contrato |
+
+Contratos que **no** cambian: schema v3 (48×10), key `pyautomation.workspace.realtime-trends.v1`.
 
 
 ## Parte C — Trazabilidad Socket HMI

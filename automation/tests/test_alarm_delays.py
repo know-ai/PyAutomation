@@ -231,6 +231,101 @@ class TestAlarmDelays(unittest.TestCase):
         self.assertEqual(kwargs["on_delay"], 0.0)
         self.assertEqual(kwargs["off_delay"], 0)
 
+    def test_create_alarm_kwargs_drops_serialize_extras(self):
+        from inspect import signature
+
+        from automation.catalog.hydrate import create_alarm_kwargs
+        from automation.core import PyAutomation
+
+        payload = {
+            "name": "Linea1.ALM.CATALOG.Conflict",
+            "tag": "tag_test",
+            "alarm_type": "BOOL",
+            "trigger_value": True,
+            "last_transition_ts": "09/16/2026, 14:23:19.000000",
+            "last_transition_from": "Normal",
+            "last_transition_to": "Unack Alarm",
+            "priority": 2,
+            "latching": True,
+            "ack_required": False,
+        }
+        kwargs = create_alarm_kwargs(payload, PyAutomation.create_alarm)
+        params = set(signature(PyAutomation.create_alarm).parameters)
+        params.discard("self")
+        self.assertTrue(kwargs.keys() <= params)
+        self.assertNotIn("last_transition_ts", kwargs)
+        self.assertTrue(kwargs["reload"])
+
+    def test_load_db_to_alarm_manager_restores_last_transition(self):
+        """Historian serialize() extras must not KeyError; last_transition_ts is restored."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from automation.core import PyAutomation
+        from automation.tags.tag import DATETIME_FORMAT
+
+        app = PyAutomation.__new__(PyAutomation)
+        app.sio = None
+        tag = MagicMock()
+        tag.area = "Linea1"
+        app.cvt = MagicMock()
+        app.cvt.get_tag_by_name.return_value = tag
+        app._refresh_node_scope = MagicMock(
+            return_value=SimpleNamespace(
+                enabled=False,
+                is_valid=True,
+                area=None,
+                node_id="n1",
+                owns_tag=lambda _tag: True,
+            )
+        )
+        alarm = _StubAlarm()
+        alarm.last_transition_ts = None
+        alarm.last_transition_from = None
+        alarm.last_transition_to = None
+        alarm.priority = 3
+        alarm.latching = True
+        alarm.ack_required = True
+        app.alarm_manager = MagicMock()
+        app.alarm_manager.append_alarm.return_value = (alarm, "ok")
+        app.is_db_connected = MagicMock(return_value=True)
+        app.db_manager = MagicMock()
+        stamp = "09/16/2026, 14:23:19.000000"
+        app.db_manager.get_alarms.return_value = [
+            {
+                "identifier": "alm-1",
+                "name": "Linea1.ALM.CATALOG.Conflict",
+                "tag": "tag_test",
+                "alarm_type": "BOOL",
+                "trigger_value": True,
+                "description": "",
+                "state": "Normal",
+                "timestamp": None,
+                "last_transition_ts": stamp,
+                "last_transition_from": "Normal",
+                "last_transition_to": "Unack Alarm",
+                "area": "Linea1",
+                "on_delay": 0.0,
+                "off_delay": 0,
+                "on_delay_units": "seconds",
+                "off_delay_units": "seconds",
+                "priority": 2,
+                "latching": True,
+                "ack_required": False,
+            }
+        ]
+
+        PyAutomation.load_db_to_alarm_manager(app)
+
+        app.alarm_manager.append_alarm.assert_called_once()
+        passed = app.alarm_manager.append_alarm.call_args.kwargs
+        self.assertNotIn("last_transition_ts", passed)
+        self.assertEqual(alarm.last_transition_ts, datetime.strptime(stamp, DATETIME_FORMAT))
+        self.assertEqual(alarm.last_transition_from, "Normal")
+        self.assertEqual(alarm.last_transition_to, "Unack Alarm")
+        self.assertEqual(alarm.priority, 2)
+        self.assertFalse(alarm.ack_required)
+
 
 class TestIadQualityLifecycle(unittest.TestCase):
     def _make_iad(self, *, on_delay: float = 0.0, off_delay: float = 0.0) -> Alarm:

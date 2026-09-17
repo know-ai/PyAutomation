@@ -156,6 +156,7 @@ export type DomainConfigField = {
     properties?: Record<string, DomainConfigField | (Partial<DomainConfigField> & { type?: string })>;
     fields?: DomainConfigField[];
   };
+  interval?: "(min,max]" | string;
   columns?: number;
   multiple?: boolean;
   accept?: string;

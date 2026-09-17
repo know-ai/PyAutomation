@@ -169,6 +169,16 @@ class TestAuthzSeedMatrix(unittest.TestCase):
         self.assertFalse(default_allows("admin", "rest:GET /api/database/config", "view"))
         self.assertFalse(default_allows("admin", "rest:POST /api/database/connect", "use"))
 
+    def test_core_matrix_does_not_grant_product_leak_apis(self):
+        from automation.authz import app_hooks as mod
+
+        mod._default_allows_hooks.clear()
+        for role in ("guest", "auditor", "operator", "supervisor", "admin"):
+            self.assertFalse(default_allows(role, "rest:GET /api/LDS", "view"), role)
+            self.assertFalse(default_allows(role, "rest:POST /api/PFM", "use"), role)
+            self.assertFalse(default_allows(role, "rest:GET /api/leaks", "view"), role)
+        self.assertFalse(default_allows("operator", "hmi:view.lds-dashboard", "view"))
+
     def test_csv_export_capability_by_role(self):
         cap = "hmi:capability.csv-export"
         self.assertFalse(default_allows("guest", cap, "use"))
@@ -177,6 +187,35 @@ class TestAuthzSeedMatrix(unittest.TestCase):
         self.assertTrue(default_allows("supervisor", cap, "use"))
         self.assertTrue(default_allows("admin", cap, "use"))
         self.assertTrue(default_allows("integrator", cap, "use"))
+
+
+class TestAuthzCatalogExemptions(unittest.TestCase):
+    def test_public_login_is_not_acl_governed(self):
+        from automation.authz.catalog import (
+            is_public_rest,
+            rest_key_is_acl_governed,
+            rest_resource_key,
+        )
+
+        self.assertTrue(is_public_rest("POST", "/api/users/login"))
+        self.assertTrue(is_public_rest("POST", "/api/users/login/"))
+        self.assertTrue(is_public_rest("POST", "/api/users/signup"))
+        self.assertTrue(is_public_rest("POST", "/api/users/credentials_are_valid"))
+        self.assertFalse(rest_key_is_acl_governed("rest:POST /api/users/login"))
+        self.assertFalse(rest_key_is_acl_governed("rest:POST /api/users/signup"))
+        self.assertFalse(
+            rest_key_is_acl_governed("rest:POST /api/users/credentials_are_valid")
+        )
+        self.assertTrue(rest_key_is_acl_governed("rest:GET /api/users/"))
+        self.assertTrue(rest_key_is_acl_governed("rest:POST /api/users/reset_password"))
+        self.assertFalse(rest_key_is_acl_governed("rest:GET /api/authz/me"))
+        self.assertTrue(rest_key_is_acl_governed("rest:GET /api/authz/catalog"))
+        self.assertFalse(rest_key_is_acl_governed("rest:GET /api/health/ping"))
+        self.assertFalse(rest_key_is_acl_governed("rest:HEAD /api/tags/"))
+        self.assertEqual(
+            rest_resource_key("HEAD", "/api/tags/"),
+            rest_resource_key("GET", "/api/tags/"),
+        )
 
 
 class TestViewRestBundles(unittest.TestCase):
@@ -237,8 +276,9 @@ class TestViewRestBundles(unittest.TestCase):
     def test_permissions_for_includes_implied_rest(self):
         put_grant("role", self.role.identifier, "hmi:view.events", "view", "allow")
         perms = permissions_for(self.user, server)
-        self.assertIn("rest:POST /api/events/filter_by", perms["rest"])
-        self.assertIn("use", perms["rest"]["rest:POST /api/events/filter_by"])
+        self.assertIs(perms["rest"].get("rest:POST /api/events/filter_by"), True)
+        self.assertEqual(perms["views"].get("hmi:view.events"), ["view"])
+        self.assertNotIn("use", perms["views"].get("hmi:view.events") or [])
 
 
 class TestAuthzNewRoleSeed(unittest.TestCase):
@@ -282,7 +322,7 @@ class TestAuthzRestSeed(unittest.TestCase):
             self.assertGreater(created, 0)
             self.assertGreater(len(rest), 0)
             self.assertIn("rest:GET /api/opcua/clients/", rest)
-            self.assertIn("use", rest.get("rest:POST /api/opcua/clients/add", []))
+            self.assertIs(rest.get("rest:POST /api/opcua/clients/add"), True)
         finally:
             clear_grants()
 
@@ -365,10 +405,100 @@ class TestAuthzHttp(unittest.TestCase):
         self.assertEqual(body.get("views"), expected.get("views"))
         self.assertTrue(evaluate(self.user, "hmi:view.events", "view"))
         self.assertIn("hmi:view.events", body.get("views") or {})
+        rest = body.get("rest") or {}
+        self.assertTrue(rest)
+        self.assertTrue(all(isinstance(value, bool) for value in rest.values()))
+
+    def test_catalog_rest_actions_match_http_method(self):
+        from automation.authz.catalog import catalog_tree, rest_action_from_key
+
+        tree = catalog_tree(server)
+        found_get = found_post = False
+        for items in (tree.get("rest") or {}).values():
+            for item in items:
+                key = item["resource_key"]
+                self.assertEqual(item["actions"], [rest_action_from_key(key)])
+                if key.startswith("rest:GET "):
+                    found_get = True
+                    self.assertEqual(item["actions"], ["view"])
+                elif key.startswith("rest:POST "):
+                    found_post = True
+                    self.assertEqual(item["actions"], ["use"])
+        self.assertTrue(found_get and found_post)
+
+    def test_catalog_omits_head_methods(self):
+        from automation.authz.catalog import catalog_tree, collect_rest_keys
+
+        keys = collect_rest_keys(server)
+        self.assertFalse(any(key.startswith("rest:HEAD ") for key in keys), keys[:20])
+        rest_keys = [
+            item["resource_key"]
+            for items in (catalog_tree(server).get("rest") or {}).values()
+            for item in items
+        ]
+        self.assertFalse(any(key.startswith("rest:HEAD ") for key in rest_keys))
+
+    def test_catalog_omits_public_and_session_rest(self):
+        from automation.authz.catalog import catalog_tree, collect_rest_keys
+
+        keys = collect_rest_keys(server)
+        omitted = (
+            "rest:POST /api/users/login",
+            "rest:POST /api/users/signup",
+            "rest:POST /api/users/credentials_are_valid",
+            "rest:POST /api/users/logout",
+            "rest:POST /api/users/change_password",
+            "rest:GET /api/authz/me",
+            "rest:GET /api/health/ping",
+            "rest:GET /api/system/timezone",
+        )
+        for key in omitted:
+            self.assertNotIn(key, keys, key)
+            self.assertFalse(any(key.rstrip("/") == item.rstrip("/") for item in keys), key)
+
+        rest_keys = [
+            item["resource_key"]
+            for items in (catalog_tree(server).get("rest") or {}).values()
+            for item in items
+        ]
+        for key in omitted:
+            self.assertNotIn(key, rest_keys, key)
+        users_keys = [key for key in rest_keys if "/api/users" in key]
+        self.assertTrue(any(key.startswith("rest:GET ") for key in users_keys), users_keys)
+        self.assertFalse(any("login" in key for key in users_keys), users_keys)
+        self.assertFalse(any("signup" in key for key in users_keys), users_keys)
+        self.assertFalse(any("credentials_are_valid" in key for key in users_keys), users_keys)
+        self.assertTrue(any("rest:GET /api/authz/" in key for key in rest_keys), rest_keys)
 
     def test_health_ping_stays_public(self):
         response = self.client.get("/api/health/ping")
         self.assertEqual(response.status_code, 200)
+
+    def test_credentials_are_valid_is_public_post(self):
+        ok = self.client.post(
+            "/api/users/credentials_are_valid",
+            json={"username": "guest_acl", "password": "secret"},
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertTrue(ok.get_json())
+        bad = self.client.post(
+            "/api/users/credentials_are_valid",
+            json={"username": "guest_acl", "password": "wrong"},
+        )
+        self.assertEqual(bad.status_code, 200)
+        self.assertFalse(bad.get_json())
+
+    def test_credentials_are_valid_does_not_rotate_token(self):
+        user = cvt_users.get_by_username(username="guest_acl")
+        token_before = user.token
+        response = self.client.post(
+            "/api/users/credentials_are_valid",
+            json={"username": "guest_acl", "password": "secret"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json())
+        after = cvt_users.get_by_username(username="guest_acl")
+        self.assertEqual(after.token, token_before)
 
 
 class TestTptAuth(unittest.TestCase):

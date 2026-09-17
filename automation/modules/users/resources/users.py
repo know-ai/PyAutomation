@@ -282,16 +282,17 @@ class LoginResource(Resource):
 @ns.route('/credentials_are_valid')
 class VerifyCredentialsResource(Resource):
     
-    @api.doc(security='apikey', description="Verifies if the provided credentials are valid without logging in.")
+    @api.doc(security=None, description="Verifies username/password without issuing or rotating a session token.")
     @api.response(200, "Success (True/False)")
-    @Api.token_required(auth=True)
     @Api.validate_reqparser(reqparser=login_parser)
     @ns.expect(login_parser)
     def post(self):
         """
         Verify credentials.
 
-        Checks if the provided username/password combination is valid.
+        Public, like login/signup. Checks username/password without creating a
+        session or invalidating an existing token. Used by external HMIs to
+        confirm an operator before a sensitive action.
         """
         args = login_parser.parse_args()
         credentials_valid, _ = users.verify_credentials(**args)

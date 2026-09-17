@@ -22,6 +22,7 @@ import {
 } from "../utils/realtimeTrendsGrid";
 import { getTagsList, type Tag } from "./tags";
 import api from "./api";
+import { sanitizeCard } from "../utils/sanitize";
 
 export const REALTIME_TRENDS_KIND = "real-time-trends" as const;
 export const REALTIME_TRENDS_SCHEMA_VERSION = 3;
@@ -135,11 +136,12 @@ function sanitizeTagNames(value: unknown): string[] {
   return names;
 }
 
-function sanitizeBool(value: unknown, fallback: boolean): boolean {
-  if (typeof value === "boolean") return value;
-  if (value === 1 || value === "1" || value === "true") return true;
-  if (value === 0 || value === "0" || value === "false") return false;
-  return fallback;
+function newerTimestamp(left: string, right: string): boolean {
+  const a = Date.parse(left);
+  const b = Date.parse(right);
+  if (!Number.isFinite(a)) return false;
+  if (!Number.isFinite(b)) return true;
+  return a > b;
 }
 
 function readGrid(doc: Record<string, unknown> | null): GridMeta | null {
@@ -186,17 +188,16 @@ function sanitizeChart(
   } else {
     box = clampBoxLegacy(migrateBoxToLegacy(box));
   }
-  return {
+  return sanitizeCard({
     id,
     title: sanitizeTitle(row.title, `Chart ${index + 1}`),
     tagNames: sanitizeTagNames(row.tagNames),
     timeSpanMinutes,
-    showThresholds: sanitizeBool(row.showThresholds, true),
     x: box.x,
     y: box.y,
     w: box.w,
     h: box.h,
-  };
+  });
 }
 
 function sanitizeCharts(
@@ -412,17 +413,21 @@ export async function persistStationRealtimeTrends(
   const document = buildDocument(charts, panelTitle);
   const localOk = writeKey(REALTIME_TRENDS_STORAGE_KEY, JSON.stringify(document));
   const remoteOk = await putRemoteWorkspace(document);
-  return localOk || remoteOk;
+  return remoteOk && localOk;
 }
 
 /**
- * Server is the station source of truth (survives host power cycle).
- * If the server is empty, migrate the browser cache once.
+ * Server is the station source of truth unless the local cache is newer
+ * (delete/edit that closed the tab before PUT completed).
  */
 export async function hydrateStationRealtimeTrends(): Promise<RealTimeTrendsWorkspace> {
   const local = loadStationRealtimeTrends();
   const remote = await getRemoteWorkspace();
   if (remote && remote.charts.length > 0) {
+    if (local.charts.length > 0 && newerTimestamp(local.updatedAt, remote.updatedAt)) {
+      await persistStationRealtimeTrends(local.charts, { panelTitle: local.panelTitle });
+      return local;
+    }
     saveStationRealtimeTrends(remote.charts, { panelTitle: remote.panelTitle });
     return remote;
   }
@@ -431,6 +436,16 @@ export async function hydrateStationRealtimeTrends(): Promise<RealTimeTrendsWork
     return local;
   }
   return remote ?? local;
+}
+
+/** Flush the last pending workspace write (localStorage + PUT). */
+export function flushPendingSave(): Promise<boolean> {
+  const pending = _pendingPersist;
+  if (!pending) {
+    const local = loadStationRealtimeTrends();
+    return persistStationRealtimeTrends(local.charts, { panelTitle: local.panelTitle });
+  }
+  return persistStationRealtimeTrends(pending.charts, { panelTitle: pending.panelTitle });
 }
 
 export function createStationChartId(): string {
@@ -447,7 +462,6 @@ export function createDefaultStripChart(title: string, y: number): StripChartCon
     title,
     tagNames: [],
     timeSpanMinutes: DEFAULT_TIME_SPAN_MINUTES,
-    showThresholds: true,
     x: 0,
     y,
     w: useV3 ? DEFAULT_GRID_W : 6,

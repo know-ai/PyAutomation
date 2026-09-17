@@ -5,9 +5,14 @@ import { getTags, createTag, updateTag, deleteTag, getVariables, getUnitsByVaria
 import { listClients, getClientVariablesWithOptions, getNodeAttributes, type OpcUaClient } from "../services/opcua";
 import { getNodeIdentity, type NodeIdentity } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
+import { useDebounce } from "../hooks/useDebounce";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { showToast } from "../utils/toast";
-import { validateUserTagNameInput } from "../utils/tagNameValidation";
+import {
+  applyCreateTagNamePrefix,
+  edgeTagNamePrefix,
+  validateUserTagNameInput,
+} from "../utils/tagNameValidation";
 import { VirtualizedCombobox, type ComboboxItem } from "../components/VirtualizedCombobox";
 import { WaveletFilterPanel } from "../components/WaveletFilterPanel";
 import { QualityBadge } from "../components/QualityBadge";
@@ -172,6 +177,41 @@ const TagTableRow = memo(({
 
 TagTableRow.displayName = "TagTableRow";
 
+const EMPTY_TAG_FORM = {
+  name: "",
+  unit: "",
+  variable: "",
+  display_unit: "",
+  data_type: "float",
+  description: "",
+  display_name: "",
+  opcua_address: "",
+  node_namespace: "",
+  scan_time: "",
+  dead_band: "",
+  kp: "",
+  filter_enabled: false,
+  filter_wavelet: "db4",
+  filter_level: 4,
+  filter_threshold_factor: 3.0,
+  filter_persist: false,
+  outlier_detection: false,
+  out_of_range_detection: false,
+  frozen_data_detection: false,
+  segment: "",
+  manufacturer: "",
+};
+
+function tagFormFromEdgeIdentity(identity: NodeIdentity) {
+  const prefix = edgeTagNamePrefix(identity.site, identity.area);
+  return {
+    ...EMPTY_TAG_FORM,
+    manufacturer: identity.site || "",
+    segment: identity.area || "",
+    name: prefix,
+  };
+}
+
 export function Tags() {
   const { t } = useTranslation();
   const { canUse, canExportCsv } = useAuthz();
@@ -220,32 +260,10 @@ export function Tags() {
     scanTime: "",
     deadBand: "",
   });
+  const debouncedColumnFilters = useDebounce(columnFilters, 300);
   
   // Form state
-  const [formData, setFormData] = useState({
-    name: "",
-    unit: "",
-    variable: "",
-    display_unit: "",
-    data_type: "float",
-    description: "",
-    display_name: "",
-    opcua_address: "",
-    node_namespace: "",
-    scan_time: "",
-    dead_band: "",
-    kp: "",
-    filter_enabled: false,
-    filter_wavelet: "db4",
-    filter_level: 4,
-    filter_threshold_factor: 3.0,
-    filter_persist: false,
-    outlier_detection: false,
-    out_of_range_detection: false,
-    frozen_data_detection: false,
-    segment: "",
-    manufacturer: "",
-  });
+  const [formData, setFormData] = useState({ ...EMPTY_TAG_FORM });
   const [nodeIdentity, setNodeIdentity] = useState<NodeIdentity>({
     nodeId: "",
     area: "",
@@ -266,6 +284,7 @@ export function Tags() {
   const createNameErrorMessage = (() => {
     if (!formData.name.trim()) return "";
     if (createNameValidation.ok) return "";
+    if (createNameValidation.message === "incomplete") return "";
     const prefix = nodePrefix || "Site.Area";
     const base =
       createNameValidation.baseName ||
@@ -284,9 +303,15 @@ export function Tags() {
   })();
 
   const handleCreateTagNameChange = (rawName: string) => {
-    const validation = validateUserTagNameInput(rawName, nodeIdentity.site, nodeIdentity.area);
     setFormData((prev) => {
-      const next = { ...prev, name: rawName };
+      const name = applyCreateTagNamePrefix(
+        rawName,
+        nodeIdentity.site,
+        nodeIdentity.area,
+        prev.name
+      );
+      const validation = validateUserTagNameInput(name, nodeIdentity.site, nodeIdentity.area);
+      const next = { ...prev, name };
       if (!displayNameTouched && validation.baseName) {
         next.display_name = validation.baseName;
       }
@@ -294,20 +319,61 @@ export function Tags() {
     });
   };
 
+  const openCreateModal = () => {
+    setError(null);
+    setDisplayNameTouched(false);
+    setOpcuaNodeFilter("");
+    setAvailableUnits([]);
+    setOpcuaNodes([]);
+    setFormData(tagFormFromEdgeIdentity(nodeIdentity));
+    setShowCreateModal(true);
+  };
+
+  useEffect(() => {
+    getNodeIdentity()
+      .then(setNodeIdentity)
+      .catch(() => setNodeIdentity({ nodeId: "", area: "", site: "" }));
+  }, []);
+
   useEffect(() => {
     if (!showCreateModal) return;
     setDisplayNameTouched(false);
     setOpcuaNodeFilter("");
+    const previousPrefix = edgeTagNamePrefix(nodeIdentity.site, nodeIdentity.area);
+    let cancelled = false;
     getNodeIdentity()
-      .then(setNodeIdentity)
-      .catch(() => setNodeIdentity({ nodeId: "", area: "", site: "" }));
+      .then((identity) => {
+        if (cancelled) return;
+        setNodeIdentity(identity);
+        const prefix = edgeTagNamePrefix(identity.site, identity.area);
+        setFormData((prev) => {
+          const nameWasOnlyPrefix = !prev.name || prev.name === previousPrefix || prev.name === prefix;
+          return {
+            ...prev,
+            manufacturer: identity.site || prev.manufacturer,
+            segment: identity.area || prev.segment,
+            name: nameWasOnlyPrefix
+              ? prefix
+              : applyCreateTagNamePrefix(prev.name, identity.site, identity.area, prev.name),
+          };
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setNodeIdentity({ nodeId: "", area: "", site: "" });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Refresh identity when the create modal opens; previousPrefix is captured from that render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showCreateModal]);
 
   const loadTags = async (page: number = pagination.page, limit: number = pagination.limit) => {
     setLoading(true);
     setError(null);
     try {
-      const response: TagsResponse = await getTags(page, limit);
+      const response: TagsResponse = await getTags(page, limit, debouncedColumnFilters);
       const loadedTags = response.data || [];
       setTags(loadedTags);
       setPagination(response.pagination || {
@@ -379,10 +445,14 @@ export function Tags() {
   };
 
   useEffect(() => {
-    loadTags(1, 20);
-    // Cargar clientes OPC UA al montar para tener los nombres disponibles en la tabla
     loadOpcuaClients();
   }, []);
+
+  useEffect(() => {
+    loadTags(1, pagination.limit);
+    // Filter changes restart at page 1. Limit/page handlers call loadTags directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedColumnFilters]);
 
   // Cargar variables y clientes OPC UA disponibles cuando se abre el modal
   useEffect(() => {
@@ -707,7 +777,7 @@ export function Tags() {
       setError(null);
       // Obtener todos los tags (sin paginación) usando el servicio
       // Necesitamos obtener todos los tags, así que usamos un límite grande
-      const response = await getTags(1, 10000);
+      const response = await getTags(1, 10000, debouncedColumnFilters);
       const allTags = response.data || [];
       
       if (!allTags || allTags.length === 0) {
@@ -1010,30 +1080,7 @@ export function Tags() {
       // Cerrar modal y resetear formulario
       setShowEditModal(false);
       setEditingTag(null);
-      setFormData({
-        name: "",
-        unit: "",
-        variable: "",
-        display_unit: "",
-        data_type: "float",
-        description: "",
-        display_name: "",
-        opcua_address: "",
-        node_namespace: "",
-        scan_time: "",
-        dead_band: "",
-        kp: "",
-        filter_enabled: false,
-        filter_wavelet: "db4",
-        filter_level: 4,
-        filter_threshold_factor: 3.0,
-        filter_persist: false,
-        outlier_detection: false,
-        out_of_range_detection: false,
-        frozen_data_detection: false,
-        segment: "",
-        manufacturer: "",
-      });
+      setFormData({ ...EMPTY_TAG_FORM });
       setAvailableUnits([]);
       setOpcuaNodes([]);
       
@@ -1072,14 +1119,20 @@ export function Tags() {
         nodeIdentity.area
       );
       if (!nameCheck.ok) {
-        setError(createNameErrorMessage || t("tags.createError"));
+        const incomplete =
+          nameCheck.message === "incomplete" || nameCheck.message === "required";
+        setError(
+          incomplete
+            ? t("tags.nameErrorRequired")
+            : createNameErrorMessage || t("tags.createError")
+        );
         setCreating(false);
         return;
       }
 
       // Preparar payload
       const payload: any = {
-        name: formData.name,
+        name: nameCheck.qualifiedName || formData.name,
         unit: formData.unit,
         variable: formData.variable,
       };
@@ -1112,30 +1165,7 @@ export function Tags() {
       // Cerrar modal y resetear formulario
       setShowCreateModal(false);
       setDisplayNameTouched(false);
-      setFormData({
-        name: "",
-        unit: "",
-        variable: "",
-        display_unit: "",
-        data_type: "float",
-        description: "",
-        display_name: "",
-        opcua_address: "",
-        node_namespace: "",
-        scan_time: "",
-        dead_band: "",
-        kp: "",
-        filter_enabled: false,
-        filter_wavelet: "db4",
-        filter_level: 4,
-        filter_threshold_factor: 3.0,
-        filter_persist: false,
-        outlier_detection: false,
-        out_of_range_detection: false,
-        frozen_data_detection: false,
-        segment: "",
-        manufacturer: "",
-      });
+      setFormData({ ...EMPTY_TAG_FORM });
       setAvailableUnits([]);
       setOpcuaNodes([]);
       
@@ -1178,7 +1208,7 @@ export function Tags() {
                 <Button
                   variant="success"
                   className="btn-sm"
-                  onClick={() => setShowCreateModal(true)}
+                  onClick={openCreateModal}
                   disabled={!canMutate}
                 >
                   <i className="bi bi-plus-circle me-1"></i>
@@ -1374,70 +1404,14 @@ export function Tags() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(() => {
-                    // Filtrar tags basándose en los filtros de columna
-                    const filteredTags = tags.filter((tag) => {
-                      // Obtener valor real-time si está disponible
-                      const realTimeTag = tag.name ? tagValues[tag.name] : null;
-                      const value = realTimeTag?.value !== undefined && realTimeTag?.value !== null
-                        ? realTimeTag.value 
-                        : (tag.value !== undefined && tag.value !== null ? tag.value : null);
-                      
-                      const displayValue = value !== undefined && value !== null
-                        ? typeof value === "boolean"
-                          ? value ? "true" : "false"
-                          : String(value)
-                        : "-";
-
-                      // Obtener OPC UA client name
-                      const opcuaClientName = (() => {
-                        if (tag.opcua_client_name) {
-                          return tag.opcua_client_name;
-                        }
-                        if (tag.opcua_address) {
-                          return opcuaClientNamesByAddress[tag.opcua_address] || tag.opcua_address;
-                        }
-                        return "-";
-                      })();
-
-                      // Obtener node namespace display name
-                      const nodeNamespaceDisplay = tag.node_namespace
-                        ? opcuaNodeDisplayNames[tag.node_namespace] || tag.node_namespace
-                        : "-";
-
-                      // Aplicar filtros (case-insensitive)
-                      const matchesName = !columnFilters.name || 
-                        (tag.name || "").toLowerCase().includes(columnFilters.name.toLowerCase());
-                      const matchesVariable = !columnFilters.variable || 
-                        (tag.variable || "").toLowerCase().includes(columnFilters.variable.toLowerCase());
-                      const matchesValue = !columnFilters.value || 
-                        displayValue.toLowerCase().includes(columnFilters.value.toLowerCase());
-                      const matchesDisplayUnit = !columnFilters.displayUnit || 
-                        (tag.display_unit || "-").toLowerCase().includes(columnFilters.displayUnit.toLowerCase());
-                      const matchesOpcuaClientName = !columnFilters.opcuaClientName || 
-                        opcuaClientName.toLowerCase().includes(columnFilters.opcuaClientName.toLowerCase());
-                      const matchesNodeNamespace = !columnFilters.nodeNamespace || 
-                        nodeNamespaceDisplay.toLowerCase().includes(columnFilters.nodeNamespace.toLowerCase());
-                      const matchesScanTime = !columnFilters.scanTime || 
-                        String(tag.scan_time || "-").toLowerCase().includes(columnFilters.scanTime.toLowerCase());
-                      const matchesDeadBand = !columnFilters.deadBand || 
-                        String(tag.dead_band !== undefined ? tag.dead_band : "-").toLowerCase().includes(columnFilters.deadBand.toLowerCase());
-
-                      return matchesName && matchesVariable && matchesValue && matchesDisplayUnit && 
-                             matchesOpcuaClientName && matchesNodeNamespace && matchesScanTime && matchesDeadBand;
-                    });
-
-                    if (filteredTags.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={9} className="text-center text-muted py-4">
-                            {t("tags.noTagsAvailable")}
-                          </td>
-                        </tr>
-                      );
-                    }
-
-                    return filteredTags.map((tag) => (
+                  {tags.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="text-center text-muted py-4">
+                        {t("tags.noTagsAvailable")}
+                      </td>
+                    </tr>
+                  ) : (
+                    tags.map((tag) => (
                       <TagTableRow
                         key={tag.id || tag.name}
                         tag={tag}
@@ -1449,8 +1423,8 @@ export function Tags() {
                         onDelete={handleDeleteTag}
                         canMutate={canMutate}
                       />
-                    ));
-                  })()}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1504,7 +1478,7 @@ export function Tags() {
                           placeholder={
                             nodePrefix
                               ? t("tags.namePlaceholderExample", { prefix: `${nodePrefix}.` })
-                              : t("tags.namePlaceholderExample", { prefix: "Site.Area." })
+                              : t("tags.namePlaceholderExample", { prefix: "Fabricante.Segmento." })
                           }
                           title={t("tags.nameTooltip")}
                           onChange={(e) => handleCreateTagNameChange(e.target.value)}
@@ -1516,6 +1490,10 @@ export function Tags() {
                             {t("tags.nameQualifiedPreview", {
                               name: createNameValidation.qualifiedName,
                             })}
+                          </small>
+                        ) : createNameValidation.message === "incomplete" && nodePrefix ? (
+                          <small className="text-muted">
+                            {t("tags.namePlaceholderExample", { prefix: `${nodePrefix}.` })}
                           </small>
                         ) : null}
                       </div>
@@ -1811,10 +1789,15 @@ export function Tags() {
                           type="text"
                           className="form-control"
                           value={formData.segment}
+                          readOnly={Boolean(nodeIdentity.area)}
+                          title={nodeIdentity.area ? t("tags.fromEdgeDevice") : undefined}
                           onChange={(e) =>
                             setFormData({ ...formData, segment: e.target.value })
                           }
                         />
+                        {nodeIdentity.area ? (
+                          <small className="text-muted">{t("tags.fromEdgeDevice")}</small>
+                        ) : null}
                       </div>
                       <div className="col-md-4">
                         <label className="form-label" title={t("tags.kpTooltip")}>
@@ -1837,10 +1820,15 @@ export function Tags() {
                           type="text"
                           className="form-control"
                           value={formData.manufacturer}
+                          readOnly={Boolean(nodeIdentity.site)}
+                          title={nodeIdentity.site ? t("tags.fromEdgeDevice") : undefined}
                           onChange={(e) =>
                             setFormData({ ...formData, manufacturer: e.target.value })
                           }
                         />
+                        {nodeIdentity.site ? (
+                          <small className="text-muted">{t("tags.fromEdgeDevice")}</small>
+                        ) : null}
                       </div>
                     </div>
                   </div>

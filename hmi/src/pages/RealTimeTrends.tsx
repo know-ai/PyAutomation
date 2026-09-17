@@ -16,6 +16,7 @@ import {
   exportStationRealtimeTrends,
   importStationRealtimeTrends,
   subscribeWorkspaceSync,
+  flushPendingSave,
   type WorkspaceSyncStatus,
 } from "../services/workspaceStore";
 import {
@@ -28,6 +29,7 @@ import {
   isLayoutV3Enabled,
 } from "../utils/realtimeTrendsGrid";
 import { showToast } from "../utils/toast";
+import { filterChartsToCatalog } from "../utils/sanitize";
 import type { Tag } from "../services/tags";
 
 const SAVE_DEBOUNCE_MS = 300;
@@ -61,8 +63,29 @@ export function RealTimeTrends() {
   const titleRef = useRef(panelTitle);
   const hydratedRef = useRef(false);
   const containerWidthRef = useRef(1200);
+  const failToastAtRef = useRef(0);
   chartsRef.current = stripCharts;
   titleRef.current = panelTitle;
+
+  const persistNow = useCallback(
+    (charts: StripChartConfig[], panelTitleValue: string) => {
+      chartsRef.current = charts;
+      titleRef.current = panelTitleValue;
+      void persistStationRealtimeTrends(charts, { panelTitle: panelTitleValue }).then((ok) => {
+        if (ok) return;
+        const now = Date.now();
+        if (now - failToastAtRef.current < 10_000) return;
+        failToastAtRef.current = now;
+        showToast(t("realTimeTrends.syncSaveFailed"), "error", 8000, {
+          label: t("realTimeTrends.syncRetry"),
+          onClick: () => {
+            void persistStationRealtimeTrends(chartsRef.current, { panelTitle: titleRef.current });
+          },
+        });
+      });
+    },
+    [t]
+  );
 
   useEffect(() => subscribeWorkspaceSync(setSyncStatus), []);
 
@@ -72,10 +95,10 @@ export function RealTimeTrends() {
       return;
     }
     const timer = window.setTimeout(() => {
-      void persistStationRealtimeTrends(chartsRef.current, { panelTitle: titleRef.current });
+      persistNow(chartsRef.current, titleRef.current);
     }, SAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [stripCharts, panelTitle]);
+  }, [stripCharts, panelTitle, persistNow]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,11 +116,13 @@ export function RealTimeTrends() {
 
   useEffect(() => {
     const flush = () => {
-      void persistStationRealtimeTrends(chartsRef.current, { panelTitle: titleRef.current });
+      void flushPendingSave();
     };
     window.addEventListener("beforeunload", flush);
+    window.addEventListener("pagehide", flush);
     return () => {
       window.removeEventListener("beforeunload", flush);
+      window.removeEventListener("pagehide", flush);
       flush();
     };
   }, []);
@@ -133,7 +158,15 @@ export function RealTimeTrends() {
     setLoadingTags(true);
     void loadStationTagCatalog()
       .then((tags) => {
-        if (!cancelled) setAvailableTags(tags);
+        if (!cancelled) {
+          setAvailableTags(tags);
+          const catalog = new Set((tags || []).map((tag) => tag.name));
+          setStripCharts((prev) => {
+            const next = filterChartsToCatalog(prev, catalog);
+            if (next !== prev) persistNow(next, titleRef.current);
+            return next;
+          });
+        }
       })
       .catch(() => {
         if (!cancelled) showToast(t("stripChart.errorLoadingTags"), "error");
@@ -147,9 +180,9 @@ export function RealTimeTrends() {
   }, [isEditMode, t]);
 
   const exitEditMode = useCallback(() => {
-    void persistStationRealtimeTrends(chartsRef.current, { panelTitle: titleRef.current });
+    persistNow(chartsRef.current, titleRef.current);
     setIsEditMode(false);
-  }, []);
+  }, [persistNow]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -178,18 +211,21 @@ export function RealTimeTrends() {
     });
   }, [t]);
 
-  const handleDeleteStripChart = useCallback((id: string) => {
-    setStripCharts((prev) => prev.filter((chart) => chart.id !== id));
-  }, []);
+  const handleDeleteStripChart = useCallback(
+    (id: string) => {
+      setStripCharts((prev) => {
+        const next = prev.filter((chart) => chart.id !== id);
+        persistNow(next, titleRef.current);
+        return next;
+      });
+    },
+    [persistNow]
+  );
 
   const handleConfigChange = useCallback((updatedConfig: StripChartConfig) => {
     setStripCharts((prev) =>
       prev.map((chart) => (chart.id === updatedConfig.id ? updatedConfig : chart))
     );
-  }, []);
-
-  const handleThresholdsGlobal = useCallback((checked: boolean) => {
-    setStripCharts((prev) => prev.map((chart) => ({ ...chart, showThresholds: checked })));
   }, []);
 
   const commitLayout = useCallback((layout: Layout) => {
@@ -251,7 +287,6 @@ export function RealTimeTrends() {
     }));
   }, [stripCharts, isEditMode, minH, minW, maxW]);
 
-  const thresholdsOn = stripCharts.length === 0 || stripCharts.every((chart) => chart.showThresholds !== false);
   const compactor = useMemo(() => getCompactor(null, true, false), []);
   const gridConfig = useMemo(
     () => ({
@@ -332,19 +367,6 @@ export function RealTimeTrends() {
             {isEditMode ? (
               <>
                 <span className="badge bg-warning text-dark">{t("realTimeTrends.editMode")}</span>
-                <div className="form-check form-switch mb-0">
-                  <input
-                    className="form-check-input"
-                    type="checkbox"
-                    role="switch"
-                    id="realtime-trends-show-thresholds"
-                    checked={thresholdsOn}
-                    onChange={(e) => handleThresholdsGlobal(e.target.checked)}
-                  />
-                  <label className="form-check-label small" htmlFor="realtime-trends-show-thresholds">
-                    {t("realTimeTrends.showThresholds")}
-                  </label>
-                </div>
                 <Button
                   variant="success"
                   className="btn-sm"

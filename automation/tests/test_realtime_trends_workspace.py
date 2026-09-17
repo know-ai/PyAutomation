@@ -33,7 +33,7 @@ class TestRealtimeTrendsWorkspace(unittest.TestCase):
         self.assertEqual(doc["charts"][0]["w"], 16)
         self.assertEqual(doc["charts"][0]["h"], 15)
         self.assertEqual(doc["charts"][0]["timeSpanMinutes"], 5)
-        self.assertTrue(doc["charts"][0]["showThresholds"])
+        self.assertNotIn("showThresholds", doc["charts"][0])
         self.assertNotIn("bufferSize", doc["charts"][0])
 
     def test_sanitize_persists_time_span_minutes(self):
@@ -100,7 +100,7 @@ class TestRealtimeTrendsWorkspace(unittest.TestCase):
         self.assertEqual(doc["schemaVersion"], 3)
         self.assertEqual(doc["panelTitle"], "Sala 1")
         self.assertEqual(doc["charts"][0]["w"], 24)
-        self.assertFalse(doc["charts"][0]["showThresholds"])
+        self.assertNotIn("showThresholds", doc["charts"][0])
 
     def test_legacy_twelve_col_migrates_to_forty_eight(self):
         doc = sanitize_workspace(
@@ -125,6 +125,24 @@ class TestRealtimeTrendsWorkspace(unittest.TestCase):
         self.assertEqual(chart["y"], 15)
         self.assertEqual(chart["h"], 15)
         self.assertEqual(doc["grid"]["cols"], 48)
+
+    def test_sanitize_strips_show_thresholds(self):
+        doc = sanitize_workspace(
+            {
+                "schemaVersion": 3,
+                "grid": {"cols": 48, "rowHeight": 10},
+                "charts": [
+                    {
+                        "id": "th",
+                        "title": "T",
+                        "tagNames": ["FI_01"],
+                        "showThresholds": True,
+                    }
+                ],
+            }
+        )
+        self.assertNotIn("showThresholds", doc["charts"][0])
+        self.assertEqual(doc["charts"][0]["tagNames"], ["FI_01"])
 
 
 if __name__ == "__main__":

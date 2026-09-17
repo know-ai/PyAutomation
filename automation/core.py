@@ -5043,7 +5043,24 @@ class PyAutomation(Singleton):
                             tag,
                         )
                         continue
-                    self.create_alarm(reload=True, **payload)
+                    from .catalog.hydrate import apply_alarm_runtime_fields, create_alarm_kwargs
+
+                    result = self.create_alarm(**create_alarm_kwargs(payload, self.create_alarm))
+                    if not result:
+                        logging.warning(
+                            "Skipping alarm hydrate: create_alarm failed name=%s",
+                            payload.get("name"),
+                        )
+                        continue
+                    alarm_obj, message = result
+                    if alarm_obj is None:
+                        logging.warning(
+                            "Skipping alarm hydrate: %s name=%s",
+                            message,
+                            payload.get("name"),
+                        )
+                        continue
+                    apply_alarm_runtime_fields(alarm_obj, payload)
                     logging.info(f"Alarm {payload['name']} loaded from database")
                     print(_colorize_message(f"[{str_date}] [INFO] Alarm {payload['name']} loaded from database", "INFO"))
                 except Exception:

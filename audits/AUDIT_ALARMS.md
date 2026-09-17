@@ -152,6 +152,8 @@ Filtro `annunciate_status == Annunciated`. I-01 PASS.
 
 `reload=True` + estado persistido → `_force_state` sin `on_enter_*`. `test_p13_reload_restores_sm`: 1 fila D→E.
 
+Hidrato catálogo: `Alarms.serialize()` incluye `last_transition_ts` / P2; `load_db_to_alarm_manager` filtra kwargs de `create_alarm` y restaura esos campos con `apply_alarm_runtime_fields` (evita `KeyError` de `@validate_types`).
+
 #### GAP-08: Label `RTNUN` / ack en Normal ensucia historial — **CERRADO (P0-2, P0-6)**
 
 Badge usa `normalizeAlarmState` + `t("alarms.states." + canonical)`. `acknowledge()` retorna `False` fuera de B/D **antes** de Event/INSERT. T-07/T-08.

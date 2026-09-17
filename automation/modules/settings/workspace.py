@@ -158,20 +158,6 @@ def _migrate_box_to_v3(x: int, y: int, w: int, h: int) -> tuple[int, int, int, i
     )
 
 
-def _sanitize_bool(value: Any, default: bool = True) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in {"1", "true", "yes", "on"}:
-            return True
-        if lowered in {"0", "false", "no", "off"}:
-            return False
-    return default
-
-
 def _sanitize_chart(raw: Any, index: int, *, legacy: bool) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
@@ -199,7 +185,6 @@ def _sanitize_chart(raw: Any, index: int, *, legacy: bool) -> dict[str, Any] | N
         "title": _sanitize_title(raw.get("title"), f"Chart {index + 1}"),
         "tagNames": _sanitize_tag_names(raw.get("tagNames")),
         "timeSpanMinutes": _sanitize_time_span_minutes(raw),
-        "showThresholds": _sanitize_bool(raw.get("showThresholds"), True),
         "x": max(0, x),
         "y": max(0, y),
         "w": w,

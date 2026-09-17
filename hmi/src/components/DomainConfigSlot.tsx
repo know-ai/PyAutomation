@@ -404,6 +404,58 @@ function emptyItem(fields: DomainConfigField[]): Record<string, unknown> {
   return row;
 }
 
+function isOpenClosedInterval(field: DomainConfigField): boolean {
+  return String(field.interval || "").trim() === "(min,max]";
+}
+
+function rowOpenClosedInterval(
+  row: Record<string, unknown> | undefined
+): { min: number; max: number } | null {
+  const min = Number(row?.min);
+  const max = Number(row?.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) return null;
+  return { min, max };
+}
+
+function openClosedRangesOverlap(
+  a: { min: number; max: number },
+  b: { min: number; max: number }
+): boolean {
+  return !(a.max <= b.min || b.max <= a.min);
+}
+
+function overlappingOpenClosedRowIndexes(rows: Record<string, unknown>[]): Set<number> {
+  const hits = new Set<number>();
+  const parsed = rows.map((row) => rowOpenClosedInterval(row));
+  for (let i = 0; i < parsed.length; i += 1) {
+    if (!parsed[i]) continue;
+    for (let j = i + 1; j < parsed.length; j += 1) {
+      if (!parsed[j]) continue;
+      if (openClosedRangesOverlap(parsed[i]!, parsed[j]!)) {
+        hits.add(i);
+        hits.add(j);
+      }
+    }
+  }
+  return hits;
+}
+
+function hasOpenClosedIntervalOverlap(fields: DomainConfigField[], values: Record<string, unknown>, prefix = ""): boolean {
+  for (const field of fields) {
+    const path = prefix ? `${prefix}.${field.key}` : field.key;
+    if (field.type === "object" && field.fields) {
+      if (hasOpenClosedIntervalOverlap(field.fields, values, path)) return true;
+      continue;
+    }
+    if (field.type !== "array" || !isOpenClosedInterval(field)) continue;
+    const arr = Array.isArray(getByPath(values, path))
+      ? (getByPath(values, path) as Record<string, unknown>[])
+      : [];
+    if (overlappingOpenClosedRowIndexes(arr).size > 0) return true;
+  }
+  return false;
+}
+
 function parseNumberInput(raw: string, fallback: unknown, decimals?: number): unknown {
   if (raw === "" || raw === "-") return raw;
   let next = raw;
@@ -535,6 +587,7 @@ function FieldControl({
   disabled,
   readOnly,
   presentation,
+  invalid,
 }: {
   field: DomainConfigField;
   value: unknown;
@@ -542,6 +595,7 @@ function FieldControl({
   disabled: boolean;
   readOnly: boolean;
   presentation: Presentation;
+  invalid?: boolean;
 }) {
   const id = `domain-field-${field.key.replace(/\./g, "-")}`;
   const locked = readOnly || disabled;
@@ -683,7 +737,7 @@ function FieldControl({
       <input
         id={id}
         type="number"
-        className={compact ? "form-control form-control-sm" : "form-control"}
+        className={`${compact ? "form-control form-control-sm" : "form-control"}${invalid ? " is-invalid" : ""}`}
         style={field.short_label || field.unit || compact ? undefined : { maxWidth: "180px" }}
         min={field.min}
         max={field.max}
@@ -745,6 +799,12 @@ function ArrayTableEditor({
   };
   const addRow = () => onChange([...rows, emptyItem(columns)]);
   const removeRow = (index: number) => onChange(rows.filter((_, i) => i !== index));
+  const checkOverlap = isOpenClosedInterval(field);
+  const overlapping = checkOverlap ? overlappingOpenClosedRowIndexes(rows) : new Set<number>();
+  const minIdx = columns.findIndex((col) => col.key === "min");
+  const maxIdx = columns.findIndex((col) => col.key === "max");
+  const rangeStart = minIdx >= 0 && maxIdx >= 0 ? Math.min(minIdx, maxIdx) : -1;
+  const rangeSpan = rangeStart >= 0 ? Math.abs(maxIdx - minIdx) + 1 : 0;
   return (
     <div title={fieldTooltip(field, presentation)}>
       {presentation.labelDisplay === "visible" && field.label ? (
@@ -771,33 +831,54 @@ function ArrayTableEditor({
                 </td>
               </tr>
             ) : (
-              rows.map((row, index) => (
-                <tr key={`${field.key}-${index}`}>
-                  {columns.map((col) => (
-                    <td key={col.key}>
-                      <FieldControl
-                        field={{ ...col, label: undefined, help: col.help, unit: undefined }}
-                        value={row?.[col.key]}
-                        onChange={(next) => updateRow(index, col.key, next)}
-                        disabled={locked}
-                        readOnly={locked}
-                        presentation={{ ...presentation, labelDisplay: "hidden", helpDisplay: "tooltip" }}
-                      />
+              rows.flatMap((row, index) => {
+                const rowOverlap = overlapping.has(index);
+                const dataRow = (
+                  <tr key={`${field.key}-${index}`}>
+                    {columns.map((col) => {
+                      const rangeCol = col.key === "min" || col.key === "max";
+                      return (
+                        <td key={col.key}>
+                          <FieldControl
+                            field={{ ...col, label: undefined, help: col.help, unit: undefined }}
+                            value={row?.[col.key]}
+                            onChange={(next) => updateRow(index, col.key, next)}
+                            disabled={locked}
+                            readOnly={locked}
+                            invalid={rowOverlap && rangeCol}
+                            presentation={{ ...presentation, labelDisplay: "hidden", helpDisplay: "tooltip" }}
+                          />
+                        </td>
+                      );
+                    })}
+                    {!locked ? (
+                      <td className="text-end" style={{ width: 1 }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline-danger btn-sm"
+                          onClick={() => removeRow(index)}
+                        >
+                          {t("machines.domainConfigRemoveRow")}
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+                if (!rowOverlap || rangeStart < 0) return [dataRow];
+                const afterSpan = columns.length - rangeStart - rangeSpan + (locked ? 0 : 1);
+                const warningRow = (
+                  <tr key={`${field.key}-${index}-overlap`}>
+                    {rangeStart > 0 ? <td colSpan={rangeStart} /> : null}
+                    <td colSpan={rangeSpan} className="pt-0">
+                      <div className="invalid-feedback d-block">
+                        {t("machines.domainConfigIntervalOverlap")}
+                      </div>
                     </td>
-                  ))}
-                  {!locked ? (
-                    <td className="text-end" style={{ width: 1 }}>
-                      <button
-                        type="button"
-                        className="btn btn-outline-danger btn-sm"
-                        onClick={() => removeRow(index)}
-                      >
-                        {t("machines.domainConfigRemoveRow")}
-                      </button>
-                    </td>
-                  ) : null}
-                </tr>
-              ))
+                    {afterSpan > 0 ? <td colSpan={afterSpan} /> : null}
+                  </tr>
+                );
+                return [dataRow, warningRow];
+              })
             )}
           </tbody>
         </table>
@@ -1295,6 +1376,9 @@ function validateLocal(fields: DomainConfigField[], values: Record<string, unkno
         const nested = validateLocal(items, row || {});
         if (nested) return nested;
       }
+      if (isOpenClosedInterval(field) && overlappingOpenClosedRowIndexes(arr).size > 0) {
+        return field.label || field.key;
+      }
       continue;
     }
     if (field.type !== "number") continue;
@@ -1624,7 +1708,12 @@ export function DomainConfigSlot({
   const handleSave = async () => {
     const invalid = validateLocal(allFields, values);
     if (invalid) {
-      showToast(t("machines.domainConfigValidationError"), "error");
+      showToast(
+        hasOpenClosedIntervalOverlap(allFields, values)
+          ? t("machines.domainConfigIntervalOverlap")
+          : t("machines.domainConfigValidationError"),
+        "error"
+      );
       return;
     }
     const incomplete = validatePendingFiles(allFields, values, pendingFiles);
@@ -1726,7 +1815,12 @@ export function DomainConfigSlot({
   const handleSetFactory = async () => {
     const invalid = validateLocal(allFields, values);
     if (invalid) {
-      showToast(t("machines.domainConfigValidationError"), "error");
+      showToast(
+        hasOpenClosedIntervalOverlap(allFields, values)
+          ? t("machines.domainConfigIntervalOverlap")
+          : t("machines.domainConfigValidationError"),
+        "error"
+      );
       return;
     }
     setSaving(true);
@@ -1786,7 +1880,8 @@ export function DomainConfigSlot({
   const isDirtyVsSaved = valuesDiffer(values, config || {}, comparableKeys);
   const differsFromFactory = hasFactoryDefaults && valuesDiffer(values, factoryDefaults, factoryKeys);
   const hasPendingFiles = Object.values(pendingFiles).some((files) => files.length > 0);
-  const canSave = isDirtyVsSaved || hasPendingFiles;
+  const intervalBlocked = hasOpenClosedIntervalOverlap(allFields, values);
+  const canSave = (isDirtyVsSaved || hasPendingFiles) && !intervalBlocked;
   const canRestoreFactory = differsFromFactory;
   const canSetFactory = differsFromFactory;
   const destinationInfo: DestinationInfo = {

@@ -43,7 +43,7 @@
 | ¿Se puede excepcionar a un usuario concreto? | **Sí.** Override por usuario: deny usuario > allow usuario > deny rol > allow rol > deny |
 | ¿Un rol nuevo (p. ej. `plant_engineer`) sirve de algo? | **Sí.** Al crearlo hereda la línea base **`guest`** (menor privilegio entre roles built-in); luego se edita en el panel ACL |
 | ¿GET y PUT se distinguen? | **Sí.** GET/HEAD → acción `view`; POST/PUT/PATCH/DELETE → acción `use` |
-| ¿Hay UI para definir accesos? | **Sí.** `hmi/src/pages/AccessControl.tsx`: pestañas **Vistas HMI** y **Endpoints REST**, selector Rol/Usuario, Permitir/Denegar |
+| ¿Hay UI para definir accesos? | **Sí.** `AccessControl.tsx`: pestañas **Vistas HMI** (Ver/Usar) y **Endpoints REST** (un Permitir/Denegar; el verbo va en la clave) |
 | ¿Vistas HMI y REST están acoplados? | **No.** Son recursos independientes en el catálogo. Ocultar una vista no bloquea automáticamente sus endpoints REST (y viceversa) |
 
 **Lo que sigue abierto:** signup público (AUTH-M1), sesión sin TTL (AUTH-M3), Socket.IO sin filtro por vista (AUTHZ-M2). Ver §6.
@@ -148,7 +148,7 @@ Canal **separado** del JWT de API:
 - **REST:** claves `rest:<METHOD> <path_template>`.
 - **Bundles** (`authz/view_bundles.py`): conceder **`view`** en una pantalla HMI implica automáticamente los endpoints de **lectura** que la pantalla usa (GET/HEAD y POST de filtrado/consulta como `filter_by`, `query_trends`, `get_tabular_data`, listados auxiliares de usuarios/áreas). Conceder **`use`** en la vista implica los endpoints de **escritura** del bundle.
 - Los grants REST explícitos en el panel siguen valiendo; un **deny** REST gana sobre la implicación de la vista.
-- Extensiones de producto: hooks `authz/app_hooks.py`.
+- Extensiones de producto: hooks `authz/app_hooks.py` (`register_bootstrap_hook` monta rutas; `register_default_allows` extiende la semilla). La matriz core **no** concede `/api/LDS`, `/api/PFM`, `/api/Observer`, `/api/PPA`, `/api/NPW`, `/api/leaks` ni `hmi:view.lds-dashboard` a operator/supervisor/admin; eso lo registra iDetectFugas.
 
 ### 3.3 Middleware REST
 
@@ -156,11 +156,13 @@ Canal **separado** del JWT de API:
 
 1. OPTIONS → pasa.
 2. Rutas Swagger → pasa (protegidas por `docs_auth`).
-3. Allowlist pública exacta (login, signup, health probes, timezone).
+3. Allowlist pública exacta (login, signup, credentials_are_valid, health probes, timezone).
 4. Token + resolución de usuario (o TPT).
 5. Usuario `system` → allowlist de paths.
-6. Rutas siempre autenticadas sin ACL extra: logout, change_password, `authz/me`, credentials_are_valid.
+6. Rutas siempre autenticadas sin ACL extra: logout, change_password, `authz/me`.
 7. Resto: `rest_key_from_request` + `default_action(method)` → `evaluate(user, key, action)`; sin grant → **403**.
+
+El catálogo `GET /api/authz/catalog` (tab Endpoints REST del HMI) **omite** las rutas de los puntos 3 y 6: no pasan por `evaluate()`, pintarlas como Denegar era falso. Login/signup/`credentials_are_valid` siguen públicos. El resto de `/api/users` (listado, roles, reset, TPT, …) sí aparece y sigue el ACL. Flask registra `HEAD` en cada GET; el catálogo **no lista HEAD** (alineado con Swagger). `rest_resource_key` mapea HEAD→GET para que un HEAD real use el grant del GET.
 
 Los decoradores `@Api.auth_roles` y `@Api.authorize` delegan al mismo motor; el enforcement uniforme es el `before_request`.
 
@@ -179,6 +181,8 @@ Los decoradores `@Api.auth_roles` y `@Api.authorize` delegan al mismo motor; el 
 | `sudo` | all-deny en semilla | all-deny |
 
 `seed_default_grants()` inserta filas `allow` faltantes de forma **idempotente** (no sobrescribe grants existentes).
+
+APIs de producto (LDS/PFM/Observer/PPA/NPW/leaks) **no** están en esta tabla: iDetectFugas las concede con `register_default_allows` a operator, supervisor y admin (Permitir). Guest y auditor siguen fail-closed. Integrator ya es all-allow.
 
 ### 3.5 Roles dinámicos (baseline `guest`)
 
@@ -201,7 +205,7 @@ Constantes: `BASELINE_ROLE = "guest"`, `BUILTIN_SEED_ROLES` en `authz/seed.py`. 
 | `authzSlice` + `useAuthz()` | Hidrata `/api/authz/me` tras login |
 | `VIEW_IDS` (`utils/access.ts`) | Identificadores estables alineados con `hmi:view.*` |
 | `Sidebar.tsx` | Ítems visibles solo si `canView(view_id)` |
-| `AccessControl.tsx` | Edición de grants por rol/usuario; preview vía `previewAuthz`; tabs HMI y REST |
+| `AccessControl.tsx` | Edición de grants por rol/usuario; preview vía `previewAuthz`; tabs HMI (Ver/Usar) y REST (un solo Permitir/Denegar) |
 | Menú Administración | Grupo colapsable: Gestión de usuarios + Administración de accesos |
 
 `access.ts` ya **no** es autoridad de permisos; solo constantes y helpers sobre datos de `/authz/me`.
@@ -220,7 +224,7 @@ Prefijo `/api`. Clasificación por **middleware + ACL** actual.
 
 | Método | Ruta | Nota |
 |---|---|---|
-| POST | `/users/login`, `/users/signup` | Auth |
+| POST | `/users/login`, `/users/signup`, `/users/credentials_are_valid` | Auth. `credentials_are_valid` no emite ni rota token |
 | GET | `/health/ping`, `/liveness`, `/readiness`, `/ready`, `/db`, `/saf`, `/system` | Probes. `/ready` = 200 + `DEGRADED` (no restart Docker) |
 | GET | `/system/timezone` | Presentación |
 
@@ -229,7 +233,7 @@ Prefijo `/api`. Clasificación por **middleware + ACL** actual.
 | Método | Ruta |
 |---|---|
 | POST | `/users/logout`, `/users/change_password` |
-| GET | `/authz/me`, `/users/credentials_are_valid` |
+| GET | `/authz/me` |
 
 ### 4.3 Protegido por token + ACL
 
@@ -347,6 +351,8 @@ Implementada en `default_allows()` (`authz/seed.py`). Jerarquía por herencia.
 | **admin** | supervisor + settings (sin users/authz/database) |
 | **integrator** | all-allow |
 
+APIs de producto LDS/PFM/Observer/PPA/NPW/leaks: semilla **Permitir** en operator/supervisor/admin vía hook de iDetectFugas, no en esta matriz core.
+
 Rol **custom** al crear: hereda **guest** (vistas + REST). Sin vista → no menú. Sin REST → 403 en API aunque la vista sea visible.
 
 ### 7.4 Panel de administración (implementado)
@@ -354,7 +360,7 @@ Rol **custom** al crear: hereda **guest** (vistas + REST). Sin vista → no men�
 `AccessControl.tsx`:
 
 1. Selector **Rol** o **Usuario** + sujeto.
-2. Pestañas **Vistas HMI** y **Endpoints REST** (con buscador en REST).
+2. Pestañas **Vistas HMI** (Ver y Usar) y **Endpoints REST** (un solo Permitir/Denegar; el verbo HTTP ya está en la clave).
 3. Por fila: Permitir / Denegar (`view` y `use` donde aplica).
 4. Preview implícito al cargar sujeto (`previewAuthz` → borrador de efectivos).
 5. Guardar → `PUT /api/authz/grants` + invalidación de caché.
@@ -369,7 +375,7 @@ Rol **custom** al crear: hereda **guest** (vistas + REST). Sin vista → no men�
 | **1** | Catálogo + motor + middleware | **Hecho** |
 | **2** | Semilla + UI ACL + HMI `/authz/me` | **Hecho** |
 | **3** | REST uniforme + distinguir view/use | **Hecho** (Socket pendiente) |
-| **4** | Productos (iDetectFugas hooks) | **Hecho** (`app_hooks.py`) |
+| **4** | Productos (iDetectFugas hooks) | **Hecho** (bootstrap + `register_default_allows`) |
 | **5** | Roles dinámicos baseline `guest` | **Hecho** (2026-09-03) |
 | **6** | Protección Swagger | **Hecho** (`docs_auth.py`) |
 
@@ -443,7 +449,7 @@ Degradación: Redis caído → PG notify; PG caído → Redis intra-edge + heart
 | `automation/extensions/docs_auth.py` | Sesión Flask-Login para Swagger; rate limit login |
 | `automation/authz/middleware.py` | `before_request` ACL REST; exclusión rutas docs |
 | `automation/authz/bootstrap.py` | `bootstrap_authz()`, `resolve_flask_app()` |
-| `automation/authz/app_hooks.py` | Hooks pre-seed para apps host (iDetectFugas, …) |
+| `automation/authz/app_hooks.py` | Hooks pre-seed: montar rutas y `register_default_allows` (matriz producto) |
 | `automation/authz/seed.py` | Matriz `default_allows`, `seed_default_grants`, `seed_grants_for_new_role`, `BASELINE_ROLE` |
 | `automation/authz/store.py` | Dict RAM + `reload_cache` |
 | `automation/authz/engine.py` | `evaluate()`, precedencia |

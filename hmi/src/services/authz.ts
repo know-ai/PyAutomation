@@ -1,10 +1,11 @@
 import api from "./api";
 
 export type AuthzActionsMap = Record<string, string[]>;
+export type AuthzRestMap = Record<string, boolean>;
 
 export type AuthzMe = {
   views: AuthzActionsMap;
-  rest: AuthzActionsMap;
+  rest: AuthzRestMap;
   username?: string;
   role?: string;
   is_system?: boolean;

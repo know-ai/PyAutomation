@@ -27,8 +27,12 @@ function splitGrantKey(key: string): { resourceKey: string; action: string } | n
 
 function buildDraftFromEffective(catalog: AuthzCatalog, effective: AuthzMe): Record<string, EffectValue> {
   const next: Record<string, EffectValue> = {};
-  const isAllowed = (resourceKey: string, action: string) =>
-    Boolean(effective.views[resourceKey]?.includes(action) || effective.rest[resourceKey]?.includes(action));
+  const isAllowed = (resourceKey: string, action: string) => {
+    if (effective.views[resourceKey]?.includes(action)) return true;
+    const restValue = effective.rest[resourceKey];
+    if (typeof restValue === "boolean") return restValue;
+    return Array.isArray(restValue) && restValue.includes(action);
+  };
 
   const visit = (resourceKey: string, actions: string[]) => {
     for (const action of actions) {
@@ -43,10 +47,21 @@ function buildDraftFromEffective(catalog: AuthzCatalog, effective: AuthzMe): Rec
   }
   for (const items of Object.values(catalog.rest || {})) {
     for (const item of items) {
-      visit(item.resource_key, item.actions?.length ? item.actions : ["view", "use"]);
+      visit(item.resource_key, restActionsForItem(item));
     }
   }
   return next;
+}
+
+function restActionFromKey(resourceKey: string): "view" | "use" {
+  if (!resourceKey.startsWith("rest:")) return "use";
+  const method = resourceKey.slice(5).split(" ")[0]?.toUpperCase() || "";
+  return method === "GET" || method === "HEAD" ? "view" : "use";
+}
+
+function restActionsForItem(item: { resource_key: string; actions?: string[] }): string[] {
+  if (item.actions?.length) return item.actions;
+  return [restActionFromKey(item.resource_key)];
 }
 
 function formatRestLabel(resourceKey: string): string {
@@ -184,14 +199,12 @@ export function AccessControl() {
     </tr>
   );
 
-  const renderRestRow = (resourceKey: string) => (
+  const renderRestRow = (resourceKey: string, actions: string[]) => (
     <tr key={resourceKey}>
       <td>
         <code className="small">{formatRestLabel(resourceKey)}</code>
       </td>
-      {(["view", "use"] as const).map((action) => (
-        <td key={action}>{renderEffectSelect(resourceKey, action)}</td>
-      ))}
+      <td>{renderEffectSelect(resourceKey, actions[0] || restActionFromKey(resourceKey))}</td>
     </tr>
   );
 
@@ -310,14 +323,13 @@ export function AccessControl() {
                   <thead>
                     <tr>
                       <th>{t("authz.endpoint")}</th>
-                      <th style={{ width: "8rem" }}>{t("authz.view")}</th>
-                      <th style={{ width: "8rem" }}>{t("authz.use")}</th>
+                      <th style={{ width: "8rem" }}>{t("authz.access")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredRestGroups.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="text-muted small">
+                        <td colSpan={2} className="text-muted small">
                           {t("authz.noRestMatches")}
                         </td>
                       </tr>
@@ -339,7 +351,7 @@ export function AccessControl() {
                             role="button"
                             aria-expanded={expanded}
                           >
-                            <td colSpan={3} className="fw-semibold">
+                            <td colSpan={2} className="fw-semibold">
                               <i
                                 className={`bi ${expanded ? "bi-chevron-down" : "bi-chevron-right"} me-2`}
                                 aria-hidden
@@ -350,7 +362,9 @@ export function AccessControl() {
                               </span>
                             </td>
                           </tr>,
-                          ...(expanded ? items.map((item) => renderRestRow(item.resource_key)) : []),
+                          ...(expanded
+                            ? items.map((item) => renderRestRow(item.resource_key, restActionsForItem(item)))
+                            : []),
                         ];
                       })
                     )}

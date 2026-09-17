@@ -721,7 +721,7 @@ Shed (`_tag_history_shed_locked`): **nunca** aplica a `leak`, alarmas, eventos, 
 
 Dominio `leak`: `DOMAIN.LEAK` en `_CRITICAL` y `_DOMAIN_FLUSH_ORDER`. iDetectFugas registra el writer al boot (`LeakPersistenceService.register_saf_writer`). El core **no** embebe SQL de `Leaks`.
 
-Hidratación: `load_db_to_alarm_manager` salta `tag` que no es `str` (WARNING + `continue`). `local_alarm_payloads` indexa tags por `_pk` **y** `id`.
+Hidratación: `load_db_to_alarm_manager` salta `tag` que no es `str` (WARNING + `continue`). `create_alarm_kwargs` descarta extras de `Alarms.serialize()` (`last_transition_ts`, `priority`, …) para no disparar `@validate_types`. `apply_alarm_runtime_fields` restaura esos campos en el objeto. `local_alarm_payloads` indexa tags por `_pk` **y** `id`.
 
 Ops / HMI: badge “condición activa” (`condition_met`) distinto del estado ISA. Histéresis DLQ (`perf_saf_deadletter_clear_threshold=0`): miles de DLQ permanecen; replay a 0 → Normal. `GET /api/health/ready` HTTP **200** con `status=DEGRADED` si circuito OPEN / PG down / pending. Healthcheck Docker **sigue** `/api/health/ping` (restart on OPEN es anti-patrón). Script `check_docker_bridges.sh`: lista bridges DOWN `172.21/172.22`; **sin** `docker network rm` automático.
 

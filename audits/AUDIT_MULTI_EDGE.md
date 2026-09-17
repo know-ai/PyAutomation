@@ -148,6 +148,7 @@ Evidencia contra proceso real (`./docker-entrypoint.sh`, venv con copia de `auto
 |---|---|---|
 | Arranque: `MachinesLoggerEngine.create() got an unexpected keyword argument 'area'` | El logger aceptaba `area`; el engine no | **Cerrado** — `logger/machines.py` |
 | Hidratar alarmas: `KeyError: 'area'` en `create_alarm(reload=True, **alarm)` | `@validate_types` no declaraba `area` | **Cerrado** — `core.create_alarm` |
+| Hidratar alarmas: `KeyError: last_transition_ts` en `create_alarm(reload=True, **payload)` | `Alarms.serialize()` incluye P2 (`last_transition_ts`, `priority`, …) que `@validate_types` no declara | **Cerrado** — `catalog/hydrate.py` `create_alarm_kwargs` + `apply_alarm_runtime_fields` |
 | Mensaje genérico «missing NODE_ID/AREA» con esas vars definidas | `SITE` residual ≠ `MANUFACTURER` se trataba como conflicto de identidad | **Cerrado** — mismatch de sitio no fail-close; `blocked_reason` es específico |
 | Fuga disparada, HMI sin alarma; log `get_alarm_by_name` → `NoneType` | `create_alarm` exigía `Linea1.` y iDetectFugas usa `alarm.{máquina}.leak`; `validate_types(output=Alarm)` no admitía `None` | **Cerrado** — frontera = tag; lookup admite `None` |
 | Log inundado `[ERROR] …` 1 Hz | `validate_types` hacía `print` además de `logger.error`; el `print` bypasea `DedupeFilter` | **Cerrado** — ver `AUDIT_RELIABILITY.md` LOG-M3 |

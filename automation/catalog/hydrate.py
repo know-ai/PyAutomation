@@ -2,11 +2,69 @@
 """Hydrate in-memory CVT / users from the local catalog mirror."""
 from __future__ import annotations
 
+import inspect
 import logging
+from datetime import datetime
 
 from .local_provider import LocalCatalogProvider
 
 _LOGGER = logging.getLogger("pyautomation")
+
+
+def create_alarm_kwargs(payload: dict, create_alarm) -> dict:
+    """Keep only kwargs ``create_alarm`` accepts.
+
+    ``Alarms.serialize()`` includes runtime/P2 fields (``last_transition_ts``,
+    ``priority``, …) that ``@validate_types`` rejects as unknown arguments.
+    """
+    allowed = {
+        name
+        for name in inspect.signature(create_alarm).parameters
+        if name != "self"
+    }
+    kwargs = {key: value for key, value in payload.items() if key in allowed}
+    kwargs["reload"] = True
+    return kwargs
+
+
+def _parse_alarm_timestamp(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        return None
+    from ..tags.tag import DATETIME_FORMAT
+
+    try:
+        return datetime.strptime(value, DATETIME_FORMAT)
+    except ValueError:
+        pass
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def apply_alarm_runtime_fields(alarm, payload: dict) -> None:
+    """Restore ISA 18.2 / P2 fields that ``create_alarm`` does not take."""
+    stamp = _parse_alarm_timestamp(payload.get("last_transition_ts"))
+    if stamp is not None:
+        alarm.last_transition_ts = stamp
+    if payload.get("last_transition_from") is not None:
+        alarm.last_transition_from = payload["last_transition_from"]
+    if payload.get("last_transition_to") is not None:
+        alarm.last_transition_to = payload["last_transition_to"]
+    priority = payload.get("priority")
+    if priority is not None:
+        try:
+            alarm.priority = int(priority)
+        except (TypeError, ValueError):
+            pass
+    if payload.get("latching") is not None:
+        alarm.latching = bool(payload["latching"])
+    if payload.get("ack_required") is not None:
+        alarm.ack_required = bool(payload["ack_required"])
 
 
 def _index(rows: list[dict]) -> dict[str, dict]:

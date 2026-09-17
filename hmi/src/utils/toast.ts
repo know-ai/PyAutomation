@@ -7,9 +7,9 @@ export type ToastType = "success" | "error" | "warning" | "info";
 export const showToast = (
   message: string,
   type: ToastType = "info",
-  duration: number = 5000
+  duration: number = 5000,
+  action?: { label: string; onClick: () => void }
 ) => {
-  // Crear el contenedor de toasts si no existe
   let toastContainer = document.getElementById("toast-container");
   if (!toastContainer) {
     toastContainer = document.createElement("div");
@@ -29,18 +29,17 @@ export const showToast = (
     document.body.appendChild(toastContainer);
   }
 
-  // Crear el toast
   const toastId = `toast-${Date.now()}`;
   const toast = document.createElement("div");
   toast.id = toastId;
   toast.setAttribute("role", "alert");
   toast.setAttribute("aria-live", "assertive");
   toast.setAttribute("aria-atomic", "true");
-  
+
   const bgColor = getBootstrapColor(type);
   const textColor = type === "warning" ? "#000" : "#fff";
   const buttonColor = type === "warning" ? "#000" : "#fff";
-  
+
   toast.style.cssText = `
     display: flex;
     align-items: center;
@@ -57,11 +56,21 @@ export const showToast = (
 
   const toastBody = document.createElement("div");
   toastBody.style.cssText = "display: flex; align-items: center; width: 100%;";
-  
+
   const toastContent = document.createElement("div");
   toastContent.style.cssText = `flex: 1; padding-right: 0.5rem; color: ${textColor};`;
   toastContent.textContent = message;
-  
+
+  const closeToast = () => {
+    toast.style.animation = "slideOutRight 0.3s ease-in";
+    setTimeout(() => {
+      toast.remove();
+      if (toastContainer && toastContainer.children.length === 0) {
+        toastContainer.remove();
+      }
+    }, 300);
+  };
+
   const closeButton = document.createElement("button");
   closeButton.type = "button";
   closeButton.setAttribute("aria-label", "Close");
@@ -89,55 +98,49 @@ export const showToast = (
   closeButton.onmouseout = () => {
     closeButton.style.opacity = "0.75";
   };
-
-  const closeToast = () => {
-    toast.style.animation = "slideOutRight 0.3s ease-in";
-    setTimeout(() => {
-      toast.remove();
-      // Remover el contenedor si no hay más toasts
-      if (toastContainer && toastContainer.children.length === 0) {
-        toastContainer.remove();
-      }
-    }, 300);
-  };
-
   closeButton.onclick = closeToast;
 
   toastBody.appendChild(toastContent);
+  if (action) {
+    const actionButton = document.createElement("button");
+    actionButton.type = "button";
+    actionButton.textContent = action.label;
+    actionButton.style.cssText = `
+      margin-right: 0.5rem;
+      background: transparent;
+      border: 1px solid ${buttonColor};
+      color: ${buttonColor};
+      border-radius: 0.25rem;
+      padding: 0.15rem 0.5rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      white-space: nowrap;
+    `;
+    actionButton.onclick = () => {
+      action.onClick();
+      closeToast();
+    };
+    toastBody.appendChild(actionButton);
+  }
   toastBody.appendChild(closeButton);
   toast.appendChild(toastBody);
-
   toastContainer.appendChild(toast);
 
-  // Auto-ocultar después de la duración especificada
   if (duration > 0) {
     setTimeout(closeToast, duration);
   }
 
-  // Agregar estilos de animación si no existen
   if (!document.getElementById("toast-animations")) {
     const style = document.createElement("style");
     style.id = "toast-animations";
     style.textContent = `
       @keyframes slideInRight {
-        from {
-          transform: translateX(100%);
-          opacity: 0;
-        }
-        to {
-          transform: translateX(0);
-          opacity: 1;
-        }
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
       }
       @keyframes slideOutRight {
-        from {
-          transform: translateX(0);
-          opacity: 1;
-        }
-        to {
-          transform: translateX(100%);
-          opacity: 0;
-        }
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
       }
     `;
     document.head.appendChild(style);
@@ -147,14 +150,13 @@ export const showToast = (
 const getBootstrapColor = (type: ToastType): string => {
   switch (type) {
     case "success":
-      return "#198754"; // Bootstrap success color
+      return "#198754";
     case "error":
-      return "#dc3545"; // Bootstrap danger color
+      return "#dc3545";
     case "warning":
-      return "#ffc107"; // Bootstrap warning color
+      return "#ffc107";
     case "info":
     default:
-      return "#0dcaf0"; // Bootstrap info color
+      return "#0dcaf0";
   }
 };
-
