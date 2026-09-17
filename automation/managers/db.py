@@ -254,6 +254,13 @@ class DBManager(Singleton):
         self._ensure_nodes_clock_schema(db, migrator)
         self._ensure_tag_filter_schema(db, migrator)
         self._ensure_alarm_delay_schema(db, migrator)
+        try:
+            AlarmSummary.ensure_schema()
+        except Exception:
+            logging.getLogger("pyautomation").warning(
+                "AlarmSummary ISA v2 schema ensure skipped",
+                exc_info=True,
+            )
 
     def _drop_legacy_tag_columns(self, db, migrator=None):
         if db is None:

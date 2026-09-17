@@ -714,6 +714,7 @@ class Alarm(StateMachine):
 
         state = self.state
         state_payload = state.serialize() if hasattr(state, "serialize") else str(state)
+        setpoint = self.alarm_setpoint.serialize() if hasattr(self.alarm_setpoint, "serialize") else {}
         return {
             "event": "state_change",
             "identifier": self.identifier,
@@ -727,6 +728,7 @@ class Alarm(StateMachine):
             "from_state": getattr(self, "last_transition_from", None),
             "to_state": getattr(self, "last_transition_to", None),
             "timestamp": iso_millis(self.timestamp),
+            "ack_timestamp": iso_millis(self.ack_timestamp),
             "delay_phase": self._delay_phase(),
             "condition_met": bool(self._condition_met),
             "description": self.description,
@@ -734,6 +736,8 @@ class Alarm(StateMachine):
             "latching": bool(getattr(self, "latching", True)),
             "ack_required": bool(getattr(self, "ack_required", True)),
             "chattering": bool(getattr(self, "chattering", False)),
+            "alarm_type": setpoint.get("type"),
+            "trigger_value": setpoint.get("value"),
         }
 
     def _emit_runtime_state(self) -> None:

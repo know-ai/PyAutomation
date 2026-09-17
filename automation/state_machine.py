@@ -2262,108 +2262,126 @@ class OPCUAServer(StateMachineCore):
         r"""
         Initializes OPC UA nodes for all CVT tags.
         """
-        from . import MANUFACTURER
-        
-        segment = "CVT"
         for tag_object in self.cvt.iter_tags():
-            if not _scope_owns_tag(tag_object):
-                continue
-            tag = tag_object.serialize()
-            
-            if tag["segment"]:
+            self._register_cvt_tag(tag_object)
 
-                segment = tag["segment"]
+    def _cvt_var_name(self, tag_name: str, segment: str) -> str:
+        return f"{segment}_{tag_name}"
 
-                if segment not in self.my_folders.keys():
-                    
-                    self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
-            
-            tag_name = tag['name']
-            display_unit = tag["display_unit"]
-            data_type = tag["data_type"]
-            tag_description = tag["description"] or ""
-            
-            var_name = f"{segment}_{tag_name}"
-            __var_name = tag_name.replace(f"{MANUFACTURER}.", "")
-            identifier = blake2b(key=__var_name.encode('utf-8')[:64], digest_size=4).hexdigest()
+    def _register_cvt_tag(self, tag_object) -> bool:
+        r"""
+        Registers a single CVT tag in the OPC UA address space when missing.
 
-            if not hasattr(self, var_name):
-                
-                if data_type.lower()=='str':
-                        setattr(self, var_name, self.my_folders[f"{segment}"].add_variable(
-                            ua.NodeId(identifier=identifier, namespaceidx=self.idx), 
-                            tag_name, 
-                            "")
-                        )
+        Returns True when a new variable node was created.
+        """
+        from . import MANUFACTURER
 
-                else:
+        if not _scope_owns_tag(tag_object):
+            return False
+        if getattr(self, "server", None) is None or getattr(self, "objects", None) is None:
+            return False
 
-                    setattr(self, var_name, self.my_folders[f"{segment}"].add_variable(
-                        ua.NodeId(identifier=identifier, namespaceidx=self.idx), 
-                        tag_name, 
-                        0.0)
-                    )
+        tag = dict(tag_object.serialize())
+        segment = tag["segment"] or "CVT"
+        if segment not in self.my_folders:
+            self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
 
-                node = getattr(self, var_name)
-                self.__load_saved_access_type(node=node, var_name=var_name)
-                description = node.get_attribute(ua.AttributeIds.Description)
-                description.Value.Value.Text = tag_description
-                browse_name = node.get_attribute(ua.AttributeIds.BrowseName)
-                browse_name.Value.Value.Name = display_unit
+        tag_name = tag["name"]
+        display_unit = tag["display_unit"]
+        data_type = tag["data_type"]
+        tag_description = tag["description"] or ""
+        var_name = self._cvt_var_name(tag_name, segment)
 
-                pop_list = (
-                    "id", 
-                    "value", 
-                    "timestamp", 
-                    "timestamps", 
-                    "values", 
-                    "name", 
-                    "description", 
-                    "opcua_address", 
-                    "node_namespace", 
-                    "out_of_range_detection",
-                    "frozen_data_detection",
-                    "outlier_detection"
-                    )
-                for key in pop_list:
-                    tag.pop(key)
-                # Add State Properties
-                for key, value in tag.items():
-                    
-                    ID = blake2b(key=f"{__var_name}_{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                    prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)  
-                    self.__load_saved_access_type(node=prop, var_name=f"{var_name}.{key}") 
-                    browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
-                    browse_name.Value.Value.Name = "" 
+        if hasattr(self, var_name):
+            return False
+
+        __var_name = tag_name.replace(f"{MANUFACTURER}.", "")
+        identifier = blake2b(key=__var_name.encode("utf-8")[:64], digest_size=4).hexdigest()
+        if data_type.lower() == "str":
+            setattr(
+                self,
+                var_name,
+                self.my_folders[segment].add_variable(
+                    ua.NodeId(identifier=identifier, namespaceidx=self.idx),
+                    tag_name,
+                    "",
+                ),
+            )
+        else:
+            setattr(
+                self,
+                var_name,
+                self.my_folders[segment].add_variable(
+                    ua.NodeId(identifier=identifier, namespaceidx=self.idx),
+                    tag_name,
+                    0.0,
+                ),
+            )
+
+        node = getattr(self, var_name)
+        self.__load_saved_access_type(node=node, var_name=var_name)
+        description = node.get_attribute(ua.AttributeIds.Description)
+        description.Value.Value.Text = tag_description
+        browse_name = node.get_attribute(ua.AttributeIds.BrowseName)
+        browse_name.Value.Value.Name = display_unit
+
+        pop_list = (
+            "id",
+            "value",
+            "timestamp",
+            "timestamps",
+            "values",
+            "name",
+            "description",
+            "opcua_address",
+            "node_namespace",
+            "out_of_range_detection",
+            "frozen_data_detection",
+            "outlier_detection",
+        )
+        for key in pop_list:
+            tag.pop(key, None)
+        for key, value in tag.items():
+            ID = blake2b(key=f"{__var_name}_{key}".encode("utf-8")[:64], digest_size=4).hexdigest()
+            prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)
+            self.__load_saved_access_type(node=prop, var_name=f"{var_name}.{key}")
+            browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
+            browse_name.Value.Value.Name = ""
+        return True
+
+    def expose_cvt_tag(self, tag_object) -> bool:
+        r"""
+        Ensures a runtime CVT tag is visible on the embedded OPC UA server.
+
+        Safe to call while the server is still starting (no-op until ready).
+        """
+        if not getattr(self, "_opcua_ready", False):
+            return False
+        registered = self._register_cvt_tag(tag_object)
+        self._push_cvt_tag_value(tag_object)
+        return registered
+
+    def _push_cvt_tag_value(self, tag_object) -> None:
+        if not _scope_owns_tag(tag_object):
+            return
+        tag = tag_object.serialize()
+        segment = tag["segment"] or "CVT"
+        var_name = self._cvt_var_name(tag["name"], segment)
+        if not hasattr(self, var_name):
+            return
+        value = tag["value"]
+        node = getattr(self, var_name)
+        if isinstance(value, (float, int)):
+            node.set_value(round(value, 4))
+        else:
+            node.set_value(value)
 
     def __update_tags(self):
         r"""
         Updates the values of CVT tags in the OPC UA address space.
         """
         for tag_object in self.cvt.iter_tags():
-            if not _scope_owns_tag(tag_object):
-                continue
-            tag = tag_object.serialize()
-            
-            segment = "CVT"
-            value = tag["value"]
-
-            if tag['segment']:
-
-                segment = tag['segment']
-
-            var_name = f"{segment}_{tag['name']}"
-            if hasattr(self, var_name):
-
-                _tag = getattr(self, var_name)
-
-                if isinstance(value, (float, int)):
-                    
-                    _tag.set_value(round(value, 4))
-
-                else:
-
-                    _tag.set_value(value)
+            self._push_cvt_tag_value(tag_object)
 
     def __update_alarms(self):
         r"""

@@ -401,11 +401,20 @@ export type OpcUaServerAttributesResponse = {
   data: OpcUaServerAttribute[];
 };
 
+export type OpcUaServerAttributesFilter = {
+  name?: string;
+};
+
 /**
  * Obtiene todos los atributos del OPC UA Server
  */
-export const getOpcUaServerAttributes = async (): Promise<OpcUaServerAttribute[]> => {
-  const { data } = await api.get("/opcua/server/attrs");
+export const getOpcUaServerAttributes = async (
+  filters: OpcUaServerAttributesFilter = {}
+): Promise<OpcUaServerAttribute[]> => {
+  const params: Record<string, string> = {};
+  const name = filters.name?.trim();
+  if (name) params.name = name;
+  const { data } = await api.get("/opcua/server/attrs", { params });
   return data?.data ?? [];
 };
 

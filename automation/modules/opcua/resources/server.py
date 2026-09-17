@@ -1,5 +1,5 @@
 from flask import request
-from flask_restx import Namespace, Resource, fields
+from flask_restx import Namespace, Resource, fields, reqparse
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
@@ -7,6 +7,16 @@ from ....extensions import _api as Api
 
 ns = Namespace('OPCUA Server', description='OPC UA Server Management Resources')
 app = PyAutomation()
+
+attrs_parser = reqparse.RequestParser()
+attrs_parser.add_argument(
+    'name',
+    type=str,
+    location='args',
+    required=False,
+    default='',
+    help='Optional case-insensitive filter on attribute name or namespace',
+)
 
 # Models
 update_access_type_model = api.model("update_access_type_model", {
@@ -23,6 +33,7 @@ class OPCUAServerAttributesResource(Resource):
     @api.response(200, "Success")
     @api.response(404, "OPC UA Server not found")
     @Api.token_required(auth=True)
+    @ns.expect(attrs_parser)
     def get(self):
         r"""
         Get OPC UA Server attributes.
@@ -36,7 +47,8 @@ class OPCUAServerAttributesResource(Resource):
         - access_type: Access level ("Read", "Write", or "ReadWrite")
         """
         try:
-            attrs = app.get_opcua_server_attrs()
+            args = attrs_parser.parse_args()
+            attrs = app.get_opcua_server_attrs(name=args.get('name') or '')
             return {
                 "data": attrs
             }, 200

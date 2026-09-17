@@ -204,9 +204,13 @@ class TestP1PaginationAndSocket(unittest.TestCase):
                 alarm_off_delay=FloatType(0.0),
                 identifier="sock-alarm-01",
             )
+            alarm.ack_timestamp = datetime(2026, 9, 17, 14, 1, 0, tzinfo=timezone.utc)
             payload = alarm.serialize_socket()
             raw = json.dumps(payload).encode("utf-8")
             self.assertLessEqual(len(raw), 2048, f"on.alarm payload {len(raw)} B")
+            self.assertIn("ack_timestamp", payload)
+            self.assertIsNotNone(payload["ack_timestamp"])
+            self.assertIn("2026-09-17", payload["ack_timestamp"])
         finally:
             runtime.stop_worker()
 

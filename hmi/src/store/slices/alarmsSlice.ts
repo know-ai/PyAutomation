@@ -63,9 +63,11 @@ function sortByTransition(a: Alarm, b: Alarm): number {
 
 export function upsertTop3(list: Alarm[], incoming: Alarm): Alarm[] {
   const key = alarmKey(incoming);
+  const existing = list.find((item) => alarmKey(item) === key);
+  const merged = existing ? { ...existing, ...incoming } : incoming;
   const next = list.filter((item) => alarmKey(item) !== key);
-  if (isLiveAlarm(incoming)) {
-    next.push(incoming);
+  if (isLiveAlarm(merged)) {
+    next.push(merged);
   }
   return next.sort(sortByTransition).slice(0, TOP3_MAX);
 }

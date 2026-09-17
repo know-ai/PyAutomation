@@ -15,6 +15,17 @@ from typing import Mapping, Protocol, Sequence
 from ..timebase import MICROSECONDS_FLOOR, SECONDS_CEILING
 
 
+def _is_undefined_column(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    name = type(exc).__name__.lower()
+    return (
+        "undefinedcolumn" in name
+        or "does not exist" in text
+        or "unknown column" in text
+        or "no such column" in text
+    )
+
+
 class IIdempotentInserter(Protocol):
     def insert_tag_values(self, rows: Sequence[Mapping]) -> int: ...
 
@@ -194,7 +205,20 @@ class AlarmSummaryInserter:
         try:
             model.insert(dict(row)).on_conflict_ignore().execute()
             return True
-        except Exception:
+        except Exception as exc:
+            if _is_undefined_column(exc):
+                self._schema_ready = False
+                try:
+                    self.ensure_schema(model)
+                    model.insert(dict(row)).on_conflict_ignore().execute()
+                    return True
+                except Exception:
+                    logging.getLogger("pyautomation").error(
+                        "SAF AlarmSummary insert failed after schema repair sample_uuid=%s",
+                        sample_uuid,
+                        exc_info=True,
+                    )
+                    return False
             logging.getLogger("pyautomation").error(
                 "SAF AlarmSummary insert failed sample_uuid=%s",
                 sample_uuid,
@@ -212,11 +236,22 @@ class AlarmSummaryInserter:
         table = model._meta.table_name
         self._ensure_sample_uuid_column(database, table)
         self._widen_sample_uuid_column(database, table)
+        try:
+            model.ensure_schema()
+        except Exception:
+            logging.getLogger("pyautomation").warning(
+                "SAF AlarmSummary ISA v2 schema ensure skipped",
+                exc_info=True,
+            )
         database.execute_sql(
             f"CREATE UNIQUE INDEX IF NOT EXISTS {table}_sample_uuid_uidx "
             f"ON {table} (sample_uuid)"
         )
-        self._schema_ready = True
+        try:
+            columns = {item.name for item in database.get_columns(table)}
+        except Exception:
+            columns = set()
+        self._schema_ready = "from_state" in columns and "to_state" in columns
 
     def _resolve_model(self):
         if self._model is not None:

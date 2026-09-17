@@ -3,6 +3,7 @@ import { Button } from "../components/Button";
 import { StripChart, type StripChartConfig } from "../components/StripChart";
 import { useTranslation } from "../hooks/useTranslation";
 import { useLongTaskObserver } from "../hooks/useLongTaskObserver";
+import { useStationTagCatalog } from "../hooks/useStationTagCatalog";
 import { GridLayout, getCompactor, type Layout, type LayoutItem } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -12,7 +13,6 @@ import {
   hydrateStationRealtimeTrends,
   persistStationRealtimeTrends,
   loadStationRealtimeTrends,
-  loadStationTagCatalog,
   exportStationRealtimeTrends,
   importStationRealtimeTrends,
   subscribeWorkspaceSync,
@@ -56,8 +56,10 @@ export function RealTimeTrends() {
   const importRef = useRef<HTMLInputElement>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [stripCharts, setStripCharts] = useState<StripChartConfig[]>(() => initial.charts);
-  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [loadingTags, setLoadingTags] = useState(false);
+  const { tags: availableTags, loading: loadingTags } = useStationTagCatalog({
+    refreshInEditMode: true,
+    isEditMode,
+  });
   const [syncStatus, setSyncStatus] = useState<WorkspaceSyncStatus>("ok");
   const chartsRef = useRef(stripCharts);
   const titleRef = useRef(panelTitle);
@@ -153,31 +155,14 @@ export function RealTimeTrends() {
   }, []);
 
   useEffect(() => {
-    if (!isEditMode) return;
-    let cancelled = false;
-    setLoadingTags(true);
-    void loadStationTagCatalog()
-      .then((tags) => {
-        if (!cancelled) {
-          setAvailableTags(tags);
-          const catalog = new Set((tags || []).map((tag) => tag.name));
-          setStripCharts((prev) => {
-            const next = filterChartsToCatalog(prev, catalog);
-            if (next !== prev) persistNow(next, titleRef.current);
-            return next;
-          });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) showToast(t("stripChart.errorLoadingTags"), "error");
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingTags(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isEditMode, t]);
+    if (!isEditMode || availableTags.length === 0) return;
+    const catalog = new Set(availableTags.map((tag) => tag.name));
+    setStripCharts((prev) => {
+      const next = filterChartsToCatalog(prev, catalog);
+      if (next !== prev) persistNow(next, titleRef.current);
+      return next;
+    });
+  }, [isEditMode, availableTags, persistNow]);
 
   const exitEditMode = useCallback(() => {
     persistNow(chartsRef.current, titleRef.current);

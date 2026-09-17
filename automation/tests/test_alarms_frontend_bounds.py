@@ -53,3 +53,14 @@ class TestFrontendBounds(unittest.TestCase):
         self.assertNotRegex(text, r"SELECT \*")
         self.assertIn("clamp_catalog_page_size", text)
         self.assertIn("clamp_history_page_size", text)
+
+    def test_footer_payload_includes_ack_timestamp(self):
+        resource = (ROOT / "automation" / "modules" / "alarms" / "resources" / "alarms.py").read_text(
+            encoding="utf-8"
+        )
+        socket = (ROOT / "automation" / "alarms" / "__init__.py").read_text(encoding="utf-8")
+        footer = (HMI / "layouts" / "Footer.tsx").read_text(encoding="utf-8")
+        self.assertIn('"ack_timestamp": item.get("ack_timestamp")', resource)
+        self.assertIn('"ack_timestamp": iso_millis(self.ack_timestamp)', socket)
+        self.assertIn("ack_timestamp || alarm.ack_time", footer)
+        self.assertIn("footer-alarm-row--rtnun", (HMI / "styles" / "global.css").read_text(encoding="utf-8"))

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, memo, useRef } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getTags, createTag, updateTag, deleteTag, getVariables, getUnitsByVariable, type Tag, type TagsResponse } from "../services/tags";
+import { invalidateStationTagCatalog } from "../services/workspaceStore";
 import { listClients, getClientVariablesWithOptions, getNodeAttributes, type OpcUaClient } from "../services/opcua";
 import { getNodeIdentity, type NodeIdentity } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
@@ -902,6 +903,7 @@ export function Tags() {
 
     try {
       await deleteTag(tagToDelete.name);
+      invalidateStationTagCatalog();
       
       // Cerrar modal y limpiar
       setShowDeleteModal(false);
@@ -1073,6 +1075,7 @@ export function Tags() {
       }
 
       await updateTag(payload);
+      invalidateStationTagCatalog();
       
       // Mostrar toast de éxito
       showToast(t("tags.updateSuccess"), "success");
@@ -1161,6 +1164,7 @@ export function Tags() {
       payload.frozen_data_detection = formData.frozen_data_detection;
 
       await createTag(payload);
+      invalidateStationTagCatalog();
       
       // Cerrar modal y resetear formulario
       setShowCreateModal(false);

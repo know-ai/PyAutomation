@@ -1,8 +1,9 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { getOpcUaServerAttributes, updateOpcUaServerAccessType, type OpcUaServerAttribute } from "../services/opcua";
 import { useTranslation } from "../hooks/useTranslation";
+import { useDebounce } from "../hooks/useDebounce";
 import { showToast } from "../utils/toast";
 import { useAuthz } from "../hooks/useAuthz";
 
@@ -17,6 +18,8 @@ export function OpcUaServer() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageLimit, setPageLimit] = useState(20);
   const [updatingNamespace, setUpdatingNamespace] = useState<string | null>(null);
+  const [nameFilter, setNameFilter] = useState("");
+  const debouncedNameFilter = useDebounce(nameFilter, 300);
   
   // Estado para el modal de confirmación
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -28,11 +31,11 @@ export function OpcUaServer() {
   } | null>(null);
 
   // Cargar atributos
-  const loadAttributes = async () => {
+  const loadAttributes = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getOpcUaServerAttributes();
+      const data = await getOpcUaServerAttributes({ name: debouncedNameFilter });
       setAttributes(data);
     } catch (err: any) {
       const errorMessage = err?.response?.data?.message || err?.message || t("opcuaServer.loadError");
@@ -41,11 +44,15 @@ export function OpcUaServer() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedNameFilter, t]);
 
   useEffect(() => {
     loadAttributes();
-  }, []);
+  }, [loadAttributes]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedNameFilter]);
 
   // Paginación
   const totalPages = Math.max(1, Math.ceil(attributes.length / pageLimit) || 1);
@@ -292,12 +299,30 @@ export function OpcUaServer() {
             <div className="text-center py-5">
               <i className="bi bi-server" style={{ fontSize: "4rem", color: "#6c757d" }}></i>
               <h4 className="mt-3 text-muted">{t("communications.opcuaServer")}</h4>
-              <p className="text-muted">{t("opcuaServer.noAttributesAvailable")}</p>
+              <p className="text-muted">
+                {debouncedNameFilter.trim()
+                  ? t("opcuaServer.noAttributesMatchFilter")
+                  : t("opcuaServer.noAttributesAvailable")}
+              </p>
             </div>
           ) : (
             <div className="table-responsive">
               <table className="table table-striped table-hover" style={{ fontSize: "0.875rem" }}>
                 <thead>
+                  <tr>
+                    <th style={{ padding: "0.5rem 0.75rem" }}>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder={t("common.filter")}
+                        value={nameFilter}
+                        onChange={(e) => setNameFilter(e.target.value)}
+                        disabled={loading}
+                      />
+                    </th>
+                    <th style={{ padding: "0.5rem 0.75rem" }}></th>
+                    <th style={{ padding: "0.5rem 0.75rem" }}></th>
+                  </tr>
                   <tr>
                     <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.name")}</th>
                     <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.nodeNamespace")}</th>

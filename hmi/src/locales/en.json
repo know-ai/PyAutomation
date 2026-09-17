@@ -1442,6 +1442,7 @@
     "exportError": "Error exporting data",
     "exportCSV": "Export to CSV",
     "noAttributesAvailable": "No attributes available",
+    "noAttributesMatchFilter": "No attributes match the name filter",
     "confirmChangeTitle": "Confirm Access Type Change",
     "confirmChangeMessage": "Are you sure you want to change the Access Type of the node?",
     "currentAccessType": "Current Access Type",

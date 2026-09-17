@@ -202,9 +202,12 @@ class AlarmsFooterResource(Resource):
                     "last_transition_from": item.get("last_transition_from"),
                     "last_transition_to": item.get("last_transition_to"),
                     "timestamp": item.get("timestamp"),
+                    "ack_timestamp": item.get("ack_timestamp"),
                     "delay_phase": item.get("delay_phase"),
                     "description": item.get("description"),
                     "priority": item.get("priority", 3),
+                    "alarm_type": item.get("alarm_type"),
+                    "trigger_value": item.get("trigger_value"),
                 })
             else:
                 compact.append(item)

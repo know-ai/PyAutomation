@@ -1333,14 +1333,19 @@ body.process-restart-lock #toast-container {
 }
 
 .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun {
-  background: rgba(255, 193, 7, 0.18);
-  color: #856404;
+  background: #f9a825;
+  color: #1a1a1a;
   animation: none;
 }
 
 .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun td {
-  background: rgba(255, 193, 7, 0.18);
-  color: #856404;
+  background: #f9a825;
+  color: #1a1a1a;
+}
+
+.footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun td .badge:not(.alarm-state-badge) {
+  background-color: rgba(0, 0, 0, 0.18);
+  color: #1a1a1a;
 }
 
 .footer-alarms-table tbody .footer-alarm-row.alarm-unacknowledged td {
@@ -1370,13 +1375,22 @@ body.process-restart-lock #toast-container {
   color: #fff !important;
 }
 
-.footer-alarms-table tbody .footer-alarm-row:hover {
-  background-color: #dc3545 !important;
-  opacity: 0.9;
+.footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--unack:hover,
+.footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--acked:hover {
+  background-color: #c62828 !important;
+  opacity: 0.95;
 }
 
-.footer-alarms-table tbody .footer-alarm-row:hover td {
-  background-color: #dc3545 !important;
+.footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--unack:hover td,
+.footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--acked:hover td {
+  background-color: #c62828 !important;
+  color: #fff !important;
+}
+
+.footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun:hover,
+.footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun:hover td {
+  background-color: #ffca28 !important;
+  color: #1a1a1a !important;
 }
 
 .footer-alarm-row-empty {
@@ -1557,17 +1571,48 @@ body.process-restart-lock #toast-container {
   border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row:hover,
-.dark .footer-alarms-table tbody .footer-alarm-row:hover,
-.dark-mode .footer-alarms-table tbody .footer-alarm-row:hover {
-  background-color: #dc3545 !important;
-  opacity: 0.9;
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun,
+.dark .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun {
+  background-color: #f9a825 !important;
+  color: #1a1a1a !important;
 }
 
-[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row:hover td,
-.dark .footer-alarms-table tbody .footer-alarm-row:hover td,
-.dark-mode .footer-alarms-table tbody .footer-alarm-row:hover td {
-  background-color: #dc3545 !important;
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun td,
+.dark .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun td,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun td {
+  background-color: #f9a825 !important;
+  color: #1a1a1a !important;
+}
+
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--unack:hover,
+.dark .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--unack:hover,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--unack:hover,
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--acked:hover,
+.dark .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--acked:hover,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--acked:hover {
+  background-color: #c62828 !important;
+  opacity: 0.95;
+}
+
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--unack:hover td,
+.dark .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--unack:hover td,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--unack:hover td,
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--acked:hover td,
+.dark .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--acked:hover td,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--acked:hover td {
+  background-color: #c62828 !important;
+  color: #fff !important;
+}
+
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun:hover,
+.dark .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun:hover,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun:hover,
+[data-bs-theme="dark"] .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun:hover td,
+.dark .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun:hover td,
+.dark-mode .footer-alarms-table tbody .footer-alarm-row.footer-alarm-row--rtnun:hover td {
+  background-color: #ffca28 !important;
+  color: #1a1a1a !important;
 }
 
 /* React Grid Layout Styles */

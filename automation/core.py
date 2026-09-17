@@ -882,11 +882,33 @@ class PyAutomation(Singleton):
                     self.subscribe_opcua(tag=tag_obj, opcua_address=resolved_opcua_address, node_namespace=node_namespace, scan_time=scan_time, reload=reload)
 
             self._sync_wavelet_runtime(tag)
+            self.expose_cvt_tag_on_opcua_server(tag)
             return tag, message
         
         else:
 
             return None, message
+
+    @logging_error_handler
+    def expose_cvt_tag_on_opcua_server(self, tag) -> None:
+        r"""
+        Registers a CVT tag on the embedded OPC UA server without restarting it.
+        """
+        if tag is None:
+            return
+        from .models import StringType
+        from .signal_conditioning.filtered_tags import filtered_tag_name
+
+        opcua_server_machine = self.get_machine(name=StringType("OPCUAServer"))
+        if opcua_server_machine is None or not hasattr(opcua_server_machine, "expose_cvt_tag"):
+            return
+        try:
+            opcua_server_machine.expose_cvt_tag(tag)
+            filtered = self.cvt.get_tag_by_name(name=filtered_tag_name(tag.name))
+            if filtered is not None:
+                opcua_server_machine.expose_cvt_tag(filtered)
+        except Exception:
+            logging.debug("OPC UA server dynamic tag expose skipped", exc_info=True)
     
     @logging_error_handler
     @validate_types(output=list)
@@ -2864,7 +2886,7 @@ class PyAutomation(Singleton):
 
     @logging_error_handler
     @validate_types(output=list)
-    def get_opcua_server_attrs(self)->list:
+    def get_opcua_server_attrs(self, name: str = "")->list:
         r"""
         Retrieves all attributes (variables and properties) from the OPC UA Server state machine.
 
@@ -2891,6 +2913,7 @@ class PyAutomation(Singleton):
         dict_keys(['name', 'namespace', 'access_type'])
         ```
         """
+        from .modules.opcua.filters import filter_opcua_server_attrs
         from .state_machine import Node, ua
         from .models import StringType
         
@@ -2955,7 +2978,7 @@ class PyAutomation(Singleton):
                                 "access_type": access_type
                             })
         
-        return attrs
+        return filter_opcua_server_attrs(attrs, name=name)
 
     @logging_error_handler
     @validate_types(namespace=str, access_type=str, name=str|type(None), output=tuple)

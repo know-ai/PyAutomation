@@ -23,6 +23,7 @@ export type Alarm = {
   last_transition_from?: string | null;
   last_transition_to?: string | null;
   ack_timestamp?: string;
+  ack_time?: string | null;
   segment?: string;
   manufacturer?: string;
   alarm_setpoint?: {

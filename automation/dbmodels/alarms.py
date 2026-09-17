@@ -12,6 +12,76 @@ from ..utils.decorators import logging_error_handler
 
 tag_engine = CVTEngine()
 
+# Nullable DDL for ISA-18.2 alarm_summary v2. No server DEFAULT on
+# schema_version: existing rows stay NULL and are backfilled to 1.
+_ALARM_SUMMARY_V2_SQL_TYPES = {
+    "postgresql": (
+        ("from_state", "VARCHAR(24)"),
+        ("to_state", "VARCHAR(24)"),
+        ("event_time", "BIGINT"),
+        ("operator_id", "INTEGER"),
+        ("condition_met", "BOOLEAN"),
+        ("condition_value", "DOUBLE PRECISION"),
+        ("schema_version", "INTEGER"),
+    ),
+    "mysql": (
+        ("from_state", "VARCHAR(24)"),
+        ("to_state", "VARCHAR(24)"),
+        ("event_time", "BIGINT"),
+        ("operator_id", "INTEGER"),
+        ("condition_met", "TINYINT(1)"),
+        ("condition_value", "DOUBLE"),
+        ("schema_version", "INTEGER"),
+    ),
+    "sqlite": (
+        ("from_state", "VARCHAR(24)"),
+        ("to_state", "VARCHAR(24)"),
+        ("event_time", "INTEGER"),
+        ("operator_id", "INTEGER"),
+        ("condition_met", "INTEGER"),
+        ("condition_value", "REAL"),
+        ("schema_version", "INTEGER"),
+    ),
+}
+
+
+def _historian_vendor(database) -> str:
+    vendor = (getattr(database, "vendor", "") or "").lower()
+    if vendor in {"postgresql", "postgres", "psycopg2"}:
+        return "postgresql"
+    if vendor in {"mysql", "mariadb"}:
+        return "mysql"
+    if vendor in {"sqlite", "sqlite3"}:
+        return "sqlite"
+    name = type(database).__name__.lower()
+    if "postgres" in name:
+        return "postgresql"
+    if "mysql" in name or "maria" in name:
+        return "mysql"
+    return "sqlite"
+
+
+def _add_missing_nullable_column(database, table: str, column: str, sql_type: str) -> bool:
+    """Add one nullable column. Returns True if it was created. Never drops data."""
+    try:
+        existing = {item.name for item in database.get_columns(table)}
+    except Exception:
+        existing = set()
+    if column in existing:
+        return False
+    vendor = _historian_vendor(database)
+    if vendor == "postgresql":
+        sql = (
+            f'ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS "{column}" {sql_type}'
+        )
+    elif vendor == "mysql":
+        sql = f"ALTER TABLE `{table}` ADD COLUMN `{column}` {sql_type} NULL"
+    else:
+        sql = f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}"
+    database.execute_sql(sql)
+    return True
+
+
 class AlarmTypes(BaseModel):
     r"""
     Database model for Alarm Types (e.g., HIGH, LOW, BOOL).
@@ -961,54 +1031,36 @@ class AlarmSummary(BaseModel):
 
     @classmethod
     def _ensure_v2_columns(cls) -> None:
-        """Additive ISA-18.2 history columns (schema_version 2). Idempotent."""
+        """Additive ISA-18.2 history columns (schema_version 2). Idempotent.
+
+        Uses raw ``ALTER TABLE ... ADD COLUMN`` so a remote historian created
+        with the pre-ISA schema is repaired on connect/SAF without playhouse
+        and without rewriting or deleting existing rows.
+        """
         database = cls._meta.database
         if database is None:
             return
         table = cls._meta.table_name
         logger = logging.getLogger("pyautomation")
-        try:
-            existing = {column.name for column in database.get_columns(table)}
-        except Exception:
-            return
-        additions = (
-            ("from_state", cls.from_state),
-            ("to_state", cls.to_state),
-            ("event_time", cls.event_time),
-            ("operator_id", cls.operator_id),
-            ("condition_met", cls.condition_met),
-            ("condition_value", cls.condition_value),
-            ("schema_version", cls.schema_version),
-        )
-        pending = [(name, field) for name, field in additions if name not in existing]
-        if pending:
+        vendor = _historian_vendor(database)
+        type_map = _ALARM_SUMMARY_V2_SQL_TYPES.get(vendor) or _ALARM_SUMMARY_V2_SQL_TYPES["sqlite"]
+        added = []
+        for column, sql_type in type_map:
             try:
-                from peewee import MySQLDatabase, PostgresqlDatabase, SqliteDatabase
-                from playhouse.migrate import (
-                    MySQLMigrator,
-                    PostgresqlMigrator,
-                    SqliteMigrator,
-                    migrate,
-                )
+                if _add_missing_nullable_column(database, table, column, sql_type):
+                    added.append(column)
             except Exception:
-                logger.debug("alarm_summary v2 migrate skipped (playhouse unavailable)", exc_info=True)
-                return
-            if isinstance(database, SqliteDatabase):
-                migrator = SqliteMigrator(database)
-            elif isinstance(database, PostgresqlDatabase):
-                migrator = PostgresqlMigrator(database)
-            elif isinstance(database, MySQLDatabase):
-                migrator = MySQLMigrator(database)
-            else:
-                logger.warning("alarm_summary v2 migrate skipped: %s", type(database).__name__)
-                return
-            for field_name, field in pending:
-                cloned = field.clone()
-                cloned.index = False
-                try:
-                    migrate(migrator.add_column(table, field_name, cloned))
-                except Exception:
-                    logger.warning("alarm_summary column %s add skipped", field_name, exc_info=True)
+                logger.warning(
+                    "alarm_summary column %s add skipped",
+                    column,
+                    exc_info=True,
+                )
+        if added:
+            logger.info(
+                "AlarmSummary: added ISA v2 columns on %s: %s (existing rows kept)",
+                table,
+                ", ".join(added),
+            )
         try:
             database.execute_sql(
                 f"UPDATE {table} SET to_state = ("

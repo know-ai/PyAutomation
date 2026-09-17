@@ -1442,6 +1442,7 @@
     "exportError": "Error al exportar los datos",
     "exportCSV": "Exportar a CSV",
     "noAttributesAvailable": "No hay atributos disponibles",
+    "noAttributesMatchFilter": "Ningún atributo coincide con el filtro de nombre",
     "confirmChangeTitle": "Confirmar cambio de tipo de acceso",
     "confirmChangeMessage": "¿Está seguro de que desea cambiar el tipo de acceso del nodo?",
     "currentAccessType": "Tipo de acceso actual",

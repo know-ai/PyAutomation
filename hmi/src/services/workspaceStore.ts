@@ -471,17 +471,69 @@ export function createDefaultStripChart(title: string, y: number): StripChartCon
 
 let _catalog: Tag[] | null = null;
 let _catalogPromise: Promise<Tag[]> | null = null;
+type CatalogListener = (tags: Tag[]) => void;
+type CatalogInvalidateListener = () => void;
+const _catalogListeners = new Set<CatalogListener>();
+const _catalogInvalidateListeners = new Set<CatalogInvalidateListener>();
+
+function emitStationTagCatalog(tags: Tag[]): void {
+  _catalogListeners.forEach((listener) => {
+    try {
+      listener(tags);
+    } catch {
+      /* ignore */
+    }
+  });
+}
 
 export function peekStationTagCatalog(): Tag[] | null {
   return _catalog;
 }
 
+function clearStationTagCatalogCache(): void {
+  _catalog = null;
+  _catalogPromise = null;
+}
+
+/** Drop cached tag list and notify subscribers (e.g. Real-Time Trends) to refetch. */
+export function invalidateStationTagCatalog(): void {
+  clearStationTagCatalogCache();
+  _catalogInvalidateListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+export function subscribeStationTagCatalogInvalidation(
+  listener: CatalogInvalidateListener
+): () => void {
+  _catalogInvalidateListeners.add(listener);
+  return () => {
+    _catalogInvalidateListeners.delete(listener);
+  };
+}
+
+export function subscribeStationTagCatalog(listener: CatalogListener): () => void {
+  _catalogListeners.add(listener);
+  if (_catalog) listener(_catalog);
+  return () => {
+    _catalogListeners.delete(listener);
+  };
+}
+
 export function loadStationTagCatalog(force = false): Promise<Tag[]> {
-  if (!force && _catalog) return Promise.resolve(_catalog);
-  if (!force && _catalogPromise) return _catalogPromise;
+  // Silent bust only — must not call invalidateStationTagCatalog() here or
+  // refresh listeners recurse (refresh → load(force) → invalidate → refresh …).
+  if (force) clearStationTagCatalogCache();
+  if (_catalog) return Promise.resolve(_catalog);
+  if (_catalogPromise) return _catalogPromise;
   _catalogPromise = getTagsList()
     .then((tags) => {
       _catalog = tags || [];
+      emitStationTagCatalog(_catalog);
       return _catalog;
     })
     .catch((error) => {

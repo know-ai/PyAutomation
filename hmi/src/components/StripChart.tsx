@@ -126,9 +126,11 @@ function StripChartInner({
 
   const getTagMeta = useCallback(
     (tagName: string) => {
-      const tag = availableTags.find((item) => item.name === tagName);
+      let tag = availableTags.find((item) => item.name === tagName) ?? liveTags[tagName];
       if (!isFilteredDerivativeName(tagName)) return tag;
-      const source = availableTags.find((item) => item.name === sourceTagName(tagName));
+      let source =
+        availableTags.find((item) => item.name === sourceTagName(tagName)) ??
+        liveTags[sourceTagName(tagName)];
       if (!source) return tag;
       return {
         ...tag,
@@ -139,7 +141,7 @@ function StripChartInner({
         unit: source.unit || tag?.unit,
       } as Tag;
     },
-    [availableTags]
+    [availableTags, liveTags]
   );
 
   const getTagUnit = useCallback(
@@ -441,16 +443,16 @@ function StripChartInner({
                   onMouseMove={(event) => event.stopPropagation()}
                   onMouseEnter={(event) => event.stopPropagation()}
                 >
-                  {loadingTags && (
+                  {loadingTags && tagOptions.length === 0 && (
                     <span className="spinner-border spinner-border-sm" role="status" aria-label={t("stripChart.loadingTags")} />
                   )}
                   <MultiSelectSearch
                     options={tagOptions}
                     selected={config.tagNames}
                     onChange={applyTagNames}
-                    disabled={loadingTags}
+                    disabled={loadingTags && tagOptions.length === 0}
                     placeholder={
-                      loadingTags
+                      loadingTags && tagOptions.length === 0
                         ? t("stripChart.loadingTags")
                         : t("stripChart.tagsWithCount", { count: config.tagNames.length })
                     }

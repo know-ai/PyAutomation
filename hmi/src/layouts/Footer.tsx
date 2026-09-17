@@ -12,6 +12,7 @@ import { isSystemUser } from "../utils/systemUser";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
 import {
   alarmDelayBadgeClass,
+  alarmStateBadgeClass,
   formatDelayRemaining,
   normalizeAlarmState,
 } from "../utils/alarmState";
@@ -277,9 +278,11 @@ export function Footer() {
                   : "-";
             const delayPhase = alarm.delay_phase;
             const delayBadge = alarmDelayBadgeClass(delayPhase);
+            const stateBadge = delayBadge || alarmStateBadgeClass(alarm.state);
             const useDelayColor = delayPhase === "pending" || delayPhase === "clearing";
             const rowColor = delayPhase === "pending" ? "#f9a825" : delayPhase === "clearing" ? "#29b6f6" : undefined;
             const rowText = useDelayColor ? "#212121" : undefined;
+            const ackStamp = alarm.ack_timestamp || alarm.ack_time;
 
             return (
               <tr
@@ -307,10 +310,7 @@ export function Footer() {
                   </span>
                 </td>
                 <td style={{ backgroundColor: rowColor, color: rowText }}>
-                  <span
-                    className={`badge ${delayBadge || ""}`}
-                    style={delayBadge ? undefined : { backgroundColor: "rgba(255, 255, 255, 0.2)", color: rowText }}
-                  >
+                  <span className={`badge ${stateBadge}`}>
                     {getStateLabel(alarm)}
                   </span>
                 </td>
@@ -319,7 +319,7 @@ export function Footer() {
                   {formatTimestamp(alarm.timestamp, timeZone) || "-"}
                 </td>
                 <td style={{ backgroundColor: rowColor, color: rowText }}>
-                  {formatTimestamp(alarm.ack_timestamp, timeZone) || "-"}
+                  {formatTimestamp(ackStamp, timeZone) || "-"}
                 </td>
               </tr>
             );
