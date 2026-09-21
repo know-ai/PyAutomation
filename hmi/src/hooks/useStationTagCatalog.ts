@@ -81,6 +81,9 @@ export function useStationTagCatalog(options: UseStationTagCatalogOptions = {}) 
       }, MACHINE_REFRESH_DEBOUNCE_MS);
     };
     const cleanupMachine = socketService.onMachineUpdate(scheduleRefresh);
+    const cleanupCatalog = socketService.onTagCatalogUpdate(() => {
+      void refresh(true);
+    });
     const cleanupConnection = socketService.onConnectionChange(({ connected, reconnect }) => {
       if (connected && reconnect) {
         scheduleRefresh();
@@ -88,6 +91,7 @@ export function useStationTagCatalog(options: UseStationTagCatalogOptions = {}) 
     });
     return () => {
       cleanupMachine();
+      cleanupCatalog();
       cleanupConnection();
       if (timer) clearTimeout(timer);
     };

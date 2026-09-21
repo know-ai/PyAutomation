@@ -299,8 +299,23 @@ class DataLogger(BaseLogger):
         if not self.check_connectivity():
 
             return None
-        
-        tag, _ = Tags.get_or_create(identifier=id)
+
+        tag = _lookup_tag_row(name="", identifier=id)
+        if tag is None:
+            logging.getLogger("pyautomation").debug(
+                "delete_tag skipped: historian row not found identifier=%s",
+                id,
+            )
+            try:
+                from ..catalog.mutations import soft_deactivate_tag_local
+
+                soft_deactivate_tag_local(identifier=id, name=None)
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "catalog tag soft-delete mirror skipped", exc_info=True
+                )
+            return None
+
         Tags.put(id=tag.id, active=False)
         try:
             from ..catalog.mutations import soft_deactivate_tag_local

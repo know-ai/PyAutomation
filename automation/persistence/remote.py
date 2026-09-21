@@ -53,6 +53,16 @@ def reset_missing_tag_tries() -> None:
         _MISSING_TAG_TRIES.clear()
 
 
+def nudge_tag_catalog_push(tag_name: str) -> None:
+    """Mark a local catalog tag row dirty so the replicator PUSHes it."""
+    _nudge_local_tag_push(tag_name)
+
+
+def clear_missing_tag_retry(tag_name: str) -> None:
+    """Reset SAF miss counter after the tag appears in the historian catalog."""
+    _clear_missing_tag(tag_name)
+
+
 def _nudge_local_tag_push(tag_name: str) -> None:
     """If the edge already has the tag, dirty it so the catalog worker can PUSH."""
     if not tag_name:

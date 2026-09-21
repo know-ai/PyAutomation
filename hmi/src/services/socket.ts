@@ -391,6 +391,13 @@ class SocketService {
     return this.subscribe<Tag>("on.tag", callback);
   }
 
+  /** Tag catalog changed (create/update/delete at runtime) — refresh pickers. */
+  onTagCatalogUpdate(
+    callback: (payload: { name?: string; action?: string; reason?: string }) => void
+  ): () => void {
+    return this.subscribe("on.tag_catalog", callback);
+  }
+
   onAlarmUpdate(callback: (alarm: Alarm) => void): () => void {
     return this.subscribe<Alarm>("on.alarm", callback);
   }

@@ -347,14 +347,18 @@ class Machine(Singleton):
         field-tag names (FI_01, PI_01, …) created for later OPC UA mapping, but are
         **not** subscribed: the operator must subscribe after mapping.
 
-        Internal tags use ``cvt.set_tag`` (equivalent to ``create_tag(..., skip_validation=True)``)
-        so Site.Area HMI rules do not apply to ``Manufacturer.Segment.Engine.variable`` names.
+        Internal tags use ``create_tag(..., skip_validation=True)`` so Site.Area HMI
+        rules do not apply to ``Manufacturer.Segment.Engine.variable`` names, while
+        still persisting to historian/local catalog and notifying the HMI catalog.
 
         **Parameters:**
 
         * **machine** (StateMachine): The machine instance.
         """
         from . import SEGMENT, MANUFACTURER
+        from automation import PyAutomation
+
+        app = PyAutomation()
         cvt = CVTEngine()
         internal_variables = machine.get_internal_process_type_variables()
         for _tag_name, value in internal_variables.items():
@@ -364,26 +368,44 @@ class Machine(Singleton):
                 if value.unit in units.values() or value.unit in units.keys():
 
                     tag_name = f"{machine.name.value}.{_tag_name}"
-                    cvt.set_tag(
+                    tag, message = app.create_tag(
                         name=tag_name,
                         unit=value.unit,
                         data_type="float",
                         variable=variable,
-                        description=f"process type variable",
+                        description="process type variable",
+                        display_name=tag_name,
                         segment=SEGMENT,
-                        manufacturer=MANUFACTURER
+                        manufacturer=MANUFACTURER,
+                        skip_validation=True,
                     )
-                    # Persist Tag on Database (or local catalog mirror)
-                    tag = cvt.get_tag_by_name(name=tag_name)
+                    if not tag:
+                        tag = cvt.get_tag_by_name(name=tag_name)
+                        if tag is not None:
+                            self._persist_machine_tag(tag=tag, tag_name=tag_name)
+                        else:
+                            logging.warning(
+                                "Machine output tag not created name=%s message=%s",
+                                tag_name,
+                                message,
+                            )
                     attr = getattr(machine, _tag_name)
                     attr.tag = tag
-                    self._persist_machine_tag(tag=tag, tag_name=tag_name)
                     break
 
         relationships = getattr(machine, "internal_tags_relationships", None)
         if not isinstance(relationships, dict):
             relationships = {}
-        for _tag_name, value in machine.get_read_only_process_type_variables().items():
+        readonly_variables = machine.get_read_only_process_type_variables()
+        for rel_name in relationships:
+            if rel_name not in readonly_variables:
+                logging.warning(
+                    "internal_tags_relationships[%s] on %s has no read-only ProcessType; "
+                    "field tag will not be created at bootstrap",
+                    rel_name,
+                    machine.name.value,
+                )
+        for _tag_name, value in readonly_variables.items():
             rel = relationships.get(_tag_name)
             if not isinstance(rel, dict):
                 continue
@@ -399,20 +421,28 @@ class Machine(Singleton):
                         tag_name = f"{MANUFACTURER}.{tag_name}"
                     description = rel.get("description") or ""
                     unit = getattr(machine, _tag_name).unit
-                    tag, _ = cvt.set_tag(
+                    tag, message = app.create_tag(
                         name=tag_name,
                         unit=unit,
                         data_type="float",
                         variable=variable,
                         description=description,
+                        display_name=tag_name,
                         segment=SEGMENT,
                         manufacturer=MANUFACTURER,
+                        skip_validation=True,
                     )
 
                     if not tag:
                         tag = cvt.get_tag_by_name(name=tag_name)
-                    if tag:
-                        self._persist_machine_tag(tag=tag, tag_name=tag_name)
+                        if tag is not None:
+                            self._persist_machine_tag(tag=tag, tag_name=tag_name)
+                        else:
+                            logging.warning(
+                                "Machine field tag not created name=%s message=%s",
+                                tag_name,
+                                message,
+                            )
                     break
 
         try:
@@ -431,25 +461,16 @@ class Machine(Singleton):
             self.db_manager.attach(tag_name=tag_name)
         except Exception:
             logging.debug("SAF TagObserver attach skipped name=%s", tag_name, exc_info=True)
-        live = False
         try:
-            from automation import PyAutomation
+            from .catalog.runtime_tag import ensure_tag_historian_catalog
 
-            live = bool(PyAutomation().is_db_connected())
+            ensure_tag_historian_catalog(tag, reason="machine_tag")
         except Exception:
-            live = False
-        if live:
-            try:
-                self.logger_engine.set_tag(tag=tag)
-            except Exception:
-                logging.debug("historian machine tag persist skipped", exc_info=True)
-            return
-        try:
-            from .catalog.seed import persist_tag_to_local
-
-            persist_tag_to_local(tag)
-        except Exception:
-            logging.debug("local catalog machine tag persist skipped", exc_info=True)
+            logging.debug(
+                "runtime tag catalog ensure skipped name=%s",
+                tag_name,
+                exc_info=True,
+            )
              
     def create_alarm(
             self,
@@ -2041,6 +2062,8 @@ class OPCUAServer(StateMachineCore):
             description=description,
             classification=classification
             )
+        self._pending_cvt_expose: set[str] = set()
+        self._cvt_resync_done = False
         
     @logging_error_handler
     def while_starting(self):
@@ -2096,6 +2119,27 @@ class OPCUAServer(StateMachineCore):
         logging.getLogger("opcua").setLevel(logging.ERROR)
 
         self._opcua_ready = True
+        try:
+            added = self.sync_cvt_tags()
+            flushed = self._flush_pending_cvt_expose()
+            if added or flushed:
+                logging.getLogger("pyautomation").info(
+                    "OPC UA CVT sync on start: registered=%s flushed_pending=%s",
+                    added,
+                    flushed,
+                )
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "OPC UA CVT sync on start skipped", exc_info=True
+            )
+        try:
+            from automation import PyAutomation
+
+            PyAutomation().reconcile_runtime_tag_catalog(reason="opcua_ready")
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "OPC UA historian reconcile skipped", exc_info=True
+            )
         self.send("start_to_wait")
 
     def while_waiting(self):
@@ -2110,6 +2154,15 @@ class OPCUAServer(StateMachineCore):
         
         Continuously updates the values of tags, alarms, and engines in the OPC UA address space.
         """
+        if not self._cvt_resync_done:
+            try:
+                self.sync_cvt_tags()
+                self._flush_pending_cvt_expose()
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "OPC UA CVT sync on first run skipped", exc_info=True
+                )
+            self._cvt_resync_done = True
         self.__update_tags()
         self.__update_alarms()
         self.__update_engines()
@@ -2127,6 +2180,8 @@ class OPCUAServer(StateMachineCore):
         self._opcua_ready = False
         self._opcua_endpoint_up = False
         self._opcua_space_loaded = False
+        self._cvt_resync_done = False
+        self._pending_cvt_expose.clear()
         self.send("reset_to_start")
     def __set_engines(self):
         r"""
@@ -2323,7 +2378,14 @@ class OPCUAServer(StateMachineCore):
         description = node.get_attribute(ua.AttributeIds.Description)
         description.Value.Value.Text = tag_description
         browse_name = node.get_attribute(ua.AttributeIds.BrowseName)
-        browse_name.Value.Value.Name = display_unit
+        browse_name.Value.Value.Name = tag_name
+        try:
+            display_name_attr = node.get_attribute(ua.AttributeIds.DisplayName)
+            display_name_attr.Value.Value.Text = (
+                tag.get("display_name") or tag_name.split(".")[-1] or display_unit
+            )
+        except Exception:
+            pass
 
         pop_list = (
             "id",
@@ -2349,16 +2411,52 @@ class OPCUAServer(StateMachineCore):
             browse_name.Value.Value.Name = ""
         return True
 
+    def sync_cvt_tags(self) -> int:
+        r"""Register any owned CVT tags missing from the OPC UA address space."""
+        if not getattr(self, "_opcua_ready", False):
+            return 0
+        added = 0
+        for tag_object in self.cvt.iter_tags():
+            if self._register_cvt_tag(tag_object):
+                added += 1
+                self._push_cvt_tag_value(tag_object)
+        return added
+
+    def _flush_pending_cvt_expose(self) -> int:
+        pending = getattr(self, "_pending_cvt_expose", None)
+        if not pending:
+            return 0
+        names = list(pending)
+        pending.clear()
+        flushed = 0
+        for tag_name in names:
+            tag_object = self.cvt.get_tag_by_name(name=tag_name)
+            if tag_object is None:
+                continue
+            if self._register_cvt_tag(tag_object):
+                flushed += 1
+            self._push_cvt_tag_value(tag_object)
+        return flushed
+
     def expose_cvt_tag(self, tag_object) -> bool:
         r"""
         Ensures a runtime CVT tag is visible on the embedded OPC UA server.
 
-        Safe to call while the server is still starting (no-op until ready).
+        When the server is still starting, queues the tag for registration once ready.
         """
+        tag_name = getattr(tag_object, "name", None)
         if not getattr(self, "_opcua_ready", False):
+            if tag_name:
+                pending = getattr(self, "_pending_cvt_expose", None)
+                if pending is not None:
+                    pending.add(tag_name)
             return False
         registered = self._register_cvt_tag(tag_object)
         self._push_cvt_tag_value(tag_object)
+        if tag_name:
+            pending = getattr(self, "_pending_cvt_expose", None)
+            if pending is not None:
+                pending.discard(tag_name)
         return registered
 
     def _push_cvt_tag_value(self, tag_object) -> None:

@@ -289,48 +289,52 @@ export function OpcUaServer() {
             </div>
           )}
 
-          {loading ? (
-            <div className="text-center py-5">
-              <div className="spinner-border" role="status">
-                <span className="visually-hidden">{t("common.loading")}</span>
-              </div>
-            </div>
-          ) : attributes.length === 0 ? (
-            <div className="text-center py-5">
-              <i className="bi bi-server" style={{ fontSize: "4rem", color: "#6c757d" }}></i>
-              <h4 className="mt-3 text-muted">{t("communications.opcuaServer")}</h4>
-              <p className="text-muted">
-                {debouncedNameFilter.trim()
-                  ? t("opcuaServer.noAttributesMatchFilter")
-                  : t("opcuaServer.noAttributesAvailable")}
-              </p>
-            </div>
-          ) : (
-            <div className="table-responsive">
-              <table className="table table-striped table-hover" style={{ fontSize: "0.875rem" }}>
-                <thead>
+          <div className="table-responsive">
+            <table className="table table-striped table-hover" style={{ fontSize: "0.875rem" }}>
+              <thead>
+                <tr>
+                  <th style={{ padding: "0.5rem 0.75rem", maxWidth: "320px" }}>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder={t("common.filter")}
+                      value={nameFilter}
+                      onChange={(e) => setNameFilter(e.target.value)}
+                      disabled={loading}
+                      aria-label={t("common.filter")}
+                    />
+                  </th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}></th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}></th>
+                </tr>
+                <tr>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.name")}</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.nodeNamespace")}</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.accessType")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
                   <tr>
-                    <th style={{ padding: "0.5rem 0.75rem" }}>
-                      <input
-                        type="text"
-                        className="form-control form-control-sm"
-                        placeholder={t("common.filter")}
-                        value={nameFilter}
-                        onChange={(e) => setNameFilter(e.target.value)}
-                        disabled={loading}
-                      />
-                    </th>
-                    <th style={{ padding: "0.5rem 0.75rem" }}></th>
-                    <th style={{ padding: "0.5rem 0.75rem" }}></th>
+                    <td colSpan={3} className="text-center py-5">
+                      <div className="spinner-border" role="status">
+                        <span className="visually-hidden">{t("common.loading")}</span>
+                      </div>
+                    </td>
                   </tr>
+                ) : attributes.length === 0 ? (
                   <tr>
-                    <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.name")}</th>
-                    <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.nodeNamespace")}</th>
-                    <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.accessType")}</th>
+                    <td colSpan={3} className="text-center py-5">
+                      <i className="bi bi-server" style={{ fontSize: "3rem", color: "#6c757d" }}></i>
+                      <p className="text-muted mb-0 mt-3">
+                        {debouncedNameFilter.trim()
+                          ? t("opcuaServer.noAttributesMatchFilter")
+                          : t("opcuaServer.noAttributesAvailable")}
+                      </p>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {paginatedAttributes.map((attribute) => (
+                ) : (
+                  paginatedAttributes.map((attribute) => (
                     <tr key={attribute.namespace} style={{ height: "auto" }}>
                       <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>{attribute.name}</td>
                       <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
@@ -357,11 +361,11 @@ export function OpcUaServer() {
                         </select>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </Card>
       </div>
 

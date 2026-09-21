@@ -59,14 +59,17 @@ class TestOpcuaServerDynamicExpose(unittest.TestCase):
         register.assert_called_once_with(tag)
         push_value.assert_called_once_with(tag)
 
-    def test_expose_cvt_tag_noop_until_server_ready(self):
+    def test_expose_cvt_tag_queues_until_server_ready(self):
         server = self._server_stub()
         server._opcua_ready = False
+        server._pending_cvt_expose = set()
         tag = MagicMock()
+        tag.name = "Supe.Linea2.TI_02"
         with patch.object(server, "_register_cvt_tag") as register:
             registered = server.expose_cvt_tag(tag)
         self.assertFalse(registered)
         register.assert_not_called()
+        self.assertIn("Supe.Linea2.TI_02", server._pending_cvt_expose)
 
     def test_core_expose_delegates_to_opcua_server_machine(self):
         from automation import PyAutomation

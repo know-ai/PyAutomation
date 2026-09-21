@@ -34,8 +34,25 @@ class TestInternalTagsRelationships(unittest.TestCase):
         mgr = Machine()
         cvt = CVTEngine()
 
+        def _create_tag_stub(**kwargs):
+            tag, msg = cvt.set_tag(
+                name=kwargs["name"],
+                unit=kwargs["unit"],
+                data_type=kwargs.get("data_type", "float"),
+                variable=kwargs["variable"],
+                description=kwargs.get("description") or "",
+                segment=kwargs.get("segment"),
+                manufacturer=kwargs.get("manufacturer"),
+            )
+            return tag, msg
+
+        mock_app = MagicMock()
+        mock_app.create_tag.side_effect = _create_tag_stub
+
         with patch(
             "automation.node_scope.get_node_scope", return_value=_DisabledScope()
+        ), patch(
+            "automation.state_machine.PyAutomation", return_value=mock_app
         ), patch.object(mgr, "logger_engine", MagicMock()), patch.object(
             mgr, "db_manager", MagicMock()
         ), patch.object(mgr, "create_alarm", MagicMock()):
@@ -51,3 +68,42 @@ class TestInternalTagsRelationships(unittest.TestCase):
             expected_field_name = f"{MANUFACTURER}.{expected_field_name}"
         self.assertIsNotNone(machine.leak_flow.tag)
         self.assertIsNotNone(cvt.get_tag_by_name(name=expected_field_name))
+
+    def test_multiple_engines_get_distinct_output_tags(self):
+        suffix = uuid4().hex[:8]
+        mgr = Machine()
+        cvt = CVTEngine()
+
+        class Engine(StateMachineCore):
+            def __init__(self, engine_name: str):
+                super().__init__(name=engine_name, classification="Leak Detection")
+                self.leak = ProcessType(read_only=False, unit="adim")
+
+        def _create_tag_stub(**kwargs):
+            tag, msg = cvt.set_tag(
+                name=kwargs["name"],
+                unit=kwargs["unit"],
+                data_type=kwargs.get("data_type", "float"),
+                variable=kwargs["variable"],
+                description=kwargs.get("description") or "",
+                display_name=kwargs.get("display_name"),
+                segment=kwargs.get("segment"),
+                manufacturer=kwargs.get("manufacturer"),
+            )
+            return tag, msg
+
+        mock_app = MagicMock()
+        mock_app.create_tag.side_effect = _create_tag_stub
+
+        with patch(
+            "automation.node_scope.get_node_scope", return_value=_DisabledScope()
+        ), patch(
+            "automation.state_machine.PyAutomation", return_value=mock_app
+        ), patch.object(mgr, "logger_engine", MagicMock()), patch.object(
+            mgr, "db_manager", MagicMock()
+        ), patch.object(mgr, "create_alarm", MagicMock()):
+            for engine_name in (f"ENG_A_{suffix}", f"ENG_B_{suffix}"):
+                mgr.create_tag_internal_process_type(Engine(engine_name))
+
+        self.assertIsNotNone(cvt.get_tag_by_name(name=f"ENG_A_{suffix}.leak"))
+        self.assertIsNotNone(cvt.get_tag_by_name(name=f"ENG_B_{suffix}.leak"))

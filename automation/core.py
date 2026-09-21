@@ -778,7 +778,9 @@ class PyAutomation(Singleton):
                     display_name = qualified.base_name
 
         if not display_name:
-            display_name = name.split(".")[-1] if name else name
+            # Machine/system tags use fully qualified names; defaulting to the
+            # last segment (e.g. "leak") collides across engines on one edge.
+            display_name = name if skip_name_rules else (name.split(".")[-1] if name else name)
 
         # Si se proporciona opcua_client_name directamente, usarlo
         # Si no, intentar resolverlo desde opcua_address
@@ -835,6 +837,10 @@ class PyAutomation(Singleton):
             area=area,
             owner_node=owner_node,
         )
+        if tag is None and (reload or skip_validation):
+            tag = self.cvt.get_tag_by_name(name=name)
+            if tag is None and id:
+                tag = self.cvt.get_tag(id=id)
         
         # Si se resolvió el nombre del cliente, establecerlo en el tag junto con la URL
         if tag and opcua_client_name:
@@ -848,15 +854,12 @@ class PyAutomation(Singleton):
                 self.db_manager.attach(tag_name=name)
             except Exception:
                 logging.debug("SAF TagObserver attach skipped name=%s", name, exc_info=True)
-            if self.is_db_connected():
-                self.logger_engine.set_tag(tag=tag)
-            else:
-                try:
-                    from .catalog.seed import persist_tag_to_local
+            try:
+                from .catalog.runtime_tag import ensure_tag_historian_catalog
 
-                    persist_tag_to_local(tag)
-                except Exception:
-                    logging.debug("local catalog tag persist skipped", exc_info=True)
+                ensure_tag_historian_catalog(tag, reason="create_tag")
+            except Exception:
+                logging.debug("runtime tag catalog ensure skipped name=%s", name, exc_info=True)
 
             if scan_time:
 
@@ -909,6 +912,69 @@ class PyAutomation(Singleton):
                 opcua_server_machine.expose_cvt_tag(filtered)
         except Exception:
             logging.debug("OPC UA server dynamic tag expose skipped", exc_info=True)
+
+    @logging_error_handler
+    def reconcile_runtime_tag_catalog(self, *, reason: str = "startup") -> None:
+        r"""Ensure every owned CVT tag is in historian catalog and OPC UA server."""
+        try:
+            from .catalog.runtime_tag import ensure_tag_historian_catalog
+        except Exception:
+            logging.debug("runtime tag reconcile import skipped", exc_info=True)
+            return
+        for tag_dict in self.get_tags() or []:
+            tag_name = tag_dict.get("name")
+            if not tag_name:
+                continue
+            tag_obj = self.cvt.get_tag_by_name(name=tag_name)
+            if tag_obj is None:
+                continue
+            try:
+                ensure_tag_historian_catalog(tag_obj, reason=reason)
+            except Exception:
+                logging.debug(
+                    "runtime tag reconcile historian skipped name=%s",
+                    tag_name,
+                    exc_info=True,
+                )
+            self.expose_cvt_tag_on_opcua_server(tag_obj)
+
+    def _schedule_runtime_tag_reconcile(self, *, reason: str = "startup", attempt: int = 0) -> None:
+        """Retry reconcile until OPC UA server is ready (tags may load before it starts)."""
+        max_attempts = 30
+        try:
+            self.reconcile_runtime_tag_catalog(reason=reason)
+            from .models import StringType
+
+            opcua_server = self.get_machine(name=StringType("OPCUAServer"))
+            if opcua_server is not None and getattr(opcua_server, "_opcua_ready", False):
+                sync = getattr(opcua_server, "sync_cvt_tags", None)
+                if callable(sync):
+                    sync()
+                flush = getattr(opcua_server, "_flush_pending_cvt_expose", None)
+                if callable(flush):
+                    flush()
+                return
+        except Exception:
+            logging.debug("runtime tag reconcile attempt failed", exc_info=True)
+        if attempt >= max_attempts:
+            logging.warning(
+                "Runtime tag reconcile stopped after %s attempts (OPC UA may still be starting)",
+                max_attempts,
+            )
+            return
+        try:
+            import gevent
+
+            gevent.spawn_later(
+                1.0,
+                lambda: self._schedule_runtime_tag_reconcile(
+                    reason=reason,
+                    attempt=attempt + 1,
+                ),
+            )
+        except ImportError:
+            if attempt == 0:
+                logging.debug("gevent unavailable; single-shot runtime tag reconcile only")
     
     @logging_error_handler
     @validate_types(output=list)
@@ -1554,6 +1620,12 @@ class PyAutomation(Singleton):
             soft_deactivate_tag_local(identifier=id, name=tag_name)
         except Exception:
             logging.debug("local catalog tag delete skipped", exc_info=True)
+        try:
+            from .catalog.runtime_tag import notify_tag_catalog_changed
+
+            notify_tag_catalog_changed(tag_name, action="delete", reason="delete_tag")
+        except Exception:
+            logging.debug("tag catalog notify skipped name=%s", tag_name, exc_info=True)
 
     @logging_error_handler
     def update_tag(
@@ -1746,14 +1818,18 @@ class PyAutomation(Singleton):
                     id=id,  
                     **kwargs
                 )
-        else:
+        updated_for_catalog = self.cvt.get_tag(id=id)
+        if updated_for_catalog is not None:
             try:
-                from .catalog.seed import persist_tag_to_local
+                from .catalog.runtime_tag import ensure_tag_historian_catalog
 
-                updated_tag = self.cvt.get_tag(id=id)
-                persist_tag_to_local(updated_tag)
+                ensure_tag_historian_catalog(updated_for_catalog, reason="update_tag")
             except Exception:
-                logging.debug("local catalog tag update persist skipped", exc_info=True)
+                logging.debug(
+                    "runtime tag catalog ensure skipped on update name=%s",
+                    getattr(updated_for_catalog, "name", id),
+                    exc_info=True,
+                )
 
         if "name" in kwargs:
 
@@ -2934,7 +3010,21 @@ class PyAutomation(Singleton):
                     node_class = node.get_node_class()
                     if node_class == ua.NodeClass.Variable:
                         
-                        display_name = node.get_attribute(ua.AttributeIds.DisplayName).Value.Value.Text
+                        try:
+                            browse_name = node.get_browse_name().Name or ""
+                        except Exception:
+                            browse_name = ""
+                        display_name = ""
+                        try:
+                            display_name = (
+                                node.get_attribute(ua.AttributeIds.DisplayName).Value.Value.Text
+                                or ""
+                            )
+                        except Exception:
+                            pass
+                        tag_label = browse_name or display_name
+                        if tag_label and "." not in tag_label and display_name:
+                            tag_label = display_name
                         # Get parent node
                         parent_node = node.get_parent()
                         
@@ -2952,7 +3042,7 @@ class PyAutomation(Singleton):
                             access_type = "ReadWrite"
                         
                         attrs.append({
-                            "name": f"{parent_name}.{display_name}",
+                            "name": f"{parent_name}.{tag_label}",
                             "namespace": node.nodeid.to_string(),
                             "access_type": access_type
                         })
@@ -2973,7 +3063,7 @@ class PyAutomation(Singleton):
                                 access_type = "ReadWrite"
                             
                             attrs.append({
-                                "name": f"{parent_name}.{display_name}.{prop_name}",
+                                "name": f"{parent_name}.{tag_label}.{prop_name}",
                                 "namespace": prop.nodeid.to_string(),
                                 "access_type": access_type
                             })
@@ -5660,6 +5750,16 @@ class PyAutomation(Singleton):
                             )
                     except Exception:
                         logging.debug("local catalog alarm persist skipped", exc_info=True)
+            try:
+                from .catalog.runtime_tag import ensure_tag_historian_catalog
+
+                ensure_tag_historian_catalog(tag_obj, reason=f"create_alarm:{name}")
+            except Exception:
+                logging.debug(
+                    "runtime tag catalog ensure skipped for alarm %s",
+                    name,
+                    exc_info=True,
+                )
             
             return alarm, message
 
@@ -6574,6 +6674,11 @@ class PyAutomation(Singleton):
             self._ensure_saf_tag_observers()
         except Exception:
             logging.debug("SAF TagObserver startup attach skipped", exc_info=True)
+
+        try:
+            self._schedule_runtime_tag_reconcile(reason="startup")
+        except Exception:
+            logging.debug("runtime tag reconcile schedule skipped", exc_info=True)
 
         self.is_starting = False
 
