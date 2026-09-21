@@ -6,7 +6,7 @@
 | **Documento canónico** | 02 / 10 |
 | **Fecha de agrupación** | 2026-09-16 |
 | **Fuentes absorbidas** | `AUDIT_SIGNAL_CONDITIONING`, `AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP`, `AUDIT_CATALOG_SQLITE_LOCAL`, `AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE` (+ JSON de planta) |
-| **Complementa** | [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_STATE_MACHINES.md](./AUDIT_STATE_MACHINES.md) |
+| **Complementa** | [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), [AUDIT_DB.md](./AUDIT_DB.md), [AUDIT_HMI.md](./AUDIT_HMI.md), [AUDIT_STATE_MACHINES.md](./AUDIT_STATE_MACHINES.md), **unidades CVT/BD/SAF:** [AUDIT_TAG_UNITS.md](./AUDIT_TAG_UNITS.md) |
 | **Veredicto vigente** | Wavelet RT **A−** / nuclear **C** · OPC **A−** disponibilidad y calidad · catálogo local **A** código / sync planta **A−** · consistencia proceso **A** / sidecar **B−** |
 | **Clasificación** | Auditoría de contraste código vs diseño. IDs de hallazgos conservados. |
 
@@ -20,6 +20,8 @@ Este archivo agrupa **todas** las auditorías del dominio. Cada parte conserva e
 - [Parte C — Catálogo local SQLite](#parte-c-catálogo-local-sqlite)
 - [Parte D — Consistencia de catálogo en planta (multi-edge)](#parte-d-consistencia-de-catálogo-en-planta-multi-edge)
 - [Parte E — Dump JSON consistencia catálogo planta](#parte-e-dump-json-consistencia-catálogo-planta)
+
+Unidades de ingeniería / `display_unit` / SAF (2026-09-21): documento aparte [AUDIT_TAG_UNITS.md](./AUDIT_TAG_UNITS.md).
 
 ---
 
