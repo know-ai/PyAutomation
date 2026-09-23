@@ -254,7 +254,9 @@ class LoggerWorker(BaseWorker):
 
                 worker = get_catalog_replicator()
                 if worker is not None:
-                    worker._sync_full()
+                    # Non-blocking: a sync ``cycle(force=True)`` here used to hold the
+                    # watchdog 20–40s and log a false "probe/reconnect blocked" WARNING.
+                    worker.request_full_sync(reason="watchdog reconnect")
             except Exception:
                 logging.getLogger("pyautomation").debug(
                     "catalog sync after reconnect skipped",
@@ -291,10 +293,15 @@ class LoggerWorker(BaseWorker):
             from ..utils.connection_alarms import set_db_disconnected
 
             app = PyAutomation()
+            probe_started = time.monotonic()
             reachable = self.logger.logger.check_connectivity()
+            probe_s = time.monotonic() - probe_started
+            reconnect_s = 0.0
             if reachable:
                 if not app.is_db_connected():
+                    reconnect_started = time.monotonic()
                     self.reconnect_to_db()
+                    reconnect_s = time.monotonic() - reconnect_started
                 else:
                     self.db_reconnection = True
                     # Probe OK and bound handle live: always clear sticky disconnect
@@ -308,11 +315,26 @@ class LoggerWorker(BaseWorker):
 
                 close_current_greenlet_connection(self.logger.logger.get_db())
             watchdog_s = time.monotonic() - watchdog_started
-            if watchdog_s >= 8.0:
+            # Slow throwaway SELECT 1 ⇒ real network/libpq pain. Long reconnect is
+            # usually catalog hydrate on a healthy laptop Docker PG — INFO, not WARNING.
+            if probe_s >= 8.0:
                 log.warning(
-                    "Historian watchdog blocked %.1fs (probe/reconnect); "
+                    "Historian probe blocked %.1fs (SELECT 1 / connect); "
                     "HMI on.tag is independent of this wait",
+                    probe_s,
+                )
+            elif reconnect_s >= 8.0:
+                log.info(
+                    "Historian reconnect took %.1fs (hydrate/bind); catalog sync "
+                    "scheduled asynchronously; HMI on.tag is independent of this wait",
+                    reconnect_s,
+                )
+            elif watchdog_s >= 8.0:
+                log.debug(
+                    "Historian watchdog section %.1fs (probe=%.1fs reconnect=%.1fs)",
                     watchdog_s,
+                    probe_s,
+                    reconnect_s,
                 )
 
             if app.is_db_connected():

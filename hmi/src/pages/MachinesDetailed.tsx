@@ -28,6 +28,7 @@ import { useAppDispatch } from "../hooks/useAppDispatch";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { loadAllMachines } from "../store/slices/machinesSlice";
 import { PROCESS_RESTART_EVENT, readProcessRestart } from "../services/processRestart";
+import { getDomainUploadSession } from "../utils/domainUploadSession";
 
 const ITEMS_PER_PAGE = 10;
 const ACTIVE_TAB_STORAGE_KEY = "machinesDetailed_activeTab";
@@ -560,12 +561,17 @@ export function MachinesDetailed() {
     }
   }, [activeTab]);
 
-  // Cargar detalles de la m?quina cuando cambia el tab activo
+  // Cargar detalles de la máquina cuando cambia el tab activo.
+  // Si ya hay cache, refrescar en segundo plano sin spinner (evita desmontar
+  // DomainConfigSlot y perder progreso/badge de carga de modelos).
   useEffect(() => {
     if (!activeTab) return;
 
     const loadMachineDetails = async () => {
-      setLoadingDetails((prev) => ({ ...prev, [activeTab]: true }));
+      const hadCache = Boolean(machineDetails[activeTab]);
+      if (!hadCache) {
+        setLoadingDetails((prev) => ({ ...prev, [activeTab]: true }));
+      }
       try {
         const data = await getMachineByName(activeTab);
         setMachineDetails((prev) => ({ ...prev, [activeTab]: data }));
@@ -574,7 +580,13 @@ export function MachinesDetailed() {
             const domain = await getMachineDomainConfig(activeTab);
             if (domain) {
               setDomainSchemas((prev) => ({ ...prev, [activeTab]: domain.schema || {} }));
-              setDomainConfigs((prev) => ({ ...prev, [activeTab]: domain.config || {} }));
+              setDomainConfigs((prev) => {
+                const session = getDomainUploadSession(activeTab);
+                // While an upload is in flight, keep the last local config so
+                // artifact badges (Listo / Listo para Guardar) do not flicker.
+                if (session.saving) return prev;
+                return { ...prev, [activeTab]: domain.config || {} };
+              });
             }
           } catch (domainErr: any) {
             const payload = domainErr?.response?.data;
@@ -585,7 +597,7 @@ export function MachinesDetailed() {
             showToast(message, "error");
           }
         }
-        // Cargar la p?gina guardada o inicializar a 1 si no existe
+        // Cargar la página guardada o inicializar a 1 si no existe
         setCurrentPage((prev) => {
           if (!prev[activeTab]) {
             const savedPage = localStorage.getItem(getPageStorageKey(activeTab));

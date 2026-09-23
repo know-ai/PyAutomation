@@ -953,23 +953,64 @@ class TestSocketWarnings(unittest.TestCase):
         self.assertEqual(logger.warning.call_count, 1)
         self.assertIn("idle budget", logger.warning.call_args[0][0])
 
-    def test_high_water_mark_only_reports_a_new_peak(self):
+    def test_high_water_mark_only_reports_near_ceiling(self):
         from ..utils import db_connections
 
         owner = object()
-        # Hold the mocks: the census is weak by design, so an unreferenced
-        # socket disappears before the warning can see it.
-        conns = [MagicMock() for _ in range(db_connections.connections_alert_threshold() + 1)]
-        for conn in conns:
+        ceiling = db_connections.connections_hard_max()
+        # Peaks below ceiling-2 are ephemeral SM bursts: silent at WARNING.
+        quiet_n = max(db_connections.connections_alert_threshold() + 1, 1)
+        quiet_n = min(quiet_n, max(1, ceiling - 3))
+        quiet_conns = [MagicMock() for _ in range(quiet_n)]
+        for conn in quiet_conns:
+            REGISTRY.register(conn, owner=owner, role="PyAutomationIO:edge:LoggerWorker")
+
+        with patch.object(db_connections, "_LOGGER") as logger:
+            db_connections._warn_on_socket_growth("PyAutomationIO:edge:LoggerWorker")
+        logger.warning.assert_not_called()
+
+        REGISTRY.close_tracked()
+        self._reset_warn_state()
+
+        # Peak at ceiling-2 must WARNING once (approaching hard limit).
+        need = max(1, ceiling - 2)
+        peak_conns = [MagicMock() for _ in range(need)]
+        for conn in peak_conns:
             REGISTRY.register(conn, owner=owner, role="PyAutomationIO:edge:LoggerWorker")
 
         with patch.object(db_connections, "_LOGGER") as logger:
             db_connections._warn_on_socket_growth("PyAutomationIO:edge:LoggerWorker")
         self.assertEqual(logger.warning.call_count, 1)
+        self.assertIn("high-water mark", logger.warning.call_args[0][0])
 
         with patch.object(db_connections, "_LOGGER") as logger:
             db_connections._warn_on_socket_growth("PyAutomationIO:edge:LoggerWorker")
         logger.warning.assert_not_called()
+
+    def test_transient_headroom_scales_with_sm_threads(self):
+        import threading
+
+        from ..utils.db_connections import concurrent_sm_socket_openers, transient_socket_headroom
+
+        stop = threading.Event()
+
+        def _idle():
+            stop.wait(2.0)
+
+        threads = [
+            threading.Thread(target=_idle, name="SM-Supe.Linea1.NPW", daemon=True),
+            threading.Thread(target=_idle, name="SM-Supe.Linea1.PPA", daemon=True),
+            threading.Thread(target=_idle, name="SM-OPCUAServer", daemon=True),
+        ]
+        for thread in threads:
+            thread.start()
+        try:
+            self.assertGreaterEqual(concurrent_sm_socket_openers(), 3)
+            self.assertGreaterEqual(transient_socket_headroom(), concurrent_sm_socket_openers() + 3)
+        finally:
+            stop.set()
+            for thread in threads:
+                thread.join(timeout=2.0)
 
 
 def connections_over_threshold():

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.9.0
+
+- Historian sockets: headroom transitorio escala con hilos `SM-*` (motores HMI); el WARNING `high-water mark` solo cerca del techo duro (ráfagas sanas de OPCUA/NPW/PPA/PFM/Observer quedan en silencio).
+- HMI DomainConfigurable (PFM/Observer): la barra de progreso y los badges Listo / Listo para Guardar sobreviven al cambiar de pestaña o salir de `/machines/detailed` (sesión de upload en memoria + refresh sin desmontar el slot).
+- LoggerWorker watchdog: tras reconnect ya no ejecuta `_sync_full()` bloqueante (usa `request_full_sync`); el WARNING de “blocked Xs” solo aplica a probes TCP lentos, no a hydrate de catálogo en lab.
+- Catálogo de unidades con **IDs estables** (`stable_catalogue`): el mismo `id` en PostgreSQL y en el SQLite SAF (`adim=168`, `m3=171`, …). Seed/reconcile en primer arranque, upgrade y re-hidratación.
+- Unidades ↔ variable: `Adimentional` solo `adim`; `m3`→`Volume`; `mW`/`MW`→`Power`. Mirror de catálogo emite símbolos (no `unit_id` crudos entre DBs).
+- `EngUnit.convert` / `Tag.get_value` toleran `display_unit` envenenado; `set_tag` repara filas `engine` incompatibles.
+- Boot / SAF: tag-before-alarm, logs rate-limited, unit migrations dry-run, hydrate users antes de OPC, flask-limiter Redis opcional.
+
 - HMI Tags: los filtros de columna se aplican al catálogo completo y luego se pagina. Con 5 coincidencias y 20 por página hay una sola página; ya no hay que subir el tamaño de página para reunir resultados repartidos.
 - Panel ACL REST: omite verbos `HEAD` (Flask los añade a cada GET; Swagger no los documenta). Un HEAD real usa el grant del GET. Omite también rutas públicas (login, signup, credentials_are_valid, health, timezone) y las de sesión sin ACL (logout, change_password, `/authz/me`).
 - ACL: `register_default_allows` permite que el producto (p. ej. iDetectFugas) añada filas Allow de semilla sin tocar la matriz core.

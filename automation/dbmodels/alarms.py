@@ -326,7 +326,11 @@ class Alarms(BaseModel):
         tag = Tags.read_by_name(name=tag_name)
         state = AlarmStates.read_by_name(name=state_name)
         if tag is None or trigger_type is None or state is None:
-            logging.getLogger("pyautomation").error(
+            from ..utils.rate_limited_log import warning_once
+
+            warning_once(
+                logging.getLogger("pyautomation"),
+                f"alarms-create-skipped:{name}",
                 "Alarms.create skipped name=%s: tag=%s type=%s state=%s",
                 name,
                 None if tag is None else tag_name,
@@ -553,14 +557,22 @@ class AlarmSummary(BaseModel):
             _state = AlarmStates.read_by_name(name=state)
         
         if not _alarm:
-            logging.getLogger("pyautomation").error(
+            from ..utils.rate_limited_log import warning_once
+
+            warning_once(
+                logging.getLogger("pyautomation"),
+                f"alarm-summary-catalog-missing:{name}:{area}",
                 "AlarmSummary.create skipped: catalog missing name=%s area=%s",
                 name,
                 area,
             )
             return None
         if not _state:
-            logging.getLogger("pyautomation").error(
+            from ..utils.rate_limited_log import warning_once
+
+            warning_once(
+                logging.getLogger("pyautomation"),
+                f"alarm-summary-unknown-state:{name}:{state}",
                 "AlarmSummary.create skipped: unknown state=%s name=%s",
                 state,
                 name,

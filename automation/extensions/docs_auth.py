@@ -28,7 +28,38 @@ DOCS_SESSION_MINUTES = int(os.environ.get("DOCS_SESSION_MINUTES", "30") or "30")
 login_manager = LoginManager()
 login_manager.login_view = "docs_auth.login_docs"
 
-limiter = Limiter(key_func=get_remote_address, default_limits=[], on_breach=lambda _limit: _on_rate_limit_breach(_limit))
+_limiter_storage_warned = False
+
+
+def _limiter_storage_uri() -> str | None:
+    """Prefer Redis when AUTOMATION_REDIS_URL is set; else memory (lab only)."""
+    url = (os.environ.get("AUTOMATION_REDIS_URL") or "").strip()
+    if not url:
+        return None
+    if url.startswith("redis://") or url.startswith("rediss://"):
+        return url
+    return f"redis://{url}"
+
+
+_storage_uri = _limiter_storage_uri()
+_limiter_kwargs = {
+    "key_func": get_remote_address,
+    "default_limits": [],
+    "on_breach": lambda _limit: _on_rate_limit_breach(_limit),
+}
+if _storage_uri:
+    _limiter_kwargs["storage_uri"] = _storage_uri
+
+import warnings
+
+with warnings.catch_warnings():
+    # Prefer our single pyautomation WARNING in init_app over flask-limiter's UserWarning.
+    warnings.filterwarnings(
+        "ignore",
+        message=".*in-memory storage for tracking rate limits.*",
+        category=UserWarning,
+    )
+    limiter = Limiter(**_limiter_kwargs)
 
 docs_auth_bp = Blueprint("docs_auth", __name__)
 
@@ -248,6 +279,7 @@ def protect_docs_request():
 
 
 def init_app(app) -> None:
+    global _limiter_storage_warned
     secret = (
         os.environ.get("DOCS_SECRET_KEY")
         or app.config.get("AUTOMATION_APP_SECRET_KEY")
@@ -262,5 +294,12 @@ def init_app(app) -> None:
 
     login_manager.init_app(app)
     limiter.init_app(app)
+    if not _storage_uri and not _limiter_storage_warned:
+        _limiter_storage_warned = True
+        import logging
+
+        logging.getLogger("pyautomation").warning(
+            "flask-limiter using in-memory storage (set AUTOMATION_REDIS_URL for shared rate limits)"
+        )
     app.register_blueprint(docs_auth_bp)
     app.before_request(protect_docs_request)

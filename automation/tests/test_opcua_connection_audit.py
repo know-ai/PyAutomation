@@ -17,10 +17,12 @@ class TestOpcuaAuditHelper(unittest.TestCase):
         self.assertEqual(len(out), 256)
         self.assertTrue(out.endswith("…"))
 
-    def test_record_event_never_raises(self):
+    def test_queues_when_system_user_missing_and_flushes(self):
         from ..utils import opcua_audit
 
-        with patch.object(opcua_audit, "_get_system_user", side_effect=RuntimeError("db down")):
+        opcua_audit.clear_pending_opcua_audits()
+        user = MagicMock(name="system")
+        with patch.object(opcua_audit, "_get_system_user", return_value=None):
             self.assertFalse(
                 opcua_audit.record_opcua_connection_event(
                     action="CONNECTED",
@@ -28,6 +30,15 @@ class TestOpcuaAuditHelper(unittest.TestCase):
                     server_url="opc.tcp://127.0.0.1:4840",
                 )
             )
+        with patch.object(opcua_audit, "_get_system_user", return_value=user), patch.object(
+            opcua_audit,
+            "persist_system_event",
+            return_value=True,
+        ) as persist:
+            self.assertEqual(opcua_audit.flush_pending_opcua_audits(), 1)
+            persist.assert_called_once()
+        opcua_audit.clear_pending_opcua_audits()
+
 
 
 class TestOpcuaClientConnectionAudit(unittest.TestCase):

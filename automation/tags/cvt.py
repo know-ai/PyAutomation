@@ -273,6 +273,10 @@ class CVT:
             tag.owner_node = kwargs["owner_node"]
         if "kp" in kwargs:
             tag.set_kp(kp=kwargs["kp"])
+        if "unit_source" in kwargs:
+            tag.unit_source = kwargs["unit_source"]
+        if "unit_locked_at" in kwargs:
+            tag.unit_locked_at = kwargs["unit_locked_at"]
         if "filter_enabled" in kwargs:
             value = kwargs["filter_enabled"]
             if isinstance(value, str):

@@ -78,13 +78,14 @@ _ONLINE_INTERVAL_S = 300.0
 # User rows also invalidate via PG NOTIFY / Redis Pub/Sub (user_cache).
 # This worker is disaster-recovery catch-up, not the <2s login path.
 _CATCHUP_INTERVAL_S = 30.0
-_CYCLE_TIMEOUT_S = 10.0
+_CYCLE_TIMEOUT_S = 45.0
 _FULL_SCAN_INTERVAL_S = 300.0
 _EVENT_DELTA_THRESHOLD = 50
 _EXCEPTION_EVENT_COOLDOWN_S = 300.0
 _BACKOFF_INTERVALS_S = (30.0, 60.0, 120.0, 300.0, 900.0)
 _SYNC_FAIL_MIN_OUTAGE_S = 300.0  # do not latch sync-failed alarm during short outages
 _MAX_CONFLICT_SAMPLES = 5
+_TRANSIENT_ROW_RETRIES = 2
 
 
 def _is_transient_connection_error(exc: BaseException) -> bool:
@@ -361,6 +362,27 @@ class CatalogReplicatorWorker(BaseWorker):
             close_replica_thread_connection()
         except Exception:
             _LOGGER.debug("catalog replica recycle skipped", exc_info=True)
+
+    def _heal_remote_handles_for_retry(self) -> bool:
+        """Force-recycle replica + primary and prove DML before retrying a row.
+
+        A live replica ``SELECT 1`` with a dead primary proxy is the classic
+        cause of ``catalog sync row skipped (remote connection)`` on an
+        otherwise healthy plant — pushes use the model proxy, not the replica.
+        """
+        self._recycled_this_cycle = False
+        self._recycle_replica_handle()
+        try:
+            RemoteCatalogProvider._ensure_remote_socket()
+        except Exception:
+            _LOGGER.debug("catalog primary ensure after recycle skipped", exc_info=True)
+        ok = self._heal_primary_socket()
+        try:
+            ensure_replica_database()
+        except Exception:
+            _LOGGER.debug("catalog replica reopen after recycle skipped", exc_info=True)
+            ok = False
+        return ok
 
     def _wait_interval(self) -> float:
         try:
@@ -659,8 +681,11 @@ class CatalogReplicatorWorker(BaseWorker):
                     if table in PARENT_TABLES:
                         self._parent_load_failed = True
                         self._tags_sync_pending = True
-                    self._recycle_replica_handle()
-                    _LOGGER.warning("catalog load skipped (remote connection) table=%s", table)
+                    self._heal_remote_handles_for_retry()
+                    _LOGGER.info(
+                        "catalog load deferred (remote socket) table=%s; will retry next cycle",
+                        table,
+                    )
                 else:
                     row_errors += 1
                     _LOGGER.exception("catalog load failed table=%s", table)
@@ -724,9 +749,10 @@ class CatalogReplicatorWorker(BaseWorker):
                         self._tags_sync_pending = True
                     if table == "tags":
                         tags_connection_error = True
-                    self._recycle_replica_handle()
-                    _LOGGER.warning(
-                        "catalog sync table skipped (remote connection) table=%s", table
+                    self._heal_remote_handles_for_retry()
+                    _LOGGER.info(
+                        "catalog sync table deferred (remote socket) table=%s; will retry next cycle",
+                        table,
                     )
                 else:
                     row_errors += 1
@@ -762,10 +788,21 @@ class CatalogReplicatorWorker(BaseWorker):
                 backup_skips,
             )
         if socket_dead:
-            _LOGGER.warning(
-                "Catalog sync had %s remote connection error(s); recycling replica handle and backing off",
-                hard_connection or connection_errors,
-            )
+            # First isolated blip is expected under dual-handle (replica+primary)
+            # contention with the API greenlets — INFO + backoff. Escalate to
+            # WARNING only when the plant keeps failing across cycles.
+            blip = (hard_connection or connection_errors) <= 1 and self._consecutive_errors == 0
+            if blip:
+                _LOGGER.info(
+                    "Catalog sync deferred after a remote socket blip (%s); "
+                    "recycling handles and backing off briefly",
+                    hard_connection or connection_errors,
+                )
+            else:
+                _LOGGER.warning(
+                    "Catalog sync had %s remote connection error(s); recycling replica handle and backing off",
+                    hard_connection or connection_errors,
+                )
             self._connection_backoff = True
             self._increment_backoff()
         if hard_fail:
@@ -1533,35 +1570,52 @@ class CatalogReplicatorWorker(BaseWorker):
                     )
                     continue
                 if _is_transient_connection_error(exc):
-                    self._recycle_replica_handle()
-                    try:
-                        RemoteCatalogProvider._ensure_remote_socket()
-                        with self._local.atomic():
-                            p, u, c = self._sync_one_key(**sync_kwargs)
-                        pushed += p
-                        pulled += u
-                        conflicts += c
-                        continue
-                    except Exception as retry_exc:
-                        if not _is_transient_connection_error(retry_exc):
-                            errors += 1
-                            _LOGGER.exception(
-                                "catalog sync row failed table=%s key=%s", table, key
-                            )
+                    recovered = False
+                    last_retry_exc: BaseException | None = exc
+                    for _attempt in range(_TRANSIENT_ROW_RETRIES):
+                        if not self._heal_remote_handles_for_retry():
+                            last_retry_exc = RuntimeError("historian handles not ready after heal")
                             continue
+                        try:
+                            with self._local.atomic():
+                                p, u, c = self._sync_one_key(**sync_kwargs)
+                            pushed += p
+                            pulled += u
+                            conflicts += c
+                            recovered = True
+                            break
+                        except Exception as retry_exc:
+                            last_retry_exc = retry_exc
+                            if not _is_transient_connection_error(retry_exc):
+                                errors += 1
+                                _LOGGER.exception(
+                                    "catalog sync row failed table=%s key=%s", table, key
+                                )
+                                recovered = True  # stop transient path; counted as hard error
+                                break
+                    if recovered and last_retry_exc is not None and not _is_transient_connection_error(
+                        last_retry_exc
+                    ):
+                        continue
+                    if recovered:
+                        continue
                     self._transient_remote_errors += 1
                     if table in PUSH_ONLY_TABLES:
                         self._cycle_backup_skips += 1
-                    log = (
-                        _LOGGER.warning
-                        if self._transient_remote_errors <= 1
-                        else _LOGGER.debug
-                    )
-                    log(
-                        "catalog sync row skipped (remote connection) table=%s key=%s",
-                        table,
-                        key,
-                    )
+                    # One blip → INFO; repeated in the same cycle → DEBUG (cycle end summarizes).
+                    if self._transient_remote_errors <= 1:
+                        _LOGGER.info(
+                            "catalog sync row deferred (remote socket) table=%s key=%s; "
+                            "handles recycled, will retry next cycle",
+                            table,
+                            key,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "catalog sync row deferred (remote socket) table=%s key=%s",
+                            table,
+                            key,
+                        )
                     break
                 errors += 1
                 _LOGGER.exception("catalog sync row failed table=%s key=%s", table, key)

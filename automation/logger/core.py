@@ -182,19 +182,12 @@ class BaseLogger(Singleton):
 
     def __init_default_variables_schema(self):
         r"""
-        Initializes default physical variables and units in the database.
+        Initializes default physical variables and units with frozen stable ids
+        (same integers in PostgreSQL and the SQLite SAF catalog).
         """
-        for variable, units in VARIABLES.items():
-    
-            if not Variables.name_exist(variable):
-                
-                Variables.create(name=variable)
+        from ..variables.stable_seed import ensure_stable_catalogue_historian
 
-            for name, unit in units.items():
-
-                if not Units.name_exist(unit):
-
-                    Units.create(name=name, unit=unit, variable=variable)
+        ensure_stable_catalogue_historian()
 
     def __init_default_datatypes_schema(self):
         r"""

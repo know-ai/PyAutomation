@@ -24,6 +24,18 @@ def _catalog_metrics() -> dict:
         }
 
 
+def _unit_metrics() -> dict:
+    try:
+        from ....utils.unit_metrics import health_unit_metrics
+
+        return health_unit_metrics()
+    except Exception:
+        return {
+            "UNITS_MISMATCH_COUNT": 0,
+            "SAF_SAMPLES_WITHOUT_UNIT": 0,
+        }
+
+
 ns = Namespace("Health", description="Service health and readiness checks")
 app = PyAutomation()
 
@@ -320,6 +332,7 @@ class HealthSystemResource(Resource):
             **_log_error_metrics(),
             **_event_rate_metrics(),
             **_catalog_metrics(),
+            **_unit_metrics(),
             **product_extras,
         }, 200
 

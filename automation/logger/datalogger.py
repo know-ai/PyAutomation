@@ -80,6 +80,21 @@ def _tag_put_fields(**fields) -> dict:
     return payload
 
 
+_UNIT_PUT_KEYS = ("unit", "display_unit", "unit_source", "unit_locked_at")
+
+
+def _set_tag_put_fields(*, update_units: bool, unit, display_unit, unit_source=None, unit_locked_at=None, **rest) -> dict:
+    payload = dict(rest)
+    if update_units:
+        payload["unit"] = unit
+        payload["display_unit"] = display_unit
+        if unit_source is not None:
+            payload["unit_source"] = unit_source
+        if unit_locked_at is not None:
+            payload["unit_locked_at"] = unit_locked_at
+    return _tag_put_fields(**payload)
+
+
 def _lookup_tag_row(name: str, identifier: str | None = None, display_name: str | None = None):
     row = Tags.get_or_none(Tags.name == name) if name else None
     if row is None and identifier:
@@ -140,6 +155,9 @@ class DataLogger(BaseLogger):
         filter_level:int=4,
         filter_threshold_factor:float=3.0,
         filter_persist:bool=False,
+        update_units:bool=False,
+        unit_source:str=None,
+        unit_locked_at=None,
         ):
         r"""
         Creates a new tag definition in the database.
@@ -170,13 +188,16 @@ class DataLogger(BaseLogger):
             try:
                 Tags.put(
                     id=existing.id,
-                    **_tag_put_fields(
-                        name=name,
+                    **_set_tag_put_fields(
+                        update_units=update_units,
                         unit=unit,
+                        display_unit=display_unit,
+                        unit_source=unit_source,
+                        unit_locked_at=unit_locked_at,
+                        name=name,
                         data_type=data_type,
                         description=description,
                         display_name=display_name,
-                        display_unit=display_unit,
                         opcua_address=opcua_address,
                         opcua_client_name=opcua_client_name,
                         node_namespace=node_namespace,
@@ -228,6 +249,8 @@ class DataLogger(BaseLogger):
                 filter_level=filter_level,
                 filter_threshold_factor=filter_threshold_factor,
                 filter_persist=filter_persist,
+                unit_source=unit_source or "engine",
+                unit_locked_at=unit_locked_at,
             )
         except Exception as exc:
             if not _is_unique_violation(exc) and not isinstance(exc, IntegrityError):
@@ -251,13 +274,16 @@ class DataLogger(BaseLogger):
             try:
                 Tags.put(
                     id=existing.id,
-                    **_tag_put_fields(
-                        name=name,
+                    **_set_tag_put_fields(
+                        update_units=update_units,
                         unit=unit,
+                        display_unit=display_unit,
+                        unit_source=unit_source,
+                        unit_locked_at=unit_locked_at,
+                        name=name,
                         data_type=data_type,
                         description=description,
                         display_name=display_name,
-                        display_unit=display_unit,
                         opcua_address=opcua_address,
                         opcua_client_name=opcua_client_name,
                         node_namespace=node_namespace,
@@ -1097,7 +1123,8 @@ class DataLoggerEngine(BaseEngine):
 
     def set_tag(
         self,
-        tag:Tag
+        tag:Tag,
+        update_units:bool=False,
         ):
         r"""
         Registers a tag for logging in the database, using a thread-safe call.
@@ -1105,7 +1132,31 @@ class DataLoggerEngine(BaseEngine):
         **Parameters:**
 
         * **tag** (Tag): The tag object to register.
+        * **update_units** (bool): When False (default), existing historian
+          rows keep their ``unit`` / ``display_unit``; the CVT tag is aligned
+          to what is already persisted. Engine-owned rows whose persisted
+          symbol is incompatible with the CVT EngUnit are repaired instead.
         """
+        from ..tags.unit_provenance import historian_units_need_engine_repair
+
+        if not update_units:
+            try:
+                existing = _lookup_tag_row(getattr(tag, "name", None), getattr(tag, "id", None))
+                if existing is not None and historian_units_need_engine_repair(tag, existing):
+                    update_units = True
+                    logging.getLogger("pyautomation").info(
+                        "Repairing historian units for tag=%s cvt=%s/%s hist=%s/%s",
+                        getattr(tag, "name", None),
+                        getattr(tag, "unit", None),
+                        getattr(tag, "display_unit", None),
+                        getattr(getattr(existing, "unit", None), "unit", None),
+                        getattr(getattr(existing, "display_unit", None), "unit", None),
+                    )
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "historian unit repair probe skipped", exc_info=True
+                )
+
         _query = dict()
         _query["action"] = "set_tag"
         _query["parameters"] = dict()
@@ -1131,8 +1182,22 @@ class DataLoggerEngine(BaseEngine):
         _query["parameters"]["filter_level"] = getattr(tag, "filter_level", 4)
         _query["parameters"]["filter_threshold_factor"] = getattr(tag, "filter_threshold_factor", 3.0)
         _query["parameters"]["filter_persist"] = getattr(tag, "filter_persist", False)
-        
-        return self.query(_query)
+        _query["parameters"]["update_units"] = update_units
+        if update_units:
+            _query["parameters"]["unit_source"] = getattr(tag, "unit_source", None)
+            _query["parameters"]["unit_locked_at"] = getattr(tag, "unit_locked_at", None)
+
+        result = self.query(_query)
+        if result is not None and not update_units:
+            try:
+                from ..tags.unit_provenance import align_tag_to_historian_row
+
+                align_tag_to_historian_row(tag, result)
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "align CVT tag units skipped name=%s", getattr(tag, "name", None), exc_info=True
+                )
+        return result
 
     def get_tags(self):
         r"""

@@ -909,10 +909,8 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
 
         local_rows = [{"id": "edge-Supe-Linea1", "_pk": "edge-Supe-Linea1"}]
         with patch.object(worker, "_sync_one_key", side_effect=_one), patch.object(
-            worker, "_recycle_replica_handle"
-        ) as recycle, patch(
-            "automation.catalog.remote_provider.RemoteCatalogProvider._ensure_remote_socket"
-        ), patch.object(worker._local, "atomic", return_value=nullcontext()):
+            worker, "_heal_remote_handles_for_retry", return_value=True
+        ) as heal, patch.object(worker._local, "atomic", return_value=nullcontext()):
             pushed, _pulled, _conflicts, errors = worker._sync_table(
                 "nodes",
                 local_rows=local_rows,
@@ -924,7 +922,7 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
         self.assertEqual(pushed, 1)
         self.assertEqual(errors, 0)
         self.assertEqual(worker._transient_remote_errors, 0)
-        recycle.assert_called()
+        heal.assert_called()
 
     def test_successful_cycle_clears_connection_backoff(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
@@ -1288,7 +1286,7 @@ class TestReplicatorIsolation(unittest.TestCase):
         with patch.object(worker.stop_event, "wait", side_effect=_stop):
             worker.run()
         self.assertEqual(len(worker._executor.submitted), 1)
-        self.assertEqual(worker._executor.future.timeout, 10.0)
+        self.assertEqual(worker._executor.future.timeout, 45.0)
 
     def test_run_skips_cycle_on_timeout(self):
         from automation.catalog.replicator import CatalogReplicatorWorker

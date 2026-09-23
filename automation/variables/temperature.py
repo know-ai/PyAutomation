@@ -57,7 +57,9 @@ class Temperature(EngUnit):
     }
 
     def __init__(self, value, unit):
+        from ..utils.unit_symbols import canonical_symbol
 
+        unit = canonical_symbol(unit) or unit
         if unit not in Temperature.Units.list():
 
             raise UnitError(f"{unit} value is not allowed for {self.__class__.__name__} object - you can use: {Temperature.Units.list()}")
@@ -88,14 +90,18 @@ class Temperature(EngUnit):
             Unit of measurement to convert to.
         """
     
+        from ..utils.unit_symbols import canonical_symbol
+
+        from_unit = canonical_symbol(self.unit) or self.unit
+        to_unit = canonical_symbol(to_unit) or to_unit
         temperature_kelvin = 0
-        if self.unit.upper() == 'K':
+        if str(from_unit).upper() == 'K':
             temperature_kelvin = self.value
-        elif self.unit == 'R':
+        elif from_unit == 'R':
             temperature_kelvin = self.value * 5.0 / 9.0
-        elif self.unit == 'C':
+        elif from_unit == 'C':
             temperature_kelvin = self.value + 273.15
-        elif self.unit == 'F':
+        elif from_unit == 'F':
             temperature_kelvin = (self.value + 459.67) / 9.0 * 5.0
         else:
             return None
@@ -115,8 +121,12 @@ class Temperature(EngUnit):
     @classmethod
     def convert_value(cls, value, from_unit:str, to_unit:str):
         
+        from ..utils.unit_symbols import canonical_symbol
+
+        from_unit = canonical_symbol(from_unit) or from_unit
+        to_unit = canonical_symbol(to_unit) or to_unit
         temperature_kelvin = 0
-        if from_unit.upper() == 'K':
+        if str(from_unit).upper() == 'K':
             temperature_kelvin = value
         elif from_unit.upper() == 'R':
             temperature_kelvin = value * 5.0 / 9.0

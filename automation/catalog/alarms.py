@@ -61,8 +61,34 @@ def _ensure(tag_name: str, alarm_name: str, tag_description: str, alarm_descript
             tag = app.cvt.get_tag_by_name(tag_name)
     if tag is None:
         return
+    try:
+        from .runtime_tag import ensure_tag_historian_catalog
+
+        historian_ok = True
+        if getattr(app, "is_db_connected", lambda: False)():
+            historian_ok = bool(
+                ensure_tag_historian_catalog(tag, reason=f"catalog-alarm:{alarm_name}")
+            )
+    except Exception:
+        historian_ok = True
+        _LOGGER.debug(
+            "catalog alarm historian ensure skipped name=%s",
+            alarm_name,
+            exc_info=True,
+        )
     alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
     if alarm is None:
+        if getattr(app, "is_db_connected", lambda: False)() and not historian_ok:
+            from ..utils.rate_limited_log import warning_once
+
+            warning_once(
+                _LOGGER,
+                f"catalog-alarm-historian:{alarm_name}",
+                "Deferred catalog alarm '%s': tag '%s' not in historian Tags",
+                alarm_name,
+                tag_name,
+            )
+            return
         app.create_alarm(
             name=alarm_name,
             tag=tag_name,

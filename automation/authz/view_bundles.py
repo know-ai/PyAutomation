@@ -170,6 +170,7 @@ VIEW_REST_BUNDLES: dict[str, ViewBundle] = {
         "write": [
             ("PUT", "/api/settings/performance"),
             ("POST", "/api/admin"),
+            ("POST", "/api/admin/unit-migrations"),
             ("POST", "/api/alarms/acknowledge"),
             ("POST", "/api/alarms/shelve"),
             ("POST", "/api/alarms/unshelve"),

@@ -2,6 +2,7 @@ from peewee import CharField, BooleanField, FloatField, ForeignKeyField, Integer
 from ..timebase import TAGVALUE_TIMESTAMP_RESOLUTION
 from .core import BaseModel
 from datetime import datetime
+import logging
 
 
 class Manufacturer(BaseModel):
@@ -300,14 +301,16 @@ class Units(BaseModel):
     @classmethod
     def read_by_unit(cls, unit:str)->bool:
         r"""
-        Retrieves a Unit by its symbol.
+        Retrieves a Unit by its symbol (aliases like ``kg/s`` resolve to ``kg/sec``).
         """
-        query = cls.get_or_none(unit=unit)
-        
-        if query is not None:
+        from ..utils.unit_symbols import canonical_symbol
 
+        needle = canonical_symbol(unit) or unit
+        query = cls.get_or_none(unit=needle)
+        if query is None and needle != unit:
+            query = cls.get_or_none(unit=unit)
+        if query is not None:
             return query
-        
         return None
 
     @classmethod
@@ -447,6 +450,8 @@ class Tags(BaseModel):
     filter_level = IntegerField(default=4)
     filter_threshold_factor = FloatField(default=3.0)
     filter_persist = BooleanField(default=False)
+    unit_source = CharField(max_length=16, null=True)
+    unit_locked_at = TimestampField(null=True, utc=True)
 
     class Meta:
         indexes = (
@@ -482,7 +487,9 @@ class Tags(BaseModel):
         outlier_detection:bool=False,
         frozen_data_detection:bool=False,
         area:str=None,
-        owner_node:str=None
+        owner_node:str=None,
+        unit_source:str=None,
+        unit_locked_at=None,
         ):
         r"""
         Creates a new Tag configuration record.
@@ -560,7 +567,9 @@ class Tags(BaseModel):
                                 frozen_data_detection=frozen_data_detection,
                                 segment=segment_obj,
                                 area=area,
-                                owner_node=owner_node
+                                owner_node=owner_node,
+                                unit_source=unit_source or "engine",
+                                unit_locked_at=unit_locked_at,
                                 )
                         else:
                             query = cls(
@@ -587,7 +596,9 @@ class Tags(BaseModel):
                                 outlier_detection=outlier_detection,
                                 frozen_data_detection=frozen_data_detection,
                                 area=area,
-                                owner_node=owner_node
+                                owner_node=owner_node,
+                                unit_source=unit_source or "engine",
+                                unit_locked_at=unit_locked_at,
                                 )
                         query.save()
                         message = f"{name} tag created successfully"
@@ -818,7 +829,8 @@ class Tags(BaseModel):
             'area': self.area,
             'owner_node': self.owner_node,
             'segment': segment,
-            "manufacturer": manufacturer
+            "manufacturer": manufacturer,
+            'unit_source': getattr(self, "unit_source", None),
         }
 
 
@@ -868,3 +880,42 @@ class TagValue(BaseModel):
             area=area
             )
         query.save()
+
+
+def ensure_tag_unit_provenance_schema(db=None) -> None:
+    """Add nullable ``unit_source`` / ``unit_locked_at`` on tags (historian or catalog)."""
+    if db is None:
+        try:
+            db = Tags._meta.database
+        except Exception:
+            return
+    if db is None:
+        return
+    table = "tags"
+    try:
+        existing = {column.name for column in db.get_columns(table)}
+    except Exception:
+        return
+    additions = (
+        ("unit_source", "VARCHAR(16)"),
+        ("unit_locked_at", "TIMESTAMP"),
+    )
+    vendor = (getattr(db, "vendor", "") or "").lower()
+    for field_name, sql_type in additions:
+        if field_name in existing:
+            continue
+        try:
+            if vendor in {"postgresql", "postgres"}:
+                db.execute_sql(
+                    f'ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS "{field_name}" {sql_type}'
+                )
+            elif vendor == "mysql":
+                db.execute_sql(
+                    f"ALTER TABLE `{table}` ADD COLUMN `{field_name}` {sql_type} NULL"
+                )
+            else:
+                db.execute_sql(f"ALTER TABLE {table} ADD COLUMN {field_name} {sql_type}")
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "ensure_tag_unit_provenance_schema skipped %s", field_name, exc_info=True
+            )

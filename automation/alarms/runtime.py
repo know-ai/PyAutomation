@@ -146,15 +146,40 @@ class TransitionWorker(Thread):
                     self._alive_flag.set()
                     self.stop_event.wait(self.interval_ms / 1000.0)
                     continue
-                for event in batch:
-                    lag_ms = max(0.0, (time.monotonic() - event.enqueued_at) * 1000.0)
-                    self._lag_samples.append(lag_ms)
-                    runtime.process_event(event)
+                self._process_batch(batch)
                 self._last_heartbeat = time.monotonic()
                 self._alive_flag.set()
             except Exception:
                 _LOGGER.exception("ALARM.WORKER.CycleError")
                 time.sleep(0.1)
+
+    def _process_batch(self, batch) -> None:
+        """Process transitions and return any historian socket opened this cycle."""
+        from ..utils.db_connections import (
+            close_current_greenlet_connection,
+            historian_role_scope,
+            keep_historian_socket,
+        )
+
+        with historian_role_scope("AlarmTransitionWorker"):
+            try:
+                for event in batch:
+                    lag_ms = max(0.0, (time.monotonic() - event.enqueued_at) * 1000.0)
+                    self._lag_samples.append(lag_ms)
+                    self.runtime.process_event(event)
+            finally:
+                if not keep_historian_socket():
+                    try:
+                        from automation import PyAutomation
+
+                        close_current_greenlet_connection(
+                            getattr(PyAutomation(), "_db", None)
+                        )
+                    except Exception:
+                        _LOGGER.debug(
+                            "AlarmTransitionWorker historian socket release skipped",
+                            exc_info=True,
+                        )
 
 
 class AlarmRuntime:

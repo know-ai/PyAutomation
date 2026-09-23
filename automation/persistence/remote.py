@@ -53,6 +53,57 @@ def reset_missing_tag_tries() -> None:
         _MISSING_TAG_TRIES.clear()
 
 
+def _historian_unit_for_symbol(symbol: str, tag=None):
+    """Resolve a Units row for a frozen SAF symbol; auto-create with warning."""
+    from ..dbmodels.tags import Units, Variables
+    from ..utils.unit_symbols import canonical_symbol
+
+    needle = canonical_symbol(symbol) or str(symbol or "").strip()
+    if not needle:
+        return None
+    row = Units.read_by_unit(unit=needle)
+    if row is not None:
+        return row
+    variable_name = None
+    if tag is not None:
+        variable_name = getattr(tag, "variable", None)
+        if not variable_name:
+            unit_obj = getattr(tag, "unit", None) or getattr(tag, "display_unit", None)
+            variable_obj = getattr(unit_obj, "variable_id", None)
+            variable_name = getattr(variable_obj, "name", None)
+    variable_name = variable_name or "Adimentional"
+    logging.getLogger("pyautomation").warning(
+        "SAF auto-creating missing unit symbol=%s variable=%s",
+        needle,
+        variable_name,
+    )
+    try:
+        from ..catalog.seed import ensure_unit_symbol
+
+        ensure_unit_symbol(needle, variable=variable_name)
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "SAF ensure_unit_symbol skipped symbol=%s", needle, exc_info=True
+        )
+    row = Units.read_by_unit(unit=needle)
+    if row is not None:
+        return row
+    variable = Variables.read_by_name(variable_name)
+    if variable is None:
+        variable = Variables.read_by_name("Adimentional")
+    if variable is None:
+        return None
+    try:
+        created = Units(name=needle, unit=needle, variable_id=variable)
+        created.save()
+        return created
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "SAF Units auto-create failed symbol=%s", needle, exc_info=True
+        )
+        return Units.read_by_unit(unit=needle)
+
+
 def nudge_tag_catalog_push(tag_name: str) -> None:
     """Mark a local catalog tag row dirty so the replicator PUSHes it."""
     _nudge_local_tag_push(tag_name)
@@ -225,7 +276,7 @@ class TagValuePayloadMapper:
             logger.warning("SAF skip tag payload: tag %s not in remote Tags", tag_name)
             _request_catalog_full_sync("tag not in remote Tags")
             return None
-        unit = self._lookup_unit(tag, unit_cache)
+        unit = self._lookup_unit(tag, item, unit_cache)
         if unit is None:
             logger.warning("SAF skip tag %s: missing unit/display_unit", tag_name)
             return None
@@ -284,19 +335,62 @@ class TagValuePayloadMapper:
             cache[name] = tag
         return tag
 
-    def _lookup_unit(self, tag, cache=None):
-        cache_key = getattr(tag, "id", None) or id(tag)
+    def _lookup_unit(self, tag, item=None, cache=None):
+        frozen = None
+        if item is not None:
+            frozen = item.get("unit")
+        if frozen:
+            cache_key = f"sym:{frozen}"
+        else:
+            cache_key = getattr(tag, "id", None) or id(tag)
         if cache is not None and cache_key in cache:
             return cache[cache_key]
-        if self._resolve_unit is not None:
-            unit = self._resolve_unit(tag)
+        if frozen:
+            unit = self._resolve_frozen_unit(frozen, tag)
         else:
-            from ..dbmodels.tags import Units
-            unit = Units.get_or_none(id=tag.display_unit.id) if getattr(tag, "display_unit", None) else None
-            if unit is None and getattr(tag, "unit", None) is not None:
-                unit = tag.unit
+            from ..utils.unit_metrics import inc_saf_samples_without_unit
+
+            inc_saf_samples_without_unit()
+            from ..utils.rate_limited_log import warning_once
+
+            warning_once(
+                logging.getLogger("pyautomation"),
+                f"saf-no-frozen-unit:{getattr(tag, 'name', tag)}",
+                "SAF sample without frozen unit; falling back to live display_unit tag=%s",
+                getattr(tag, "name", tag),
+            )
+            if self._resolve_unit is not None:
+                unit = self._resolve_unit(tag)
+            else:
+                unit = self._legacy_live_display_unit(tag)
         if cache is not None:
             cache[cache_key] = unit
+        return unit
+
+    def _resolve_frozen_unit(self, symbol, tag=None):
+        from ..utils.unit_symbols import canonical_symbol
+
+        needle = canonical_symbol(symbol) or str(symbol).strip()
+        if self._resolve_unit is not None:
+            # Tests / adapters may still inject a resolver; prefer frozen symbol.
+            try:
+                resolved = self._resolve_unit(needle)
+                if resolved is not None:
+                    return resolved
+            except Exception:
+                pass
+        return _historian_unit_for_symbol(needle, tag)
+
+    def _legacy_live_display_unit(self, tag):
+        from ..dbmodels.tags import Units
+
+        unit = (
+            Units.get_or_none(id=tag.display_unit.id)
+            if getattr(tag, "display_unit", None)
+            else None
+        )
+        if unit is None and getattr(tag, "unit", None) is not None:
+            unit = tag.unit
         return unit
 
 
@@ -468,7 +562,11 @@ class PeeweeRemoteDB:
         outcomes = self._write_alarm_create_outcomes(payloads)
         skipped = sum(1 for ok in outcomes if not ok)
         if skipped:
-            logging.getLogger("pyautomation").error(
+            from ..utils.rate_limited_log import warning_once
+
+            warning_once(
+                logging.getLogger("pyautomation"),
+                "saf-alarm-summary-skipped",
                 "SAF alarm_summary skipped %s/%s (catalog or insert failed)",
                 skipped,
                 len(payloads),
@@ -644,6 +742,7 @@ def _alarm_catalog_fields(item: Mapping[str, Any]) -> dict[str, Any] | None:
 
 def _ensure_alarm_catalog(item: Mapping[str, Any]):
     from ..dbmodels.alarms import Alarms
+    from ..utils.rate_limited_log import warning_once
 
     name = item.get("name")
     area = item.get("area")
@@ -652,12 +751,37 @@ def _ensure_alarm_catalog(item: Mapping[str, Any]):
         return existing
     fields = _alarm_catalog_fields(item)
     if not fields:
-        logging.getLogger("pyautomation").error(
+        warning_once(
+            logging.getLogger("pyautomation"),
+            f"saf-alarm-catalog-fields:{name}:{area}",
             "SAF cannot materialize alarm catalog name=%s area=%s (missing tag/runtime)",
             name,
             area,
         )
         return None
+    tag_name = fields.get("tag")
+    if tag_name:
+        try:
+            from ..catalog.runtime_tag import ensure_named_tag_in_historian
+
+            if not ensure_named_tag_in_historian(
+                str(tag_name),
+                reason=f"saf-alarm-catalog:{name}",
+            ):
+                warning_once(
+                    logging.getLogger("pyautomation"),
+                    f"saf-alarm-catalog-tag:{name}:{tag_name}",
+                    "SAF deferred alarm catalog name=%s: tag %s not in historian Tags",
+                    name,
+                    tag_name,
+                )
+                return None
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "SAF ensure tag before alarm catalog skipped name=%s",
+                name,
+                exc_info=True,
+            )
     if not fields.get("identifier"):
         import secrets
 

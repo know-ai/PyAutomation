@@ -139,7 +139,7 @@ class Tag:
         * **variable** (str): Physical variable type (e.g., 'Temperature', 'Pressure').
         * **data_type** (str): Data type of the value ('float', 'int', 'bool', 'str').
         * **display_name** (str, optional): Human-readable name for UI.
-        * **display_unit** (str, optional): Unit to display in UI.
+        * **display_unit** (str, optional): Persistida en CVT / historiador (v1; no es solo HMI).
         * **description** (str, optional): Description of the tag.
         * **opcua_address** (str, optional): OPC UA Server URL.
         * **node_namespace** (str, optional): OPC UA Node ID.
@@ -167,6 +167,8 @@ class Tag:
         if display_unit:
             self.display_unit = display_unit
         self.unit=unit
+        self.unit_source = "engine"
+        self.unit_locked_at = None
         if variable.lower()=="temperature":
             self.value = Temperature(value=0.0, unit=self.unit)
         elif variable.lower()=="length":
@@ -536,7 +538,23 @@ class Tag:
 
         * **unit** (str): Unit symbol.
         """
+        from ..utils.unit_symbols import canonical_symbol
+
+        unit = canonical_symbol(unit) or unit
+        conversions = getattr(getattr(self, "value", None), "conversions", None) or {}
+        if conversions and unit not in conversions:
+            logging.debug(
+                "Ignoring incompatible unit=%s for tag=%s variable=%s "
+                "(EngUnit allows %s); keeping %s",
+                unit,
+                getattr(self, "name", None),
+                getattr(self, "variable", None),
+                sorted(conversions),
+                getattr(self, "unit", None),
+            )
+            return
         self.unit = unit
+        self._sync_eng_unit_symbol(unit, role="unit")
 
     def set_display_unit(self, unit:str): 
         r"""
@@ -546,7 +564,66 @@ class Tag:
 
         * **unit** (str): Unit symbol.
         """
+        from ..utils.unit_symbols import canonical_symbol
+
+        unit = canonical_symbol(unit) or unit
+        conversions = getattr(getattr(self, "value", None), "conversions", None) or {}
+        if conversions and unit not in conversions:
+            logging.debug(
+                "Ignoring incompatible display_unit=%s for tag=%s variable=%s "
+                "(EngUnit allows %s); keeping %s",
+                unit,
+                getattr(self, "name", None),
+                getattr(self, "variable", None),
+                sorted(conversions),
+                getattr(self, "display_unit", None),
+            )
+            return
         self.display_unit = unit
+
+    def _sync_eng_unit_symbol(self, unit: str, *, role: str = "unit") -> None:
+        """Keep ``Tag.value`` (EngUnit) coherent with catalogue symbols after align/set."""
+        eng = getattr(self, "value", None)
+        if eng is None:
+            return
+        conversions = getattr(eng, "conversions", None) or {}
+        if unit not in conversions:
+            return
+        try:
+            eng.set_value(value=eng.value, unit=unit)
+        except Exception:
+            logging.debug("EngUnit symbol sync skipped tag=%s", self.name, exc_info=True)
+
+    def get_value(self):
+        r"""
+        Gets the current value of the tag, converted to the display unit.
+
+        **Returns:**
+
+        * Value rounded to 3 decimal places.
+        """
+        eng = getattr(self, "value", None)
+        if eng is None:
+            return 0.0
+        display = getattr(self, "display_unit", None) or getattr(eng, "unit", None)
+        try:
+            if not display or getattr(eng, "unit", None) == display:
+                return round(float(eng.value), 3)
+            return round(eng.convert(to_unit=display), 3)
+        except Exception as exc:
+            logging.warning(
+                "Tag.get_value failed tag=%s unit=%s display_unit=%s eng=%s: %s; "
+                "returning raw EngUnit value",
+                getattr(self, "name", None),
+                getattr(self, "unit", None),
+                display,
+                type(eng).__name__,
+                exc,
+            )
+            try:
+                return round(float(eng.value), 3)
+            except Exception:
+                return 0.0
 
     def set_node_namespace(self, node_namespace:str):
         r"""
@@ -557,16 +634,6 @@ class Tag:
         * **node_namespace** (str): Node ID string.
         """
         self.node_namespace = node_namespace
-
-    def get_value(self):
-        r"""
-        Gets the current value of the tag, converted to the display unit.
-
-        **Returns:**
-
-        * Value rounded to 3 decimal places.
-        """            
-        return round(self.value.convert(to_unit=self.display_unit), 3)
     
     def set_description(self, description:str):
         r"""
@@ -884,7 +951,8 @@ class Tag:
             "filter_persist": self.filter_persist,
             "out_of_range_detection": self.out_of_range_detection,
             "frozen_data_detection": self.frozen_data_detection,
-            "outlier_detection": self.outlier_detection
+            "outlier_detection": self.outlier_detection,
+            "unit_source": getattr(self, "unit_source", None) or "engine",
         }
 
     def serialize_socket(self):
@@ -1007,7 +1075,8 @@ class TagObserver(Observer):
         try:
             result = dict()
             result["tag"] = self._subject.name
-            result["value"] = self._subject.value.convert(self._subject.get_display_unit())
+            display_unit = self._subject.get_display_unit()
+            result["value"] = self._subject.value.convert(display_unit)
             result["timestamp"] = self._subject.timestamp
             from ..persistence import get_persistence_gateway
             from ..persistence.records import PersistableRecord
@@ -1019,6 +1088,9 @@ class TagObserver(Observer):
                 area=getattr(self._subject, "area", None),
                 owner_node=getattr(self._subject, "owner_node", None),
                 quality=getattr(self._subject, "quality", None),
+                unit=display_unit,
+                unit_source=getattr(self._subject, "unit_source", None),
+                display_unit_at_sample=display_unit,
             )
             import logging
             logging.getLogger("pyautomation").debug(

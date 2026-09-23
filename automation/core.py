@@ -680,6 +680,7 @@ class PyAutomation(Singleton):
             user=User|type(None),
             reload=bool,
             skip_validation=bool,
+            unit_source=str|type(None),
             output=(Tag|None, str)
     )
     def create_tag(self,
@@ -712,6 +713,7 @@ class PyAutomation(Singleton):
             user:User|None=None,
             reload:bool=False,
             skip_validation:bool=False,
+            unit_source:str=None,
         )->tuple[Tag,str]:
         r"""
         Creates a new tag in the automation application.
@@ -755,6 +757,11 @@ class PyAutomation(Singleton):
         ```
         """
         from .tag_naming import TagNameError, qualify_user_tag_name, tag_name_validation_skipped
+        from .utils.unit_symbols import canonical_symbol
+
+        unit = canonical_symbol(unit) or unit
+        if display_unit:
+            display_unit = canonical_symbol(display_unit) or display_unit
 
         scope = self._refresh_node_scope()
         skip_name_rules = bool(skip_validation or reload or tag_name_validation_skipped())
@@ -841,6 +848,8 @@ class PyAutomation(Singleton):
             tag = self.cvt.get_tag_by_name(name=name)
             if tag is None and id:
                 tag = self.cvt.get_tag(id=id)
+        if tag is not None:
+            tag.unit_source = unit_source or getattr(tag, "unit_source", None) or "engine"
         
         # Si se resolvió el nombre del cliente, establecerlo en el tag junto con la URL
         if tag and opcua_client_name:
@@ -957,10 +966,24 @@ class PyAutomation(Singleton):
         except Exception:
             logging.debug("runtime tag reconcile attempt failed", exc_info=True)
         if attempt >= max_attempts:
-            logging.warning(
-                "Runtime tag reconcile stopped after %s attempts (OPC UA may still be starting)",
-                max_attempts,
-            )
+            opcua_expected = False
+            try:
+                from .models import StringType
+
+                opcua_server = self.get_machine(name=StringType("OPCUAServer"))
+                opcua_expected = opcua_server is not None
+            except Exception:
+                opcua_expected = False
+            if opcua_expected:
+                logging.warning(
+                    "Runtime tag reconcile stopped after %s attempts (OPC UA may still be starting)",
+                    max_attempts,
+                )
+            else:
+                logging.info(
+                    "Runtime tag reconcile finished after %s attempts (no OPC UA server machine)",
+                    max_attempts,
+                )
             return
         try:
             import gevent
@@ -1763,15 +1786,25 @@ class PyAutomation(Singleton):
             if var_name and var_name in VARIABLES:
                 allowed = set(VARIABLES[var_name].values())
                 if "unit" in kwargs and kwargs["unit"] not in allowed:
-                    return (
-                        None,
-                        f'Unit "{kwargs["unit"]}" is not valid for variable "{var_name}"',
-                    )
+                    from .utils.unit_symbols import canonical_symbol
+
+                    kwargs["unit"] = canonical_symbol(kwargs["unit"]) or kwargs["unit"]
+                    if kwargs["unit"] not in allowed:
+                        return (
+                            None,
+                            f'Unit "{kwargs["unit"]}" is not valid for variable "{var_name}"',
+                        )
                 if "display_unit" in kwargs and kwargs["display_unit"] not in allowed:
-                    return (
-                        None,
-                        f'Display unit "{kwargs["display_unit"]}" is not valid for variable "{var_name}"',
+                    from .utils.unit_symbols import canonical_symbol
+
+                    kwargs["display_unit"] = (
+                        canonical_symbol(kwargs["display_unit"]) or kwargs["display_unit"]
                     )
+                    if kwargs["display_unit"] not in allowed:
+                        return (
+                            None,
+                            f'Display unit "{kwargs["display_unit"]}" is not valid for variable "{var_name}"',
+                        )
 
         # Si se está actualizando opcua_address, intentar resolver el nombre del cliente
         if "opcua_address" in kwargs:
@@ -1794,6 +1827,12 @@ class PyAutomation(Singleton):
                         resolved_opcua_address = client.serialize().get("server_url", opcua_address)
                 
                 kwargs["opcua_address"] = resolved_opcua_address
+
+        if "unit" in kwargs or "display_unit" in kwargs or "variable" in kwargs:
+            from .tags.unit_provenance import UNIT_SOURCE_OPERATOR, utc_now
+
+            kwargs["unit_source"] = UNIT_SOURCE_OPERATOR
+            kwargs["unit_locked_at"] = utc_now()
         
         result = self.cvt.update_tag(
             id=id,  
@@ -4667,6 +4706,12 @@ class PyAutomation(Singleton):
                     error="historian connectivity probe failed after init_database",
                     reconnect=False,
                 )
+            try:
+                from .variables.stable_seed import ensure_stable_catalogue
+
+                ensure_stable_catalogue(historian=True, local=True)
+            except Exception:
+                logging.debug("stable catalogue ensure skipped", exc_info=True)
             self._register_node()
             self._sync_catalog_with_historian(reason="connect")
             self._hydrate_runtime_from_db(reload_machines=bool(reload))
@@ -4806,6 +4851,18 @@ class PyAutomation(Singleton):
         runtime_allowed = self._runtime_hydration_allowed()
         if runtime_allowed:
             self._prune_runtime_scope()
+        # Roles/users before OPC so connection audits have a system user.
+        self.load_db_to_roles()
+        self.load_db_to_users()
+        try:
+            from .utils.opcua_audit import flush_pending_opcua_audits
+
+            flushed = flush_pending_opcua_audits()
+            if flushed:
+                logging.info("Flushed %s deferred OPC UA audit event(s)", flushed)
+        except Exception:
+            logging.debug("flush pending OPC UA audits skipped", exc_info=True)
+        if runtime_allowed:
             self.opcua_client_manager._defer_connection_alarms = True
             try:
                 self.load_opcua_clients_from_db()
@@ -4814,8 +4871,6 @@ class PyAutomation(Singleton):
                 self.resubscribe_all_mapped_opcua_tags()
             finally:
                 self.opcua_client_manager._defer_connection_alarms = False
-        self.load_db_to_roles()
-        self.load_db_to_users()
         try:
             restored = users.rebind_sessions_from_db_tokens()
             if restored:
@@ -4942,6 +4997,12 @@ class PyAutomation(Singleton):
                         error="historian connectivity probe failed after init_database",
                         reconnect=True,
                     )
+                try:
+                    from .variables.stable_seed import ensure_stable_catalogue
+
+                    ensure_stable_catalogue(historian=True, local=True)
+                except Exception:
+                    logging.debug("stable catalogue ensure skipped", exc_info=True)
                 self._register_node()
                 # Push local catalog (tags/units/alarms) before hydrate dual-writes,
                 # otherwise Alarms.create fails with tag=None on the remote.
@@ -6572,6 +6633,12 @@ class PyAutomation(Singleton):
 
             bootstrap_local_catalog()
             self.connect_to_db(test=test, source="core-startup")
+            try:
+                from .migrations.unit_migrations import log_unit_migrations_dry_run
+
+                log_unit_migrations_dry_run()
+            except Exception:
+                logging.debug("unit migrations dry-run skipped", exc_info=True)
             if not self.is_db_connected():
                 logging.info(
                     "Starting in offline-catalog mode (no remote historian). "

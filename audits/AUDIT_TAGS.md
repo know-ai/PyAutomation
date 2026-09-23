@@ -21,7 +21,7 @@ Este archivo agrupa **todas** las auditorías del dominio. Cada parte conserva e
 - [Parte D — Consistencia de catálogo en planta (multi-edge)](#parte-d-consistencia-de-catálogo-en-planta-multi-edge)
 - [Parte E — Dump JSON consistencia catálogo planta](#parte-e-dump-json-consistencia-catálogo-planta)
 
-Unidades de ingeniería / `display_unit` / SAF (2026-09-21): documento aparte [AUDIT_TAG_UNITS.md](./AUDIT_TAG_UNITS.md).
+Unidades de ingeniería / `display_unit` / SAF — **v1 cerrado** (spec 12, 2026-09-21): [AUDIT_TAG_UNITS.md](./AUDIT_TAG_UNITS.md). Plano 3 (HMI-only) diferido.
 
 ---
 

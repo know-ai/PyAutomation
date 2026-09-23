@@ -12,6 +12,7 @@ from .density import Density
 from .percentage import Percentage
 from .adimentional import Adimentional
 from .volume import Volume
+from ..utils.unit_symbols import UNIT_ALIASES, canonical_symbol
 
 
 temperature_base = Temperature(value=1, unit='K')
@@ -75,6 +76,12 @@ def resolve_units_for_variable(
     units_dict = VARIABLES[variable]
     allowed = set(units_dict.values())
     default_unit = next(iter(units_dict.values()))
+    from ..utils.unit_symbols import canonical_symbol
+
+    requested_unit = canonical_symbol(requested_unit) or requested_unit
+    requested_display_unit = canonical_symbol(requested_display_unit) or requested_display_unit
+    current_unit = canonical_symbol(current_unit) or current_unit
+    current_display_unit = canonical_symbol(current_display_unit) or current_display_unit
 
     def _pick(requested, current):
         if requested is not None and requested in allowed:
@@ -101,10 +108,28 @@ def variable_for_unit(unit: str | None) -> str | None:
     needle = str(unit).strip()
     if not needle:
         return None
+    from ..utils.unit_symbols import canonical_symbol
+
+    canon = canonical_symbol(needle) or needle
     for variable, units in VARIABLES.items():
-        if needle in units.values() or needle in units.keys():
+        values = set(units.values()) | set(units.keys())
+        if needle in values or canon in values:
             return variable
     return None
+
+
+def unit_belongs_to_variable(unit: str | None, variable: str | None) -> bool:
+    """True when ``unit`` is a catalogue symbol of ``variable``."""
+    if not unit or not variable:
+        return False
+    units = VARIABLES.get(str(variable).strip())
+    if not units:
+        return False
+    from ..utils.unit_symbols import canonical_symbol
+
+    needle = canonical_symbol(str(unit).strip()) or str(unit).strip()
+    allowed = set(units.values())
+    return needle in allowed
 
 
 def compatible_field_variables(variable: str | None) -> frozenset[str]:

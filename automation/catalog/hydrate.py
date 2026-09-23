@@ -167,7 +167,7 @@ def local_tag_payloads() -> list[dict]:
             {
                 "id": row.get("identifier") or row.get("_pk"),
                 "name": row.get("name"),
-                "unit": (unit_row or {}).get("unit") or (unit_row or {}).get("name") or "adim",
+                "unit": (unit_row or {}).get("unit") or "adim",
                 "data_type": (dtype or {}).get("name") or "float",
                 "description": row.get("description") or "",
                 "display_name": row.get("display_name") or row.get("name"),
@@ -191,6 +191,7 @@ def local_tag_payloads() -> list[dict]:
                 "out_of_range_detection": row.get("out_of_range_detection"),
                 "outlier_detection": row.get("outlier_detection"),
                 "frozen_data_detection": row.get("frozen_data_detection"),
+                "unit_source": row.get("unit_source") or "engine",
             }
         )
     return payloads

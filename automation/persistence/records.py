@@ -126,6 +126,9 @@ class PersistableRecord:
         area: str | None = None,
         owner_node: str | None = None,
         quality: float | None = None,
+        unit: str | None = None,
+        unit_source: str | None = None,
+        display_unit_at_sample: str | None = None,
     ) -> "PersistableRecord":
         if isinstance(timestamp, datetime):
             timestamp = quantize_datetime_ms(timestamp)
@@ -142,6 +145,12 @@ class PersistableRecord:
         }
         if quality is not None:
             body["quality"] = quality
+        if unit is not None:
+            body["unit"] = str(unit)
+        if unit_source is not None:
+            body["unit_source"] = str(unit_source)
+        if display_unit_at_sample is not None:
+            body["display_unit_at_sample"] = str(display_unit_at_sample)
         return cls(
             domain_name=DOMAIN.TAG,
             entity=str(tag),

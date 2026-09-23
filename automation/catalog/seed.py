@@ -27,9 +27,14 @@ def _find_by_name(table: str, name: str, *, field: str = "name") -> dict | None:
 
 
 def _find_unit_by_symbol(unit: str) -> dict | None:
-    symbol = str(unit or "")
+    """Match catalogue rows by engineering symbol only (never by display name)."""
+    from ..utils.unit_symbols import canonical_symbol
+
+    symbol = canonical_symbol(str(unit or "").strip()) or str(unit or "").strip()
+    if not symbol:
+        return None
     for row in LocalCatalogProvider().read_all("units"):
-        if row.get("unit") == symbol or str(row.get("name") or "") == symbol:
+        if row.get("unit") == symbol:
             return row
     return None
 
@@ -71,35 +76,15 @@ def seed_datatypes() -> int:
 
 
 def seed_variables_and_units() -> int:
-    """Cold-start variables/units only when units table is empty.
+    """Ensure local SAF catalog variables/units use the frozen stable ids.
 
-    If any unit row already exists, skip entirely — never upsert catalogue defaults
-    over operator-authored symbols (avoids variable_id / unique collisions).
+    Idempotent on first boot, upgrade, and re-hydrate. Returns count of
+    variable+unit rows that were inserted or remapped.
     """
-    from ..variables import VARIABLES
+    from ..variables.stable_seed import ensure_stable_catalogue_local
 
-    if _table_row_count("units") > 0:
-        return 0
-    n = 0
-    for variable, units in VARIABLES.items():
-        var_row = _find_by_name("variables", variable)
-        if var_row is None:
-            pk = _upsert("variables", {"name": variable})
-            var_row = _find_by_name("variables", variable) if pk else None
-            if var_row:
-                n += 1
-        if var_row is None:
-            continue
-        var_pk = var_row.get("_pk") or var_row.get("id")
-        for name, unit in units.items():
-            if _find_by_name("units", name) or _find_unit_by_symbol(unit):
-                continue
-            if _upsert(
-                "units",
-                {"name": name, "unit": unit, "variable_id": var_pk},
-            ):
-                n += 1
-    return n
+    stats = ensure_stable_catalogue_local()
+    return int(stats.get("variables_fixed", 0)) + int(stats.get("units_fixed", 0))
 
 
 def seed_roles() -> int:
@@ -126,31 +111,70 @@ def seed_roles() -> int:
 def ensure_unit_symbol(unit: str, *, variable: str | None = None) -> dict | None:
     """Return a local units row for ``unit``, creating it only if missing.
 
-    Never rewrites an existing symbol's variable_id.
+    Catalogue symbols always use ``stable_catalogue`` ids. Operator-authored
+    extras get ids above ``STABLE_UNIT_ID_MAX``. Never rewrites an existing
+    symbol's variable_id.
     """
     symbol = str(unit or "").strip()
     if not symbol:
         return None
+    from ..utils.unit_symbols import canonical_symbol
+    from ..variables.stable_catalogue import (
+        STABLE_UNIT_ID_BY_SYMBOL,
+        STABLE_UNIT_ID_MAX,
+        STABLE_UNITS,
+        STABLE_VARIABLE_ID_BY_NAME,
+    )
+
+    symbol = canonical_symbol(symbol) or symbol
     existing = _find_unit_by_symbol(symbol)
     if existing is not None:
         return existing
-    # Only create when missing; seed parents if cold.
+    # Cold catalogue: materialize the frozen set first (stable ids).
     if _table_row_count("units") == 0:
         seed_variables_and_units()
         existing = _find_unit_by_symbol(symbol)
         if existing is not None:
             return existing
+    stable_id = STABLE_UNIT_ID_BY_SYMBOL.get(symbol)
+    if stable_id is not None:
+        meta = next((u for u in STABLE_UNITS if u[0] == stable_id), None)
+        name = meta[1] if meta else symbol
+        var_id = meta[3] if meta else STABLE_VARIABLE_ID_BY_NAME.get(variable or "Adimentional", 13)
+        _upsert(
+            "units",
+            {"id": stable_id, "_pk": stable_id, "name": name, "unit": symbol, "variable_id": var_id},
+        )
+        return _find_unit_by_symbol(symbol)
+
     var_name = variable or "Adimentional"
     var_row = _find_by_name("variables", var_name)
     if var_row is None:
-        _upsert("variables", {"name": var_name})
+        vid = STABLE_VARIABLE_ID_BY_NAME.get(var_name)
+        payload = {"name": var_name}
+        if vid is not None:
+            payload["id"] = vid
+            payload["_pk"] = vid
+        _upsert("variables", payload)
         var_row = _find_by_name("variables", var_name)
     if var_row is None:
         return None
     var_pk = var_row.get("_pk") or var_row.get("id")
+    next_id = STABLE_UNIT_ID_MAX + 1
+    for row in LocalCatalogProvider().read_all("units"):
+        try:
+            next_id = max(next_id, int(row.get("id") or row.get("_pk") or 0) + 1)
+        except (TypeError, ValueError):
+            pass
     _upsert(
         "units",
-        {"name": symbol, "unit": symbol, "variable_id": var_pk},
+        {
+            "id": next_id,
+            "_pk": next_id,
+            "name": symbol,
+            "unit": symbol,
+            "variable_id": var_pk,
+        },
     )
     return _find_unit_by_symbol(symbol)
 
@@ -235,7 +259,7 @@ def seed_local_catalog_defaults(*, system_password: str | None = None) -> dict:
     return counts
 
 
-def persist_tag_to_local(tag) -> str | None:
+def persist_tag_to_local(tag, *, update_units: bool = False) -> str | None:
     """Write a CVT tag into the local catalog (FK-resolved). Never raises."""
     try:
         if get_catalog_database() is None or tag is None:
@@ -284,6 +308,63 @@ def persist_tag_to_local(tag) -> str | None:
                 node_namespace = existing.get("node_namespace")
             if (scan_time is None or scan_time == 0) and existing.get("scan_time"):
                 scan_time = existing.get("scan_time")
+            if not update_units:
+                from ..tags.unit_provenance import (
+                    is_operator_locked,
+                    tag_eng_accepts_symbol,
+                )
+                from .local_provider import LocalCatalogProvider as _LCP
+
+                def _sym(pk):
+                    if pk is None:
+                        return None
+                    if isinstance(pk, str) and pk.strip() and not pk.strip().isdigit():
+                        return pk.strip()
+                    row = _LCP().find_one("units", field="id", value=pk) or _LCP().find_one(
+                        "units", field="_pk", value=pk
+                    )
+                    if row:
+                        return row.get("unit")
+                    return None
+
+                persist_unit = existing.get("unit") or existing.get("unit_id")
+                persist_display = existing.get("display_unit") or existing.get("display_unit_id")
+                persist_source = existing.get("unit_source")
+                hist_sym = _sym(persist_unit)
+                # Cross-DB poison: rewrite engine rows when local FK ≠ CVT EngUnit.
+                if (
+                    not is_operator_locked(persist_source)
+                    and hist_sym
+                    and not tag_eng_accepts_symbol(tag, hist_sym)
+                ):
+                    update_units = True
+                else:
+                    # Preserve existing FKs (operator lock or compatible / unknown symbol).
+                    if persist_unit is not None and isinstance(persist_unit, (int, str)) and str(
+                        persist_unit
+                    ).isdigit():
+                        unit_row = {"_pk": int(persist_unit), "id": int(persist_unit)}
+                    if persist_display is not None and isinstance(
+                        persist_display, (int, str)
+                    ) and str(persist_display).isdigit():
+                        display_unit_row = {
+                            "_pk": int(persist_display),
+                            "id": int(persist_display),
+                        }
+                    if hist_sym and tag_eng_accepts_symbol(tag, hist_sym):
+                        try:
+                            from ..tags.unit_provenance import align_tag_to_persisted_units
+
+                            align_tag_to_persisted_units(
+                                tag,
+                                unit=hist_sym,
+                                display_unit=_sym(persist_display),
+                                unit_source=persist_source,
+                            )
+                        except Exception:
+                            _LOGGER.debug(
+                                "align CVT from catalog units skipped", exc_info=True
+                            )
             # Keep CVT aligned when catalog still holds the OPC mapping.
             if opcua_address and not getattr(tag, "opcua_address", None):
                 try:
@@ -334,6 +415,11 @@ def persist_tag_to_local(tag) -> str | None:
             "out_of_range_detection": getattr(tag, "out_of_range_detection", False),
             "outlier_detection": getattr(tag, "outlier_detection", False),
             "frozen_data_detection": getattr(tag, "frozen_data_detection", False),
+            "unit_source": (
+                existing.get("unit_source")
+                if existing and not update_units
+                else (getattr(tag, "unit_source", None) or "engine")
+            ),
         }
         # Never blank out a catalog OPC mapping with empty CVT fields.
         if existing:

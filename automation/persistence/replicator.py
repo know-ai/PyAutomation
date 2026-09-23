@@ -297,7 +297,11 @@ class RemoteReplicator:
             if domain_err:
                 last_err = domain_err
             if domain_retry:
-                logging.getLogger("pyautomation").error(
+                from ..utils.rate_limited_log import warning_once
+
+                warning_once(
+                    logging.getLogger("pyautomation"),
+                    f"saf-retryable:{domain}",
                     "SAF replication retryable for domain %s: %s/%s kept PENDING (attempts intact)",
                     domain,
                     len(domain_retry),

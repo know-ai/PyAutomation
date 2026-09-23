@@ -357,41 +357,50 @@ class Machine(Singleton):
         """
         from . import SEGMENT, MANUFACTURER
         from automation import PyAutomation
+        from .variables import variable_for_unit
 
         app = PyAutomation()
         cvt = CVTEngine()
         internal_variables = machine.get_internal_process_type_variables()
         for _tag_name, value in internal_variables.items():
+            variable = variable_for_unit(value.unit)
+            if not variable:
+                for candidate, units in VARIABLES.items():
+                    if value.unit in units.values() or value.unit in units.keys():
+                        variable = candidate
+                        break
+            if not variable:
+                logging.warning(
+                    "Machine output tag skipped name=%s unit=%s (no catalogue variable)",
+                    _tag_name,
+                    value.unit,
+                )
+                continue
 
-            for variable, units in VARIABLES.items():
-
-                if value.unit in units.values() or value.unit in units.keys():
-
-                    tag_name = f"{machine.name.value}.{_tag_name}"
-                    tag, message = app.create_tag(
-                        name=tag_name,
-                        unit=value.unit,
-                        data_type="float",
-                        variable=variable,
-                        description="process type variable",
-                        display_name=tag_name,
-                        segment=SEGMENT,
-                        manufacturer=MANUFACTURER,
-                        skip_validation=True,
+            tag_name = f"{machine.name.value}.{_tag_name}"
+            tag, message = app.create_tag(
+                name=tag_name,
+                unit=value.unit,
+                data_type="float",
+                variable=variable,
+                description="process type variable",
+                display_name=tag_name,
+                segment=SEGMENT,
+                manufacturer=MANUFACTURER,
+                skip_validation=True,
+            )
+            if not tag:
+                tag = cvt.get_tag_by_name(name=tag_name)
+                if tag is not None:
+                    self._persist_machine_tag(tag=tag, tag_name=tag_name)
+                else:
+                    logging.warning(
+                        "Machine output tag not created name=%s message=%s",
+                        tag_name,
+                        message,
                     )
-                    if not tag:
-                        tag = cvt.get_tag_by_name(name=tag_name)
-                        if tag is not None:
-                            self._persist_machine_tag(tag=tag, tag_name=tag_name)
-                        else:
-                            logging.warning(
-                                "Machine output tag not created name=%s message=%s",
-                                tag_name,
-                                message,
-                            )
-                    attr = getattr(machine, _tag_name)
-                    attr.tag = tag
-                    break
+            attr = getattr(machine, _tag_name)
+            attr.tag = tag
 
         relationships = getattr(machine, "internal_tags_relationships", None)
         if not isinstance(relationships, dict):
@@ -409,41 +418,50 @@ class Machine(Singleton):
             rel = relationships.get(_tag_name)
             if not isinstance(rel, dict):
                 continue
-            for variable, units in VARIABLES.items():
-
-                if value.unit in units.values() or value.unit in units.keys():
-                    tag_name = f"{rel.get('tag') or ''}"
-                    if not tag_name:
+            unit = getattr(machine, _tag_name).unit
+            variable = variable_for_unit(unit)
+            if not variable:
+                for candidate, units in VARIABLES.items():
+                    if unit in units.values() or unit in units.keys():
+                        variable = candidate
                         break
-                    if SEGMENT:
-                        tag_name = f"{SEGMENT}.{tag_name}"
-                    if MANUFACTURER:
-                        tag_name = f"{MANUFACTURER}.{tag_name}"
-                    description = rel.get("description") or ""
-                    unit = getattr(machine, _tag_name).unit
-                    tag, message = app.create_tag(
-                        name=tag_name,
-                        unit=unit,
-                        data_type="float",
-                        variable=variable,
-                        description=description,
-                        display_name=tag_name,
-                        segment=SEGMENT,
-                        manufacturer=MANUFACTURER,
-                        skip_validation=True,
-                    )
+            if not variable:
+                logging.warning(
+                    "Machine field tag skipped name=%s unit=%s (no catalogue variable)",
+                    _tag_name,
+                    unit,
+                )
+                continue
+            tag_name = f"{rel.get('tag') or ''}"
+            if not tag_name:
+                continue
+            if SEGMENT:
+                tag_name = f"{SEGMENT}.{tag_name}"
+            if MANUFACTURER:
+                tag_name = f"{MANUFACTURER}.{tag_name}"
+            description = rel.get("description") or ""
+            tag, message = app.create_tag(
+                name=tag_name,
+                unit=unit,
+                data_type="float",
+                variable=variable,
+                description=description,
+                display_name=tag_name,
+                segment=SEGMENT,
+                manufacturer=MANUFACTURER,
+                skip_validation=True,
+            )
 
-                    if not tag:
-                        tag = cvt.get_tag_by_name(name=tag_name)
-                        if tag is not None:
-                            self._persist_machine_tag(tag=tag, tag_name=tag_name)
-                        else:
-                            logging.warning(
-                                "Machine field tag not created name=%s message=%s",
-                                tag_name,
-                                message,
-                            )
-                    break
+            if not tag:
+                tag = cvt.get_tag_by_name(name=tag_name)
+                if tag is not None:
+                    self._persist_machine_tag(tag=tag, tag_name=tag_name)
+                else:
+                    logging.warning(
+                        "Machine field tag not created name=%s message=%s",
+                        tag_name,
+                        message,
+                    )
 
         try:
             self.__define_iad_alarms()
@@ -1473,8 +1491,19 @@ class StateMachineCore(StateMachine):
                 value.change_unit(unit=self.mass_flow_unit_base)
             elif process_type.tag.variable.lower()=="volumetricflow":
                 value.change_unit(unit=self.volumetric_flow_unit_base)
+            elif (
+                process_type.tag.variable.lower() == "pressure"
+                and getattr(self, "pressure_unit_base", None)
+            ):
+                from .variables.units_contract import resolve_value_for_process_type
+
+                resolve_value_for_process_type(
+                    value, process_type, target_unit=self.pressure_unit_base, mutate=True
+                )
             else:
-                value.change_unit(unit=process_type.tag.display_unit)
+                from .variables.units_contract import resolve_value_for_process_type
+
+                resolve_value_for_process_type(value, process_type, mutate=True)
             process_type.value = value
             process_type.data_timestamp = timestamp
             self.data_timestamp = timestamp

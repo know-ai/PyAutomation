@@ -73,7 +73,7 @@ class TestEnsureTagHistorianCatalog(unittest.TestCase):
             ok = ensure_tag_historian_catalog(tag, reason="test")
 
         self.assertFalse(ok)
-        persist.assert_called_once_with(tag)
+        persist.assert_called_once_with(tag, update_units=False)
         nudge.assert_called_once_with("Supe.Linea2.TI_02")
         clear_retry.assert_called_once_with("Supe.Linea2.TI_02")
         worker.request_full_sync.assert_called_once()

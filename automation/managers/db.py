@@ -253,6 +253,7 @@ class DBManager(Singleton):
         self._ensure_machine_name_partition(db)
         self._ensure_nodes_clock_schema(db, migrator)
         self._ensure_tag_filter_schema(db, migrator)
+        self._ensure_tag_unit_provenance_schema(db, migrator)
         self._ensure_alarm_delay_schema(db, migrator)
         try:
             AlarmSummary.ensure_schema()
@@ -316,6 +317,28 @@ class DBManager(Singleton):
                     )
                 )
         self._drop_legacy_tag_columns(db, migrator)
+
+    def _ensure_tag_unit_provenance_schema(self, db, migrator):
+        table = Tags._meta.table_name
+        try:
+            existing = {column.name for column in db.get_columns(table)}
+        except Exception:
+            return
+        additions = (
+            ("unit_source", Tags.unit_source),
+            ("unit_locked_at", Tags.unit_locked_at),
+        )
+        for field_name, field in additions:
+            if field_name not in existing:
+                cloned = field.clone()
+                cloned.index = False
+                migrate(
+                    migrator.add_column(
+                        table,
+                        field_name,
+                        cloned,
+                    )
+                )
 
     def _ensure_alarm_delay_schema(self, db, migrator):
         from ..dbmodels.alarms import ensure_alarm_delay_schema

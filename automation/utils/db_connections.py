@@ -30,7 +30,9 @@ APPLICATION_NAME_PREFIX = "PyAutomationIO"
 DEFAULT_CONNECTIONS_ALERT = 6
 DEFAULT_CONNECTIONS_HARD_MAX = 12
 DEFAULT_LEAK_DETECTION_S = 900.0
-DEFAULT_TRANSIENT_HEADROOM = 4
+# Concurrent SM-* ticks (OPCUA + NPW/PPA/PFM/Observer) + MainThread/HMI/pool burst.
+# A floor of 4 left multi-engine edges permanently above the alert threshold.
+DEFAULT_TRANSIENT_HEADROOM = 8
 _CONNECT_GATE = threading.local()
 _ROLE_SCOPE = threading.local()
 _TXN_LOCK = threading.Lock()
@@ -233,7 +235,16 @@ def _warn_on_socket_growth(role: str) -> None:
             REGISTRY.census(),
         )
         return
-    if high_water and live > connections_alert_threshold() and _warning_is_due("high_water"):
+    # A new peak above the alert threshold is normal when several SM-* threads
+    # open ephemeral sockets in the same tick (engines started from HMI). That
+    # is not a leak: ``ephemeral_historian`` returns them after the cycle.
+    # WARNING only when the peak presses the hard ceiling; otherwise stay quiet.
+    if (
+        high_water
+        and live > connections_alert_threshold()
+        and live >= max(1, ceiling - 2)
+        and _warning_is_due("high_water")
+    ):
         _LOGGER.warning(
             "Historian socket high-water mark: live=%s threshold=%s ceiling=%s opened_by=%s census=%s",
             live,
@@ -241,6 +252,14 @@ def _warn_on_socket_growth(role: str) -> None:
             ceiling,
             role,
             REGISTRY.census(),
+        )
+    elif high_water and live > connections_alert_threshold():
+        _LOGGER.debug(
+            "Historian socket peak live=%s threshold=%s ceiling=%s opened_by=%s (ephemeral burst; no alarm)",
+            live,
+            connections_alert_threshold(),
+            ceiling,
+            role,
         )
 
 
@@ -682,15 +701,29 @@ def resident_socket_roles() -> frozenset[str]:
     return frozenset(roles) if roles else RESIDENT_SOCKET_ROLES
 
 
+def concurrent_sm_socket_openers() -> int:
+    """Alive ``SM-*`` / ``SM-SAMP-*`` threads that may open a historian socket together."""
+    return sum(
+        1
+        for thread in threading.enumerate()
+        if (thread.name or "").startswith("SM-") and thread.is_alive()
+    )
+
+
 def transient_socket_headroom() -> int:
-    """Concurrent short-lived openers to tolerate: state machines, HTTP, pool work."""
+    """Concurrent short-lived openers to tolerate: state machines, HTTP, pool work.
+
+    Scales with live SM threads so enabling NPW+PPA+PFM+Observer+OPCUA from the
+    HMI does not push a healthy edge over the alert threshold on every boot.
+    """
     raw = os.environ.get("AUTOMATION_DB_TRANSIENT_HEADROOM")
     if raw:
         try:
             return max(1, min(int(raw), 64))
         except (TypeError, ValueError):
             pass
-    return DEFAULT_TRANSIENT_HEADROOM
+    # +3 covers MainThread hydrate leftover, HmiSession*, and one catalog/pool opener.
+    return max(DEFAULT_TRANSIENT_HEADROOM, concurrent_sm_socket_openers() + 3)
 
 
 def connections_expected_max() -> int:
@@ -700,7 +733,7 @@ def connections_expected_max() -> int:
     population scales with the *worker roster*, not with the web concurrency, so
     a healthy edge sat permanently above the threshold and the warning became
     background noise. Count the residents and add room for the openers that do
-    return their socket within one cycle.
+    return their socket within one cycle (including concurrent SM-* ticks).
     """
     return len(resident_socket_roles()) + transient_socket_headroom() + gunicorn_worker_count()
 

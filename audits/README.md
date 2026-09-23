@@ -3,9 +3,9 @@
 | Campo | Valor |
 |---|---|
 | **Producto** | PyAutomationIO (`automation/` + HMI `hmi/src/`) |
-| **Fecha de compactación** | 2026-08-20 · **revisión suscripción/domain 2026-09-01** · **auth/authz 2026-09-03** · **UI/UX Real-Time Trends 2026-09-09** · **SAF nuclear 2026-09-15** · **ISA 18.2 alarmas 2026-09-16** · **agrupación 10 documentos 2026-09-16** · **unidades de tags 2026-09-21** |
+| **Fecha de compactación** | 2026-08-20 · **revisión suscripción/domain 2026-09-01** · **auth/authz 2026-09-03** · **UI/UX Real-Time Trends 2026-09-09** · **SAF nuclear 2026-09-15** · **ISA 18.2 alarmas 2026-09-16** · **agrupación 10 documentos 2026-09-16** · **unidades de tags 2026-09-21** · **cierre v1 unidades 2026-09-21** |
 | **Alcance** | Contraste código vs diseño; no son especificaciones de producto (`specs/` y `docs/` cubren eso) |
-| **Regla** | Un documento por dominio. Lo desactualizado se actualiza contra evidencia de código (última revisión **2026-09-16**) |
+| **Regla** | Un documento por dominio. Lo desactualizado se actualiza contra evidencia de código (última revisión **2026-09-21** unidades) |
 
 ---
 
@@ -14,7 +14,7 @@
 | Doc | Archivo | Absorbe | Veredicto vigente |
 |---|---|---|---|
 | **01 Alarmas** | [AUDIT_ALARMS.md](./AUDIT_ALARMS.md) | `AUDIT_ISA18_2_ALARMS` + informes ISA18-2 (P0/P1/P2, EXPLAIN, E2E, partición, baseline, schema SQL) | SM **A−** · historial **A−** · footer **A** · hot path **A**; P2 **con waivers** (partición live) |
-| **02 Tags** | [AUDIT_TAGS.md](./AUDIT_TAGS.md) | `AUDIT_SIGNAL_CONDITIONING`, `AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP`, `AUDIT_CATALOG_SQLITE_LOCAL`, `AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE` | Wavelet **A−** / nuclear **C** · OPC **A−** · catálogo local **A** código / sync **A−** · consistencia proceso **A** / sidecar **B−**. Complemento unidades: [AUDIT_TAG_UNITS.md](./AUDIT_TAG_UNITS.md) |
+| **02 Tags** | [AUDIT_TAGS.md](./AUDIT_TAGS.md) | `AUDIT_SIGNAL_CONDITIONING`, `AUDIT_OPC_QUALITY_AND_DEGRADED_STARTUP`, `AUDIT_CATALOG_SQLITE_LOCAL`, `AUDIT_CATALOG_CONSISTENCY_MULTI_EDGE` | Wavelet **A−** / nuclear **C** · OPC **A−** · catálogo local **A** código / sync **A−** · consistencia proceso **A** / sidecar **B−**. Unidades v1: [AUDIT_TAG_UNITS.md](./AUDIT_TAG_UNITS.md) (**A** cold/restart/SAF; Plano 3 diferido) |
 | **03 HMI** | [AUDIT_HMI.md](./AUDIT_HMI.md) | `AUDIT_HMI_PERFORMANCE`, `AUDIT_RT_TRENDS`, `AUDIT_REALTIME_TRENDS_UIUX`, `AUDIT_HMI_SOCKET_TRACEABILITY`, `AUDIT_HMI_MACHINE_DOMAIN_EXTENSION` | Heap **A** · forma de onda RT cola por tag · layout RT **B+** / picker **A−** (I-1…I-4 cerrados) · socket **A+** · machines/domain **A** |
 | **04 BD, SAF y disco** | [AUDIT_DB.md](./AUDIT_DB.md) | `AUDIT_DB_CONNECTIONS*`, `AUDIT_STORE_AND_FORWARD`, `AUDIT_DISK_DURABILITY`, `T01_SOAK_LAST_RUN`, `SOAK_DISK_LAST_RUN` | Un handle Peewee; idle **1–3** (techo **≤ 4**); pool **prohibido**. SAF **A+** / Bulkhead **A**. Disco **A+** código; soak 24 h planta pendiente |
 | **05 Rendimiento** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md) | `AUDIT_BACKEND_PERFORMANCE`, `AUDIT_MEMORY`, `PERFORMANCE_RUNBOOK`, `AUDIT_NODE_PERFORMANCE_DASHBOARD` | Hot path **A−**; dashboard **A−** (`ALM.PERF.*`); soak 24 h / 2-edge / HMI planta pendientes |
@@ -35,7 +35,7 @@
 5. Login, sesión, ACL REST/HMI (`authz_grants`, `/api/authz/me`): [AUDIT_AUTH_AUTHORIZATION.md](./AUDIT_AUTH_AUTHORIZATION.md).
 6. Layout / edición de `/real-time-trends` (spec HMI 2.10): [AUDIT_HMI.md](./AUDIT_HMI.md) Parte B. Fidelidad de serie y heap: Parte A.
 7. T-01 soak lo regenera `automation/tests/test_store_and_forward.py` dentro de [AUDIT_DB.md](./AUDIT_DB.md) (marcadores `T01_SOAK_LAST_RUN`). La campaña 24 h de disco/SAF y la de caos CT-07 son plantillas en [AUDIT_DB.md](./AUDIT_DB.md) Parte D y [AUDIT_RELIABILITY.md](./AUDIT_RELIABILITY.md) Parte D.
-8. Unidades de tags (cold start, restart, SAF, `unit` vs `display_unit`): [AUDIT_TAG_UNITS.md](./AUDIT_TAG_UNITS.md). Contrato SI de iDetectFugas: `gitlab/intelcon/idetectfugas/audits/18-AUDIT_TAG_UNITS.md`.
+8. Unidades de tags v1 (spec 12: freeze SAF, bootstrap no destructivo, SI subscribe, alias, migraciones opt-in): [AUDIT_TAG_UNITS.md](./AUDIT_TAG_UNITS.md) · runbook [tag-units-runbook.md](../docs/tag-units-runbook.md). Producto: `gitlab/intelcon/idetectfugas/audits/18-AUDIT_TAG_UNITS.md`.
 
 ---
 

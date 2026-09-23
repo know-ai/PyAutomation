@@ -192,3 +192,46 @@ class AdminSettingsUpdateResource(Resource):
             return update_runtime_settings(_payload(), user=user), 200
         except Exception as exc:
             return _handle(exc)
+
+
+unit_apply_model = api.model(
+    "admin_unit_migrations_apply",
+    {
+        "confirm": fields.Boolean(required=True),
+        "reason": fields.String(required=False),
+    },
+)
+
+
+@ns.route("/unit-migrations/dry-run")
+class AdminUnitMigrationsDryRunResource(Resource):
+    @api.doc(security="apikey", description="Preview tag unit symbol migrations. Never writes.")
+    @Api.token_required(auth=True)
+    @Api.auth_roles(["admin", "supervisor", "sudo", "integrator"])
+    def post(self):
+        user = _user()
+        try:
+            require_control_role(user)
+            from ....migrations.unit_migrations import dry_run_unit_migrations
+
+            return dry_run_unit_migrations(), 200
+        except Exception as exc:
+            return _handle(exc)
+
+
+@ns.route("/unit-migrations/apply")
+class AdminUnitMigrationsApplyResource(Resource):
+    @api.doc(security="apikey", description="Apply pending tag unit migrations (opt-in; never operator rows).")
+    @Api.token_required(auth=True)
+    @Api.auth_roles(["admin", "sudo", "integrator"])
+    @ns.expect(unit_apply_model)
+    def post(self):
+        user = _user()
+        try:
+            require_destructive_role(user)
+            from ....migrations.unit_migrations import apply_unit_migrations
+
+            data = _payload()
+            return apply_unit_migrations(confirm=bool(data.get("confirm")), user=user), 200
+        except Exception as exc:
+            return _handle(exc)

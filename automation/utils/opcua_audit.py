@@ -4,14 +4,21 @@
 Connection and reconnection against OPC UA servers must be persisted in the
 Events log for industrial audits. This helper is fail-safe: it never raises
 into the caller and never blocks the connection path if the event store is down.
+
+When the system user is not yet hydrated (OPC connects before users on some
+boot paths), events are queued and flushed by ``flush_pending_opcua_audits``.
 """
 from __future__ import annotations
 
 import logging
+import threading
 from .system_event_audit import clip, get_system_user, persist_system_event
 
 _FAILURE_COOLDOWN_S = 60.0
 _CLASSIFICATION = "OPC UA"
+_PENDING_MAX = 64
+_PENDING_LOCK = threading.Lock()
+_PENDING: list[dict] = []
 
 _PRIORITY = {
     "CONNECTED": 2,
@@ -49,6 +56,45 @@ def _get_system_user():
     return get_system_user()
 
 
+def _queue_pending(**payload) -> None:
+    with _PENDING_LOCK:
+        if len(_PENDING) >= _PENDING_MAX:
+            _PENDING.pop(0)
+        _PENDING.append(payload)
+    logging.getLogger("pyautomation").debug(
+        "OPC UA audit event queued until system user is available action=%s client=%s",
+        payload.get("action"),
+        payload.get("client_name"),
+    )
+
+
+def flush_pending_opcua_audits() -> int:
+    """Persist queued OPC UA audits once the system user exists. Returns flushed count."""
+    user = _get_system_user()
+    if user is None:
+        return 0
+    with _PENDING_LOCK:
+        pending = list(_PENDING)
+        _PENDING.clear()
+    flushed = 0
+    for item in pending:
+        try:
+            if record_opcua_connection_event(user=user, **item):
+                flushed += 1
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "flush pending OPC UA audit skipped",
+                exc_info=True,
+            )
+    return flushed
+
+
+def clear_pending_opcua_audits() -> None:
+    """Test helper."""
+    with _PENDING_LOCK:
+        _PENDING.clear()
+
+
 def record_opcua_connection_event(
     action: str,
     client_name: str,
@@ -70,8 +116,14 @@ def record_opcua_connection_event(
 
         audit_user = user or _get_system_user()
         if audit_user is None:
-            logging.getLogger("pyautomation").warning(
-                "OPC UA audit event skipped: system user is not available"
+            _queue_pending(
+                action=action_key,
+                client_name=client_name,
+                server_url=server_url,
+                source=source,
+                reason=reason,
+                error=error,
+                attempts=attempts,
             )
             return False
 

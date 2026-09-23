@@ -2,7 +2,7 @@
 
 Índice maestro de especificaciones técnicas de PyAutomationIO (`automation/`).
 
-**Estructura actual (v1.3, 2026-08-21):** **11 documentos temáticos** en la raíz de `specs/`.
+**Estructura actual (v1.4, 2026-09-21):** **12 documentos temáticos** en la raíz de `specs/`.
 
 ---
 
@@ -21,6 +21,7 @@
 | **09** | [09-OPC-QUALITY-AND-DEGRADED-STARTUP.md](./09-OPC-QUALITY-AND-DEGRADED-STARTUP.md) | Calidad OPC UA (StatusCode → CVT → alarmas), stale en disconnect, modo degradado BD — **implementado v1.0** ([AUDIT_TAGS](../audits/AUDIT_TAGS.md)) |
 | **10** | [10-OPC-QUALITY-A-PLUS.md](./10-OPC-QUALITY-A-PLUS.md) | Calidad A+: `ALM.QUALITY.*`, `event_id` en Login, toggle UNCERTAIN, badge Trends — **implementado v2.0** (soak 24 h pendiente) |
 | **11** | [11-CATALOG-SQLITE-LOCAL.md](./11-CATALOG-SQLITE-LOCAL.md) | Catálogo local SQLite espejo + sync bidireccional con PG/MySQL; multi-edge; sin SQLite en HMI central — **implementado v1.3** (soak pendiente) · [auditoría](../audits/AUDIT_TAGS.md) · [docs](../docs/catalog-sqlite.md) |
+| **12** | [12-TAG-UNITS-CONTRACT.md](./12-TAG-UNITS-CONTRACT.md) | Tres planos de unidades (SI código / persistido / HMI diferido); freeze SAF; bootstrap no destructivo; `unit_source`; alias; migraciones opt-in — **implementado v1** · [auditoría](../audits/AUDIT_TAG_UNITS.md) · [runbook](../docs/tag-units-runbook.md) |
 
 ---
 

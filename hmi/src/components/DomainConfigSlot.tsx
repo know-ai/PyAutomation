@@ -24,6 +24,13 @@ import {
   translateWarning,
   type TranslateFn,
 } from "../utils/domainI18n";
+import {
+  clearDomainUploadSession,
+  getDomainUploadSession,
+  patchDomainUploadSession,
+  subscribeDomainUploadSession,
+  type DomainUploadProgress,
+} from "../utils/domainUploadSession";
 
 const SCHEMA_VERSION_SUPPORTED = 1;
 
@@ -47,12 +54,7 @@ type DestinationInfo = {
   modelsRoot: string;
 };
 
-type UploadProgressState = {
-  percent: number;
-  current: number;
-  total: number;
-  nodeLabel: string;
-};
+type UploadProgressState = DomainUploadProgress;
 
 function looksSensitiveUploadError(message: string): boolean {
   const text = message.trim();
@@ -1551,23 +1553,39 @@ export function DomainConfigSlot({
   onSchemaUpdated,
 }: DomainConfigSlotProps) {
   const { t } = useTranslation();
+  const session0 = getDomainUploadSession(machineName);
   const [values, setValues] = useState<Record<string, unknown>>(config || {});
-  const [pendingFiles, setPendingFiles] = useState<Record<string, File[]>>({});
-  const [saving, setSaving] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<Record<string, File[]>>(
+    () => session0.pendingFiles
+  );
+  const [saving, setSaving] = useState(() => session0.saving);
   const [restartOpen, setRestartOpen] = useState(false);
   const [restarting, setRestarting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressState | null>(
+    () => session0.uploadProgress
+  );
   const [nodeInfo, setNodeInfo] = useState<{ nodeId: string; host: string }>({
     nodeId: "",
     host: typeof window !== "undefined" ? window.location.host : "",
   });
+  const onConfigUpdatedRef = useRef(onConfigUpdated);
+  onConfigUpdatedRef.current = onConfigUpdated;
 
   useEffect(() => {
     setValues(config || {});
   }, [machineName, config]);
 
   useEffect(() => {
-    setPendingFiles({});
+    const snap = getDomainUploadSession(machineName);
+    setPendingFiles(snap.pendingFiles);
+    setUploadProgress(snap.uploadProgress);
+    setSaving(snap.saving);
+    return subscribeDomainUploadSession(machineName, () => {
+      const next = getDomainUploadSession(machineName);
+      setPendingFiles(next.pendingFiles);
+      setUploadProgress(next.uploadProgress);
+      setSaving(next.saving);
+    });
   }, [machineName]);
 
   useEffect(() => {
@@ -1580,12 +1598,37 @@ export function DomainConfigSlot({
     };
   }, []);
 
+  const setPendingFilesSynced = (next: Record<string, File[]> | ((prev: Record<string, File[]>) => Record<string, File[]>)) => {
+    setPendingFiles((prev) => {
+      const resolved = typeof next === "function" ? next(prev) : next;
+      patchDomainUploadSession(machineName, { pendingFiles: resolved });
+      return resolved;
+    });
+  };
+
+  const setSavingSynced = (next: boolean) => {
+    setSaving(next);
+    patchDomainUploadSession(machineName, { saving: next });
+  };
+
+  const setUploadProgressSynced = (next: UploadProgressState | null) => {
+    setUploadProgress(next);
+    patchDomainUploadSession(machineName, { uploadProgress: next });
+  };
+
   const localized = useMemo(() => translateDomainSchema(schema, t), [schema, t]);
   const domainNs = inferDomainNs(schema);
   const sections = localized.sections || [];
   const unsupported = Number(schema.version || 1) > SCHEMA_VERSION_SUPPORTED;
   const title = localized.title || t("machines.domainConfigTitle");
   const rootPresentation = schemaPresentation(localized);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const allFields = useMemo(
     () => sections.flatMap((section) => collectSectionFields(section)),
@@ -1688,19 +1731,23 @@ export function DomainConfigSlot({
     try {
       const domain = await getMachineDomainConfig(machineName);
       if (domain?.config) {
-        setValues(domain.config);
-        onConfigUpdated?.(domain.config);
-      } else {
+        if (mountedRef.current) {
+          setValues(domain.config);
+          onConfigUpdatedRef.current?.(domain.config);
+        }
+      } else if (mountedRef.current) {
         setValues(fallbackConfig);
-        onConfigUpdated?.(fallbackConfig);
+        onConfigUpdatedRef.current?.(fallbackConfig);
       }
       if (domain?.schema) {
         onSchemaUpdated?.(domain.schema);
       }
       return (domain?.config as Record<string, unknown> | undefined) || fallbackConfig;
     } catch {
-      setValues(fallbackConfig);
-      onConfigUpdated?.(fallbackConfig);
+      if (mountedRef.current) {
+        setValues(fallbackConfig);
+        onConfigUpdatedRef.current?.(fallbackConfig);
+      }
       return fallbackConfig;
     }
   };
@@ -1716,24 +1763,27 @@ export function DomainConfigSlot({
       );
       return;
     }
-    const incomplete = validatePendingFiles(allFields, values, pendingFiles);
+    const sessionPending = getDomainUploadSession(machineName).pendingFiles;
+    const filesSnapshot = { ...sessionPending };
+    const incomplete = validatePendingFiles(allFields, values, filesSnapshot);
     if (incomplete) {
       showToast(t("machines.domainConfigFilesIncomplete"), "error");
       return;
     }
-    setSaving(true);
-    setUploadProgress(null);
+    setSavingSynced(true);
+    setUploadProgressSynced(null);
     try {
       let latest: Record<string, unknown> = { ...values };
       const fileJobs = collectFileFields(allFields).filter(
-        (field) => (pendingFiles[field.key] || []).length > 0
+        (field) => (filesSnapshot[field.key] || []).length > 0
       );
       const destPaths: string[] = [];
       const nodeLabel = nodeInfo.nodeId || nodeInfo.host || "—";
+      let remainingPending = { ...filesSnapshot };
       for (let index = 0; index < fileJobs.length; index += 1) {
         const field = fileJobs[index];
-        const selected = pendingFiles[field.key] || [];
-        setUploadProgress({
+        const selected = filesSnapshot[field.key] || [];
+        setUploadProgressSynced({
           percent: 0,
           current: index + 1,
           total: fileJobs.length,
@@ -1744,7 +1794,7 @@ export function DomainConfigSlot({
           field.key,
           selected,
           (progress) => {
-            setUploadProgress({
+            setUploadProgressSynced({
               percent: progress.percent,
               current: index + 1,
               total: fileJobs.length,
@@ -1753,16 +1803,28 @@ export function DomainConfigSlot({
           }
         );
         if (uploaded.destination_path) destPaths.push(uploaded.destination_path);
+        remainingPending = { ...remainingPending, [field.key]: [] };
+        patchDomainUploadSession(machineName, { pendingFiles: remainingPending });
+        if (mountedRef.current) {
+          setPendingFiles(remainingPending);
+        }
         if (uploaded.config) {
           latest = preserveLocalDomainEdits(latest, uploaded.config as Record<string, unknown>);
-          setValues(latest);
-          onConfigUpdated?.(latest);
+          if (mountedRef.current) {
+            setValues(latest);
+            onConfigUpdatedRef.current?.(latest);
+          }
         }
       }
       const payload = pickDomainSavePayload(allFields, latest);
       const result = await putMachineDomainConfig(machineName, payload);
       const next = result.config || latest;
-      setPendingFiles({});
+      clearDomainUploadSession(machineName);
+      if (mountedRef.current) {
+        setPendingFiles({});
+        setUploadProgress(null);
+        setSaving(false);
+      }
       const saved = await applyServerState(next);
       if (isIncompleteSave(saved)) {
         const applyMessage = typeof saved._apply_message === "string" ? saved._apply_message.trim() : "";
@@ -1779,9 +1841,8 @@ export function DomainConfigSlot({
     } catch (err: any) {
       const message = domainUploadErrorMessage(err, t("machines.domainConfigSaveError"), t);
       showToast(message, "error");
-    } finally {
-      setUploadProgress(null);
-      setSaving(false);
+      setUploadProgressSynced(null);
+      setSavingSynced(false);
     }
   };
 
@@ -1791,11 +1852,15 @@ export function DomainConfigSlot({
       showToast(t("machines.domainConfigSaveError"), "error");
       return;
     }
-    setSaving(true);
+    setSavingSynced(true);
     try {
       const result = await putMachineDomainConfig(machineName, { _reset: true });
       const next = result.config || { ...values, ...defaults };
-      setPendingFiles({});
+      clearDomainUploadSession(machineName);
+      if (mountedRef.current) {
+        setPendingFiles({});
+        setUploadProgress(null);
+      }
       await applyServerState(next);
       showToast(t("machines.domainConfigResetSaved"), "success");
     } catch (err: any) {
@@ -1808,7 +1873,7 @@ export function DomainConfigSlot({
         t("machines.domainConfigSaveError");
       showToast(message, "error");
     } finally {
-      setSaving(false);
+      setSavingSynced(false);
     }
   };
 
@@ -1823,7 +1888,7 @@ export function DomainConfigSlot({
       );
       return;
     }
-    setSaving(true);
+    setSavingSynced(true);
     try {
       const payload = pickDomainSavePayload(allFields, values);
       const result = await putMachineDomainConfig(machineName, { ...payload, _set_factory: true });
@@ -1840,7 +1905,7 @@ export function DomainConfigSlot({
         t("machines.domainConfigSaveError");
       showToast(message, "error");
     } finally {
-      setSaving(false);
+      setSavingSynced(false);
     }
   };
 
@@ -1948,7 +2013,7 @@ export function DomainConfigSlot({
           const fileHandlers = {
             pendingFiles,
             onPendingFiles: (path: string, files: File[]) =>
-              setPendingFiles((prev) => ({ ...prev, [path]: files })),
+              setPendingFilesSynced((prev) => ({ ...prev, [path]: files })),
             destinationInfo,
           };
           if (hasTabs) {

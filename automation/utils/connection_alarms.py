@@ -254,18 +254,45 @@ def _ensure_bool_alarm(
         )
         if tag is None:
             tag = app.cvt.get_tag_by_name(tag_name)
-    elif getattr(app, "is_db_connected", lambda: False)():
-        try:
-            app.logger_engine.set_tag(tag=tag)
-        except Exception:
-            _LOGGER.debug("Connection alarm tag persist skipped", exc_info=True)
-
     if tag is None:
-        _LOGGER.warning("Cannot create connection alarm '%s': tag '%s' missing", alarm_name, tag_name)
+        from .rate_limited_log import warning_once
+
+        warning_once(
+            _LOGGER,
+            f"connection-alarm-tag-missing:{alarm_name}",
+            "Cannot create connection alarm '%s': tag '%s' missing",
+            alarm_name,
+            tag_name,
+        )
         return
+
+    historian_ok = True
+    if getattr(app, "is_db_connected", lambda: False)():
+        try:
+            from ..catalog.runtime_tag import ensure_tag_historian_catalog
+
+            historian_ok = bool(
+                ensure_tag_historian_catalog(tag, reason=f"connection-alarm:{alarm_name}")
+            )
+        except Exception:
+            try:
+                app.logger_engine.set_tag(tag=tag)
+            except Exception:
+                _LOGGER.debug("Connection alarm tag persist skipped", exc_info=True)
 
     alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
     if alarm is None:
+        if getattr(app, "is_db_connected", lambda: False)() and not historian_ok:
+            from .rate_limited_log import warning_once
+
+            warning_once(
+                _LOGGER,
+                f"connection-alarm-historian:{alarm_name}",
+                "Deferred connection alarm '%s': tag '%s' not in historian Tags",
+                alarm_name,
+                tag_name,
+            )
+            return
         alarm, _ = app.create_alarm(
             name=alarm_name,
             tag=tag_name,
@@ -285,7 +312,11 @@ def _ensure_bool_alarm(
     trigger = getattr(alarm, "alarm_setpoint", None)
     kind = getattr(getattr(trigger, "type", None), "value", None) or str(getattr(trigger, "type", "") or "")
     if bound != tag_name or str(kind).upper() not in {"BOOL", "BOOLEAN"}:
-        _LOGGER.warning(
+        from .rate_limited_log import info_once
+
+        info_once(
+            _LOGGER,
+            f"diagnostic-rebind:{alarm_name}",
             "Rebinding diagnostic alarm %s from %s/%s onto %s/BOOL",
             alarm_name,
             bound or "?",

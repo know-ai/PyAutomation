@@ -93,7 +93,9 @@ class MassFlow(EngUnit):
     }
 
     def __init__(self, value, unit):
+        from ..utils.unit_symbols import canonical_symbol
 
+        unit = canonical_symbol(unit) or unit
         if unit not in MassFlow.Units.list():
 
             raise UnitError(f"{unit} value is not allowed for {self.__class__.__name__} object - you can use: {MassFlow.Units.list()}")

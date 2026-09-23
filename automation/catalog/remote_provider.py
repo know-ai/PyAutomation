@@ -29,12 +29,19 @@ class RemoteCatalogProvider:
         upsert hit a dead libpq handle and log ``sync row skipped``.
         """
         from automation import PyAutomation
-        from ..utils.db_connections import ensure_bound_connection
+        from ..utils.db_connections import (
+            close_current_greenlet_connection,
+            ensure_bound_connection,
+        )
 
         db = getattr(PyAutomation(), "_db", None)
         if db is None:
             return
-        ensure_bound_connection(db)
+        try:
+            ensure_bound_connection(db)
+        except Exception:
+            close_current_greenlet_connection(db)
+            ensure_bound_connection(db)
 
     def is_available(self) -> bool:
         """Lightweight historian reachability check on the replica handle."""

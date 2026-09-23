@@ -31,6 +31,7 @@ _UNIQUE_LOOKUP_ORDER: dict[str, tuple[str, ...]] = {
 
 def row_to_raw(row: Model) -> dict:
     data: dict = {}
+    table = str(getattr(row._meta, "table_name", "") or "")
     for name, field in row._meta.fields.items():
         value = getattr(row, name, None)
         column = getattr(field, "column_name", name)
@@ -38,6 +39,14 @@ def row_to_raw(row: Model) -> dict:
             if value is None:
                 raw_value = None
             elif isinstance(value, Model):
+                # Cross-DB safe: tag units travel as engineering symbols.
+                # Numeric unit_id from PostgreSQL ≠ SQLite id for the same symbol.
+                if table == "tags" and name in ("unit", "display_unit") and hasattr(value, "unit"):
+                    data[name] = value.unit
+                    data[f"{name}_id"] = value._pk
+                    if column and column != name and column != f"{name}_id":
+                        data[column] = value._pk
+                    continue
                 raw_value = value._pk
             else:
                 raw_value = value
@@ -129,16 +138,40 @@ def _is_blank_fk(value) -> bool:
 
 
 def _resolve_tag_unit_fks(raw: dict) -> dict:
-    """Map human unit symbols onto integer FKs; never blank an existing unit_id."""
+    """Map human unit symbols onto integer FKs for the *target* catalog DB.
+
+    Prefer engineering symbols over bare ``unit_id`` integers: PostgreSQL and the
+    local SQLite mirror assign different ids to the same symbol (e.g. PG
+    ``adim=168`` vs local ``m3=168``). When only an integer is present (same-DB
+    write), keep it.
+    """
     out = dict(raw)
     try:
         from .seed import ensure_unit_symbol, _find_unit_by_symbol
+        from ..utils.unit_symbols import canonical_symbol
     except Exception:
         return out
 
     for field in ("unit", "display_unit"):
         value = out.get(field)
         alt = out.get(f"{field}_id")
+        symbol = None
+        for candidate in (value, alt):
+            if isinstance(candidate, str):
+                text = candidate.strip()
+                if text and not text.isdigit():
+                    symbol = canonical_symbol(text) or text
+                    break
+        if symbol:
+            row = _find_unit_by_symbol(symbol) or ensure_unit_symbol(symbol)
+            if row is None:
+                out.pop(field, None)
+                out.pop(f"{field}_id", None)
+                continue
+            pk = row.get("_pk") or row.get("id")
+            out[field] = pk
+            out[f"{field}_id"] = pk
+            continue
         chosen = value if not _is_blank_fk(value) else alt
         if _is_blank_fk(chosen):
             out.pop(field, None)
@@ -147,16 +180,6 @@ def _resolve_tag_unit_fks(raw: dict) -> dict:
         if isinstance(chosen, int) or (isinstance(chosen, str) and str(chosen).isdigit()):
             out[field] = int(chosen)
             out[f"{field}_id"] = int(chosen)
-            continue
-        if isinstance(chosen, str):
-            row = _find_unit_by_symbol(chosen) or ensure_unit_symbol(chosen)
-            if row is None:
-                out.pop(field, None)
-                out.pop(f"{field}_id", None)
-                continue
-            pk = row.get("_pk") or row.get("id")
-            out[field] = pk
-            out[f"{field}_id"] = pk
     return out
 
 
