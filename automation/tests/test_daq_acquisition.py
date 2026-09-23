@@ -2,10 +2,9 @@
 """P0 DAQ: light OPC reads, bounded wait, never silent-empty, never browse dump."""
 from __future__ import annotations
 
-import threading
+import asyncio
 import time
 import unittest
-from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -156,98 +155,118 @@ class TestDaqAcquisition(unittest.TestCase):
         self.assertEqual(first, ["ns=2;i=2", "ns=2;i=3"])
         self.assertEqual(second, ["ns=2;i=4"])
 
-    def test_bounded_opc_read_does_not_hang_cycle(self):
+    def _client(self, name="PLC80"):
         from automation.opcua.models import Client
 
         client = object.__new__(Client)
-        client.name = "PLC80"
-        client._io_lock = threading.Lock()
-        client._io_pool = ThreadPoolExecutor(max_workers=1)
+        client.name = name
+        client._inflight = {}
         client.is_connected = lambda: True
-        client.uaclient = None
+        return client
 
-        def hang(_namespace):
-            time.sleep(2.0)
-            return "late"
+    def test_bounded_opc_read_does_not_hang_cycle(self):
+        from automation.opcua.asyncua_client.commands import ReadBatchResult
+        from automation.opcua.asyncua_client import sync_adapter
 
-        client.get_node_data_value = hang
+        async def hang(ctx, command):
+            await asyncio.sleep(2.0)
+            ctx.results.put(ReadBatchResult(command.correlation_id, ("late",)))
+
+        client = self._client()
+        sync_adapter.reset_runner_for_tests()
         try:
-            started = time.monotonic()
-            result = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.2)
-            elapsed = time.monotonic() - started
+            with patch("automation.opcua.asyncua_client.handlers.handle", hang):
+                started = time.monotonic()
+                result = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.2)
+                elapsed = time.monotonic() - started
             self.assertIsNone(result)
             self.assertLess(elapsed, 1.0)
         finally:
-            client._io_pool.shutdown(wait=False, cancel_futures=True)
+            sync_adapter.reset_runner_for_tests()
 
     def test_inflight_timeout_applies_on_next_cycle(self):
-        from automation.opcua.models import Client
+        from automation.opcua.asyncua_client.commands import ReadBatchResult
+        from automation.opcua.asyncua_client import sync_adapter
 
-        client = object.__new__(Client)
-        client.name = "PLC80"
-        client._io_lock = threading.Lock()
-        client._io_pool = ThreadPoolExecutor(max_workers=1)
-        client.is_connected = lambda: True
-        client.uaclient = None
+        async def hang(ctx, command):
+            await asyncio.sleep(0.35)
+            ctx.results.put(ReadBatchResult(command.correlation_id, ("late",)))
 
-        def hang(_namespace):
-            time.sleep(0.35)
-            return "late"
-
-        client.get_node_data_value = hang
+        client = self._client("PLC81")
+        sync_adapter.reset_runner_for_tests()
         try:
-            first = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.1)
-            self.assertIsNone(first)
-            time.sleep(0.4)
-            second = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.1)
+            with patch("automation.opcua.asyncua_client.handlers.handle", hang):
+                first = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.1)
+                self.assertIsNone(first)
+                time.sleep(0.45)
+                second = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.2)
             self.assertEqual(second, "late")
         finally:
-            client._io_pool.shutdown(wait=False, cancel_futures=True)
+            sync_adapter.reset_runner_for_tests()
 
     def test_batch_read_uses_one_attribute_call(self):
-        from automation.opcua.models import Client
+        from automation.opcua.asyncua_client.commands import ReadBatch
+        from automation.opcua.asyncua_client.handlers import LoopContext, _read_batch
+        from asyncua.client.ua_client import UaClientState
 
-        client = object.__new__(Client)
-        client.name = "PLC80"
-        client._io_lock = threading.Lock()
-        client._io_pool = ThreadPoolExecutor(max_workers=1)
-        client.is_connected = lambda: True
-        dv_a = _sample(10, None)
-        dv_b = _sample(20, None)
-        client.uaclient = SimpleNamespace(get_attributes=MagicMock(return_value=[dv_a, dv_b]))
+        calls = []
+
+        class FakeSession:
+            def __init__(self):
+                self.uaclient = SimpleNamespace(state=UaClientState.CONNECTED)
+
+            def get_node(self, node_id):
+                return node_id
+
+            async def read_attributes(self, nodes, attr):
+                calls.append((list(nodes), attr))
+                return [_sample(10, None), _sample(20, None)]
+
+        ctx = LoopContext(SimpleNamespace(put=lambda item: None), lambda name, connected: None)
+        ctx.sessions["PLC80"] = FakeSession()
+        command = ReadBatch("PLC80", ("ns=2;i=2", "ns=2;i=3"), "cid")
+
+        async def run():
+            captured = {}
+
+            def capture(item):
+                captured["item"] = item
+
+            ctx.results = SimpleNamespace(put=capture)
+            await _read_batch(ctx, command)
+            return captured["item"]
+
+        result = asyncio.run(run())
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result.data_values[0].Value.Value, 10)
+        self.assertEqual(result.data_values[1].Value.Value, 20)
+
+    def test_second_read_while_inflight_returns_none(self):
+        from automation.opcua.asyncua_client.commands import ReadBatchResult
+        from automation.opcua.asyncua_client import sync_adapter
+
+        calls = []
+
+        async def hang(ctx, command):
+            calls.append(command.correlation_id)
+            await asyncio.sleep(1.0)
+            ctx.results.put(ReadBatchResult(command.correlation_id, ("late",)))
+
+        client = self._client("PLC82")
+        sync_adapter.reset_runner_for_tests()
         try:
-            out = client.read_data_values_bounded(["ns=2;i=2", "ns=2;i=3"], timeout_s=0.5)
-        finally:
-            client._io_pool.shutdown(wait=False, cancel_futures=True)
-        client.uaclient.get_attributes.assert_called_once()
-        self.assertEqual(out["ns=2;i=2"].Value.Value, 10)
-        self.assertEqual(out["ns=2;i=3"].Value.Value, 20)
-
-    def test_contended_lock_does_not_pretend_success(self):
-        from automation.opcua.models import Client
-
-        client = object.__new__(Client)
-        client.name = "PLC80"
-        client._io_lock = threading.Lock()
-        client._io_pool = ThreadPoolExecutor(max_workers=1)
-        client.is_connected = lambda: True
-        client.uaclient = None
-        held = client._io_lock.acquire()
-        self.assertTrue(held)
-
-        def would_read(_namespace):
-            raise AssertionError("must not run while lock is held")
-
-        client.get_node_data_value = would_read
-        try:
-            started = time.monotonic()
-            result = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.2)
-            elapsed = time.monotonic() - started
-            self.assertIsNone(result)
+            with patch("automation.opcua.asyncua_client.handlers.handle", hang):
+                started = time.monotonic()
+                first = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.15)
+                second = client.read_data_value_bounded("ns=2;s=FI_02", timeout_s=0.15)
+                elapsed = time.monotonic() - started
+            self.assertIsNone(first)
+            self.assertIsNone(second)
             self.assertLess(elapsed, 1.0)
+            time.sleep(0.05)
+            self.assertEqual(len(calls), 1)
         finally:
-            client._io_lock.release()
-            client._io_pool.shutdown(wait=False, cancel_futures=True)
+            sync_adapter.reset_runner_for_tests()
 
 
 if __name__ == "__main__":

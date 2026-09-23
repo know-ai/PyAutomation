@@ -10,7 +10,7 @@ numpy==2.1.0; python_version >= "3.14"
 PyWavelets==1.6.0; python_version == "3.9"
 PyWavelets==1.7.0; python_version >= "3.10" and python_version <= "3.11"
 PyWavelets==1.9.0; python_version >= "3.12" and python_version <= "3.14"
-opcua==0.98.13
+asyncua>=2.0.1
 python-dotenv==1.2.1
 cryptography==43.0.3
 Flask==3.1.2

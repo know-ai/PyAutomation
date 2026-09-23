@@ -1,0 +1,38 @@
+name: OPC UA benchmarks
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Startup, update, expose and memory
+        run: |
+          python -m automation.opcua_server.benchmarks.bench_startup_real
+          python -m automation.opcua_server.benchmarks.bench_update_real
+          python -m automation.opcua_server.benchmarks.bench_expose_real
+          python -m automation.opcua_server.benchmarks.bench_memory
+      - name: SCADA client
+        run: OPCUA_E2E=1 python -m unittest automation.opcua_server.tests.e2e.test_scada_client
+        env:
+          OPCUA_E2E: "1"
+      - name: Upload bench artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opcua-bench
+          path: |
+            bench.json
+            bench_update.json
+            bench_expose.json
+            bench_memory.json

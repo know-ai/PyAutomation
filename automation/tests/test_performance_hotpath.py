@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from ..buffer import Buffer
 from ..opcua.subscription import DAS
@@ -340,8 +340,13 @@ class TestDasSubscribeDedupe(unittest.TestCase):
     def test_resubscribe_same_namespace_unsubscribes_previous(self):
         subscription = FakeSubscription()
         node = FakeNode("ns=2;s=Press")
-        self.das.subscribe(subscription, "PLC", node)
-        self.das.subscribe(subscription, "PLC", node)
+        tag = MagicMock()
+        tag.opcua_client_name = None
+        self.das.cvt.get_tag_by_node_namespace.return_value = tag
+        self.das.update_tag_value = MagicMock()
+        with patch("automation.opcua.subscription._scope_owns_tag", return_value=True):
+            self.das.subscribe(subscription, "PLC", node)
+            self.das.subscribe(subscription, "PLC", node)
         self.assertEqual(len(subscription.subscribed), 2)
         self.assertEqual(len(subscription.unsubscribed), 1)
         self.assertEqual(self.das.monitored_count(), 1)

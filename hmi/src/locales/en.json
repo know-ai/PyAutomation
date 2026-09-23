@@ -673,7 +673,8 @@
     "role": "Role",
     "roleLevel": "Role Level",
     "level": "Level",
-    "accessType": "Access Type",
+    "accessType": "Access Level",
+    "accessLevel": "Access Level",
     "interval": "Interval (s)",
     "value": "Value"
   },
@@ -1435,23 +1436,34 @@
   },
   "opcuaServer": {
     "loadError": "Error loading OPC UA server attributes",
-    "accessTypeUpdated": "Access type updated successfully",
-    "updateError": "Error updating access type",
+    "accessTypeUpdated": "Access level updated successfully",
+    "accessLevelUpdated": "Access level updated successfully",
+    "updateError": "Error updating access level",
     "noDataToExport": "No data to export",
     "exportSuccess": "Data exported successfully",
     "exportError": "Error exporting data",
     "exportCSV": "Export to CSV",
     "noAttributesAvailable": "No attributes available",
     "noAttributesMatchFilter": "No attributes match the name filter",
-    "confirmChangeTitle": "Confirm Access Type Change",
-    "confirmChangeMessage": "Are you sure you want to change the Access Type of the node?",
-    "currentAccessType": "Current Access Type",
-    "newAccessType": "New Access Type",
+    "confirmChangeTitle": "Confirm access level change",
+    "confirmChangeMessage": "Are you sure you want to change the access level of the node?",
+    "currentAccessLevel": "Current access level",
+    "newAccessLevel": "New access level",
+    "advanced": "Advanced bits",
     "updating": "Updating...",
     "accessType": {
       "Read": "Read",
       "Write": "Write",
       "ReadWrite": "ReadWrite"
+    },
+    "bits": {
+      "currentRead": "CurrentRead",
+      "currentWrite": "CurrentWrite",
+      "historyRead": "HistoryRead",
+      "historyWrite": "HistoryWrite",
+      "semanticChange": "SemanticChange",
+      "statusWrite": "StatusWrite",
+      "timestampWrite": "TimestampWrite"
     }
   },
   "trends": {

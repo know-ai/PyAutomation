@@ -136,4 +136,6 @@ server = __application()
 server.config['AUTOMATION_APP_SECRET_KEY'] = AUTOMATION_APP_SECRET_KEY
 server.config['AUTOMATION_SUPERUSER_PASSWORD'] = AUTOMATION_SUPERUSER_PASSWORD
 server.config['BUNDLE_ERRORS'] = True
-opcua_server = OPCUAServer()
+# The subpackage `automation.opcua_server` owns this name. The running
+# machine is `embedded_opcua_server` so imports of identity/facade keep working.
+embedded_opcua_server = OPCUAServer()

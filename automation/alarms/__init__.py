@@ -202,6 +202,7 @@ class Alarm(StateMachine):
         self._suppress_enter_hooks = True
         self._last_history_state = HISTORY_NORMAL
         self._pending_operator_id = None
+        self._pending_sm_event = None
         self.last_transition_ts = None
         self.last_transition_from = None
         self.last_transition_to = None
@@ -502,6 +503,12 @@ class Alarm(StateMachine):
             return
         numeric = getattr(value, "value", value)
         self.check_condition(numeric, timestamp)
+        try:
+            from ..opcua_server.bridge import mark_alarm
+
+            mark_alarm(self.name)
+        except Exception:
+            logging.debug("OPC UA alarm dirty mark skipped", exc_info=True)
 
     def check_condition(self, pv_value, timestamp=None) -> str | None:
         """O(1) condition + delay tick. No SM, no INSERT, no socket.
@@ -1133,15 +1140,76 @@ class Alarm(StateMachine):
 
         return result
     
+    def _engine_lock_held(self) -> bool:
+        """True while python-statemachine is already running a transition.
+
+        A nested ``send`` only enqueues. The queue then runs after the state
+        has changed, and the library raises ``TransitionNotAllowed``.
+        """
+        engine = getattr(self, "_engine", None)
+        lock = getattr(engine, "_processing", None)
+        is_locked = getattr(lock, "locked", None)
+        if not callable(is_locked):
+            return False
+        try:
+            return bool(is_locked())
+        except Exception:
+            return False
+
+    def _retarget_transition(self, transition_name: str) -> str:
+        """Keep the target, replace a stale source with the state at send time."""
+        marker = "_to_"
+        _source, sep, target = transition_name.partition(marker)
+        if not sep or not target:
+            return transition_name
+        current = (getattr(self.current_state, "name", None) or "").lower()
+        if not current or current == _source:
+            return transition_name
+        return f"{current}{marker}{target}"
+
+    def _transition_matches_current(self, transition_name: str) -> bool:
+        current = self.current_state
+        transitions = getattr(current, "transitions", None)
+        if transitions is None:
+            return False
+        for transition in transitions:
+            source_name = getattr(getattr(transition, "source", None), "name", None)
+            target_name = getattr(getattr(transition, "target", None), "name", None)
+            if source_name and target_name and f"{source_name}_to_{target_name}" == transition_name:
+                return True
+        return False
+
+    def _send_if_legal(self, transition_name: str) -> None:
+        from statemachine.exceptions import TransitionNotAllowed
+
+        if not self._transition_matches_current(transition_name):
+            return
+        try:
+            self.send(transition_name)
+        except TransitionNotAllowed:
+            remapped = self._retarget_transition(transition_name)
+            if remapped == transition_name or not self._transition_matches_current(remapped):
+                return
+            try:
+                self.send(remapped)
+            except TransitionNotAllowed:
+                return
+
+    def _flush_pending_sm_event(self) -> None:
+        for _ in range(3):
+            pending = getattr(self, "_pending_sm_event", None)
+            if not pending:
+                return
+            self._pending_sm_event = None
+            self._send_if_legal(self._retarget_transition(pending))
+
     @logging_error_handler
     def __transition(self, transition_name:str):
-
-        allowed_transitions = self._get_active_transitions()
-        for _transition in allowed_transitions:
-            
-            if f"{_transition.source.name}_to_{_transition.target.name}"==transition_name:
-                
-                self.send(transition_name)
+        if self._engine_lock_held():
+            self._pending_sm_event = transition_name
+            return
+        self._send_if_legal(transition_name)
+        self._flush_pending_sm_event()
 
     @logging_error_handler
     def __return_to_service(self):

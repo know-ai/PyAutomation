@@ -1,6 +1,6 @@
 import gevent
 import gevent.monkey
-from automation import PyAutomation, opcua_server, server
+from automation import PyAutomation, embedded_opcua_server as opcua_server, server
 
 
 

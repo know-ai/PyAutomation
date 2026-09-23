@@ -23,7 +23,7 @@ class OPCUAServerLogger(BaseLogger):
             self,
             name:str,
             namespace:str,
-            access_type:str="Read"
+            access_level=1
             ):
         r"""
         Creates a new OPC UA Node configuration in the database.
@@ -32,14 +32,14 @@ class OPCUAServerLogger(BaseLogger):
 
         * **name** (str): Node name.
         * **namespace** (str): Node ID/Namespace.
-        * **access_type** (str): Access rights ("Read", "Write", "ReadWrite").
+        * **access_level**: Bitmask or label.
         """
         if not self.check_connectivity():
             try:
                 from ..catalog.mutations import persist_opcua_server_local
 
                 persist_opcua_server_local(
-                    name=name, namespace=namespace, access_type=access_type
+                    name=name, namespace=namespace, access_level=access_level
                 )
             except Exception:
                 import logging
@@ -52,7 +52,7 @@ class OPCUAServerLogger(BaseLogger):
         OPCUAServer.create(
             name=name,
             namespace=namespace,
-            access_type=access_type
+            access_level=access_level
         )
         try:
             from ..catalog.bootstrap import mirror_historian_row
@@ -63,7 +63,7 @@ class OPCUAServerLogger(BaseLogger):
                 mirror_historian_row(row)
             else:
                 persist_opcua_server_local(
-                    name=name, namespace=namespace, access_type=access_type
+                    name=name, namespace=namespace, access_level=access_level
                 )
         except Exception:
             import logging
@@ -76,15 +76,15 @@ class OPCUAServerLogger(BaseLogger):
     def put(
         self,
         namespace:str,
-        access_type:str
+        access_level=1
         ):
         r"""
-        Updates the access type for a specific OPC UA Node.
+        Updates the access bitmask for a specific OPC UA Node.
 
         **Parameters:**
 
         * **namespace** (str): Node ID/Namespace.
-        * **access_type** (str): New access type.
+        * **access_level**: New bitmask or label.
 
         **Returns:**
 
@@ -95,7 +95,7 @@ class OPCUAServerLogger(BaseLogger):
                 from ..catalog.mutations import update_opcua_server_access_local
 
                 update_opcua_server_access_local(
-                    namespace=namespace, access_type=access_type
+                    namespace=namespace, access_level=access_level
                 )
             except Exception:
                 import logging
@@ -105,9 +105,9 @@ class OPCUAServerLogger(BaseLogger):
                 )
             return None    
         
-        if access_type:
+        if access_level is not None:
             
-            OPCUAServer.update_access_type(namespace=namespace, access_type=access_type)
+            OPCUAServer.update_access_level(namespace=namespace, access_level=access_level)
 
             obj = OPCUAServer.read_by_namespace(namespace=namespace)
             try:
@@ -165,7 +165,15 @@ class OPCUAServerLogger(BaseLogger):
                 return None
 
         return OPCUAServer.read_by_namespace(namespace=namespace)
-     
+
+    @db_rollback
+    def read_by_namespaces(self, namespaces: list):
+        """Batch access lookup. One query when the caller passes <= 5000 ids."""
+        if not namespaces:
+            return []
+        if not self.check_connectivity():
+            return []
+        return OPCUAServer.read_by_namespaces(namespaces)
 
 class OPCUAServerLoggerEngine(BaseEngine):
     r"""
@@ -181,7 +189,7 @@ class OPCUAServerLoggerEngine(BaseEngine):
         self,
         name:str,
         namespace:str,
-        access_type:str="Read"
+        access_level=1
         ):
         r"""
         Thread-safe node creation.
@@ -191,14 +199,14 @@ class OPCUAServerLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         _query["parameters"]["name"] = name
         _query["parameters"]["namespace"] = namespace
-        _query["parameters"]["access_type"] = access_type
+        _query["parameters"]["access_level"] = access_level
         
         return self.query(_query)
     
     def put(
         self,
         namespace:str,
-        access_type:str
+        access_level=1
         ):
         r"""
         Thread-safe node update.
@@ -207,7 +215,7 @@ class OPCUAServerLoggerEngine(BaseEngine):
         _query["action"] = "put"
         _query["parameters"] = dict()
         _query["parameters"]["namespace"] = namespace
-        _query["parameters"]["access_type"] = access_type
+        _query["parameters"]["access_level"] = access_level
 
         return self.query(_query)
     
@@ -223,6 +231,13 @@ class OPCUAServerLoggerEngine(BaseEngine):
         _query["parameters"] = dict()
         _query["parameters"]["namespace"] = namespace
 
+        return self.query(_query)
+
+    def read_by_namespaces(self, namespaces: list):
+        _query = dict()
+        _query["action"] = "read_by_namespaces"
+        _query["parameters"] = dict()
+        _query["parameters"]["namespaces"] = namespaces
         return self.query(_query)
 
     def read_all(self):

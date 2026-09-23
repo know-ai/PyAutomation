@@ -185,7 +185,7 @@ class ExportConfigResource(Resource):
         Export configuration.
 
         Exports all configuration tables (Manufacturer, Segment, Variables, Units, DataTypes,
-        Tags, AlarmTypes, AlarmStates, Alarms, Roles, Users, OPCUA, AccessType, OPCUAServer,
+        Tags, AlarmTypes, AlarmStates, Alarms, Roles, Users, OPCUA, OPCUAServer,
         Machines, TagsMachines) to a JSON file. Historical data is excluded.
         """
         try:

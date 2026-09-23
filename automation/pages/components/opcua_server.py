@@ -16,7 +16,7 @@ class OPCUAServerComponents:
                         columns=[
                             {'name': 'name', 'id': 'name', 'editable': False}, 
                             {'name': 'namespace', 'id': 'namespace', 'editable': False}, 
-                            {'name': 'access type', 'id': 'access_type', 'presentation': 'dropdown', 'clearable': False}
+                            {'name': 'access type', 'id': 'access_level', 'presentation': 'dropdown', 'clearable': False}
                         ],
                         id="opcua_server_datatable",
                         filter_action="native",
@@ -25,7 +25,7 @@ class OPCUAServerComponents:
                         row_deletable=True,
                         selected_columns=[],
                         dropdown = {
-                            'access_type': {
+                            'access_level': {
                                 'options': [
                                     {'label': 'Read', 'value': 'Read'},
                                     {'label': 'ReadWrite', 'value': 'ReadWrite'},

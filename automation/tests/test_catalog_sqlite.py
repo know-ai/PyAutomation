@@ -585,14 +585,10 @@ class TestColdStartLocalSeed(unittest.TestCase):
         self.assertEqual(float(machine.get("threshold")), 7.5)
         self.assertEqual(int(machine.get("buffer_size")), 20)
 
-        persist_opcua_server_local(name="NodeA", namespace="ns=2;i=9", access_type="Read")
-        update_opcua_server_access_local(namespace="ns=2;i=9", access_type="Write")
+        persist_opcua_server_local(name="NodeA", namespace="ns=2;i=9", access_level=1)
+        update_opcua_server_access_local(namespace="ns=2;i=9", access_level=2)
         opc = next(r for r in provider.read_all("opcuaserver") if r.get("namespace") == "ns=2;i=9")
-        access_pk = opc.get("access_type_id") or opc.get("access_type")
-        access = next(
-            a for a in provider.read_all("accesstype") if str(a.get("_pk") or a.get("id")) == str(access_pk)
-        )
-        self.assertEqual(str(access.get("name")), "Write")
+        self.assertEqual(int(opc.get("access_level")), 2)
 
         point = persist_lrs_point_local(
             segment_name="Linea1",

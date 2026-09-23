@@ -673,7 +673,8 @@
     "role": "Rol",
     "roleLevel": "Nivel de Rol",
     "level": "Nivel",
-    "accessType": "Tipo de Acceso",
+    "accessType": "Nivel de acceso",
+    "accessLevel": "Nivel de acceso",
     "interval": "Intervalo (s)",
     "value": "Valor"
   },
@@ -1435,23 +1436,34 @@
   },
   "opcuaServer": {
     "loadError": "Error al cargar los atributos del servidor OPC UA",
-    "accessTypeUpdated": "Access type actualizado correctamente",
-    "updateError": "Error al actualizar el access type",
+    "accessTypeUpdated": "Nivel de acceso actualizado",
+    "accessLevelUpdated": "Nivel de acceso actualizado",
+    "updateError": "Error al actualizar el nivel de acceso",
     "noDataToExport": "No hay datos para exportar",
     "exportSuccess": "Datos exportados correctamente",
     "exportError": "Error al exportar los datos",
     "exportCSV": "Exportar a CSV",
     "noAttributesAvailable": "No hay atributos disponibles",
     "noAttributesMatchFilter": "Ningún atributo coincide con el filtro de nombre",
-    "confirmChangeTitle": "Confirmar cambio de tipo de acceso",
-    "confirmChangeMessage": "¿Está seguro de que desea cambiar el tipo de acceso del nodo?",
-    "currentAccessType": "Tipo de acceso actual",
-    "newAccessType": "Tipo de acceso nuevo",
+    "confirmChangeTitle": "Confirmar cambio de nivel de acceso",
+    "confirmChangeMessage": "¿Está seguro de que desea cambiar el nivel de acceso del nodo?",
+    "currentAccessLevel": "Nivel de acceso actual",
+    "newAccessLevel": "Nivel de acceso nuevo",
+    "advanced": "Bits avanzados",
     "updating": "Actualizando...",
     "accessType": {
       "Read": "Lectura",
       "Write": "Escritura",
       "ReadWrite": "Lectura/Escritura"
+    },
+    "bits": {
+      "currentRead": "Lectura actual",
+      "currentWrite": "Escritura actual",
+      "historyRead": "Lectura histórica",
+      "historyWrite": "Escritura histórica",
+      "semanticChange": "Cambio semántico",
+      "statusWrite": "Escritura de estado",
+      "timestampWrite": "Escritura de marca de tiempo"
     }
   },
   "trends": {

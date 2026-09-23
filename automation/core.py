@@ -197,6 +197,7 @@ class PyAutomation(Singleton):
         try:
             self.load_opcua_clients_from_db()
             self.load_db_to_cvt()
+            self._ensure_catalog_tags_for_alarms()
             self.load_db_to_alarm_manager()
         finally:
             self.opcua_client_manager._defer_connection_alarms = False
@@ -784,6 +785,32 @@ class PyAutomation(Singleton):
                 if not display_name:
                     display_name = qualified.base_name
 
+        if not skip_name_rules:
+            from .opcua_server.audit import audit_failure
+            from .opcua_server.identity import conflicting_canonical_name, normalize_tag_name, validate_tag_name
+
+            if scope.enabled and scope.site and scope.area:
+                site_name = scope.site
+                area_name = scope.area
+            else:
+                site_name = manufacturer or getattr(self, "manufacturer", None) or ""
+                area_name = segment or area or getattr(self, "segment", None) or ""
+            if str(site_name or "").strip() or str(area_name or "").strip():
+                name = normalize_tag_name(name, str(site_name or ""), str(area_name or ""))
+            try:
+                validate_tag_name(name)
+            except ValueError as exc:
+                audit_failure("OPC UA tag rejected: reserved prefix", str(exc), criticity=3)
+                return None, str(exc)
+            existing = [
+                getattr(tag, "name", "")
+                for tag in (self.cvt.iter_tags() if hasattr(self.cvt, "iter_tags") else [])
+            ]
+            conflict = conflicting_canonical_name(name, existing)
+            if conflict:
+                audit_failure("OPC UA NodeId collision rejected", f"{name} collides with {conflict}", criticity=3)
+                return None, f"canonical name already exists: {conflict}"
+
         if not display_name:
             # Machine/system tags use fully qualified names; defaulting to the
             # last segment (e.g. "leak") collides across engines on one edge.
@@ -912,15 +939,21 @@ class PyAutomation(Singleton):
         from .signal_conditioning.filtered_tags import filtered_tag_name
 
         opcua_server_machine = self.get_machine(name=StringType("OPCUAServer"))
-        if opcua_server_machine is None or not hasattr(opcua_server_machine, "expose_cvt_tag"):
+        enqueue = getattr(opcua_server_machine, "enqueue_expose", None)
+        if not callable(enqueue):
             return
         try:
-            opcua_server_machine.expose_cvt_tag(tag)
+            enqueue("t", tag.name)
             filtered = self.cvt.get_tag_by_name(name=filtered_tag_name(tag.name))
             if filtered is not None:
-                opcua_server_machine.expose_cvt_tag(filtered)
+                enqueue("t", filtered.name)
         except Exception:
-            logging.debug("OPC UA server dynamic tag expose skipped", exc_info=True)
+            try:
+                from .opcua_server.audit import audit_failure
+
+                audit_failure("OPC UA expose enqueue failed", getattr(tag, "name", ""))
+            except Exception:
+                logging.debug("OPC UA server dynamic tag expose skipped", exc_info=True)
 
     @logging_error_handler
     def reconcile_runtime_tag_catalog(self, *, reason: str = "startup") -> None:
@@ -2923,7 +2956,7 @@ class PyAutomation(Singleton):
         return opcua_client.write_value(node_namespace=node_namespace, value=value)
     
     @logging_error_handler
-    def create_opcua_server_record(self, name:str, namespace:str, access_type:str="Read"):
+    def create_opcua_server_record(self, name:str, namespace:str, access_level=1):
         r"""
         Creates a record for an OPC UA server node in the database.
 
@@ -2931,7 +2964,7 @@ class PyAutomation(Singleton):
 
         * **name** (str): Name of the node.
         * **namespace** (str): Namespace URI or index.
-        * **access_type** (str): Access level (Read, Write, ReadWrite).
+        * **access_level**: Bitmask or label.
 
         **Usage:**
 
@@ -2940,22 +2973,22 @@ class PyAutomation(Singleton):
         >>> from unittest.mock import MagicMock
         >>> app = PyAutomation()
         >>> app.opcua_server_engine.create = MagicMock(return_value=True)
-        >>> app.create_opcua_server_record("Node1", "ns=1;i=1", "Read")
+        >>> app.create_opcua_server_record("Node1", "ns=1;i=1", 1)
         True
 
         ```
         """
-        return self.opcua_server_engine.create(name=name, namespace=namespace, access_type=access_type)
+        return self.opcua_server_engine.create(name=name, namespace=namespace, access_level=access_level)
     
     @logging_error_handler
-    def update_opcua_server_access_type(self, namespace:str, access_type:str):
+    def update_opcua_server_access_level(self, namespace:str, access_level=1):
         r"""
-        Updates the access type for a specific OPC UA server node.
+        Updates the access bitmask for a specific OPC UA server node.
 
         **Parameters:**
 
         * **namespace** (str): The namespace of the node.
-        * **access_type** (str): New access type (Read, Write, ReadWrite).
+        * **access_level**: New bitmask or label.
 
         **Usage:**
 
@@ -2964,12 +2997,12 @@ class PyAutomation(Singleton):
         >>> from unittest.mock import MagicMock
         >>> app = PyAutomation()
         >>> app.opcua_server_engine.put = MagicMock(return_value=True)
-        >>> app.update_opcua_server_access_type("ns=1;i=1", "Write")
+        >>> app.update_opcua_server_access_level("ns=1;i=1", 2)
         True
 
         ```
         """
-        return self.opcua_server_engine.put(namespace=namespace, access_type=access_type)
+        return self.opcua_server_engine.put(namespace=namespace, access_level=access_level)
     
     @logging_error_handler
     def get_opcua_server_record_by_namespace(self, namespace:str):
@@ -3013,7 +3046,7 @@ class PyAutomation(Singleton):
         * **list**: List of dictionaries containing:
             - **name**: Full name path (parent_folder.variable_name or parent_folder.variable_name.property_name)
             - **namespace**: OPC UA node namespace string
-            - **access_type**: Access level ("Read", "Write", or "ReadWrite")
+            - **access_level**: Integer bitmask
 
         **Usage:**
 
@@ -3025,7 +3058,7 @@ class PyAutomation(Singleton):
         True
         >>> if attrs:
         ...     print(attrs[0].keys())
-        dict_keys(['name', 'namespace', 'access_type'])
+        dict_keys(['name', 'namespace', 'access_level'])
         ```
         """
         from .modules.opcua.filters import filter_opcua_server_attrs
@@ -3039,6 +3072,10 @@ class PyAutomation(Singleton):
         
         if not opcua_server_machine:
             return attrs
+
+        listed = getattr(opcua_server_machine, "list_attrs", None)
+        if callable(listed):
+            return filter_opcua_server_attrs(listed(), name=name)
         
         # Iterate through all attributes of the machine
         for attr in dir(opcua_server_machine):
@@ -3069,176 +3106,78 @@ class PyAutomation(Singleton):
                         
                         # Get parent folder name
                         parent_name = parent_node.get_browse_name().Name
-                        access_level = node.get_access_level()
-                        
-                        # Determine access type
-                        write_only = ua.AccessLevel.CurrentWrite in access_level and ua.AccessLevel.CurrentRead not in access_level
-                        read_write = ua.AccessLevel.CurrentRead in access_level and ua.AccessLevel.CurrentWrite in access_level
-                        access_type = "Read"
-                        if write_only:
-                            access_type = "Write"
-                        elif read_write:
-                            access_type = "ReadWrite"
-                        
+                        from .opcua_server.access.level import access_label
+
+                        bits = int(node.get_access_level())
                         attrs.append({
                             "name": f"{parent_name}.{tag_label}",
                             "namespace": node.nodeid.to_string(),
-                            "access_type": access_type
+                            "access_level": bits,
+                            "access_level_label": access_label(bits),
+                            "user_access_level": bits,
+                            "access_restrictions": 0,
                         })
                         
-                        # Get properties of the variable
                         properties = node.get_properties()
                         for prop in properties:
                             prop_name = prop.get_display_name().Text
-                            
-                            access_level = prop.get_access_level()
-                            # Determine access type for property
-                            write_only = ua.AccessLevel.CurrentWrite in access_level and ua.AccessLevel.CurrentRead not in access_level
-                            read_write = ua.AccessLevel.CurrentRead in access_level and ua.AccessLevel.CurrentWrite in access_level
-                            access_type = "Read"
-                            if write_only:
-                                access_type = "Write"
-                            elif read_write:
-                                access_type = "ReadWrite"
-                            
+                            prop_bits = int(prop.get_access_level())
                             attrs.append({
                                 "name": f"{parent_name}.{tag_label}.{prop_name}",
                                 "namespace": prop.nodeid.to_string(),
-                                "access_type": access_type
+                                "access_level": prop_bits,
+                                "access_level_label": access_label(prop_bits),
+                                "user_access_level": prop_bits,
+                                "access_restrictions": 0,
                             })
         
         return filter_opcua_server_attrs(attrs, name=name)
 
     @logging_error_handler
-    @validate_types(namespace=str, access_type=str, name=str|type(None), output=tuple)
-    def update_opcua_server_node_access_type(self, namespace:str, access_type:str, name:str=None)->tuple[bool, str]:
+    @validate_types(namespace=str, access_level=int|str, name=str|type(None), output=tuple)
+    def update_opcua_server_node_access_level(self, namespace:str, access_level:int|str=1, name:str=None)->tuple[bool, str]:
         r"""
-        Updates the access type (Read, Write, ReadWrite) for a specific OPC UA Server node.
-
-        This method finds the node by its namespace, updates the access type in the database,
-        modifies the node's access level bits, and manages subscriptions for write-enabled nodes.
-
-        **Parameters:**
-
-        * **namespace** (str): The OPC UA node namespace string (e.g., "ns=2;i=1234").
-        * **access_type** (str): New access type ("Read", "Write", or "ReadWrite").
-        * **name** (str, optional): Node name for database record creation if it doesn't exist.
-
-        **Returns:**
-
-        * **tuple[bool, str]**: (Success boolean, Message string).
-
-        **Usage:**
-
-        ```python
-        >>> from automation import PyAutomation
-        >>> app = PyAutomation()
-        >>> success, msg = app.update_opcua_server_node_access_type(
-        ...     namespace="ns=2;i=1234",
-        ...     access_type="ReadWrite"
-        ... )
-        >>> success
-        True
-        ```
+        Updates the access bitmask for one OPC UA Server node. Complexity: O(1).
         """
-        from .state_machine import Node, ua
         from .models import StringType
-        from .opcua.subscription import SubHandlerServer
-        
-        # Get OPCUAServer machine
+        from .opcua_server.access.level import access_label, parse_access_level
+
         opcua_server_machine = self.get_machine(name=StringType("OPCUAServer"))
-        
         if not opcua_server_machine:
             return False, "OPC UA Server machine not found"
-        
-        # Find the node by namespace
-        node = None
-        opcua_server_attrs = dir(opcua_server_machine)
-        
-        for item in opcua_server_attrs:
-            if hasattr(opcua_server_machine, item):
-                candidate_node = getattr(opcua_server_machine, item)
-                if isinstance(candidate_node, Node):
-                    node_class = candidate_node.get_node_class()
-                    
-                    if node_class == ua.NodeClass.Variable:
-                        if candidate_node.nodeid.to_string() == namespace:
-                            node = candidate_node
-                            break
-                        else:
-                            # Check properties
-                            props = candidate_node.get_properties()
-                            for prop in props:
-                                if prop.nodeid.to_string() == namespace:
-                                    node = prop
-                                    break
-                            if node:
-                                break
-        
-        if not node:
-            return False, f"Node with namespace '{namespace}' not found"
-        
-        # Validate access_type
-        access_type_lower = access_type.lower()
-        if access_type_lower not in ["read", "write", "readwrite"]:
-            return False, f"Invalid access_type '{access_type}'. Must be 'Read', 'Write', or 'ReadWrite'"
-        
-        # Update or create database record
-        opcua_server_obj = self.get_opcua_server_record_by_namespace(namespace=namespace)
-        if opcua_server_obj:
-            self.update_opcua_server_access_type(namespace=namespace, access_type=access_type)
+        try:
+            level = parse_access_level(access_level)
+        except ValueError as exc:
+            return False, str(exc)
+        record = self.get_opcua_server_record_by_namespace(namespace=namespace)
+        if record:
+            self.update_opcua_server_access_level(namespace=namespace, access_level=level)
         else:
             if not name:
-                # Try to get name from node
-                try:
-                    display_name = node.get_display_name().Text
-                    parent_node = node.get_parent()
-                    parent_name = parent_node.get_browse_name().Name
-                    name = f"{parent_name}.{display_name}"
-                except:
-                    name = f"Node_{namespace}"
-            self.create_opcua_server_record(name=name, namespace=namespace, access_type=access_type)
-        
-        # Get handler for subscriptions
-        handler = SubHandlerServer()
-        
-        # Clear all access bits first
-        node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-        node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-        node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-        node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-        
-        # Unsubscribe if exists
-        subscriptions = handler.subscriptions
-        if namespace in subscriptions:
-            _sub = subscriptions.pop(namespace)
-            _sub.delete()
-        
-        # Set new access level
-        if access_type_lower == "write":
-            # Write only: disable read, enable write
-            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-            # Create subscription for write-enabled nodes
-            sub = opcua_server_machine.server.create_subscription(100, handler)
-            sub.subscribe_data_change(node)
-            handler.subscriptions[namespace] = sub
-        elif access_type_lower == "read":
-            # Read only: enable read, disable write
-            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-        elif access_type_lower == "readwrite":
-            # Read and write: enable both
-            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-            # Create subscription for readwrite nodes
-            sub = opcua_server_machine.server.create_subscription(100, handler)
-            sub.subscribe_data_change(node)
-            handler.subscriptions[namespace] = sub
-        
-        return True, f"Access type updated successfully to '{access_type}'"
+                name = f"Node_{namespace}"
+            self.create_opcua_server_record(name=name, namespace=namespace, access_level=level)
+        remember = getattr(getattr(opcua_server_machine, "access", None), "remember", None)
+        if callable(remember):
+            remember(namespace, level)
+        runner = getattr(opcua_server_machine, "runner", None)
+        if runner is not None:
+            from .opcua_server.async_core.commands import ApplyAccess
+            runner.submit(ApplyAccess(namespace=namespace, access_level=level))
+        else:
+            apply_access = getattr(opcua_server_machine, "apply_access", None)
+            node = None
+            finder = getattr(opcua_server_machine, "find_node_by_namespace", None)
+            if callable(finder):
+                node = finder(namespace)
+            if callable(apply_access) and node is not None:
+                apply_access(node, level)
+        try:
+            from .opcua_server.observability import emit_access_event, note_metric
+            note_metric(opcua_server_machine, "access_level_changes")
+            emit_access_event("changed", namespace, access_label(level))
+        except Exception:
+            pass
+        return True, f"Access level updated to {level} ({access_label(level)})"
 
     @logging_error_handler
     @validate_types(client_name=str, namespaces=list, output=list)
@@ -3716,7 +3655,13 @@ class PyAutomation(Singleton):
                         client_name,
                     )
                     continue
-                subscription = self.das.get_or_create_subscription(opcua_client, client_name)
+                from .opcua.subscription import clamp_subscription_period_ms
+
+                subscription = self.das.get_or_create_subscription(
+                    opcua_client,
+                    client_name,
+                    period=clamp_subscription_period_ms(scan_time),
+                )
                 try:
                     node_id = opcua_client.get_node_id_by_namespace(node_namespace)
                 except Exception:
@@ -4835,6 +4780,15 @@ class PyAutomation(Singleton):
                 exc_info=True,
             )
 
+    def _ensure_catalog_tags_for_alarms(self) -> None:
+        """Create SYS.PERF tags before alarm rows that point at them. Complexity: O(1)."""
+        try:
+            from .utils.performance_alarms import ensure_performance_alarms
+
+            ensure_performance_alarms()
+        except Exception:
+            logging.debug("performance tags before alarm hydrate skipped", exc_info=True)
+
     def _hydrate_runtime_from_db(self, reload_machines: bool = False) -> None:
         r"""Reload in-memory config from the historian. Call only when live."""
         from .utils.db_connections import keep_historian_socket
@@ -4867,6 +4821,7 @@ class PyAutomation(Singleton):
             try:
                 self.load_opcua_clients_from_db()
                 self.load_db_to_cvt()
+                self._ensure_catalog_tags_for_alarms()
                 self.load_db_to_alarm_manager()
                 self.resubscribe_all_mapped_opcua_tags()
             finally:
@@ -5821,7 +5776,16 @@ class PyAutomation(Singleton):
                     name,
                     exc_info=True,
                 )
-            
+            try:
+                from .models import StringType
+
+                opcua_server_machine = self.get_machine(name=StringType("OPCUAServer"))
+                enqueue = getattr(opcua_server_machine, "enqueue_expose", None)
+                if callable(enqueue):
+                    enqueue("a", alarm.name)
+            except Exception:
+                logging.debug("OPC UA alarm enqueue skipped", exc_info=True)
+
             return alarm, message
 
         return None, message
@@ -6727,8 +6691,9 @@ class PyAutomation(Singleton):
         if machines:
 
             for machine in machines:
-            
-                machine.set_socketio(sio=self.sio)
+                setter = getattr(machine, "set_socketio", None)
+                if callable(setter):
+                    setter(sio=self.sio)
  
         if self.acquisition_ready:
             self.machine.start(machines=machines)
@@ -6952,7 +6917,7 @@ class PyAutomation(Singleton):
         Exports all configuration data from database models (excluding historical data).
 
         Exports configuration tables: Manufacturer, Segment, Variables, Units, DataTypes,
-        Tags, AlarmTypes, AlarmStates, Alarms, Roles, Users, OPCUA, AccessType,
+        Tags, AlarmTypes, AlarmStates, Alarms, Roles, Users, OPCUA,
         OPCUAServer, Machines, TagsMachines, LinearReferencingGeospatial.
 
         Excludes historical tables: TagValue, Events, Logs, AlarmSummary.
@@ -6979,7 +6944,7 @@ class PyAutomation(Singleton):
         from .dbmodels import (
             Manufacturer, Segment, Variables, Units, DataTypes,
             Tags, AlarmTypes, AlarmStates, Alarms,
-            Roles, Users, OPCUA, AccessType, OPCUAServer,
+            Roles, Users, OPCUA, OPCUAServer,
             Machines, TagsMachines, LinearReferencingGeospatial
         )
         scope = self._refresh_node_scope()
@@ -7021,7 +6986,6 @@ class PyAutomation(Singleton):
                     } for u in Users.select()
                 ],
                 "OPCUA": [o.serialize() for o in opcua_query],
-                "AccessType": [at.serialize() for at in AccessType.select()],
                 "OPCUAServer": [os_obj.serialize() for os_obj in OPCUAServer.select()],
                 "Machines": [m.serialize() for m in machines_query],
                 "TagsMachines": [
@@ -7046,7 +7010,7 @@ class PyAutomation(Singleton):
         Imports configuration in the correct order to handle foreign key relationships.
         Order: Variables -> Units -> DataTypes -> Manufacturer -> Segment -> Tags ->
                AlarmTypes -> AlarmStates -> Alarms -> Roles -> Users -> OPCUA ->
-               AccessType -> OPCUAServer -> Machines -> TagsMachines
+               OPCUAServer -> Machines -> TagsMachines
 
         **Parameters:**
 
@@ -7072,7 +7036,7 @@ class PyAutomation(Singleton):
         from .dbmodels import (
             Manufacturer, Segment, Variables, Units, DataTypes,
             Tags, AlarmTypes, AlarmStates, Alarms,
-            Roles, Users, OPCUA, AccessType, OPCUAServer,
+            Roles, Users, OPCUA, OPCUAServer,
             Machines, TagsMachines, LinearReferencingGeospatial
         )
 
@@ -7451,36 +7415,20 @@ class PyAutomation(Singleton):
                     except Exception as e:
                         results["errors"].setdefault("OPCUA", []).append(f"{item.get('client_name', 'unknown')}: {str(e)}")
 
-            # 13. AccessType (no dependencies)
-            if "AccessType" in data:
-                for item in data["AccessType"]:
-                    try:
-                        if not AccessType.name_exist(item["name"]):
-                            AccessType.create(name=item["name"])
-                            results["imported"].setdefault("AccessType", 0)
-                            results["imported"]["AccessType"] += 1
-                        else:
-                            results["skipped"].setdefault("AccessType", 0)
-                            results["skipped"]["AccessType"] += 1
-                    except Exception as e:
-                        results["errors"].setdefault("AccessType", []).append(f"{item.get('name', 'unknown')}: {str(e)}")
-
-            # 14. OPCUAServer (depends on AccessType)
             if "OPCUAServer" in data:
                 for item in data["OPCUAServer"]:
                     try:
                         if not OPCUAServer.name_exist(item["name"]):
-                            access_type_name = item.get("access_type", {}).get("name") if isinstance(item.get("access_type"), dict) else item.get("access_type")
-                            if access_type_name:
-                                OPCUAServer.create(
-                                    name=item["name"],
-                                    namespace=item.get("namespace", ""),
-                                    access_type=access_type_name
-                                )
-                                results["imported"].setdefault("OPCUAServer", 0)
-                                results["imported"]["OPCUAServer"] += 1
-                            else:
-                                results["errors"].setdefault("OPCUAServer", []).append(f"{item.get('name', 'unknown')}: Missing access_type")
+                            level = item.get("access_level", 1)
+                            if level in (None, "") and isinstance(item.get("access_level_label"), str):
+                                level = item.get("access_level_label")
+                            OPCUAServer.create(
+                                name=item["name"],
+                                namespace=item.get("namespace", ""),
+                                access_level=level,
+                            )
+                            results["imported"].setdefault("OPCUAServer", 0)
+                            results["imported"]["OPCUAServer"] += 1
                         else:
                             results["skipped"].setdefault("OPCUAServer", 0)
                             results["skipped"]["OPCUAServer"] += 1

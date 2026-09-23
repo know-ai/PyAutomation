@@ -1,6 +1,5 @@
 import logging, secrets, pytz
 from datetime import datetime
-from opcua import Server, ua, Node
 from hashlib import blake2b
 from statemachine import State, StateMachine
 from .workers.state_machine import StateMachineWorker
@@ -162,6 +161,29 @@ class Machine(Singleton):
                 logging.debug("local catalog machine persist skipped", exc_info=True)
         # Always bind CVT tags (and mirror to local catalog when historian is down).
         self.create_tag_internal_process_type(machine=machine)
+        self._enqueue_engine_on_opcua(machine)
+
+    def _enqueue_engine_on_opcua(self, machine) -> None:
+        """O(1) expose enqueue. Does not walk the catalog."""
+        try:
+            classification = str(getattr(machine.classification, "value", machine.classification) or "")
+        except Exception:
+            classification = ""
+        if classification == "OPC UA Server":
+            return
+        name = getattr(getattr(machine, "name", None), "value", None) or str(getattr(machine, "name", "") or "")
+        if not name or name == "OPCUAServer":
+            return
+        try:
+            from automation import PyAutomation
+            from .models import StringType
+
+            server = PyAutomation().get_machine(name=StringType("OPCUAServer"))
+            enqueue = getattr(server, "enqueue_expose", None)
+            if callable(enqueue):
+                enqueue("e", name)
+        except Exception:
+            logging.debug("OPC UA engine enqueue skipped", exc_info=True)
 
     def drop(self, machine:StateMachine):
         r"""
@@ -739,6 +761,12 @@ class StateMachineCore(StateMachine):
         **Note:** This method should be overridden by child classes to implement custom logic.
         """
         self.criticity.value = 1
+        try:
+            from .opcua_server.bridge import mark_engine
+
+            mark_engine(self.name.value if hasattr(self.name, "value") else str(self.name))
+        except Exception:
+            logging.debug("OPC UA engine dirty mark skipped", exc_info=True)
 
     def while_resetting(self):
         r"""
@@ -1865,6 +1893,20 @@ class StateMachineCore(StateMachine):
 
             self.sio.emit("on.machine", data=self.serialize())
 
+    def on_enter_state(self, source, target):
+        """OPC UA watchdog. Runs even when a subclass skips super().while_running()."""
+        try:
+            from .opcua_server.watchdog import notify_transition
+
+            old_state = getattr(source, "value", None) or getattr(source, "id", None) or "unknown"
+            new_state = getattr(target, "value", None) or getattr(target, "id", None) or "unknown"
+            raw_name = getattr(self, "name", None)
+            name = raw_name.value if hasattr(raw_name, "value") else raw_name
+            if name:
+                notify_transition(str(name), str(old_state), str(new_state))
+        except Exception:
+            logging.debug("OPC UA transition watchdog skipped", exc_info=True)
+
     def on_enter_restarting(self):
 
         if self.sio:
@@ -2016,7 +2058,14 @@ class DAQ(StateMachineCore):
                     timestamp=timestamp,
                     quality=quality,
                     opc_code=opc_code,
+                    source="field",
                 )
+                try:
+                    from .opcua_server.loop_prevention import note_field_sample
+
+                    note_field_sample(tag_name, val)
+                except Exception:
+                    pass
                 if val is not None and tag_name in self.das.buffer:
                     self.das.buffer[tag_name]["timestamp"](timestamp)
                     self.das.buffer[tag_name]["values"](val)
@@ -2039,7 +2088,7 @@ class DAQ(StateMachineCore):
                 held = tag.value.value
             except Exception:
                 held = tag.get_value()
-            self.cvt.set_value(id=tag.id, value=held, timestamp=timestamp, quality=BAD)
+            self.cvt.set_value(id=tag.id, value=held, timestamp=timestamp, quality=BAD, source="field")
             if count == threshold:
                 log.warning(
                     "DAQ read empty/timeout tag=%s namespace=%s; holding last-good as BAD after %s misses",
@@ -2062,569 +2111,8 @@ class DAQ(StateMachineCore):
         self.opcua_client_manager = manager
 
 
-class OPCUAServer(StateMachineCore):
-    r"""
-    OPC UA Server State Machine.
-    
-    Manages the lifecycle of an embedded OPC UA Server, exposing CVT tags, alarms, and machine states.
-    """    
-
-    def __init__(
-            self,
-            name:str="OPCUAServer",
-            description:str="",
-            classification:str="OPC UA Server"
-        ):
-        from . import AUTOMATION_OPCUA_SERVER_PORT
-        self.cvt = CVTEngine()
-        self.alarm_manager = AlarmManager()
-        self.machine = Machine()
-        self.my_folders = dict()
-        self.port = AUTOMATION_OPCUA_SERVER_PORT
-
-        if isinstance(name, StringType):
-
-            name = name.value
-
-        super(OPCUAServer, self).__init__(
-            name=name,
-            description=description,
-            classification=classification
-            )
-        self._pending_cvt_expose: set[str] = set()
-        self._cvt_resync_done = False
-        
-    @logging_error_handler
-    def while_starting(self):
-        r"""
-        Executed in Start state.
-        
-        Initializes the OPC UA Server, configures endpoints, creates namespaces, and populates the address space
-        with CVT tags, Alarms, and Engines folders.
-        """
-        import time as _time
-
-        # Idempotent: a failed bind must not rebuild the UA standard address space
-        # every scheduler tick (that pegs a core and starves the HMI/gunicorn hub).
-        if getattr(self, "_opcua_ready", False):
-            self.send("start_to_wait")
-            return
-
-        if getattr(self, "server", None) is None:
-            self.server = Server()
-            self.server.set_endpoint(f"opc.tcp://0.0.0.0:{self.port}/OPCUAServer/")
-
-            # setup our own namespace, not really necessary but should as spec
-            uri = "http://examples.freeopcua.github.io"
-            self.idx = self.server.register_namespace(uri)
-            # get Objects node, this is where we should put our node
-            self.objects = self.server.get_objects_node()
-            # populating our address space
-            self.my_folders["CVT"] = self.objects.add_folder(self.idx, "CVT")
-            self.my_folders["Alarms"] = self.objects.add_folder(self.idx, "Alarms")
-            self.my_folders["Engines"] = self.objects.add_folder(self.idx, "Engines")
-
-        if not getattr(self, "_opcua_endpoint_up", False):
-            try:
-                self.server.start()
-                self._opcua_endpoint_up = True
-            except OSError as err:
-                busy = getattr(err, "errno", None) == 98 or "address already in use" in str(err).lower()
-                if busy:
-                    logging.getLogger("pyautomation").warning(
-                        "OPC UA server port %s busy; retrying without rebuilding address space",
-                        self.port,
-                    )
-                    _time.sleep(1.0)
-                    return
-                raise
-
-        if not getattr(self, "_opcua_space_loaded", False):
-            self.__set_cvt()
-            self.__set_alarms()
-            self.__set_engines()
-            self._opcua_space_loaded = True
-
-        logging.getLogger("opcua").setLevel(logging.ERROR)
-
-        self._opcua_ready = True
-        try:
-            added = self.sync_cvt_tags()
-            flushed = self._flush_pending_cvt_expose()
-            if added or flushed:
-                logging.getLogger("pyautomation").info(
-                    "OPC UA CVT sync on start: registered=%s flushed_pending=%s",
-                    added,
-                    flushed,
-                )
-        except Exception:
-            logging.getLogger("pyautomation").debug(
-                "OPC UA CVT sync on start skipped", exc_info=True
-            )
-        try:
-            from automation import PyAutomation
-
-            PyAutomation().reconcile_runtime_tag_catalog(reason="opcua_ready")
-        except Exception:
-            logging.getLogger("pyautomation").debug(
-                "OPC UA historian reconcile skipped", exc_info=True
-            )
-        self.send("start_to_wait")
-
-    def while_waiting(self):
-        r"""
-        Executed in Wait state. Transitions to Run.
-        """
-        self.send('wait_to_run')
-
-    def while_running(self):
-        r"""
-        Executed in Run state.
-        
-        Continuously updates the values of tags, alarms, and engines in the OPC UA address space.
-        """
-        if not self._cvt_resync_done:
-            try:
-                self.sync_cvt_tags()
-                self._flush_pending_cvt_expose()
-            except Exception:
-                logging.getLogger("pyautomation").debug(
-                    "OPC UA CVT sync on first run skipped", exc_info=True
-                )
-            self._cvt_resync_done = True
-        self.__update_tags()
-        self.__update_alarms()
-        self.__update_engines()
-
-    def while_resetting(self):
-        r"""
-        Executed in Reset state. Transitions back to Starting to restart the server.
-        """
-        try:
-            if getattr(self, "server", None) is not None:
-                self.server.stop()
-        except Exception:
-            logging.getLogger("pyautomation").debug("OPC UA server stop on reset skipped", exc_info=True)
-        self.server = None
-        self._opcua_ready = False
-        self._opcua_endpoint_up = False
-        self._opcua_space_loaded = False
-        self._cvt_resync_done = False
-        self._pending_cvt_expose.clear()
-        self.send("reset_to_start")
-    def __set_engines(self):
-        r"""
-        Initializes OPC UA nodes for all registered state machines (Engines).
-        """
-        from . import MANUFACTURER
-        segment = "Engines"
-        engines = self.machine.machine_manager.get_machines()
-
-        for engine, _, _ in engines:
-
-            engine = engine.serialize()
-            engine_name = engine["name"]
-            engine_description = engine["description"] or ""
-
-            if not hasattr(self, engine_name):
-
-                if engine["segment"]:
-
-                    segment = engine["segment"]
-
-                    if segment not in self.my_folders.keys():
-
-                        self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
-                    
-                    segment = f"{engine['segment']}.engines"
-                    if segment not in self.my_folders.keys():
-                        
-                        self.my_folders[segment] = self.my_folders[engine['segment']].add_folder(self.idx, 'Engines')
-
-                if segment not in self.my_folders.keys():
-                            
-                    self.my_folders[segment] = self.my_folders[segment]
-                    
-                var_name = f"{segment}.{engine_name}"
-
-                if not hasattr(self, var_name):
-                    __var_name = engine_name.replace(f"{MANUFACTURER}.", "")
-
-                    ID = blake2b(key=f"{__var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                    setattr(self, var_name, self.my_folders[segment].add_variable(
-                        ua.NodeId(identifier=ID, namespaceidx=self.idx), 
-                        engine_name, 
-                        0)
-                    )
-                    node = getattr(self, var_name)
-                    self.__load_saved_access_type(node=node, var_name=var_name)
-                    description = node.get_attribute(ua.AttributeIds.Description)
-                    description.Value.Value.Text = engine_description
-                    browse_name = node.get_attribute(ua.AttributeIds.BrowseName)
-                    browse_name.Value.Value.Name = ""
-
-                    # Add Properties
-                    keep_list = (
-                        "state",
-                        "manufacturer",
-                        "segment",
-                        "criticity",
-                        "priority",
-                        "classification",
-                        "machine_interval",
-                        "fluid",
-                        "maneuver",
-                        "operation"
-                        )
-
-                    for key in keep_list:
-                        if key in engine:
-                            ID = blake2b(key=f"{__var_name}.{key}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                            prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, engine[key])
-                            self.__load_saved_access_type(node=prop, var_name=f"{var_name}.{key}")  
-                            browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
-                            browse_name.Value.Value.Name = "" 
-
-    def __set_alarms(self):
-        r"""
-        Initializes OPC UA nodes for all defined alarms.
-        """
-        from . import MANUFACTURER
-        alarms = self.alarm_manager.get_alarms()
-        segment = "Alarms"
-        for _, alarm in alarms.items():
-            if not _scope_owns_tag(getattr(alarm, "tag", None)):
-                continue
-
-            alarm_name = alarm.name
-            alarm_description = alarm.description or ""
-
-            if not hasattr(self, alarm_name):
-
-                if alarm.tag.segment:
-
-                    segment = alarm.tag.segment
-
-                    if segment not in self.my_folders.keys():
-                        self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
-                    
-                    segment = f"{alarm.tag.segment}.alarms"
-                    if segment not in self.my_folders.keys():
-                        self.my_folders[segment] = self.my_folders[alarm.tag.segment].add_folder(self.idx, 'Alarms')
-
-                if segment not in self.my_folders.keys():
-                            
-                    self.my_folders[segment] = self.my_folders[segment]
-                    
-                var_name = f"{segment}.{alarm_name}"
-
-                if not hasattr(self, var_name):
-                    __var_name = alarm_name.replace(f"{MANUFACTURER}.", "")
-                    ID = blake2b(key=f"{__var_name}".encode('utf-8')[:64], digest_size=4).hexdigest()
-
-                    setattr(self, var_name, self.my_folders[segment].add_variable(
-                        ua.NodeId(identifier=ID, namespaceidx=self.idx), 
-                        alarm_name, 
-                        0)
-                    )
-                    node = getattr(self, var_name)
-                    self.__load_saved_access_type(node=node, var_name=var_name)
-                    description = node.get_attribute(ua.AttributeIds.Description)
-                    description.Value.Value.Text = alarm_description
-                    browse_name = node.get_attribute(ua.AttributeIds.BrowseName)
-                    browse_name.Value.Value.Name = ""
-
-                    # Add State Properties
-                    for state_key, state_value in alarm.state.serialize().items():
-                        ID = blake2b(key=f"{__var_name}.{state_key}".encode('utf-8')[:64], digest_size=4).hexdigest()
-                        prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), state_key, state_value)
-                        self.__load_saved_access_type(node=prop, var_name=f"{var_name}.{state_key}")   
-                        browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
-                        browse_name.Value.Value.Name = ""  
-
-    def __set_cvt(self):
-        r"""
-        Initializes OPC UA nodes for all CVT tags.
-        """
-        for tag_object in self.cvt.iter_tags():
-            self._register_cvt_tag(tag_object)
-
-    def _cvt_var_name(self, tag_name: str, segment: str) -> str:
-        return f"{segment}_{tag_name}"
-
-    def _register_cvt_tag(self, tag_object) -> bool:
-        r"""
-        Registers a single CVT tag in the OPC UA address space when missing.
-
-        Returns True when a new variable node was created.
-        """
-        from . import MANUFACTURER
-
-        if not _scope_owns_tag(tag_object):
-            return False
-        if getattr(self, "server", None) is None or getattr(self, "objects", None) is None:
-            return False
-
-        tag = dict(tag_object.serialize())
-        segment = tag["segment"] or "CVT"
-        if segment not in self.my_folders:
-            self.my_folders[segment] = self.objects.add_folder(self.idx, segment)
-
-        tag_name = tag["name"]
-        display_unit = tag["display_unit"]
-        data_type = tag["data_type"]
-        tag_description = tag["description"] or ""
-        var_name = self._cvt_var_name(tag_name, segment)
-
-        if hasattr(self, var_name):
-            return False
-
-        __var_name = tag_name.replace(f"{MANUFACTURER}.", "")
-        identifier = blake2b(key=__var_name.encode("utf-8")[:64], digest_size=4).hexdigest()
-        if data_type.lower() == "str":
-            setattr(
-                self,
-                var_name,
-                self.my_folders[segment].add_variable(
-                    ua.NodeId(identifier=identifier, namespaceidx=self.idx),
-                    tag_name,
-                    "",
-                ),
-            )
-        else:
-            setattr(
-                self,
-                var_name,
-                self.my_folders[segment].add_variable(
-                    ua.NodeId(identifier=identifier, namespaceidx=self.idx),
-                    tag_name,
-                    0.0,
-                ),
-            )
-
-        node = getattr(self, var_name)
-        self.__load_saved_access_type(node=node, var_name=var_name)
-        description = node.get_attribute(ua.AttributeIds.Description)
-        description.Value.Value.Text = tag_description
-        browse_name = node.get_attribute(ua.AttributeIds.BrowseName)
-        browse_name.Value.Value.Name = tag_name
-        try:
-            display_name_attr = node.get_attribute(ua.AttributeIds.DisplayName)
-            display_name_attr.Value.Value.Text = (
-                tag.get("display_name") or tag_name.split(".")[-1] or display_unit
-            )
-        except Exception:
-            pass
-
-        pop_list = (
-            "id",
-            "value",
-            "timestamp",
-            "timestamps",
-            "values",
-            "name",
-            "description",
-            "opcua_address",
-            "node_namespace",
-            "out_of_range_detection",
-            "frozen_data_detection",
-            "outlier_detection",
-        )
-        for key in pop_list:
-            tag.pop(key, None)
-        for key, value in tag.items():
-            ID = blake2b(key=f"{__var_name}_{key}".encode("utf-8")[:64], digest_size=4).hexdigest()
-            prop = node.add_property(ua.NodeId(identifier=ID, namespaceidx=self.idx), key, value)
-            self.__load_saved_access_type(node=prop, var_name=f"{var_name}.{key}")
-            browse_name = prop.get_attribute(ua.AttributeIds.BrowseName)
-            browse_name.Value.Value.Name = ""
-        return True
-
-    def sync_cvt_tags(self) -> int:
-        r"""Register any owned CVT tags missing from the OPC UA address space."""
-        if not getattr(self, "_opcua_ready", False):
-            return 0
-        added = 0
-        for tag_object in self.cvt.iter_tags():
-            if self._register_cvt_tag(tag_object):
-                added += 1
-                self._push_cvt_tag_value(tag_object)
-        return added
-
-    def _flush_pending_cvt_expose(self) -> int:
-        pending = getattr(self, "_pending_cvt_expose", None)
-        if not pending:
-            return 0
-        names = list(pending)
-        pending.clear()
-        flushed = 0
-        for tag_name in names:
-            tag_object = self.cvt.get_tag_by_name(name=tag_name)
-            if tag_object is None:
-                continue
-            if self._register_cvt_tag(tag_object):
-                flushed += 1
-            self._push_cvt_tag_value(tag_object)
-        return flushed
-
-    def expose_cvt_tag(self, tag_object) -> bool:
-        r"""
-        Ensures a runtime CVT tag is visible on the embedded OPC UA server.
-
-        When the server is still starting, queues the tag for registration once ready.
-        """
-        tag_name = getattr(tag_object, "name", None)
-        if not getattr(self, "_opcua_ready", False):
-            if tag_name:
-                pending = getattr(self, "_pending_cvt_expose", None)
-                if pending is not None:
-                    pending.add(tag_name)
-            return False
-        registered = self._register_cvt_tag(tag_object)
-        self._push_cvt_tag_value(tag_object)
-        if tag_name:
-            pending = getattr(self, "_pending_cvt_expose", None)
-            if pending is not None:
-                pending.discard(tag_name)
-        return registered
-
-    def _push_cvt_tag_value(self, tag_object) -> None:
-        if not _scope_owns_tag(tag_object):
-            return
-        tag = tag_object.serialize()
-        segment = tag["segment"] or "CVT"
-        var_name = self._cvt_var_name(tag["name"], segment)
-        if not hasattr(self, var_name):
-            return
-        value = tag["value"]
-        node = getattr(self, var_name)
-        if isinstance(value, (float, int)):
-            node.set_value(round(value, 4))
-        else:
-            node.set_value(value)
-
-    def __update_tags(self):
-        r"""
-        Updates the values of CVT tags in the OPC UA address space.
-        """
-        for tag_object in self.cvt.iter_tags():
-            self._push_cvt_tag_value(tag_object)
-
-    def __update_alarms(self):
-        r"""
-        Updates the state of alarms in the OPC UA address space.
-        """
-        alarms = self.alarm_manager.get_alarms()
-        segment = "Alarms"
-        for _, alarm in alarms.items():
-            if not _scope_owns_tag(getattr(alarm, "tag", None)):
-                continue
-
-            alarm_name = alarm.name
-
-            if alarm.tag.segment:
-
-                segment = alarm.tag.segment
-                segment = f"{segment}.alarms"
-
-            var_name = f"{segment}.{alarm_name}"
-            if hasattr(self, var_name):
-                    
-                var = getattr(self, var_name)
-                props = var.get_properties()
-
-                for prop in props:
-                    
-                    display_name = prop.get_display_name().Text                   
-
-                    if display_name.startswith("setpoint"):
-                        display_name = display_name.replace("setpoint.", "")
-                        attr = getattr(alarm.alarm_setpoint, display_name)
-                        prop.set_value(attr)
-
-                    else:
-                        attr = getattr(alarm.state, display_name)
-                        prop.set_value(attr)
-
-    def __update_engines(self):
-        r"""
-        Updates the state of engines in the OPC UA address space.
-        """
-        segment = "Engines"
-        engines = self.machine.machine_manager.get_machines()
-
-        for engine, _, _ in engines:
-
-            engine = engine.serialize()
-            engine_name = engine["name"]
-
-            if engine["segment"]:
-
-                segment = engine["segment"]
-                segment = f"{segment}.engines"
-
-            var_name = f"{segment}.{engine_name}"
-            if hasattr(self, var_name):
-                    
-                var = getattr(self, var_name)
-                props = var.get_properties()
-
-                for prop in props:
-                    
-                    display_name = prop.get_display_name().Text                
-                    attr = engine[display_name]
-                    prop.set_value(attr)
-
-    def __load_saved_access_type(self, node, var_name):
-        from .core import PyAutomation
-        from .opcua.subscription import SubHandlerServer
-
-        handler = SubHandlerServer()
-        app = PyAutomation()
-        namespace = node.nodeid.to_string()
-        opcua_server_obj = app.get_opcua_server_record_by_namespace(namespace=namespace)
-        access_type = "Read"
-        if opcua_server_obj:
-            record = opcua_server_obj.serialize() or {}
-            access_payload = record.get("access_type")
-            if isinstance(access_payload, dict) and access_payload.get("name"):
-                access_type = str(access_payload["name"])
-            # Heal NULL / missing FK so the next restart does not hit the same row.
-            if not isinstance(access_payload, dict) or access_payload.get("id") is None:
-                app.update_opcua_server_access_type(
-                    namespace=namespace, access_type=access_type
-                )
-        else:
-            app.create_opcua_server_record(name=var_name, namespace=namespace, access_type=access_type)
-
-        access_type = access_type.lower()
-        # Limpiar todos los bits de acceso primero
-        node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-        node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-        node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-        node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-        
-        if access_type == "write":
-            # Solo escritura: deshabilitamos la lectura y habilitamos la escritura
-            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-            # Crea un manejador de suscripción
-            sub = self.server.create_subscription(100, handler)
-            sub.subscribe_data_change(node)
-
-        elif access_type == "read":
-            # Solo lectura: habilitamos la lectura y deshabilitamos la escritura
-            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-        elif access_type == "readwrite":
-            # Lectura y escritura: habilitamos ambos
-            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-            # Crea un manejador de suscripción
-            sub = self.server.create_subscription(100, handler)
-            sub.subscribe_data_change(node)
+# OPCUAServer lives in automation.opcua_server.facade.
+# Re-exported at the bottom of this module once StateMachineCore exists.
 
 
 class AutomationStateMachine(StateMachineCore):
@@ -2710,3 +2198,4 @@ class AutomationStateMachine(StateMachineCore):
 
             self.sio.emit("on.machine", data=self.serialize())
 
+from .opcua_server.facade import OPCUAServer  # noqa: E402

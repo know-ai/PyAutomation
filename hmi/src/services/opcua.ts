@@ -394,7 +394,10 @@ export const getNodeAttributes = async (
 export type OpcUaServerAttribute = {
   name: string;
   namespace: string;
-  access_type: "Read" | "Write" | "ReadWrite";
+  access_level: number;
+  access_level_label: string;
+  user_access_level: number;
+  access_restrictions: number;
 };
 
 export type OpcUaServerAttributesResponse = {
@@ -419,16 +422,23 @@ export const getOpcUaServerAttributes = async (
 };
 
 /**
- * Actualiza el tipo de acceso de un nodo del OPC UA Server
+ * Actualiza el nivel de acceso de un nodo del OPC UA Server
  */
-export const updateOpcUaServerAccessType = async (
+export const updateOpcUaServerAccessLevel = async (
   namespace: string,
-  access_type: "Read" | "Write" | "ReadWrite",
+  access_level: number,
   name?: string
-): Promise<{ message: string; namespace: string; access_type: string }> => {
+): Promise<{
+  message: string;
+  namespace: string;
+  access_level: number;
+  access_level_label: string;
+  user_access_level: number;
+  access_restrictions: number;
+}> => {
   const { data } = await api.put("/opcua/server/attrs/update", {
     namespace,
-    access_type,
+    access_level,
     name,
   });
   return data;

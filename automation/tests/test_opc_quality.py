@@ -49,7 +49,7 @@ def tearDownModule():
 class TestStatusCodeMapping(unittest.TestCase):
     def test_severity_bits_map_to_quality(self):
         try:
-            from opcua import ua
+            from asyncua import ua
         except ImportError:
             self.skipTest("opcua not installed")
         self.assertEqual(status_code_to_quality(ua.StatusCode(ua.StatusCodes.Good)), GOOD)
@@ -216,7 +216,7 @@ class TestSubscriptionStatusCode(unittest.TestCase):
 
         node = SimpleNamespace(nodeid=SimpleNamespace(to_string=lambda: "ns=2;s=PV"))
         try:
-            from opcua import ua
+            from asyncua import ua
 
             status = ua.StatusCode(ua.StatusCodes.Bad)
         except ImportError:

@@ -37,3 +37,10 @@ class TestUnsubscribeTagScope(unittest.TestCase):
         mgr.unsubscribe_tag(tag, acquisition_only=False)
         leak.unsubscribe_to.assert_called_once_with(tag=tag)
         daq.unsubscribe_to.assert_called_once_with(tag=tag)
+
+    def test_get_machine_accepts_plain_str(self):
+        leak = _machine("Supe.Linea1.LDS", "Leak Detection")
+        mgr = StateMachineManager()
+        mgr._machines = [(leak, 1.0, "async")]
+        self.assertIs(mgr.get_machine("Supe.Linea1.LDS"), leak)
+        self.assertIsNone(mgr.get_machine("missing"))

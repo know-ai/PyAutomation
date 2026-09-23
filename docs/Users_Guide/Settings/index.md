@@ -142,8 +142,7 @@ The export includes all **configuration tables**:
 *   **Roles**: User roles and permissions
 *   **Users**: User accounts (passwords are not exported in plain text; must be reset after import)
 *   **OPCUA**: OPC UA client configurations
-*   **AccessType**: OPC UA access type definitions
-*   **OPCUAServer**: OPC UA server configurations
+*   **OPCUAServer**: OPC UA server nodes, including the integer `access_level`
 *   **Machines**: State machine definitions
 *   **TagsMachines**: Relationships between tags and machines
 
@@ -226,8 +225,7 @@ The exported JSON file has the following structure:
     "Roles": [...],
     "Users": [...],
     "OPCUA": [...],
-    "AccessType": [...],
-    "OPCUAServer": [...],
+    "OPCUAServer": [{"name": "Node", "namespace": "ns=2;s=t:_:Node", "access_level": 1}],
     "Machines": [...],
     "TagsMachines": [...]
   }
@@ -262,10 +260,9 @@ Import is performed in a specific order to respect dependencies between tables:
 10. Roles
 11. Users (depends on Roles)
 12. OPCUA
-13. AccessType
-14. OPCUAServer (depends on AccessType)
-15. Machines
-16. TagsMachines (depends on Tags and Machines)
+13. OPCUAServer (`access_level` integer)
+14. Machines
+15. TagsMachines (depends on Tags and Machines)
 
 #### Importing via Web Interface
 

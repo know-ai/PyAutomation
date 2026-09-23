@@ -14,6 +14,15 @@ def init_callback(app:dash.Dash):
 
     def create_opcua_server_table(opcua_server_machine):
 
+        listed = getattr(opcua_server_machine, "list_attrs", None)
+        if callable(listed):
+            rows = []
+            for row in listed() or []:
+                item = dict(row)
+                item["access_level"] = item.get("access_level_label") or item.get("access_level")
+                rows.append(item)
+            return rows
+
         attrs = list()        
         for attr in dir(opcua_server_machine):
             if hasattr(opcua_server_machine, attr):
@@ -33,19 +42,19 @@ def init_callback(app:dash.Dash):
                         # Verificar los niveles de acceso
                         write_only = ua.AccessLevel.CurrentWrite in access_level and ua.AccessLevel.CurrentRead not in access_level
                         read_write = ua.AccessLevel.CurrentRead in access_level and ua.AccessLevel.CurrentWrite in access_level
-                        access_type = "Read"
+                        access_level = "Read"
                         if write_only:
 
-                            access_type = "Write"
+                            access_level = "Write"
                         
                         elif read_write:
 
-                            access_type = "ReadWrite"
+                            access_level = "ReadWrite"
 
                         attrs.append({
                             "name": f"{parent_name}.{display_name}",
                             "namespace": node.nodeid.to_string(),
-                            "access_type": access_type
+                            "access_level": access_level
                         })
 
                         properties = node.get_properties()
@@ -57,19 +66,19 @@ def init_callback(app:dash.Dash):
                             # Verificar los niveles de acceso
                             write_only = ua.AccessLevel.CurrentWrite in access_level and ua.AccessLevel.CurrentRead not in access_level
                             read_write = ua.AccessLevel.CurrentRead in access_level and ua.AccessLevel.CurrentWrite in access_level
-                            access_type = "Read"
+                            access_level = "Read"
                             if write_only:
 
-                                access_type = "Write"
+                                access_level = "Write"
                             
                             elif read_write:
 
-                                access_type = "ReadWrite"
+                                access_level = "ReadWrite"
 
                             attrs.append({
                                 "name": f"{parent_name}.{display_name}.{prop_name}",
                                 "namespace": prop.nodeid.to_string(),
-                                "access_type": access_type
+                                "access_level": access_level
                             })
         return attrs
 
@@ -115,7 +124,7 @@ def init_callback(app:dash.Dash):
                     dash.set_props("modal-update-opcua-server-body", {"children": message})
                     dash.set_props("modal-update-opcua-server-centered", {'is_open': True})
                     return
-                message = f"Do you want to update node {node_name} Access Type to {node_to_update['access_type']}?"
+                message = f"Do you want to update node {node_name} Access Type to {node_to_update['access_level']}?"
                 # OPEN MODAL TO CONFIRM CHANGES
                 dash.set_props("modal-update-opcua-server-body", {"children": message})
                 dash.set_props("modal-update-opcua-server-centered", {'is_open': True})
@@ -154,82 +163,12 @@ def init_callback(app:dash.Dash):
                     to_updates = find_differences_between_lists_opcua_server(previous, current)
                     node_to_update = to_updates[0]
                     namespace = node_to_update.pop("namespace")
-                    access_type = node_to_update.pop("access_type")
-                    # Code for update read_only attribute
-                    opcua_server_machine = app.automation.get_machine(name=StringType("OPCUAServer"))
-                    opcua_server_attrs = dir(opcua_server_machine)
-                    node = False
-
-                    for i, item in enumerate(opcua_server_attrs):
-                    
-                        if hasattr(opcua_server_machine, item):
-                            node = getattr(opcua_server_machine, item)
-                            if isinstance(node, Node):
-
-                                node_class = node.get_node_class()
-
-                                if node_class == ua.NodeClass.Variable:
-
-                                    if node.nodeid.to_string()==namespace:
-                                        
-                                        break 
-
-                                    else:
-                                        props = node.get_properties()
-                                        flag = False
-                                        for node in props:
-                                            
-                                            if node.nodeid.to_string()==namespace:
-                                                
-                                                flag = True
-                                                break
-
-                                        if flag:
-
-                                            break
-
-                    if node:
-
-                        opcua_server_obj = app.automation.get_opcua_server_record_by_namespace(namespace=namespace)
-                        if opcua_server_obj:
-                            app.automation.update_opcua_server_access_type(namespace=namespace, access_type=access_type)
-                        else:
-                            app.automation.create_opcua_server_record(name=node_to_update["name"], namespace=namespace, access_type=access_type)
-                        access_type = access_type.lower()
-                        # Limpiar todos los bits de acceso primero
-                        node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-                        node.unset_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-                        node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-                        node.unset_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-
-                        subscriptions = handler.subscriptions
-                        # Unsubscribe
-
-                        if namespace in subscriptions:
-
-                            _sub = subscriptions.pop(namespace)
-                            _sub.delete()
-                        
-                        if access_type == "write":
-                            # Solo escritura: deshabilitamos la lectura y habilitamos la escritura
-                            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-                            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-                            sub = opcua_server_machine.server.create_subscription(100, handler)
-                            sub.subscribe_data_change(node)
-                            handler.subscriptions[namespace] = sub
-                        elif access_type == "read":
-                            # Solo lectura: habilitamos la lectura y deshabilitamos la escritura
-                            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-                            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-                        elif access_type == "readwrite":
-                            # Lectura y escritura: habilitamos ambos
-                            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentRead)
-                            node.set_attr_bit(ua.AttributeIds.AccessLevel, ua.AccessLevel.CurrentWrite)
-                            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentRead)
-                            node.set_attr_bit(ua.AttributeIds.UserAccessLevel, ua.AccessLevel.CurrentWrite)
-                            sub = opcua_server_machine.server.create_subscription(100, handler)
-                            sub.subscribe_data_change(node)
-                            handler.subscriptions[namespace] = sub
+                    access_level = node_to_update.pop("access_level")
+                    app.automation.update_opcua_server_node_access_level(
+                        namespace=namespace,
+                        access_level=access_level,
+                        name=node_to_update.get("name"),
+                    )
 
                     attrs = create_opcua_server_table(opcua_server_machine=opcua_server_machine)
 

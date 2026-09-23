@@ -1,0 +1,1 @@
+"""SCADA catalog fixture."""

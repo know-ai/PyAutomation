@@ -29,6 +29,17 @@ def _scope_owns_tag(tag) -> bool:
         return False
 
 
+def clamp_subscription_period_ms(scan_time) -> int:
+    """DAS publishing interval. Floor 100 ms, ceiling 1000 ms."""
+    try:
+        value = int(float(scan_time))
+    except (TypeError, ValueError):
+        value = 1000
+    if value <= 0:
+        value = 1000
+    return max(100, min(1000, value))
+
+
 def _quality_write_kwargs(quality) -> dict:
     """Accept Quality snapshot or legacy float."""
     if hasattr(quality, "severity"):
@@ -170,7 +181,7 @@ class SubHandlerServer(Singleton):
 
                 val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
                 self.app.cvt.set_value_fast(
-                    id=tag.id, value=val, timestamp=timestamp, **_quality_write_kwargs(quality)
+                    id=tag.id, value=val, timestamp=timestamp, source="external", **_quality_write_kwargs(quality)
                 )
         else:
             
@@ -212,7 +223,13 @@ class DAS(Singleton):
         existing = self.client_subscriptions.get(client_name)
         if existing is not None:
             return existing
-        subscription = client.create_subscription(period, self)
+        period_ms = clamp_subscription_period_ms(period)
+        if getattr(client, "uses_asyncua_runner", False):
+            from .asyncua_client.sync_adapter import SubscriptionLease
+
+            subscription = SubscriptionLease(client_name, period_ms)
+        else:
+            subscription = client.create_subscription(period_ms, self)
         self.client_subscriptions[client_name] = subscription
         return subscription
 
@@ -313,17 +330,17 @@ class DAS(Singleton):
                 "namespace": key,
             }
         
-        ## Trying to get the value of the tag into OPCUA Client
-        try:
-            val, quality, timestamp = _read_node_data_value(node_id)
-            self.update_tag_value(node=node_id, val=val, timestamp=timestamp, quality=quality)
-        except Exception:
-            logging.getLogger("pyautomation").warning(
-                "DAS initial read failed node=%s tag=%s",
-                key,
-                getattr(tag, "name", None),
-                exc_info=True,
-            )
+        if hasattr(node_id, "get_data_value") or hasattr(node_id, "get_value"):
+            try:
+                val, quality, timestamp = _read_node_data_value(node_id)
+                self.update_tag_value(node=node_id, val=val, timestamp=timestamp, quality=quality)
+            except Exception:
+                logging.getLogger("pyautomation").warning(
+                    "DAS initial read failed node=%s tag=%s",
+                    key,
+                    getattr(tag, "name", None),
+                    exc_info=True,
+                )
         return True
 
     def unsubscribe(self, client_name:str, node_id):
@@ -371,8 +388,14 @@ class DAS(Singleton):
             tag_name = tag.get_name()
             val = tag.value.convert_value(value=val, from_unit=tag.get_unit(), to_unit=tag.get_display_unit())
             val = self.cvt.set_value_fast(
-                id=tag.id, value=val, timestamp=timestamp, **_quality_write_kwargs(quality)
+                id=tag.id, value=val, timestamp=timestamp, source="field", **_quality_write_kwargs(quality)
             )
+            try:
+                from ..opcua_server.loop_prevention import note_field_sample
+
+                note_field_sample(tag_name, val)
+            except Exception:
+                pass
             if val is not None and tag_name in self.buffer:
                 self.buffer[tag_name]["timestamp"](timestamp)
                 self.buffer[tag_name]["values"](val)

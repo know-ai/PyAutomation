@@ -674,7 +674,7 @@ class CVT:
     # @iad_frozen_data
     # @iad_out_of_range
     # @iad_outlier
-    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0, opc_code:int|None=None, substatus:str|None=None):
+    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0, opc_code:int|None=None, substatus:str|None=None, source:str="internal"):
         """
         Sets a new value for a tag.
 
@@ -720,6 +720,7 @@ class CVT:
             quality=quality,
             opc_code=opc_code,
             substatus=substatus,
+            source=source,
             notify_observers=False,
         )
         if applied is False:
@@ -1241,7 +1242,7 @@ class CVTEngine(Singleton):
         return self.__query(_query)
     
     @logging_error_handler
-    def set_value_fast(self, id:str, value, timestamp:datetime, quality:float=1.0, opc_code:int|None=None, substatus:str|None=None):
+    def set_value_fast(self, id:str, value, timestamp:datetime, quality:float=1.0, opc_code:int|None=None, substatus:str|None=None, source:str="internal"):
         r"""
         Hot-path write: dict lookup O(1) + per-tag lock. Does not use the
         administrative request/response queue.
@@ -1255,15 +1256,16 @@ class CVTEngine(Singleton):
             quality=quality,
             opc_code=opc_code,
             substatus=substatus,
+            source=source,
         )
 
     @logging_error_handler
-    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0, opc_code:int|None=None, substatus:str|None=None):
+    def set_value(self, id:str, value, timestamp:datetime, quality:float=1.0, opc_code:int|None=None, substatus:str|None=None, source:str="internal"):
         r"""
         Tag value write. Acquisition uses the fast path; CRUD stays on __query.
         """
         return self.set_value_fast(
-            id, value, timestamp, quality=quality, opc_code=opc_code, substatus=substatus
+            id, value, timestamp, quality=quality, opc_code=opc_code, substatus=substatus, source=source
         )
     
     @logging_error_handler

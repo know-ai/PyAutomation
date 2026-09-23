@@ -11,6 +11,16 @@ from ..utils.decorators import logging_error_handler
 import queue
 
 
+def _label(value) -> str:
+    """Name text from a StringType or a plain str. Complexity: O(1)."""
+    if value is None:
+        return ""
+    inner = getattr(value, "value", value)
+    if inner is None:
+        return ""
+    return str(inner)
+
+
 def _is_acquisition_machine(machine) -> bool:
     try:
         return str(machine.classification.value).lower() == "data acquisition system"
@@ -86,9 +96,12 @@ class StateMachineManager:
 
         * **StateMachine**: The machine instance if found.
         """
+        wanted = _label(name)
+        if not wanted:
+            return None
         for machine, _, _ in self._machines:
 
-            if name.value == machine.name.value:
+            if _label(getattr(machine, "name", None)) == wanted:
 
                 return machine
             
@@ -108,7 +121,7 @@ class StateMachineManager:
         index = 0
         for machine, _, _ in self._machines:
 
-            if name == machine.name.value:
+            if _label(name) == _label(getattr(machine, "name", None)):
 
                 machine_to_revome_from_worker = self._machines.pop(index)
                 break

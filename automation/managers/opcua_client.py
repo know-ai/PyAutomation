@@ -3,8 +3,8 @@ import logging
 import time
 from ..utils import _colorize_message
 from ..opcua.models import Client
-from opcua import ua
-from opcua.ua.uatypes import NodeId
+from asyncua import ua
+from asyncua.ua.uatypes import NodeId
 from ..dbmodels import OPCUA
 from ..logger.datalogger import DataLoggerEngine
 from ..tags import CVTEngine

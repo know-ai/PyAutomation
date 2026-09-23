@@ -168,16 +168,15 @@ class TestMultiEdgeHotPath(unittest.TestCase):
         subscription.subscribe_data_change.assert_not_called()
 
     def test_opc_client_never_connects_for_foreign_owner(self):
-        with patch("automation.opcua.models.OPCClient.__init__", return_value=None):
-            from ..opcua.models import Client
+        from ..opcua.models import Client
 
-            client = Client(
-                "opc.tcp://127.0.0.1:4840",
-                client_name="PLC-B",
-                owner_node="edge-b",
-            )
+        client = Client(
+            "opc.tcp://127.0.0.1:4840",
+            client_name="PLC-B",
+            owner_node="edge-b",
+        )
         with installed_scope(), patch(
-            "automation.opcua.models.OPCClient.connect"
+            "automation.opcua.models.sync_adapter.open_session"
         ) as connect:
             result, status = client.connect()
         self.assertEqual(status, 403)

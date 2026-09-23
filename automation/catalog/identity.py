@@ -46,7 +46,6 @@ FK_SPECS: dict[str, tuple[tuple[str, str, tuple[str, ...]], ...]] = {
         ("display_unit", "units", ("name", "unit")),
         ("segment", "segment", ("name",)),
     ),
-    "opcuaserver": (("access_type", "accesstype", ("name",)),),
     "alarms": (
         ("tag", "tags", ("name", "identifier")),
         ("trigger_type", "alarmtypes", ("name",)),

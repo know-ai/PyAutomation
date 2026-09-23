@@ -37,3 +37,6 @@ jobs:
       - name: Test with pytest
         run: |
           pytest automation/tests
+      - name: OPC UA server unit tests and lint
+        run: |
+          python -m unittest discover -s automation/opcua_server/tests -t .

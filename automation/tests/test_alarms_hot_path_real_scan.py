@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 import unittest
 
-from opcua import Client
+from asyncua.sync import Client
 
 from automation.alarms.runtime import reset_alarm_runtime_for_tests
 from automation.managers.alarms import AlarmManager
@@ -70,7 +70,7 @@ class TestHotPathRealScan(unittest.TestCase):
         samples = []
         try:
             for _ in range(n):
-                pv = node.get_value()
+                pv = node.read_value()
                 t0 = time.perf_counter_ns()
                 self.mgr.on_tag_value(tag, pv)
                 samples.append((time.perf_counter_ns() - t0) / 1000.0)

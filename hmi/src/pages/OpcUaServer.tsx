@@ -1,13 +1,28 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
-import { getOpcUaServerAttributes, updateOpcUaServerAccessType, type OpcUaServerAttribute } from "../services/opcua";
+import { getOpcUaServerAttributes, updateOpcUaServerAccessLevel, type OpcUaServerAttribute } from "../services/opcua";
+import { socketService } from "../services/socket";
 import { useTranslation } from "../hooks/useTranslation";
 import { useDebounce } from "../hooks/useDebounce";
 import { showToast } from "../utils/toast";
 import { useAuthz } from "../hooks/useAuthz";
 
-const ACCESS_TYPE_OPTIONS: ("Read" | "Write" | "ReadWrite")[] = ["Read", "Write", "ReadWrite"];
+const LEVEL_OPTIONS = [
+  { value: 1, labelKey: "Read" },
+  { value: 2, labelKey: "Write" },
+  { value: 3, labelKey: "ReadWrite" },
+] as const;
+
+const ACCESS_BITS = [
+  { mask: 0x01, key: "currentRead" },
+  { mask: 0x02, key: "currentWrite" },
+  { mask: 0x04, key: "historyRead" },
+  { mask: 0x08, key: "historyWrite" },
+  { mask: 0x10, key: "semanticChange" },
+  { mask: 0x20, key: "statusWrite" },
+  { mask: 0x40, key: "timestampWrite" },
+] as const;
 
 export function OpcUaServer() {
   const { t } = useTranslation();
@@ -19,14 +34,14 @@ export function OpcUaServer() {
   const [pageLimit, setPageLimit] = useState(20);
   const [updatingNamespace, setUpdatingNamespace] = useState<string | null>(null);
   const [nameFilter, setNameFilter] = useState("");
+  const [advanced, setAdvanced] = useState(false);
   const debouncedNameFilter = useDebounce(nameFilter, 300);
   
-  // Estado para el modal de confirmación
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<{
     namespace: string;
-    oldAccessType: string;
-    newAccessType: string;
+    oldLevel: number;
+    newLevel: number;
     name?: string;
   } | null>(null);
 
@@ -48,6 +63,26 @@ export function OpcUaServer() {
 
   useEffect(() => {
     loadAttributes();
+  }, [loadAttributes]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void loadAttributes();
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, [loadAttributes]);
+
+  useEffect(() => {
+    const offAdded = socketService.onOpcUaServerNodeAdded(() => {
+      void loadAttributes();
+    });
+    const offRemoved = socketService.onOpcUaServerNodeRemoved(() => {
+      void loadAttributes();
+    });
+    return () => {
+      offAdded();
+      offRemoved();
+    };
   }, [loadAttributes]);
 
   useEffect(() => {
@@ -80,50 +115,51 @@ export function OpcUaServer() {
     }
   };
 
-  // Manejar cambio de Access Type
-  const handleAccessTypeChange = (attribute: OpcUaServerAttribute, newAccessType: "Read" | "Write" | "ReadWrite") => {
-    if (newAccessType === attribute.access_type) {
-      return; // No hay cambio
+  const requestLevel = (attribute: OpcUaServerAttribute, newLevel: number) => {
+    if (newLevel === attribute.access_level) {
+      return;
     }
-
-    // Mostrar modal de confirmación
     setPendingUpdate({
       namespace: attribute.namespace,
-      oldAccessType: attribute.access_type,
-      newAccessType,
+      oldLevel: attribute.access_level,
+      newLevel,
       name: attribute.name,
     });
     setShowConfirmModal(true);
   };
 
-  // Confirmar actualización
   const handleConfirmUpdate = async () => {
     if (!pendingUpdate) return;
 
     setUpdatingNamespace(pendingUpdate.namespace);
     try {
-      await updateOpcUaServerAccessType(
+      const updated = await updateOpcUaServerAccessLevel(
         pendingUpdate.namespace,
-        pendingUpdate.newAccessType as "Read" | "Write" | "ReadWrite",
+        pendingUpdate.newLevel,
         pendingUpdate.name
       );
 
-      // Actualizar el atributo en el estado local
       setAttributes((prev) =>
         prev.map((attr) =>
           attr.namespace === pendingUpdate.namespace
-            ? { ...attr, access_type: pendingUpdate.newAccessType as "Read" | "Write" | "ReadWrite" }
+            ? {
+                ...attr,
+                access_level: updated.access_level,
+                access_level_label: updated.access_level_label,
+                user_access_level: updated.user_access_level,
+                access_restrictions: updated.access_restrictions,
+              }
             : attr
         )
       );
 
-      showToast(t("opcuaServer.accessTypeUpdated"), "success");
+      showToast(t("opcuaServer.accessLevelUpdated"), "success");
       setShowConfirmModal(false);
       setPendingUpdate(null);
     } catch (err: any) {
       const errorMessage = err?.response?.data?.message || err?.message || t("opcuaServer.updateError");
       showToast(errorMessage, "error");
-      console.error("Error updating access type:", err);
+      console.error("Error updating access level:", err);
     } finally {
       setUpdatingNamespace(null);
     }
@@ -148,15 +184,14 @@ export function OpcUaServer() {
       const headers = [
         t("tables.name"),
         t("tables.nodeNamespace"),
-        t("tables.accessType"),
+        t("tables.accessLevel"),
       ];
 
-      // Convertir atributos a filas CSV
       const rows = attributes.map((attribute) => {
         return [
           attribute.name || "",
           attribute.namespace || "",
-          attribute.access_type || "",
+          String(attribute.access_level ?? ""),
         ];
       });
 
@@ -199,6 +234,15 @@ export function OpcUaServer() {
   const cardTitle = (
     <div className="d-flex justify-content-between align-items-center w-100">
       <h3 className="card-title m-0">{t("communications.opcuaServer")}</h3>
+      <label className="form-check form-switch mb-0 ms-3">
+        <input
+          className="form-check-input"
+          type="checkbox"
+          checked={advanced}
+          onChange={(event) => setAdvanced(event.target.checked)}
+        />
+        <span className="form-check-label">{t("opcuaServer.advanced")}</span>
+      </label>
       {canExportCsv() && (
         <Button
           variant="success"
@@ -310,7 +354,7 @@ export function OpcUaServer() {
                 <tr>
                   <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.name")}</th>
                   <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.nodeNamespace")}</th>
-                  <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.accessType")}</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.accessLevel")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -341,24 +385,44 @@ export function OpcUaServer() {
                         <code style={{ fontSize: "0.8rem" }}>{attribute.namespace}</code>
                       </td>
                       <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                        <select
-                          className="form-select form-select-sm"
-                          value={attribute.access_type}
-                          onChange={(e) =>
-                            handleAccessTypeChange(
-                              attribute,
-                              e.target.value as "Read" | "Write" | "ReadWrite"
-                            )
-                          }
-                          disabled={updatingNamespace === attribute.namespace}
-                          style={{ minWidth: "120px", padding: "0.25rem 0.5rem", fontSize: "0.8rem" }}
-                        >
-                          {ACCESS_TYPE_OPTIONS.map((option) => (
-                            <option key={option} value={option}>
-                              {t(`opcuaServer.accessType.${option}`)}
-                            </option>
-                          ))}
-                        </select>
+                        {advanced ? (
+                          <div className="d-flex flex-wrap gap-2">
+                            {ACCESS_BITS.map((bit) => (
+                              <label key={bit.key} className="form-check form-check-inline mb-0">
+                                <input
+                                  className="form-check-input"
+                                  type="checkbox"
+                                  checked={(attribute.access_level & bit.mask) !== 0}
+                                  disabled={updatingNamespace === attribute.namespace}
+                                  onChange={(event) => {
+                                    const next = event.target.checked
+                                      ? attribute.access_level | bit.mask
+                                      : attribute.access_level & ~bit.mask;
+                                    requestLevel(attribute, next & 0x7f);
+                                  }}
+                                />
+                                <span className="form-check-label">{t(`opcuaServer.bits.${bit.key}`)}</span>
+                              </label>
+                            ))}
+                          </div>
+                        ) : (
+                          <select
+                            className="form-select form-select-sm"
+                            value={[1, 2, 3].includes(attribute.access_level) ? String(attribute.access_level) : ""}
+                            onChange={(event) => requestLevel(attribute, Number(event.target.value))}
+                            disabled={updatingNamespace === attribute.namespace}
+                            style={{ minWidth: "120px", padding: "0.25rem 0.5rem", fontSize: "0.8rem" }}
+                          >
+                            {![1, 2, 3].includes(attribute.access_level) && (
+                              <option value="">{attribute.access_level}</option>
+                            )}
+                            {LEVEL_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {t(`opcuaServer.accessType.${option.labelKey}`)}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -406,12 +470,12 @@ export function OpcUaServer() {
                   <strong>{t("tables.nodeNamespace")}:</strong> <code>{pendingUpdate.namespace}</code>
                 </div>
                 <div className="mb-2">
-                  <strong>{t("opcuaServer.currentAccessType")}:</strong>{" "}
-                  <span className="badge bg-secondary">{t(`opcuaServer.accessType.${pendingUpdate.oldAccessType}`)}</span>
+                  <strong>{t("opcuaServer.currentAccessLevel")}:</strong>{" "}
+                  <span className="badge bg-secondary">{pendingUpdate.oldLevel}</span>
                 </div>
                 <div>
-                  <strong>{t("opcuaServer.newAccessType")}:</strong>{" "}
-                  <span className="badge bg-primary">{t(`opcuaServer.accessType.${pendingUpdate.newAccessType}`)}</span>
+                  <strong>{t("opcuaServer.newAccessLevel")}:</strong>{" "}
+                  <span className="badge bg-primary">{pendingUpdate.newLevel}</span>
                 </div>
               </div>
               <div className="modal-footer">

@@ -451,6 +451,24 @@ class SocketService {
     );
   }
 
+  onOpcUaServerNodeAdded(
+    callback: (data: { name?: string; entity_type?: string }) => void
+  ): () => void {
+    return this.subscribe<{ name?: string; entity_type?: string }>(
+      "on.opcua_server.node_added",
+      callback
+    );
+  }
+
+  onOpcUaServerNodeRemoved(
+    callback: (data: { name?: string; entity_type?: string }) => void
+  ): () => void {
+    return this.subscribe<{ name?: string; entity_type?: string }>(
+      "on.opcua_server.node_removed",
+      callback
+    );
+  }
+
   nativeListenerCount(event: string): number {
     return this.socket?.listeners(event).length ?? 0;
   }

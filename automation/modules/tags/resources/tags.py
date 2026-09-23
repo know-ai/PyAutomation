@@ -440,7 +440,9 @@ class WriteValueResource(Resource):
 
     @api.doc(security='apikey', description="Writes a value to a tag.")
     @api.response(200, "Success (CVT and OPC UA if applicable)")
-    @api.response(207, "Partial Success (CVT OK, OPC UA Failed)")
+    @api.response(400, "Field write rejected")
+    @api.response(503, "Field client disconnected")
+    @api.response(504, "Field write timeout")
     @api.response(404, "Tag not found")
     @api.response(500, "Internal Error")
     @Api.token_required(auth=True)
@@ -472,10 +474,9 @@ class WriteValueResource(Resource):
         except Exception:
             previous = None
 
-        # Escribir en CVT
         try:
             timestamp = datetime.now(pytz.utc).astimezone(TIMEZONE)
-            app.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
+            app.cvt.set_value(id=tag.id, value=value, timestamp=timestamp, source="external")
         except Exception as err:
             return {
                 'message': f'Error writing to CVT: {str(err)}',
@@ -501,30 +502,43 @@ class WriteValueResource(Resource):
             )
         except Exception:
             pass
-        
-        # Si tiene node_namespace, escribir en OPC UA Server usando el método de core
-        opcua_result = None
-        opcua_status = None
+
         if tag.node_namespace and tag.opcua_address:
-            opcua_result, opcua_status = app.write_opcua_value(
-                opcua_address=tag.opcua_address,
-                node_namespace=tag.node_namespace,
-                value=value
+            from ....opcua_server.propagation import (
+                ClientFieldWriter,
+                CvtRollback,
+                FieldPropagationRouter,
+                http_status,
+                new_transaction,
             )
-        
-        # Resultado consolidado
-        result = {
-            'message': 'Value written to CVT' + (' and OPC UA' if opcua_status == 200 else ''),
+
+            router = FieldPropagationRouter(ClientFieldWriter(), CvtRollback(app.cvt))
+            result = router.route(tag, value, new_transaction())
+            status = http_status(result)
+            if not result.ok:
+                CvtRollback(app.cvt).revert(tag, previous)
+                return {
+                    'message': f'Field write {result.status}',
+                    'tag': tag_name,
+                    'value': previous,
+                    'success': False,
+                    'opcua_detail': result.code or result.status,
+                }, status
+            return {
+                'message': 'Value written to CVT and field',
+                'tag': tag_name,
+                'value': value,
+                'cvt_success': True,
+                'opcua_success': True,
+            }, 200
+
+        return {
+            'message': 'Value written to CVT',
             'tag': tag_name,
             'value': value,
             'cvt_success': True,
-            'opcua_success': opcua_status == 200 if opcua_status else None,
-            'opcua_detail': opcua_result if opcua_result else None
-        }
-        
-        # Status: 200 si CVT OK, aunque OPC UA falle (parcial success)
-        final_status = 200 if opcua_status in (200, None) else 207  # 207 = Multi-Status
-        return result, final_status
+            'opcua_success': None,
+        }, 200
 
 @ns.route('/add')
 class AddTagResource(Resource):

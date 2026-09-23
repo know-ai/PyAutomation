@@ -16,10 +16,12 @@
 
 An **OPC UA Server** in PyAutomation is an embedded server that makes your process data available to external systems through the OPC UA (Open Platform Communications Unified Architecture) protocol. This enables seamless integration with third-party applications that need to read tag values, monitor alarm states, or access machine information.
 
+The server publishes one address space: `Objects/PyAutomationIO/{Site}/{Area}/{Process,Alarms,Engines}`. Browse that path in an OPC UA client: `PyAutomationIO`, then the manufacturer folder (`Default` when unset), then the segment folder (`Global` when unset), then `Process`, `Alarms` or `Engines`. NodeIds look like `ns=<idx>;s=t:<area>:<name>` (alarms use `a`, engines use `e`). The manufacturer is the folder, not a field of the NodeId, so changing `MANUFACTURER` does not move existing bindings. Changing `SEGMENT` does. Analog tags expose `EngineeringUnits`, `EURange` when a range exists, `variable` and `area` as properties. Scan time, deadband and filter settings are JSON properties named `runtime_config` and `filter_config`. The endpoint is `opc.tcp://{host}:{port}/OPCUAServer/`. Host and port come from `AUTOMATION_OPCUA_SERVER_HOST` (default `0.0.0.0`) and `AUTOMATION_OPCUA_SERVER_PORT` (default `53530`).
+
 ### Key Features
 
 *   **Embedded Server**: Runs as a state machine within PyAutomation, automatically updating exposed data
-*   **Three Main Folders**: Organizes data into CVT (Current Value Table), Alarms, and Engines (State Machines)
+*   **Three Main Folders**: Process, Alarms, and Engines under `PyAutomationIO/{Site}/{Area}`
 *   **Real-Time Updates**: Continuously publishes current values, alarm states, and machine statuses
 *   **Access Control**: Configure read/write permissions for each exposed variable
 *   **Standard Protocol**: Uses industry-standard OPC UA for maximum compatibility
@@ -37,9 +39,9 @@ The OPC UA Server Module provides a user interface to:
 
 ## Understanding the Address Space
 
-PyAutomation's OPC UA Server organizes data into three main folders:
+PyAutomation's OPC UA Server organizes data under `Objects/PyAutomationIO/{Site}/{Area}` into three folders:
 
-### CVT Folder
+### Process Folder
 
 Contains all tags from the Current Value Table (CVT), representing process variables, sensor readings, and control parameters.
 
@@ -86,14 +88,14 @@ The main table displays all variables exposed by the OPC UA Server:
 *   **Namespace**: The OPC UA Node ID in format `ns=<namespace>;i=<identifier>` or `ns=<namespace>;s=<string>`
 *   **Name**: The display name of the variable (tag name, alarm name, or machine name)
 *   **Value**: The current value of the variable (updated in real-time)
-*   **Access Type**: Current permission level (Read, Write, or ReadWrite)
-*   **Actions**: Dropdown menu to change the access type
+*   **Access Level**: Current permission bitmask. The dropdown uses Read (1), Write (2) and ReadWrite (3). Advanced mode exposes the seven OPC UA bits.
+*   **Actions**: Dropdown or bit checks to change the access level
 
 <!-- TODO: Add image OPCUAServer_AttributesTable.png - Screenshot of the attributes table with multiple entries showing namespace, name, value, and access type -->
 
-## Configuring Access Types
+## Configuring Access Levels
 
-Access types determine what operations external OPC UA clients can perform on each variable:
+The access level is the OPC UA Part 3 bitmask. Read, Write and ReadWrite are the three labels. Advanced mode sets CurrentRead, CurrentWrite, HistoryRead, HistoryWrite, SemanticChange, StatusWrite and TimestampWrite. UserAccessLevel matches AccessLevel. AccessRestrictions stays 0.
 
 ### Read
 
@@ -113,19 +115,19 @@ Access types determine what operations external OPC UA clients can perform on ea
 *   **Use Case**: For setpoints, control parameters, or configuration values that external systems need to read and modify
 *   **Security Consideration**: Use with caution; ensure proper access control in external systems
 
-### Changing Access Type
+### Changing the access level
 
-To modify the access type for a variable:
+To modify the access level for a variable:
 
 1. Locate the variable in the attributes table
-2. Click on the **Access Type** dropdown in the Actions column
-3. Select the desired access type (Read, Write, or ReadWrite)
+2. Use the **Access Level** dropdown, or turn on **Advanced bits** and check the seven bits
+3. Select Read, Write or ReadWrite, or the bitmask you need
 4. A confirmation dialog will appear showing:
    *   Variable name
-   *   Current access type
-   *   New access type
+   *   Current access level
+   *   New access level
 5. Click **Confirm** to apply the change
-6. The change takes effect immediately
+6. The change is applied on the server thread
 
 <!-- TODO: Add image OPCUAServer_AccessTypeDropdown.png - Screenshot showing the access type dropdown menu opened -->
 <!-- TODO: Add image OPCUAServer_AccessTypeChangeConfirmation.png - Screenshot of the confirmation dialog when changing access type -->
@@ -173,12 +175,12 @@ The OPC UA Server continuously updates exposed values:
 
 ## Best Practices
 
-### Access Type Configuration
+### Access level configuration
 
 *   **Default to Read**: Most tags and alarms should be Read-only to prevent unauthorized modifications
 *   **Use ReadWrite Sparingly**: Only enable ReadWrite for variables that external systems legitimately need to modify
-*   **Document Changes**: Keep records of access type changes for audit purposes
-*   **Review Regularly**: Periodically review access types to ensure they match current requirements
+*   **Document Changes**: Keep records of access level changes for audit purposes
+*   **Review Regularly**: Periodically review access levels to ensure they match current requirements
 
 ### Security Considerations
 
@@ -213,9 +215,9 @@ If exposed values are not updating:
 *   **Verify Source Data**: Ensure tags/alarms/machines are active and updating
 *   **Check Interval**: Review the OPCUAServer execution interval in the Machines module
 
-### Access Type Changes Not Applied
+### Access level changes not applied
 
-If access type changes don't take effect:
+If access level changes don't take effect:
 
 *   **Refresh Page**: Reload the OPC UA Server page
 *   **Check Permissions**: Verify you have permission to modify server configuration

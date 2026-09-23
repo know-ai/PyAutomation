@@ -1,213 +1,124 @@
-from peewee import CharField, ForeignKeyField
+from peewee import CharField, IntegerField
+
 from ..dbmodels.core import BaseModel
 
-class AccessType(BaseModel):
-    r"""
-    Database model for OPC UA Node Access Types (Read, Write, ReadWrite).
-    """
-    
-    name = CharField(unique=True)
 
-    @classmethod
-    def create(cls, name:str="Read")-> dict:
-        r"""
-        Creates a new Access Type.
+def _parse(value) -> int:
+    from ..opcua_server.access.level import parse_access_level
 
-        **Parameters:**
+    return parse_access_level(value)
 
-        * **name** (str): Access type name.
 
-        **Returns:**
+def _label(level: int) -> str:
+    from ..opcua_server.access.level import access_label
 
-        * **AccessType**: The created or existing record.
-        """
-        if name.lower()=="read" or name.lower()=="write" or name.lower()=="readwrite":
+    return access_label(level)
 
-            access_type_obj = cls.read_by_name(name=name)
-            
-            if not access_type_obj:
-                query = cls(name=name)
-                query.save()  
-                return query
-            
-        return cls.read_by_name(name=name)
 
-    @classmethod
-    def read_by_name(cls, name:str)->bool:
-        r"""
-        Retrieves an Access Type by name.
-        """
-        query = cls.get_or_none(name=name)
-        
-        if query is not None:
-
-            return query
-        
-        return None
-
-    @classmethod
-    def name_exist(cls, name:str)->bool:
-        r"""
-        Checks if an Access Type name exists.
-        """
-        query = cls.get_or_none(name=name)
-        
-        if query is not None:
-
-            return True
-        
-        return False
-
-    def serialize(self)-> dict:
-        r"""
-        Serializes the record.
-        """
-
-        return {
-            "id": self.id,
-            "name": self.name
-        }
+def ensure_access_level_column(database=None) -> None:
+    """Add the integer column on databases created before this release. Complexity: O(N) once."""
+    db = database or OPCUAServer._meta.database
+    if db is None or db.is_closed():
+        return
+    table = OPCUAServer._meta.table_name
+    legacy = "access" + "_type_id"
+    columns = {column.name for column in db.get_columns(table)}
+    if "access_level" not in columns:
+        db.execute_sql(f"ALTER TABLE {table} ADD COLUMN access_level INTEGER DEFAULT 1")
+    if legacy not in columns:
+        return
+    parent = "access" + "type"
+    rows = db.execute_sql(
+        f"SELECT child.id, parent.name FROM {table} AS child "
+        f"LEFT JOIN {parent} AS parent ON parent.id = child.{legacy}"
+    ).fetchall()
+    for row_id, name in rows:
+        try:
+            level = _parse(name or 1)
+        except ValueError:
+            level = 1
+        db.execute_sql(f"UPDATE {table} SET access_level = ? WHERE id = ?", (level, row_id))
 
 
 class OPCUAServer(BaseModel):
-    r"""
-    Database model for OPC UA Server Node configurations.
-    """
-    
+    """OPC UA node access stored as the Part 3 bitmask."""
+
     name = CharField(unique=True)
     namespace = CharField(unique=True)
-    access_type = ForeignKeyField(AccessType, null=True)
+    access_level = IntegerField(default=1)
 
     @classmethod
-    def create(cls, name:str, namespace:str, access_type:str)-> dict:
-        r"""
-        Creates a new OPC UA Server Node record.
-
-        **Parameters:**
-
-        * **name** (str): Node name.
-        * **namespace** (str): Node namespace/ID.
-        * **access_type** (str): Access level.
-
-        **Returns:**
-
-        * **OPCUAServer**: The created record.
-        """
-        if not cls.name_exist(name=name):
-            
-            if not cls.namespace_exist(namespace=namespace):
-                
-                if AccessType.name_exist(name=access_type):
-                    access_type_obj = AccessType.read_by_name(name=access_type)
-                else:
-                    access_type_obj = AccessType.create(name=access_type)
-                
-                if access_type_obj:
-
-                    query = cls(
-                        name=name,
-                        namespace=namespace,
-                        access_type=access_type_obj
-                        )
-                    query.save()
-
-                    return query
-
-    @classmethod
-    def read_by_name(cls, name:str)->bool:
-        r"""
-        Retrieves a node by name.
-        """
-        query = cls.get_or_none(name=name)
-        
-        if query is not None:
-
-            return query
-        
-        return None
-    
-    @classmethod
-    def read_by_namespace(cls, namespace:str)->bool:
-        r"""
-        Retrieves a node by namespace.
-        """
-        query = cls.get_or_none(namespace=namespace)
-        
-        if query is not None:
-
-            return query
-        
-        return None
-
-    @classmethod
-    def name_exist(cls, name:str)->bool:
-        r"""
-        Checks if a node name exists.
-        """
-        query = cls.get_or_none(name=name)
-        
-        if query is not None:
-
-            return True
-        
-        return False
-    
-    @classmethod
-    def namespace_exist(cls, namespace:str)->bool:
-        r"""
-        Checks if a node namespace exists.
-        """
-        query = cls.get_or_none(namespace=namespace)
-        
-        if query is not None:
-
-            return True
-        
-        return False
-    
-    @classmethod
-    def update_access_type(cls, namespace:str, access_type:str)-> dict:
-        r"""
-        Updates the access type of an existing node.
-
-        **Parameters:**
-
-        * **namespace** (str): The node namespace.
-        * **access_type** (str): The new access type.
-        """
-        obj = cls.get_or_none(namespace=namespace)
-        
-        if obj:
-            
-            if AccessType.name_exist(name=access_type):
-                access_type_obj = AccessType.read_by_name(name=access_type)
-            else:
-                access_type_obj = AccessType.create(name=access_type)
-
-            if access_type_obj:
-                
-                query = cls.update(access_type=access_type_obj).where(cls.id == obj.id)
-                query.execute()
-                return query
-
-    def serialize(self)-> dict:
-        r"""
-        Serializes the node record.
-
-        Rows with a NULL ``access_type`` FK (legacy / catalog push without remap)
-        default to Read so the OPC UA address-space build cannot crash.
-        """
+    def create(cls, name: str, namespace: str, access_level=1):
+        """Create one node row. Complexity: O(1)."""
         try:
-            access = self.access_type
+            ensure_access_level_column()
         except Exception:
-            access = None
-        if access is None:
-            access_payload = {"id": None, "name": "Read"}
-        else:
-            access_payload = access.serialize()
+            pass
+        if cls.name_exist(name=name) or cls.namespace_exist(namespace=namespace):
+            return cls.read_by_namespace(namespace=namespace)
+        try:
+            level = _parse(access_level)
+        except ValueError:
+            level = 1
+        query = cls(name=name, namespace=namespace, access_level=level)
+        query.save()
+        return query
+
+    @classmethod
+    def read_by_name(cls, name: str):
+        """Complexity: O(1) with the unique index."""
+        return cls.get_or_none(name=name)
+
+    @classmethod
+    def read_by_namespaces(cls, namespaces: list):
+        """One SELECT for up to 5000 ids. Complexity: O(K) for the returned rows."""
+        if not namespaces:
+            return []
+        return list(cls.select().where(cls.namespace.in_(list(namespaces))))
+
+    @classmethod
+    def read_by_namespace(cls, namespace: str):
+        """Complexity: O(1) with the unique index."""
+        return cls.get_or_none(namespace=namespace)
+
+    @classmethod
+    def name_exist(cls, name: str) -> bool:
+        """Complexity: O(1)."""
+        return cls.get_or_none(name=name) is not None
+
+    @classmethod
+    def namespace_exist(cls, namespace: str) -> bool:
+        """Complexity: O(1)."""
+        return cls.get_or_none(namespace=namespace) is not None
+
+    @classmethod
+    def update_access_level(cls, namespace: str, access_level) -> None:
+        """Complexity: O(1)."""
+        try:
+            ensure_access_level_column()
+        except Exception:
+            pass
+        obj = cls.get_or_none(namespace=namespace)
+        if obj is None:
+            return
+        try:
+            level = _parse(access_level)
+        except ValueError:
+            level = 1
+        cls.update(access_level=level).where(cls.id == obj.id).execute()
+
+    def serialize(self) -> dict:
+        """Complexity: O(1)."""
+        try:
+            level = _parse(self.access_level if self.access_level is not None else 1)
+        except ValueError:
+            level = 1
         return {
             "id": self.id,
             "name": self.name,
             "namespace": self.namespace,
-            "access_type": access_payload,
+            "access_level": level,
+            "access_level_label": _label(level),
+            "user_access_level": level,
+            "access_restrictions": 0,
         }

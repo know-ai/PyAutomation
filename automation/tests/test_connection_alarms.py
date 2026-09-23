@@ -112,27 +112,26 @@ class TestConnectionAlarms(unittest.TestCase):
         self.assertEqual(self._alarm_state(alarm), "normal")
 
     def test_opcua_client_connect_and_disconnect_drive_the_same_alarm(self):
-        with patch("automation.opcua.models.OPCClient.__init__", return_value=None):
-            from ..opcua.models import Client
+        from ..opcua.models import Client
 
-            client = Client.__new__(Client)
-            client._id = None
-            client._server_url = "opc.tcp://10.0.0.8:4840"
-            client._timeout = 60
-            client.name = "PLC-FIELD"
-            client._client = None
-            client._is_open = False
-            client._opc_ua_tree = dict()
-            client._connection_state = "unknown"
-            client._reconnect_attempts = 0
-            client._reconnect_in_progress = False
-            client._last_failure_event_monotonic = 0.0
-            client._audit_source = "client-connect"
-            client._suppress_connection_alarm = False
+        client = Client.__new__(Client)
+        client._id = None
+        client._server_url = "opc.tcp://10.0.0.8:4840"
+        client._timeout = 60
+        client.name = "PLC-FIELD"
+        client._client = None
+        client._is_open = False
+        client._opc_ua_tree = dict()
+        client._connection_state = "unknown"
+        client._reconnect_attempts = 0
+        client._reconnect_in_progress = False
+        client._last_failure_event_monotonic = 0.0
+        client._audit_source = "client-connect"
+        client._suppress_connection_alarm = False
 
-        with patch("automation.opcua.models.record_opcua_connection_event"), patch(
-            "automation.opcua.models.OPCClient.connect", return_value=None
-        ):
+        with patch("automation.opcua.models._scope_owns_node", return_value=True), patch(
+            "automation.opcua.models.record_opcua_connection_event"
+        ), patch("automation.opcua.models.sync_adapter.open_session", return_value=None):
             result, status = client.connect()
 
         self.assertEqual(status, 200)
@@ -141,7 +140,7 @@ class TestConnectionAlarms(unittest.TestCase):
         self.assertEqual(self._alarm_state(alarm), "normal")
 
         with patch("automation.opcua.models.record_opcua_connection_event"), patch(
-            "automation.opcua.models.OPCClient.disconnect", return_value=None
+            "automation.opcua.models.sync_adapter.close_session", return_value=None
         ):
             client.disconnect()
 
@@ -149,9 +148,9 @@ class TestConnectionAlarms(unittest.TestCase):
         alarm.acknowledge()
         self.assertEqual(self._alarm_state(alarm), "acknowledged")
 
-        with patch("automation.opcua.models.record_opcua_connection_event"), patch(
-            "automation.opcua.models.OPCClient.connect", return_value=None
-        ):
+        with patch("automation.opcua.models._scope_owns_node", return_value=True), patch(
+            "automation.opcua.models.record_opcua_connection_event"
+        ), patch("automation.opcua.models.sync_adapter.open_session", return_value=None):
             client.connect()
 
         self.assertEqual(self._alarm_state(alarm), "normal")

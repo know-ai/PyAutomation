@@ -337,19 +337,24 @@ def persist_machine_fields_local(*, name: str, **fields) -> bool:
 class _LocalOpcuaServerView:
     """Duck-type for ``OPCUAServer.serialize()`` when the historian is offline."""
 
-    __slots__ = ("_row", "_access_name")
+    __slots__ = ("_row", "_level")
 
-    def __init__(self, row: dict, access_name: str = "Read"):
+    def __init__(self, row: dict, level: int = 1):
         self._row = row
-        self._access_name = access_name or "Read"
+        self._level = int(level or 1)
 
     def serialize(self) -> dict:
+        from ..opcua_server.access.level import access_label
+
         pk = self._row.get("id") or self._row.get("_pk")
         return {
             "id": pk,
             "name": self._row.get("name"),
             "namespace": self._row.get("namespace"),
-            "access_type": {"id": self._row.get("access_type_id") or self._row.get("access_type"), "name": self._access_name},
+            "access_level": self._level,
+            "access_level_label": access_label(self._level),
+            "user_access_level": self._level,
+            "access_restrictions": 0,
         }
 
 
@@ -358,43 +363,36 @@ def get_opcua_server_local(*, namespace: str):
     row = _find("opcuaserver", field="namespace", value=namespace)
     if not row:
         return None
-    access_name = "Read"
-    access_pk = row.get("access_type_id") or row.get("access_type")
-    if access_pk is not None:
-        access_row = _find("accesstype", field="id", value=access_pk) or _find(
-            "accesstype", field="_pk", value=access_pk
-        )
-        if not access_row:
-            # Integer PK lookup via provider.read
-            provider = _provider()
-            if provider is not None:
-                access_row = provider.read("accesstype", str(access_pk))
-        if access_row:
-            access_name = str(access_row.get("name") or "Read")
-    return _LocalOpcuaServerView(row, access_name=access_name)
+    try:
+        level = int(row.get("access_level") or 1)
+    except (TypeError, ValueError):
+        level = 1
+    return _LocalOpcuaServerView(row, level=level)
 
 
 def persist_opcua_server_local(
     *,
     name: str,
     namespace: str,
-    access_type: str = "Read",
+    access_level=1,
 ) -> None:
+    from ..opcua_server.access.level import parse_access_level
+
     existing = _find("opcuaserver", field="namespace", value=namespace) or _find(
         "opcuaserver", field="name", value=name
     )
-    access_row = ensure_named_row("accesstype", access_type)
-    access_pk = (access_row or {}).get("_pk") or (access_row or {}).get("id")
+    try:
+        level = parse_access_level(access_level)
+    except ValueError:
+        level = 1
     if existing is not None:
-        prev = existing.get("access_type_id") or existing.get("access_type")
-        if str(prev or "") == str(access_pk or "") and str(existing.get("name") or "") == str(name):
-            # Already mirrored — skip write (OPC UA address-space build hits this per node).
+        prev = existing.get("access_level")
+        if str(prev or "") == str(level) and str(existing.get("name") or "") == str(name):
             return
     payload = {
         "name": name,
         "namespace": namespace,
-        "access_type": access_pk,
-        "access_type_id": access_pk,
+        "access_level": level,
     }
     if existing:
         payload["_pk"] = existing.get("_pk")
@@ -402,15 +400,18 @@ def persist_opcua_server_local(
     _upsert("opcuaserver", payload)
 
 
-def update_opcua_server_access_local(*, namespace: str, access_type: str) -> None:
+def update_opcua_server_access_local(*, namespace: str, access_level=1) -> None:
+    from ..opcua_server.access.level import parse_access_level
+
     row = _find("opcuaserver", field="namespace", value=namespace)
     if not row:
         return
-    access_row = ensure_named_row("accesstype", access_type)
-    access_pk = (access_row or {}).get("_pk") or (access_row or {}).get("id")
+    try:
+        level = parse_access_level(access_level)
+    except ValueError:
+        level = 1
     payload = dict(row)
-    payload["access_type"] = access_pk
-    payload["access_type_id"] = access_pk
+    payload["access_level"] = level
     _upsert("opcuaserver", payload)
 
 

@@ -19,9 +19,9 @@ attrs_parser.add_argument(
 )
 
 # Models
-update_access_type_model = api.model("update_access_type_model", {
+update_access_level_model = api.model("update_access_level_model", {
     'namespace': fields.String(required=True, description='OPC UA node namespace string'),
-    'access_type': fields.String(required=True, description='Access type: Read, Write, or ReadWrite'),
+    'access_level': fields.Raw(required=True, description='Bitmask, hex, or label'),
     'name': fields.String(required=False, description='Node name (optional, used if record does not exist)')
 })
 
@@ -44,7 +44,7 @@ class OPCUAServerAttributesResource(Resource):
         Returns a list of dictionaries containing:
         - name: Full path name (parent_folder.variable_name or parent_folder.variable_name.property_name)
         - namespace: OPC UA node namespace string
-        - access_type: Access level ("Read", "Write", or "ReadWrite")
+        - access_level: Access level ("Read", "Write", or "ReadWrite")
         """
         try:
             args = attrs_parser.parse_args()
@@ -59,70 +59,50 @@ class OPCUAServerAttributesResource(Resource):
 
 
 @ns.route('/attrs/update')
-class OPCUAServerUpdateAccessTypeResource(Resource):
+class OPCUAServerUpdateAccessLevelResource(Resource):
 
     @api.doc(security='apikey', description="Updates the access type (Read, Write, ReadWrite) for a specific OPC UA Server node.")
     @api.response(200, "Access type updated successfully")
     @api.response(400, "Invalid request or parameters")
     @api.response(404, "Node not found")
     @Api.token_required(auth=True)
-    @ns.expect(update_access_type_model)
+    @ns.expect(update_access_level_model)
     def put(self):
         r"""
-        Update OPC UA Server node access type.
-
-        Updates the access level for a specific OPC UA Server node identified by its namespace.
-        The access_type must be one of: "Read", "Write", or "ReadWrite".
-
-        Request body:
-        - namespace: OPC UA node namespace string (required)
-        - access_type: New access type - "Read", "Write", or "ReadWrite" (required)
-        - name: Node name (optional, used if database record does not exist)
+        Update the access bitmask of one OPC UA Server node.
         """
+        from ....opcua_server.access.level import access_label, parse_access_level
+
         if not request.is_json:
-            return {
-                "message": "Request must be JSON"
-            }, 400
-        
+            return {"message": "Request must be JSON"}, 400
         data = request.json
         namespace = data.get('namespace')
-        access_type = data.get('access_type')
+        access_level = data.get('access_level')
         name = data.get('name')
-        
         if not namespace:
-            return {
-                "message": "namespace parameter is required"
-            }, 400
-        
-        if not access_type:
-            return {
-                "message": "access_type parameter is required"
-            }, 400
-        
-        if access_type not in ["Read", "Write", "ReadWrite"]:
-            return {
-                "message": "access_type must be one of: 'Read', 'Write', or 'ReadWrite'"
-            }, 400
-        
+            return {"message": "namespace parameter is required"}, 400
+        if access_level is None:
+            return {"message": "access_level parameter is required"}, 400
         try:
-            success, message = app.update_opcua_server_node_access_type(
+            level = parse_access_level(access_level)
+        except ValueError as exc:
+            return {"message": str(exc)}, 400
+        try:
+            success, message = app.update_opcua_server_node_access_level(
                 namespace=namespace,
-                access_type=access_type,
+                access_level=level,
                 name=name
             )
-            
             if success:
                 return {
                     "message": message,
                     "namespace": namespace,
-                    "access_type": access_type
+                    "access_level": level,
+                    "access_level_label": access_label(level),
+                    "user_access_level": level,
+                    "access_restrictions": 0,
                 }, 200
-            else:
-                return {
-                    "message": message
-                }, 404
-        except Exception as e:
-            return {
-                "message": f"Failed to update access type: {str(e)}"
-            }, 400
+            return {"message": message}, 404
+        except Exception as exc:
+            return {"message": f"Failed to update access level: {exc}"}, 400
 

@@ -21,7 +21,6 @@ SYNC_ORDER: tuple[CatalogTable, ...] = (
     CatalogTable("roles"),
     CatalogTable("manufacturer"),
     CatalogTable("variables"),
-    CatalogTable("accesstype"),
     CatalogTable("units"),
     CatalogTable("segment"),
     CatalogTable("users"),
@@ -59,7 +58,6 @@ LOOKUP_TABLES: frozenset[str] = frozenset(
         "roles",
         "manufacturer",
         "variables",
-        "accesstype",
         "units",
         "segment",
         "users",
@@ -99,7 +97,6 @@ def historian_dbtype_allowed(dbtype: str | None) -> bool:
 def historian_models():
     """Lazy import to avoid circulars at module import."""
     from ..dbmodels import (
-        AccessType,
         AlarmStates,
         AlarmTypes,
         Alarms,
@@ -129,7 +126,6 @@ def historian_models():
         "roles": Roles,
         "manufacturer": Manufacturer,
         "variables": Variables,
-        "accesstype": AccessType,
         "units": Units,
         "segment": Segment,
         "users": Users,

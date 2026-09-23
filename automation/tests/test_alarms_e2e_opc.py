@@ -28,17 +28,17 @@ def _passthrough_journal(record, remote_write, connected):
 
 class TestAlarmE2EOPC(unittest.TestCase):
     def test_opc_simulator_readable(self):
-        from opcua import Client
+        from asyncua.sync import Client
 
         client = Client("opc.tcp://127.0.0.1:4840")
         client.connect()
         try:
             node = client.get_node("ns=2;i=2")
-            value = node.get_value()
+            value = node.read_value()
             self.assertIsNotNone(value)
             print(f"OPC FI_01={value}")
             try:
-                node.set_value(60.0)
+                node.write_value(60.0)
                 writable = True
             except Exception as exc:
                 writable = False

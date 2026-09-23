@@ -22,7 +22,7 @@ from .authz import AuthzGrant
 from .events import Events
 from .logs import Logs
 from .machines import Machines, TagsMachines
-from .opcua_server import AccessType, OPCUAServer
+from .opcua_server import OPCUAServer
 from .linear_referencing_geospatial import LinearReferencingGeospatial
 from .hmi_sessions import HMISession
 from .user_api_sessions import UserApiSession

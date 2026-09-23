@@ -36,6 +36,26 @@ def _unit_metrics() -> dict:
         }
 
 
+def _opcua_server_metrics() -> dict:
+    """O(1) copy of the embedded server snapshot. No address-space browse.
+
+    Includes the OPC UA gauges, among them OPCUA_SERVER_HOST, OPCUA_SERVER_PORT,
+    OPCUA_SITE_FOLDER, OPCUA_AREA_FOLDER and the NodeId rejection counters.
+    """
+    try:
+        from ....models import StringType
+
+        machine = app.get_machine(name=StringType("OPCUAServer"))
+        snapshot = getattr(machine, "snapshot", None)
+        if callable(snapshot):
+            payload = snapshot()
+            if isinstance(payload, dict):
+                return payload
+    except Exception:
+        pass
+    return {}
+
+
 ns = Namespace("Health", description="Service health and readiness checks")
 app = PyAutomation()
 
@@ -334,6 +354,7 @@ class HealthSystemResource(Resource):
             **_catalog_metrics(),
             **_unit_metrics(),
             **product_extras,
+            **_opcua_server_metrics(),
         }, 200
 
 

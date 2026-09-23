@@ -135,6 +135,49 @@ class TestAlarms(unittest.TestCase):
         alarm.acknowledge()
         self.assertEqual(alarm.current_state.value.lower(), "normal")
 
+    def test_retrigger_while_clearing_does_not_raise(self):
+        """A reactivation queued inside the clear must follow the state after it.
+
+        python-statemachine runs nested sends after the in-flight transition.
+        Sending ``rtn_unack_to_unack_alarm`` once the machine is already
+        ``normal`` used to raise ``TransitionNotAllowed``.
+        """
+        cvt.set_tag(
+            name="tag_rtn_race",
+            variable="Adimentional",
+            unit="adim",
+            data_type="boolean",
+            description="rtn race",
+        )
+        tag = cvt.get_tag_by_name(name="tag_rtn_race")
+        alarm = Alarm(
+            name="alm_rtn_race",
+            tag=tag,
+            alarm_type=StringType("BOOL"),
+            alarm_setpoint=IntegerType(1),
+            alarm_on_delay=FloatType(0.0),
+            alarm_off_delay=FloatType(0.0),
+        )
+        tag.set_value(value=True)
+        tag.set_value(value=False)
+        self.assertEqual(alarm.current_state.value.lower(), "rtn_unack")
+        engine = alarm._engine
+        original = engine._trigger
+
+        def wrapped(trigger_data):
+            event = getattr(trigger_data, "event", None)
+            if str(getattr(event, "name", event)) == "rtn_unack_to_normal":
+                alarm.abnormal_condition()
+            return original(trigger_data)
+
+        engine._trigger = wrapped
+        try:
+            alarm.acknowledge()
+        finally:
+            engine._trigger = original
+        self.assertEqual(alarm.current_state.value.lower(), "unack_alarm")
+        self.assertIsNone(alarm._pending_sm_event)
+
     
 
 

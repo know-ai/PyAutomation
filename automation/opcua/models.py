@@ -1,18 +1,30 @@
-from opcua import Client as OPCClient
-from opcua import ua
+"""OPC UA field client. Network I/O runs on the asyncua loop, not on this thread."""
+
 from datetime import datetime
-# import sched
-from opcua.ua.uatypes import NodeId, datatype_to_varianttype
-import os, re, uuid, logging, time, threading
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+import os
+import re
+import uuid
+import logging
+import time
+import json
+from enum import Enum
+
+from asyncua import ua
+from asyncua.ua.uatypes import NodeId
+
 from ..utils import _colorize_message
+from ..utils.opcua_audit import (
+    failure_cooldown_seconds,
+    record_opcua_connection_event,
+)
+from .asyncua_client import sync_adapter
 
 _DAQ_TIMEOUT_MIN_S = 0.05
 _DAQ_TIMEOUT_MAX_S = 5.0
 _DAQ_TIMEOUT_DEFAULT_S = 0.5
 _DAQ_BAD_AFTER_MISSES_DEFAULT = 3
 _DAQ_BAD_AFTER_MISSES_MAX = 20
-DAQ_READ_TIMEOUT_S = _DAQ_TIMEOUT_DEFAULT_S  # default; prefer daq_read_timeout_s()
+DAQ_READ_TIMEOUT_S = _DAQ_TIMEOUT_DEFAULT_S
 
 
 def daq_read_timeout_s(environ=None) -> float:
@@ -32,9 +44,8 @@ def daq_read_timeout_s(environ=None) -> float:
 def daq_bad_after_misses(environ=None) -> int:
     """Consecutive confirmed empty reads before DAQ marks the PV BAD.
 
-    A single ``FuturesTimeout`` is not a confirmed empty: the in-flight OPC
-    Read is left running and applied on the next cycle. Env
-    ``AUTOMATION_DAQ_BAD_AFTER_MISSES`` (1–20, default 3).
+    A single in-flight Read is not a confirmed empty: it is applied on the next
+    cycle. Env ``AUTOMATION_DAQ_BAD_AFTER_MISSES`` (1–20, default 3).
     """
     env = environ if environ is not None else os.environ
     raw = env.get("AUTOMATION_DAQ_BAD_AFTER_MISSES", str(_DAQ_BAD_AFTER_MISSES_DEFAULT))
@@ -43,12 +54,6 @@ def daq_bad_after_misses(environ=None) -> int:
     except (TypeError, ValueError):
         value = _DAQ_BAD_AFTER_MISSES_DEFAULT
     return max(1, min(_DAQ_BAD_AFTER_MISSES_MAX, value))
-from ..utils.opcua_audit import (
-    failure_cooldown_seconds,
-    record_opcua_connection_event,
-)
-import json
-from enum import Enum
 
 
 def _scope_owns_node(owner_node) -> bool:
@@ -68,19 +73,52 @@ def _scope_owns_node(owner_node) -> bool:
         return False
 
 
-class Client(OPCClient):
-    r"""
-    Documentation here
-    """
-    def __init__(self, url, client_name:str, timeout=60, owner_node:str=None):
-        r"""
-        Documentation here
-        """
+class _NodeIdRef:
+    def __init__(self, text: str) -> None:
+        self._text = text
+        parsed = ua.NodeId.from_string(text) if text else ua.NodeId()
+        self.NamespaceIndex = parsed.NamespaceIndex
+        self.Identifier = parsed.Identifier
+        self.NamespaceUri = getattr(parsed, "NamespaceUri", None)
+
+    def to_string(self) -> str:
+        return self._text
+
+
+class NodeRef:
+    """Local stand-in for an OPC node. It does not touch the socket."""
+
+    def __init__(self, namespace: str) -> None:
+        self.nodeid = _NodeIdRef(str(namespace))
+
+
+def _node_text(node) -> str:
+    if node is None:
+        return "ns=0;i=85"
+    if isinstance(node, str):
+        return node
+    nodeid = getattr(node, "nodeid", node)
+    if hasattr(nodeid, "to_string"):
+        try:
+            return nodeid.to_string()
+        except Exception:
+            pass
+    return str(nodeid)
+
+
+class Client:
+    """Field client. ``uses_asyncua_runner`` tells DAS to enqueue instead of calling opcua."""
+
+    uses_asyncua_runner = True
+
+    def __init__(self, url, client_name: str, timeout=60, owner_node: str = None, username: str = None, password: str = None):
         self._id = None
         self._server_url = url
         self._timeout = timeout
         self.name = client_name
         self.owner_node = owner_node
+        self._username = username or None
+        self._password = password or None
         self._client = None
         self._is_open = False
         self._opc_ua_tree = dict()
@@ -90,37 +128,14 @@ class Client(OPCClient):
         self._last_failure_event_monotonic = 0.0
         self._audit_source = "client-connect"
         self._suppress_connection_alarm = False
-        self._io_lock = threading.Lock()
-        self._io_pool = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix=f"opc-io-{client_name}"[:15]
-        )
-        self._daq_future_lock = threading.Lock()
-        self._daq_inflight = None
-        self._daq_inflight_names = None
-        # self.scheduler = sched.scheduler(time.time, time.sleep) 
-        # self.token_renewal_interval = 30 # Cada 10 minutos
-        super(Client, self).__init__(url, timeout)
+        self._inflight = {}
 
     def get_id(self):
-        r"""
-        Documentation here
-        """
         return self._id
-    
-    def is_token_valid(self): 
-        try: 
-            secure_channel = self.uaclient._uasocket._connection 
-            token_id = secure_channel.security_token.TokenId 
-            if token_id == secure_channel.next_security_token.TokenId or token_id == secure_channel.prev_security_token.TokenId: 
- 
-                return True
-             
-            else: 
-                logging.error("Security token is not valid.") 
-                return False 
-        except Exception as e: 
-            logging.error(f"Failed to check security token: {e}") 
-            return False
+
+    def is_token_valid(self):
+        """Security policy is not active. A connected session is the token check."""
+        return self.is_connected()
 
     def _should_log_failure_event(self) -> bool:
         now = time.monotonic()
@@ -143,6 +158,7 @@ class Client(OPCClient):
     def _emit_opcua_socket(self, event_name: str, message: str) -> None:
         try:
             from automation import PyAutomation
+
             app = PyAutomation()
             if app.sio:
                 app.sio.emit(event_name, data={"message": message, "client_name": self.name, "url": self._server_url})
@@ -154,6 +170,7 @@ class Client(OPCClient):
             return
         try:
             from ..utils.connection_alarms import set_opcua_disconnected
+
             set_opcua_disconnected(getattr(self, "name", "") or "", disconnected)
         except Exception:
             logging.debug("OPC UA connection alarm sync skipped", exc_info=True)
@@ -161,7 +178,6 @@ class Client(OPCClient):
             self._mark_subscribed_tags_stale()
 
     def _mark_subscribed_tags_stale(self) -> None:
-        """Hold-last + BAD/stale on every tag owned by this client."""
         try:
             from automation import PyAutomation
 
@@ -180,15 +196,9 @@ class Client(OPCClient):
                     marked,
                 )
         except Exception:
-            logging.getLogger("pyautomation").debug(
-                "OPC UA stale tag mark skipped",
-                exc_info=True,
-            )
+            logging.getLogger("pyautomation").debug("OPC UA stale tag mark skipped", exc_info=True)
 
     def connect(self):
-        r"""
-        Documentation here
-        """
         if not _scope_owns_node(getattr(self, "owner_node", None)):
             self._is_open = False
             self._connection_state = "disconnected"
@@ -204,10 +214,13 @@ class Client(OPCClient):
                 "id": self.get_id(),
             }, 403
         try:
-            # Connect to the server
-            super(Client, self).connect()
-
-            # Now you're connected again!
+            sync_adapter.open_session(
+                self._server_url,
+                self.name,
+                self._timeout,
+                username=getattr(self, "_username", None),
+                password=getattr(self, "_password", None),
+            )
             self._is_open = True
             self._id = str(uuid.uuid4())
             previous_state = self._connection_state
@@ -219,14 +232,12 @@ class Client(OPCClient):
             self._reconnect_attempts = 0
             self._last_failure_event_monotonic = 0.0
             self._sync_connection_alarm(disconnected=False)
-            result = {
-                'message': 'Successful connection',
-                'url': self._server_url,
-                'is_connected': self._is_open,
-                'id': self.get_id()
-                }
-            return result, 200
-            
+            return {
+                "message": "Successful connection",
+                "url": self._server_url,
+                "is_connected": self._is_open,
+                "id": self.get_id(),
+            }, 200
         except Exception as _err:
             str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             logger = logging.getLogger("pyautomation")
@@ -237,36 +248,26 @@ class Client(OPCClient):
             self._connection_state = "disconnected"
             if self._reconnect_in_progress:
                 if self._should_log_failure_event():
-                    self._audit_connection(
-                        "RECONNECT_FAILED",
-                        reason="watchdog-retry",
-                        error=error_text,
-                    )
+                    self._audit_connection("RECONNECT_FAILED", reason="watchdog-retry", error=error_text)
             else:
                 self._audit_connection("CONNECTION_FAILED", reason="initial-connect", error=error_text)
             self._sync_connection_alarm(disconnected=True)
             from .errors import classify_opcua_error
 
-            result = {
-                'message': 'Connection could not be established',
-                'url': self._server_url,
-                'is_connected': self._is_open,
-                'id': self.get_id(),
-                'error': error_text,
-                'code': classify_opcua_error(error_text),
-                }
-            return result, 404
-        
-    def revolve_security_tokens(self): 
-        logging.critical("Trying revolving security token") 
-        try: 
-            self.uaclient._uasocket._connection.revolve_tokens() 
-            logging.critical("Security tokens revolved successfully") 
-        except Exception as e: 
-            logging.error(f"Failed to revolve security tokens: {e}")
-        
-    def reconnect(self):
+            return {
+                "message": "Connection could not be established",
+                "url": self._server_url,
+                "is_connected": self._is_open,
+                "id": self.get_id(),
+                "error": error_text,
+                "code": classify_opcua_error(error_text),
+            }, 404
 
+    def revolve_security_tokens(self):
+        """asyncua renews the secure channel. There is no private socket to poke."""
+        logging.getLogger("pyautomation").debug("security token renew is owned by asyncua client=%s", self.name)
+
+    def reconnect(self):
         if not _scope_owns_node(getattr(self, "owner_node", None)):
             logging.getLogger("pyautomation").error(
                 "OPC UA reconnect rejected for foreign owner client=%s owner_node=%s",
@@ -276,24 +277,13 @@ class Client(OPCClient):
             return
         if self.is_connected():
             return
-        if not self._io_lock.acquire(timeout=daq_read_timeout_s()):
-            logging.getLogger("pyautomation").warning(
-                "OPC reconnect skipped client=%s reason=io-lock-busy",
-                self.name,
-            )
-            return
-        try:
-            if self.is_connected():
-                return
-            self._reconnect_unlocked()
-        finally:
-            self._io_lock.release()
+        self._reconnect_unlocked()
 
     def _reconnect_unlocked(self):
         if self.is_connected():
             return
-
         from automation import PyAutomation
+
         app = PyAutomation()
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         lost_link = self._connection_state == "connected"
@@ -304,10 +294,8 @@ class Client(OPCClient):
             self._connection_state = "disconnected"
             self._reconnect_attempts = 0
             self._sync_connection_alarm(disconnected=True)
-
         if self._connection_state == "unknown":
             self._connection_state = "disconnected"
-
         self._reconnect_in_progress = True
         self._audit_source = "watchdog-reconnect"
         self._reconnect_attempts += 1
@@ -317,7 +305,6 @@ class Client(OPCClient):
             self._audit_connection("RECONNECTING", reason="watchdog")
         try:
             result, status = self.connect()
-
             if status == 200:
                 app.das.reset_client(self.name)
                 for _tag in app.cvt.iter_tags_for_opcua_client(self.name, self._server_url):
@@ -328,7 +315,6 @@ class Client(OPCClient):
                         scan_time=_tag.get_scan_time(),
                         reload=True,
                     )
-
                 self._emit_opcua_socket("on.opcua.connected", f"Connected to {self._server_url}")
                 logging.critical(f"Reconnected to {self._server_url}")
                 print(_colorize_message(f"[{str_date}] [INFO] Reconnected to OPCUA server {self._server_url}", "INFO"))
@@ -345,21 +331,16 @@ class Client(OPCClient):
             self._reconnect_in_progress = False
 
     def __reset_object_attributes(self):
-        r"""
-        Documentation here
-        """
         self._server_url = None
         self._client = None
         self._opc_ua_tree = dict()
 
     def disconnect(self):
-        r"""
-        Documentation here
-        """
         server_url = self._server_url
         was_open = bool(self._is_open or self._connection_state == "connected")
         try:
-            super(Client, self).disconnect()
+            if self.name:
+                sync_adapter.close_session(self.name)
             if was_open or self._connection_state != "disconnected":
                 self._audit_connection("DISCONNECTED", reason="requested")
             self._connection_state = "disconnected"
@@ -367,592 +348,235 @@ class Client(OPCClient):
             self._is_open = False
             self._sync_connection_alarm(disconnected=True)
             self.__reset_object_attributes()
-            result = {
-                'message': 'Successful disconnection',
-                'url': server_url,
-                'is_connected': False
-                }
-            return result, 200
-
+            return {"message": "Successful disconnection", "url": server_url, "is_connected": False}, 200
         except Exception as _err:
             error_text = f"{type(_err).__name__}: {_err}"
             if was_open and self._should_log_failure_event():
                 self._audit_connection("DISCONNECTED", reason="disconnect-error", error=error_text)
             self._connection_state = "disconnected"
             self._sync_connection_alarm(disconnected=True)
-            result = {'message': 'Disconnect could not be performed', 'error': error_text}
-            return result, 404
+            return {"message": "Disconnect could not be performed", "error": error_text}, 404
 
     def get_opc_ua_tree(self):
-        r"""
-        Documentation here
-        """
         try:
             if self.is_connected():
-                root = self.get_objects_node()
-                node = self.get_node(root)
-                tree = self.__walk_into_nodes(node)
-                return tree, 200
-
+                children = self.browse_tree_generic(self.get_objects_node())
+                return {"Objects": children}, 200
         except Exception as _err:
-            self.disconnect()
-            result = { 'message': str(_err)}
+            result = {"message": str(_err)}
             return result, 500
+        return {}, 400
 
-    def __walk_into_nodes(self, node, tree=None):
-        r"""
-        Documentation here
-        """
-        if tree is None:
+    def get_values(self, nodes: list):
+        if not self.is_connected():
+            return [], 400
+        names = [_node_text(node) for node in nodes]
+        payload = self.read_data_values_bounded(names)
+        if not isinstance(payload, dict):
+            return [], 400
+        result = []
+        for namespace in names:
+            data_value = payload.get(namespace)
+            value = None
+            timestamp = None
+            if data_value is not None:
+                try:
+                    value = data_value.Value.Value
+                    timestamp = data_value.SourceTimestamp
+                except Exception:
+                    value = data_value
+            result.append({"Namespace": namespace, "Value": value, "Timestamp": timestamp})
+        return result, 200
 
-            tree = dict()
+    def get_nodes_id_by_namespaces(self, namespaces: list):
+        if not self.is_connected():
+            return []
+        return [NodeRef(namespace) for namespace in namespaces]
 
-        _object = list()
+    def get_node_id_by_namespace(self, namespace: str):
+        if self.is_connected() and namespace:
+            return NodeRef(namespace)
+        return None
 
-        if self.is_connected():
+    def get_node(self, nodeid):
+        return NodeRef(_node_text(nodeid))
 
-            for ref in node.get_children_descriptions():
+    def get_objects_node(self):
+        return NodeRef("ns=0;i=85")
 
-                _node = self.get_node(ref.NodeId)
-                # ('Aliases', 'MyObjects', 'Server', 'StaticData')
+    def get_root_node(self):
+        return NodeRef("ns=0;i=84")
 
-                if _node.get_browse_name().Name not in ('Aliases', 'MyObjects', 'Server', 'StaticData'):
-
-                    result = self.__opc_ua_tree(ref.NodeId)
-
-                    if _node.get_children():
-
-                        _children = self.__get_children_node_recursively(_node)
-
-                        result['children'] = _children
-                    
-                    _object.append(result)
-
-            tree[f"{node.get_browse_name().Name}"] = _object
-
-            return tree
-
-    def __get_children_node_recursively(self, node, children=None):
-        r"""
-        Documentation here
-        """
-
-        if children is None:
-
-            children = list()
-        if self.is_connected():
-            for child in node.get_children():
-
-                result = self.__opc_ua_tree(child.nodeid)
-
-                if child.get_children():
-
-                    _children = self.__get_children_node_recursively(child)
-
-                    result['children'] = _children
-
-                children.append(result)            
-
-            return children
-
-    def __opc_ua_tree(self, namespace_node):
-        r"""
-        Documentation here
-        """
-        if self.is_connected():
-            _node = self.get_node(namespace_node)
-
-            result = {
-                "title": _node.get_browse_name().Name,
-                "key": _node.nodeid.to_string(),
-                "children": [],
-                "NodeClass": _node.get_node_class().name,
-            }
-
-            return result
-
-    def get_values(self, nodes:list):
-        r"""
-        Documentation here
-        """
-        if self.is_connected(): 
-            results = self.uaclient.get_attributes(nodes, ua.AttributeIds.Value)
-            result = [{"Namespace": nodes[id].to_string(), "Value": result.Value.Value, "Timestamp": result.SourceTimestamp} for id, result in enumerate(results)]
-            
-            return result, 200
-
-    def get_nodes_id_by_namespaces(self, namespaces:list):
-        r"""
-        Documentar here
-        """
-        nodes = list()
-
+    def get_nodes_values(self, namespaces: list) -> list:
+        if not self.is_connected():
+            return []
+        payload = self.read_data_values_bounded(list(namespaces))
+        if not isinstance(payload, dict):
+            return []
+        result = []
         for namespace in namespaces:
-            if self.is_connected():
-                _node = self.get_node(NodeId.from_string(namespace))
-                nodes.append(_node)
-
-        return nodes
-    
-    def get_node_id_by_namespace(self, namespace:str):
-        r"""
-        Documentar here
-        """
-        if self.is_connected():
-            return self.get_node(NodeId.from_string(namespace))
-
-    def get_nodes_values(self, namespaces:list)->list:
-        r"""
-        Documentation here
-        """
-        result = list()
-        nodes = list()
-
-        for namespace in namespaces:
-            if self.is_connected():
-                _node = self.get_node(NodeId.from_string(namespace))
-                nodes.append(_node)
-                    
-                if _node.get_node_class().name.lower()=='variable':
-                    node = {
-                        "Namespace": namespace,
-                        "Value": _node.get_value()
-                        }
-                    result.append(node)
-
+            data_value = payload.get(str(namespace))
+            value = None
+            if data_value is not None:
+                try:
+                    value = data_value.Value.Value
+                except Exception:
+                    value = data_value
+            result.append({"Namespace": namespace, "Value": value})
         return result
 
     def write_value(self, node_namespace: str, value):
-        r"""
-        Escribe un valor en un nodo variable del servidor OPC UA
-        
-        Args:
-            node_namespace: Namespace del nodo en formato string (ej: "ns=2;i=1234")
-            value: Valor a escribir (el tipo debe ser compatible con el nodo)
-        
-        Returns:
-            tuple: (dict con resultado, status_code)
-        """
         try:
             if not self.is_connected():
-                return {
-                    'message': 'Cliente no conectado al servidor',
-                    'namespace': node_namespace,
-                    'success': False
-                }, 400
-            
-            _node = self.get_node(NodeId.from_string(node_namespace))
-            
-            # Verificar que es un nodo variable
-            if _node.get_node_class().name.lower() != 'variable':
-                return {
-                    'message': f'El nodo no es de tipo Variable, es {_node.get_node_class().name}',
-                    'namespace': node_namespace,
-                    'success': False
-                }, 400
-            
-            # Verificar permisos de escritura
-            access_level = _node.get_access_level()
-            user_access_level = _node.get_user_access_level()
-            
-            # Escribir el valor
-            _node.set_value(value)
-            
-            result = {
-                'message': 'Valor escrito exitosamente',
-                'namespace': node_namespace,
-                'value': value,
-                'success': True
-            }
-            return result, 200
-            
+                return {"message": "Cliente no conectado al servidor", "namespace": node_namespace, "success": False}, 400
+            sync_adapter.write_value(self.name, node_namespace, value)
+            return {"message": "Valor escrito exitosamente", "namespace": node_namespace, "value": value, "success": True}, 200
         except Exception as err:
-            logger = logging.getLogger("pyautomation")
-            logger.error(f"Error escribiendo valor en {node_namespace}: {err}")
-            result = {
-                'message': f'Error al escribir valor: {str(err)}',
-                'namespace': node_namespace,
-                'success': False
-            }
-            return result, 500
+            logging.getLogger("pyautomation").error(f"Error escribiendo valor en {node_namespace}: {err}")
+            message = str(err)
+            status = 400 if message.startswith("not-variable") else 500
+            return {"message": f"Error al escribir valor: {message}", "namespace": node_namespace, "success": False}, status
 
     @staticmethod
     def find_servers(hostname, port):
-        r"""
-        Documentation here
-        """
         str_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        url = f"opc.tcp://{hostname}:{port}"
         try:
-            logging.info(f"Searching OPCUA servers in opc.tcp://{hostname}:{port}")
-            print(_colorize_message(f"[{str_date}] [INFO] Searching OPCUA servers in opc.tcp://{hostname}:{port}", "INFO"))
-            _client = OPCClient(f'opc.tcp://{hostname}:{port}')
-            servers = _client.connect_and_find_servers()
+            logging.info(f"Searching OPCUA servers in {url}")
+            print(_colorize_message(f"[{str_date}] [INFO] Searching OPCUA servers in {url}", "INFO"))
+            servers = sync_adapter.discover(url, "servers") or []
             logging.info(f"OPCUA servers found: {len(servers)}")
             print(_colorize_message(f"[{str_date}] [INFO] OPCUA servers found: {len(servers)}", "INFO"))
-        except Exception as err:
-            logging.error(f"Error searching OPCUA servers in opc.tcp://{hostname}:{port}, Make sure the server is running and the port is correct")
-            print(_colorize_message(f"[{str_date}] [ERROR] Error searching OPCUA servers in opc.tcp://{hostname}:{port}, Make sure the server is running and the port is correct", "ERROR"))
-            
-        _servers = list()
-        if _servers:
-            for server in _servers:
-                _server = dict()
-                _server['ApplicationUri'] = server.ApplicationUri
-                _server['ProductUri'] = server.ProductUri
-                _server['ApplicationName'] = server.ApplicationName.Text
-                _server['ApplicationType'] = server.ApplicationType.Server
-                _server['GatewayServerUri'] = server.GatewayServerUri
-                _server['DiscoveryProfileUri'] = server.DiscoveryProfileUri
-                _server['DiscoveryUrls'] = server.DiscoveryUrls
-                _servers.append(_server)
-
-
-        return _servers
+        except Exception:
+            logging.error(f"Error searching OPCUA servers in {url}, Make sure the server is running and the port is correct")
+            print(_colorize_message(f"[{str_date}] [ERROR] Error searching OPCUA servers in {url}, Make sure the server is running and the port is correct", "ERROR"))
+            return []
+        found = []
+        for server in servers:
+            found.append(
+                {
+                    "ApplicationUri": getattr(server, "ApplicationUri", None),
+                    "ProductUri": getattr(server, "ProductUri", None),
+                    "ApplicationName": getattr(getattr(server, "ApplicationName", None), "Text", None),
+                    "ApplicationType": getattr(getattr(server, "ApplicationType", None), "name", None),
+                    "GatewayServerUri": getattr(server, "GatewayServerUri", None),
+                    "DiscoveryProfileUri": getattr(server, "DiscoveryProfileUri", None),
+                    "DiscoveryUrls": getattr(server, "DiscoveryUrls", None),
+                }
+            )
+        return found
 
     @staticmethod
     def get_endpoints(hostname, port):
-        r"""
-        Documentation here
-        """
+        url = f"opc.tcp://{hostname}:{port}"
         try:
-            _client = OPCClient(f'opc.tcp://{hostname}:{port}')
-            endpoints = _client.connect_and_get_server_endpoints()
-            _endpoints = list()
-            for ep in endpoints:
-
-                if isinstance(ep.Server.DiscoveryUrls, list):
-                    
-                    _endpoints.extend(ep.Server.DiscoveryUrls)
-                
-                else:
-
-                    _endpoints.append(ep.Server.DiscoveryUrls)
-
-            _endpoints = list(set(_endpoints))
-
-            for ep in _endpoints:
-                if not ep.startswith('opc.tcp'):
-                    _endpoints.remove(ep)
-
-            result = [re.sub('//.*?/',f'//{hostname}:{port}/', __ep) for __ep in _endpoints]
-            result = {
-                'message': 'Successful search',
-                'endpoints': result
-            }
-
-            return result, 200
-            
-        except Exception as err:
-
-            result = {
-                'message': 'Unsuccessful search',
-                'endpoints': []
-            }
-            return result, 400
+            endpoints = sync_adapter.discover(url, "endpoints") or []
+            collected = []
+            for endpoint in endpoints:
+                discovery = getattr(getattr(endpoint, "Server", None), "DiscoveryUrls", None)
+                if isinstance(discovery, list):
+                    collected.extend(discovery)
+                elif discovery:
+                    collected.append(discovery)
+            collected = [item for item in dict.fromkeys(collected) if str(item).startswith("opc.tcp")]
+            result = [re.sub("//.*?/", f"//{hostname}:{port}/", item) for item in collected]
+            return {"message": "Successful search", "endpoints": result}, 200
+        except Exception:
+            return {"message": "Unsuccessful search", "endpoints": []}, 400
 
     def is_connected(self):
-        r"""
-        Documentation here
-        """
         try:
-            return self.uaclient._uasocket._connection.is_open() 
-        
-        except Exception as _err:
-
+            return bool(sync_adapter.is_connected(self.name))
+        except Exception:
             return False
 
     def get_node_data_value(self, node_namespace):
-        """One OPC read: Value + SourceTimestamp + StatusCode. Not a browse dump."""
-        node = self.get_node(NodeId.from_string(node_namespace))
-        return node.get_data_value()
+        payload = self.read_data_values_bounded([node_namespace])
+        if not isinstance(payload, dict):
+            return None
+        return payload.get(str(node_namespace))
 
     def read_data_value_bounded(self, node_namespace, timeout_s: float = None):
-        """Serialize asyncua I/O and bound the wait so DAQ cannot hang the cycle."""
         budget = daq_read_timeout_s() if timeout_s is None else float(timeout_s)
         result = self.read_data_values_bounded([node_namespace], timeout_s=budget)
         if not isinstance(result, dict):
             return None
         return result.get(str(node_namespace))
 
-    def _ensure_daq_inflight_state(self) -> None:
-        if not hasattr(self, "_daq_future_lock"):
-            self._daq_future_lock = threading.Lock()
-        if not hasattr(self, "_daq_inflight"):
-            self._daq_inflight = None
-        if not hasattr(self, "_daq_inflight_names"):
-            self._daq_inflight_names = None
-
-    def _pack_daq_results(self, names, results):
-        if results is None:
-            return {ns: None for ns in names}
-        out = {}
-        for index, ns in enumerate(names):
-            out[ns] = results[index] if index < len(results) else None
-        return out
-
     def read_data_values_bounded(self, namespaces, timeout_s: float = None):
-        """One OPC Read for all NodeIds. Bounded wait; does not cancel in-flight I/O.
-
-        ``None`` means the previous Read is still running — DAQ must **not**
-        treat that as empty/BAD. A completed disconnect returns ``{ns: None}``.
-        """
+        """One OPC Read for all NodeIds. ``None`` means the Read is still in flight."""
         budget = daq_read_timeout_s() if timeout_s is None else float(timeout_s)
         names = [str(ns) for ns in (namespaces or []) if ns]
         if not names:
             return {}
-        self._ensure_daq_inflight_state()
-
-        def _run():
-            with self._io_lock:
-                if not self.is_connected():
-                    return None
-                return self._read_data_values_unlocked(names)
-
-        with self._daq_future_lock:
-            inflight = self._daq_inflight
-            if inflight is not None and not inflight.done():
-                logging.getLogger("pyautomation").debug(
-                    "OPC DAQ read still in flight client=%s nodes=%s",
-                    self.name,
-                    len(names),
-                )
-                return None
-            if inflight is not None and inflight.done():
-                try:
-                    results = inflight.result(timeout=0)
-                except Exception:
-                    results = None
-                inflight_names = list(self._daq_inflight_names or names)
-                self._daq_inflight = None
-                self._daq_inflight_names = None
-                packed = self._pack_daq_results(inflight_names, results)
-                if inflight_names == names:
-                    return packed
-                return {ns: packed.get(ns) for ns in names}
-            future = self._io_pool.submit(_run)
-            self._daq_inflight = future
-            self._daq_inflight_names = list(names)
-
-        try:
-            results = future.result(timeout=max(_DAQ_TIMEOUT_MIN_S, budget))
-        except FuturesTimeout:
-            logging.getLogger("pyautomation").debug(
-                "OPC DAQ batch read still in flight client=%s nodes=%s budget=%.3fs",
-                self.name,
-                len(names),
-                budget,
-            )
-            return None
-        except Exception:
-            logging.getLogger("pyautomation").error(
-                "OPC DAQ batch read failed client=%s nodes=%s",
-                self.name,
-                len(names),
-                exc_info=True,
-            )
-            with self._daq_future_lock:
-                if self._daq_inflight is future:
-                    self._daq_inflight = None
-                    self._daq_inflight_names = None
+        if not self.is_connected():
             return {ns: None for ns in names}
-        with self._daq_future_lock:
-            if self._daq_inflight is future:
-                self._daq_inflight = None
-                self._daq_inflight_names = None
-        return self._pack_daq_results(names, results)
+        if not hasattr(self, "_inflight"):
+            self._inflight = {}
+        return sync_adapter.read_batch(self.name, names, budget, self._inflight)
 
-    def _read_data_values_unlocked(self, namespaces):
-        node_ids = [NodeId.from_string(ns) for ns in namespaces]
-        getter = getattr(getattr(self, "uaclient", None), "get_attributes", None)
-        if callable(getter):
-            return getter(node_ids, ua.AttributeIds.Value)
-        return [self.get_node_data_value(ns) for ns in namespaces]
-
-    def get_node_attributes(self, node_namespace)->dict:
-        r"""
-        Documentation here
-        """
-        if not self._io_lock.acquire(timeout=max(1.0, daq_read_timeout_s())):
+    def get_node_attributes(self, node_namespace) -> dict:
+        if not self.is_connected():
             return {}, 400
         try:
-            return self._get_node_attributes_unlocked(node_namespace)
-        finally:
-            self._io_lock.release()
+            payload = sync_adapter.browse(
+                self.name,
+                str(node_namespace),
+                "attributes",
+                depth=0,
+                max_nodes=1,
+                include_properties=False,
+                include_property_values=False,
+                timeout=max(1.0, daq_read_timeout_s()),
+            )
+        except Exception:
+            return {}, 400
+        if not isinstance(payload, dict):
+            return {}, 400
+        return payload, 200
 
-    def _get_node_attributes_unlocked(self, node_namespace):
-        if self.is_connected():
-            _node = self.get_node(NodeId.from_string(node_namespace))
-
-            node_class = _node.get_node_class().name.lower()
-
-            if node_class=='variable':
-
-                result = {
-                    "NamespaceIndex": _node.nodeid.NamespaceIndex,
-                    "NamespaceUri": _node.nodeid.NamespaceUri,
-                    "Identifier": _node.nodeid.Identifier,
-                    "Namespace": _node.nodeid.to_string(),
-                    "NodeClass": _node.get_node_class().name,
-                    "BrowseName": _node.get_browse_name().Name,
-                    "DataValue": _node.get_data_value(),
-                    "DisplayName": _node.get_display_name().Text,
-                    "DataType": datatype_to_varianttype(_node.get_data_type()).name,
-                    "AccesLevel": [access_lvl.name for access_lvl in _node.get_access_level()],
-                    "UserAccessLevel": [user_access_lvl.name for user_access_lvl in _node.get_user_access_level()],
-                    "Description": _node.get_description().Text if _node.get_description() else None,
-                    "Value": _node.get_value(),
-                    "ArrayDimensions": _node.get_array_dimensions(),
-                    "ValueRank": _node.get_value_rank().name
-                }
-
-            else:
-
-                result = {
-                    "NamespaceIndex": _node.nodeid.NamespaceIndex,
-                    "NamespaceUri": _node.nodeid.NamespaceUri,
-                    "Identifier": _node.nodeid.Identifier,
-                    "Namespace": _node.nodeid.to_string(),
-                    "NodeClass": _node.get_node_class().name,
-                    "BrowseName": _node.get_browse_name().Name,
-                    "DisplayName": _node.get_display_name().Text,
-                    "Description": _node.get_description().Text if _node.get_description() else ''
-                }
-
-            return result, 200
-        
-        return {}, 400
-    
-    def get_nodes_attributes(self, namespaces:list)->list:
-        r"""
-        Documentation here
-        """
-        nodes = list()
-        for namespace in namespaces:
-            if self.is_connected():
-                node = self.get_node_attributes(node_namespace=namespace)
-                nodes.append(node)
-
-        return nodes
+    def get_nodes_attributes(self, namespaces: list) -> list:
+        return [self.get_node_attributes(namespace) for namespace in namespaces if self.is_connected()]
 
     def get_referenced_nodes(self, node_id):
-        r"""
-        Documentation here
-        """
-        result = list()
-        if self.is_connected():
-            _node = self.get_node(NodeId.from_string(node_id))
-            referenced_nodes = _node.get_referenced_nodes()
-            
-            for count, node in  enumerate(referenced_nodes):
-
-                node_name = node.get_browse_name().Name
-                if count==0:
-                    result.append(('OrganizedBy', node_name))
-                elif count==1:
-                    result.append(('HasTypeDefinition', node_name))
-                else:
-                    result.append(('Organizes', node_name))
-
-            return result, 200
-        
-        return result, 400
-
-    def browse_tree(self, node):
-        children_list = []
-        if self.is_connected():
-            if node.get_node_class() == ua.NodeClass.Object:
-                children = node.get_children()
-                for child_id in children:
-                    child_node = self.get_node(child_id)
-                    display_name = child_node.get_display_name().Text or "Unnamed Node"
-                    if display_name not in ('Aliases', 'MyObjects', 'Server', 'StaticData', 'Types', 'ReferenceTypes', 'EventTypes', 'InterfaceTypes', 'Views'):
-                        child_dict = {
-                            "title": display_name,
-                            "key": child_node.nodeid.to_string(),
-                            "NodeClass": child_node.get_node_class().name,
-                            "children": self.browse_tree(child_node) if child_node.get_node_class() == ua.NodeClass.Object else []
-                        }
-                        if child_node.get_node_class() == ua.NodeClass.Variable:
-                            variable_info = {
-                                "title": display_name,
-                                "key": child_node.nodeid.to_string(),
-                                "NodeClass": child_node.get_node_class().name,
-                                "children": []
-                            }
-                            for prop_id in child_node.get_properties():
-                                prop_node = self.get_node(prop_id)
-                                prop_display_name = prop_node.get_display_name().Text or "Unnamed Property"
-                                try:
-                                    prop_dict = {
-                                        "title": prop_display_name,
-                                        "key": prop_node.nodeid.to_string(),
-                                        "NodeClass": prop_node.get_node_class().name,
-                                        "value": self._to_jsonable(prop_node.get_value()),
-                                        "children": []
-                                    }
-                                    variable_info["children"].append(prop_dict)
-                                except ua.uaerrors.BadWaitingForInitialData:
-                                    variable_info["children"].append({
-                                        "title": prop_display_name,
-                                        "key": prop_node.nodeid.to_string(),
-                                        "NodeClass": prop_node.get_node_class().name,
-                                        "value": None,
-                                        "children": []
-                                    })
-                            child_dict = variable_info
-                        children_list.append(child_dict)
-        return children_list
+        if not self.is_connected():
+            return [], 400
+        try:
+            children = self.browse_children_generic(NodeRef(node_id), include_properties=False)
+        except Exception:
+            return [], 400
+        result = [("Organizes", item.get("title")) for item in children]
+        return result, 200
 
     @staticmethod
     def _to_jsonable(value, _visited=None):
-        """
-        Convierte tipos OPC UA (y objetos complejos) a estructuras JSON-serializables.
-
-        Se usa para evitar errores como:
-        TypeError: Object of type Range is not JSON serializable
-        """
         if _visited is None:
             _visited = set()
-
-        # evitar ciclos
         obj_id = id(value)
         if obj_id in _visited:
             return None
         _visited.add(obj_id)
-
         try:
             json.dumps(value)
             _visited.remove(obj_id)
             return value
         except Exception:
             pass
-
         if value is None:
             _visited.remove(obj_id)
             return None
-
-        # datetime
         if isinstance(value, datetime):
             _visited.remove(obj_id)
             return value.isoformat()
-
-        # bytes
         if isinstance(value, (bytes, bytearray)):
             _visited.remove(obj_id)
             return value.hex()
-
-        # enums
         if isinstance(value, Enum):
             _visited.remove(obj_id)
             return value.name
-
-        # NodeId / ua types comunes
         if isinstance(value, NodeId):
             _visited.remove(obj_id)
             return value.to_string()
-
-        # python-opcua: Range (EngineeringUnitsRange)
-        # suele tener atributos Low/High
         if hasattr(value, "Low") and hasattr(value, "High"):
             try:
                 out = {"Low": Client._to_jsonable(value.Low, _visited), "High": Client._to_jsonable(value.High, _visited)}
@@ -960,8 +584,6 @@ class Client(OPCClient):
                 return out
             except Exception:
                 pass
-
-        # LocalizedText
         if hasattr(value, "Text") and hasattr(value, "Locale"):
             try:
                 out = {"Text": value.Text, "Locale": value.Locale}
@@ -969,8 +591,6 @@ class Client(OPCClient):
                 return out
             except Exception:
                 pass
-
-        # QualifiedName
         if hasattr(value, "Name") and hasattr(value, "NamespaceIndex"):
             try:
                 out = {"Name": value.Name, "NamespaceIndex": int(value.NamespaceIndex)}
@@ -978,35 +598,32 @@ class Client(OPCClient):
                 return out
             except Exception:
                 pass
-
-        # list / tuple
         if isinstance(value, (list, tuple)):
-            out = [Client._to_jsonable(v, _visited) for v in value]
+            out = [Client._to_jsonable(item, _visited) for item in value]
             _visited.remove(obj_id)
             return out
-
-        # dict
         if isinstance(value, dict):
-            out = {str(k): Client._to_jsonable(v, _visited) for k, v in value.items()}
+            out = {str(key): Client._to_jsonable(item, _visited) for key, item in value.items()}
             _visited.remove(obj_id)
             return out
-
-        # objetos con atributos públicos
         if hasattr(value, "__dict__"):
             try:
                 out = {}
-                for k, v in value.__dict__.items():
-                    if str(k).startswith("_"):
+                for key, item in value.__dict__.items():
+                    if str(key).startswith("_"):
                         continue
-                    out[str(k)] = Client._to_jsonable(v, _visited)
+                    out[str(key)] = Client._to_jsonable(item, _visited)
                 _visited.remove(obj_id)
                 return out
             except Exception:
                 pass
-
-        # fallback
         _visited.remove(obj_id)
         return str(value)
+
+    def browse_tree(self, node):
+        if not self.is_connected():
+            return []
+        return self.browse_tree_generic(node)
 
     def browse_tree_generic(
         self,
@@ -1020,129 +637,22 @@ class Client(OPCClient):
         _visited_nodeids=None,
         _count=None,
     ):
-        """
-        Browse genérico del address space, robusto para cualquier servidor OPC UA.
-
-        - Evita ciclos (visited por NodeId)
-        - Limita profundidad y cantidad total de nodos (protección performance)
-        - Mantiene compatibilidad con el formato que consume el frontend: title/key/NodeClass/children
-        """
-        if _visited_nodeids is None:
-            _visited_nodeids = set()
-        if _count is None:
-            _count = {"n": 0}
-
         if not self.is_connected():
             return []
-        if _depth > max_depth:
-            return []
-        if _count["n"] >= max_nodes:
-            return []
-
-        children_list = []
         try:
-            children = node.get_children()
+            payload = sync_adapter.browse(
+                self.name,
+                _node_text(node),
+                "tree",
+                depth=max(0, int(max_depth) - int(_depth)),
+                max_nodes=int(max_nodes),
+                include_properties=bool(include_properties),
+                include_property_values=bool(include_property_values),
+            )
         except Exception:
+            logging.getLogger("pyautomation").debug("browse tree failed", exc_info=True)
             return []
-
-        for child_id in children:
-            if _count["n"] >= max_nodes:
-                break
-
-            try:
-                child_node = self.get_node(child_id)
-                nid = child_node.nodeid.to_string()
-            except Exception:
-                continue
-
-            if nid in _visited_nodeids:
-                continue
-            _visited_nodeids.add(nid)
-            _count["n"] += 1
-
-            try:
-                display_name = child_node.get_display_name().Text or child_node.get_browse_name().Name or "Unnamed Node"
-            except Exception:
-                display_name = "Unnamed Node"
-
-            try:
-                node_class = child_node.get_node_class().name
-            except Exception:
-                node_class = "Unknown"
-
-            # determinar si tiene hijos (sin depender de si estamos por debajo del max_depth)
-            has_children = False
-            try:
-                child_children = child_node.get_children()
-                has_children = bool(child_children)
-            except Exception:
-                child_children = []
-
-            # Variables pueden exponer properties (EURange/EngineeringUnits/etc.) aunque no tengan children "normales"
-            if include_properties:
-                try:
-                    if child_node.get_node_class() == ua.NodeClass.Variable:
-                        has_children = has_children or bool(child_node.get_properties())
-                except Exception:
-                    pass
-
-            node_dict = {
-                "title": display_name,
-                "key": nid,
-                "NodeClass": node_class,
-                "children": [],
-                "has_children": bool(has_children),
-            }
-
-            # Recursión: Objects (y algunos servers exponen estructuras bajo Variable/ObjectType)
-            try:
-                if _depth < max_depth and child_children:
-                    node_dict["children"] = self.browse_tree_generic(
-                        child_node,
-                        max_depth=max_depth,
-                        max_nodes=max_nodes,
-                        include_properties=include_properties,
-                        include_property_values=include_property_values,
-                        _depth=_depth + 1,
-                        _visited_nodeids=_visited_nodeids,
-                        _count=_count,
-                    )
-            except Exception:
-                node_dict["children"] = []
-
-            # Propiedades para variables (EURange, EngineeringUnits, etc.)
-            if include_properties:
-                try:
-                    if child_node.get_node_class() == ua.NodeClass.Variable:
-                        for prop_id in child_node.get_properties():
-                            if _count["n"] >= max_nodes:
-                                break
-                            prop_node = self.get_node(prop_id)
-                            prop_nid = prop_node.nodeid.to_string()
-                            if prop_nid in _visited_nodeids:
-                                continue
-                            _visited_nodeids.add(prop_nid)
-                            _count["n"] += 1
-
-                            prop_name = prop_node.get_display_name().Text or prop_node.get_browse_name().Name or "Unnamed Property"
-                            prop_dict = {
-                                "title": prop_name,
-                                "key": prop_nid,
-                                "NodeClass": prop_node.get_node_class().name,
-                                "children": [],
-                            }
-                            if include_property_values:
-                                try:
-                                    prop_dict["value"] = self._to_jsonable(prop_node.get_value())
-                                except Exception:
-                                    prop_dict["value"] = None
-                            node_dict["children"].append(prop_dict)
-                except Exception:
-                    pass
-
-            children_list.append(node_dict)
-
-        return children_list
+        return payload if isinstance(payload, list) else []
 
     def browse_children_generic(
         self,
@@ -1152,103 +662,21 @@ class Client(OPCClient):
         include_properties: bool = True,
         include_property_values: bool = False,
     ):
-        """
-        Devuelve SOLO los hijos directos de un nodo (sin recursión).
-
-        Útil para lazy-loading desde el HMI al expandir carpetas profundas.
-        """
         if not self.is_connected():
             return []
-
-        out = []
-        visited = set()
-        count = 0
-
         try:
-            children = node.get_children()
+            payload = sync_adapter.browse(
+                self.name,
+                _node_text(node),
+                "children",
+                depth=0,
+                max_nodes=int(max_nodes),
+                include_properties=bool(include_properties),
+                include_property_values=bool(include_property_values),
+            )
         except Exception:
-            children = []
-
-        for child_id in children:
-            if count >= max_nodes:
-                break
-            try:
-                child_node = self.get_node(child_id)
-                nid = child_node.nodeid.to_string()
-            except Exception:
-                continue
-
-            if nid in visited:
-                continue
-            visited.add(nid)
-            count += 1
-
-            try:
-                display_name = child_node.get_display_name().Text or child_node.get_browse_name().Name or "Unnamed Node"
-            except Exception:
-                display_name = "Unnamed Node"
-
-            try:
-                node_class = child_node.get_node_class().name
-            except Exception:
-                node_class = "Unknown"
-
-            # ¿tiene hijos?
-            has_children = False
-            try:
-                has_children = bool(child_node.get_children())
-            except Exception:
-                has_children = False
-
-            # properties en variables
-            if include_properties:
-                try:
-                    if child_node.get_node_class() == ua.NodeClass.Variable:
-                        has_children = has_children or bool(child_node.get_properties())
-                except Exception:
-                    pass
-
-            node_dict = {
-                "title": display_name,
-                "key": nid,
-                "NodeClass": node_class,
-                "children": [],
-                "has_children": bool(has_children),
-            }
-            out.append(node_dict)
-
-        # Adjuntar properties del nodo si es Variable (como hijos directos)
-        if include_properties:
-            try:
-                if node.get_node_class() == ua.NodeClass.Variable:
-                    for prop_id in node.get_properties():
-                        if count >= max_nodes:
-                            break
-                        prop_node = self.get_node(prop_id)
-                        prop_nid = prop_node.nodeid.to_string()
-                        if prop_nid in visited:
-                            continue
-                        visited.add(prop_nid)
-                        count += 1
-
-                        prop_name = prop_node.get_display_name().Text or prop_node.get_browse_name().Name or "Unnamed Property"
-                        prop_dict = {
-                            "title": prop_name,
-                            "key": prop_nid,
-                            "NodeClass": prop_node.get_node_class().name,
-                            "children": [],
-                            "has_children": False,
-                        }
-                        if include_property_values:
-                            try:
-                                prop_dict["value"] = self._to_jsonable(prop_node.get_value())
-                            except Exception:
-                                prop_dict["value"] = None
-                        out.append(prop_dict)
-            except Exception:
-                pass
-
-        return out
+            return []
+        return payload if isinstance(payload, list) else []
 
     def browse_variables_generic(
         self,
@@ -1260,97 +688,27 @@ class Client(OPCClient):
         _visited_nodeids=None,
         _count=None,
     ):
-        """
-        Recorre el address space y devuelve SOLO nodos de tipo Variable en forma plana:
-        [{ "namespace": "ns=2;i=1234", "displayName": "TagName" }, ...]
-
-        Importante:
-        - No retorna objetos/carpetas.
-        - Evita incluir "properties" (EURange/EngineeringUnits/etc.) porque NO son tags a enlazar:
-          cuando encuentra una Variable, la agrega y NO sigue bajando por debajo de ella.
-        - Protecciones: max_depth y max_nodes.
-        """
-        if _visited_nodeids is None:
-            _visited_nodeids = set()
-        if _count is None:
-            _count = {"n": 0}
-
         if not self.is_connected():
             return []
-        if _depth > max_depth:
-            return []
-        if _count["n"] >= max_nodes:
-            return []
-
-        results = []
-
         try:
-            children = node.get_children()
+            payload = sync_adapter.browse(
+                self.name,
+                _node_text(node),
+                "variables",
+                depth=max(0, int(max_depth) - int(_depth)),
+                max_nodes=int(max_nodes),
+                include_properties=False,
+                include_property_values=False,
+            )
         except Exception:
             return []
-
-        for child_id in children:
-            if _count["n"] >= max_nodes:
-                break
-
-            try:
-                child_node = self.get_node(child_id)
-                nid = child_node.nodeid.to_string()
-            except Exception:
-                continue
-
-            if nid in _visited_nodeids:
-                continue
-            _visited_nodeids.add(nid)
-            _count["n"] += 1
-
-            try:
-                node_class = child_node.get_node_class()
-            except Exception:
-                node_class = None
-
-            # Capturar solo variables
-            if node_class == ua.NodeClass.Variable:
-                try:
-                    display_name = (
-                        child_node.get_display_name().Text
-                        or child_node.get_browse_name().Name
-                        or "Unnamed"
-                    )
-                except Exception:
-                    display_name = "Unnamed"
-
-                results.append({"namespace": nid, "displayName": display_name})
-                # NO bajar debajo de variables para evitar properties/metadata
-                continue
-
-            # Para objetos/carpetas, seguir recorriendo
-            if _depth < max_depth:
-                try:
-                    if child_node.get_children():
-                        results.extend(
-                            self.browse_variables_generic(
-                                child_node,
-                                max_depth=max_depth,
-                                max_nodes=max_nodes,
-                                _depth=_depth + 1,
-                                _visited_nodeids=_visited_nodeids,
-                                _count=_count,
-                            )
-                        )
-                except Exception:
-                    continue
-
-        return results
+        return payload if isinstance(payload, list) else []
 
     def serialize(self):
-        r"""
-        Documentation here
-        """
         return {
-            'client_id': self.get_id(),
-            'server_url': self._server_url,
-            'timeout': self._timeout,
-            'is_opened': self.is_connected(),
-            'owner_node': getattr(self, "owner_node", None),
+            "client_id": self.get_id(),
+            "server_url": self._server_url,
+            "timeout": self._timeout,
+            "is_opened": self.is_connected(),
+            "owner_node": getattr(self, "owner_node", None),
         }

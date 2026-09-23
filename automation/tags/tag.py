@@ -261,6 +261,7 @@ class Tag:
         opc_code: int | None = None,
         substatus: str | None = None,
         *,
+        source: str = "internal",
         notify_observers: bool = True,
     ):
         r"""
@@ -281,6 +282,7 @@ class Tag:
         * **notify_observers** (bool): When False, caller must invoke ``notify()``.
         """
         q = normalize_sample_quality(value, quality)
+        self.last_source = source or "internal"
         self._last_quality = q
         if opc_code is not None:
             self.opc_status_code = opc_code

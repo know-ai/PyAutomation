@@ -4,10 +4,24 @@ PyAutomation embeds an OPC UA server and an OPC UA client manager so you can bot
 
 ## Architecture
 
-- **Embedded OPC UA Server (`OPCUAServer`)**: Runs as a state machine. It publishes folders for CVT tags, alarms, and engines (state machines), updating values continuously. Endpoint defaults to `opc.tcp://0.0.0.0:53530/OPCUAServer/` (override via `OPCUA_SERVER_PORT`).
+- **Embedded OPC UA Server (`OPCUAServer`)**: State machine in `automation/opcua_server/`. The address space is always `Objects/PyAutomationIO/{Site}/{Area}/{Process,Alarms,Engines}` with NodeIds `ns=<idx>;s=t|a|e:<area>:<name>`. `AUTOMATION_MANUFACTURER` is only the `{Site}` folder. It is not a field of the NodeId. Changing `AUTOMATION_SEGMENT` does change NodeIds of that area. An analog tag keeps `EngineeringUnits`, `EURange`, `variable` and `area` as properties. Scan, deadband and filter settings are JSON in `runtime_config` and `filter_config` (at most 6 properties, 7 nodes). Endpoint `opc.tcp://{AUTOMATION_OPCUA_SERVER_HOST}:{AUTOMATION_OPCUA_SERVER_PORT}/OPCUAServer/` (defaults `0.0.0.0` and `53530`). See `specs/opcua-server-address-space.md`.
 - **OPC UA Client Manager**: Manages multiple outbound client sessions to external OPC UA servers. It handles reconnects and subscriptions, pushing updates into CVT tags via `MachineObserver` so downstream components stay in sync.
 - **Address space mapping**: CVT tags carry `opcua_address`, `node_namespace`, and `scan_time` metadata, making it straightforward to bind external nodes or expose internal values.
 - **Logging & alarms**: Once a tag is in CVT, DataLogger and AlarmManager can persist and protect it without protocol-specific code.
+
+The embedded server runs on `asyncua` inside a dedicated operating-system thread with its own asyncio loop. The gevent thread only enqueues snapshots on a bounded queue. It does not call `add_variable` or `start`. The NodeId contract in the next section does not change. Outbound field sessions use a second thread, `opcua-asyncua-client`, also on `asyncua`. That thread does the Read and the subscription. Gevent only waits and writes the CVT.
+
+## NodeId Contract
+
+Syntax: `ns=<idx>;s=<t|a|e>:<area>:<canonical_name>`.
+
+Example: business name `Supe.Linea1.FI_01` in area `Linea1` becomes `ns=2;s=t:linea1:supe.linea1.fi_01`.
+
+`AUTOMATION_MANUFACTURER` is the `{Site}` folder so a person can browse the plant. It is not a structural field. Changing that environment variable does not change NodeIds of tags that already exist. Changing `AUTOMATION_SEGMENT` does, because area is part of the identifier. Do not change `SEGMENT` on a plant that already has SCADA bindings.
+
+Canonicalization, in order: NFC, strip control characters, collapse whitespace, `casefold`, spaces become dots, `;` and `,` become `_`, drop dots at the ends only, cut the result at 256 characters. Empty input becomes `_`. The function is idempotent. `FI..01` stays `fi..01`. A roman numeral `Ⅰ` is not folded into ASCII `I`, so those two names stay different NodeIds.
+
+New manual tags that omit the prefix are stored as `{MANUFACTURER}.{SEGMENT}.{short}` (`Default` and `Global` when those settings are empty). Names that start with `PyAutomationIO.`, `SYS.`, `ALM.PERF.` or `alarm.SYS.` are rejected. Two different business names that canonicalize to the same string are rejected. Reloading a tag from storage does not rename it.
 
 ### OPC UA Integration Architecture
 
