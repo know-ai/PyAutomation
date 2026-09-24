@@ -26,7 +26,8 @@ from ..variables import (
     Density,
     Percentage,
     Adimentional,
-    Volume
+    Volume,
+    DataSize,
 )
 
 DATETIME_FORMAT = "%m/%d/%Y, %H:%M:%S.%f"
@@ -197,6 +198,8 @@ class Tag:
             self.value = Adimentional(value=0.0, unit=self.unit)
         elif variable.lower()=="volume":
             self.value = Volume(value=0.0, unit=self.unit)
+        elif variable.lower()=="datasize":
+            self.value = DataSize(value=0.0, unit=self.unit)
 
         self.values = Buffer()
         self.timestamps = Buffer()
@@ -479,6 +482,8 @@ class Tag:
             self.value = Adimentional(value=0.0, unit=self.unit)
         elif variable.lower()=="volume":
             self.value = Volume(value=0.0, unit=self.unit)
+        elif variable.lower()=="datasize":
+            self.value = DataSize(value=0.0, unit=self.unit)
 
     def set_opcua_address(self, opcua_address:str):
         r"""

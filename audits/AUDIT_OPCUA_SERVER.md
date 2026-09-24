@@ -38,7 +38,7 @@ La cifra 3.8× del spec es un bench de terceros (o6Python frente a asyncua). Est
 | CA-ASYNCUA-02 | Cumple en el servidor | El embebido no instancia `opcua.Server`. El paquete `opcua` sigue para el cliente |
 | CA-ASYNCUA-03 | Cumple | `make_node_id` no se reescribió. Los tests de identidad siguen verdes |
 | CA-ASYNCUA-04 | Cumple | `ensure_branch_async` arma `PyAutomationIO/{site}/{area}/{Process,Alarms,Engines}` |
-| CA-ASYNCUA-05 | Cumple | El snapshot de un tag analógico lleva como máximo 6 properties. Los tests de exposers siguen en 7 nodos |
+| CA-ASYNCUA-05 | Cumple | El snapshot de un tag analógico lleva como máximo 5 properties. No se publica `area`. Los tests de exposers quedan en 6 nodos |
 | CA-ASYNCUA-06 | Cumple | `to_data_value` sigue armando Value, StatusCode, SourceTimestamp y ServerTimestamp con `asyncua.ua` |
 | CA-ASYNCUA-07 | Cumple | La fachada no renombra métodos |
 | CA-ASYNCUA-08 | Abierto | p95 = 9566 ms, una muestra |
@@ -92,9 +92,9 @@ No hay regresión respecto de los gates que ya pasaban en la V5. Esas cifras son
 
 ## 2. Contrato NodeId (opción B)
 
-El identificador publicado no cambia de forma: `ns=<idx>;s=<t|a|e>:<area>:<nombre-canonico>`. `AUTOMATION_MANUFACTURER` no es un campo. Es la carpeta `{site}` bajo `Objects/PyAutomationIO`. Cambiarla no mueve un NodeId ya publicado. Cambiar `AUTOMATION_SEGMENT` sí, porque el área es parte del identificador. No conviene cambiar `SEGMENT` en una planta que ya tiene bindings de SCADA.
+El identificador publicado es `ns=<idx>;s=<t|a|e>:<nombre-canonico>`. `AUTOMATION_MANUFACTURER` y `AUTOMATION_SEGMENT` son las carpetas `{site}` y `{area}` bajo `Objects/PyAutomationIO`. No son campos del NodeId: el nombre del tag ya trae el segmento.
 
-Ejemplo: `Supe.Linea1.FI_01` en el área `Linea1` es `t:linea1:supe.linea1.fi_01`.
+Ejemplo: `Supe.Linea1.FI_01` es `t:supe.linea1.fi_01`.
 
 `canonicalize_name` cumple, y `test_identity_contract` lo demuestra:
 
@@ -137,7 +137,7 @@ El tick compara, una vez y en O(1), `AUTOMATION_MANUFACTURER` y `AUTOMATION_SEGM
 
 `precompute_node_ids` corre en el arranque en frío, antes de encolar, y llena `_node_id_cache`. `canonical_for` lee ese cache. Un alta posterior se calcula en `enqueue_expose`. `make_node_id` queda fuera del top 10 del perfil.
 
-El tag analógico publica como máximo 6 properties y 7 nodos: `EngineeringUnits` o `unit`, `EURange` si hay rango, `variable`, `area`, `runtime_config` (JSON con `scan_time` y `dead_band` si aplican) y `filter_config` (JSON con `enabled`, `wavelet`, `level`, `threshold_factor` si el filtro está activo). Bool y string siguen en `variable` y `area`.
+El tag analógico publica como máximo 5 properties y 6 nodos: `unit` (símbolo de display en texto), `EURange` si hay rango, `variable`, `runtime_config` (JSON con `scan_time` y `dead_band` si aplican) y `filter_config` (JSON con `enabled`, `wavelet`, `level`, `threshold_factor` si el filtro está activo). Bool y string publican solo `variable`. No hay property `area` ni `EngineeringUnits`.
 
 El tick elige el budget de exposición en O(1):
 

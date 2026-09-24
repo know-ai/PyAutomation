@@ -7,6 +7,8 @@ import {
   getClientTreeChildrenWithOptions,
   getNodeValues,
   getNodeAttributes,
+  connectClient,
+  disconnectClient,
   listClients,
   removeClient,
   updateClient,
@@ -17,6 +19,25 @@ import {
 import { useTranslation } from "../hooks/useTranslation";
 import { socketService } from "../services/socket";
 import { translateOpcUaError, type OpcUaErrorView } from "../utils/opcuaErrors";
+
+type ClientLinkLed = "green" | "yellow" | "red";
+
+function clientLinkLed(
+  clients: OpcUaClient[],
+  selected: string,
+  connected: Record<string, boolean>,
+  held: Record<string, boolean>
+): ClientLinkLed {
+  if (!selected) return "red";
+  const selectedUp = connected[selected] ?? false;
+  if (!selectedUp) return "red";
+  const peerDown = clients.some((client) => {
+    if (client.name === selected) return false;
+    if (held[client.name] || client.manual_hold) return false;
+    return !(connected[client.name] ?? client.is_opened ?? false);
+  });
+  return peerDown ? "yellow" : "green";
+}
 
 type SelectedNode = {
   client: string;
@@ -337,6 +358,7 @@ export function Communications() {
   const { t } = useTranslation();
   const [clients, setClients] = useState<OpcUaClient[]>([]);
   const [clientConnectionStatus, setClientConnectionStatus] = useState<Record<string, boolean>>({});
+  const [clientManualHold, setClientManualHold] = useState<Record<string, boolean>>({});
   // No hidratar desde localStorage en el primer render: dispara loadTree antes de
   // validar contra /opcua/clients/ y produce 404 client_not_found con nombres obsoletos.
   const [selectedClient, setSelectedClient] = useState<string>("");
@@ -369,6 +391,11 @@ export function Communications() {
       ? (clientConnectionStatus[selectedClient] ?? selectedClientObj.is_opened ?? false)
       : false;
   }, [selectedClient, clients, clientConnectionStatus]);
+
+  const linkLed = useMemo(
+    () => clientLinkLed(clients, selectedClient, clientConnectionStatus, clientManualHold),
+    [clients, selectedClient, clientConnectionStatus, clientManualHold]
+  );
 
   // Verificar si el formulario está completo para habilitar el botón Crear/Update
   const isFormComplete = useMemo(() => {
@@ -415,7 +442,22 @@ export function Communications() {
 
   // Escuchar eventos de conexión/desconexión OPC UA
   useEffect(() => {
-    const handleOpcUaDisconnected = (data: { message: string; server_url?: string }) => {
+    const applyLink = (name: string, opened: boolean, held: boolean) => {
+      setClientConnectionStatus((prev) => ({ ...prev, [name]: opened }));
+      setClientManualHold((prev) => ({ ...prev, [name]: held }));
+      setClients((prev) =>
+        prev.map((client) =>
+          client.name === name ? { ...client, is_opened: opened, manual_hold: held } : client
+        )
+      );
+    };
+
+    const handleOpcUaDisconnected = (data: { message: string; server_url?: string; client_name?: string; manual_hold?: boolean }) => {
+      const held = Boolean(data.manual_hold);
+      if (data.client_name) {
+        applyLink(data.client_name, false, held);
+        return;
+      }
       const serverUrl = data.server_url || extractServerUrlFromMessage(data.message || "");
       
       if (serverUrl) {
@@ -423,7 +465,6 @@ export function Communications() {
           const updated = { ...prev };
           let updatedCount = 0;
           
-          // Buscar todos los clientes que coincidan con este server_url
           clients.forEach((client) => {
             if (client.server_url === serverUrl) {
               updated[client.name] = false;
@@ -431,11 +472,17 @@ export function Communications() {
             }
           });
           
-          // Si no encontramos ningún cliente, intentar buscar por el server_url extraído del mensaje
           if (updatedCount === 0) {
             console.warn(`OPC UA disconnected event received for unknown server: ${serverUrl}`);
           }
           
+          return updated;
+        });
+        setClientManualHold((prev) => {
+          const updated = { ...prev };
+          clients.forEach((client) => {
+            if (client.server_url === serverUrl) updated[client.name] = held;
+          });
           return updated;
         });
       } else {
@@ -443,7 +490,11 @@ export function Communications() {
       }
     };
 
-    const handleOpcUaConnected = (data: { message: string; server_url?: string }) => {
+    const handleOpcUaConnected = (data: { message: string; server_url?: string; client_name?: string; manual_hold?: boolean }) => {
+      if (data.client_name) {
+        applyLink(data.client_name, true, false);
+        return;
+      }
       const serverUrl = data.server_url || extractServerUrlFromMessage(data.message || "");
       
       if (serverUrl) {
@@ -451,7 +502,6 @@ export function Communications() {
           const updated = { ...prev };
           let updatedCount = 0;
           
-          // Buscar todos los clientes que coincidan con este server_url
           clients.forEach((client) => {
             if (client.server_url === serverUrl) {
               updated[client.name] = true;
@@ -464,6 +514,13 @@ export function Communications() {
             console.warn(`OPC UA connected event received for unknown server: ${serverUrl}`);
           }
           
+          return updated;
+        });
+        setClientManualHold((prev) => {
+          const updated = { ...prev };
+          clients.forEach((client) => {
+            if (client.server_url === serverUrl) updated[client.name] = false;
+          });
           return updated;
         });
       } else {
@@ -497,18 +554,21 @@ export function Communications() {
           port: c.port,
           server_url: c.server_url,
           is_opened: c.is_opened ?? false,
+          manual_hold: c.manual_hold ?? false,
           client_id: c.client_id,
         };
       }).filter((c) => c.name);
       
       setClients(clientsList);
       
-      // Actualizar estado de conexión basado en is_opened
       const connectionStatus: Record<string, boolean> = {};
+      const holdStatus: Record<string, boolean> = {};
       clientsList.forEach((client) => {
         connectionStatus[client.name] = client.is_opened ?? false;
+        holdStatus[client.name] = client.manual_hold ?? false;
       });
       setClientConnectionStatus(connectionStatus);
+      setClientManualHold(holdStatus);
       
       // Si hay clientes disponibles
       if (clientsList.length > 0) {
@@ -930,6 +990,34 @@ export function Communications() {
     }
   };
 
+  const handleDisconnectClient = async (clientName: string) => {
+    if (!clientName || isConnectingClient) return;
+    try {
+      setFormError(null);
+      setIsConnectingClient(true);
+      await disconnectClient(clientName);
+      await loadClients();
+    } catch (e: any) {
+      setFormError(translateOpcUaError(t, e, "communications.errors.remove_failed"));
+    } finally {
+      setIsConnectingClient(false);
+    }
+  };
+
+  const handleConnectClient = async (clientName: string) => {
+    if (!clientName || isConnectingClient) return;
+    try {
+      setFormError(null);
+      setIsConnectingClient(true);
+      await connectClient(clientName);
+      await loadClients();
+    } catch (e: any) {
+      setFormError(translateOpcUaError(t, e, "communications.errors.add_failed"));
+    } finally {
+      setIsConnectingClient(false);
+    }
+  };
+
   const handleRemoveClient = async (clientName: string) => {
     if (!clientName) return;
     try {
@@ -1119,6 +1207,26 @@ export function Communications() {
                       {t("common.edit")}
                     </Button>
                   )}
+                  {selectedClient && selectedClientConnectionStatus && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => handleDisconnectClient(selectedClient)}
+                      disabled={isConnectingClient}
+                    >
+                      {t("communications.disconnect")}
+                    </Button>
+                  )}
+                  {selectedClient && !selectedClientConnectionStatus && (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      onClick={() => handleConnectClient(selectedClient)}
+                      disabled={isConnectingClient}
+                    >
+                      {isConnectingClient ? t("communications.connecting") : t("communications.connect")}
+                    </Button>
+                  )}
               <Button
                 type="button"
                 variant="danger"
@@ -1160,19 +1268,23 @@ export function Communications() {
                     height: "20px",
                     minWidth: "20px",
                     borderRadius: "50%",
-                    backgroundColor: selectedClientConnectionStatus ? "#28a745" : "#dc3545",
-                    boxShadow: selectedClientConnectionStatus
+                    backgroundColor: linkLed === "green" ? "#28a745" : linkLed === "yellow" ? "#ffc107" : "#dc3545",
+                    boxShadow: linkLed === "green"
                       ? "0 0 12px rgba(40, 167, 69, 0.9), 0 0 6px rgba(40, 167, 69, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -2px 4px rgba(0, 0, 0, 0.3)"
-                      : "0 0 12px rgba(220, 53, 69, 0.9), 0 0 6px rgba(220, 53, 69, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -2px 4px rgba(0, 0, 0, 0.3)",
+                      : linkLed === "yellow"
+                        ? "0 0 12px rgba(255, 193, 7, 0.9), 0 0 6px rgba(255, 193, 7, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -2px 4px rgba(0, 0, 0, 0.3)"
+                        : "0 0 12px rgba(220, 53, 69, 0.9), 0 0 6px rgba(220, 53, 69, 0.6), inset 0 2px 4px rgba(255, 255, 255, 0.4), inset 0 -2px 4px rgba(0, 0, 0, 0.3)",
                     border: "2px solid rgba(255, 255, 255, 0.6)",
                     flexShrink: 0,
                     cursor: "default",
                     transition: "all 0.3s ease",
                   }}
                   title={
-                    selectedClientConnectionStatus
-                      ? (t("communications.clientConnected") || "Client Connected")
-                      : (t("communications.clientDisconnected") || "Client Disconnected")
+                    linkLed === "green"
+                      ? t("communications.ledAllConnected")
+                      : linkLed === "yellow"
+                        ? t("communications.ledSomeDown")
+                        : t("communications.ledSelectedDown")
                   }
                 />
               )}

@@ -32,6 +32,23 @@ class TestOpcuaServerAttrFilters(unittest.TestCase):
         attrs = [{"name": "CVT.TagA", "namespace": "ns=2;i=1", "access_level": "Read"}]
         self.assertEqual(filter_opcua_server_attrs(attrs, name=""), attrs)
 
+    def test_server_view_reads_the_listing(self):
+        from automation.core import PyAutomation
+
+        rows = [{
+            "name": "Process.DI_02",
+            "namespace": "ns=2;s=t:linea1:di_02",
+            "access_level": 1,
+            "access_level_label": "Read",
+            "user_access_level": 1,
+            "access_restrictions": 0,
+        }]
+        app = object.__new__(PyAutomation)
+        app.get_machine = lambda name: SimpleNamespace(list_attrs=lambda: rows)
+        self.assertEqual(app.get_opcua_server_attrs(), rows)
+        self.assertEqual(app.get_opcua_server_attrs(name="di_02"), rows)
+        self.assertEqual(app.get_opcua_server_attrs(name="missing"), [])
+
 
 class TestOpcuaServerDynamicExpose(unittest.TestCase):
     def _server_stub(self) -> OPCUAServer:

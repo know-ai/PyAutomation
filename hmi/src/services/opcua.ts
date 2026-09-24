@@ -6,6 +6,7 @@ export type OpcUaClient = {
   port?: number;
   server_url?: string;
   is_opened?: boolean;
+  manual_hold?: boolean;
   client_id?: string;
 };
 
@@ -295,6 +296,22 @@ export const addClient = async (client: { name: string; host: string; port: numb
 export const removeClient = async (clientName: string) => {
   const { data } = await api.delete(
     `/opcua/clients/remove/${encodeURIComponent(clientName)}`
+  );
+  return data;
+};
+
+export const connectClient = async (clientName: string) => {
+  const { data } = await api.post(
+    `/opcua/clients/connect/${encodeURIComponent(clientName)}`,
+    {},
+    { timeout: 60_000 }
+  );
+  return data;
+};
+
+export const disconnectClient = async (clientName: string) => {
+  const { data } = await api.post(
+    `/opcua/clients/disconnect/${encodeURIComponent(clientName)}`
   );
   return data;
 };

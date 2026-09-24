@@ -74,7 +74,7 @@ async def package_startup(n: int) -> None:
     folder = await builder.ensure_branch_async("Supe", "Linea1", "Process")
     for i in range(n):
         tag = SyntheticTag(i)
-        await builder.add_variable_async(folder, f"t:linea1:tag_{i}", tag.display_name, 0.0)
+        await builder.add_variable_async(folder, f"t:supe.linea1.tag_{i}", tag.display_name, 0.0)
     await server.start()
     await server.stop()
 

@@ -33,8 +33,9 @@ class TestIdentity(unittest.TestCase):
     def test_entity_types_differ(self):
         self.assertNotEqual(make_node_id("t", "Linea1", "X.Y"), make_node_id("a", "Linea1", "X.Y"))
 
-    def test_missing_area(self):
-        self.assertEqual(make_node_id("t", None, "X"), "t:_:x")
+    def test_area_is_not_part_of_the_identifier(self):
+        self.assertEqual(make_node_id("t", None, "X"), "t:x")
+        self.assertEqual(make_node_id("t", "Linea1", "Supe.Linea1.FI_02"), "t:supe.linea1.fi_02")
 
     def test_bad_entity(self):
         with self.assertRaises(ValueError):

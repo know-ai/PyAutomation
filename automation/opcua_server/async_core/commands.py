@@ -25,6 +25,7 @@ class ExposeEntity:
     initial: object
     properties: tuple[tuple[str, object], ...]
     access: int = 1
+    groups: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -37,11 +38,19 @@ class ApplyAccess:
 class WriteItem:
     identifier: str
     data_value: object
+    unit: str | None = None
+    refresh: object | None = None
 
 
 @dataclass(frozen=True)
 class WriteValues:
     items: tuple[WriteItem, ...]
+
+
+@dataclass(frozen=True)
+class DropTag:
+    name: str
+    reexpose: bool = False
 
 
 @dataclass(frozen=True)

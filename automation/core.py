@@ -2833,6 +2833,9 @@ class PyAutomation(Singleton):
                     client_data['name'] = client_name  # Alias para compatibilidad con frontend
                     client_data['host'] = host
                     client_data['port'] = port
+                    if not client_data.get("server_url"):
+                        client_data["server_url"] = server_url
+                    client_data.setdefault("manual_hold", False)
                     all_clients[client_name] = client_data
                 else:
                     # Si no está en memoria, crear entrada con datos de BD pero desconectado
@@ -2843,6 +2846,7 @@ class PyAutomation(Singleton):
                         'port': port,
                         'server_url': server_url,
                         'is_opened': False,
+                        'manual_hold': False,
                         'connected': False
                     }
         else:
@@ -3047,6 +3051,9 @@ class PyAutomation(Singleton):
             - **name**: Full name path (parent_folder.variable_name or parent_folder.variable_name.property_name)
             - **namespace**: OPC UA node namespace string
             - **access_level**: Integer bitmask
+            - **access_level_label**: Read / Write / ReadWrite label
+            - **user_access_level**: Integer bitmask
+            - **access_restrictions**: Integer, 0 when the stack cannot publish the attribute
 
         **Usage:**
 
@@ -3062,76 +3069,15 @@ class PyAutomation(Singleton):
         ```
         """
         from .modules.opcua.filters import filter_opcua_server_attrs
-        from .state_machine import Node, ua
         from .models import StringType
-        
-        attrs = list()
-        
-        # Get OPCUAServer machine by name
+
         opcua_server_machine = self.get_machine(name=StringType("OPCUAServer"))
-        
         if not opcua_server_machine:
-            return attrs
-
+            return []
         listed = getattr(opcua_server_machine, "list_attrs", None)
-        if callable(listed):
-            return filter_opcua_server_attrs(listed(), name=name)
-        
-        # Iterate through all attributes of the machine
-        for attr in dir(opcua_server_machine):
-            if hasattr(opcua_server_machine, attr):
-                node = getattr(opcua_server_machine, attr)
-                if isinstance(node, Node):
-                    
-                    node_class = node.get_node_class()
-                    if node_class == ua.NodeClass.Variable:
-                        
-                        try:
-                            browse_name = node.get_browse_name().Name or ""
-                        except Exception:
-                            browse_name = ""
-                        display_name = ""
-                        try:
-                            display_name = (
-                                node.get_attribute(ua.AttributeIds.DisplayName).Value.Value.Text
-                                or ""
-                            )
-                        except Exception:
-                            pass
-                        tag_label = browse_name or display_name
-                        if tag_label and "." not in tag_label and display_name:
-                            tag_label = display_name
-                        # Get parent node
-                        parent_node = node.get_parent()
-                        
-                        # Get parent folder name
-                        parent_name = parent_node.get_browse_name().Name
-                        from .opcua_server.access.level import access_label
-
-                        bits = int(node.get_access_level())
-                        attrs.append({
-                            "name": f"{parent_name}.{tag_label}",
-                            "namespace": node.nodeid.to_string(),
-                            "access_level": bits,
-                            "access_level_label": access_label(bits),
-                            "user_access_level": bits,
-                            "access_restrictions": 0,
-                        })
-                        
-                        properties = node.get_properties()
-                        for prop in properties:
-                            prop_name = prop.get_display_name().Text
-                            prop_bits = int(prop.get_access_level())
-                            attrs.append({
-                                "name": f"{parent_name}.{tag_label}.{prop_name}",
-                                "namespace": prop.nodeid.to_string(),
-                                "access_level": prop_bits,
-                                "access_level_label": access_label(prop_bits),
-                                "user_access_level": prop_bits,
-                                "access_restrictions": 0,
-                            })
-        
-        return filter_opcua_server_attrs(attrs, name=name)
+        if not callable(listed):
+            return []
+        return filter_opcua_server_attrs(list(listed() or []), name=name)
 
     @logging_error_handler
     @validate_types(namespace=str, access_level=int|str, name=str|type(None), output=tuple)
@@ -3375,7 +3321,10 @@ class PyAutomation(Singleton):
             if owner_node != scope.node_id:
                 return False, f"OPC UA client '{client_name}' belongs to another node"
 
-        servers = self.find_opcua_servers(host=host, port=port)
+        from .managers.opcua_client import awaiting_embedded_server
+
+        if not awaiting_embedded_server(host, port):
+            servers = self.find_opcua_servers(host=host, port=port)
 
         # Intentar agregar el cliente al manager incluso si no encuentra servidores
         # El manager manejará la conexión y agregará el cliente a memoria aunque falle
@@ -3426,6 +3375,16 @@ class PyAutomation(Singleton):
         if scope.enabled and client_name not in self.get_opcua_clients():
             return False
         return self.opcua_client_manager.remove(client_name=client_name)
+
+    @logging_error_handler
+    def connect_opcua_client(self, client_name: str):
+        """Open the selected client session and clear an operator hold."""
+        return self.opcua_client_manager.connect(client_name=client_name)
+
+    @logging_error_handler
+    def disconnect_opcua_client(self, client_name: str):
+        """Close the selected client and keep it closed until an explicit connect."""
+        return self.opcua_client_manager.disconnect(client_name=client_name)
 
     @logging_error_handler
     def resubscribe_mapped_tags_for_opcua_client(
@@ -5360,7 +5319,10 @@ class PyAutomation(Singleton):
             result = self.add_opcua_client(**client)
             if result:
                 success, message = result
-                if success:
+                if success and isinstance(message, dict) and message.get("deferred"):
+                    logging.info(f"OPC UA client {client_name} waiting for the embedded server")
+                    print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {client_name} waiting for the embedded server", "INFO"))
+                elif success:
                     logging.info(f"OPC UA client {client_name} loaded from database and connected")
                     print(_colorize_message(f"[{str_date}] [INFO] OPC UA client {client_name} loaded from database and connected", "INFO"))
                 else:
@@ -6451,7 +6413,7 @@ class PyAutomation(Singleton):
         self.release_ephemeral_historian()
 
     @logging_error_handler
-    def create_system_user(self):
+    def create_system_user(self, *, reset_existing: bool = True):
         r"""
         Ensures a 'system' user exists with 'sudo' role. Used for automated internal actions.
 
@@ -6485,7 +6447,7 @@ class PyAutomation(Singleton):
                     name="System",
                     lastname="Intelcon",
                 )
-            else:
+            elif reset_existing:
                 self.reset_password(target_username="system", new_password=system_password)
             return
 
@@ -6507,7 +6469,7 @@ class PyAutomation(Singleton):
                             name="System",
                             lastname="Intelcon"
                         )
-                else:
+                elif reset_existing:
                     self.reset_password(target_username="system", new_password=system_password)
 
     @logging_error_handler
@@ -6603,6 +6565,10 @@ class PyAutomation(Singleton):
                 log_unit_migrations_dry_run()
             except Exception:
                 logging.debug("unit migrations dry-run skipped", exc_info=True)
+            if self.is_db_connected():
+                # Engines emit system events as soon as machines start. The user
+                # must exist before replication, or the first event stays PENDING.
+                self.create_system_user(reset_existing=False)
             if not self.is_db_connected():
                 logging.info(
                     "Starting in offline-catalog mode (no remote historian). "

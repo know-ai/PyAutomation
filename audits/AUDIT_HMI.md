@@ -88,6 +88,7 @@ Si el componente se desmontaba antes del `connect`, el `once` no se cancelaba �
 | **HMI-H3** | Cero `document.hidden` | Flush valor 1 s → 5 s en background; health/machines/communications/Plotly pausan; **el socket sigue recibiendo** |
 | **HMI-H4** | `AlarmTableRow` definido *dentro* de `Alarms()` → memo inútil | Módulo propio + `React.memo` |
 | **HMI-H5** | Communications poll 1 s escribía `localStorage` | Persistencia debounce 500 ms en onChange; ticker solo UI |
+| **HMI-OPC-LED** | El LED de Clientes OPC UA era verde/rojo del cliente seleccionado y no había Desconectar | LED rojo/amarillo/verde del conjunto; Conectar y Desconectar actúan solo sobre el seleccionado. El resto de sesiones sigue abierto. Ver `AUDIT_OPCUA_CLIENT.md`, sesiones simultáneas |
 | **HMI-H6** | Callbacks no se re-enlazaban tras `disconnect()` + nuevo `io()` | Cubierto por EventBus |
 
 HMI-H3 es la mitigación que **introdujo** el síntoma de ~4 s en StripChart (ver §3). El canal de historial se separó después.

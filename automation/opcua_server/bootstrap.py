@@ -38,7 +38,8 @@ def start_endpoint(server) -> bool:
         server.host = host
         server.runner = AsyncioRunner(server)
         server.runner.start()
-        shelf = Path(f"opcua_standard_aspace_{server.port}.shelf")
+        # v3 rebuilds browse parents (engine folders). NodeId strings stay the same.
+        shelf = Path(f"opcua_aspace_v3_{server.port}.shelf")
         server.runner.submit(
             StartEndpoint(
                 host=str(host),
@@ -79,6 +80,12 @@ def start_endpoint(server) -> bool:
     server._opcua_ready = True
     _freeze_registries()
     bind(server)
+    try:
+        from ..managers.opcua_client import connect_embedded_waiters
+
+        connect_embedded_waiters()
+    except Exception:
+        _LOG.debug("embedded OPC UA client sessions skipped", exc_info=True)
     server.send("start_to_wait")
     return True
 

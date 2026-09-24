@@ -15,7 +15,11 @@ from typing import Any
 from .worker import BaseWorker
 from ..utils.perf_alarm_evaluator import PerfAlarmEvaluator
 from ..utils.performance_alarm_config import load_performance_alarm_config
-from ..utils.performance_alarms import catalog_for_snapshot, ensure_performance_alarms
+from ..utils.performance_alarms import (
+    catalog_for_snapshot,
+    ensure_performance_alarms,
+    publish_performance_values,
+)
 
 _LOGGER = logging.getLogger("pyautomation.metrics")
 
@@ -228,6 +232,7 @@ class MetricsSamplerWorker(BaseWorker):
             self._evaluator.evaluate(payload)
             cfg = self._evaluator.config or load_performance_alarm_config(self._app_config())
             payload["PERF_ALARMS"] = catalog_for_snapshot(cfg)
+            publish_performance_values(payload)
         except Exception:
             _LOGGER.debug("metrics performance alarms skipped", exc_info=True)
 

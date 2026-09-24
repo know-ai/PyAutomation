@@ -46,6 +46,16 @@ class AddressSpaceBuilder:
         area_node = self._folder(f"area:{site_name}:{area_name}", site_node, area_name)
         return self._folder(f"kind:{site_name}:{area_name}:{kind}", area_node, kind)
 
+    def ensure_group(self, site: str | None, area: str | None, kind: str, group: str):
+        """Folder under Process/Alarms/Engines. Complexity: O(1)."""
+        label = folder_token(group, "")
+        if not label:
+            return self.ensure_branch(site, area, kind)
+        parent = self.ensure_branch(site, area, kind)
+        site_name = folder_token(site, "Default")
+        area_name = folder_token(area, "Global")
+        return self._folder(f"group:{site_name}:{area_name}:{kind}:{label}", parent, label)
+
     async def _folder_async(self, key: str, parent, browse_name: str):
         cached = self._folders.get(key)
         if cached is not None:
@@ -64,6 +74,20 @@ class AddressSpaceBuilder:
         site_node = await self._folder_async(f"site:{site_name}", root, site_name)
         area_node = await self._folder_async(f"area:{site_name}:{area_name}", site_node, area_name)
         return await self._folder_async(f"kind:{site_name}:{area_name}:{kind}", area_node, kind)
+
+    async def ensure_group_async(self, site: str | None, area: str | None, kind: str, group: str):
+        """Async folder under Process/Alarms/Engines. Complexity: O(1)."""
+        label = folder_token(group, "")
+        if not label:
+            return await self.ensure_branch_async(site, area, kind)
+        parent = await self.ensure_branch_async(site, area, kind)
+        site_name = folder_token(site, "Default")
+        area_name = folder_token(area, "Global")
+        return await self._folder_async(
+            f"group:{site_name}:{area_name}:{kind}:{label}",
+            parent,
+            label,
+        )
 
     def reject_reserved_leaf(self, name: str) -> None:
         """Reject a leaf whose business name uses a system prefix. Complexity: O(len(name))."""

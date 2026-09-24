@@ -1,10 +1,10 @@
 """Canonical OPC UA NodeId strings.
 
-Option B: MANUFACTURER is the {site} folder used to browse the tree.
-It is not a structural field of the NodeId. A SCADA binding survives a change
-of AUTOMATION_MANUFACTURER because the identifier is only type, area and name.
+MANUFACTURER is the {site} folder used to browse the tree.
+SEGMENT is the {area} folder. Neither is a structural field of the NodeId.
+The business name already carries the segment (``{site}.{area}.{short}``).
 
-NodeId string (without the namespace index): ``<t|a|e>:<area>:<canonical_name>``.
+NodeId string (without the namespace index): ``<t|a|e>:<canonical_name>``.
 """
 
 from __future__ import annotations
@@ -99,10 +99,15 @@ def folder_token(value: str | None, default: str) -> str:
 
 
 def make_node_id(entity_type: str, area: str | None, name: str) -> str:
-    """Build ``<type>:<area>:<name>``. MANUFACTURER is not a field. Complexity: O(len(name))."""
+    """Build ``<type>:<canonical_name>``. Complexity: O(len(name)).
+
+    ``area`` stays in the browse folder and inside the qualified name.
+    It is not repeated in the identifier.
+    """
     if entity_type not in ("t", "a", "e"):
         raise ValueError(f"Unknown entity type: {entity_type!r}")
-    return f"{entity_type}:{canonical_area(area)}:{canonicalize_name(name)}"
+    del area
+    return f"{entity_type}:{canonicalize_name(name)}"
 
 
 def normalize_tag_name(raw_name: str, manufacturer: str, segment: str) -> str:

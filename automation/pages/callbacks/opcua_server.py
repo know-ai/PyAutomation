@@ -2,7 +2,6 @@ import dash
 from ...pages.components.opcua import OPCUAComponents
 from ...opcua.subscription import SubHandler
 from ...models import StringType
-from ...state_machine import Node, ua
 from ...utils import find_differences_between_lists_opcua_server
 
 
@@ -15,72 +14,14 @@ def init_callback(app:dash.Dash):
     def create_opcua_server_table(opcua_server_machine):
 
         listed = getattr(opcua_server_machine, "list_attrs", None)
-        if callable(listed):
-            rows = []
-            for row in listed() or []:
-                item = dict(row)
-                item["access_level"] = item.get("access_level_label") or item.get("access_level")
-                rows.append(item)
-            return rows
-
-        attrs = list()        
-        for attr in dir(opcua_server_machine):
-            if hasattr(opcua_server_machine, attr):
-                node = getattr(opcua_server_machine, attr)
-                if isinstance(node, Node):
-
-                    node_class = node.get_node_class()
-                    if node_class == ua.NodeClass.Variable:
-                        
-                        display_name = node.get_attribute(ua.AttributeIds.DisplayName).Value.Value.Text
-                        # Obtén el nodo padre
-                        parent_node = node.get_parent()
-
-                        # Obtén el nombre de la carpeta padre (nodo padre)
-                        parent_name = parent_node.get_browse_name().Name
-                        access_level = node.get_access_level()
-                        # Verificar los niveles de acceso
-                        write_only = ua.AccessLevel.CurrentWrite in access_level and ua.AccessLevel.CurrentRead not in access_level
-                        read_write = ua.AccessLevel.CurrentRead in access_level and ua.AccessLevel.CurrentWrite in access_level
-                        access_level = "Read"
-                        if write_only:
-
-                            access_level = "Write"
-                        
-                        elif read_write:
-
-                            access_level = "ReadWrite"
-
-                        attrs.append({
-                            "name": f"{parent_name}.{display_name}",
-                            "namespace": node.nodeid.to_string(),
-                            "access_level": access_level
-                        })
-
-                        properties = node.get_properties()
-                        for prop in properties:
-                            prop_name = prop.get_display_name().Text
-                            # prop_value = prop.get_value()
-
-                            access_level = prop.get_access_level()
-                            # Verificar los niveles de acceso
-                            write_only = ua.AccessLevel.CurrentWrite in access_level and ua.AccessLevel.CurrentRead not in access_level
-                            read_write = ua.AccessLevel.CurrentRead in access_level and ua.AccessLevel.CurrentWrite in access_level
-                            access_level = "Read"
-                            if write_only:
-
-                                access_level = "Write"
-                            
-                            elif read_write:
-
-                                access_level = "ReadWrite"
-
-                            attrs.append({
-                                "name": f"{parent_name}.{display_name}.{prop_name}",
-                                "namespace": prop.nodeid.to_string(),
-                                "access_level": access_level
-                            })
-        return attrs
+        if not callable(listed):
+            return []
+        rows = []
+        for row in listed() or []:
+            item = dict(row)
+            item["access_level"] = item.get("access_level_label") or item.get("access_level")
+            rows.append(item)
+        return rows
 
     @app.callback(
         dash.Output("opcua_server_datatable", "data", allow_duplicate=True),

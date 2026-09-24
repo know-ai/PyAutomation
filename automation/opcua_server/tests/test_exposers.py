@@ -92,8 +92,78 @@ class TestExposers(unittest.TestCase):
         nodes, by_ns = {}, {}
         exposer = CvtExposer(builder, nodes, by_ns)
         node = exposer.upsert("Supe.Linea1.FI_01", _Tag())
-        self.assertLessEqual(1 + len(node.get_properties()), 7)
-        self.assertGreaterEqual(len(node.get_properties()), 3)
+        self.assertLessEqual(1 + len(node.get_properties()), 6)
+        self.assertGreaterEqual(len(node.get_properties()), 2)
+        published = exposer._props[next(iter(exposer._props))]
+        self.assertIn("unit", published)
+        self.assertNotIn("EngineeringUnits", published)
+        self.assertNotIn("area", published)
+
+    def test_published_unit_follows_the_display_unit(self):
+        from automation.opcua_server.async_core.snapshots import _tag_properties
+        from automation.opcua_server.exposures.common import published_unit
+
+        tag = _Tag()
+        tag.get_display_unit = lambda: "kg/lt"
+        self.assertEqual(published_unit(tag), "kg/lt")
+        props = dict(_tag_properties(SimpleNamespace(analog_item_supported=True), tag, "analog"))
+        self.assertEqual(props["unit"], "kg/lt")
+        self.assertNotIn("EngineeringUnits", props)
+        self.assertNotIn("area", props)
+        tag.get_display_unit = lambda: ""
+        self.assertEqual(published_unit(tag), "Pa")
+
+    def test_value_write_carries_the_display_unit(self):
+        from automation.opcua_server.async_core.snapshots import write_item
+
+        tag = SimpleNamespace(
+            name="Supe.Linea1.DI_02",
+            segment="Linea1",
+            area="Linea1",
+            quality=1.0,
+            stale=False,
+            opc_status_code=None,
+            get_unit=lambda: "kg/m3",
+            get_display_unit=lambda: "kg/lt",
+            get_data_type=lambda: "float",
+            get_variable=lambda: "Density",
+            get_value=lambda: 1.25,
+            get_timestamp=lambda: None,
+        )
+        server = SimpleNamespace(cvt=SimpleNamespace(get_tag_by_name=lambda name: tag))
+        item = write_item(server, "t", tag.name, None)
+        self.assertEqual(item.unit, "kg/lt")
+
+    def test_alarm_write_uses_the_linked_tag_value(self):
+        from automation.opcua_server.async_core.snapshots import write_item
+
+        tag = SimpleNamespace(
+            name="Linea1.SYS.PERF.CPU",
+            segment="Linea1",
+            area="Linea1",
+            quality=1.0,
+            stale=False,
+            get_value=lambda: 37.5,
+            get_timestamp=lambda: None,
+        )
+        alarm = SimpleNamespace(
+            name="Linea1.ALM.PERF.CPU",
+            segment="Linea1",
+            area="Linea1",
+            tag=tag,
+            description="cpu",
+            state=SimpleNamespace(serialize=lambda: {"state": "Normal", "process_condition": "Normal", "mnemonic": "CPU", "description": "cpu"}),
+        )
+        server = SimpleNamespace(
+            cvt=SimpleNamespace(get_tag_by_name=lambda name: tag if name == tag.name else None),
+            alarm_manager=SimpleNamespace(get_alarm_by_name=lambda name: alarm),
+            _namespace_idx=2,
+            access=SimpleNamespace(resolve=lambda namespace: 1),
+            analog_item_supported=False,
+        )
+        item = write_item(server, "a", alarm.name, None)
+        self.assertEqual(item.data_value.Value.Value, 37.5)
+        self.assertIsNotNone(item.refresh)
 
     def test_alarm_has_four_properties(self):
         builder = AddressSpaceBuilder(_Folder(), 2)

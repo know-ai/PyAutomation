@@ -5,12 +5,12 @@ Namespace URI: `urn:pyautomationio:opcua:{major}.{minor}` (versión del paquete,
 El plano de publicación es único. Opción B: `MANUFACTURER` es la carpeta `{site}` y no es un campo del NodeId.
 
 ```
-ns=<idx>;s=<t|a|e>:<area>:<nombre-canonico>
+ns=<idx>;s=<t|a|e>:<nombre-canonico>
 ```
 
-Ejemplo: `Supe.Linea1.FI_01` en el área `Linea1` es `ns=2;s=t:linea1:supe.linea1.fi_01`.
+Ejemplo: `Supe.Linea1.FI_01` es `ns=2;s=t:supe.linea1.fi_01`.
 
-El nombre se normaliza con NFC, se quitan los caracteres de control, `casefold`, espacios colapsados a `.`, `;` y `,` escapados a `_`, puntos solo al inicio y al final, y un tope de 256 caracteres. El NodeId no depende de la carpeta ni de `AUTOMATION_MANUFACTURER`. Cambiar `AUTOMATION_SEGMENT` sí cambia los NodeIds de esa área. No cambiar `SEGMENT` en una planta que ya tiene bindings.
+El nombre se normaliza con NFC, se quitan los caracteres de control, `casefold`, espacios colapsados a `.`, `;` y `,` escapados a `_`, puntos solo al inicio y al final, y un tope de 256 caracteres. El segmento ya va dentro de ese nombre y en la carpeta `{Area}`. No se repite como campo del NodeId. Cambiar `AUTOMATION_MANUFACTURER` o `AUTOMATION_SEGMENT` no reescribe el NodeId de un tag cuyo nombre ya está calificado.
 
 Árbol:
 
@@ -20,7 +20,7 @@ Objects/PyAutomationIO/{Site}/{Area}/Process|Alarms|Engines
 
 Site vacío → `Default`. Area vacía → `Global`.
 
-Tags analógicos (máximo 6 properties, 7 nodos): `EngineeringUnits` (o la property `unit` si el probe de AnalogItem falla), `EURange` si hay rango, `variable`, `area`, `runtime_config` y `filter_config`. `runtime_config` es un JSON con `scan_time` y `dead_band` cuando aplican. `filter_config` es un JSON con `enabled`, `wavelet`, `level` y `threshold_factor` cuando el filtro está activo. Booleanos y strings: solo `variable` y `area`.
+Tags analógicos (máximo 5 properties, 6 nodos): `unit` (símbolo de display en texto, por ejemplo `kg/lt`), `EURange` si hay rango, `variable`, `runtime_config` y `filter_config`. `runtime_config` es un JSON con `scan_time` y `dead_band` cuando aplican. `filter_config` es un JSON con `enabled`, `wavelet`, `level` y `threshold_factor` cuando el filtro está activo. Booleanos y strings: solo `variable`. No se publica una property `area`: el segmento ya está en la carpeta y en el nombre canónico.
 
 Alarmas: variable + `state`, `process_condition`, `mnemonic`, `description`.
 

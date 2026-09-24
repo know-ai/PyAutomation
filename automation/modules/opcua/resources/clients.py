@@ -111,6 +111,18 @@ namespaces_parser = reqparse.RequestParser()
 namespaces_parser.add_argument('namespaces', type=list, location='args', required=True, help='List of node namespaces/IDs to read (comma-separated or as array)')
 
 
+def _structure_text(value):
+    """DisplayName.Text for EUInformation, and the numeric ends for Range."""
+    class_name = getattr(getattr(value, "__class__", None), "__name__", "")
+    if class_name == "EUInformation":
+        display = getattr(value, "DisplayName", None)
+        text = getattr(display, "Text", None) if display is not None else None
+        return "" if text is None else text
+    if class_name == "Range":
+        return f"{getattr(value, 'Low', '')} .. {getattr(value, 'High', '')}"
+    return None
+
+
 def extract_primitive_value(value, visited=None):
     """
     Recursively extracts primitive values from OPC UA objects.
@@ -208,6 +220,13 @@ def extract_primitive_value(value, visited=None):
             result = extract_primitive_value(value.Value, visited)
             visited.remove(obj_id)
             return result
+
+    # OPC UA Part 8 structures. The wire type stays EUInformation/Range;
+    # the monitoring table shows the human-readable field.
+    structured = _structure_text(value)
+    if structured is not None:
+        visited.remove(obj_id)
+        return structured
     
     # Handle LocalizedText objects
     if hasattr(value, 'Text'):
@@ -420,6 +439,52 @@ class RemoveOPCUAClientResource(Resource):
             }, 200
         
         return opcua_error(REMOVE_FAILED, client=client_name), 400
+
+
+@ns.route('/connect/<client_name>')
+@api.param('client_name', 'The OPC UA client name to connect')
+class ConnectOPCUAClientResource(Resource):
+
+    @api.doc(security='apikey', description="Opens the session of one OPC UA client. Other clients stay as they are.")
+    @api.response(200, "Client connected")
+    @api.response(400, "Client connection failed")
+    @Api.token_required(auth=True)
+    def post(self, client_name):
+        """Connect one OPC UA client without closing the others."""
+        scoped = _scope_error_payload(_client_scope_error(client_name))
+        if scoped:
+            return scoped
+        result = app.connect_opcua_client(client_name=client_name)
+        error, payload = _command_result(result, ADD_FAILED, client=client_name)
+        if error is None:
+            return {
+                'message': f"OPC UA client '{client_name}' connected",
+                'data': payload if isinstance(payload, dict) else {'message': payload},
+            }, 200
+        return error, 400
+
+
+@ns.route('/disconnect/<client_name>')
+@api.param('client_name', 'The OPC UA client name to disconnect')
+class DisconnectOPCUAClientResource(Resource):
+
+    @api.doc(security='apikey', description="Closes one OPC UA client until the operator connects it again.")
+    @api.response(200, "Client disconnected")
+    @api.response(400, "Client disconnection failed")
+    @Api.token_required(auth=True)
+    def post(self, client_name):
+        """Disconnect one OPC UA client and hold it against the watchdog."""
+        scoped = _scope_error_payload(_client_scope_error(client_name))
+        if scoped:
+            return scoped
+        result = app.disconnect_opcua_client(client_name=client_name)
+        error, payload = _command_result(result, REMOVE_FAILED, client=client_name)
+        if error is None:
+            return {
+                'message': f"OPC UA client '{client_name}' disconnected",
+                'data': payload if isinstance(payload, dict) else {'message': payload},
+            }, 200
+        return error, 400
 
 
 @ns.route('/tree/<client_name>')

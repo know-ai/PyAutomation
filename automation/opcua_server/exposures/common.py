@@ -21,8 +21,19 @@ def entity_site(entity) -> str | None:
 
 
 def leaf_name(entity, entity_type: str) -> str:
-    display = getattr(entity, "display_name", None) or getattr(entity, "name", "")
-    return short_browse_name(str(display or getattr(entity, "name", "")), entity_type)
+    qualified = _plain(getattr(entity, "name", ""))
+    if entity_type == "a":
+        return alarm_browse_name(qualified or str(getattr(entity, "display_name", "") or ""))
+    display = getattr(entity, "display_name", None) or qualified
+    return short_browse_name(str(display or qualified), entity_type)
+
+
+def alarm_browse_name(qualified_name: str) -> str:
+    """Keep the engine segment so ``ppa.leak`` is not shown as ``leak``."""
+    parts = [part for part in str(qualified_name or "").strip().split(".") if part]
+    if len(parts) >= 2:
+        return make_browse_name(f"{parts[-2]}.{parts[-1]}", "a")
+    return make_browse_name(parts[-1] if parts else "", "a")
 
 
 _CANONICAL_CACHE: dict[tuple[str, str, str], str] = {}
@@ -92,3 +103,19 @@ def apply_display_name(node, text: str) -> None:
 
 def browse_label(name: str, entity_type: str) -> str:
     return make_browse_name(name, entity_type)
+
+
+def published_unit(entity) -> str:
+    """Unit of the value this server publishes. That value is already in the display unit."""
+    display = ""
+    getter = getattr(entity, "get_display_unit", None)
+    if callable(getter):
+        display = getter() or ""
+    if not display:
+        display = getattr(entity, "display_unit", None) or ""
+    if display:
+        return str(display)
+    getter = getattr(entity, "get_unit", None)
+    if callable(getter):
+        return str(getter() or "")
+    return str(getattr(entity, "unit", "") or "")

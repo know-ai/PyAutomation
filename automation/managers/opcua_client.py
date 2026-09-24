@@ -24,6 +24,58 @@ def _scope_and_owner(owner_node=None):
     return scope, owner_node
 
 
+def embedded_server_is_ready() -> bool:
+    """True once the embedded OPC UA endpoint is accepting sessions. Complexity: O(M)."""
+    try:
+        from automation import PyAutomation
+
+        machines = PyAutomation().get_machines() or []
+    except Exception:
+        return False
+    for item in machines:
+        machine = item[0] if isinstance(item, tuple) else item
+        if getattr(machine, "_opcua_ready", False):
+            return True
+    return False
+
+
+def targets_local_embedded_server(host, port) -> bool:
+    """The client URL is this process's embedded server. Complexity: O(1)."""
+    import os
+
+    try:
+        wanted = int(port)
+        configured = int(os.environ.get("AUTOMATION_OPCUA_SERVER_PORT") or "53530")
+    except (TypeError, ValueError):
+        return False
+    if wanted != configured:
+        return False
+    name = str(host or "").strip().lower().rstrip(".")
+    bind = (os.environ.get("AUTOMATION_OPCUA_SERVER_HOST") or "0.0.0.0").strip().lower()
+    if name in {"127.0.0.1", "localhost", "::1", "0.0.0.0", ""}:
+        return True
+    return bool(bind) and name == bind and bind not in {"0.0.0.0", "::"}
+
+
+def awaiting_embedded_server(host, port) -> bool:
+    """Defer the session until the embedded endpoint is up. Complexity: O(M)."""
+    return targets_local_embedded_server(host, port) and not embedded_server_is_ready()
+
+
+def connect_embedded_waiters() -> None:
+    """Open sessions that waited for the embedded server. Complexity: O(C)."""
+    try:
+        from automation import PyAutomation
+
+        manager = PyAutomation().opcua_client_manager
+    except Exception:
+        logging.getLogger("pyautomation").debug("embedded OPC UA waiter connect skipped", exc_info=True)
+        return
+    opener = getattr(manager, "open_embedded_waiters", None)
+    if callable(opener):
+        opener()
+
+
 def _scope_owns_node(owner_node) -> bool:
     scope, owner_node = _scope_and_owner(owner_node)
     if scope is None or not getattr(scope, "enabled", False):
@@ -149,7 +201,19 @@ class OPCUAClientManager:
 
         opcua_client = Client(endpoint_url, client_name=client_name, owner_node=owner_node)
         opcua_client._audit_source = source or "client-add"
-        
+        if awaiting_embedded_server(host, port):
+            opcua_client._awaiting_embedded = True
+            self._clients[client_name] = opcua_client
+            if self.logger.get_db() and not OPCUA.client_name_exist(client_name):
+                OPCUA.create(client_name=client_name, host=host, port=port, owner_node=owner_node)
+            _persist_opcua_client_local(client_name, host, port, owner_node)
+            logging.getLogger("pyautomation").info(
+                "OPC UA client %s waits for the embedded server at %s",
+                client_name,
+                endpoint_url,
+            )
+            return True, {"deferred": True, "message": "waiting for embedded OPC UA server"}
+
         message, status_connection = opcua_client.connect()
         
         # Agregar el cliente a memoria incluso si la conexión falla
@@ -202,6 +266,35 @@ class OPCUAClientManager:
             
             # Retornar False para indicar que la conexión falló, pero el cliente está en memoria
             return False, message
+
+    def open_embedded_waiters(self) -> None:
+        """Connect clients that waited for this process's OPC UA server. Complexity: O(C)."""
+        from automation import PyAutomation
+
+        app = PyAutomation()
+        for client_name, client in list(self._clients.items()):
+            if not getattr(client, "_awaiting_embedded", False):
+                continue
+            if getattr(client, "_manual_hold", False):
+                continue
+            client._awaiting_embedded = False
+            client._audit_source = "embedded-ready"
+            message, status = client.connect()
+            if status == 200:
+                logging.getLogger("pyautomation").info(
+                    "OPC UA client %s connected to the embedded server",
+                    client_name,
+                )
+                app.resubscribe_mapped_tags_for_opcua_client(
+                    client_name=client_name,
+                    server_url=client._server_url,
+                )
+                continue
+            logging.getLogger("pyautomation").warning(
+                "OPC UA client %s could not connect after the embedded server started: %s",
+                client_name,
+                message,
+            )
 
     @logging_error_handler
     def remove(self, client_name:str):
@@ -588,15 +681,21 @@ class OPCUAClientManager:
 
         * **client_name** (str): Client name.
         """
-        if client_name in self._clients:
-            if not _scope_owns_node(getattr(self._clients[client_name], "owner_node", None)):
-                logging.getLogger("pyautomation").error(
-                    "OPC UA connect rejected for foreign owner client=%s",
-                    client_name,
-                )
-                return
-            self._clients[client_name]._audit_source = "client-connect"
-            self._clients[client_name].connect()
+        if client_name not in self._clients:
+            return False, f"Client {client_name} was not found"
+        if not _scope_owns_node(getattr(self._clients[client_name], "owner_node", None)):
+            logging.getLogger("pyautomation").error(
+                "OPC UA connect rejected for foreign owner client=%s",
+                client_name,
+            )
+            return False, f"Client {client_name} belongs to another edge node"
+        client = self._clients[client_name]
+        client._manual_hold = False
+        client._audit_source = "client-connect"
+        payload, status = client.connect()
+        if status == 200:
+            return True, payload
+        return False, payload
 
     @logging_error_handler
     def disconnect(self, client_name:str)->dict:
@@ -607,13 +706,16 @@ class OPCUAClientManager:
 
         * **client_name** (str): Client name.
         """
-        if client_name in self._clients:
-            if not _scope_owns_node(
-                getattr(self._clients[client_name], "owner_node", None)
-            ):
-                return
-            self._clients[client_name]._audit_source = "client-disconnect"
-            self._clients[client_name].disconnect()
+        if client_name not in self._clients:
+            return False, f"Client {client_name} was not found"
+        if not _scope_owns_node(getattr(self._clients[client_name], "owner_node", None)):
+            return False, f"Client {client_name} belongs to another edge node"
+        client = self._clients[client_name]
+        client._audit_source = "client-disconnect"
+        payload, status = client.disconnect(retain_endpoint=True)
+        if status == 200:
+            return True, payload
+        return False, payload
 
     @logging_error_handler
     def get(self, client_name:str)->Client:

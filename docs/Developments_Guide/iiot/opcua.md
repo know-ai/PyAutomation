@@ -4,7 +4,7 @@ PyAutomation embeds an OPC UA server and an OPC UA client manager so you can bot
 
 ## Architecture
 
-- **Embedded OPC UA Server (`OPCUAServer`)**: State machine in `automation/opcua_server/`. The address space is always `Objects/PyAutomationIO/{Site}/{Area}/{Process,Alarms,Engines}` with NodeIds `ns=<idx>;s=t|a|e:<area>:<name>`. `AUTOMATION_MANUFACTURER` is only the `{Site}` folder. It is not a field of the NodeId. Changing `AUTOMATION_SEGMENT` does change NodeIds of that area. An analog tag keeps `EngineeringUnits`, `EURange`, `variable` and `area` as properties. Scan, deadband and filter settings are JSON in `runtime_config` and `filter_config` (at most 6 properties, 7 nodes). Endpoint `opc.tcp://{AUTOMATION_OPCUA_SERVER_HOST}:{AUTOMATION_OPCUA_SERVER_PORT}/OPCUAServer/` (defaults `0.0.0.0` and `53530`). See `specs/opcua-server-address-space.md`.
+- **Embedded OPC UA Server (`OPCUAServer`)**: State machine in `automation/opcua_server/`. The address space is always `Objects/PyAutomationIO/{Site}/{Area}/{Process,Alarms,Engines}` with NodeIds `ns=<idx>;s=t|a|e:<name>`. `AUTOMATION_MANUFACTURER` and `AUTOMATION_SEGMENT` are the `{Site}` and `{Area}` folders. They are not fields of the NodeId. The qualified name already contains the segment. An analog tag keeps `unit`, `EURange` and `variable` as properties. `unit` is the display symbol as plain text. Scan, deadband and filter settings are JSON in `runtime_config` and `filter_config` (at most 5 properties, 6 nodes). There is no `area` property. Endpoint `opc.tcp://{AUTOMATION_OPCUA_SERVER_HOST}:{AUTOMATION_OPCUA_SERVER_PORT}/OPCUAServer/` (defaults `0.0.0.0` and `53530`). See `specs/opcua-server-address-space.md`.
 - **OPC UA Client Manager**: Manages multiple outbound client sessions to external OPC UA servers. It handles reconnects and subscriptions, pushing updates into CVT tags via `MachineObserver` so downstream components stay in sync.
 - **Address space mapping**: CVT tags carry `opcua_address`, `node_namespace`, and `scan_time` metadata, making it straightforward to bind external nodes or expose internal values.
 - **Logging & alarms**: Once a tag is in CVT, DataLogger and AlarmManager can persist and protect it without protocol-specific code.
@@ -13,11 +13,11 @@ The embedded server runs on `asyncua` inside a dedicated operating-system thread
 
 ## NodeId Contract
 
-Syntax: `ns=<idx>;s=<t|a|e>:<area>:<canonical_name>`.
+Syntax: `ns=<idx>;s=<t|a|e>:<canonical_name>`.
 
-Example: business name `Supe.Linea1.FI_01` in area `Linea1` becomes `ns=2;s=t:linea1:supe.linea1.fi_01`.
+Example: business name `Supe.Linea1.FI_01` becomes `ns=2;s=t:supe.linea1.fi_01`.
 
-`AUTOMATION_MANUFACTURER` is the `{Site}` folder so a person can browse the plant. It is not a structural field. Changing that environment variable does not change NodeIds of tags that already exist. Changing `AUTOMATION_SEGMENT` does, because area is part of the identifier. Do not change `SEGMENT` on a plant that already has SCADA bindings.
+`AUTOMATION_MANUFACTURER` is the `{Site}` folder and `AUTOMATION_SEGMENT` is the `{Area}` folder, so a person can browse the plant. Neither is a structural field. Changing those environment variables does not change the NodeId of a tag whose stored name already includes the segment. A new tag that omits the prefix is still stored as `{MANUFACTURER}.{SEGMENT}.{short}`.
 
 Canonicalization, in order: NFC, strip control characters, collapse whitespace, `casefold`, spaces become dots, `;` and `,` become `_`, drop dots at the ends only, cut the result at 256 characters. Empty input becomes `_`. The function is idempotent. `FI..01` stays `fi..01`. A roman numeral `Ⅰ` is not folded into ASCII `I`, so those two names stay different NodeIds.
 

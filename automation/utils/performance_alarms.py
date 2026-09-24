@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""ISA-18.2 BOOL alarms for node performance (CPU, disk, SAF, HTTP, …).
+"""Performance tags and alarms (CPU, disk, SAF, HTTP, …).
 
-Tags and alarms live in the AlarmManager. The sampler only drives BOOL values.
-Ack / shelve / unshelve stay on the existing alarm endpoints.
+One CVT tag per variable, named ``SYS.PERF.*``. Magnitudes are float with a
+HIGH alarm. Conditions that already arrive as 0/1 stay boolean. Ack / shelve /
+unshelve stay on the existing alarm endpoints.
 """
 from __future__ import annotations
 
@@ -41,6 +42,8 @@ class PerfAlarmSpec:
     tag_description: str
     alarm_description: str
     compare: str = "gte"
+    kind: str = "float"
+    variable: str = "Adimentional"
 
 
 PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
@@ -51,6 +54,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         alarm_suffix="ALM.PERF.CPU",
         display_name="CPU High",
         unit="%",
+        variable="Percentage",
         tag_description="True when host CPU stays above the performance threshold",
         alarm_description="System · CPU high",
     ),
@@ -61,6 +65,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         alarm_suffix="ALM.PERF.DISK",
         display_name="Disk High",
         unit="%",
+        variable="Percentage",
         tag_description="True when host disk usage stays above the performance threshold",
         alarm_description="System · Disk high",
     ),
@@ -81,6 +86,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         alarm_suffix="ALM.PERF.SAF_LAG",
         display_name="SAF Lag High",
         unit="ms",
+        variable="Time",
         tag_description="True when SAF replication lag stays above the performance threshold",
         alarm_description="System · SAF lag high",
     ),
@@ -91,6 +97,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         alarm_suffix="ALM.PERF.METRICS_AGE",
         display_name="Metrics Stale",
         unit="ms",
+        variable="Time",
         tag_description="True when the metrics snapshot is older than the performance threshold",
         alarm_description="System · Metrics snapshot stale",
     ),
@@ -123,6 +130,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         unit="",
         tag_description="True when a field tag age exceeds 3× scan_time (floor 5 s), even if Socket.IO is connected",
         alarm_description="System · Field values stale",
+        kind="bool",
     ),
     PerfAlarmSpec(
         key="saf_deadletter",
@@ -141,6 +149,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         alarm_suffix="ALM.PERF.HUB_LAG",
         display_name="Hub Lag High",
         unit="ms",
+        variable="Time",
         tag_description="True when the gevent event-loop lag stays above the performance threshold",
         alarm_description="System · Hub event-loop lag",
     ),
@@ -153,6 +162,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         unit="",
         tag_description="True when analog tag history is being shed to protect alarm/event durability",
         alarm_description="System · SAF analog shed",
+        kind="bool",
     ),
     PerfAlarmSpec(
         key="saf_ingest",
@@ -161,6 +171,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         alarm_suffix="ALM.PERF.SAF_INGEST",
         display_name="SAF Ingest Stale",
         unit="ms",
+        variable="Time",
         tag_description="True when DAQ is running but no new domain=tag journal row arrived",
         alarm_description="System · SAF ingest heartbeat lost",
     ),
@@ -173,6 +184,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         unit="",
         tag_description="True when SAF drain rate stays below ingest rate with the queue already above Low",
         alarm_description="System · SAF drain slower than ingest",
+        kind="bool",
     ),
     PerfAlarmSpec(
         key="ssd",
@@ -183,6 +195,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         unit="",
         tag_description="True when SSD wear or temperature exceeds AUTOMATION_SSD_WEAR_WARN / AUTOMATION_SSD_TEMP_WARN",
         alarm_description="System · SSD SMART warning",
+        kind="bool",
     ),
     PerfAlarmSpec(
         key="ntp",
@@ -191,6 +204,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         alarm_suffix="ALM.PERF.NTP",
         display_name="NTP Offset High",
         unit="ms",
+        variable="Time",
         tag_description="True when abs(HOST_NTP_OFFSET_MS) stays above the early-warning threshold (default 100 ms)",
         alarm_description="System · NTP offset high",
     ),
@@ -203,6 +217,7 @@ PERF_ALARM_SPECS: tuple[PerfAlarmSpec, ...] = (
         unit="",
         tag_description="True when another registered edge has last_seen older than AUTOMATION_PEER_STALE_S",
         alarm_description="System · peer edge heartbeat lost",
+        kind="bool",
     ),
 )
 
@@ -379,17 +394,10 @@ def ensure_performance_alarms(config: dict[str, Any] | None = None) -> bool:
             # Merge partial/empty payloads with defaults (never leave threshold as None).
             cfg = load_performance_alarm_config(config)
         global _last_historian_offline_log_mono, _historian_was_offline
+        _delete_meas_tags(app)
         for spec in PERF_ALARM_SPECS:
-            threshold = cfg.get(f"perf_{spec.key}_threshold")
-            tag_name = perf_tag_name(spec.key)
-            _ensure_bool_alarm(
-                app,
-                tag_name=tag_name,
-                alarm_name=perf_alarm_name(spec.key),
-                tag_description=spec.tag_description,
-                alarm_description=threshold_description(spec, threshold),
-                display_name=scoped_display_name(spec.display_name),
-            )
+            _ensure_perf_spec(app, spec, cfg)
+        _ensure_rss_tag(app)
         if not _historian_connected(app):
             if _in_startup_grace():
                 _LOGGER.debug(
@@ -447,10 +455,10 @@ def _release_stuck_perf_alarm(app, spec: PerfAlarmSpec) -> None:
 
 
 def set_performance_alarm(key: str, active: bool, *, value: Any = None, threshold: Any = None) -> bool:
-    """Drive one performance BOOL alarm. Returns True if the BOOL flipped. Never raises."""
+    """Drive one discrete performance BOOL. Magnitudes are published as floats. Never raises."""
     try:
         spec = spec_for(key)
-        if spec is None:
+        if spec is None or spec.kind != "bool":
             return False
         tag_name = perf_tag_name(key)
         app = _app()
@@ -480,6 +488,235 @@ def set_performance_alarm(key: str, active: bool, *, value: Any = None, threshol
     except Exception:
         _LOGGER.error("Failed to update performance alarm %s", key, exc_info=True)
         return False
+
+
+_RSS_FIELD = "HOST_RSS_MB"
+_RSS_SUFFIX = "SYS.PERF.RSS"
+_RSS_VARIABLE = "DataSize"
+_RSS_UNIT = "MB"
+
+
+def catalogue_unit(spec: PerfAlarmSpec) -> str:
+    """Engineering unit stored on the tag. Alarm text may use a different label."""
+    if spec.variable == "Percentage":
+        return "%"
+    if spec.variable == "Time":
+        return "ms"
+    return "adim"
+_RETIRED_MEAS_KEYS = tuple(spec.key.upper() for spec in PERF_ALARM_SPECS) + (
+    "RSS",
+    "HTTP_1M",
+    "THREADS",
+    "HMI_CLIENTS",
+    "DB_LATENCY",
+    "SAMPLE_LAG",
+)
+
+
+def rss_tag_name() -> str:
+    return _scoped_name(_RSS_SUFFIX)
+
+
+def publish_performance_values(snapshot: dict[str, Any] | None) -> None:
+    """Write each snapshot field into its ``SYS.PERF.*`` tag. Never raises."""
+    if not snapshot:
+        return
+    try:
+        from datetime import datetime, timezone
+
+        app = _app()
+        now = datetime.now(timezone.utc)
+        for spec in PERF_ALARM_SPECS:
+            _write_snapshot_value(
+                app, perf_tag_name(spec.key), snapshot.get(spec.snapshot_field), now, spec.kind
+            )
+        _write_snapshot_value(app, rss_tag_name(), snapshot.get(_RSS_FIELD), now, "float")
+    except Exception:
+        _LOGGER.debug("performance value publish skipped", exc_info=True)
+
+
+def _write_snapshot_value(app, name: str, raw: Any, timestamp, kind: str) -> None:
+    if raw is None:
+        return
+    tag = app.cvt.get_tag_by_name(name)
+    if tag is None:
+        return
+    if kind == "bool":
+        value: bool | float = bool(raw) if isinstance(raw, bool) else bool(float(raw))
+    else:
+        value = float(raw)
+    app.cvt.set_value(id=tag.id, value=value, timestamp=timestamp)
+
+
+def _ensure_rss_tag(app) -> None:
+    name = rss_tag_name()
+    tag = app.cvt.get_tag_by_name(name)
+    if tag is None:
+        tag, _message = app.create_tag(
+            name=name,
+            unit=_RSS_UNIT,
+            display_unit=_RSS_UNIT,
+            variable=_RSS_VARIABLE,
+            data_type="float",
+            description="Process resident set size",
+            display_name=scoped_display_name("RSS"),
+            skip_validation=True,
+        )
+        tag = tag or app.cvt.get_tag_by_name(name)
+    _align_tag_measure(app, tag, _RSS_VARIABLE, _RSS_UNIT)
+
+
+def _ensure_perf_spec(app, spec: PerfAlarmSpec, cfg: dict[str, Any]) -> None:
+    threshold = cfg.get(f"perf_{spec.key}_threshold")
+    description = threshold_description(spec, threshold)
+    if spec.kind == "bool":
+        _ensure_bool_alarm(
+            app,
+            tag_name=perf_tag_name(spec.key),
+            alarm_name=perf_alarm_name(spec.key),
+            tag_description=spec.tag_description,
+            alarm_description=description,
+            display_name=scoped_display_name(spec.display_name),
+        )
+    else:
+        _ensure_float_alarm(app, spec, threshold, description)
+    _apply_alarm_timing(app, spec, cfg)
+    _apply_alarm_service(app, spec, cfg)
+
+
+def _ensure_float_alarm(app, spec: PerfAlarmSpec, threshold: Any, description: str) -> None:
+    name = perf_tag_name(spec.key)
+    tag = app.cvt.get_tag_by_name(name)
+    converted = False
+    if tag is None:
+        unit = catalogue_unit(spec)
+        tag, _message = app.create_tag(
+            name=name,
+            unit=unit,
+            display_unit=unit,
+            variable=spec.variable,
+            data_type="float",
+            description=spec.tag_description,
+            display_name=scoped_display_name(spec.display_name),
+            skip_validation=True,
+        )
+        if tag is None:
+            tag = app.cvt.get_tag_by_name(name)
+    else:
+        current = str(getattr(tag, "data_type", "") or "").lower()
+        if current in {"bool", "boolean"}:
+            app.update_tag(id=tag.id, data_type="float")
+            tag = app.cvt.get_tag_by_name(name) or tag
+            converted = True
+    if tag is None:
+        return
+    _align_tag_measure(app, tag, spec.variable, catalogue_unit(spec))
+    if converted:
+        _reexpose_float_node(name)
+    alarm_name = perf_alarm_name(spec.key)
+    alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
+    trigger = float(threshold) if threshold is not None else 0.0
+    if alarm is None:
+        app.create_alarm(
+            name=alarm_name,
+            tag=name,
+            alarm_type="HIGH",
+            trigger_value=trigger,
+            description=description,
+            skip_validation=True,
+        )
+        return
+    setpoint = getattr(alarm, "alarm_setpoint", None)
+    kind = str(getattr(getattr(setpoint, "type", None), "value", "") or "")
+    if kind.upper() not in {"HIGH", "H"}:
+        app.update_alarm(
+            id=alarm.identifier,
+            tag=name,
+            alarm_type="HIGH",
+            trigger_value=trigger,
+            description=description,
+        )
+
+
+def _align_tag_measure(app, tag, variable: str, unit: str) -> None:
+    if tag is None:
+        return
+    current_variable = str(getattr(tag, "variable", "") or "")
+    current_unit = str(getattr(tag, "unit", "") or "")
+    if current_variable == variable and current_unit == unit:
+        return
+    try:
+        app.update_tag(id=tag.id, variable=variable, unit=unit, display_unit=unit)
+    except Exception:
+        _LOGGER.debug("performance tag unit align skipped for %s", getattr(tag, "name", "?"), exc_info=True)
+
+
+def _apply_alarm_timing(app, spec: PerfAlarmSpec, cfg: dict[str, Any]) -> None:
+    alarm = app.alarm_manager.get_alarm_by_name(perf_alarm_name(spec.key))
+    if alarm is None:
+        return
+    from ..workers.metrics_sampler import sample_interval_s
+
+    debounce = max(1, int(cfg.get("perf_debounce_count") or 3))
+    on_delay = float(debounce) * float(sample_interval_s())
+    app.update_alarm(id=alarm.identifier, on_delay=on_delay, off_delay=0.0)
+    if spec.key != "saf_deadletter":
+        return
+    clear = cfg.get("perf_saf_deadletter_clear_threshold")
+    threshold = cfg.get("perf_saf_deadletter_threshold")
+    if clear is None or threshold is None:
+        return
+    try:
+        deadband = max(0.0, float(threshold) - float(clear) - 1e-6)
+    except (TypeError, ValueError):
+        return
+    band = getattr(alarm, "alarm_deadband", None)
+    if band is not None and hasattr(band, "value"):
+        band.value = deadband
+
+
+def _apply_alarm_service(app, spec: PerfAlarmSpec, cfg: dict[str, Any]) -> None:
+    alarm = app.alarm_manager.get_alarm_by_name(perf_alarm_name(spec.key))
+    if alarm is None:
+        return
+    enabled = bool(cfg.get("perf_alarms_enabled", True)) and bool(
+        cfg.get(f"perf_{spec.key}_enabled", True)
+    )
+    current = (getattr(alarm.current_state, "name", None) or "").lower()
+    out = current == "out_of_service"
+    if enabled and out:
+        alarm.return_to_service()
+    elif not enabled and not out:
+        alarm.remove_from_service()
+
+
+def _delete_meas_tags(app) -> None:
+    for key in _RETIRED_MEAS_KEYS:
+        name = _scoped_name(f"SYS.PERF.MEAS.{key}")
+        tag = app.cvt.get_tag_by_name(name)
+        if tag is None:
+            continue
+        _drop_opc_node(name)
+        try:
+            app.delete_tag(id=tag.id)
+        except Exception:
+            _LOGGER.debug("MEAS tag delete skipped for %s", name, exc_info=True)
+
+
+def _reexpose_float_node(name: str) -> None:
+    _drop_opc_node(name, reexpose=True)
+
+
+def _drop_opc_node(name: str, *, reexpose: bool = False) -> None:
+    try:
+        from ..opcua_server.runtime import submit_drop
+
+        server = getattr(_app(), "opcua_server", None)
+        if server is None:
+            return
+        submit_drop(server, name, reexpose=reexpose)
+    except Exception:
+        _LOGGER.debug("OPC UA performance node update skipped for %s", name, exc_info=True)
 
 
 def catalog_for_snapshot(config: dict[str, Any]) -> dict[str, Any]:

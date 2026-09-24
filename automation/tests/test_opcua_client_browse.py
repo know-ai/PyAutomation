@@ -84,3 +84,20 @@ class TestPolledVariableAttributes(unittest.TestCase):
         self.assertEqual(payload["StatusCode"], "Good")
         self.assertEqual(payload["SourceTimestamp"], stamp.isoformat())
         self.assertEqual(payload["Namespace"], "ns=2;s=Flow")
+
+
+class TestStructureText(unittest.TestCase):
+    def test_engineering_units_show_display_name_text(self):
+        from automation.modules.opcua.resources.clients import extract_primitive_value
+
+        info = ua.EUInformation()
+        info.DisplayName = ua.LocalizedText("kg/lt")
+        self.assertEqual(extract_primitive_value(info), "kg/lt")
+
+    def test_range_shows_its_ends(self):
+        from automation.modules.opcua.resources.clients import extract_primitive_value
+
+        span = ua.Range()
+        span.Low = 0.0
+        span.High = 12.5
+        self.assertEqual(extract_primitive_value(span), "0.0 .. 12.5")

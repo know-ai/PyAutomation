@@ -29,6 +29,20 @@ Medición local, servidor asyncua en `127.0.0.1`, una serie:
 
 El p95 de las dos URL (40.153 ms) queda al lado del p95 de un solo Read de 200 nodos (40.557 ms). En esta serie el segundo PLC no se sumó al primero. No se midió el cliente viejo en la misma corrida, así que no hay un factor de aceleración.
 
+### Sesiones simultáneas y desconexión del operador (2026-09-23)
+
+Varios clientes definidos conviven en el mismo hilo `opcua-asyncua-client`. Cada uno tiene su sesión en `LoopContext.sessions`, con la clave del nombre del cliente. Al arrancar, `load_opcua_clients_from_db` conecta todos los que están en el catálogo. Elegir otro nombre en la lista de la HMI solo cambia el árbol, el polling y el destino de Editar, Conectar, Desconectar y Eliminar. No cierra las demás sesiones.
+
+`POST /api/opcua/clients/disconnect/<nombre>` cierra esa sesión y deja `manual_hold`. El vigilante de `LoggerWorker.check_opcua_connection` no la vuelve a abrir. El endpoint y la URL se conservan. `POST /api/opcua/clients/connect/<nombre>` quita la marca e intenta la sesión otra vez. Eliminar el cliente sigue siendo otra acción: borra la definición.
+
+La lista `GET /api/opcua/clients/` devuelve `is_opened` y `manual_hold` por cliente. El LED junto a la lista usa esas dos marcas:
+
+| Color | Cuándo |
+|---|---|
+| Rojo | El cliente seleccionado está caído, por desconexión manual o por pérdida de enlace |
+| Amarillo | El seleccionado sigue conectado y al menos otro cliente, que no está en espera manual, está caído |
+| Verde | El seleccionado está conectado y todos los que deben seguir en línea también lo están. Una espera manual de otro cliente no apaga el verde |
+
 ---
 
 ## Línea de base V1

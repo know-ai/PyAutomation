@@ -128,6 +128,8 @@ class Client:
         self._last_failure_event_monotonic = 0.0
         self._audit_source = "client-connect"
         self._suppress_connection_alarm = False
+        self._manual_hold = False
+        self._awaiting_embedded = False
         self._inflight = {}
 
     def get_id(self):
@@ -161,7 +163,16 @@ class Client:
 
             app = PyAutomation()
             if app.sio:
-                app.sio.emit(event_name, data={"message": message, "client_name": self.name, "url": self._server_url})
+                app.sio.emit(
+                    event_name,
+                    data={
+                        "message": message,
+                        "client_name": self.name,
+                        "url": self._server_url,
+                        "server_url": self._server_url,
+                        "manual_hold": bool(getattr(self, "_manual_hold", False)),
+                    },
+                )
         except Exception:
             logging.debug("OPC UA socket emit skipped", exc_info=True)
 
@@ -213,6 +224,7 @@ class Client:
                 "is_connected": False,
                 "id": self.get_id(),
             }, 403
+        self._manual_hold = False
         try:
             sync_adapter.open_session(
                 self._server_url,
@@ -268,6 +280,8 @@ class Client:
         logging.getLogger("pyautomation").debug("security token renew is owned by asyncua client=%s", self.name)
 
     def reconnect(self):
+        if getattr(self, "_manual_hold", False):
+            return
         if not _scope_owns_node(getattr(self, "owner_node", None)):
             logging.getLogger("pyautomation").error(
                 "OPC UA reconnect rejected for foreign owner client=%s owner_node=%s",
@@ -335,20 +349,32 @@ class Client:
         self._client = None
         self._opc_ua_tree = dict()
 
-    def disconnect(self):
+    def disconnect(self, retain_endpoint: bool = False):
+        """Close the session. ``retain_endpoint`` keeps the URL and blocks watchdog reconnect."""
         server_url = self._server_url
         was_open = bool(self._is_open or self._connection_state == "connected")
         try:
+            if retain_endpoint:
+                self._manual_hold = True
             if self.name:
                 sync_adapter.close_session(self.name)
             if was_open or self._connection_state != "disconnected":
-                self._audit_connection("DISCONNECTED", reason="requested")
+                self._audit_connection("DISCONNECTED", reason="operator-hold" if retain_endpoint else "requested")
             self._connection_state = "disconnected"
             self._reconnect_attempts = 0
             self._is_open = False
             self._sync_connection_alarm(disconnected=True)
-            self.__reset_object_attributes()
-            return {"message": "Successful disconnection", "url": server_url, "is_connected": False}, 200
+            if retain_endpoint:
+                self._opc_ua_tree = {}
+                self._emit_opcua_socket("on.opcua.disconnected", f"Disconnected from {server_url}")
+            else:
+                self.__reset_object_attributes()
+            return {
+                "message": "Successful disconnection",
+                "url": server_url,
+                "is_connected": False,
+                "manual_hold": bool(self._manual_hold),
+            }, 200
         except Exception as _err:
             error_text = f"{type(_err).__name__}: {_err}"
             if was_open and self._should_log_failure_event():
@@ -710,5 +736,6 @@ class Client:
             "server_url": self._server_url,
             "timeout": self._timeout,
             "is_opened": self.is_connected(),
+            "manual_hold": bool(getattr(self, "_manual_hold", False)),
             "owner_node": getattr(self, "owner_node", None),
         }

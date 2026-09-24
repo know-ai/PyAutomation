@@ -12,6 +12,7 @@ from .density import Density
 from .percentage import Percentage
 from .adimentional import Adimentional
 from .volume import Volume
+from .data_size import DataSize
 from ..utils.unit_symbols import UNIT_ALIASES, canonical_symbol
 
 
@@ -29,6 +30,7 @@ density_base = Density(value=1.0, unit="kg/bbl")
 percentage_base = Percentage(value=0.0, unit="%")
 adimentional_base = Adimentional(value=0.0, unit="adim")
 volume_base = Volume(value=0.0, unit="m3")
+data_size_base = DataSize(value=0.0, unit="B")
 
 
 VARIABLES = {
@@ -45,7 +47,8 @@ VARIABLES = {
     f"{density_base.__class__.__name__}": density_base.Units.serialize(),
     f"{percentage_base.__class__.__name__}": percentage_base.Units.serialize(),
     f"{adimentional_base.__class__.__name__}": adimentional_base.Units.serialize(),
-    f"{volume_base.__class__.__name__}": volume_base.Units.serialize()
+    f"{volume_base.__class__.__name__}": volume_base.Units.serialize(),
+    f"{data_size_base.__class__.__name__}": data_size_base.Units.serialize(),
 }
 
 DATATYPES = [

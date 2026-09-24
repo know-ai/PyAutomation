@@ -48,8 +48,8 @@ class TestNodeIdStability(unittest.TestCase):
         with patch.dict(os.environ, {"AUTOMATION_MANUFACTURER": "Otro"}):
             self.assertEqual(identifier, make_node_id("t", "Linea1", "Supe.Linea1.FI_01"))
 
-    def test_change_segment_changes_nodeids(self):
-        self.assertNotEqual(
+    def test_segment_argument_does_not_change_nodeids(self):
+        self.assertEqual(
             make_node_id("t", "Linea1", "Supe.Linea1.FI_01"),
             make_node_id("t", "Linea2", "Supe.Linea1.FI_01"),
         )
@@ -62,7 +62,7 @@ class TestNodeIdStability(unittest.TestCase):
         area = site.children[0]
         self.assertEqual(site.name, "Default")
         self.assertEqual(area.name, "Global")
-        self.assertEqual(make_node_id("t", None, "Default.Global.FI_01"), "t:_:default.global.fi_01")
+        self.assertEqual(make_node_id("t", None, "Default.Global.FI_01"), "t:default.global.fi_01")
 
     def test_segment_change_is_audited_once(self):
         server = type("S", (), {})()

@@ -62,11 +62,12 @@ class TestIdentityContract(unittest.TestCase):
             make_node_id("e", "Linea1", "FI_01"),
         )
 
-    def test_area_field(self):
-        self.assertNotEqual(
+    def test_area_argument_does_not_change_the_identifier(self):
+        self.assertEqual(
             make_node_id("t", "Linea1", "Supe.Linea1.FI_01"),
             make_node_id("t", "Linea2", "Supe.Linea1.FI_01"),
         )
+        self.assertEqual(make_node_id("t", "Linea1", "Supe.Linea1.FI_01"), "t:supe.linea1.fi_01")
 
     def test_no_manufacturer_field(self):
         same = make_node_id("t", "Linea1", "Supe.Linea1.FI_01")

@@ -1,28 +1,15 @@
-"""CVT tag exposer. At most 6 properties (7 nodes including the variable)."""
+"""CVT tag exposer. At most 5 properties (6 nodes including the variable)."""
 
 from __future__ import annotations
 
 import json
 
 from .base import NodeExposer
-from .common import apply_display_name, canonical_for, entity_area, entity_site, leaf_name
+from .common import apply_display_name, canonical_for, entity_area, entity_site, leaf_name, published_unit
 from ..data_value import push_value
 from ..identity import classify_entity_kind
 
-_MAX_PROPS = 6
-
-
-def _engineering_units(unit: str):
-    """EUInformation when the stack accepts it. Complexity: O(1)."""
-    text = unit or ""
-    try:
-        from asyncua import ua
-
-        info = ua.EUInformation()
-        info.DisplayName = ua.LocalizedText(text)
-        return info
-    except Exception:
-        return text
+_MAX_PROPS = 5
 
 
 def _eu_range(data_range):
@@ -74,6 +61,11 @@ class CvtExposer(NodeExposer):
         return owns_tag(entity)
 
     def ensure_folder(self, builder, entity):
+        from ..grouping import engine_groups_for_tag
+
+        groups = engine_groups_for_tag(str(getattr(entity, "name", "") or ""))
+        if groups:
+            return builder.ensure_group(entity_site(entity), entity_area(entity), "Engines", groups[0])
         return builder.ensure_branch(entity_site(entity), entity_area(entity), "Process")
 
     def _prop(self, node, identifier: str, key: str, value, bucket: list) -> None:
@@ -90,7 +82,7 @@ class CvtExposer(NodeExposer):
             return
 
     def upsert(self, key: str, entity):
-        """Create or refresh a tag. Complexity: O(P), P <= 6."""
+        """Create or refresh a tag. Complexity: O(P), P <= 5."""
         identifier = canonical_for("t", entity)
         existing = self._nodes.get(identifier)
         if existing is not None:
@@ -110,19 +102,15 @@ class CvtExposer(NodeExposer):
         browse = leaf_name(entity, "t")
         node = self._builder.add_variable(folder, identifier, browse, initial)
         apply_display_name(node, browse)
-        analog_ok = False
         if kind == "analog":
-            analog_ok = self._builder.try_analog_item(node)
+            self._builder.try_analog_item(node)
         self._nodes[identifier] = node
         self._remember(node)
         props: list[str] = []
-        unit = entity.get_unit() if hasattr(entity, "get_unit") else getattr(entity, "unit", "")
-        if kind == "analog" and analog_ok:
-            self._prop(node, identifier, "EngineeringUnits", _engineering_units(unit or ""), props)
-        elif kind == "analog":
+        unit = published_unit(entity)
+        if kind == "analog":
             self._prop(node, identifier, "unit", unit or "", props)
         self._prop(node, identifier, "variable", variable or "", props)
-        self._prop(node, identifier, "area", entity_area(entity) or "", props)
         if kind == "analog":
             data_range = getattr(entity, "data_range", None)
             if data_range:

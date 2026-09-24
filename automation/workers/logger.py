@@ -173,6 +173,10 @@ class LoggerWorker(BaseWorker):
                         )
                         continue
                     try:
+                        if getattr(opcua_client, "_manual_hold", False):
+                            continue
+                        if getattr(opcua_client, "_awaiting_embedded", False):
+                            continue
                         if opcua_client.is_connected():
                             continue
                         opcua_client.reconnect()

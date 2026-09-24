@@ -26,6 +26,7 @@ STABLE_VARIABLES: tuple[tuple[int, str], ...] = (
     (12, 'Percentage'),
     (13, 'Adimentional'),
     (14, 'Volume'),
+    (15, 'DataSize'),
 )
 
 # (id, name, symbol, variable_id)
@@ -203,9 +204,13 @@ STABLE_UNITS: tuple[tuple[int, str, str, int], ...] = (
     (171, 'cubic_meter', 'm3', 14),  # Volume
     (172, 'liter', 'lt', 14),  # Volume
     (173, 'milliliter', 'ml', 14),  # Volume
+    (174, 'byte', 'B', 15),  # DataSize
+    (175, 'kibibyte', 'kB', 15),  # DataSize
+    (176, 'mebibyte', 'MB', 15),  # DataSize
+    (177, 'gibibyte', 'GB', 15),  # DataSize
 )
 
 STABLE_UNIT_ID_BY_SYMBOL: dict[str, int] = {symbol: uid for uid, _n, symbol, _v in STABLE_UNITS}
 STABLE_VARIABLE_ID_BY_NAME: dict[str, int] = {name: vid for vid, name in STABLE_VARIABLES}
-STABLE_UNIT_ID_MAX = 173
-STABLE_VARIABLE_ID_MAX = 14
+STABLE_UNIT_ID_MAX = 177
+STABLE_VARIABLE_ID_MAX = 15

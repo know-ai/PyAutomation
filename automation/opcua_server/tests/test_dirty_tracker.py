@@ -95,3 +95,38 @@ class TestDirtyTracker(unittest.TestCase):
         server.engine_tracker = _FakeTracker()
         process_one_tick(server)
         self.assertEqual(server.tag_tracker.drained, 1)
+
+    def test_async_expose_attaches_the_observer_and_marks_dirty(self):
+        from automation.opcua_server.runtime import bind_exposed_tag
+
+        attached = []
+
+        class _Tag:
+            name = "DI_02"
+
+            def get_value(self):
+                return 1.5
+
+            def get_dead_band(self):
+                return 0.0
+
+            def attach(self, observer):
+                attached.append(observer)
+                observer._subject = self
+
+        tag = _Tag()
+        dirty = set()
+        server = SimpleNamespace(
+            _tag_observers={},
+            _watch_order=[],
+            _last_touch={},
+            _dead_bands={},
+            _dirty_tags=dirty,
+            cvt=SimpleNamespace(get_tag_by_name=lambda name: tag if name == "DI_02" else None),
+        )
+        server.tag_tracker = PerTagDirtyTracker(server._dead_bands, dirty, server)
+        bind_exposed_tag(server, "t", "DI_02")
+        self.assertEqual(len(attached), 1)
+        self.assertIn("DI_02", server._dirty_tags)
+        bind_exposed_tag(server, "a", "alarm")
+        self.assertEqual(len(attached), 1)

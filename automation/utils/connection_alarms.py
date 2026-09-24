@@ -163,6 +163,8 @@ def sync_opcua_connection_alarms() -> None:
         app = _app()
         clients = getattr(getattr(app, "opcua_client_manager", None), "_clients", {}) or {}
         for client_name, client in list(clients.items()):
+            if getattr(client, "_awaiting_embedded", False):
+                continue
             try:
                 disconnected = not bool(client.is_connected())
             except Exception:

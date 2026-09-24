@@ -35,6 +35,17 @@ def _numeric(value):
     return value
 
 
+def bind_exposed_tag(server, entity_type: str, name: str) -> None:
+    """Follow CVT changes for a tag that the async runner just queued. Complexity: O(1)."""
+    if entity_type != "t" or not name:
+        return
+    tag = _entity_for(server, "t", name)
+    if tag is None:
+        return
+    attach_observer(server, tag)
+    server._dirty_tags.add(name)
+
+
 def attach_observer(server, tag) -> None:
     """Complexity: O(1). The tracker implementation is whatever object sits on the server."""
     name = getattr(tag, "name", None)
@@ -379,6 +390,21 @@ def watch_identity_env(server) -> None:
         audit_failure("OPC UA segment changed", str(segment), criticity=5)
 
 
+def submit_drop(server, name: str, *, reexpose: bool = False) -> None:
+    """Queue deletion of one tag node. A float re-expose follows when the variant type changed."""
+    from .async_core.commands import DropTag
+
+    if not name:
+        return
+    server._expose_seen.discard(("t", name))
+    runner = getattr(server, "runner", None)
+    if runner is not None:
+        runner.submit(DropTag(name=name, reexpose=reexpose))
+        return
+    if reexpose:
+        server.enqueue_expose("t", name)
+
+
 def dispatch_runner(server, server_ts) -> None:
     """Queue expose and write snapshots. Complexity: O(B + K). No address-space calls."""
     from .async_core.commands import WriteValues
@@ -398,6 +424,7 @@ def dispatch_runner(server, server_ts) -> None:
             command = expose_snapshot(server, entity_type, name)
             if command is not None:
                 runner.submit(command)
+                bind_exposed_tag(server, entity_type, name)
         except Exception as exc:
             server.metrics.expose_failures += 1
             audit_failure("OPC UA expose failed", f"{entity_type}:{name}: {exc}")

@@ -35,7 +35,9 @@ class EngineExposer(NodeExposer):
     def ensure_folder(self, builder, entity):
         site = getattr(entity, "manufacturer", None)
         area = getattr(entity, "segment", None) or getattr(entity, "area", None)
-        return builder.ensure_branch(site, area, "Engines")
+        from ..grouping import engine_folder_name
+
+        return builder.ensure_group(site, area, "Engines", engine_folder_name(entity))
 
     def _name(self, entity) -> str:
         name = getattr(entity, "name", "")

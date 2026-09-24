@@ -434,18 +434,18 @@ class SocketService {
   }
 
   onOpcUaDisconnected(
-    callback: (data: { message: string; server_url?: string }) => void
+    callback: (data: { message: string; server_url?: string; client_name?: string; manual_hold?: boolean }) => void
   ): () => void {
-    return this.subscribe<{ message: string; server_url?: string }>(
+    return this.subscribe<{ message: string; server_url?: string; client_name?: string; manual_hold?: boolean }>(
       "on.opcua.disconnected",
       callback
     );
   }
 
   onOpcUaConnected(
-    callback: (data: { message: string; server_url?: string }) => void
+    callback: (data: { message: string; server_url?: string; client_name?: string; manual_hold?: boolean }) => void
   ): () => void {
-    return this.subscribe<{ message: string; server_url?: string }>(
+    return this.subscribe<{ message: string; server_url?: string; client_name?: string; manual_hold?: boolean }>(
       "on.opcua.connected",
       callback
     );

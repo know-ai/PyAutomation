@@ -7,7 +7,13 @@ from automation.utils.performance_alarm_config import (
     normalize_payload,
     public_config,
 )
-from automation.utils.performance_alarms import PERF_ALARM_SPECS, perf_alarm_name, perf_tag_name
+from automation.utils.performance_alarms import (
+    PERF_ALARM_SPECS,
+    perf_alarm_name,
+    perf_tag_name,
+    publish_performance_values,
+    rss_tag_name,
+)
 from automation.workers.metrics_sampler import MetricsSamplerWorker
 
 
@@ -143,6 +149,67 @@ class TestPerformanceAlarmNames(unittest.TestCase):
         with patch("automation.node_scope.get_node_scope", return_value=scope):
             self.assertEqual(perf_tag_name("cpu"), "SYS.PERF.CPU")
             self.assertEqual(perf_alarm_name("cpu"), "ALM.PERF.CPU")
+            self.assertEqual(rss_tag_name(), "SYS.PERF.RSS")
+
+    def test_magnitudes_use_catalogue_units(self):
+        from automation.utils.performance_alarms import catalogue_unit
+        from automation.variables.data_size import DataSize
+
+        cpu = next(spec for spec in PERF_ALARM_SPECS if spec.key == "cpu")
+        age = next(spec for spec in PERF_ALARM_SPECS if spec.key == "metrics_age")
+        ssd = next(spec for spec in PERF_ALARM_SPECS if spec.key == "ssd")
+        self.assertEqual(cpu.variable, "Percentage")
+        self.assertEqual(catalogue_unit(cpu), "%")
+        self.assertEqual(age.variable, "Time")
+        self.assertEqual(catalogue_unit(age), "ms")
+        self.assertEqual(ssd.variable, "Adimentional")
+        self.assertEqual(catalogue_unit(ssd), "adim")
+        self.assertEqual(DataSize.convert_value(1024.0, "MB", "GB"), 1.0)
+
+    def test_numeric_specs_are_float_and_five_stay_bool(self):
+        discrete = {spec.key for spec in PERF_ALARM_SPECS if spec.kind == "bool"}
+        self.assertEqual(
+            discrete,
+            {"field_stale", "saf_shed", "saf_rate", "ssd", "node_down"},
+        )
+        self.assertTrue(all(spec.kind == "float" for spec in PERF_ALARM_SPECS if spec.key not in discrete))
+
+    def test_snapshot_is_written_to_the_performance_tag(self):
+        from automation.utils import performance_alarms as mod
+
+        stored = {}
+
+        class _Tag:
+            def __init__(self, name):
+                self.name = name
+                self.id = name
+
+        app = MagicMock()
+
+        def get_tag(name):
+            return stored.get(name)
+
+        def create_tag(**kwargs):
+            tag = _Tag(kwargs["name"])
+            stored[tag.name] = tag
+            return tag, "ok"
+
+        def set_value(id, value, timestamp):
+            stored[id].value = value
+
+        stored["SYS.PERF.CPU"] = _Tag("SYS.PERF.CPU")
+        stored["SYS.PERF.RSS"] = _Tag("SYS.PERF.RSS")
+        app.cvt.get_tag_by_name.side_effect = get_tag
+        app.create_tag.side_effect = create_tag
+        app.cvt.set_value.side_effect = set_value
+        scope = MagicMock(enabled=False, is_valid=False)
+        with patch("automation.node_scope.get_node_scope", return_value=scope), patch.object(
+            mod, "_app", return_value=app
+        ):
+            publish_performance_values({"HOST_CPU_PERCENT": 37.5, "HOST_RSS_MB": 128.0})
+        self.assertEqual(stored["SYS.PERF.CPU"].value, 37.5)
+        self.assertEqual(stored["SYS.PERF.RSS"].value, 128.0)
+        self.assertNotIn("SYS.PERF.MEAS.CPU", stored)
 
     def test_ensure_uses_skip_validation_path(self):
         from automation.utils import performance_alarms as mod
@@ -155,13 +222,13 @@ class TestPerformanceAlarmNames(unittest.TestCase):
         ), patch.object(mod, "_ensure_bool_alarm") as ensure:
             persisted = mod.ensure_performance_alarms(load_performance_alarm_config({}))
         self.assertFalse(persisted)
-        self.assertEqual(ensure.call_count, len(PERF_ALARM_SPECS))
-        first = ensure.call_args_list[0].kwargs
-        self.assertEqual(first["alarm_name"], "ALM.PERF.CPU")
-        self.assertEqual(first["display_name"], "CPU High")
-        self.assertIn("System", first["alarm_description"])
-        self.assertIn("≥ 85%", first["alarm_description"])
-        self.assertNotIn("None", first["alarm_description"])
+        discrete = [spec for spec in PERF_ALARM_SPECS if spec.kind == "bool"]
+        self.assertEqual(ensure.call_count, len(discrete))
+        names = {call.kwargs["alarm_name"] for call in ensure.call_args_list}
+        self.assertEqual(names, {f"ALM.PERF.{spec.key.upper()}" for spec in discrete})
+        cpu = next(call for call in app.update_alarm.call_args_list if call.kwargs.get("alarm_type") == "HIGH")
+        self.assertEqual(cpu.kwargs["tag"], "SYS.PERF.CPU")
+        self.assertEqual(cpu.kwargs["trigger_value"], 85.0)
 
     def test_threshold_description_never_none(self):
         from automation.utils.performance_alarms import threshold_description

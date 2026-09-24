@@ -9,7 +9,16 @@ from asyncua import Server, ua
 
 from ..address_space import AddressSpaceBuilder
 from ..audit import audit_failure
-from .commands import ApplyAccess, ExposeEntity, ResetServer, StartEndpoint, StopServer, WriteItem, WriteValues
+from .commands import (
+    ApplyAccess,
+    DropTag,
+    ExposeEntity,
+    ResetServer,
+    StartEndpoint,
+    StopServer,
+    WriteItem,
+    WriteValues,
+)
 
 _LOG = logging.getLogger("pyautomation")
 BATCH_LIMIT = 200
@@ -30,10 +39,6 @@ def _node_id(identifier: str, namespace_idx: int):
 
 
 def _property_value(key: str, value):
-    if key == "EngineeringUnits":
-        info = ua.EUInformation()
-        info.DisplayName = ua.LocalizedText(str(value or ""))
-        return info
     if key == "EURange":
         low = high = None
         if isinstance(value, (tuple, list)) and len(value) >= 2:
@@ -104,10 +109,37 @@ async def _probe_analog(ctx: LoopContext) -> None:
 
 async def expose_entity(ctx: LoopContext, command: ExposeEntity) -> None:
     """Create one leaf and its properties. Complexity: O(P)."""
-    if ctx.builder is None or command.identifier in ctx.nodes:
+    if ctx.builder is None:
         return
-    folder = await ctx.builder.ensure_branch_async(command.site, command.area, command.folder)
-    node = await ctx.builder.add_variable_async(folder, command.identifier, command.browse, command.initial)
+    if command.identifier in ctx.nodes:
+        await _rename_browse(ctx.nodes[command.identifier], command.browse)
+        await _refresh_properties(ctx, command)
+        return
+    try:
+        folder = await ctx.builder.ensure_branch_async(command.site, command.area, command.folder)
+        groups = tuple(getattr(command, "groups", ()) or ())
+        if groups:
+            folder = await ctx.builder.ensure_group_async(
+                command.site, command.area, command.folder, groups[0]
+            )
+        node = await ctx.builder.add_variable_async(folder, command.identifier, command.browse, command.initial)
+        for extra in groups[1:]:
+            other = await ctx.builder.ensure_group_async(
+                command.site, command.area, command.folder, extra
+            )
+            try:
+                await other.add_reference(
+                    node.nodeid,
+                    ua.ObjectIds.Organizes,
+                    forward=True,
+                    bidirectional=False,
+                )
+            except Exception:
+                _LOG.debug("OPC UA extra engine folder skipped for %s", extra, exc_info=True)
+    except Exception:
+        if await _refresh_properties(ctx, command):
+            return
+        raise
     ctx.nodes[command.identifier] = node
     level = _level(command.access)
     from ..access.applier import apply_level
@@ -119,7 +151,9 @@ async def expose_entity(ctx: LoopContext, command: ExposeEntity) -> None:
     ctx.app._opc_names[namespace] = command.name
     _remember_limits(ctx.app, namespace, command.properties)
     rows = [{
-        "name": f"{command.folder}.{command.browse}",
+        "name": ".".join(
+            part for part in (command.folder, *(getattr(command, "groups", ()) or ())[:1], command.browse) if part
+        ),
         "namespace": namespace,
         "access_level": level,
         "access_level_label": access_label(level),
@@ -163,6 +197,16 @@ async def expose_entity(ctx: LoopContext, command: ExposeEntity) -> None:
         await _subscribe(ctx, command.identifier, node)
 
 
+async def _property_node(ctx: LoopContext, identifier: str):
+    node = ctx.nodes.get(identifier)
+    if node is not None:
+        return node
+    server = ctx.ua_server
+    if server is None:
+        return None
+    return server.get_node(_node_id(identifier, ctx.app._namespace_idx))
+
+
 async def _ensure_write_subscription(ctx: LoopContext):
     """One shared subscription for every writable node. Complexity: O(1)."""
     if ctx.subscription is None and ctx.ua_server is not None:
@@ -200,12 +244,32 @@ async def _subscribe(ctx: LoopContext, identifier: str, node) -> None:
     ctx.app.metrics.write_subscriptions = ctx.app.writeback.active
 
 
+def _unit_write(ctx: LoopContext, item: WriteItem, published: dict):
+    """One string write for ``<id>.unit`` when the display symbol changed. Complexity: O(1)."""
+    symbol = getattr(item, "unit", None)
+    if not symbol or published.get(item.identifier) == symbol:
+        return None
+    published[item.identifier] = symbol
+    wv = ua.WriteValue()
+    wv.NodeId = _node_id(f"{item.identifier}.unit", ctx.app._namespace_idx)
+    wv.AttributeId = ua.AttributeIds.Value
+    wv.Value = ua.DataValue(ua.Variant(str(symbol), ua.VariantType.String))
+    return wv
+
+
 async def write_batch(ctx: LoopContext, items: tuple[WriteItem, ...]) -> None:
     """One session write for the whole batch. Complexity: O(K)."""
     if ctx.ua_server is None or not items:
         return
+    published = getattr(ctx.app, "_published_units", None)
+    if not isinstance(published, dict):
+        published = {}
+        ctx.app._published_units = published
     values = []
     for item in items:
+        refresh = getattr(item, "refresh", None)
+        if refresh is not None:
+            await _refresh_properties(ctx, refresh)
         if isinstance(item.data_value, ExposeEntity):
             await _refresh_properties(ctx, item.data_value)
             continue
@@ -214,6 +278,9 @@ async def write_batch(ctx: LoopContext, items: tuple[WriteItem, ...]) -> None:
         wv.AttributeId = ua.AttributeIds.Value
         wv.Value = item.data_value
         values.append(wv)
+        unit_write = _unit_write(ctx, item, published)
+        if unit_write is not None:
+            values.append(unit_write)
     if not values:
         return
     params = ua.WriteParameters()
@@ -221,15 +288,76 @@ async def write_batch(ctx: LoopContext, items: tuple[WriteItem, ...]) -> None:
     await ctx.ua_server.iserver.isession.write(params)
 
 
-async def _refresh_properties(ctx: LoopContext, command: ExposeEntity) -> None:
+async def _rename_browse(node, browse: str) -> None:
+    """Update the tree label. The NodeId stays. Complexity: O(1)."""
+    if node is None or not browse:
+        return
+    try:
+        index = int(node.nodeid.NamespaceIndex)
+        await node.write_attribute(
+            ua.AttributeIds.BrowseName,
+            ua.DataValue(ua.QualifiedName(browse, index)),
+        )
+        await node.write_attribute(
+            ua.AttributeIds.DisplayName,
+            ua.DataValue(ua.LocalizedText(browse)),
+        )
+    except Exception:
+        _LOG.debug("OPC UA browse rename skipped for %s", browse, exc_info=True)
+
+
+async def _refresh_properties(ctx: LoopContext, command: ExposeEntity) -> int:
+    """Rewrite properties of a leaf that already exists, including a shelved one. Complexity: O(P)."""
+    written = 0
     for key, value in command.properties:
-        node = ctx.nodes.get(f"{command.identifier}.{key}")
+        node = await _property_node(ctx, f"{command.identifier}.{key}")
         if node is None:
             continue
         try:
             await node.write_value(_property_value(key, value))
         except Exception:
             continue
+        written += 1
+    return written
+
+
+async def drop_tag(ctx: LoopContext, command: DropTag) -> None:
+    """Delete one tag node so a later expose can recreate it with a new variant type."""
+    identifier = _identifier_for_name(ctx, command.name)
+    if identifier:
+        await _delete_tree(ctx, identifier)
+    if command.reexpose:
+        ctx.app._expose_seen.discard(("t", command.name))
+        ctx.app.enqueue_expose("t", command.name)
+
+
+def _identifier_for_name(ctx: LoopContext, name: str) -> str | None:
+    for namespace, stored in list(getattr(ctx.app, "_opc_names", {}).items()):
+        if stored != name or ";s=" not in str(namespace):
+            continue
+        return str(namespace).split(";s=", 1)[1]
+    return None
+
+
+async def _delete_tree(ctx: LoopContext, identifier: str) -> None:
+    keys = [
+        key
+        for key in list(ctx.nodes)
+        if key == identifier or key.startswith(f"{identifier}.")
+    ]
+    for key in keys:
+        node = ctx.nodes.pop(key, None)
+        if node is None:
+            continue
+        delete = getattr(node, "delete", None)
+        if not callable(delete):
+            continue
+        try:
+            result = delete()
+            if hasattr(result, "__await__"):
+                await result
+        except Exception:
+            _LOG.debug("OPC UA node delete skipped for %s", key, exc_info=True)
 
 
 async def close_server(ctx: LoopContext) -> None:
@@ -290,6 +418,9 @@ async def handle(ctx: LoopContext, command) -> None:
         return
     if isinstance(command, WriteValues):
         await write_batch(ctx, command.items)
+        return
+    if isinstance(command, DropTag):
+        await drop_tag(ctx, command)
         return
     if isinstance(command, (ResetServer, StopServer)):
         await close_server(ctx)

@@ -47,3 +47,14 @@ class TestAddressSpace(unittest.TestCase):
         for _ in range(100):
             builder.ensure_branch("Supe", "Linea1", "Process")
         self.assertLessEqual(len(builder.folder_cache), 10)
+
+    def test_engine_group_nests_under_engines(self):
+        objects = _Folder()
+        builder = AddressSpaceBuilder(objects, 2)
+        folder = builder.ensure_group("Supe", "Linea1", "Engines", "LDS")
+        self.assertEqual(folder.name, "lds")
+        engines = objects.children[0].children[0].children[0].children[0]
+        self.assertEqual(engines.name, "Engines")
+        self.assertEqual([child.name for child in engines.children], ["lds"])
+        again = builder.ensure_group("Supe", "Linea1", "Engines", "LDS")
+        self.assertIs(again, folder)
