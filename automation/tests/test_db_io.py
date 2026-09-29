@@ -659,7 +659,7 @@ class TestHistorianNodeScopedBackends(unittest.TestCase):
 
 
 class TestJournalThenRemoteCloses(unittest.TestCase):
-    def test_closes_caller_socket_after_remote_write(self):
+    def test_caller_journals_without_remote_write(self):
         from datetime import datetime, timezone
 
         from ..persistence import outbox
@@ -682,8 +682,10 @@ class TestJournalThenRemoteCloses(unittest.TestCase):
              patch("automation.utils.db_connections.keep_historian_socket", return_value=False):
             result, journaled = outbox.journal_then_remote(record, lambda: object(), True)
         self.assertTrue(journaled)
-        self.assertIsNotNone(result)
-        db.close.assert_called()
+        self.assertIsNone(result)
+        gateway.enqueue.assert_called_once()
+        gateway.mark_replicating.assert_not_called()
+        db.close.assert_not_called()
 
     def test_skips_remote_when_link_not_ready_keeps_pending(self):
         from datetime import datetime, timezone
@@ -735,8 +737,8 @@ class TestJournalThenRemoteCloses(unittest.TestCase):
             result, journaled = outbox.journal_then_remote(record, _boom, True)
         self.assertTrue(journaled)
         self.assertIsNone(result)
-        gateway.mark_pending.assert_called_once()
-        # Stale ephemeral write must not flip global _db_live (avoids sticky ALM.DB).
+        gateway.mark_pending.assert_not_called()
+        gateway.enqueue.assert_called_once()
         self.assertTrue(app._db_live)
 
     def test_batch_enqueues_once_and_marks_sent(self):
@@ -765,12 +767,12 @@ class TestJournalThenRemoteCloses(unittest.TestCase):
              patch("automation.utils.db_connections.keep_historian_socket", return_value=False):
             result, journaled = outbox.journal_then_remote_batch(records, lambda: 5, True)
         self.assertTrue(journaled)
-        self.assertEqual(result, 5)
+        self.assertIsNone(result)
         gateway.enqueue_many.assert_called_once()
         gateway.enqueue.assert_not_called()
-        gateway.mark_replicating.assert_called_once_with([1, 2, 3, 4, 5])
-        gateway.mark_sent.assert_called_once_with([1, 2, 3, 4, 5])
-        db.close.assert_called()
+        gateway.mark_replicating.assert_not_called()
+        gateway.mark_sent.assert_not_called()
+        db.close.assert_not_called()
 
 
 class TestAcquisitionWithoutHistorian(unittest.TestCase):

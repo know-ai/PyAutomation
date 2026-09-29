@@ -35,15 +35,17 @@ class ReplicationWorker(BaseWorker):
                 gateway = get_persistence_gateway()
                 pending = int(gateway.pending_count() or 0)
                 catchup_depth = int(getattr(gateway.config, "catchup_depth", 5000) or 5000)
+                journal = gateway.journal
                 if pending > 0:
                     written = gateway.replicate_catchup()
                     self.last_replicated = int(written or 0)
+                    journal.note_drain_activity(self.last_replicated)
                     self.last_cycle_utc = datetime.now(timezone.utc).isoformat()
                     idle_s = 0.01 if pending > catchup_depth else 0.2
-                    if pending <= catchup_depth:
-                        gateway.reclaim_idle()
                 else:
-                    gateway.reclaim_idle()
+                    journal.note_drain_activity(0)
+                    if journal.idle_for_compact():
+                        gateway.reclaim_idle()
                     self.last_cycle_utc = datetime.now(timezone.utc).isoformat()
                     idle_s = 5.0
                     # Nothing to drain: an empty journal can stay empty for

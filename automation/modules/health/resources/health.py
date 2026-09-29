@@ -319,6 +319,31 @@ class HealthSystemResource(Resource):
                 clock_metrics = {"clock": {"enabled": False, "synced": False}}
         except Exception:
             clock_metrics = {"clock": {"enabled": False, "synced": False}}
+        saf_regime = {}
+        try:
+            from ....persistence import get_persistence_gateway
+
+            saf_snap = dict(get_persistence_gateway().snapshot())
+            for key in (
+                "SAF_REGIME",
+                "SAF_RING_FULL_TOTAL",
+                "SAF_RING_FULL_DROPPED",
+                "SAF_CRITICAL_JOURNAL_FAILED_TOTAL",
+                "SAF_REPLICATING_REWOUND_TOTAL",
+                "SAF_VACUUM_LAST_DURATION_MS",
+                "SAF_VACUUM_TOTAL",
+                "SAF_DRAIN_ACTIVE",
+                "SAF_DRAIN_ETA_S",
+                "SAF_PENDING_ROWS",
+                "SAF_ACK_P95_MS",
+                "SAF_TICK_P95_MS",
+                "SAF_QUEUE_DEPTH",
+            ):
+                if key in saf_snap:
+                    saf_regime[key] = saf_snap[key]
+            pending_rows = int(saf_snap.get("SAF_QUEUE_DEPTH") or pending_rows)
+        except Exception:
+            saf_regime = {}
         product_extras = {}
         try:
             extras_fn = getattr(app, "health_system_extras", None)
@@ -354,6 +379,7 @@ class HealthSystemResource(Resource):
             **_catalog_metrics(),
             **_unit_metrics(),
             **product_extras,
+            **saf_regime,
             **_opcua_server_metrics(),
         }, 200
 

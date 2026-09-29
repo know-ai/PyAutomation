@@ -11,3 +11,4 @@
 | Arquitectura multi-edge | [multi-edge.md](./multi-edge.md) |
 | Deriva RSS / hot path / SAF | [AUDIT_PERFORMANCE.md](../audits/AUDIT_PERFORMANCE.md) (sección Runbook) |
 | Poll de métricas | Dashboard `/performance` usa `GET /api/health/node` (copia O(1) del sampler). No poll frecuente de `/health/system`. Intervalo: `AUTOMATION_METRICS_SAMPLE_INTERVAL_S` (5–30 s, default 5). |
+| SAF con PostgreSQL caído | `GET /api/health/ready` responde 200 con `DEGRADED`. No reiniciar el contenedor por ese probe ni por circuito `OPEN`. `SAF_REGIME` en `/api/health/system` vale `normal`, `outage`, `draining` o `post_catchup`. Un 503 de reconocimiento con `error_type=journal_error` es el journal local (disco o techo), no el historiador. |

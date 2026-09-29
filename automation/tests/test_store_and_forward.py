@@ -161,6 +161,7 @@ class TestSafJournal(unittest.TestCase):
         self.assertEqual(len(self.journal.fetch_pending(10)), 1)
 
     def test_t07_ring_full_force_flush_drains(self):
+        """Producer does not fsync when the ring is full (SAF-OUT-05)."""
         tight = SafConfig(
             journal_path=self.path,
             ring_maxsize=2,
@@ -169,22 +170,23 @@ class TestSafJournal(unittest.TestCase):
         )
         writer = JournalWriter(tight)
         writer.start()
-        kicks = []
-        writer.set_force_flush_hook(lambda: kicks.append(1))
         try:
             writer._stop.set()
             writer._ring_event.set()
             if writer._flusher:
                 writer._flusher.join(timeout=1)
+            if writer._emergency:
+                writer._emergency.join(timeout=1)
             writer._ring.clear()
+            commits = writer.commit_count
             t0 = datetime.now(timezone.utc)
             writer.append(PersistableRecord.tag_sample("t", 1.0, t0))
             writer.append(PersistableRecord.tag_sample("t", 2.0, t0 + timedelta(milliseconds=2)))
-            writer.append(PersistableRecord.tag_sample("t", 3.0, t0 + timedelta(milliseconds=4)))
-            self.assertEqual(len(kicks), 1)
-            self.assertLessEqual(len(writer._ring), 2)
-            pending = writer.fetch_pending(10)
-            self.assertGreaterEqual(len(pending) + len(writer._ring), 3)
+            with self.assertRaises(JournalBackpressureError):
+                writer.append(PersistableRecord.tag_sample("t", 3.0, t0 + timedelta(milliseconds=4)))
+            self.assertEqual(writer.commit_count, commits)
+            self.assertEqual(len(writer._ring), 2)
+            self.assertGreaterEqual(writer.ring_full_dropped, 1)
         finally:
             writer._stop.set()
             writer.stop()
@@ -454,6 +456,9 @@ class TestSafJournal(unittest.TestCase):
                     timestamp=seed_ts + timedelta(milliseconds=i),
                 )
             )
+        from dataclasses import replace
+
+        self.journal.config = replace(self.journal.config, ring_maxsize=10_000)
         original = _ban_sqlite_count(self.journal)
         try:
             started = time.perf_counter()
@@ -468,6 +473,7 @@ class TestSafJournal(unittest.TestCase):
             elapsed = time.perf_counter() - started
         finally:
             self.journal._conn = original
+        self.journal.flush_sync()
         self.assertLess(elapsed, 0.5)
         self.assertEqual(self.journal.pending_count(), _sql_drainable(self.journal))
 
@@ -502,6 +508,10 @@ class TestSafJournal(unittest.TestCase):
             writer.flush_sync()
             writer.mark_sent(ids)
             writer.gc_sent(0.0, 10_000)
+            writer.last_critical_mono = 0.0
+            writer.last_operator_mono = 0.0
+            writer.last_drain_mono = 0.0
+            writer.drain_active = False
             before = writer.disk_bytes()
             result = writer.reclaim_idle()
             after = writer.disk_bytes()
@@ -1305,8 +1315,16 @@ class TestT01Apocalypse(unittest.TestCase):
             ],
             cwd=repo,
         )
-        time.sleep(max(0.4, duration / 2.0))
-        child.send_signal(signal.SIGKILL)
+        # Importing automation can take longer than duration/2. Wait until the
+        # child has written a count, then SIGKILL so the journal is mid-flush.
+        deadline = time.monotonic() + max(8.0, duration)
+        while time.monotonic() < deadline and child.poll() is None:
+            if os.path.exists(count_path) and os.path.getsize(count_path) > 0:
+                break
+            time.sleep(0.05)
+        time.sleep(0.15)
+        if child.poll() is None:
+            child.send_signal(signal.SIGKILL)
         child.wait(timeout=10)
 
         generated = 0

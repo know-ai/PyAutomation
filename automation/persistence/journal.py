@@ -63,6 +63,35 @@ _DISK_CACHE_TTL_S = 1.0
 _DISK_HOT_RATIO = 0.8
 _RECONCILE_INTERVAL_S = 30.0
 _DRAINABLE = (STATUS_PENDING, STATUS_REPLICATING)
+_FIELD_TAG_MARKERS = ("FI_", "PI_", "DI_", "TI_")
+_IDLE_QUIET_S = 60.0
+
+
+def ring_sample_droppable(persistable: IPersistable) -> bool:
+    """Unprotected analog history may be dropped when the RAM ring is full.
+
+    Field tags, leak tags, criticity 5 and every critical domain stay.
+    """
+    try:
+        if persistable.is_critical():
+            return False
+    except Exception:
+        return False
+    if persistable.domain() != "tag":
+        return False
+    try:
+        payload = persistable.payload()
+    except Exception:
+        payload = {}
+    tag = str((payload or {}).get("tag") or persistable.entity_id() or "").upper()
+    if "LEAK" in tag:
+        return False
+    if any(marker in tag for marker in _FIELD_TAG_MARKERS):
+        return False
+    criticity = (payload or {}).get("criticity")
+    if criticity is not None and str(criticity).strip().lower() in {"critical", "5"}:
+        return False
+    return True
 
 
 def _iter_id_chunks(ids: Sequence[int], size: int = _SQL_IN_CHUNK):
@@ -87,6 +116,30 @@ def _notify_saf_capacity_event(kind: str) -> None:
                 priority=5,
                 criticity=5,
             )
+        elif kind == "ring":
+            persist_system_event(
+                message="SAF ring full",
+                description="kind=ring",
+                classification="System",
+                priority=4,
+                criticity=4,
+            )
+        elif kind == "critical":
+            persist_system_event(
+                message="SAF critical journal failed",
+                description="kind=critical",
+                classification="System",
+                priority=5,
+                criticity=5,
+            )
+        elif kind == "rewind":
+            persist_system_event(
+                message="SAF replicating rows rewound",
+                description="kind=rewind",
+                classification="System",
+                priority=3,
+                criticity=3,
+            )
         else:
             persist_system_event(
                 message="SAF backpressure triggered",
@@ -108,11 +161,14 @@ class JournalWriter:
     def __init__(self, config: SafConfig | None = None):
         self.config = config or SafConfig()
         self._lock = threading.RLock()
+        self._ring_lock = threading.Lock()
         self._conn: sqlite3.Connection | None = None
+        self._reader: sqlite3.Connection | None = None
         self._ring: deque[IPersistable] = deque()
         self._ring_event = threading.Event()
         self._stop = threading.Event()
         self._flusher: threading.Thread | None = None
+        self._emergency: threading.Thread | None = None
         self._started = False
         self.dropped_full = 0
         self.enqueued = 0
@@ -131,12 +187,27 @@ class JournalWriter:
         self._last_compact_mono = 0.0
         self._last_dlq_prune_mono = 0.0
         self._durability_fd = -1
+        self.commit_count = 0
+        self.ring_full_total = 0
+        self.ring_full_dropped = 0
+        self.critical_journal_failed = 0
+        self.replicating_rewound = 0
+        self.vacuum_last_duration_ms = 0.0
+        self.vacuum_total = 0
+        self.drain_active = False
+        self.last_critical_mono = 0.0
+        self.last_operator_mono = 0.0
+        self.last_drain_mono = 0.0
+        self._last_ring_flush_mono = 0.0
 
     def start(self) -> None:
+        rewound = 0
         with self._lock:
             if self._started:
                 return
             self._open()
+            rewound = self._rewind_replicating_locked()
+            self._open_reader_locked()
             self._stop.clear()
             self._flusher = threading.Thread(
                 target=self._flush_loop,
@@ -144,21 +215,62 @@ class JournalWriter:
                 daemon=True,
             )
             self._flusher.start()
+            from ..workers.emergency_drainer import EmergencyDrainer
+
+            self._emergency = EmergencyDrainer(self)
+            self._emergency.start()
             self._started = True
+            self.replicating_rewound += int(rewound or 0)
+        if rewound:
+            _notify_saf_capacity_event("rewind")
 
     def stop(self) -> None:
         self._stop.set()
         self._ring_event.set()
         if self._flusher and self._flusher.is_alive():
             self._flusher.join(timeout=2.0)
+        if self._emergency and self._emergency.is_alive():
+            self._emergency.join(timeout=2.0)
         with self._lock:
             self._drain_ring_locked()
             self._commit_locked()
+            if self._reader is not None:
+                try:
+                    self._reader.close()
+                except sqlite3.Error:
+                    pass
+                self._reader = None
             if self._conn is not None:
                 self._conn.close()
                 self._conn = None
             self._close_durability_fd_locked()
             self._started = False
+
+    def note_operator_activity(self) -> None:
+        """ACK / operator REST. Resets the compact idle clock. Not the SM tick."""
+        self.last_operator_mono = time.monotonic()
+
+    def note_drain_activity(self, written: int) -> None:
+        now = time.monotonic()
+        if int(written or 0) > 0:
+            self.drain_active = True
+            self.last_drain_mono = now
+        else:
+            self.drain_active = False
+
+    def idle_for_compact(self) -> bool:
+        """True when VACUUM may run: no drain, and 60 s since critical/ACK/drain."""
+        if self.drain_active:
+            return False
+        now = time.monotonic()
+        last = max(
+            float(self.last_critical_mono or 0.0),
+            float(self.last_operator_mono or 0.0),
+            float(self.last_drain_mono or 0.0),
+        )
+        if last > 0.0 and (now - last) < _IDLE_QUIET_S:
+            return False
+        return True
 
     def set_force_flush_hook(self, hook) -> None:
         """Optional callback (LoggerWorker / RemoteReplicator) after a ring drain."""
@@ -175,25 +287,26 @@ class JournalWriter:
                 "SAF force flush hook failed", exc_info=True
             )
 
-    def _drain_ring_for_backpressure_locked(self) -> bool:
-        """Persist the in-memory ring to SQLite so enqueue can continue.
-
-        Returns True when the caller should kick remote replication.
-        """
-        if len(self._ring) < self.config.ring_maxsize:
-            return False
-        logging.getLogger("pyautomation").warning(
-            "SAF ring full; forcing LoggerWorker flush"
+    def _rewind_replicating_locked(self) -> int:
+        """Startup: REPLICATING rows go back to PENDING. attempts stay put."""
+        self._ensure_open_locked()
+        now = utc_now().isoformat()
+        cur = self._conn.execute(
+            """
+            UPDATE persistence_journal
+            SET status = ?, updated_at = ?
+            WHERE status = ?
+            """,
+            (STATUS_PENDING, now, STATUS_REPLICATING),
         )
-        try:
-            self._drain_ring_locked()
+        flipped = int(cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else 0)
+        if flipped:
             self._commit_locked()
-        except Exception:
-            logging.getLogger("pyautomation").error(
-                "SAF ring drain during backpressure failed",
-                exc_info=True,
+            logging.getLogger("pyautomation").warning(
+                "SAF rewound %s REPLICATING row(s) to PENDING",
+                flipped,
             )
-        return True
+        return flipped
 
     def append(self, persistable: IPersistable) -> int:
         """Durable enqueue. Critical records wait for COMMIT; tags use the ring."""
@@ -204,9 +317,15 @@ class JournalWriter:
                     return self._insert_commit_locked(persistable)
             return self._enqueue_ring(persistable)
         except JournalBackpressureError:
+            if persistable.is_critical():
+                self.critical_journal_failed += 1
+                _notify_saf_capacity_event("critical")
             _notify_saf_capacity_event("backpressure")
             raise
         except JournalDiskFullError:
+            if persistable.is_critical():
+                self.critical_journal_failed += 1
+                _notify_saf_capacity_event("critical")
             _notify_saf_capacity_event("disk")
             raise
 
@@ -217,22 +336,9 @@ class JournalWriter:
         if not items:
             return 0
         try:
-            kick = False
-            with self._lock:
-                self._ensure_open_locked()
-                self._guard_pending_locked()
-                if len(self._ring) + len(items) > self.config.ring_maxsize:
-                    kick = self._drain_ring_for_backpressure_locked()
-                if len(self._ring) + len(items) > self.config.ring_maxsize:
-                    self.backpressure = True
-                    self.dropped_full += len(items)
-                    raise JournalBackpressureError(
-                        f"SAF ring full ({self.config.ring_maxsize}); history backpressure engaged"
-                    )
-                self._ring.extend(items)
-                self.backpressure = False
-            if kick:
-                self._invoke_force_flush_hook()
+            with self._ring_lock:
+                for persistable in items:
+                    self._admit_ring_locked(persistable)
         except JournalBackpressureError:
             _notify_saf_capacity_event("backpressure")
             raise
@@ -257,9 +363,13 @@ class JournalWriter:
                 self._commit_locked()
                 return row_ids
         except JournalBackpressureError:
+            self.critical_journal_failed += 1
+            _notify_saf_capacity_event("critical")
             _notify_saf_capacity_event("backpressure")
             raise
         except JournalDiskFullError:
+            self.critical_journal_failed += 1
+            _notify_saf_capacity_event("critical")
             _notify_saf_capacity_event("disk")
             raise
 
@@ -271,25 +381,35 @@ class JournalWriter:
 
     def pending_count(self) -> int:
         self.start()
-        with self._lock:
-            self._ensure_open_locked()
-            return self._pending_rows_locked()
+        with self._ring_lock:
+            ring_n = len(self._ring)
+        return int(self._pending_durable) + ring_n
 
     def fetch_pending(self, limit: int) -> list[dict[str, Any]]:
         self.start()
-        with self._lock:
-            self._ensure_open_locked()
-            rows = self._conn.execute(
-                """
-                SELECT id, domain, entity_id, idempotency_key, payload, created_at, attempts
-                FROM persistence_journal
-                WHERE status = ?
-                ORDER BY id ASC
-                LIMIT ?
-                """,
-                (STATUS_PENDING, int(limit)),
-            ).fetchall()
-            return [dict(row) for row in rows]
+        return self._reader_query(
+            """
+            SELECT id, domain, entity_id, idempotency_key, payload, created_at, attempts
+            FROM persistence_journal
+            WHERE status = ?
+            ORDER BY id ASC
+            LIMIT ?
+            """,
+            (STATUS_PENDING, int(limit)),
+        )
+
+    def fetch_pending_domain(self, domain: str, limit: int = 500) -> list[dict[str, Any]]:
+        self.start()
+        return self._reader_query(
+            """
+            SELECT id, domain, entity_id, idempotency_key, payload, created_at, attempts
+            FROM persistence_journal
+            WHERE status = ? AND domain = ?
+            ORDER BY id ASC
+            LIMIT ?
+            """,
+            (STATUS_PENDING, str(domain), int(limit)),
+        )
 
     def mark_replicating(self, journal_ids: Sequence[int]) -> None:
         self._set_status(journal_ids, STATUS_REPLICATING)
@@ -424,8 +544,9 @@ class JournalWriter:
             raise ValueError("confirm required")
         with self._lock:
             self._ensure_open_locked()
-            dropped_ring = len(self._ring)
-            self._ring.clear()
+            with self._ring_lock:
+                dropped_ring = len(self._ring)
+                self._ring.clear()
             cur = self._conn.execute(
                 "DELETE FROM persistence_journal WHERE status IN (?, ?, ?, ?)",
                 (STATUS_PENDING, STATUS_REPLICATING, STATUS_DEAD_LETTER, STATUS_ARCHIVED),
@@ -575,9 +696,21 @@ class JournalWriter:
     def reclaim_idle(self) -> dict[str, int]:
         """Slow path: GC SENT, truncate WAL, compact freelist back to the OS.
 
-        Never called from enqueue. VACUUM runs only when the live queue is quiet
-        and wasted pages exceed compact_min_freelist_bytes.
+        Never called from enqueue. VACUUM and checkpoint run only in real idle
+        (no drain, 60 s since the last critical write, ACK or catch-up).
         """
+        if not self.idle_for_compact():
+            return {
+                "gc_deleted": 0,
+                "dlq_pruned": 0,
+                "checkpointed": 0,
+                "vacuumed": 0,
+                "freelist_bytes": 0,
+                "disk_bytes": 0,
+                "catalog_vacuumed": 0,
+                "catalog_checkpointed": 0,
+                "skipped": 1,
+            }
         deleted = self.gc_sent(self.config.gc_sent_after_s, self.config.gc_batch)
         pruned = self.prune_dead_letters()
         max_pending = int(getattr(self.config, "compact_max_pending", 256) or 256)
@@ -624,6 +757,9 @@ class JournalWriter:
                     )
                 self._last_compact_mono = time.monotonic()
                 self._last_checkpoint_mono = self._last_compact_mono
+                if vacuumed:
+                    self.vacuum_last_duration_ms = (self._last_compact_mono - started) * 1000.0
+                    self.vacuum_total += 1
                 self._invalidate_disk_cache_locked()
                 logging.getLogger("pyautomation").warning(
                     "SAF journal compact done elapsed_s=%.3f disk=%s vacuumed=%s",
@@ -662,12 +798,11 @@ class JournalWriter:
         return result
 
     def oldest_pending_age_s(self) -> float:
-        with self._lock:
-            self._ensure_open_locked()
-            row = self._conn.execute(
-                "SELECT created_at FROM persistence_journal WHERE status = ? ORDER BY id ASC LIMIT 1",
-                (STATUS_PENDING,),
-            ).fetchone()
+        rows = self._reader_query(
+            "SELECT created_at FROM persistence_journal WHERE status = ? ORDER BY id ASC LIMIT 1",
+            (STATUS_PENDING,),
+        )
+        row = rows[0] if rows else None
         if not row:
             return 0.0
         try:
@@ -748,6 +883,8 @@ class JournalWriter:
         return max(0, int(row[0] if row else 0))
 
     def _pending_rows_locked(self) -> int:
+        # Called with either the writer lock or the ring lock already held.
+        # Do not take _ring_lock here: _admit_ring_locked holds it.
         return self._pending_durable + len(self._ring)
 
     def _count_durable_pending_locked(self) -> int:
@@ -784,24 +921,41 @@ class JournalWriter:
         )
 
     def _enqueue_ring(self, persistable: IPersistable) -> int:
-        kick = False
-        with self._lock:
-            self._ensure_open_locked()
-            self._guard_pending_locked()
-            if len(self._ring) >= self.config.ring_maxsize:
-                kick = self._drain_ring_for_backpressure_locked()
-            if len(self._ring) >= self.config.ring_maxsize:
-                self.backpressure = True
-                self.dropped_full += 1
-                raise JournalBackpressureError(
-                    f"SAF ring full ({self.config.ring_maxsize}); history backpressure engaged"
-                )
+        with self._ring_lock:
+            self._admit_ring_locked(persistable)
+        self._ring_event.set()
+        return 0
+
+    def _admit_ring_locked(self, persistable: IPersistable) -> None:
+        """Ring lock held. Never fsyncs. Drops or evicts instead of draining."""
+        self._guard_pending_locked()
+        limit = int(self.config.ring_maxsize)
+        if len(self._ring) < limit:
             self._ring.append(persistable)
             self.backpressure = False
-        self._ring_event.set()
-        if kick:
-            self._invoke_force_flush_hook()
-        return 0
+            return
+        if not ring_sample_droppable(persistable) and self._evict_droppable_locked():
+            self._ring.append(persistable)
+            self.backpressure = False
+            return
+        self.ring_full_total += 1
+        self.ring_full_dropped += 1
+        self.dropped_full += 1
+        self.backpressure = True
+        _notify_saf_capacity_event("ring")
+        raise JournalBackpressureError(
+            f"SAF ring full ({limit}); producer will not fsync"
+        )
+
+    def _evict_droppable_locked(self) -> bool:
+        for index, item in enumerate(self._ring):
+            if ring_sample_droppable(item):
+                del self._ring[index]
+                self.ring_full_total += 1
+                self.ring_full_dropped += 1
+                _notify_saf_capacity_event("ring")
+                return True
+        return False
 
     def _flush_loop(self) -> None:
         interval = max(0.001, self.config.tag_flush_interval_s)
@@ -818,17 +972,44 @@ class JournalWriter:
             except sqlite3.Error:
                 logging.getLogger("pyautomation").error("SAF journal flush failed", exc_info=True)
 
+    def _emergency_loop(self) -> None:
+        """Flush the ring off the producer thread once it passes 80% full."""
+        interval = max(0.001, self.config.tag_flush_interval_s)
+        while not self._stop.is_set():
+            self._ring_event.wait(timeout=interval)
+            if self._stop.is_set():
+                break
+            with self._ring_lock:
+                depth = len(self._ring)
+            threshold = int(self.config.ring_maxsize * 0.8)
+            if threshold <= 0 or depth < threshold:
+                continue
+            if (time.monotonic() - self._last_ring_flush_mono) < interval:
+                continue
+            try:
+                with self._lock:
+                    self._drain_ring_locked()
+                    self._commit_locked()
+            except JournalDiskFullError:
+                logging.getLogger("pyautomation").critical(
+                    "SAF journal disk full during emergency drain"
+                )
+            except sqlite3.Error:
+                logging.getLogger("pyautomation").error(
+                    "SAF emergency drain failed", exc_info=True
+                )
+
     def _drain_ring_locked(self) -> None:
-        if not self._ring:
-            return
+        """Writer lock held. Moves the ring to SQLite. Does not run on the producer."""
+        with self._ring_lock:
+            if not self._ring:
+                return
+            items = list(self._ring)
+            self._ring.clear()
         self._ensure_open_locked()
-        batch = self.config.tag_batch_size
-        while self._ring:
-            chunk = []
-            while self._ring and len(chunk) < batch:
-                chunk.append(self._ring.popleft())
-            for persistable in chunk:
-                self._insert_locked(persistable)
+        for persistable in items:
+            self._insert_locked(persistable)
+        self._last_ring_flush_mono = time.monotonic()
 
     def _insert_commit_locked(self, persistable: IPersistable) -> int:
         self._ensure_open_locked()
@@ -855,6 +1036,8 @@ class JournalWriter:
             )
             self.enqueued += 1
             self._pending_durable += 1
+            if persistable.is_critical():
+                self.last_critical_mono = time.monotonic()
             if persistable.domain() == "tag":
                 self.last_tag_ingest_mono = time.monotonic()
             return int(cur.lastrowid)
@@ -872,6 +1055,7 @@ class JournalWriter:
             return
         try:
             self._conn.commit()
+            self.commit_count += 1
             # PRAGMA synchronous=FULL already fsyncs the WAL; extra fsync of the
             # db file survives a SIGKILL between SQLite's commit return and a
             # delayed kernel writeback on some filesystems.
@@ -1046,3 +1230,43 @@ class JournalWriter:
         self._last_reconcile_mono = time.monotonic()
         self._disk_bytes_cache = self._measure_disk_bytes()
         self._disk_bytes_mono = time.monotonic()
+
+    def _open_reader_locked(self) -> None:
+        if self._reader is not None:
+            return
+        path = os.path.abspath(self.config.journal_path)
+        uri = "file:" + path + "?mode=ro"
+        try:
+            reader = sqlite3.connect(
+                uri,
+                uri=True,
+                timeout=5.0,
+                isolation_level=None,
+                check_same_thread=False,
+            )
+            reader.row_factory = sqlite3.Row
+            reader.execute("PRAGMA query_only=ON")
+            self._reader = reader
+        except sqlite3.Error:
+            logging.getLogger("pyautomation").debug(
+                "SAF reader connection unavailable; reads use the writer",
+                exc_info=True,
+            )
+            self._reader = None
+
+    def _reader_query(self, sql: str, params: tuple) -> list[dict[str, Any]]:
+        self.start()
+        reader = self._reader
+        if reader is not None:
+            try:
+                rows = reader.execute(sql, params).fetchall()
+                return [dict(row) for row in rows]
+            except sqlite3.Error:
+                logging.getLogger("pyautomation").debug(
+                    "SAF reader query failed; falling back to the writer",
+                    exc_info=True,
+                )
+        with self._lock:
+            self._ensure_open_locked()
+            rows = self._conn.execute(sql, params).fetchall()
+            return [dict(row) for row in rows]

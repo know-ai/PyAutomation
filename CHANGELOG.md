@@ -2,6 +2,7 @@
 
 ## 2.9.0
 
+- Store-and-Forward: el productor no hace `fsync` si el anillo está lleno; el ACK journaliza antes de cambiar la alarma y no escribe en PostgreSQL en el request; al arrancar, las filas `REPLICATING` vuelven a `PENDING`; el `VACUUM` espera 60 s de idle real. `SAF_REGIME` sale en `/api/health/system`.
 - Servidor OPC UA: el permiso del nodo es el bitmask `AccessLevel` (siete bits). El write de un cliente que no es Admin se valida antes de guardar el valor. El datachange encola y un hilo de sistema escribe el CVT con origen `external`. Si el PLC rechaza, hace timeout o está caído, el CVT vuelve al valor previo. `POST /api/tags/write_value` usa el mismo camino y responde 200, 400, 503 o 504.
 - Cliente OPC UA de campo (DAS y DAQ): el transporte pasa a `asyncua` 2.0.1 en un hilo de sistema distinto del servidor embebido. `opcua` 0.98.13 sale de `requirements.txt`. El CVT se sigue escribiendo en gevent. En esta máquina, un Read de 200 nodos dio p95 = 40.557 ms; dos URL de 100 nodos en paralelo dieron p95 = 40.153 ms de pared; el extra del tick gevent de 10 ms durante un Read dio p95 = 0.870 ms.
 - Servidor OPC UA embebido: el stack pasa a `asyncua` 2.0.1 en un hilo de sistema con su event loop. El hilo gevent solo encola snapshots. Una muestra de arranque con 5000 tags dio p95 = 9566 ms, por encima del objetivo de 5 s. La escritura de 20 valores dio p95 = 0.027 ms, un alta dio p95 = 0.113 ms y 10000 variables ocuparon 241.5 MB de RSS.

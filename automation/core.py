@@ -5224,6 +5224,12 @@ class PyAutomation(Singleton):
         else:
             logging.info(f"No alarms found in database")
             print(_colorize_message(f"[{str_date}] [INFO] No alarms found in database", "INFO"))
+        try:
+            from .persistence.ack_reconcile import reconcile_pending_acks
+
+            reconcile_pending_acks(self.alarm_manager)
+        except Exception:
+            logging.debug("SAF ack reconcile skipped", exc_info=True)
 
     def _sync_runtime_alarms_to_historian(self) -> None:
         r"""Persist in-memory alarm definitions that never reached the catalog.

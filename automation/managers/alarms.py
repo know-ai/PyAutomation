@@ -5,6 +5,7 @@ This module implements the Alarm Manager, which is responsible for managing alar
 handling alarm events, and interacting with the Current Value Table (CVT) and Database.
 """
 from datetime import datetime
+import logging
 import queue
 import time
 from ..singleton import Singleton
@@ -553,29 +554,28 @@ class AlarmManager(Singleton):
         from ..logger.alarms import AlarmsLoggerEngine
 
         now = quantize_datetime_ms(datetime.now(timezone.utc))
-        acknowledged: list[Alarm] = []
+        self._last_ack_error = None
+        candidates: list[Alarm] = []
         for alarm in self.get_alarms().values():
             if alarm.state not in (AlarmState.UNACK, AlarmState.RTNUN):
                 continue
-            if not alarm._acknowledge_in_memory(now):
-                continue
-            acknowledged.append(alarm)
-        if not acknowledged:
+            candidates.append(alarm)
+        if not candidates:
             return None
 
         payloads = []
         operator_id = None
         try:
-            operator_id = acknowledged[0]._operator_pk(user=user)
+            operator_id = candidates[0]._operator_pk(user=user)
         except Exception:
             operator_id = None
-        for alarm in acknowledged:
+        for alarm in candidates:
             catalog = alarm.catalog_payload()
-            isa_state = alarm.state.state
-            if isa_state == "Acknowledged":
-                from_state, to_state = "Unack Alarm", "Ack Alarm"
+            current = (getattr(alarm.current_state, "name", None) or "").lower()
+            if current == "unack_alarm":
+                from_state, to_state, isa_state = "Unack Alarm", "Ack Alarm", "Acknowledged"
             else:
-                from_state, to_state = "RTN Unack", "Cleared"
+                from_state, to_state, isa_state = "RTN Unack", "Cleared", "Normal"
             payloads.append(
                 {
                     "id": alarm.identifier,
@@ -594,7 +594,25 @@ class AlarmManager(Singleton):
                     "last_transition_to": to_state,
                 }
             )
-        AlarmsLoggerEngine().acknowledge_many(payloads)
+        from ..persistence.exceptions import JournalBackpressureError, JournalDiskFullError
+
+        try:
+            AlarmsLoggerEngine().acknowledge_many(payloads)
+        except (JournalBackpressureError, JournalDiskFullError):
+            self._last_ack_error = "journal_error"
+            return None
+        acknowledged: list[Alarm] = []
+        for alarm in candidates:
+            if alarm._acknowledge_in_memory(now):
+                acknowledged.append(alarm)
+            else:
+                logging.getLogger("pyautomation").error(
+                    "SAF bulk ack journaled but ISA transition failed alarm=%s",
+                    alarm.name,
+                )
+        if not acknowledged:
+            self._last_ack_error = "journal_error"
+            return None
         for alarm in acknowledged:
             if alarm.sio:
                 alarm.sio.emit("on.alarm", data=alarm.serialize_socket())

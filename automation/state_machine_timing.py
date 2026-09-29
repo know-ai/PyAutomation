@@ -10,7 +10,7 @@ import math
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any
 
 from .buffer import Buffer
@@ -151,9 +151,13 @@ def record_sample_metrics(machine_name: str, cycle_s: float, lag_ms: float, util
         slot["BUFFER_UTILIZATION_%"] = utilization_pct
 
 
+_tick_samples: deque = deque(maxlen=256)
+
+
 def record_execution_metrics(machine_name: str, cycle_us: float) -> None:
     with _metrics_lock:
         _metrics[machine_name]["EXECUTION_CYCLE_US"] = cycle_us
+        _tick_samples.append(float(cycle_us))
 
 
 def snapshot_timing_metrics() -> dict:
@@ -165,15 +169,24 @@ def snapshot_timing_metrics() -> dict:
             "EXECUTION_CYCLE_US": 0.0,
             "BUFFER_UTILIZATION_%": 0.0,
             "SAMPLE_LOOP_MACHINES": 0,
+            "SAF_TICK_P95_MS": 0.0,
         }
     lags = [m.get("SAMPLE_LAG_MS", 0.0) for m in machines.values()]
     execs = [m.get("EXECUTION_CYCLE_US", 0.0) for m in machines.values()]
     utils = [m.get("BUFFER_UTILIZATION_%", 0.0) for m in machines.values()]
+    with _metrics_lock:
+        ticks = list(_tick_samples)
+    tick_p95_ms = 0.0
+    if ticks:
+        ordered = sorted(ticks)
+        index = max(0, int(round(0.95 * (len(ordered) - 1))))
+        tick_p95_ms = ordered[index] / 1000.0
     return {
         "SAMPLE_LAG_MS": round(max(lags), 3),
         "EXECUTION_CYCLE_US": round(max(execs), 3),
         "BUFFER_UTILIZATION_%": round(max(utils), 2),
         "SAMPLE_LOOP_MACHINES": len(machines),
+        "SAF_TICK_P95_MS": round(tick_p95_ms, 3),
     }
 
 

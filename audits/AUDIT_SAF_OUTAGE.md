@@ -420,3 +420,20 @@ Sin ejecutarlas aquí. Para una campaña posterior, por instancia y con PostgreS
 5. Llenar anillo (productor más rápido que 10 ms de flush) y medir si `set_value` bloquea en `fsync`. Confirma SAF-OUT-05.
 6. No usar `/api/health/ready` como `restart`. Anotar que permanece 200 `DEGRADED` toda la caída.
 7. Disco de journal y filas a las 1 h, 4 h y al techo. Separar tags de campo (no shed) de `SYS.PERF` (shed).
+
+---
+
+## 16. Cierre de código SPEC-SAF-HOTPATH-CONTINUITY (2026-09-29)
+
+El código de 2.9.0 en este checkout aplica el spec con las lecturas de [docs/adr/SAF-HOTPATH-CONTINUITY.md](../docs/adr/SAF-HOTPATH-CONTINUITY.md). No sustituye la campaña de §15.
+
+| ID | Estado en código | Qué cambió |
+|---|---|---|
+| SAF-OUT-01 | Cerrado en código | Lock del anillo distinto del lock del writer. `fetch_pending` y la edad del `PENDING` leen por una conexión `query_only`. `pending_count` sigue siendo el contador en memoria |
+| SAF-OUT-02 | Cerrado en código | El ACK unitario y el masivo hacen `COMMIT` antes de la transición ISA. Si el journal rechaza, la RAM no cambia y el HTTP responde 503 `error_type=journal_error`. Al cargar alarmas, `reconcile_pending_acks` aplica filas `PENDING` de ACK que no llegaron a la RAM |
+| SAF-OUT-03 | Cerrado en código | `journal_then_remote` y el batch solo journalizan. El `INSERT` remoto queda en `ReplicationWorker` |
+| SAF-OUT-04 | Cerrado en código | `JournalWriter.start` pasa `REPLICATING` a `PENDING` sin tocar `attempts` |
+| SAF-OUT-05 | Cerrado en código | El productor no drena. Anillo lleno: drop de `SYS.PERF` y análogos, o expulsión de una dropeable para admitir `FI_`/`PI_`/`DI_`/`TI_`/`*leak*`/`criticity=5`. `SafEmergencyDrainer` vuelca a partir del 80 % bajo el mismo writer lock |
+| SAF-OUT-06 | Cerrado en código | `reclaim_idle` no corre con drenaje activo ni en los 60 s siguientes a un write crítico, un ACK o un catch-up. El tick y el flush de tags no reinician ese reloj |
+
+Pendiente de campaña (no de este diff): p95 de planta OP1–OP7, soak 24 h con outage de 4 h, bench de 1 M filas. El harness corto está en `automation/tests/test_saf_hotpath_continuity.py` (`SAF_SOAK=1`). `SAF_REGIME` y los contadores nuevos salen en `GET /api/health/saf` y `GET /api/health/system`.

@@ -907,10 +907,65 @@ class Alarm(StateMachine):
             return False
         now = quantize_datetime_ms(datetime.now(timezone.utc))
         self._pending_operator_id = self._operator_pk(user=user, operator_id=operator_id)
-        if not self._apply_acknowledge(now):
+        started = time.perf_counter()
+        try:
+            self._journal_acknowledge(now, current)
+        except Exception:
             self._pending_operator_id = None
+            raise
+        self._defer_persist = True
+        try:
+            applied = self._apply_acknowledge(now)
+        finally:
+            self._defer_persist = False
+        if not applied:
+            self._pending_operator_id = None
+            logging.getLogger("pyautomation").error(
+                "SAF ack journaled but ISA transition failed alarm=%s",
+                self.name,
+            )
             return False
+        try:
+            from ..persistence.latency import record_ack_ms
+            from ..persistence import get_persistence_gateway
+
+            record_ack_ms((time.perf_counter() - started) * 1000.0)
+            get_persistence_gateway().journal.note_operator_activity()
+        except Exception:
+            pass
         return self, f"{self.tag.get_name()}"
+
+    def _journal_acknowledge(self, now: datetime, current: str) -> None:
+        """COMMIT the history row before the ISA transition (SAF-OUT-02)."""
+        from .states import HISTORY_ACK, HISTORY_CLEARED, HISTORY_RTNUN, HISTORY_UNACK, isa_name_from_history
+
+        if current == "unack_alarm":
+            from_state, to_state = HISTORY_UNACK, HISTORY_ACK
+        else:
+            from_state, to_state = HISTORY_RTNUN, HISTORY_CLEARED
+        catalog = self.catalog_payload()
+        self.alarm_engine.create_record_on_alarm_summary(
+            name=self.name,
+            state=isa_name_from_history(to_state),
+            timestamp=now,
+            ack_timestamp=now,
+            identifier=catalog.get("identifier"),
+            tag=catalog.get("tag"),
+            trigger_type=catalog.get("trigger_type"),
+            trigger_value=catalog.get("trigger_value"),
+            description=catalog.get("description"),
+            area=catalog.get("area"),
+            from_state=from_state,
+            to_state=to_state,
+            event_time=now,
+            operator_id=self._pending_operator_id,
+            condition_met=bool(self._condition_met),
+            condition_value=self._current_condition_value(),
+            schema_version=2,
+            last_transition_ts=now,
+            last_transition_from=from_state,
+            last_transition_to=to_state,
+        )
 
     @logging_error_handler
     @set_event(message="Alarm shelved", classification="Control", priority=2, criticity=3)

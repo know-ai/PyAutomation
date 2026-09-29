@@ -390,7 +390,13 @@ class AckAlarmByNameResource(Resource):
 
             if alarm.state in [AlarmState.UNACK, AlarmState.RTNUN]:
                 user = Api.get_current_user()
+                before = alarm.state
                 alarm.acknowledge(user=user, operator_id=getattr(user, "id", None) if user else None)
+                if alarm.state == before:
+                    return {
+                        "message": f"{alarm.name} was not acknowledged",
+                        "error_type": "journal_error",
+                    }, 503
                 result['message'] = f"{alarm.name} was acknowledged successfully"
                 result['data'] = alarm.serialize()
 
@@ -418,7 +424,13 @@ class AckAllAlarmsResource(Resource):
         if violation:
             return violation
         user = Api.get_current_user()
+        app.alarm_manager._last_ack_error = None
         acknowledged = app.alarm_manager.acknowledge_all(user=user)
+        if getattr(app.alarm_manager, "_last_ack_error", None) == "journal_error":
+            return {
+                "message": "Alarms were not acknowledged",
+                "error_type": "journal_error",
+            }, 503
         count = 0
         if isinstance(acknowledged, tuple) and len(acknowledged) >= 2 and isinstance(acknowledged[1], int):
             count = acknowledged[1]
