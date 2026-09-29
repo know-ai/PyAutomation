@@ -266,3 +266,40 @@ class TestConnectionAlarms(unittest.TestCase):
         self.assertIsNotNone(alarm)
         self.assertEqual(alarm.alarm_setpoint.type.value, "BOOL")
         self.assertEqual(self._alarm_state(alarm), "normal")
+
+
+class TestConnectionAlarmName(unittest.TestCase):
+    def test_client_name_comes_from_the_alarm(self):
+        from automation.utils.connection_alarms import connection_client_from_alarm
+
+        self.assertEqual(
+            connection_client_from_alarm("Linea1.ALM.OPCUA.iDetect"),
+            "iDetect",
+        )
+        self.assertIsNone(connection_client_from_alarm("Linea1.ALM.PERF.CPU"))
+
+
+class TestInactiveConnectionTag(unittest.TestCase):
+    def test_logical_delete_is_reversed_before_the_alarm_tag_is_recreated(self):
+        from types import SimpleNamespace
+
+        row = SimpleNamespace(id=90, identifier="tag-90", active=False)
+        puts = []
+
+        class _Tags:
+            @staticmethod
+            def read_by_name(_name):
+                return row
+
+            @staticmethod
+            def put(*, id, active):
+                puts.append((id, active))
+                row.active = active
+
+        app = SimpleNamespace(is_db_connected=lambda: True)
+        with patch("automation.dbmodels.tags.Tags", _Tags), patch(
+            "automation.catalog.mutations.reactivate_tag_local", return_value="tag-90"
+        ):
+            revived = conn_alarms._revive_inactive_tag(app, "Linea1.SYS.OPCUA.iDetect.Disconnected")
+        self.assertEqual(revived, "tag-90")
+        self.assertEqual(puts, [(90, True)])

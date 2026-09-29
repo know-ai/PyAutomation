@@ -335,7 +335,7 @@ def watchdog_slice(server) -> None:
         name = order[(start + step) % len(order)]
         seen = server._last_touch.get(name)
         if seen is None or (now - seen) >= WATCHDOG_S:
-            _LOG.warning("OPC UA watchdog refreshing stale tag %s", name)
+            _LOG.debug("OPC UA watchdog refreshing stale tag %s", name)
             server._dirty_tags.add(name)
             server._last_touch[name] = now
     server._watch_index = (start + count) % len(order)
@@ -388,6 +388,71 @@ def watch_identity_env(server) -> None:
     if segment != server._latched_segment:
         server._latched_segment = segment
         audit_failure("OPC UA segment changed", str(segment), criticity=5)
+
+
+def release_watched_name(server, name: str) -> None:
+    """Drop one tag from the embedded watchdog and its OPC UA node. Complexity: O(W)."""
+    if server is None or not name:
+        return
+    order = getattr(server, "_watch_order", None)
+    if isinstance(order, list):
+        server._watch_order = [item for item in order if item != name]
+    for bucket_name in ("_last_touch", "_dead_bands"):
+        bucket = getattr(server, bucket_name, None)
+        if isinstance(bucket, dict):
+            bucket.pop(name, None)
+    dirty = getattr(server, "_dirty_tags", None)
+    if isinstance(dirty, set):
+        dirty.discard(name)
+    tracker = getattr(server, "tag_tracker", None)
+    detach = getattr(tracker, "detach", None)
+    if callable(detach):
+        try:
+            detach(name)
+        except Exception:
+            pass
+    observers = getattr(server, "_tag_observers", None)
+    if isinstance(observers, dict):
+        observers.pop(name, None)
+    submit_drop(server, name)
+
+
+def publish_tag_definition(server, name: str, *, previous_name: str | None = None, recreate: bool = False) -> None:
+    """Push a CVT definition change to the embedded server. Complexity: O(1).
+
+    Value changes already travel through the dirty observer. This covers the
+    attributes the node actually publishes: unit, variable, range, scan, deadband,
+    filter and browse name. A data-type or filter-set change recreates the node.
+    """
+    if server is None or not name:
+        return
+    if previous_name and previous_name != name:
+        submit_drop(server, previous_name)
+    if recreate:
+        submit_drop(server, name, reexpose=True)
+    else:
+        enqueue = getattr(server, "enqueue_expose", None)
+        if callable(enqueue):
+            enqueue("t", name)
+    dirty = getattr(server, "_dirty_tags", None)
+    if isinstance(dirty, set):
+        dirty.add(name)
+    tag = None
+    getter = getattr(getattr(server, "cvt", None), "get_tag_by_name", None)
+    if callable(getter):
+        try:
+            tag = getter(name=name)
+        except Exception:
+            tag = None
+    bands = getattr(server, "_dead_bands", None)
+    if isinstance(bands, dict) and tag is not None:
+        try:
+            bands[name] = float(tag.get_dead_band() or 0.0)
+        except Exception:
+            bands[name] = 0.0
+    touched = getattr(server, "_last_touch", None)
+    if isinstance(touched, dict):
+        touched[name] = time.monotonic()
 
 
 def submit_drop(server, name: str, *, reexpose: bool = False) -> None:

@@ -171,6 +171,7 @@ def put_alarm_state(func, args, kwargs):
     alarms_engine = AlarmsLoggerEngine()   
     result = func(*args, **kwargs)
     alarm = args[0]
+    _publish_alarm_state(alarm)
     if getattr(alarm, "_defer_persist", False):
         return result
     alarms_engine.put(
@@ -181,6 +182,19 @@ def put_alarm_state(func, args, kwargs):
         alarm.sio.emit("on.alarm", data=alarm.serialize_socket())
         
     return result
+
+
+def _publish_alarm_state(alarm) -> None:
+    """Mark the embedded OPC UA alarm after the state object already changed. O(1)."""
+    name = getattr(alarm, "name", None)
+    if not name:
+        return
+    try:
+        from ..opcua_server.bridge import mark_alarm
+
+        mark_alarm(name)
+    except Exception:
+        return
 
 def validate_types(**validations):
     

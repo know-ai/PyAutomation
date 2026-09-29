@@ -27,10 +27,11 @@ class TestAddressSpace(unittest.TestCase):
         objects = _Folder()
         builder = AddressSpaceBuilder(objects, 2)
         builder.build_tree("", "")
-        site = objects.children[0].children[0]
-        area = site.children[0]
-        self.assertEqual(site.name, "Default")
-        self.assertEqual(area.name, "Global")
+        root = objects.children[0]
+        names = {child.name for child in root.children}
+        self.assertEqual(names, {"Default", "Process", "Alarms", "Engines"})
+        default = next(child for child in root.children if child.name == "Default")
+        self.assertEqual({child.name for child in default.children}, {"Process", "Alarms"})
 
     def test_idempotent_folders(self):
         objects = _Folder()
@@ -53,7 +54,7 @@ class TestAddressSpace(unittest.TestCase):
         builder = AddressSpaceBuilder(objects, 2)
         folder = builder.ensure_group("Supe", "Linea1", "Engines", "LDS")
         self.assertEqual(folder.name, "lds")
-        engines = objects.children[0].children[0].children[0].children[0]
+        engines = objects.children[0].children[0]
         self.assertEqual(engines.name, "Engines")
         self.assertEqual([child.name for child in engines.children], ["lds"])
         again = builder.ensure_group("Supe", "Linea1", "Engines", "LDS")

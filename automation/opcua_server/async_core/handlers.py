@@ -116,16 +116,26 @@ async def expose_entity(ctx: LoopContext, command: ExposeEntity) -> None:
         await _refresh_properties(ctx, command)
         return
     try:
-        folder = await ctx.builder.ensure_branch_async(command.site, command.area, command.folder)
+        folder = await ctx.builder.ensure_branch_async(
+            command.site, command.area, command.folder, under_default=bool(getattr(command, "under_default", False))
+        )
         groups = tuple(getattr(command, "groups", ()) or ())
         if groups:
             folder = await ctx.builder.ensure_group_async(
-                command.site, command.area, command.folder, groups[0]
+                command.site,
+                command.area,
+                command.folder,
+                groups[0],
+                under_default=bool(getattr(command, "under_default", False)),
             )
         node = await ctx.builder.add_variable_async(folder, command.identifier, command.browse, command.initial)
         for extra in groups[1:]:
             other = await ctx.builder.ensure_group_async(
-                command.site, command.area, command.folder, extra
+                command.site,
+                command.area,
+                command.folder,
+                extra,
+                under_default=bool(getattr(command, "under_default", False)),
             )
             try:
                 await other.add_reference(
@@ -307,10 +317,28 @@ async def _rename_browse(node, browse: str) -> None:
 
 
 async def _refresh_properties(ctx: LoopContext, command: ExposeEntity) -> int:
-    """Rewrite properties of a leaf that already exists, including a shelved one. Complexity: O(P)."""
+    """Rewrite properties of a leaf that already exists, and add any new field. Complexity: O(P)."""
     written = 0
+    parent = ctx.nodes.get(command.identifier)
     for key, value in command.properties:
-        node = await _property_node(ctx, f"{command.identifier}.{key}")
+        ident = f"{command.identifier}.{key}"
+        node = ctx.nodes.get(ident)
+        if node is None and parent is not None and ctx.builder is not None:
+            try:
+                node = await ctx.builder.add_property_async(
+                    parent, ident, key, _property_value(key, value)
+                )
+                ctx.nodes[ident] = node
+                from ..access.applier import apply_level
+
+                await apply_level(node, _level(getattr(command, "access", 1)))
+            except Exception:
+                _LOG.debug("OPC UA property create skipped for %s", ident, exc_info=True)
+                continue
+            written += 1
+            continue
+        if node is None:
+            node = await _property_node(ctx, ident)
         if node is None:
             continue
         try:

@@ -1,4 +1,6 @@
+import os
 import unittest
+from unittest.mock import patch
 
 from automation.opcua_server.identity import (
     IdentityCounters,
@@ -52,22 +54,18 @@ class TestIdentityContract(unittest.TestCase):
         self.assertEqual(canonicalize_name("FI_01."), "fi_01")
         self.assertEqual(canonicalize_name("FI..01"), "fi..01")
 
-    def test_type_prefix(self):
-        self.assertNotEqual(
-            make_node_id("t", "Linea1", "FI_01"),
-            make_node_id("a", "Linea1", "FI_01"),
-        )
-        self.assertNotEqual(
-            make_node_id("a", "Linea1", "FI_01"),
-            make_node_id("e", "Linea1", "FI_01"),
-        )
+    def test_type_prefix_is_omitted(self):
+        self.assertEqual(make_node_id("t", "Linea1", "FI_01"), "fi_01")
+        self.assertEqual(make_node_id("a", "Linea1", "FI_01"), "fi_01")
+        self.assertEqual(make_node_id("e", "Linea1", "FI_01"), "fi_01")
 
     def test_area_argument_does_not_change_the_identifier(self):
-        self.assertEqual(
-            make_node_id("t", "Linea1", "Supe.Linea1.FI_01"),
-            make_node_id("t", "Linea2", "Supe.Linea1.FI_01"),
-        )
-        self.assertEqual(make_node_id("t", "Linea1", "Supe.Linea1.FI_01"), "t:supe.linea1.fi_01")
+        with patch.dict(os.environ, {"AUTOMATION_MANUFACTURER": "Supe", "AUTOMATION_SEGMENT": "Linea1"}):
+            self.assertEqual(
+                make_node_id("t", "Linea1", "Supe.Linea1.FI_01"),
+                make_node_id("t", "Linea2", "Supe.Linea1.FI_01"),
+            )
+            self.assertEqual(make_node_id("t", "Linea1", "Supe.Linea1.FI_01"), "fi_01")
 
     def test_no_manufacturer_field(self):
         same = make_node_id("t", "Linea1", "Supe.Linea1.FI_01")

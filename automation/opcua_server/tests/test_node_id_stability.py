@@ -25,18 +25,25 @@ class TestNodeIdStability(unittest.TestCase):
         builder.build_tree("Supe", "Linea1")
         self.assertEqual(objects.children[0].name, "PyAutomationIO")
 
-    def test_site_folder_default(self):
+    def test_site_folder_is_always_default(self):
         objects = _Folder()
         builder = AddressSpaceBuilder(objects, 2)
-        builder.build_tree("", "Linea1")
-        self.assertEqual(objects.children[0].children[0].name, "Default")
+        builder.build_tree("Supe", "Linea1")
+        root = objects.children[0]
+        self.assertEqual({child.name for child in root.children}, {"Default", "Process", "Alarms", "Engines"})
+        default = next(child for child in root.children if child.name == "Default")
+        self.assertEqual({child.name for child in default.children}, {"Process", "Alarms"})
 
-    def test_area_folder_global(self):
+    def test_area_folder_is_not_created(self):
         objects = _Folder()
         builder = AddressSpaceBuilder(objects, 2)
-        builder.build_tree("Supe", "")
-        site = objects.children[0].children[0]
-        self.assertEqual(site.children[0].name, "Global")
+        builder.build_tree("Supe", "Linea1")
+        root = objects.children[0]
+        names = [child.name for child in root.children]
+        self.assertNotIn("Linea1", names)
+        self.assertNotIn("linea1", names)
+        self.assertNotIn("Supe", names)
+        self.assertNotIn("Global", names)
 
     def test_moving_tag_does_not_change_nodeid(self):
         identifier = make_node_id("t", "Linea1", "Supe.Linea1.FI_01")
@@ -44,8 +51,10 @@ class TestNodeIdStability(unittest.TestCase):
         self.assertNotIn("Process", identifier)
 
     def test_changing_manufacturer_does_not_rename_tags(self):
-        identifier = make_node_id("t", "Linea1", "Supe.Linea1.FI_01")
-        with patch.dict(os.environ, {"AUTOMATION_MANUFACTURER": "Otro"}):
+        with patch.dict(os.environ, {"AUTOMATION_MANUFACTURER": "Supe", "AUTOMATION_SEGMENT": "Linea1"}):
+            identifier = make_node_id("t", "Linea1", "Supe.Linea1.FI_01")
+            self.assertEqual(identifier, "fi_01")
+        with patch.dict(os.environ, {"AUTOMATION_MANUFACTURER": "Supe", "AUTOMATION_SEGMENT": "Linea1"}):
             self.assertEqual(identifier, make_node_id("t", "Linea1", "Supe.Linea1.FI_01"))
 
     def test_segment_argument_does_not_change_nodeids(self):
@@ -58,11 +67,12 @@ class TestNodeIdStability(unittest.TestCase):
         objects = _Folder()
         builder = AddressSpaceBuilder(objects, 2)
         builder.build_tree("", "")
-        site = objects.children[0].children[0]
-        area = site.children[0]
-        self.assertEqual(site.name, "Default")
-        self.assertEqual(area.name, "Global")
-        self.assertEqual(make_node_id("t", None, "Default.Global.FI_01"), "t:default.global.fi_01")
+        root = objects.children[0]
+        self.assertIn("Default", {child.name for child in root.children})
+        self.assertEqual({child.name for child in root.children}, {"Default", "Process", "Alarms", "Engines"})
+        with patch.dict(os.environ, {"AUTOMATION_MANUFACTURER": "Supe", "AUTOMATION_SEGMENT": "Linea1"}):
+            self.assertEqual(make_node_id("t", None, "Supe.Linea1.FI_01"), "fi_01")
+            self.assertEqual(make_node_id("t", None, "Linea1.SYS.PERF.SAF_QUEUE"), "sys.perf.saf_queue")
 
     def test_segment_change_is_audited_once(self):
         server = type("S", (), {})()

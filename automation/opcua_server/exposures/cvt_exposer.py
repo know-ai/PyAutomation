@@ -66,7 +66,14 @@ class CvtExposer(NodeExposer):
         groups = engine_groups_for_tag(str(getattr(entity, "name", "") or ""))
         if groups:
             return builder.ensure_group(entity_site(entity), entity_area(entity), "Engines", groups[0])
-        return builder.ensure_branch(entity_site(entity), entity_area(entity), "Process")
+        from ..grouping import browse_under_default
+
+        return builder.ensure_branch(
+            entity_site(entity),
+            entity_area(entity),
+            "Process",
+            under_default=browse_under_default("t", str(getattr(entity, "name", "") or "")),
+        )
 
     def _prop(self, node, identifier: str, key: str, value, bucket: list) -> None:
         if len(bucket) >= _MAX_PROPS:

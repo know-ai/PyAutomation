@@ -86,6 +86,64 @@ class TestPolledVariableAttributes(unittest.TestCase):
         self.assertEqual(payload["Namespace"], "ns=2;s=Flow")
 
 
+class _Results:
+    def __init__(self) -> None:
+        self.items = []
+
+    def put(self, item) -> None:
+        self.items.append(item)
+
+
+class _DeadSession:
+    def __init__(self, state) -> None:
+        self.uaclient = SimpleNamespace(state=state, browse=self._browse)
+        self.connects = 0
+
+    async def connect(self) -> None:
+        self.connects += 1
+        from asyncua.client.ua_client import UaClientState
+
+        self.uaclient.state = UaClientState.CONNECTED
+
+    def get_node(self, node_id):
+        return SimpleNamespace(nodeid=ua.NodeId.from_string(str(node_id)))
+
+    async def _browse(self, parameters):
+        return [SimpleNamespace(References=[], ContinuationPoint=None) for _ in parameters.NodesToBrowse]
+
+
+class TestBrowseOnDeadSession(unittest.TestCase):
+    def test_mapping_browse_reconnects_once(self):
+        from asyncua.client.ua_client import UaClientState
+
+        from automation.opcua.asyncua_client.commands import Browse
+        from automation.opcua.asyncua_client.handlers import LoopContext, _browse
+
+        flags = []
+        ctx = LoopContext(_Results(), lambda name, connected: flags.append((name, connected)))
+        dead = _DeadSession(UaClientState.DISCONNECTED)
+        ctx.sessions["PLC"] = dead
+        command = Browse("PLC", "ns=0;i=85", 1, "corr", mode="variables")
+        asyncio.run(_browse(ctx, command))
+        self.assertEqual(dead.connects, 1)
+        self.assertEqual(flags, [("PLC", True)])
+        self.assertTrue(ctx.results.items[0].ok)
+        self.assertEqual(ctx.results.items[0].payload, [])
+
+    def test_read_keeps_connected_while_asyncua_reconnects(self):
+        from asyncua.client.ua_client import UaClientState
+
+        from automation.opcua.asyncua_client.commands import ReadBatch
+        from automation.opcua.asyncua_client.handlers import LoopContext, _read_batch
+
+        flags = []
+        ctx = LoopContext(_Results(), lambda name, connected: flags.append((name, connected)))
+        ctx.sessions["PLC"] = _DeadSession(UaClientState.RECONNECTING)
+        asyncio.run(_read_batch(ctx, ReadBatch("PLC", ("ns=2;s=FI_01",), "corr")))
+        self.assertEqual(flags, [])
+        self.assertIsNone(ctx.results.items[0].data_values)
+
+
 class TestStructureText(unittest.TestCase):
     def test_engineering_units_show_display_name_text(self):
         from automation.modules.opcua.resources.clients import extract_primitive_value

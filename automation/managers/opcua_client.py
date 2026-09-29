@@ -57,6 +57,20 @@ def targets_local_embedded_server(host, port) -> bool:
     return bool(bind) and name == bind and bind not in {"0.0.0.0", "::"}
 
 
+def _arm_connection_alarm(client_name: str) -> None:
+    """Create the BOOL tag and its alarm as soon as the client exists. Complexity: O(1)."""
+    try:
+        from ..utils.connection_alarms import ensure_opcua_connection_alarm
+
+        ensure_opcua_connection_alarm(client_name)
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "OPC UA connection alarm ensure skipped client=%s",
+            client_name,
+            exc_info=True,
+        )
+
+
 def awaiting_embedded_server(host, port) -> bool:
     """Defer the session until the embedded endpoint is up. Complexity: O(M)."""
     return targets_local_embedded_server(host, port) and not embedded_server_is_ready()
@@ -105,6 +119,98 @@ def _persist_opcua_client_local(client_name: str, host: str, port: int, owner_no
             client_name,
             exc_info=True,
         )
+
+
+def _delete_opcua_client_remote(client_name: str) -> None:
+    """Hard-delete the historian client row so catalog sync cannot pull it back."""
+    try:
+        row = OPCUA.get_by_client_name(client_name=client_name)
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "OPC UA historian lookup skipped client=%s",
+            client_name,
+            exc_info=True,
+        )
+        return
+    if row is None:
+        return
+    try:
+        OPCUA.delete().where(OPCUA.client_name == client_name).execute()
+    except Exception:
+        logging.getLogger("pyautomation").warning(
+            "OPC UA client %s stayed in the historian; catalog sync can restore it",
+            client_name,
+            exc_info=True,
+        )
+
+
+def _stop_field_acquisition(tags) -> None:
+    """Stop DAQ/DAS reads before the mapping disappears. Process engines stay bound."""
+    try:
+        from automation import PyAutomation
+
+        app = PyAutomation()
+    except Exception:
+        return
+    for tag in tags:
+        try:
+            app.unsubscribe_opcua(tag)
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "OPC UA acquisition stop skipped tag=%s",
+                getattr(tag, "name", None),
+                exc_info=True,
+            )
+
+
+def _unbind_mapped_tags(manager, client_name: str, server_url: str | None) -> int:
+    """Keep process tags and their alarms. Drop only the link to this client.
+
+    SAF samples already queued for those tags stay in the journal: they are
+    plant history and still match a live tag row. Complexity: O(T).
+    """
+    from ..catalog.mutations import clear_tag_opcua_binding_local
+    from ..dbmodels.tags import Tags
+
+    tags = list(manager.cvt.iter_tags_for_opcua_client(client_name, server_url))
+    _stop_field_acquisition(tags)
+    for tag in tags:
+        name = tag.get_name() if hasattr(tag, "get_name") else getattr(tag, "name", None)
+        identifier = getattr(tag, "id", None)
+        if hasattr(tag, "set_opcua_address"):
+            tag.set_opcua_address(None)
+        else:
+            tag.opcua_client_name = None
+        if hasattr(tag, "set_node_namespace"):
+            tag.set_node_namespace(None)
+        try:
+            row = None
+            if name:
+                row = Tags.read_by_name(name)
+            if row is None and identifier:
+                row = Tags.get_or_none(Tags.identifier == identifier)
+            if row is not None:
+                Tags.put(
+                    id=row.id,
+                    opcua_address=None,
+                    opcua_client_name=None,
+                    node_namespace=None,
+                )
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "OPC UA historian unbind skipped tag=%s",
+                name,
+                exc_info=True,
+            )
+        try:
+            clear_tag_opcua_binding_local(identifier=identifier, name=name)
+        except Exception:
+            logging.getLogger("pyautomation").debug(
+                "OPC UA local unbind skipped tag=%s",
+                name,
+                exc_info=True,
+            )
+    return len(tags)
 
 
 def _delete_opcua_client_local(client_name: str) -> None:
@@ -207,6 +313,7 @@ class OPCUAClientManager:
             if self.logger.get_db() and not OPCUA.client_name_exist(client_name):
                 OPCUA.create(client_name=client_name, host=host, port=port, owner_node=owner_node)
             _persist_opcua_client_local(client_name, host, port, owner_node)
+            _arm_connection_alarm(client_name)
             logging.getLogger("pyautomation").info(
                 "OPC UA client %s waits for the embedded server at %s",
                 client_name,
@@ -244,6 +351,7 @@ class OPCUAClientManager:
                 client_name=client_name,
                 server_url=endpoint_url,
             )
+            _arm_connection_alarm(client_name)
 
             return True, message
         else:
@@ -263,7 +371,8 @@ class OPCUAClientManager:
                         owner_node=owner_node,
                     )
             _persist_opcua_client_local(client_name, host, port, owner_node)
-            
+            _arm_connection_alarm(client_name)
+
             # Retornar False para indicar que la conexión falló, pero el cliente está en memoria
             return False, message
 
@@ -345,12 +454,22 @@ class OPCUAClientManager:
                         client_name,
                         exc_info=True,
                     )
+                try:
+                    released = _unbind_mapped_tags(self, client_name, server_url)
+                    if released:
+                        logging.getLogger("pyautomation").info(
+                            "Cleared OPC UA binding on %s process tag(s) after removing client=%s",
+                            released,
+                            client_name,
+                        )
+                except Exception:
+                    logging.getLogger("pyautomation").debug(
+                        "OPC tag unbind skipped client=%s",
+                        client_name,
+                        exc_info=True,
+                    )
                 # DATABASE PERSISTENCY
-                opcua = OPCUA.get_by_client_name(client_name=client_name)
-                if opcua:
-                    if self.logger.get_db():
-                        query = OPCUA.delete().where(OPCUA.client_name == client_name)
-                        query.execute()
+                _delete_opcua_client_remote(client_name)
                 _delete_opcua_client_local(client_name)
 
                 return True

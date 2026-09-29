@@ -4021,6 +4021,16 @@ html[data-hmi-density="control"] .card > .card-header {
   min-width: 0;
 }
 
+.opcua-client-action {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 2rem;
+}
+
 .opcua-connect-overlay {
   position: absolute;
   inset: 0;

@@ -107,6 +107,30 @@ def soft_deactivate_tag_local(*, identifier: str | None = None, name: str | None
     _upsert("tags", payload)
 
 
+def clear_tag_opcua_binding_local(*, identifier: str | None = None, name: str | None = None) -> None:
+    """Drop the OPC UA client link on a process tag. The tag row stays. Complexity: O(1)."""
+    row = _find_by_any("tags", identifier=identifier, name=name)
+    if not row:
+        return
+    payload = dict(row)
+    payload["opcua_address"] = None
+    payload["opcua_client_name"] = None
+    payload["node_namespace"] = None
+    _upsert("tags", payload)
+
+
+def reactivate_tag_local(*, identifier: str | None = None, name: str | None = None) -> str | None:
+    """Undo a logical delete so alarm hydrate can load the same tag. Complexity: O(1)."""
+    row = _find_by_any("tags", identifier=identifier, name=name)
+    if not row:
+        return None
+    payload = dict(row)
+    payload["active"] = True
+    _upsert("tags", payload)
+    revived = row.get("identifier") or identifier
+    return str(revived) if revived else None
+
+
 def persist_alarm_fields_local(
     *,
     identifier: str,

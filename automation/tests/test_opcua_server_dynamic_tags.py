@@ -91,3 +91,21 @@ class TestOpcuaServerDynamicExpose(unittest.TestCase):
         ):
             app.expose_cvt_tag_on_opcua_server(tag)
         machine.enqueue_expose.assert_called_once_with("t", "PT-101")
+
+    def test_definition_change_dirties_the_value_and_reenqueues_the_node(self):
+        from automation.opcua_server.runtime import publish_tag_definition
+
+        tag = SimpleNamespace(get_dead_band=lambda: 1.5)
+        server = SimpleNamespace(
+            enqueue_expose=MagicMock(),
+            _dirty_tags=set(),
+            _dead_bands={},
+            _last_touch={},
+            _expose_seen=set(),
+            runner=None,
+            cvt=SimpleNamespace(get_tag_by_name=lambda **_kwargs: tag),
+        )
+        publish_tag_definition(server, "Supe.Linea1.PI_01")
+        server.enqueue_expose.assert_called_once_with("t", "Supe.Linea1.PI_01")
+        self.assertIn("Supe.Linea1.PI_01", server._dirty_tags)
+        self.assertEqual(server._dead_bands["Supe.Linea1.PI_01"], 1.5)

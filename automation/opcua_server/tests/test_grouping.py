@@ -36,6 +36,14 @@ class TestEngineGrouping(unittest.TestCase):
         self.assertEqual(leaf_name(alarm, "a"), "PPA.leak")
         tag = SimpleNamespace(name="Supe.Linea1.FI_02", display_name="FI_02")
         self.assertEqual(leaf_name(tag, "t"), "FI_02")
+
+    def test_system_nodes_use_the_default_folder(self):
+        from automation.opcua_server.grouping import browse_under_default
+
+        self.assertTrue(browse_under_default("t", "Linea1.SYS.PERF.CPU"))
+        self.assertTrue(browse_under_default("a", "Linea1.ALM.PERF.CPU"))
+        self.assertFalse(browse_under_default("t", "Supe.Linea1.PI_01"))
+        self.assertFalse(browse_under_default("e", "Supe.Linea1.LDS"))
         app = SimpleNamespace(get_machines=lambda: [])
         with patch("automation.PyAutomation", return_value=app):
             self.assertEqual(engine_groups_for_tag("Linea1.SYS.PERF.CPU"), ())

@@ -323,6 +323,9 @@ class Machine(Singleton):
                         else:
                             machine._threshold_from_db = False
                                     
+                        publish = getattr(machine, "_publish_opcua", None)
+                        if callable(publish):
+                            publish()
                         self.append_machine(machine=machine, interval=FloatType(config[machine.name.value]["interval"]))
                     
                     else:
@@ -810,6 +813,7 @@ class StateMachineCore(StateMachine):
 
         # Update on DB
         self.machine_engine.put(name=self.name, **kwargs)
+        self._publish_opcua()
 
     def add_process_variable(self, name:str, tag:Tag, read_only:bool=False):
         r"""
@@ -880,6 +884,7 @@ class StateMachineCore(StateMachine):
         self.buffer_size.value = size
         self.restart_buffer()
         self._reconfigure_temporal_schedulers()
+        self._publish_opcua()
 
     @property
     def data(self):
@@ -993,6 +998,7 @@ class StateMachineCore(StateMachine):
                     "Machine sample interval audit skipped",
                     exc_info=True,
                 )
+        self._publish_opcua()
 
     def set_sample_overrides(self, overrides: dict, user=None):
         self.set_sample_interval(
@@ -1233,6 +1239,7 @@ class StateMachineCore(StateMachine):
             raise ValueError(f"Unable to resolve bind tag for '{source.name}'")
 
         self.signal_modes[source.name] = preferred
+        self._publish_opcua()
 
         if getattr(new_tag, "name", None) == getattr(old_tag, "name", None):
             return True
@@ -1663,6 +1670,26 @@ class StateMachineCore(StateMachine):
                     "Machine interval audit skipped",
                     exc_info=True,
                 )
+        self._publish_opcua()
+
+    def _assign_criticity(self, value) -> None:
+        """Write criticity and republish the engine when the number changes. O(1)."""
+        current = getattr(getattr(self, "criticity", None), "value", None)
+        self.criticity.value = value
+        if current != value:
+            self._publish_opcua()
+
+    def _publish_opcua(self) -> None:
+        """Mark this engine dirty so the embedded server rewrites its attributes. O(1)."""
+        try:
+            from .opcua_server.bridge import mark_engine
+
+            raw = getattr(self, "name", None)
+            name = raw.value if hasattr(raw, "value") else raw
+            if name and str(name) != "OPCUAServer":
+                mark_engine(str(name))
+        except Exception:
+            logging.debug("OPC UA engine dirty mark skipped", exc_info=True)
 
     def get_allowed_actions(self):
         r"""
@@ -2141,13 +2168,13 @@ class AutomationStateMachine(StateMachineCore):
         r"""
         Executed in Test state.
         """
-        self.criticity.value = 3
+        self._assign_criticity(3)
 
     def while_sleeping(self):
         r"""
         Executed in Sleep state.
         """
-        self.criticity.value = 5
+        self._assign_criticity(5)
 
     # Transitions
     def on_test_to_restart(self):

@@ -332,7 +332,15 @@ async def handle(ctx: LoopContext, command) -> None:
         elif isinstance(command, Discover):
             await _discover(ctx, command)
     except Exception as exc:
-        log.error("field client command failed type=%s", type(command).__name__, exc_info=True)
+        name = getattr(command, "client_name", None)
+        if isinstance(exc, ConnectionError):
+            client = ctx.sessions.get(name) if name else None
+            if client is None or not _session_usable(client):
+                if name:
+                    ctx.set_connected(name, False)
+            log.warning("field client command dropped type=%s client=%s error=%s", type(command).__name__, name, exc)
+        else:
+            log.error("field client command failed type=%s", type(command).__name__, exc_info=True)
         correlation = getattr(command, "correlation_id", None)
         if correlation and isinstance(command, ReadBatch):
             ctx.results.put(ReadBatchResult(correlation, None))
@@ -346,7 +354,12 @@ async def _connect(ctx: LoopContext, command: Connect) -> None:
                 await current.disconnect()
             except Exception:
                 pass
-        client = AsyncClient(command.url, timeout=command.timeout)
+        client = AsyncClient(
+            command.url,
+            timeout=command.timeout,
+            auto_reconnect=True,
+            reconnect_request_timeout=min(10.0, float(command.timeout or 10)),
+        )
         if command.username:
             client.set_user(command.username)
         if command.password:
@@ -369,11 +382,38 @@ async def _disconnect(ctx: LoopContext, command: Disconnect) -> None:
             await client.disconnect()
         ctx.set_connected(command.client_name, False)
         ctx.results.put(CommandResult(command.correlation_id, True))
+def _session_usable(client) -> bool:
+    """CONNECTED serves the request. RECONNECTING is owned by asyncua, not by the logger."""
+    state = getattr(getattr(client, "uaclient", None), "state", None)
+    return state is UaClientState.CONNECTED or state is UaClientState.RECONNECTING
+async def _ensure_session(ctx: LoopContext, name: str):
+    """One reconnect when the plant session is already down. Complexity: O(1) plus connect."""
+    client = ctx.sessions.get(name)
+    if client is None:
+        ctx.set_connected(name, False)
+        return None
+    if _session_usable(client):
+        return client
+    try:
+        await client.connect()
+    except Exception:
+        log.warning("field client reconnect failed name=%s", name)
+        ctx.sessions.pop(name, None)
+        ctx.set_connected(name, False)
+        return None
+    if not _session_usable(client):
+        ctx.set_connected(name, False)
+        return None
+    ctx.set_connected(name, True)
+    return client
 async def _read_batch(ctx: LoopContext, command: ReadBatch) -> None:
     async with ctx.lock_for(command.client_name):
         client = ctx.sessions.get(command.client_name)
-        if client is None or client.uaclient.state is not UaClientState.CONNECTED:
+        if client is None or not _session_usable(client):
             ctx.set_connected(command.client_name, False)
+            ctx.results.put(ReadBatchResult(command.correlation_id, None))
+            return
+        if client.uaclient.state is not UaClientState.CONNECTED:
             ctx.results.put(ReadBatchResult(command.correlation_id, None))
             return
         nodes = [client.get_node(node_id) for node_id in command.node_ids]
@@ -433,7 +473,7 @@ async def _unsubscribe(ctx: LoopContext, command: Unsubscribe) -> None:
                 log.debug("unsubscribe skipped client=%s", command.client_name, exc_info=True)
 async def _browse(ctx: LoopContext, command: Browse) -> None:
     async with ctx.lock_for(command.client_name):
-        client = ctx.sessions.get(command.client_name)
+        client = await _ensure_session(ctx, command.client_name)
         if client is None:
             ctx.results.put(CommandResult(command.correlation_id, False, error="not-connected"))
             return
@@ -464,7 +504,7 @@ async def _browse(ctx: LoopContext, command: Browse) -> None:
         ctx.results.put(CommandResult(command.correlation_id, True, payload))
 async def _write(ctx: LoopContext, command: Write) -> None:
     async with ctx.lock_for(command.client_name):
-        client = ctx.sessions.get(command.client_name)
+        client = await _ensure_session(ctx, command.client_name)
         if client is None:
             ctx.results.put(CommandResult(command.correlation_id, False, error="not-connected"))
             return

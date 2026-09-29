@@ -236,14 +236,21 @@ class CVT:
         self._unindex_tag(tag)
         if "name" in kwargs:
             tag.set_name(name=kwargs["name"])
-        if "unit" in kwargs:
+        changing_variable = "variable" in kwargs
+        if changing_variable and "unit" in kwargs:
+            # set_unit checks the current EngUnit. MassFlow rejects m3/hr, so the
+            # new symbol must be stored before the value object is replaced.
+            tag.unit = kwargs["unit"]
+        elif "unit" in kwargs:
             tag.set_unit(unit=kwargs["unit"])
         if "data_type" in kwargs:
             tag.set_data_type(data_type=kwargs["data_type"])
         if "description" in kwargs:
             tag.set_description(description=kwargs["description"])
-        if "variable" in kwargs:
+        if changing_variable:
             tag.set_variable(variable=kwargs["variable"])
+            if "unit" in kwargs:
+                tag.set_unit(unit=kwargs["unit"])
         if "display_name" in kwargs:
             tag.set_display_name(name=kwargs["display_name"])
         if "display_unit" in kwargs:

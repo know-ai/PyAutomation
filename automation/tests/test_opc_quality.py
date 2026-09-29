@@ -256,6 +256,34 @@ class TestOpcDisconnectStale(unittest.TestCase):
         self.assertEqual(tag.quality, BAD)
         self.assertTrue(tag.stale)
 
+    def test_unbind_keeps_the_process_tag_and_drops_the_client_link(self):
+        from automation.managers.opcua_client import _unbind_mapped_tags
+
+        engine = CVTEngine()
+        tag = _make_tag(name="Line.P", id="disc2")
+        tag.opcua_client_name = "GoneOPC"
+        tag.node_namespace = "ns=2;s=pi_01"
+        tag._opcua_address = "opc.tcp://127.0.0.1:4840"
+        engine._cvt._tags[tag.id] = tag
+        engine._cvt._name_index[tag.name] = tag.id
+        manager = SimpleNamespace(cvt=engine)
+        app = SimpleNamespace(unsubscribe_opcua=MagicMock())
+        with patch("automation.PyAutomation", return_value=app), patch(
+            "automation.dbmodels.tags.Tags.read_by_name", return_value=None
+        ), patch(
+            "automation.dbmodels.tags.Tags.get_or_none", return_value=None
+        ), patch(
+            "automation.catalog.mutations.clear_tag_opcua_binding_local"
+        ) as clear_local:
+                released = _unbind_mapped_tags(manager, "GoneOPC", None)
+        self.assertEqual(released, 1)
+        self.assertIsNone(tag.get_opcua_client_name())
+        self.assertIsNone(tag.get_opcua_address())
+        self.assertIsNone(tag.node_namespace)
+        self.assertIn(tag.id, engine._cvt._tags)
+        clear_local.assert_called_once_with(identifier="disc2", name="Line.P")
+        app.unsubscribe_opcua.assert_called_once_with(tag)
+
 
 class TestLoginEventId(unittest.TestCase):
     """CA-OQ-07: degraded login payload carries correlatable event_id."""

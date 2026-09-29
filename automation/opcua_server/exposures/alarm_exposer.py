@@ -1,11 +1,10 @@
-"""Alarm exposer: one variable plus four properties. Not AlarmConditionType."""
+"""Alarm exposer: one variable plus the live alarm fields. Not AlarmConditionType."""
 
 from __future__ import annotations
 
 from .base import NodeExposer
 from .common import apply_display_name, canonical_for, entity_area, entity_site, leaf_name
-
-_ALARM_PROPS = ("state", "process_condition", "mnemonic", "description")
+from .published import alarm_properties
 
 
 class AlarmExposer(NodeExposer):
@@ -27,7 +26,14 @@ class AlarmExposer(NodeExposer):
         return owns_tag(getattr(entity, "tag", None))
 
     def ensure_folder(self, builder, entity):
-        return builder.ensure_branch(entity_site(entity), entity_area(entity), "Alarms")
+        from ..grouping import browse_under_default
+
+        return builder.ensure_branch(
+            entity_site(entity),
+            entity_area(entity),
+            "Alarms",
+            under_default=browse_under_default("a", str(getattr(entity, "name", "") or "")),
+        )
 
     def upsert(self, key: str, entity):
         """Complexity: O(P), four properties."""
@@ -45,36 +51,37 @@ class AlarmExposer(NodeExposer):
             self._by_namespace[node.nodeid.to_string()] = node
         except Exception:
             return node
-        props = {}
-        state = getattr(entity, "state", None)
-        serialized = state.serialize() if hasattr(state, "serialize") else {}
-        for prop_key in _ALARM_PROPS:
-            value = serialized.get(prop_key, getattr(entity, prop_key, ""))
-            prop = self._builder.add_property(node, f"{identifier}.{prop_key}", prop_key, value if value is not None else "")
-            props[prop_key] = prop
-            try:
-                self._by_namespace[prop.nodeid.to_string()] = prop
-            except Exception:
-                continue
+        props = self._write_properties(identifier, node, entity)
         self._prop_nodes[identifier] = props
         return node
 
     def update_value(self, key: str, entity) -> None:
-        identifier = key if key in self._prop_nodes else canonical_for("a", entity)
-        props = self._prop_nodes.get(identifier) or {}
-        state = getattr(entity, "state", None)
-        serialized = state.serialize() if hasattr(state, "serialize") else {}
-        for prop_key, prop in props.items():
-            if prop_key == "description":
-                value = serialized.get(prop_key, getattr(entity, "description", ""))
-            else:
-                value = serialized.get(prop_key)
-                if value is None and state is not None:
-                    value = getattr(state, prop_key, "")
+        identifier = key if key in self._prop_nodes or key in self._nodes else canonical_for("a", entity)
+        node = self._nodes.get(identifier)
+        props = self._prop_nodes.setdefault(identifier, {})
+        written = self._write_properties(identifier, node, entity, props)
+        self._prop_nodes[identifier] = written
+
+    def _write_properties(self, identifier: str, node, entity, props: dict | None = None) -> dict:
+        current = dict(props or {})
+        for prop_key, value in alarm_properties(entity):
+            published = "" if value is None else value
+            prop = current.get(prop_key)
+            if prop is None and node is not None:
+                prop = self._builder.add_property(node, f"{identifier}.{prop_key}", prop_key, published)
+                current[prop_key] = prop
+                try:
+                    self._by_namespace[prop.nodeid.to_string()] = prop
+                except Exception:
+                    pass
+                continue
+            if prop is None:
+                continue
             try:
-                prop.set_value(value if value is not None else "")
+                prop.set_value(published)
             except Exception:
                 continue
+        return current
 
     def remove(self, key: str) -> None:
         node = self._nodes.pop(key, None)

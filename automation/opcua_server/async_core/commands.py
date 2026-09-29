@@ -26,6 +26,7 @@ class ExposeEntity:
     properties: tuple[tuple[str, object], ...]
     access: int = 1
     groups: tuple[str, ...] = ()
+    under_default: bool = False
 
 
 @dataclass(frozen=True)

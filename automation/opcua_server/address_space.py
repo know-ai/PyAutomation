@@ -35,26 +35,25 @@ class AddressSpaceBuilder:
             self._root = self._folder("root", self._objects, "PyAutomationIO")
         return self._root
 
-    def ensure_branch(self, site: str | None, area: str | None, kind: str):
-        """Return the Process/Alarms/Engines folder. Idempotent. Complexity: O(1)."""
+    def ensure_branch(self, site: str | None, area: str | None, kind: str, *, under_default: bool = False):
+        """Process/Alarms/Engines at the root, or Process/Alarms inside Default. Complexity: O(1)."""
+        del site, area
         if kind not in _KINDS:
             raise ValueError(f"Unknown folder kind: {kind}")
-        site_name = folder_token(site, "Default")
-        area_name = folder_token(area, "Global")
         root = self.ensure_root()
-        site_node = self._folder(f"site:{site_name}", root, site_name)
-        area_node = self._folder(f"area:{site_name}:{area_name}", site_node, area_name)
-        return self._folder(f"kind:{site_name}:{area_name}:{kind}", area_node, kind)
+        if under_default and kind != "Engines":
+            default_node = self._folder("default", root, "Default")
+            return self._folder(f"default.{kind.lower()}", default_node, kind)
+        return self._folder(kind.lower(), root, kind)
 
-    def ensure_group(self, site: str | None, area: str | None, kind: str, group: str):
+    def ensure_group(self, site: str | None, area: str | None, kind: str, group: str, *, under_default: bool = False):
         """Folder under Process/Alarms/Engines. Complexity: O(1)."""
         label = folder_token(group, "")
         if not label:
-            return self.ensure_branch(site, area, kind)
-        parent = self.ensure_branch(site, area, kind)
-        site_name = folder_token(site, "Default")
-        area_name = folder_token(area, "Global")
-        return self._folder(f"group:{site_name}:{area_name}:{kind}:{label}", parent, label)
+            return self.ensure_branch(site, area, kind, under_default=under_default)
+        parent = self.ensure_branch(site, area, kind, under_default=under_default)
+        prefix = f"default.{kind.lower()}" if under_default and kind != "Engines" else kind.lower()
+        return self._folder(f"{prefix}.{label}", parent, label)
 
     async def _folder_async(self, key: str, parent, browse_name: str):
         cached = self._folders.get(key)
@@ -64,30 +63,27 @@ class AddressSpaceBuilder:
         self._folders[key] = node
         return node
 
-    async def ensure_branch_async(self, site: str | None, area: str | None, kind: str):
-        """Async folder lookup. Complexity: O(1)."""
+    async def ensure_branch_async(self, site: str | None, area: str | None, kind: str, *, under_default: bool = False):
+        """Async folder lookup. Site and area are ignored. Complexity: O(1)."""
+        del site, area
         if kind not in _KINDS:
             raise ValueError(f"Unknown folder kind: {kind}")
-        site_name = folder_token(site, "Default")
-        area_name = folder_token(area, "Global")
         root = await self._folder_async("root", self._objects, "PyAutomationIO")
-        site_node = await self._folder_async(f"site:{site_name}", root, site_name)
-        area_node = await self._folder_async(f"area:{site_name}:{area_name}", site_node, area_name)
-        return await self._folder_async(f"kind:{site_name}:{area_name}:{kind}", area_node, kind)
+        if under_default and kind != "Engines":
+            default_node = await self._folder_async("default", root, "Default")
+            return await self._folder_async(f"default.{kind.lower()}", default_node, kind)
+        return await self._folder_async(kind.lower(), root, kind)
 
-    async def ensure_group_async(self, site: str | None, area: str | None, kind: str, group: str):
+    async def ensure_group_async(
+        self, site: str | None, area: str | None, kind: str, group: str, *, under_default: bool = False
+    ):
         """Async folder under Process/Alarms/Engines. Complexity: O(1)."""
         label = folder_token(group, "")
         if not label:
-            return await self.ensure_branch_async(site, area, kind)
-        parent = await self.ensure_branch_async(site, area, kind)
-        site_name = folder_token(site, "Default")
-        area_name = folder_token(area, "Global")
-        return await self._folder_async(
-            f"group:{site_name}:{area_name}:{kind}:{label}",
-            parent,
-            label,
-        )
+            return await self.ensure_branch_async(site, area, kind, under_default=under_default)
+        parent = await self.ensure_branch_async(site, area, kind, under_default=under_default)
+        prefix = f"default.{kind.lower()}" if under_default and kind != "Engines" else kind.lower()
+        return await self._folder_async(f"{prefix}.{label}", parent, label)
 
     def reject_reserved_leaf(self, name: str) -> None:
         """Reject a leaf whose business name uses a system prefix. Complexity: O(len(name))."""
@@ -96,7 +92,9 @@ class AddressSpaceBuilder:
         validate_tag_name(name)
 
     def build_tree(self, site: str | None, area: str | None) -> dict:
-        """Create PyAutomationIO/{Site}/{Area}/{Process,Alarms,Engines}. Complexity: O(1)."""
+        """Create Default/Process, Default/Alarms and the root Process, Engines, Alarms folders."""
+        self.ensure_branch(site, area, "Process", under_default=True)
+        self.ensure_branch(site, area, "Alarms", under_default=True)
         return {kind: self.ensure_branch(site, area, kind) for kind in _KINDS}
 
     def add_variable(self, parent, identifier: str, browse_name: str, initial):

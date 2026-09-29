@@ -19,6 +19,18 @@ from ....state_machine_timing import MachineConfigError, validate_temporal_confi
 
 logger = logging.getLogger(__name__)
 
+
+def _publish_engine(machine_name: str) -> None:
+    """Ask the embedded OPC UA server to rewrite this engine. O(1)."""
+    if not machine_name:
+        return
+    try:
+        from ....opcua_server.bridge import mark_engine
+
+        mark_engine(machine_name)
+    except Exception:
+        logger.debug("OPC UA engine publish skipped for %s", machine_name, exc_info=True)
+
 ns = Namespace('Machines', description='State Machine Management Resources')
 app = PyAutomation()
 
@@ -956,6 +968,7 @@ class MachineAttributesResource(Resource):
 
             # Construir mensaje de éxito
             message = f"Successfully updated: {', '.join(updated_attributes)}"
+            _publish_engine(machine_name)
 
             return {
                 "message": message,
@@ -1056,6 +1069,7 @@ class MachineDomainConfigResource(Resource):
                 )
             except Exception:
                 pass
+            _publish_engine(machine_name)
             return {
                 "status": "success",
                 "config": config,
@@ -1134,6 +1148,7 @@ class MachineDomainConfigFilesResource(Resource):
                 )
             except Exception:
                 pass
+            _publish_engine(machine_name)
             return payload, 200
         except (ValueError, TypeError) as e:
             return {"message": str(e)}, 400

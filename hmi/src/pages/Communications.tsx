@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { OpsConfirmModal } from "../components/OpsConfirmModal";
 import {
   addClient,
   getClientTreeWithOptions,
@@ -377,6 +378,7 @@ export function Communications() {
   const [formError, setFormError] = useState<OpcUaErrorView | null>(null);
   const [treeError, setTreeError] = useState<OpcUaErrorView | null>(null);
   const [isConnectingClient, setIsConnectingClient] = useState(false);
+  const [pendingClientAction, setPendingClientAction] = useState<"disconnect" | "remove" | null>(null);
 
   const namespacesToPoll = useMemo(
     () => selectedNodes.map((n) => n.namespace),
@@ -1153,31 +1155,34 @@ export function Communications() {
           title={t("communications.title")}
           className={isConnectingClient ? "opcua-client-card--busy" : undefined}
           footer={
-            <div className="d-flex gap-2">
+            <div className="d-flex flex-nowrap gap-1">
               {editingClient ? (
                 <>
                   <Button
                     type="submit"
                     form="opcua-client-form"
                     variant="primary"
+                    className="opcua-client-action"
+                    title={t("common.update")}
+                    aria-label={t("common.update")}
                     disabled={!isFormComplete || isConnectingClient}
                   >
                     {isConnectingClient ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
-                        {t("communications.connecting")}
-                      </>
+                      <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
                     ) : (
-                      t("common.update")
+                      <i className="bi bi-check-lg" aria-hidden="true" />
                     )}
                   </Button>
                   <Button
                     type="button"
                     variant="secondary"
+                    className="opcua-client-action"
+                    title={t("common.cancel")}
+                    aria-label={t("common.cancel")}
                     onClick={handleCancelEdit}
                     disabled={isConnectingClient}
                   >
-                    {t("common.cancel")}
+                    <i className="bi bi-x-lg" aria-hidden="true" />
                   </Button>
                 </>
               ) : (
@@ -1186,54 +1191,63 @@ export function Communications() {
                 type="submit"
                 form="opcua-client-form"
                 variant="primary"
+                className="opcua-client-action"
+                title={t("communications.create")}
+                aria-label={t("communications.create")}
                 disabled={!isFormComplete || isConnectingClient}
               >
                 {isConnectingClient ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
-                    {t("communications.connecting")}
-                  </>
+                  <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
                 ) : (
-                  t("communications.create")
+                  <i className="bi bi-plus-lg" aria-hidden="true" />
                 )}
               </Button>
-                  {selectedClient && (
-                    <Button
-                      type="button"
-                      variant="warning"
-                      onClick={() => handleEditClient(selectedClient)}
-                      disabled={isConnectingClient}
-                    >
-                      {t("common.edit")}
-                    </Button>
-                  )}
-                  {selectedClient && selectedClientConnectionStatus && (
+                  <Button
+                    type="button"
+                    variant="warning"
+                    className="opcua-client-action"
+                    title={t("common.edit")}
+                    aria-label={t("common.edit")}
+                    onClick={() => selectedClient && handleEditClient(selectedClient)}
+                    disabled={!selectedClient || isConnectingClient}
+                  >
+                    <i className="bi bi-pencil" aria-hidden="true" />
+                  </Button>
+                  {selectedClientConnectionStatus ? (
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => handleDisconnectClient(selectedClient)}
-                      disabled={isConnectingClient}
+                      className="opcua-client-action"
+                      title={t("communications.disconnect")}
+                      aria-label={t("communications.disconnect")}
+                      onClick={() => setPendingClientAction("disconnect")}
+                      disabled={!selectedClient || isConnectingClient}
                     >
-                      {t("communications.disconnect")}
+                      <i className="bi bi-plug" aria-hidden="true" />
                     </Button>
-                  )}
-                  {selectedClient && !selectedClientConnectionStatus && (
+                  ) : (
                     <Button
                       type="button"
                       variant="primary"
-                      onClick={() => handleConnectClient(selectedClient)}
-                      disabled={isConnectingClient}
+                      className="opcua-client-action"
+                      title={t("communications.connect")}
+                      aria-label={t("communications.connect")}
+                      onClick={() => selectedClient && handleConnectClient(selectedClient)}
+                      disabled={!selectedClient || isConnectingClient}
                     >
-                      {isConnectingClient ? t("communications.connecting") : t("communications.connect")}
+                      <i className="bi bi-plug-fill" aria-hidden="true" />
                     </Button>
                   )}
               <Button
                 type="button"
                 variant="danger"
-                onClick={() => selectedClient && handleRemoveClient(selectedClient)}
-                disabled={!selectedClient || isConnectingClient}
+                className="opcua-client-action"
+                title={t("communications.remove")}
+                aria-label={t("communications.remove")}
+                onClick={() => setPendingClientAction("remove")}
+                disabled={!selectedClient || selectedClientConnectionStatus || isConnectingClient}
               >
-                {t("communications.remove")}
+                <i className="bi bi-trash" aria-hidden="true" />
               </Button>
                 </>
               )}
@@ -1536,6 +1550,37 @@ export function Communications() {
           </div>
         </Card>
       </div>
+      <OpsConfirmModal
+        open={pendingClientAction !== null}
+        danger={pendingClientAction === "remove"}
+        title={
+          pendingClientAction === "remove"
+            ? t("communications.confirmRemoveTitle")
+            : t("communications.confirmDisconnectTitle")
+        }
+        body={t(
+          pendingClientAction === "remove"
+            ? "communications.confirmRemoveBody"
+            : "communications.confirmDisconnectBody",
+          { name: selectedClient }
+        )}
+        confirmLabel={
+          pendingClientAction === "remove" ? t("communications.remove") : t("communications.disconnect")
+        }
+        busy={isConnectingClient}
+        onCancel={() => setPendingClientAction(null)}
+        onConfirm={async () => {
+          const action = pendingClientAction;
+          const clientName = selectedClient;
+          setPendingClientAction(null);
+          if (!clientName || !action) return;
+          if (action === "disconnect") {
+            await handleDisconnectClient(clientName);
+            return;
+          }
+          await handleRemoveClient(clientName);
+        }}
+      />
     </div>
   );
 }

@@ -3,6 +3,16 @@
 from __future__ import annotations
 
 
+def browse_under_default(entity_type: str, name: str) -> bool:
+    """System tags and alarms live in Default. Plant data stays beside it."""
+    if entity_type == "e":
+        return False
+    from .identity import canonicalize_name
+
+    tokens = set(canonicalize_name(name).split("."))
+    return "sys" in tokens or "alm" in tokens
+
+
 def engine_folder_name(entity) -> str:
     """Last segment of a machine name: ``Supe.Linea1.LDS`` -> ``LDS``."""
     raw = getattr(entity, "name", "")

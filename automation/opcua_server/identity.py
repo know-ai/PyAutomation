@@ -1,10 +1,10 @@
 """Canonical OPC UA NodeId strings.
 
-MANUFACTURER is the {site} folder used to browse the tree.
-SEGMENT is the {area} folder. Neither is a structural field of the NodeId.
-The business name already carries the segment (``{site}.{area}.{short}``).
+The browse tree is PyAutomationIO/Default/{Process,Alarms,Engines}.
+Manufacturer and segment stay on the CVT name. They are stripped from the
+NodeId prefix so a SCADA display can be copied onto another line.
 
-NodeId string (without the namespace index): ``<t|a|e>:<canonical_name>``.
+NodeId string (without the namespace index): the name, without site, area, or a ``t:`` / ``a:`` / ``e:`` prefix.
 """
 
 from __future__ import annotations
@@ -99,15 +99,36 @@ def folder_token(value: str | None, default: str) -> str:
 
 
 def make_node_id(entity_type: str, area: str | None, name: str) -> str:
-    """Build ``<type>:<canonical_name>``. Complexity: O(len(name)).
-
-    ``area`` stays in the browse folder and inside the qualified name.
-    It is not repeated in the identifier.
-    """
+    """String NodeId without a type prefix and without the site or area. Complexity: O(len(name))."""
     if entity_type not in ("t", "a", "e"):
         raise ValueError(f"Unknown entity type: {entity_type!r}")
     del area
-    return f"{entity_type}:{canonicalize_name(name)}"
+    return opc_name(name)
+
+
+def opc_name(name: str) -> str:
+    """Canonical name with manufacturer and segment removed from the front only."""
+    text = canonicalize_name(name)
+    tokens = [part for part in text.split(".") if part]
+    drop = _site_tokens()
+    while tokens and tokens[0] in drop:
+        tokens.pop(0)
+    if not tokens:
+        return text or "_"
+    return ".".join(tokens)
+
+
+def _site_tokens() -> frozenset[str]:
+    import os
+
+    found = []
+    for raw in (os.environ.get("AUTOMATION_MANUFACTURER"), os.environ.get("AUTOMATION_SEGMENT")):
+        if not (raw or "").strip():
+            continue
+        token = canonicalize_name(raw)
+        if token and token != "_":
+            found.append(token)
+    return frozenset(found)
 
 
 def normalize_tag_name(raw_name: str, manufacturer: str, segment: str) -> str:

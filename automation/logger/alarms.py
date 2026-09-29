@@ -329,6 +329,14 @@ class AlarmsLogger(BaseLogger):
         
         alarm_state = AlarmStates.get_or_none(name="Out Of Service")
         alarm = Alarms.read_by_identifier(identifier=id)
+        if alarm is None:
+            try:
+                from ..catalog.mutations import soft_delete_alarm_local
+
+                soft_delete_alarm_local(identifier=id)
+            except Exception:
+                logging.getLogger("pyautomation").debug("catalog alarm delete mirror skipped", exc_info=True)
+            return None
         Alarms.put(
             id=alarm.id,
             state=alarm_state

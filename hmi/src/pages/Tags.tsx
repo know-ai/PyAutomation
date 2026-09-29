@@ -539,13 +539,14 @@ export function Tags() {
         if (prev.variable && prev.variable !== variableName) {
           return prev;
         }
+        const fallback = units[0] || "";
         let unit = prev.unit;
         let display_unit = prev.display_unit;
-        if (unit && !units.includes(unit)) {
-          unit = "";
+        if (!unit || !units.includes(unit)) {
+          unit = fallback;
         }
-        if (display_unit && !units.includes(display_unit)) {
-          display_unit = "";
+        if (!display_unit || !units.includes(display_unit)) {
+          display_unit = fallback;
         }
         if (unit === prev.unit && display_unit === prev.display_unit) {
           return prev;

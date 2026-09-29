@@ -35,12 +35,9 @@ class PeriodicWatchdogHandler(IWatchdogHandler):
             seen = server._last_touch.get(name)
             if seen is not None and (now - seen) < WATCHDOG_S:
                 continue
-            _LOG.warning("OPC UA watchdog refreshing stale tag %s", name)
+            _LOG.debug("OPC UA watchdog refreshing stale tag %s", name)
             if name not in server._dirty_tags:
                 server.metrics.tag_watchdog_recoveries += 1
-                from ...audit import audit_failure
-
-                audit_failure("OPC UA tag watchdog recovery", name, criticity=2)
             server._dirty_tags.add(name)
             server._last_touch[name] = now
         server._watch_index = (start + count) % len(order)

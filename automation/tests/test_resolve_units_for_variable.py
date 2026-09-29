@@ -89,5 +89,28 @@ class TestVariableForUnit(unittest.TestCase):
         self.assertEqual(serialized["variable"], "Density")
 
 
+class TestVariableChangeKeepsTheNewUnit(unittest.TestCase):
+    def test_mass_flow_to_volumetric_flow_uses_the_requested_unit(self):
+        from automation.tags.cvt import CVT
+        from automation.tags.tag import Tag
+
+        cvt = CVT()
+        tag = Tag("FI_01", "kg/sec", "MassFlow", "float", display_unit="kg/sec")
+        cvt._tags[tag.id] = tag
+        cvt._index_tag(tag)
+
+        updated, _message = cvt.update_tag(
+            id=tag.id,
+            variable="VolumetricFlow",
+            unit="m3/hr",
+            display_unit="m3/hr",
+        )
+
+        self.assertEqual(updated.variable, "VolumetricFlow")
+        self.assertEqual(updated.unit, "m3/hr")
+        self.assertEqual(updated.display_unit, "m3/hr")
+        self.assertEqual(updated.value.__class__.__name__, "VolumetricFlow")
+
+
 if __name__ == "__main__":
     unittest.main()

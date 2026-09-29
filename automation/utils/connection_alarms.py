@@ -214,24 +214,143 @@ def rename_opcua_connection_alarm(old_client_name: str, new_client_name: str) ->
         )
 
 
+def connection_client_from_alarm(alarm_name: str) -> str | None:
+    """Client name encoded in ``ALM.OPCUA.<client>``. Complexity: O(1)."""
+    marker = ".ALM.OPCUA."
+    text = str(alarm_name or "")
+    if marker not in text:
+        return None
+    client = text.split(marker, 1)[1].strip()
+    return client or None
+
+
+def _client_still_defined(client_name: str) -> bool:
+    app = _app()
+    manager = getattr(app, "opcua_client_manager", None)
+    getter = getattr(manager, "get", None)
+    if callable(getter):
+        try:
+            if getter(client_name) is not None:
+                return True
+        except Exception:
+            return True
+    try:
+        from ..dbmodels import OPCUA
+
+        if OPCUA.get_by_client_name(client_name=client_name) is not None:
+            return True
+    except Exception:
+        return True
+    try:
+        from ..catalog.local_provider import LocalCatalogProvider
+
+        for row in LocalCatalogProvider().read_all("opcua"):
+            if str(row.get("client_name") or "") == client_name:
+                return True
+    except Exception:
+        return True
+    return False
+
+
+def retire_orphan_connection_alarm(alarm_name: str, tag_name: str) -> bool:
+    """Drop a connection alarm whose OPC UA client is already gone. Complexity: O(1)."""
+    client_name = connection_client_from_alarm(alarm_name)
+    if not client_name or _client_still_defined(client_name):
+        return False
+    app = _app()
+    if app.cvt.get_tag_by_name(tag_name) is not None:
+        return False
+    _LOGGER.debug(
+        "Retired OPC UA connection alarm %s; client %s is no longer defined",
+        alarm_name,
+        client_name,
+    )
+    remove_opcua_connection_alarm(client_name)
+    return True
+
+
+def _retire_catalog_alarm(alarm_name: str) -> None:
+    """Logical-delete the historian row when the alarm is not in memory yet."""
+    from ..dbmodels.alarms import Alarms
+
+    try:
+        row = Alarms.read_by_name(name=alarm_name)
+    except Exception:
+        row = None
+    identifier = getattr(row, "identifier", None) if row is not None else None
+    app = _app()
+    if identifier and getattr(app, "is_db_connected", lambda: False)():
+        try:
+            app.alarms_engine.delete(id=identifier)
+            return
+        except Exception:
+            _LOGGER.debug("historian connection-alarm retire skipped name=%s", alarm_name, exc_info=True)
+    if not identifier:
+        return
+    try:
+        from ..catalog.mutations import soft_delete_alarm_local
+
+        soft_delete_alarm_local(identifier=identifier)
+    except Exception:
+        _LOGGER.debug("local connection-alarm retire skipped name=%s", alarm_name, exc_info=True)
+
+
 def remove_opcua_connection_alarm(client_name: str) -> None:
     """Drop the alarm and tag when the OPC UA client connection is deleted."""
     try:
         if not client_name:
             return
         app = _app()
-        alarm = app.alarm_manager.get_alarm_by_name(opcua_alarm_name(client_name))
+        alarm_name = opcua_alarm_name(client_name)
+        tag_name = opcua_tag_name(client_name)
+        alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
         if alarm is not None:
             app.delete_alarm(id=alarm.identifier)
-        tag = app.cvt.get_tag_by_name(opcua_tag_name(client_name))
+        else:
+            _retire_catalog_alarm(alarm_name)
+        tag = app.cvt.get_tag_by_name(tag_name)
         if tag is not None:
-            app.delete_tag(id=tag.id)
+            blocked = app.delete_tag(id=tag.id)
+            if blocked:
+                _LOGGER.warning("OPC UA connection tag %s was not removed: %s", tag_name, blocked)
+        try:
+            from ..opcua_server.runtime import release_watched_name
+
+            server = getattr(app, "opcua_server", None)
+            release_watched_name(server, tag_name)
+            release_watched_name(server, alarm_name)
+        except Exception:
+            _LOGGER.debug("OPC UA watch release skipped client=%s", client_name, exc_info=True)
     except Exception:
         _LOGGER.error(
             "Failed to remove OPC UA connection alarm for %s",
             client_name,
             exc_info=True,
         )
+
+
+def _revive_inactive_tag(app, tag_name: str) -> str | None:
+    """Force ``active`` so the next create reuses the catalog row. Complexity: O(1)."""
+    identifier = None
+    if getattr(app, "is_db_connected", lambda: False)():
+        try:
+            from ..dbmodels.tags import Tags
+
+            row = Tags.read_by_name(tag_name)
+        except Exception:
+            row = None
+        if row is not None:
+            identifier = getattr(row, "identifier", None)
+            if not bool(getattr(row, "active", True)):
+                Tags.put(id=row.id, active=True)
+    try:
+        from ..catalog.mutations import reactivate_tag_local
+
+        local_id = reactivate_tag_local(name=tag_name, identifier=identifier)
+        identifier = identifier or local_id
+    except Exception:
+        _LOGGER.debug("Connection alarm tag reactivate skipped name=%s", tag_name, exc_info=True)
+    return str(identifier) if identifier else None
 
 
 def _ensure_bool_alarm(
@@ -245,6 +364,10 @@ def _ensure_bool_alarm(
 ) -> None:
     tag = app.cvt.get_tag_by_name(tag_name)
     if tag is None:
+        revived_id = _revive_inactive_tag(app, tag_name)
+        create_kwargs = {}
+        if revived_id:
+            create_kwargs["id"] = revived_id
         tag, _ = app.create_tag(
             name=tag_name,
             unit=_TAG_UNIT,
@@ -253,6 +376,7 @@ def _ensure_bool_alarm(
             description=tag_description,
             display_name=display_name,
             skip_validation=True,
+            **create_kwargs,
         )
         if tag is None:
             tag = app.cvt.get_tag_by_name(tag_name)

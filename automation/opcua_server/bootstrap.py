@@ -38,8 +38,8 @@ def start_endpoint(server) -> bool:
         server.host = host
         server.runner = AsyncioRunner(server)
         server.runner.start()
-        # v3 rebuilds browse parents (engine folders). NodeId strings stay the same.
-        shelf = Path(f"opcua_aspace_v3_{server.port}.shelf")
+        # v6 drops the t:/a:/e: prefix from string NodeIds.
+        shelf = Path(f"opcua_aspace_v6_{server.port}.shelf")
         server.runner.submit(
             StartEndpoint(
                 host=str(host),

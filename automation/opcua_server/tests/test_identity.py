@@ -1,4 +1,6 @@
+import os
 import unittest
+from unittest.mock import patch
 
 from automation.opcua_server.identity import (
     canonicalize_name,
@@ -30,12 +32,19 @@ class TestIdentity(unittest.TestCase):
     def test_nfc_casefold(self):
         self.assertEqual(canonicalize_name("Línea1"), "línea1")
 
-    def test_entity_types_differ(self):
-        self.assertNotEqual(make_node_id("t", "Linea1", "X.Y"), make_node_id("a", "Linea1", "X.Y"))
+    def test_type_prefix_is_not_in_the_identifier(self):
+        self.assertEqual(make_node_id("t", "Linea1", "X.Y"), "x.y")
+        self.assertEqual(make_node_id("a", "Linea1", "X.Y"), "x.y")
+        self.assertEqual(make_node_id("e", "Linea1", "X.Y"), "x.y")
 
     def test_area_is_not_part_of_the_identifier(self):
-        self.assertEqual(make_node_id("t", None, "X"), "t:x")
-        self.assertEqual(make_node_id("t", "Linea1", "Supe.Linea1.FI_02"), "t:supe.linea1.fi_02")
+        self.assertEqual(make_node_id("t", None, "X"), "x")
+        with patch.dict(os.environ, {"AUTOMATION_MANUFACTURER": "Supe", "AUTOMATION_SEGMENT": "Linea1"}):
+            self.assertEqual(make_node_id("t", "Linea1", "Supe.Linea1.FI_02"), "fi_02")
+            self.assertEqual(make_node_id("t", None, "Linea1.SYS.PERF.SAF_QUEUE"), "sys.perf.saf_queue")
+            self.assertEqual(make_node_id("t", None, "Supe.Linea1.LDS.leak_flow"), "lds.leak_flow")
+            self.assertEqual(make_node_id("a", None, "Supe.Linea1.PPA.leak"), "ppa.leak")
+            self.assertEqual(make_node_id("e", None, "Supe.Linea1.LDS"), "lds")
 
     def test_bad_entity(self):
         with self.assertRaises(ValueError):

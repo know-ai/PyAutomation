@@ -10,8 +10,6 @@ from ..identity import classify_entity_kind, make_node_id
 from .commands import ExposeEntity, WriteItem
 
 _FOLDERS = {"t": "Process", "a": "Alarms", "e": "Engines"}
-_ALARM_PROPS = ("state", "process_condition", "mnemonic", "description")
-_ENGINE_PROPS = ("state", "classification", "fluid")
 
 
 def _text(value) -> str:
@@ -62,20 +60,15 @@ def _tag_properties(_server, entity, kind: str) -> tuple[tuple[str, object], ...
 
 
 def _alarm_properties(entity) -> tuple[tuple[str, object], ...]:
-    state = getattr(entity, "state", None)
-    serialized = state.serialize() if hasattr(state, "serialize") else {}
-    return tuple(
-        (key, serialized.get(key, getattr(entity, key, "")) or "")
-        for key in _ALARM_PROPS
-    )
+    from ..exposures.published import alarm_properties
+
+    return alarm_properties(entity)
 
 
 def _engine_properties(entity) -> tuple[tuple[str, object], ...]:
-    payload = entity.serialize() if hasattr(entity, "serialize") else {}
-    return tuple(
-        (key, _text(payload.get(key, getattr(entity, key, ""))))
-        for key in _ENGINE_PROPS
-    )
+    from ..exposures.published import engine_properties
+
+    return engine_properties(entity)
 
 
 def expose_snapshot(server, entity_type: str, name: str) -> ExposeEntity | None:
@@ -113,6 +106,9 @@ def expose_snapshot(server, entity_type: str, name: str) -> ExposeEntity | None:
     initial = "" if kind == "string" else (False if kind == "bool" else 0.0)
     folder = _FOLDERS[entity_type]
     groups: tuple[str, ...] = ()
+    from ..grouping import browse_under_default
+
+    under_default = browse_under_default(entity_type, name)
     if entity_type == "e":
         from ..grouping import engine_folder_name
 
@@ -142,6 +138,7 @@ def expose_snapshot(server, entity_type: str, name: str) -> ExposeEntity | None:
         properties=properties,
         access=access,
         groups=groups,
+        under_default=under_default,
     )
 
 

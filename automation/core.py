@@ -1682,6 +1682,12 @@ class PyAutomation(Singleton):
             notify_tag_catalog_changed(tag_name, action="delete", reason="delete_tag")
         except Exception:
             logging.debug("tag catalog notify skipped name=%s", tag_name, exc_info=True)
+        try:
+            from .opcua_server.runtime import release_watched_name
+
+            release_watched_name(getattr(self, "opcua_server", None), tag_name)
+        except Exception:
+            logging.debug("OPC UA watch release skipped name=%s", tag_name, exc_info=True)
 
     @logging_error_handler
     def update_tag(
@@ -1935,7 +1941,53 @@ class PyAutomation(Singleton):
 
                 propagate_filtered_tag_identity(updated, previous_name=previous_name)
             self._sync_wavelet_runtime(updated, previous_name=previous_name)
+            self._publish_tag_definition_to_opcua(
+                updated,
+                previous_name=previous_name,
+                recreate=("data_type" in kwargs) or ("filter_enabled" in kwargs),
+                fields=set(kwargs),
+            )
         return result
+
+    def _publish_tag_definition_to_opcua(self, tag, *, previous_name, recreate: bool, fields: set) -> None:
+        """Tell the embedded server when a published attribute changed. Complexity: O(1)."""
+        published = {
+            "name",
+            "display_name",
+            "unit",
+            "display_unit",
+            "variable",
+            "data_type",
+            "scan_time",
+            "dead_band",
+            "filter_enabled",
+            "filter_wavelet",
+            "filter_level",
+            "filter_threshold_factor",
+        }
+        if tag is None or not fields.intersection(published):
+            return
+        try:
+            from .models import StringType
+            from .opcua_server.runtime import publish_tag_definition
+            from .signal_conditioning.filtered_tags import filtered_tag_name
+
+            machine = self.get_machine(name=StringType("OPCUAServer"))
+            publish_tag_definition(
+                machine,
+                tag.get_name(),
+                previous_name=previous_name,
+                recreate=recreate,
+            )
+            filtered = self.cvt.get_tag_by_name(name=filtered_tag_name(tag.get_name()))
+            if filtered is not None:
+                publish_tag_definition(machine, filtered.get_name(), recreate=recreate)
+        except Exception:
+            logging.debug(
+                "OPC UA definition publish skipped name=%s",
+                getattr(tag, "name", None),
+                exc_info=True,
+            )
 
     def _sync_wavelet_runtime(self, tag, previous_name: str | None = None) -> None:
         from .signal_conditioning.filtered_tags import (
@@ -3584,7 +3636,8 @@ class PyAutomation(Singleton):
         logger = logging.getLogger("pyautomation")
         tag_name = tag.get_name() if tag is not None else "-"
         if not opcua_address or not node_namespace:
-            logger.warning(
+            report = logger.debug if not opcua_address and not node_namespace else logger.warning
+            report(
                 "OPC subscribe skipped tag=%s reason=missing-mapping address=%s namespace=%s",
                 tag_name,
                 opcua_address,
@@ -4740,13 +4793,24 @@ class PyAutomation(Singleton):
             )
 
     def _ensure_catalog_tags_for_alarms(self) -> None:
-        """Create SYS.PERF tags before alarm rows that point at them. Complexity: O(1)."""
+        """Create tags that alarm rows point at before those rows are loaded. Complexity: O(C)."""
         try:
             from .utils.performance_alarms import ensure_performance_alarms
 
             ensure_performance_alarms()
         except Exception:
             logging.debug("performance tags before alarm hydrate skipped", exc_info=True)
+        try:
+            scope = self._refresh_node_scope()
+            if getattr(scope, "enabled", False) and not getattr(scope, "is_valid", False):
+                return
+            from .utils.connection_alarms import ensure_opcua_connection_alarm
+
+            clients = getattr(getattr(self, "opcua_client_manager", None), "_clients", {}) or {}
+            for client_name in list(clients):
+                ensure_opcua_connection_alarm(client_name)
+        except Exception:
+            logging.debug("connection tags before alarm hydrate skipped", exc_info=True)
 
     def _hydrate_runtime_from_db(self, reload_machines: bool = False) -> None:
         r"""Reload in-memory config from the historian. Call only when live."""
@@ -5130,6 +5194,10 @@ class PyAutomation(Singleton):
                             payload.get("name"),
                             tag,
                         )
+                        continue
+                    from .utils.connection_alarms import retire_orphan_connection_alarm
+
+                    if retire_orphan_connection_alarm(payload.get("name"), tag):
                         continue
                     from .catalog.hydrate import apply_alarm_runtime_fields, create_alarm_kwargs
 
@@ -5936,6 +6004,25 @@ class PyAutomation(Singleton):
             )
         except Exception:
             logging.debug("local catalog alarm update skipped", exc_info=True)
+        try:
+            refreshed = self.alarm_manager.get_alarm(id=id)
+            new_name = getattr(refreshed, "name", None) or name
+            old_name = getattr(current, "name", None)
+            if new_name:
+                from .models import StringType
+                from .opcua_server.runtime import submit_drop
+
+                machine = self.get_machine(name=StringType("OPCUAServer"))
+                if machine is not None and old_name and old_name != new_name:
+                    submit_drop(machine, old_name)
+                enqueue = getattr(machine, "enqueue_expose", None)
+                if callable(enqueue):
+                    enqueue("a", new_name)
+                mark = getattr(machine, "mark_alarm", None)
+                if callable(mark):
+                    mark(new_name)
+        except Exception:
+            logging.debug("OPC UA alarm definition publish skipped id=%s", id, exc_info=True)
 
     @logging_error_handler
     @validate_types(id=str, output=Alarm|type(None))

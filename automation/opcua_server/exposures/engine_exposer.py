@@ -1,12 +1,11 @@
-"""Engine exposer: one variable plus three properties."""
+"""Engine exposer: one variable plus the scalar machine attributes."""
 
 from __future__ import annotations
 
 from .base import NodeExposer
 from .common import apply_display_name, leaf_name
+from .published import engine_properties
 from ..identity import make_node_id
-
-_ENGINE_PROPS = ("state", "classification", "fluid")
 
 
 def _text(value) -> str:
@@ -61,27 +60,33 @@ class EngineExposer(NodeExposer):
             self._by_namespace[node.nodeid.to_string()] = node
         except Exception:
             return node
-        payload = entity.serialize() if hasattr(entity, "serialize") else {}
-        props = {}
-        for prop_key in _ENGINE_PROPS:
-            prop = self._builder.add_property(
-                node, f"{identifier}.{prop_key}", prop_key, _text(payload.get(prop_key, getattr(entity, prop_key, "")))
-            )
-            props[prop_key] = prop
-        self._prop_nodes[identifier] = props
+        self._prop_nodes[identifier] = self._write_properties(identifier, node, entity)
         return node
 
     def update_value(self, key: str, entity) -> None:
         name = self._name(entity)
         area = getattr(entity, "segment", None) or getattr(entity, "area", None)
-        identifier = key if key in self._prop_nodes else make_node_id("e", _text(area) or None, name)
-        props = self._prop_nodes.get(identifier) or {}
-        payload = entity.serialize() if hasattr(entity, "serialize") else {}
-        for prop_key, prop in props.items():
+        identifier = key if key in self._prop_nodes or key in self._nodes else make_node_id("e", _text(area) or None, name)
+        node = self._nodes.get(identifier)
+        props = self._prop_nodes.setdefault(identifier, {})
+        self._prop_nodes[identifier] = self._write_properties(identifier, node, entity, props)
+
+    def _write_properties(self, identifier: str, node, entity, props: dict | None = None) -> dict:
+        current = dict(props or {})
+        for prop_key, value in engine_properties(entity):
+            published = "" if value is None else value
+            prop = current.get(prop_key)
+            if prop is None and node is not None:
+                prop = self._builder.add_property(node, f"{identifier}.{prop_key}", prop_key, published)
+                current[prop_key] = prop
+                continue
+            if prop is None:
+                continue
             try:
-                prop.set_value(_text(payload.get(prop_key, getattr(entity, prop_key, ""))))
+                prop.set_value(published)
             except Exception:
                 continue
+        return current
 
     def remove(self, key: str) -> None:
         self._nodes.pop(key, None)
