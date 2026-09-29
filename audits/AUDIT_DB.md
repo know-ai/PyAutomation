@@ -6,7 +6,7 @@
 | **Documento canónico** | 04 / 10 |
 | **Fecha de agrupación** | 2026-09-16 |
 | **Fuentes absorbidas** | `AUDIT_DB`, `AUDIT_DB_CONNECTIONS*`, `AUDIT_OPTIMAL_CONNECTIONS`, `AUDIT_DB_RECONNECT`, `AUDIT_NETWORK_TIMEOUT`, `AUDIT_DB_CONNECTION_MEMORY`, `AUDIT_STORE_AND_FORWARD`, `PERSISTENCE_FLOW`, `AUDIT_DISK_DURABILITY`, `T01_SOAK_LAST_RUN`, `SOAK_DISK_LAST_RUN` |
-| **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), [AUDIT_TAGS.md](./AUDIT_TAGS.md), [AUDIT_RELIABILITY.md](./AUDIT_RELIABILITY.md), [AUDIT_ALARMS.md](./AUDIT_ALARMS.md) |
+| **Complementa** | [AUDIT_PERFORMANCE.md](./AUDIT_PERFORMANCE.md), [AUDIT_MULTI_EDGE.md](./AUDIT_MULTI_EDGE.md), [AUDIT_TAGS.md](./AUDIT_TAGS.md), [AUDIT_RELIABILITY.md](./AUDIT_RELIABILITY.md), [AUDIT_ALARMS.md](./AUDIT_ALARMS.md), [AUDIT_SAF_OUTAGE.md](./AUDIT_SAF_OUTAGE.md) (caída de PostgreSQL, ACK, retención y drenaje; 2026-09-29) |
 | **Veredicto vigente** | Conexiones: un handle Peewee; idle 1 worker **1–3** (techo **≤ 4**); pool **prohibido**. SAF **A+** durabilidad / **A** Bulkhead. Disco **A+** código/spec; soak 24 h planta pendiente |
 | **Clasificación** | Auditoría de contraste código vs diseño. IDs de hallazgos conservados. |
 
