@@ -2,16 +2,21 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
-import { getUsers, changePassword, resetPassword, updateUserRole, getRoles, getAllRoles, createRole, type User, type UsersResponse, type Role, type CreateRolePayload } from "../services/users";
+import { getUsers, changePassword, resetPassword, updateUserRole, setUserEnabled, getRoles, getAllRoles, createRole, type User, type UsersResponse, type Role, type CreateRolePayload } from "../services/users";
 import { axiosErrorMessage } from "../services/health";
 import { useTranslation } from "../hooks/useTranslation";
+import { useAuth } from "../hooks/useAuth";
 import { useAuthz } from "../hooks/useAuthz";
 import { VIEW_IDS } from "../utils/access";
+import { accountIsEnabled, actorMaySetUserEnabled } from "../utils/userAccount";
+import { isSystemUser } from "../utils/systemUser";
 
 export function UserManagement() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { user: sessionUser } = useAuth();
   const { canView, isSystem } = useAuthz();
+  const mayToggleAccounts = actorMaySetUserEnabled(sessionUser?.role);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +31,7 @@ export function UserManagement() {
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   const [showUpdateRoleModal, setShowUpdateRoleModal] = useState(false);
+  const [showSetEnabledModal, setShowSetEnabledModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -122,6 +128,36 @@ export function UserManagement() {
     setSelectedRole(user.role?.name || "");
     setError(null);
     setShowUpdateRoleModal(true);
+  };
+
+  const handleOpenSetEnabled = (user: User) => {
+    setSelectedUser(user);
+    setError(null);
+    setShowSetEnabledModal(true);
+  };
+
+  const handleSetEnabled = async () => {
+    if (!selectedUser) return;
+    const nextEnabled = !accountIsEnabled(selectedUser.enabled);
+    setIsProcessing(true);
+    setError(null);
+    try {
+      await setUserEnabled({
+        target_username: selectedUser.username,
+        enabled: nextEnabled,
+      });
+      setShowSetEnabledModal(false);
+      setSelectedUser(null);
+      loadUsers();
+    } catch (e: any) {
+      setError(
+        e?.response?.data?.message ||
+          e?.message ||
+          t("userManagement.setEnabledError")
+      );
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -289,6 +325,7 @@ export function UserManagement() {
     setShowChangePasswordModal(false);
     setShowResetPasswordModal(false);
     setShowUpdateRoleModal(false);
+    setShowSetEnabledModal(false);
     setShowRolesModal(false);
     setSelectedUser(null);
     setNewPassword("");
@@ -421,19 +458,33 @@ export function UserManagement() {
                     <th>{t("tables.lastname")}</th>
                     <th>{t("tables.role")}</th>
                     <th>{t("tables.roleLevel")}</th>
+                    <th>{t("userManagement.status")}</th>
                     <th>{t("tables.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center text-muted py-4">
+                      <td colSpan={8} className="text-center text-muted py-4">
                         {t("userManagement.noUsers")}
                       </td>
                     </tr>
                   ) : (
-                    users.map((user) => (
-                      <tr key={user.username}>
+                    users.map((user) => {
+                      const enabled = accountIsEnabled(user.enabled);
+                      const isSelf = sessionUser?.username === user.username;
+                      const isSystemAccount = isSystemUser(user);
+                      const toggleBlocked =
+                        isSystemAccount || (enabled && isSelf);
+                      const toggleTitle = isSystemAccount
+                        ? t("userManagement.cannotDisableSystem")
+                        : enabled && isSelf
+                          ? t("userManagement.cannotDisableSelf")
+                          : enabled
+                            ? t("userManagement.disableUser")
+                            : t("userManagement.enableUser");
+                      return (
+                      <tr key={user.username} className={enabled ? undefined : "text-muted"}>
                         <td>
                           <strong>{user.username || "-"}</strong>
                         </td>
@@ -444,6 +495,11 @@ export function UserManagement() {
                           <span className="badge bg-info">{user.role?.name || "-"}</span>
                         </td>
                         <td>{user.role?.level !== undefined ? user.role.level : "-"}</td>
+                        <td>
+                          <span className={`badge ${enabled ? "bg-success" : "bg-secondary"}`}>
+                            {enabled ? t("userManagement.enabled") : t("userManagement.disabled")}
+                          </span>
+                        </td>
                         <td>
                           <div className="btn-group" role="group">
                             <Button
@@ -470,10 +526,22 @@ export function UserManagement() {
                             >
                               <i className="bi bi-person-badge"></i>
                             </Button>
+                            {mayToggleAccounts && (
+                              <Button
+                                variant={enabled ? "warning" : "success"}
+                                className="btn-sm"
+                                onClick={() => handleOpenSetEnabled(user)}
+                                title={toggleTitle}
+                                disabled={toggleBlocked}
+                              >
+                                <i className={`bi ${enabled ? "bi-person-slash" : "bi-person-check"}`}></i>
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -689,6 +757,52 @@ export function UserManagement() {
                       loading={isProcessing}
                     >
                       {t("userManagement.updateRoleButton")}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showSetEnabledModal && selectedUser && (
+            <div
+              className="modal show d-block"
+              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+              onClick={handleCloseModals}
+            >
+              <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">
+                      {t("userManagement.setEnabledTitle", {
+                        action: accountIsEnabled(selectedUser.enabled)
+                          ? t("userManagement.disableAction")
+                          : t("userManagement.enableAction"),
+                        username: selectedUser.username,
+                      })}
+                    </h5>
+                    <button type="button" className="btn-close" onClick={handleCloseModals}></button>
+                  </div>
+                  <div className="modal-body">
+                    {error && (
+                      <div className="alert alert-danger mb-3" role="alert">
+                        {error}
+                      </div>
+                    )}
+                    <p className="mb-0">{t("userManagement.setEnabledConfirm")}</p>
+                  </div>
+                  <div className="modal-footer">
+                    <Button variant="secondary" onClick={handleCloseModals} disabled={isProcessing}>
+                      {t("common.cancel")}
+                    </Button>
+                    <Button
+                      variant={accountIsEnabled(selectedUser.enabled) ? "warning" : "success"}
+                      onClick={handleSetEnabled}
+                      loading={isProcessing}
+                    >
+                      {accountIsEnabled(selectedUser.enabled)
+                        ? t("userManagement.disableAction")
+                        : t("userManagement.enableAction")}
                     </Button>
                   </div>
                 </div>

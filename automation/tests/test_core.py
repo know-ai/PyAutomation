@@ -345,6 +345,23 @@ class TestCore(unittest.TestCase):
             self.assertEqual(import_result_skip["skipped"], 1)
             self.assertTrue(import_result_skip["success"])
 
+        before_reject = self.app.get_linear_referencing_geospatial_points_by_segment(segment_name="SEG-A")
+        rejected = self.app.import_linear_referencing_profile(
+            rows=[
+                {"segment_name": "SEG-A", "kp": 30.0, "latitude": 1.0, "longitude": -70.0},
+                {"segment_name": "MISSING", "kp": 31.0, "latitude": 1.0, "longitude": -70.0},
+            ],
+            update_existing=True,
+        )
+        with self.subTest("Unknown segment writes nothing"):
+            self.assertFalse(rejected["success"])
+            self.assertEqual(rejected["created"], 0)
+            after_reject = self.app.get_linear_referencing_geospatial_points_by_segment(segment_name="SEG-A")
+            self.assertEqual(len(after_reject), len(before_reject))
+            self.assertIsNone(
+                next((point for point in after_reject if point["kp"] == 30.0), None)
+            )
+
         # DELETE
         success, _ = self.app.delete_linear_referencing_geospatial_point(id=point2["id"])
         with self.subTest("Delete point by id"):

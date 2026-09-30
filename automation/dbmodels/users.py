@@ -1,5 +1,6 @@
+import logging
 import secrets
-from peewee import CharField, IntegerField, ForeignKeyField
+from peewee import BooleanField, CharField, IntegerField, ForeignKeyField
 from ..dbmodels.core import BaseModel
 from ..modules.users.users import Users as CVTUsers
 from ..modules.users.roles import Roles as CVTRoles
@@ -140,6 +141,7 @@ class Users(BaseModel):
     token = CharField(null=True)
     name = CharField(max_length=64, null=True)
     lastname = CharField(max_length=64, null=True)
+    enabled = BooleanField(default=True)
 
     @classmethod
     def create(cls, user:User)-> dict:
@@ -189,7 +191,8 @@ class Users(BaseModel):
             identifier=user.identifier,
             name=user.name,
             lastname=user.lastname,
-            token=user.token
+            token=user.token,
+            enabled=bool(getattr(user, "enabled", True)),
             )
         query.save()
 
@@ -221,6 +224,8 @@ class Users(BaseModel):
         if user:
 
             if user.decode_password(password):
+                if not bool(getattr(user, "enabled", True)):
+                    return None, "User is disabled"
                 session_token = cls.encode(secrets.token_hex(4))
                 user.token = session_token
 
@@ -435,6 +440,19 @@ class Users(BaseModel):
         user.save()
         
         return user, f"Role updated successfully for {username}"
+
+    @classmethod
+    def set_enabled(cls, username: str, enabled: bool) -> tuple:
+        """Enable or disable an account. Existing rows stay enabled until this runs."""
+        user = cls.get_or_none(username=username)
+        if not user:
+            return None, f"User {username} not found"
+        user.enabled = bool(enabled)
+        if not user.enabled:
+            user.token = None
+        user.save()
+        state = "enabled" if user.enabled else "disabled"
+        return user, f"User {username} {state}"
     
     @classmethod
     def fill_cvt_users(cls):
@@ -451,7 +469,8 @@ class Users(BaseModel):
                 name=user.name,
                 lastname=user.lastname,
                 identifier=user.identifier,
-                encode_password=False
+                encode_password=False,
+                enabled=bool(getattr(user, "enabled", True)),
             )
 
     def serialize(self)-> dict:
@@ -466,5 +485,56 @@ class Users(BaseModel):
             "email": self.email,
             "role": self.role.serialize(),
             "name": self.name,
-            "lastname": self.lastname
+            "lastname": self.lastname,
+            "enabled": bool(getattr(self, "enabled", True)),
         }
+
+
+def ensure_user_enabled_schema(db) -> None:
+    """Add ``users.enabled`` on databases created before the column existed."""
+    if db is None:
+        return
+    table = Users._meta.table_name
+    try:
+        existing = {column.name for column in db.get_columns(table)}
+    except Exception:
+        return
+    if "enabled" in existing:
+        return
+    try:
+        from peewee import MySQLDatabase, PostgresqlDatabase, SqliteDatabase
+        from playhouse.migrate import (
+            MySQLMigrator,
+            PostgresqlMigrator,
+            SqliteMigrator,
+            migrate,
+        )
+    except Exception:
+        logging.getLogger("pyautomation").debug(
+            "users.enabled schema migrate skipped (playhouse unavailable)",
+            exc_info=True,
+        )
+        return
+    if isinstance(db, SqliteDatabase):
+        migrator = SqliteMigrator(db)
+    elif isinstance(db, PostgresqlDatabase):
+        migrator = PostgresqlMigrator(db)
+    elif isinstance(db, MySQLDatabase):
+        migrator = MySQLMigrator(db)
+    else:
+        logging.getLogger("pyautomation").warning(
+            "users.enabled schema migrate skipped: unsupported db %s",
+            type(db).__name__,
+        )
+        return
+    cloned = Users.enabled.clone()
+    cloned.index = False
+    try:
+        migrate(migrator.add_column(table, "enabled", cloned))
+    except Exception:
+        logging.getLogger("pyautomation").warning(
+            "users.enabled column add skipped",
+            exc_info=True,
+        )
+        return
+    logging.getLogger("pyautomation").info("Added missing users.enabled column")

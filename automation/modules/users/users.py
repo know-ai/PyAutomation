@@ -17,7 +17,8 @@ class User:
             password:str, 
             name:str=None, 
             lastname:str=None,
-            identifier:str=None):
+            identifier:str=None,
+            enabled:bool=True):
 
         self.identifier = secrets.token_hex(4)
         if identifier:
@@ -29,6 +30,7 @@ class User:
         self.name = name
         self.lastname = lastname
         self.token = None
+        self.enabled = bool(enabled)
 
     def logout(self):
         r"""
@@ -46,7 +48,8 @@ class User:
             "role": self.role.serialize(),
             "email": self.email,
             "name": self.name,
-            "lastname": self.lastname
+            "lastname": self.lastname,
+            "enabled": bool(getattr(self, "enabled", True)),
         }
 
 
@@ -110,7 +113,8 @@ class Auth:
             name:str=None,
             lastname:str=None,
             identifier:str=None,
-            encode_password:bool=True
+            encode_password:bool=True,
+            enabled:bool=True,
         )->User:
         r"""
         Documentation here
@@ -123,7 +127,8 @@ class Auth:
             password=self.encode(value=password) if encode_password else password,
             name=name,
             lastname=lastname,
-            identifier=identifier if identifier else secrets.token_hex(4)
+            identifier=identifier if identifier else secrets.token_hex(4),
+            enabled=enabled,
         )
 
     
@@ -144,6 +149,8 @@ class Users(Singleton):
         self.__by_username = dict()
         self.__by_email = dict()
         self._revoked_tokens = set()
+        self._disabled_usernames = set()
+        self._disabled_token_owners = dict()
 
     def login(self, password:str, token:str=None, username:str=None, email:str=None):
         r"""
@@ -173,6 +180,9 @@ class Users(Singleton):
             
             # Intentar autenticar
             if self.__auth.login(user=user, password=password, token=token):
+                if not bool(getattr(user, "enabled", True)):
+                    user.token = None
+                    return None, "User is disabled"
                 try:
                     from ...node_scope import get_node_scope
 
@@ -263,7 +273,11 @@ class Users(Singleton):
             username = getattr(db_user, "username", None)
             if not username:
                 return None
+            if not bool(getattr(db_user, "enabled", True)):
+                return None
             user = self.get_by_username(username=username)
+            if user is not None and not bool(getattr(user, "enabled", True)):
+                return None
             if user is None:
                 return None
             session_token = token or getattr(db_user, "token", None)
@@ -336,7 +350,8 @@ class Users(Singleton):
             lastname:str=None,
             identifier:str=None,
             role_name:str='guest',
-            encode_password:bool=True
+            encode_password:bool=True,
+            enabled:bool=True,
             )->tuple:
         r"""
         Documentation here
@@ -361,13 +376,91 @@ class Users(Singleton):
             name=name,
             lastname=lastname,
             identifier=identifier,
-            encode_password=encode_password
+            encode_password=encode_password,
+            enabled=enabled,
         )
         self.__by_identifier[user.identifier] = user
         self.__by_username[user.username] = user
         if email:
             self.__by_email[user.email] = user
         return user, message
+
+    def set_enabled(self, username: str, enabled: bool):
+        user = self.get_by_username(username=username)
+        if user is None:
+            return None, f"User {username} not found"
+        user.enabled = bool(enabled)
+        if not user.enabled:
+            tokens = [
+                token
+                for token, active in list(self.active_users.items())
+                if getattr(active, "username", None) == user.username
+            ]
+            if getattr(user, "token", None):
+                tokens.append(user.token)
+            self.revoke_username_sessions(user.username)
+            self.mark_account_disabled(user.username, tokens)
+        else:
+            self.clear_disabled_mark(user.username)
+        state = "enabled" if user.enabled else "disabled"
+        return user, f"User {username} {state}"
+
+    def mark_account_disabled(self, username: str, tokens) -> None:
+        name = (username or "").strip()
+        if not name:
+            return
+        names = getattr(self, "_disabled_usernames", None)
+        owners = getattr(self, "_disabled_token_owners", None)
+        if names is None:
+            names = set()
+            self._disabled_usernames = names
+        if owners is None:
+            owners = {}
+            self._disabled_token_owners = owners
+        names.add(name)
+        for token in tokens or ():
+            if token:
+                owners[token] = name
+        if len(owners) > 512:
+            excess = list(owners)[: len(owners) - 512]
+            for item in excess:
+                owners.pop(item, None)
+
+    def clear_disabled_mark(self, username: str) -> None:
+        name = (username or "").strip()
+        names = getattr(self, "_disabled_usernames", None)
+        owners = getattr(self, "_disabled_token_owners", None)
+        if names is not None:
+            names.discard(name)
+        if owners is None or not name:
+            return
+        stale = [token for token, owner in owners.items() if owner == name]
+        for token in stale:
+            owners.pop(token, None)
+
+    def account_marked_disabled(self, username: str) -> bool:
+        name = (username or "").strip()
+        return bool(name) and name in getattr(self, "_disabled_usernames", set())
+
+    def disabled_owner_for_token(self, token: str):
+        if not token:
+            return None
+        owner = getattr(self, "_disabled_token_owners", {}).get(token)
+        if owner and self.account_marked_disabled(owner):
+            return owner
+        return None
+
+    def revoke_username_sessions(self, username: str) -> None:
+        tokens = [
+            token
+            for token, active in list(self.active_users.items())
+            if getattr(active, "username", None) == username
+        ]
+        for token in tokens:
+            self.logout(token)
+        user = self.get_by_username(username=username)
+        if user is not None:
+            user.token = None
 
     def verify_credentials(self, password:str, username:str=None, email:str=None)->bool:
         r"""
@@ -391,7 +484,10 @@ class Users(Singleton):
                 
                 user = self.get_by_email(email=email)
 
-            return self.__auth.verify_credentials(user=user, password=password), f"Credentials valid"
+            valid = self.__auth.verify_credentials(user=user, password=password)
+            if valid and not bool(getattr(user, "enabled", True)):
+                return False, "User is disabled"
+            return valid, f"Credentials valid"
 
         else:
 

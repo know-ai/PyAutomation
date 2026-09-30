@@ -5,7 +5,7 @@ from __future__ import annotations
 from .base import NodeExposer
 from .common import apply_display_name, leaf_name
 from .published import engine_properties
-from ..identity import make_node_id
+from ..identity import make_node_id, property_node_id
 
 
 def _text(value) -> str:
@@ -77,7 +77,9 @@ class EngineExposer(NodeExposer):
             published = "" if value is None else value
             prop = current.get(prop_key)
             if prop is None and node is not None:
-                prop = self._builder.add_property(node, f"{identifier}.{prop_key}", prop_key, published)
+                prop = self._builder.add_property(
+                    node, property_node_id(identifier, prop_key), prop_key, published
+                )
                 current[prop_key] = prop
                 continue
             if prop is None:

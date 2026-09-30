@@ -106,6 +106,15 @@ def make_node_id(entity_type: str, area: str | None, name: str) -> str:
     return opc_name(name)
 
 
+def property_node_id(owner: str, key: str) -> str:
+    """NodeId of a property. ``#`` keeps it off the tag id ``owner.key``.
+
+    ``Supe.Linea1.LDS.threshold`` is the tag ``lds.threshold``. The engine
+    property of the same name must not reuse that id.
+    """
+    return f"{owner}#{key}"
+
+
 def opc_name(name: str) -> str:
     """Canonical name with manufacturer and segment removed from the front only."""
     text = canonicalize_name(name)

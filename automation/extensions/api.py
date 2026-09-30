@@ -98,6 +98,44 @@ class Api(Singleton):
         return _validate_reqparser
 
     @classmethod
+    def disabled_account_body(cls):
+        """Cuerpo único para login y consultas de una cuenta deshabilitada."""
+        return {
+            "message": "User is disabled",
+            "code": "USER_DISABLED",
+            "error_type": "user_disabled",
+        }
+
+    @classmethod
+    def _local_account_disabled(cls, token: str) -> bool:
+        """True when the local catalog or CVT says this token's account is off."""
+        try:
+            from ..utils.user_api_session_store import _lookup_local_username
+
+            username = _lookup_local_username(token)
+        except Exception:
+            username = None
+        if not username:
+            return False
+        if users.account_marked_disabled(username):
+            return True
+        named = users.get_by_username(username=username)
+        if named is not None:
+            return not bool(getattr(named, "enabled", True))
+        try:
+            from ..catalog.local_provider import LocalCatalogProvider
+
+            row = LocalCatalogProvider().find_one("users", field="username", value=username)
+        except Exception:
+            row = None
+        if not row:
+            return False
+        enabled = row.get("enabled", True)
+        if enabled is False or enabled == 0:
+            return True
+        return str(enabled).strip().lower() in {"false", "0", "no"}
+
+    @classmethod
     def _resolve_session_user(cls, token: str):
         r"""Resolve an authenticated user without forcing a false 'Invalid token'
         when the historian is unreachable.
@@ -110,6 +148,13 @@ class Api(Singleton):
             return None, {'message': 'Key is missing.', 'code': 'AUTH_KEY_MISSING'}, 401
 
         memory_user = users.get_active_user(token=token)
+        disabled_owner = users.disabled_owner_for_token(token)
+        if (memory_user and not bool(getattr(memory_user, "enabled", True))) or disabled_owner:
+            try:
+                users.logout(token=token)
+            except Exception:
+                pass
+            return None, cls.disabled_account_body(), 403
         if memory_user:
             return memory_user, None, None
 
@@ -133,6 +178,8 @@ class Api(Singleton):
                 session_username = lookup_username(token)
                 if session_username:
                     db_user = Users.get_or_none(Users.username == session_username)
+                    if db_user and not bool(getattr(db_user, "enabled", True)):
+                        return None, cls.disabled_account_body(), 403
                     if db_user:
                         restored = users.activate_session_from_db_record(db_user, token=token)
                         if restored:
@@ -147,6 +194,8 @@ class Api(Singleton):
 
                 if not multi_edge_sessions_enabled():
                     db_user = Users.get_or_none(token=token)
+                    if db_user and not bool(getattr(db_user, "enabled", True)):
+                        return None, cls.disabled_account_body(), 403
                     if db_user:
                         restored = users.activate_session_from_db_record(db_user, token=token)
                         return restored or memory_user, None, None
@@ -166,6 +215,8 @@ class Api(Singleton):
                 offline_user = activate_user_from_offline_token(token)
                 if offline_user:
                     return offline_user, None, None
+                if cls._local_account_disabled(token):
+                    return None, cls.disabled_account_body(), 403
             except Exception:
                 logging.getLogger("pyautomation").debug(
                     "Offline session restore skipped",

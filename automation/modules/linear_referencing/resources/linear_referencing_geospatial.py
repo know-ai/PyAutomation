@@ -1,11 +1,10 @@
-import csv
-from io import StringIO, BytesIO
 from flask import request
 from flask_restx import Namespace, Resource, fields, reqparse
 from werkzeug.datastructures import FileStorage
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ..csv_profile import MAX_CSV_BYTES, GeospatialCsvError, GeospatialCsvProfile
 
 
 ns = Namespace('Linear Referencing Geospatial', description='Linear referencing geospatial CRUD and interpolation')
@@ -143,7 +142,7 @@ bulk_import_parser.add_argument(
     type=FileStorage,
     location='files',
     required=True,
-    help='CSV or XLSX file to import'
+    help='CSV file to import'
 )
 bulk_import_parser.add_argument(
     'segment_name',
@@ -167,8 +166,8 @@ class LinearReferencingBulkImportResource(Resource):
 
     @api.doc(
         security='apikey',
-        description="Imports a full profile from CSV/XLSX file. "
-                    "Expected columns: segment_name (optional if sent in form), kp, latitude, longitude, elevation (optional)."
+        description="Imports a full profile from a CSV file. "
+                    "Header must be exactly segment_name,kp,latitude,longitude."
     )
     @api.response(200, "Import processed")
     @api.response(400, "Invalid file or payload")
@@ -176,98 +175,33 @@ class LinearReferencingBulkImportResource(Resource):
     @ns.expect(bulk_import_parser)
     def post(self):
         if "file" not in request.files:
-            return {"message": "file is required (CSV or XLSX)"}, 400
+            return {"message": "file is required (CSV)"}, 400
 
         upload = request.files["file"]
         filename = (upload.filename or "").strip()
-        if not filename:
-            return {"message": "Invalid filename"}, 400
+        if not filename.lower().endswith(".csv"):
+            return {"message": "Only .csv files are supported"}, 400
 
         default_segment_name = request.form.get("segment_name")
         update_existing_raw = (request.form.get("update_existing", "true") or "true").strip().lower()
         update_existing = update_existing_raw in ("1", "true", "yes", "y")
 
+        raw = upload.stream.read(MAX_CSV_BYTES + 1)
+        if len(raw) > MAX_CSV_BYTES:
+            return {"message": "File exceeds 1 MB"}, 400
+
         try:
-            rows = self._parse_rows(upload=upload, filename=filename)
-        except Exception as err:
-            return {"message": f"Invalid file format: {str(err)}"}, 400
+            rows = GeospatialCsvProfile().parse(raw)
+        except GeospatialCsvError as err:
+            return {"message": str(err)}, 400
 
         result = app.import_linear_referencing_profile(
             rows=rows,
             default_segment_name=default_segment_name,
             update_existing=update_existing
         )
+        if not isinstance(result, dict) or not result.get("success"):
+            errors = (result or {}).get("errors") if isinstance(result, dict) else None
+            message = "; ".join(errors) if errors else "Import rejected"
+            return {"message": message, "data": result}, 400
         return {"data": result}, 200
-
-    def _normalize_header(self, value:str)->str:
-        return (value or "").strip().lower()
-
-    def _canonicalize_row(self, row:dict)->dict:
-        mapping = {}
-        for key, value in row.items():
-            normalized = self._normalize_header(key)
-            mapping[normalized] = value
-
-        segment_name = (
-            mapping.get("segment_name")
-            or mapping.get("segment")
-            or mapping.get("segmento")
-        )
-        kp = mapping.get("kp")
-        latitude = (
-            mapping.get("latitude")
-            or mapping.get("lat")
-            or mapping.get("y")
-        )
-        longitude = (
-            mapping.get("longitude")
-            or mapping.get("lon")
-            or mapping.get("lng")
-            or mapping.get("x")
-        )
-        elevation = (
-            mapping.get("elevation")
-            or mapping.get("elev")
-            or mapping.get("altitude")
-            or mapping.get("altura")
-        )
-
-        return {
-            "segment_name": segment_name,
-            "kp": kp,
-            "latitude": latitude,
-            "longitude": longitude,
-            "elevation": elevation
-        }
-
-    def _parse_rows(self, upload, filename:str)->list[dict]:
-        lowered = filename.lower()
-        if lowered.endswith(".csv"):
-            raw_text = upload.stream.read().decode("utf-8-sig")
-            reader = csv.DictReader(StringIO(raw_text))
-            return [self._canonicalize_row(row) for row in reader]
-
-        if lowered.endswith(".xlsx"):
-            try:
-                from openpyxl import load_workbook
-            except Exception as err:
-                raise ValueError(f"openpyxl is required for XLSX import: {str(err)}")
-
-            content = upload.stream.read()
-            wb = load_workbook(filename=BytesIO(content), read_only=True, data_only=True)
-            ws = wb.active
-            rows_iter = ws.iter_rows(values_only=True)
-            headers = next(rows_iter, None)
-            if headers is None:
-                return []
-            header_names = [str(h) if h is not None else "" for h in headers]
-
-            parsed = []
-            for values in rows_iter:
-                row_dict = {}
-                for idx, header in enumerate(header_names):
-                    row_dict[header] = values[idx] if idx < len(values) else None
-                parsed.append(self._canonicalize_row(row_dict))
-            return parsed
-
-        raise ValueError("Only .csv and .xlsx files are supported")

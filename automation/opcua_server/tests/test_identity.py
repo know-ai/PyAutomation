@@ -6,6 +6,7 @@ from automation.opcua_server.identity import (
     canonicalize_name,
     canonical_area,
     make_node_id,
+    property_node_id,
 )
 
 
@@ -45,6 +46,14 @@ class TestIdentity(unittest.TestCase):
             self.assertEqual(make_node_id("t", None, "Supe.Linea1.LDS.leak_flow"), "lds.leak_flow")
             self.assertEqual(make_node_id("a", None, "Supe.Linea1.PPA.leak"), "ppa.leak")
             self.assertEqual(make_node_id("e", None, "Supe.Linea1.LDS"), "lds")
+
+    def test_engine_property_does_not_reuse_the_tag_id(self):
+        with patch.dict(os.environ, {"AUTOMATION_MANUFACTURER": "Supe", "AUTOMATION_SEGMENT": "Linea1"}):
+            tag_id = make_node_id("t", None, "Supe.Linea1.LDS.threshold")
+            engine_id = make_node_id("e", None, "Supe.Linea1.LDS")
+        self.assertEqual(tag_id, "lds.threshold")
+        self.assertEqual(property_node_id(engine_id, "threshold"), "lds#threshold")
+        self.assertNotEqual(property_node_id(engine_id, "threshold"), tag_id)
 
     def test_bad_entity(self):
         with self.assertRaises(ValueError):

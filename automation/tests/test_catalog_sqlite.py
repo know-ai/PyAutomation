@@ -784,6 +784,42 @@ class TestReplicatorRemoteOutage(unittest.TestCase):
         exc = InterfaceError("connection already closed")
         self.assertTrue(_is_transient_connection_error(exc))
 
+        class OperationalError(Exception):
+            pass
+
+        self.assertFalse(
+            _is_transient_connection_error(OperationalError("no such column: t1.enabled"))
+        )
+        self.assertTrue(
+            _is_transient_connection_error(OperationalError("connection already closed"))
+        )
+
+    def test_local_catalog_adds_missing_users_enabled(self):
+        from peewee import SqliteDatabase
+
+        from automation.catalog.bootstrap import bootstrap_local_catalog
+        from automation.catalog.local_db import close_catalog_db
+        from automation.dbmodels.users import Users
+
+        close_catalog_db()
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                path = str(Path(folder) / "catalog.db")
+                db = SqliteDatabase(path)
+                db.connect()
+                db.execute_sql(
+                    "CREATE TABLE users ("
+                    "id INTEGER PRIMARY KEY, identifier VARCHAR(16), username VARCHAR(64), "
+                    "role_id INTEGER, email VARCHAR(128), password VARCHAR(255), "
+                    "token VARCHAR(255), name VARCHAR(64), lastname VARCHAR(64))"
+                )
+                db.close()
+                opened = bootstrap_local_catalog(path)
+                names = {column.name for column in opened.get_columns(Users._meta.table_name)}
+                self.assertIn("enabled", names)
+        finally:
+            close_catalog_db()
+
     def test_cycle_skips_remote_when_unavailable(self):
         from automation.catalog.replicator import CatalogReplicatorWorker
 

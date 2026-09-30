@@ -89,6 +89,11 @@ _TRANSIENT_ROW_RETRIES = 2
 
 
 def _is_transient_connection_error(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    # SQLite OperationalError covers both dead sockets and schema drift.
+    # A missing column must not recycle the replica forever.
+    if "no such column" in text or "no such table" in text or "undefined column" in text:
+        return False
     name = type(exc).__name__
     if name in ("InterfaceError", "OperationalError", "ConnectionError", "ConnectionDoesNotExist"):
         return True
@@ -208,6 +213,7 @@ class CatalogReplicatorWorker(BaseWorker):
         self._parent_load_failed = False
         self._connection_backoff = False
         self._recycled_this_cycle = False
+        self._last_remote_fault = ""
 
     def stop(self):
         super().stop()
@@ -344,6 +350,17 @@ class CatalogReplicatorWorker(BaseWorker):
             "CATALOG_ORPHAN_ALARM": bool(self._orphan_latched),
             "CATALOG_REMOTE_INCONSISTENCY": bool(self._inconsistency_latched),
         }
+
+    def _note_remote_fault(self, exc: BaseException, *, table: str = "", key: str = "") -> None:
+        """Remember the live socket fault and count it. One line, no traceback."""
+        self._transient_remote_errors += 1
+        text = " ".join(str(exc or "").split()) or type(exc).__name__
+        if len(text) > 160:
+            text = text[:157] + "..."
+        where = table or "remote"
+        if key:
+            where = f"{where} row {key}"
+        self._last_remote_fault = f"{where}: {text}"[:220]
 
     def _recycle_replica_handle(self) -> None:
         """Drop dead Peewee/libpq sockets (replica + this thread's primary)."""
@@ -580,6 +597,7 @@ class CatalogReplicatorWorker(BaseWorker):
         self._remote_available = remote_available
         self._transient_remote_errors = 0
         self._recycled_this_cycle = False
+        self._last_remote_fault = ""
 
         if not remote_available:
             if was_available is not False:
@@ -677,14 +695,15 @@ class CatalogReplicatorWorker(BaseWorker):
             except Exception as exc:
                 remote_rows_by_table[table] = []
                 if _is_transient_connection_error(exc):
-                    self._transient_remote_errors += 1
+                    self._note_remote_fault(exc, table=table)
                     if table in PARENT_TABLES:
                         self._parent_load_failed = True
                         self._tags_sync_pending = True
                     self._heal_remote_handles_for_retry()
                     _LOGGER.info(
-                        "catalog load deferred (remote socket) table=%s; will retry next cycle",
+                        "catalog load deferred (remote socket) table=%s: %s; will retry next cycle",
                         table,
+                        self._last_remote_fault,
                     )
                 else:
                     row_errors += 1
@@ -741,7 +760,7 @@ class CatalogReplicatorWorker(BaseWorker):
                 row_errors += e
             except Exception as exc:
                 if _is_transient_connection_error(exc):
-                    self._transient_remote_errors += 1
+                    self._note_remote_fault(exc, table=table)
                     if table in PUSH_ONLY_TABLES:
                         self._cycle_backup_skips += 1
                     if table in PARENT_TABLES:
@@ -799,10 +818,14 @@ class CatalogReplicatorWorker(BaseWorker):
                     hard_connection or connection_errors,
                 )
             else:
+                fault = self._last_remote_fault or "remote connection dropped"
                 _LOGGER.warning(
-                    "Catalog sync had %s remote connection error(s); recycling replica handle and backing off",
+                    "Catalog sync had %s remote connection error(s): %s; "
+                    "recycling replica handle and backing off",
                     hard_connection or connection_errors,
+                    fault,
                 )
+                set_sync_failed(self._sync_failed_latched, detail=fault)
             self._connection_backoff = True
             self._increment_backoff()
         if hard_fail:
@@ -897,7 +920,7 @@ class CatalogReplicatorWorker(BaseWorker):
                 elapsed = time.monotonic() - self._remote_outage_since
                 if elapsed < _SYNC_FAIL_MIN_OUTAGE_S:
                     active = False
-        set_sync_failed(active)
+        set_sync_failed(active, detail=self._last_remote_fault or "")
         if active and not self._sync_failed_latched:
             self._emit_exception_event(
                 message="Catalog sync failed",
@@ -1599,7 +1622,7 @@ class CatalogReplicatorWorker(BaseWorker):
                         continue
                     if recovered:
                         continue
-                    self._transient_remote_errors += 1
+                    self._note_remote_fault(last_retry_exc or exc, table=table, key=key)
                     if table in PUSH_ONLY_TABLES:
                         self._cycle_backup_skips += 1
                     # One blip → INFO; repeated in the same cycle → DEBUG (cycle end summarizes).

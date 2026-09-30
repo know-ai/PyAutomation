@@ -206,6 +206,7 @@ VIEW_REST_BUNDLES: dict[str, ViewBundle] = {
             ("POST", "/api/users/change_password"),
             ("POST", "/api/users/reset_password"),
             ("POST", "/api/users/update_role"),
+            ("POST", "/api/users/set_enabled"),
             ("POST", "/api/users/roles/add"),
         ],
     },

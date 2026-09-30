@@ -253,6 +253,7 @@ class DBManager(Singleton):
         self._ensure_tag_filter_schema(db, migrator)
         self._ensure_tag_unit_provenance_schema(db, migrator)
         self._ensure_alarm_delay_schema(db, migrator)
+        self._ensure_user_enabled_schema(db, migrator)
         try:
             AlarmSummary.ensure_schema()
         except Exception:
@@ -638,6 +639,11 @@ class DBManager(Singleton):
         return result
     
     @logging_error_handler
+    def _ensure_user_enabled_schema(self, db, migrator) -> None:
+        from ..dbmodels.users import ensure_user_enabled_schema
+
+        ensure_user_enabled_schema(db)
+
     def login(self, password:str, username:str="", email:str=""):
         r"""
         Authenticates a user against the database.
@@ -657,6 +663,10 @@ class DBManager(Singleton):
         Updates a user's role in the database.
         """
         return self.users_logger.update_role(username=username, new_role_name=new_role_name)
+
+    @logging_error_handler
+    def set_user_enabled(self, username: str, enabled: bool):
+        return self.users_logger.set_enabled(username=username, enabled=enabled)
 
     @logging_error_handler
     def summary(self)->dict:

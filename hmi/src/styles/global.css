@@ -2753,6 +2753,82 @@ body.process-restart-lock #toast-container {
   gap: 0.5rem;
 }
 
+.georef {
+  display: grid;
+  gap: var(--settings-gap);
+}
+
+.georef-sample {
+  margin: 0.9rem 0 0;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  background: var(--bs-tertiary-bg, var(--bs-secondary-bg));
+  color: var(--bs-body-color);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.georef-sample code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.georef-import {
+  margin-top: 0.9rem;
+}
+
+.georef-alert {
+  margin: 0.9rem 0 0;
+}
+
+.georef-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+@media (min-width: 800px) {
+  .georef-form {
+    grid-template-columns: 1.3fr repeat(3, minmax(0, 1fr));
+    align-items: end;
+  }
+
+  .georef-form .settings-field + .settings-field {
+    margin-top: 0;
+  }
+}
+
+.georef-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.georef-table__toolbar {
+  max-width: 16rem;
+  margin-bottom: 0.85rem;
+}
+
+.georef-table {
+  margin-bottom: 0;
+}
+
+.georef-table__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.georef-delete-ask {
+  align-self: center;
+  color: var(--bs-secondary-color);
+  font-size: 0.8rem;
+}
+
 .db-engine-choice {
   display: grid;
   grid-template-columns: 1fr;

@@ -159,7 +159,10 @@ class TestAuthzSeedMatrix(unittest.TestCase):
 
     def test_admin_has_settings_not_administration(self):
         self.assertTrue(default_allows("admin", "hmi:view.settings", "view"))
-        self.assertFalse(default_allows("admin", "hmi:view.user-management", "view"))
+        self.assertTrue(default_allows("admin", "hmi:view.user-management", "view"))
+        self.assertTrue(default_allows("admin", "rest:GET /api/users/", "view"))
+        self.assertTrue(default_allows("admin", "rest:POST /api/users/set_enabled", "use"))
+        self.assertFalse(default_allows("admin", "rest:POST /api/users/update_role", "use"))
         self.assertFalse(default_allows("admin", "hmi:view.authz", "view"))
         self.assertFalse(default_allows("admin", "hmi:view.settings", "use"))
         self.assertTrue(default_allows("admin", "hmi:view.tags.definitions", "view"))
@@ -168,6 +171,46 @@ class TestAuthzSeedMatrix(unittest.TestCase):
         self.assertTrue(default_allows("admin", "rest:PUT /api/settings/", "use"))
         self.assertFalse(default_allows("admin", "rest:GET /api/database/config", "view"))
         self.assertFalse(default_allows("admin", "rest:POST /api/database/connect", "use"))
+        self.assertTrue(
+            default_allows("admin", "rest:GET /api/linear-referencing-geospatial/", "view")
+        )
+        self.assertTrue(
+            default_allows("admin", "rest:POST /api/linear-referencing-geospatial/add", "use")
+        )
+        self.assertTrue(
+            default_allows(
+                "admin",
+                "rest:PUT /api/linear-referencing-geospatial/<int:point_id>",
+                "use",
+            )
+        )
+        self.assertTrue(
+            default_allows(
+                "admin",
+                "rest:DELETE /api/linear-referencing-geospatial/<int:point_id>",
+                "use",
+            )
+        )
+        self.assertTrue(
+            default_allows(
+                "admin",
+                "rest:POST /api/linear-referencing-geospatial/bulk_import",
+                "use",
+            )
+        )
+        self.assertTrue(
+            default_allows("guest", "rest:GET /api/linear-referencing-geospatial/", "view")
+        )
+        self.assertFalse(
+            default_allows("guest", "rest:POST /api/linear-referencing-geospatial/add", "use")
+        )
+        self.assertFalse(
+            default_allows(
+                "supervisor",
+                "rest:POST /api/linear-referencing-geospatial/add",
+                "use",
+            )
+        )
 
     def test_core_matrix_does_not_grant_product_leak_apis(self):
         from automation.authz import app_hooks as mod

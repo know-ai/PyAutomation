@@ -1327,133 +1327,19 @@ class PyAutomation(Singleton):
         update_existing:bool=True
     )->dict:
         r"""
-        Imports a complete linear-referencing profile from parsed rows (CSV/XLSX).
+        Imports a linear-referencing profile.
+
+        Validates every row first. A missing segment or an invalid value
+        writes nothing.
         """
-        result = {
-            "created": 0,
-            "updated": 0,
-            "skipped": 0,
-            "errors": []
-        }
+        from .modules.linear_referencing.import_profile import apply_linear_referencing_import
 
-        if not self.is_db_connected():
-            from .catalog.mutations import (
-                ensure_segment_local,
-                list_lrs_points_local,
-                persist_lrs_point_local,
-            )
-
-            for idx, row in enumerate(rows, start=1):
-                try:
-                    segment_name = row.get("segment_name") or default_segment_name
-                    if not segment_name:
-                        result["errors"].append(f"Row {idx}: missing segment_name")
-                        continue
-                    if ensure_segment_local(segment_name) is None:
-                        result["errors"].append(f"Row {idx}: segment {segment_name} does not exist")
-                        continue
-                    if row.get("kp") is None or row.get("latitude") is None or row.get("longitude") is None:
-                        result["errors"].append(f"Row {idx}: missing kp/latitude/longitude")
-                        continue
-                    kp = float(row.get("kp"))
-                    existing = next(
-                        (
-                            p
-                            for p in list_lrs_points_local(segment_name=segment_name)
-                            if float(p.get("kp") or 0) == kp
-                        ),
-                        None,
-                    )
-                    if existing and not update_existing:
-                        result["skipped"] += 1
-                        continue
-                    point = persist_lrs_point_local(
-                        segment_name=segment_name,
-                        kp=kp,
-                        latitude=float(row.get("latitude")),
-                        longitude=float(row.get("longitude")),
-                        elevation=None if row.get("elevation") is None else float(row.get("elevation")),
-                        point_id=None if existing is None else existing.get("id"),
-                    )
-                    if point is None:
-                        result["errors"].append(f"Row {idx}: local persist failed")
-                        continue
-                    if existing:
-                        result["updated"] += 1
-                    else:
-                        result["created"] += 1
-                except Exception as err:
-                    result["errors"].append(f"Row {idx}: {err}")
-            return result
-
-        from .dbmodels import LinearReferencingGeospatial, Segment
-
-        for idx, row in enumerate(rows, start=1):
-            try:
-                segment_name = row.get("segment_name") or default_segment_name
-                if not segment_name:
-                    result["errors"].append(f"Row {idx}: missing segment_name")
-                    continue
-
-                segment_obj = Segment.read_by_name(name=segment_name)
-                if segment_obj is None:
-                    result["errors"].append(f"Row {idx}: segment {segment_name} does not exist")
-                    continue
-
-                if row.get("kp") is None:
-                    result["errors"].append(f"Row {idx}: missing kp")
-                    continue
-                if row.get("latitude") is None:
-                    result["errors"].append(f"Row {idx}: missing latitude")
-                    continue
-                if row.get("longitude") is None:
-                    result["errors"].append(f"Row {idx}: missing longitude")
-                    continue
-
-                kp = float(row.get("kp"))
-                latitude = float(row.get("latitude"))
-                longitude = float(row.get("longitude"))
-                elevation = row.get("elevation")
-                if elevation in ("", None):
-                    elevation = None
-                else:
-                    elevation = float(elevation)
-
-                current = LinearReferencingGeospatial.get_or_none(
-                    (LinearReferencingGeospatial.segment == segment_obj)
-                    & (LinearReferencingGeospatial.kp == kp)
-                )
-
-                if current is None:
-                    point, message = LinearReferencingGeospatial.create(
-                        segment_name=segment_name,
-                        kp=kp,
-                        latitude=latitude,
-                        longitude=longitude,
-                        elevation=elevation
-                    )
-                    if point is None:
-                        result["errors"].append(f"Row {idx}: {message}")
-                    else:
-                        result["created"] += 1
-                else:
-                    if not update_existing:
-                        result["skipped"] += 1
-                        continue
-                    LinearReferencingGeospatial.put(
-                        id=current.id,
-                        latitude=latitude,
-                        longitude=longitude,
-                        elevation=elevation
-                    )
-                    result["updated"] += 1
-
-            except Exception as err:
-                result["errors"].append(f"Row {idx}: {str(err)}")
-
-        result["processed"] = len(rows)
-        result["success"] = len(result["errors"]) == 0
-        return result
+        return apply_linear_referencing_import(
+            rows,
+            default_segment_name=default_segment_name,
+            update_existing=update_existing,
+            db_connected=bool(self.is_db_connected()),
+        )
 
     @logging_error_handler
     @validate_types(names=list, output=list)
@@ -2800,6 +2686,63 @@ class PyAutomation(Singleton):
                 logging.debug("local catalog role update skipped", exc_info=True)
 
         return message, "Role updated successfully"
+
+    @logging_error_handler
+    def set_user_enabled(self, target_username: str, enabled: bool):
+        """Persist enabled/disabled and drop live sessions when the account is turned off."""
+        from .modules.users.users import users
+
+        enabled = bool(enabled)
+        target_user = self._resolve_managed_user(target_username)
+        if not target_user and not self._user_exists_remote(target_username):
+            return None, f"User {target_username} not found"
+
+        if self.is_db_connected():
+            stored = self.db_manager.set_user_enabled(
+                username=target_username, enabled=enabled
+            )
+            if not isinstance(stored, tuple):
+                return None, f"User {target_username} enabled flag was not stored"
+            updated, message = stored
+            if updated is None:
+                return None, message
+        else:
+            updated, message = users.set_enabled(username=target_username, enabled=enabled)
+            if updated is None:
+                return None, message
+
+        if target_user is not None:
+            target_user.enabled = enabled
+            if not enabled:
+                users.revoke_username_sessions(target_username)
+        elif not enabled:
+            users.revoke_username_sessions(target_username)
+
+        self._mirror_user_enabled(target_username, enabled)
+        if self.is_db_connected():
+            self._notify_user_peers(target_username)
+        state = "enabled" if enabled else "disabled"
+        return message, f"User {target_username} {state}"
+
+    def _mirror_user_enabled(self, username: str, enabled: bool) -> None:
+        try:
+            from .catalog.local_provider import LocalCatalogProvider
+            from .catalog.versions import edge_node_id, now_ms
+
+            for row in LocalCatalogProvider().read_all("users"):
+                if row.get("username") != username:
+                    continue
+                payload = dict(row)
+                payload["enabled"] = bool(enabled)
+                LocalCatalogProvider().upsert(
+                    "users",
+                    payload,
+                    node_id=edge_node_id(),
+                    version=now_ms(),
+                )
+                break
+        except Exception:
+            logging.debug("local catalog user enabled flag skipped", exc_info=True)
 
     # OPCUA METHODS
     @logging_error_handler

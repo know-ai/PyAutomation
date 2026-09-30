@@ -50,7 +50,9 @@ _SUPERVISOR_HMI = _OPERATOR_HMI | frozenset(
         "hmi:view.performance",
     }
 )
-_ADMIN_HMI = _SUPERVISOR_HMI | frozenset({"hmi:view.settings"})
+_ADMIN_HMI = _SUPERVISOR_HMI | frozenset(
+    {"hmi:view.settings", "hmi:view.user-management"}
+)
 
 _HMI_VIEWS_BY_ROLE: dict[str, frozenset[str]] = {
     "guest": _GUEST_HMI,
@@ -173,11 +175,20 @@ def _supervisor_rest_allows(method: str, path: str, action: str) -> bool:
 
 
 def _admin_rest_allows(method: str, path: str, action: str) -> bool:
+    # Account list and enable/disable. The rest of /api/users stays denied.
+    method_u = str(method or "").upper()
+    normalized = str(path or "").rstrip("/")
+    if method_u == "GET" and normalized == "/api/users" and action == "view":
+        return True
+    if method_u == "POST" and normalized == "/api/users/set_enabled" and action == "use":
+        return True
     if _path_denied_for_admin(path):
         return False
     if _supervisor_rest_allows(method, path, action):
         return True
     if _path_is(path, "/api/settings"):
+        return True
+    if _path_is(path, "/api/linear-referencing-geospatial"):
         return True
     return False
 

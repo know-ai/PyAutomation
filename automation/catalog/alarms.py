@@ -99,6 +99,30 @@ def _ensure(tag_name: str, alarm_name: str, tag_description: str, alarm_descript
         )
 
 
+def sync_failed_description(detail: str = "") -> str:
+    """Operator text for ALM.CATALOG.SyncFailed. Detail is the live fault."""
+    text = " ".join(str(detail or "").split())
+    if not text:
+        return "Catalog sync failed"
+    composed = f"Catalog sync failed: {text}"
+    return composed[:256]
+
+
+def _refresh_description(alarm_name: str, description: str) -> None:
+    app = _app()
+    alarm = app.alarm_manager.get_alarm_by_name(alarm_name)
+    if alarm is None:
+        return
+    desired = (description or "").strip()
+    current = (getattr(alarm, "description", None) or "").strip()
+    if not desired or desired == current:
+        return
+    try:
+        app.update_alarm(id=alarm.identifier, description=desired)
+    except Exception:
+        _LOGGER.debug("catalog alarm description refresh skipped name=%s", alarm_name, exc_info=True)
+
+
 def _write(tag_name: str, value: bool) -> None:
     """Edge-trigger only. Same value must not call set_value (no re-annunciate)."""
     app = _app()
@@ -115,17 +139,19 @@ def _write(tag_name: str, value: bool) -> None:
     app.cvt.set_value(id=tag.id, value=desired, timestamp=datetime.now(timezone.utc))
 
 
-def set_sync_failed(active: bool) -> None:
+def set_sync_failed(active: bool, detail: str = "") -> None:
     try:
         tag = _scoped("SYS.CATALOG.SyncFailed")
         alarm = _scoped("ALM.CATALOG.SyncFailed")
+        description = sync_failed_description(detail)
         _ensure(
             tag,
             alarm,
             "True when catalog sync failed repeatedly",
-            "Catalog sync failed",
+            description,
             scoped_display_name("Catalog sync failed"),
         )
+        _refresh_description(alarm, description)
         _write(tag, bool(active))
     except Exception:
         _LOGGER.debug("ALM.CATALOG.SyncFailed skipped", exc_info=True)

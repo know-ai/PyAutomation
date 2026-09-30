@@ -109,6 +109,10 @@ class UsersLogger(BaseLogger):
             username=username,
             new_role_name=new_role_name
         )
+
+    @db_rollback
+    def set_enabled(self, username: str, enabled: bool):
+        return Users.set_enabled(username=username, enabled=enabled)
     
 class UsersLoggerEngine(BaseEngine):
     r"""
@@ -179,4 +183,11 @@ class UsersLoggerEngine(BaseEngine):
         _query["parameters"]["username"] = username
         _query["parameters"]["new_role_name"] = new_role_name
         
+        return self.query(_query)
+
+    def set_enabled(self, username: str, enabled: bool):
+        _query = {
+            "action": "set_enabled",
+            "parameters": {"username": username, "enabled": bool(enabled)},
+        }
         return self.query(_query)

@@ -125,6 +125,7 @@ def fill_users_from_local() -> int:
                 lastname=row.get("lastname"),
                 identifier=row.get("identifier"),
                 encode_password=False,
+                enabled=row.get("enabled", True) is not False and row.get("enabled") not in {0, "0", "false", "False"},
             )
             count += 1
         except Exception:

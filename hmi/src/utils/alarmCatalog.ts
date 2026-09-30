@@ -45,6 +45,12 @@ const PERF_THRESHOLD =
   /(?:Triggers when|Se dispara cuando)\s+(.+?)\s*[≥>=]\s*(.+?)\.?\s*$/i;
 const QUALITY_DESC = /^Signal quality BAD\/stale on '(.+)'$/i;
 
+function catalogFaultDetail(description: string, prefix: string): string {
+  const head = `${prefix}:`;
+  if (!description.startsWith(head)) return "";
+  return description.slice(head.length).trim();
+}
+
 function endsWithAlarmSuffix(name: string, suffix: string): boolean {
   return name === suffix || name.endsWith(`.${suffix}`);
 }
@@ -80,6 +86,10 @@ export function translateAlarmDescription(
   }
 
   if (endsWithAlarmSuffix(name, "ALM.CATALOG.SyncFailed")) {
+    const detail = catalogFaultDetail(desc, "Catalog sync failed");
+    if (detail) {
+      return t("alarms.catalog.catalogSyncFailedDetail", { detail });
+    }
     return t("alarms.catalog.catalogSyncFailed");
   }
   if (endsWithAlarmSuffix(name, "ALM.CATALOG.OrphanRows")) {

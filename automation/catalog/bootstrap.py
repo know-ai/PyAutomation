@@ -22,10 +22,12 @@ def bootstrap_local_catalog(path: str | None = None):
     from .partition import ensure_machine_name_partition
     from ..dbmodels.alarms import ensure_alarm_delay_schema
     from ..dbmodels.tags import ensure_tag_unit_provenance_schema
+    from ..dbmodels.users import ensure_user_enabled_schema
 
     ensure_machine_name_partition(db)
     ensure_alarm_delay_schema(db)
     ensure_tag_unit_provenance_schema(db)
+    ensure_user_enabled_schema(db)
     refresh_catalog_source()
     return db
 

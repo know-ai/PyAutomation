@@ -5,6 +5,7 @@ from __future__ import annotations
 from .base import NodeExposer
 from .common import apply_display_name, canonical_for, entity_area, entity_site, leaf_name
 from .published import alarm_properties
+from ..identity import property_node_id
 
 
 class AlarmExposer(NodeExposer):
@@ -68,7 +69,9 @@ class AlarmExposer(NodeExposer):
             published = "" if value is None else value
             prop = current.get(prop_key)
             if prop is None and node is not None:
-                prop = self._builder.add_property(node, f"{identifier}.{prop_key}", prop_key, published)
+                prop = self._builder.add_property(
+                    node, property_node_id(identifier, prop_key), prop_key, published
+                )
                 current[prop_key] = prop
                 try:
                     self._by_namespace[prop.nodeid.to_string()] = prop

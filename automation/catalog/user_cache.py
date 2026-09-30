@@ -84,11 +84,14 @@ def cache_user_locally(user) -> None:
                 lastname=getattr(user, "lastname", None),
                 identifier=getattr(user, "identifier", None),
                 encode_password=False,
+                enabled=bool(getattr(user, "enabled", True)),
             )
         else:
             mem = users.get_by_username(username)
             if mem is not None and getattr(user, "password", None):
                 mem.password = user.password
+            if mem is not None:
+                mem.enabled = bool(getattr(user, "enabled", True))
     except Exception:
         _LOGGER.debug("CVT user cache skipped username=%s", username, exc_info=True)
     try:
@@ -103,6 +106,7 @@ def cache_user_locally(user) -> None:
                 "identifier": getattr(user, "identifier", None),
                 "name": getattr(user, "name", None),
                 "lastname": getattr(user, "lastname", None),
+                "enabled": bool(getattr(user, "enabled", True)),
             },
         )
     except Exception:

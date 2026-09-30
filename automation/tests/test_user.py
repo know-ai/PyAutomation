@@ -198,3 +198,70 @@ class TestUsers(unittest.TestCase):
         self.users.login(password=PASSWORD, username=USERNAME)
         self.assertIsNone(self.users.get_active_user(token=user2.token))
 
+    def test_new_user_is_enabled(self):
+        role = Role(name=ROLE_NAME, level=0)
+        self.roles.add(role=role)
+        user, _ = self.users.signup(
+            username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD
+        )
+        self.assertTrue(user.enabled)
+        self.assertTrue(user.serialize()["enabled"])
+
+    def test_disabled_user_cannot_login_and_loses_session(self):
+        role = Role(name=ROLE_NAME, level=0)
+        self.roles.add(role=role)
+        user, _ = self.users.signup(
+            username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD
+        )
+        logged, _ = self.users.login(password=PASSWORD, username=USERNAME)
+        self.assertIsNotNone(logged)
+        token = user.token
+        updated, message = self.users.set_enabled(USERNAME, False)
+        self.assertFalse(updated.enabled)
+        self.assertIn("disabled", message)
+        self.assertIsNone(self.users.get_active_user(token=token))
+        again, denied = self.users.login(password=PASSWORD, username=USERNAME)
+        self.assertIsNone(again)
+        self.assertIn("disabled", denied.lower())
+        restored, _ = self.users.set_enabled(USERNAME, True)
+        self.assertTrue(restored.enabled)
+        back, _ = self.users.login(password=PASSWORD, username=USERNAME)
+        self.assertIsNotNone(back)
+
+    def test_disabled_token_is_rejected_before_role_acl(self):
+        from ..extensions.api import Api
+
+        role = Role(name=ROLE_NAME, level=0)
+        self.roles.add(role=role)
+        self.users.signup(
+            username=USERNAME, role_name=ROLE_NAME, email=EMAIL, password=PASSWORD
+        )
+        logged, _ = self.users.login(password=PASSWORD, username=USERNAME)
+        token = logged.token
+        self.users.set_enabled(USERNAME, False)
+        principal, err, status = Api._resolve_session_user(token)
+        self.assertIsNone(principal)
+        self.assertEqual(status, 403)
+        self.assertEqual(err["message"], "User is disabled")
+        self.assertEqual(err["code"], "USER_DISABLED")
+        self.assertEqual(err["error_type"], "user_disabled")
+        self.users.set_enabled(USERNAME, True)
+        _, after, after_status = Api._resolve_session_user(token)
+        self.assertEqual(after_status, 401)
+        self.assertEqual(after["code"], "SESSION_SUPERSEDED")
+
+
+class TestSetEnabledAccess(unittest.TestCase):
+    def test_only_integrator_and_administrator(self):
+        from ..modules.users.resources.users import actor_may_set_user_enabled
+
+        def _user(role_name):
+            return type("U", (), {"role": type("R", (), {"name": role_name})()})()
+
+        self.assertTrue(actor_may_set_user_enabled(_user("integrator")))
+        self.assertTrue(actor_may_set_user_enabled(_user("ADMIN")))
+        self.assertTrue(actor_may_set_user_enabled(_user("Administrator")))
+        self.assertFalse(actor_may_set_user_enabled(_user("sudo")))
+        self.assertFalse(actor_may_set_user_enabled(_user("supervisor")))
+        self.assertFalse(actor_may_set_user_enabled(_user("operator")))
+

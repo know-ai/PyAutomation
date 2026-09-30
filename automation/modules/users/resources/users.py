@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import jwt
 import logging
 from flask_restx import Namespace, Resource
-from .models.users import signup_parser, login_parser, change_password_parser, reset_password_parser, update_role_parser, create_tpt_parser
+from .models.users import signup_parser, login_parser, change_password_parser, reset_password_parser, update_role_parser, create_tpt_parser, set_enabled_parser
 from .... import PyAutomation, TIMEZONE, _TIMEZONE
 from ....extensions.api import api
 from ....extensions import _api as Api
@@ -240,6 +240,15 @@ class LoginResource(Resource):
                     "The system cannot connect to the database. Please verify the database configuration and connection settings.",
                 ), 503
             
+            elif "user is disabled" in message_lower:
+                claimed = args.get("username") or args.get("email") or ""
+                record_user_session_event(
+                    action="LOGIN_FAILED",
+                    username=claimed,
+                    extra="reason=user_disabled",
+                )
+                return Api.disabled_account_body(), 403
+
             # Detectar errores de autenticación (credenciales incorrectas del usuario)
             elif any(keyword in message_lower for keyword in [
                 "authentication error",
@@ -295,7 +304,13 @@ class VerifyCredentialsResource(Resource):
         confirm an operator before a sensitive action.
         """
         args = login_parser.parse_args()
-        credentials_valid, _ = users.verify_credentials(**args)
+        credentials_valid, message = users.verify_credentials(**args)
+        if (
+            not credentials_valid
+            and message
+            and "user is disabled" in str(message).lower()
+        ):
+            return Api.disabled_account_body(), 403
         return credentials_valid, 200
     
 @ns.route('/<username>')
@@ -571,6 +586,71 @@ class UpdateRoleResource(Resource):
             return {'message': status_msg}, 200
         else:
             return {'message': status_msg}, 400
+
+_ACCOUNT_ADMIN_ROLES = frozenset({"integrator", "admin", "administrator"})
+
+
+def actor_may_set_user_enabled(user) -> bool:
+    role_name = str(getattr(getattr(user, "role", None), "name", "") or "").strip().lower()
+    return role_name in _ACCOUNT_ADMIN_ROLES
+
+
+@ns.route('/set_enabled')
+class SetUserEnabledResource(Resource):
+
+    @Api.validate_reqparser(reqparser=set_enabled_parser)
+    @api.doc(security='apikey', description="Enables or disables a user. Does not delete the account. Integrator and Administrator only.")
+    @api.response(200, "Account updated")
+    @api.response(400, "Invalid request")
+    @api.response(401, "Unauthorized")
+    @api.response(403, "Forbidden")
+    @ns.expect(set_enabled_parser)
+    @Api.token_required(auth=True)
+    def post(self):
+        """
+        Enable or disable a user.
+
+        Accounts are never deleted. Only integrator and administrator (admin)
+        may change the flag. A disabled user cannot log in and loses the
+        current session.
+        """
+        from ....utils.system_user import is_system_username
+
+        current_user = Api.get_current_user()
+        if not current_user:
+            return {'message': 'Invalid token or user not found'}, 401
+        if not actor_may_set_user_enabled(current_user):
+            return {'message': 'Only integrator or administrator can enable or disable users'}, 403
+
+        args = set_enabled_parser.parse_args()
+        target_username = args['target_username']
+        enabled = bool(args['enabled'])
+
+        if is_system_username(target_username):
+            return {'message': 'The system user cannot be disabled'}, 400
+        if current_user.username == target_username and not enabled:
+            return {'message': 'You cannot disable your own account'}, 400
+
+        result, status_msg = app.set_user_enabled(
+            target_username=target_username,
+            enabled=enabled,
+        )
+        if not result:
+            return {'message': status_msg}, 400
+
+        target_user = users.get_by_username(username=target_username)
+        record_user_session_event(
+            action="USER_ENABLED" if enabled else "USER_DISABLED",
+            user=target_user or current_user,
+            actor=current_user,
+            extra=f"username={target_username}",
+        )
+        return {
+            'message': status_msg,
+            'username': target_username,
+            'enabled': enabled,
+        }, 200
+
 
 @ns.route('/create_tpt')
 class CreateTPTResource(Resource):

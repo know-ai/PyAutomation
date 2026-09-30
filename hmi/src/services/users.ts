@@ -10,6 +10,7 @@ export type User = {
     name: string;
     level: number;
   };
+  enabled?: boolean;
   [key: string]: any;
 };
 
@@ -126,5 +127,17 @@ export const resetPassword = async (payload: ResetPasswordPayload): Promise<{ me
  */
 export const updateUserRole = async (payload: UpdateRolePayload): Promise<{ message: string }> => {
   const { data } = await api.post("/users/update_role", payload);
+  return data;
+};
+
+export type SetUserEnabledPayload = {
+  target_username: string;
+  enabled: boolean;
+};
+
+export const setUserEnabled = async (
+  payload: SetUserEnabledPayload
+): Promise<{ message: string; username: string; enabled: boolean }> => {
+  const { data } = await api.post("/users/set_enabled", payload);
   return data;
 };

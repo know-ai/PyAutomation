@@ -7,6 +7,7 @@ import { PerformanceAlarmConfig } from "../components/PerformanceAlarmConfig";
 import { QualityPolicyPanel } from "../components/QualityPolicyPanel";
 import { ServiceRuntimePanel } from "../components/ServiceRuntimePanel";
 import { SettingsChapter } from "../components/SettingsChapter";
+import { GeospatialProfilePanel } from "../components/settings/GeospatialProfilePanel";
 import { getSettings, updateSettings, exportConfig, importConfig, type AppConfig } from "../services/settings";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
@@ -21,12 +22,14 @@ const TOC = [
   { href: "#settings-historian", labelKey: "settings.navHistorian" },
   { href: "#settings-service", labelKey: "settings.navService" },
   { href: "#settings-backup", labelKey: "settings.navBackup" },
+  { href: "#settings-georef", labelKey: "settings.navGeoref" },
 ] as const;
 
 export function Settings() {
   const { t } = useTranslation();
-  const { canUse } = useAuthz();
+  const { canUse, canRest } = useAuthz();
   const canMutate = canUse(VIEW_IDS.settings);
+  const canEditGeoref = canMutate || canRest("/api/linear-referencing-geospatial", "use");
   const [config, setConfig] = useState<AppConfig>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -219,6 +222,16 @@ export function Settings() {
             </Button>
           </div>
         </article>
+      </SettingsChapter>
+
+      <SettingsChapter
+        id="settings-georef"
+        index="07"
+        kicker={t("settings.georefKicker")}
+        title={t("settings.georefTitle")}
+        lede={t("settings.georefLede")}
+      >
+        <GeospatialProfilePanel canMutate={canEditGeoref} />
       </SettingsChapter>
 
       <input

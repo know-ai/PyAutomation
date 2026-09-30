@@ -120,6 +120,17 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
+      if (
+        status === 403 &&
+        code === "USER_DISABLED" &&
+        !isPublicAuthRequest(error.config)
+      ) {
+        if (!isStaleAuthFailure(error)) {
+          redirectToLogin("auth.userDisabled");
+        }
+        return Promise.reject(error);
+      }
+
       // Explicit single-session takeover only.
       // Ignore 401s from an older token after a successful re-login in this tab.
       if (status === 401 && code === "SESSION_SUPERSEDED") {

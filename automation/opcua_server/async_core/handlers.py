@@ -9,6 +9,7 @@ from asyncua import Server, ua
 
 from ..address_space import AddressSpaceBuilder
 from ..audit import audit_failure
+from ..identity import property_node_id
 from .commands import (
     ApplyAccess,
     DropTag,
@@ -171,14 +172,15 @@ async def expose_entity(ctx: LoopContext, command: ExposeEntity) -> None:
         "access_restrictions": 0,
     }]
     for key, value in command.properties:
+        prop_id = property_node_id(command.identifier, key)
         prop = await ctx.builder.add_property_async(
             node,
-            f"{command.identifier}.{key}",
+            prop_id,
             key,
             _property_value(key, value),
         )
-        ctx.nodes[f"{command.identifier}.{key}"] = prop
-        prop_namespace = f"ns={ctx.app._namespace_idx};s={command.identifier}.{key}"
+        ctx.nodes[prop_id] = prop
+        prop_namespace = f"ns={ctx.app._namespace_idx};s={prop_id}"
         await apply_level(prop, level)
         ctx.app._access_policy[prop_namespace] = level
         rows.append({
@@ -261,7 +263,7 @@ def _unit_write(ctx: LoopContext, item: WriteItem, published: dict):
         return None
     published[item.identifier] = symbol
     wv = ua.WriteValue()
-    wv.NodeId = _node_id(f"{item.identifier}.unit", ctx.app._namespace_idx)
+    wv.NodeId = _node_id(property_node_id(item.identifier, "unit"), ctx.app._namespace_idx)
     wv.AttributeId = ua.AttributeIds.Value
     wv.Value = ua.DataValue(ua.Variant(str(symbol), ua.VariantType.String))
     return wv
@@ -321,7 +323,7 @@ async def _refresh_properties(ctx: LoopContext, command: ExposeEntity) -> int:
     written = 0
     parent = ctx.nodes.get(command.identifier)
     for key, value in command.properties:
-        ident = f"{command.identifier}.{key}"
+        ident = property_node_id(command.identifier, key)
         node = ctx.nodes.get(ident)
         if node is None and parent is not None and ctx.builder is not None:
             try:
@@ -371,7 +373,7 @@ async def _delete_tree(ctx: LoopContext, identifier: str) -> None:
     keys = [
         key
         for key in list(ctx.nodes)
-        if key == identifier or key.startswith(f"{identifier}.")
+        if key == identifier or key.startswith(f"{identifier}.") or key.startswith(f"{identifier}#")
     ]
     for key in keys:
         node = ctx.nodes.pop(key, None)

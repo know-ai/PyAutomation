@@ -64,8 +64,10 @@ class TestDocsAuth(unittest.TestCase):
         with self.client.session_transaction() as sess:
             sess["_user_id"] = "integrator_docs"
             sess["_fresh"] = True
-        response = self.client.get("/api/docs", follow_redirects=False)
-        self.assertIn(response.status_code, {200, 308})
+        response = self.client.get("/api/docs", follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Cerrar sesi", response.data)
+        self.assertIn(b'href="/logout-docs"', response.data)
 
     def test_login_docs_success(self):
         response = self.client.post(
@@ -104,6 +106,27 @@ class TestDocsAuth(unittest.TestCase):
             data={"username": "admin_docs", "password": "wrong"},
         )
         self.assertEqual(response.status_code, 429)
+
+    def test_docs_login_survives_dead_redis(self):
+        from flask import Flask
+        from flask_limiter import Limiter
+
+        from automation.extensions.docs_auth import limiter_options
+
+        app = Flask(__name__)
+        app.config["SECRET_KEY"] = "docs-redis-fallback"
+        options = limiter_options("redis://127.0.0.1:6399/0", "5 per minute")
+        local_limiter = Limiter(**options)
+        local_limiter.init_app(app)
+
+        @app.route("/login-docs", methods=["POST"])
+        @local_limiter.limit("5 per minute", methods=["POST"])
+        def _post():
+            return "ok", 200
+
+        response = app.test_client().post("/login-docs")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(local_limiter._storage_dead)
 
 
 if __name__ == "__main__":

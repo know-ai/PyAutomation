@@ -26,6 +26,7 @@ const DATABASE_ERROR_HINTS = [
 
 type LoginErrorKey =
   | "auth.invalidCredentials"
+  | "auth.userDisabled"
   | "auth.loginError"
   | "auth.networkError"
   | "auth.databaseUnavailable"
@@ -52,11 +53,12 @@ function extractBackendText(err: unknown): string {
 
 function resolveLoginError(err: unknown): { kind: "database" | "credentials"; key: LoginErrorKey } {
   const axiosErr = err as {
-    response?: { status?: number; data?: { error_type?: string } };
+    response?: { status?: number; data?: { error_type?: string; code?: string } };
     code?: string;
   };
   const status = axiosErr?.response?.status;
   const errorType = axiosErr?.response?.data?.error_type;
+  const errorCode = axiosErr?.response?.data?.code;
   const backendText = extractBackendText(err).toLowerCase();
 
   // Only treat explicit historian-unavailable responses as DB config prompts.
@@ -76,6 +78,14 @@ function resolveLoginError(err: unknown): { kind: "database" | "credentials"; ke
 
   if (status === 429) {
     return { kind: "credentials", key: "auth.tooManyAttempts" };
+  }
+
+  if (
+    errorType === "user_disabled" ||
+    errorCode === "USER_DISABLED" ||
+    backendText.includes("user is disabled")
+  ) {
+    return { kind: "credentials", key: "auth.userDisabled" };
   }
 
   if (status === 401 || status === 403 || errorType === "authentication_error") {

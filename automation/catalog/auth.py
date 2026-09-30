@@ -32,6 +32,8 @@ def login_local(password: str, username: str = "", email: str = ""):
         hashed = user_row.get("password") or ""
         if not check_password_hash(str(hashed), password) and hashed != password:
             return None, "Invalid credentials"
+        if user_row.get("enabled", True) is False or user_row.get("enabled") in {0, "0", "false", "False"}:
+            return None, "User is disabled"
 
         from ..modules.users.users import users
 

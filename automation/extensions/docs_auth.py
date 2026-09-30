@@ -41,14 +41,26 @@ def _limiter_storage_uri() -> str | None:
     return f"redis://{url}"
 
 
+def limiter_options(storage_uri: str | None, rate_limit: str) -> dict:
+    """Redis when configured. A dead Redis must not turn /login-docs into HTTP 500."""
+    options = {
+        "key_func": get_remote_address,
+        "default_limits": [],
+        "on_breach": lambda _limit: _on_rate_limit_breach(_limit),
+        "swallow_errors": True,
+    }
+    if storage_uri:
+        options["storage_uri"] = storage_uri
+        options["in_memory_fallback"] = [rate_limit]
+        options["storage_options"] = {
+            "socket_connect_timeout": 0.2,
+            "socket_timeout": 0.2,
+        }
+    return options
+
+
 _storage_uri = _limiter_storage_uri()
-_limiter_kwargs = {
-    "key_func": get_remote_address,
-    "default_limits": [],
-    "on_breach": lambda _limit: _on_rate_limit_breach(_limit),
-}
-if _storage_uri:
-    _limiter_kwargs["storage_uri"] = _storage_uri
+_limiter_kwargs = limiter_options(_storage_uri, DOCS_RATE_LIMIT)
 
 import warnings
 
@@ -199,7 +211,7 @@ LOGIN_TEMPLATE = """
       <button type="submit">Entrar</button>
     </form>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
-    <div class="hint">Tras iniciar sesión podrá cerrarla en <code>/logout-docs</code>.</div>
+    <div class="hint">Dentro de la documentación, use el botón <strong>Cerrar sesión</strong> de la esquina superior derecha.</div>
   </div>
 </body>
 </html>
@@ -269,6 +281,46 @@ def _on_rate_limit_breach(_request_limit):
     )
 
 
+_DOCS_LOGOUT_MARKUP = """
+<a class="pya-docs-logout" href="/logout-docs">Cerrar sesión</a>
+<style>
+  .pya-docs-logout {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 1000;
+    padding: .55rem .9rem;
+    border-radius: 8px;
+    background: #b42318;
+    color: #fff;
+    font: 600 .9rem system-ui, sans-serif;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  }
+  .pya-docs-logout:hover { background: #912018; }
+</style>
+"""
+
+
+def _is_swagger_ui_page(path: str) -> bool:
+    return _normalize_path(path) == "/api/docs"
+
+
+def _inject_docs_logout_button(response):
+    """Add a visible logout control on the Swagger HTML page."""
+    if response.status_code != 200 or not _is_swagger_ui_page(request.path):
+        return response
+    if "html" not in (response.content_type or ""):
+        return response
+    if response.direct_passthrough:
+        return response
+    html = response.get_data(as_text=True)
+    if "</body>" not in html or "pya-docs-logout" in html:
+        return response
+    response.set_data(html.replace("</body>", _DOCS_LOGOUT_MARKUP + "</body>", 1))
+    return response
+
+
 def protect_docs_request():
     """Redirect unauthenticated clients away from Swagger UI/spec paths."""
     if not is_docs_path(request.path):
@@ -294,6 +346,21 @@ def init_app(app) -> None:
 
     login_manager.init_app(app)
     limiter.init_app(app)
+    if _storage_uri and not _limiter_storage_warned:
+        try:
+            from ..utils.redis_client import get_redis
+
+            redis_up = get_redis() is not None
+        except Exception:
+            redis_up = False
+        if not redis_up:
+            _limiter_storage_warned = True
+            import logging
+
+            logging.getLogger("pyautomation").warning(
+                "Docs login rate limit cannot reach Redis; "
+                "using in-memory fallback until Redis accepts connections"
+            )
     if not _storage_uri and not _limiter_storage_warned:
         _limiter_storage_warned = True
         import logging
@@ -303,3 +370,4 @@ def init_app(app) -> None:
         )
     app.register_blueprint(docs_auth_bp)
     app.before_request(protect_docs_request)
+    app.after_request(_inject_docs_logout_button)

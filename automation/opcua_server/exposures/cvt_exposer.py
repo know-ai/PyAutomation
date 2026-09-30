@@ -7,7 +7,7 @@ import json
 from .base import NodeExposer
 from .common import apply_display_name, canonical_for, entity_area, entity_site, leaf_name, published_unit
 from ..data_value import push_value
-from ..identity import classify_entity_kind
+from ..identity import classify_entity_kind, property_node_id
 
 _MAX_PROPS = 5
 
@@ -78,7 +78,7 @@ class CvtExposer(NodeExposer):
     def _prop(self, node, identifier: str, key: str, value, bucket: list) -> None:
         if len(bucket) >= _MAX_PROPS:
             return
-        prop = self._builder.add_property(node, f"{identifier}.{key}", key, value)
+        prop = self._builder.add_property(node, property_node_id(identifier, key), key, value)
         bucket.append(key)
         self._remember(prop)
 
