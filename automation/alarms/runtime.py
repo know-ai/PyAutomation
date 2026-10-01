@@ -11,6 +11,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from threading import Event, Thread
@@ -446,12 +447,7 @@ class AlarmRuntime:
         if self._active_cache and (now - self._active_cache_ts) < _ACTIVE_CACHE_TTL_S:
             return self._active_cache[:limit]
         items = list(self._annunciated.values())
-
-        def _key(alarm):
-            stamp = getattr(alarm, "last_transition_ts", None) or getattr(alarm, "timestamp", None)
-            return stamp or 0
-
-        items.sort(key=_key, reverse=True)
+        items.sort(key=_alarm_recency_key, reverse=True)
         self._active_cache = items
         self._active_cache_ts = now
         return items[:limit]
@@ -505,6 +501,23 @@ class AlarmRuntime:
             "perf_flags": dict(self._perf_flags),
             "violations": violations,
         }
+
+
+def _alarm_recency_key(alarm) -> float:
+    """Epoch UTC para ordenar alarmas aunque mezclen fechas naive y aware.
+
+    Una transición en vivo guarda ``datetime`` con zona; la hidratación desde
+    el catálogo puede dejar la misma marca sin zona. Compararlas directo
+    lanza ``TypeError: can't compare offset-naive and offset-aware datetimes``.
+    """
+    stamp = getattr(alarm, "last_transition_ts", None) or getattr(alarm, "timestamp", None)
+    if isinstance(stamp, datetime):
+        from ..timebase import ensure_utc
+
+        return ensure_utc(stamp).timestamp()
+    if isinstance(stamp, (int, float)):
+        return float(stamp)
+    return 0.0
 
 
 _RUNTIME: AlarmRuntime | None = None

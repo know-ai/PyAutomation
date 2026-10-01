@@ -30,18 +30,20 @@ def create_alarm_kwargs(payload: dict, create_alarm) -> dict:
 def _parse_alarm_timestamp(value):
     if value is None or value == "":
         return None
+    from ..timebase import ensure_utc
+
     if isinstance(value, datetime):
-        return value
+        return ensure_utc(value)
     if not isinstance(value, str):
         return None
     from ..tags.tag import DATETIME_FORMAT
 
     try:
-        return datetime.strptime(value, DATETIME_FORMAT)
+        return ensure_utc(datetime.strptime(value, DATETIME_FORMAT))
     except ValueError:
         pass
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return ensure_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
     except ValueError:
         return None
 

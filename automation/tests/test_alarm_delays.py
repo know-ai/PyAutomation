@@ -320,7 +320,12 @@ class TestAlarmDelays(unittest.TestCase):
         app.alarm_manager.append_alarm.assert_called_once()
         passed = app.alarm_manager.append_alarm.call_args.kwargs
         self.assertNotIn("last_transition_ts", passed)
-        self.assertEqual(alarm.last_transition_ts, datetime.strptime(stamp, DATETIME_FORMAT))
+        from automation.timebase import ensure_utc
+
+        self.assertEqual(
+            alarm.last_transition_ts,
+            ensure_utc(datetime.strptime(stamp, DATETIME_FORMAT)),
+        )
         self.assertEqual(alarm.last_transition_from, "Normal")
         self.assertEqual(alarm.last_transition_to, "Unack Alarm")
         self.assertEqual(alarm.priority, 2)
