@@ -1,23 +1,67 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef, type ReactNode } from "react";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
+import { MultiSelectSearch, type MultiSelectOption } from "../components/MultiSelectSearch";
 import { getMachines, transitionMachine, type Machine } from "../services/machines";
+import { getMachinesSummaryColumns, putMachinesSummaryColumns } from "../services/machinesSummaryColumns";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
 import { useAppSelector } from "../hooks/useAppSelector";
 import { useAppDispatch } from "../hooks/useAppDispatch";
 import { loadAllMachines } from "../store/slices/machinesSlice";
 import { socketService } from "../services/socket";
-import { translateMachineState, translateMachineClassification } from "../utils/domainI18n";
+import { tx, translateMachineClassification } from "../utils/domainI18n";
+import { criticityBadgeStyle } from "../utils/criticityBadge";
 import { useAuthz } from "../hooks/useAuthz";
+import { actorMayConfigureMachineColumns } from "../utils/userAccount";
+import {
+  DEFAULT_SUMMARY_COLUMNS,
+  normalizeSummaryColumns,
+  uniqueMachineColumnKeys,
+} from "../utils/machinesSummaryColumns";
+import { useShowInfraMachines } from "../hooks/useShowInfraMachines";
+import { visibleMachineTabs } from "../utils/infraMachines";
 
 const ITEMS_PER_PAGE = 10;
+
+function columnLabel(t: (key: string, params?: Record<string, string | number>) => string, key: string) {
+  return tx(t, key.replace(/_/g, " "), `machines.attrs.${key}`);
+}
+
+function formatCsvCell(t: (key: string, params?: Record<string, string | number>) => string, machine: Machine, key: string) {
+  const value = machine[key];
+  if (value == null || value === "") return "";
+  if (key === "classification") return translateMachineClassification(t, String(value));
+  if (typeof value === "object" && value && "value" in value) {
+    const raw = (value as { value?: unknown; unit?: unknown }).value;
+    const unit = (value as { unit?: unknown }).unit;
+    if (raw == null || raw === "") return "";
+    return unit ? `${raw} ${unit}` : String(raw);
+  }
+  return String(value);
+}
+
+function CriticityBadge({ value }: { value: number | undefined }) {
+  if (value === undefined || value === null) return <>-</>;
+  const numeric = typeof value === "number" ? value : Number(value);
+  const badge = Number.isFinite(numeric) ? criticityBadgeStyle(numeric) : null;
+  if (!badge) return <>{String(value)}</>;
+  return (
+    <span className={badge.className} style={badge.style}>
+      {numeric}
+    </span>
+  );
+}
 
 export function Machines() {
   const { t } = useTranslation();
   const { canExportCsv } = useAuthz();
+  const { showInfra } = useShowInfraMachines();
   const dispatch = useAppDispatch();
+  const role = useAppSelector((state) => state.auth.user?.role);
+  const canConfigureColumns = actorMayConfigureMachineColumns(role);
   const realTimeMachines = useAppSelector((state) => state.machines.machines);
+  const [savedColumns, setSavedColumns] = useState<string[] | null>(null);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +112,20 @@ export function Machines() {
   useEffect(() => {
     loadMachines();
   }, [dispatch]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMachinesSummaryColumns()
+      .then((loaded) => {
+        if (!cancelled) setSavedColumns(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setSavedColumns([...DEFAULT_SUMMARY_COLUMNS]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Suscripción a eventos de máquinas en tiempo real con buffering
   useEffect(() => {
@@ -150,13 +208,60 @@ export function Machines() {
     return Array.from(machinesMap.values());
   }, [machines, realTimeMachines]);
 
+  const visibleMachines = useMemo(
+    () => visibleMachineTabs(machinesWithRealTime, showInfra),
+    [machinesWithRealTime, showInfra],
+  );
+
+  const availableColumns = useMemo(
+    () => uniqueMachineColumnKeys(visibleMachines),
+    [visibleMachines],
+  );
+  const columns = useMemo(
+    () => normalizeSummaryColumns(savedColumns, availableColumns),
+    [savedColumns, availableColumns],
+  );
+
+  const persistColumns = useCallback(
+    (next: string[]) => {
+      const normalized = normalizeSummaryColumns(next, availableColumns);
+      setSavedColumns(normalized);
+      putMachinesSummaryColumns(normalized).catch(() => {
+        showToast(t("machines.columnsSaveError"), "error");
+      });
+    },
+    [availableColumns, t],
+  );
+
+  const columnOptions = useMemo<MultiSelectOption[]>(
+    () =>
+      availableColumns.map((key) => ({
+        value: key,
+        label: columnLabel(t, key),
+        description: key === "name" || key === "state" ? t("machines.columnsLocked") : undefined,
+        locked: key === "name" || key === "state",
+      })),
+    [availableColumns, t],
+  );
+  const selectedCountLabel = useCallback(
+    (count: number) => t("machines.columnsCount", { count }),
+    [t],
+  );
+
   // Paginación
-  const totalPages = Math.ceil(machinesWithRealTime.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(visibleMachines.length / ITEMS_PER_PAGE);
   const paginatedMachines = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
-    return machinesWithRealTime.slice(startIndex, endIndex);
-  }, [machinesWithRealTime, currentPage]);
+    return visibleMachines.slice(startIndex, endIndex);
+  }, [visibleMachines, currentPage]);
+
+  useEffect(() => {
+    const pages = Math.max(1, totalPages);
+    if (currentPage > pages) {
+      setCurrentPage(pages);
+    }
+  }, [currentPage, totalPages]);
 
   // Manejar cambio de estado
   const handleStateChange = (machine: Machine, newState: string) => {
@@ -241,33 +346,16 @@ export function Machines() {
   // Exportar a CSV
   const handleExportCSV = () => {
     if (!canExportCsv()) return;
-    if (!machines || machines.length === 0) {
+    if (visibleMachines.length === 0) {
       showToast(t("machines.noDataToExport"), "error");
       return;
     }
 
     try {
       // Preparar los datos para CSV
-      const headers = [
-        t("tables.name"),
-        t("tables.state"),
-        t("tables.priority"),
-        t("tables.criticity"),
-        t("tables.description"),
-        t("tables.classification"),
-      ];
+      const headers = columns.map((key) => columnLabel(t, key));
 
-      // Convertir máquinas a filas CSV (usar máquinas con tiempo real)
-      const rows = machinesWithRealTime.map((machine) => {
-        return [
-          machine.name || "",
-          machine.state ? translateMachineState(t, machine.state) : "",
-          machine.priority !== undefined ? String(machine.priority) : "",
-          machine.criticity !== undefined ? String(machine.criticity) : "",
-          machine.description || "",
-          machine.classification ? translateMachineClassification(t, machine.classification) : "",
-        ];
-      });
+      const rows = visibleMachines.map((machine) => columns.map((key) => formatCsvCell(t, machine, key)));
 
       // Crear contenido CSV
       const csvContent = [
@@ -311,21 +399,77 @@ export function Machines() {
   };
 
   // Título del card con botón de exportación
+  const renderCell = (machine: Machine, key: string): ReactNode => {
+    if (key === "name") return <strong>{machine.name}</strong>;
+    if (key === "state") {
+      return (
+        <select
+          className="form-select form-select-sm"
+          value={machine.state}
+          onChange={(e) => handleStateChange(machine, e.target.value)}
+          disabled={updatingMachine === machine.name || !machine.actions || machine.actions.length === 0}
+          style={{ minWidth: "120px", padding: "0.25rem 0.5rem", fontSize: "0.8rem" }}
+        >
+          <option value={machine.state}>{machine.state}</option>
+          {machine.actions && machine.actions.length > 0
+            ? machine.actions
+                .filter((action) => action !== machine.state)
+                .map((action) => (
+                  <option key={action} value={action}>
+                    {action}
+                  </option>
+                ))
+            : null}
+        </select>
+      );
+    }
+    if (key === "criticity") return <CriticityBadge value={machine.criticity} />;
+    if (key === "classification") {
+      return machine.classification ? translateMachineClassification(t, machine.classification) : "-";
+    }
+    const value = machine[key];
+    if (value == null || value === "") return "-";
+    if (typeof value === "object" && value && "value" in value) {
+      const raw = (value as { value?: unknown; unit?: unknown }).value;
+      const unit = (value as { unit?: unknown }).unit;
+      if (raw == null || raw === "") return "-";
+      return unit ? `${raw} ${unit}` : String(raw);
+    }
+    return String(value);
+  };
+
   const cardTitle = (
-    <div className="d-flex justify-content-between align-items-center w-100">
+    <div className="d-flex justify-content-between align-items-center w-100 gap-2">
       <h3 className="card-title m-0">{t("navigation.machines")}</h3>
+      <div className="d-flex align-items-center gap-2 flex-shrink-0">
+        {canConfigureColumns && (
+          <div style={{ width: "16rem", maxWidth: "40vw" }}>
+            <MultiSelectSearch
+              options={columnOptions}
+              selected={columns}
+              onChange={persistColumns}
+              placeholder={t("machines.columns")}
+              searchPlaceholder={t("machines.columnsSearch")}
+              emptyText={t("machines.columnsEmpty")}
+              selectedCountLabel={selectedCountLabel}
+              selectedGroupLabel={t("machines.columnsSelected")}
+              otherGroupLabel={t("machines.columnsOther")}
+            />
+          </div>
+        )}
       {canExportCsv() && (
         <Button
           variant="success"
           onClick={handleExportCSV}
           className="btn-sm"
-          disabled={loading || machinesWithRealTime.length === 0}
+          disabled={loading || visibleMachines.length === 0}
           title={t("machines.exportToCSV")}
         >
           <i className="bi bi-download me-1"></i>
           CSV
         </Button>
       )}
+      </div>
     </div>
   );
 
@@ -340,9 +484,9 @@ export function Machines() {
               <div>
                 <span className="text-muted">
                   {t("pagination.showing", {
-                    start: machines.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1,
-                    end: Math.min(currentPage * ITEMS_PER_PAGE, machines.length),
-                    total: machines.length,
+                    start: visibleMachines.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1,
+                    end: Math.min(currentPage * ITEMS_PER_PAGE, visibleMachines.length),
+                    total: visibleMachines.length,
                     item: t("pagination.items.machines"),
                   })}
                 </span>
@@ -391,63 +535,30 @@ export function Machines() {
                 <span className="visually-hidden">{t("common.loading")}</span>
               </div>
             </div>
-          ) : machinesWithRealTime.length === 0 ? (
+          ) : visibleMachines.length === 0 ? (
             <div className="text-center py-5">
               <i className="bi bi-cpu" style={{ fontSize: "4rem", color: "#6c757d" }}></i>
               <h4 className="mt-3 text-muted">{t("navigation.machines")}</h4>
               <p className="text-muted">{t("machines.noMachinesAvailable")}</p>
             </div>
           ) : (
-            <div className="table-responsive">
+            <div className="table-responsive machines-summary-table-wrap">
                 <table className="table table-striped table-hover" style={{ fontSize: "0.875rem" }}>
                   <thead>
                     <tr>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.name")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.state")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.priority")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.criticity")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.description")}</th>
-                      <th style={{ padding: "0.5rem 0.75rem" }}>{t("tables.classification")}</th>
+                      {columns.map((key) => (
+                        <th key={key} style={{ padding: "0.5rem 0.75rem" }}>{columnLabel(t, key)}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedMachines.map((machine) => (
                       <tr key={machine.name} style={{ height: "auto" }}>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          <strong>{machine.name}</strong>
-                        </td>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          <select
-                            className="form-select form-select-sm"
-                            value={machine.state}
-                            onChange={(e) => handleStateChange(machine, e.target.value)}
-                            disabled={updatingMachine === machine.name || !machine.actions || machine.actions.length === 0}
-                            style={{ minWidth: "120px", padding: "0.25rem 0.5rem", fontSize: "0.8rem" }}
-                          >
-                            <option value={machine.state}>{translateMachineState(t, machine.state)}</option>
-                            {machine.actions && machine.actions.length > 0
-                              ? machine.actions
-                                  .filter((action) => action !== machine.state)
-                                  .map((action) => (
-                                    <option key={action} value={action}>
-                                      {translateMachineState(t, action)}
-                                    </option>
-                                  ))
-                              : null}
-                          </select>
-                        </td>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          {machine.priority !== undefined ? machine.priority : "-"}
-                        </td>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          {machine.criticity !== undefined ? machine.criticity : "-"}
-                        </td>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          {machine.description || "-"}
-                        </td>
-                        <td style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
-                          {machine.classification ? translateMachineClassification(t, machine.classification) : "-"}
-                        </td>
+                        {columns.map((key) => (
+                          <td key={key} style={{ padding: "0.5rem 0.75rem", verticalAlign: "middle" }}>
+                            {renderCell(machine, key)}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
@@ -492,11 +603,11 @@ export function Machines() {
                 </div>
                 <div className="mb-2">
                   <strong>{t("machines.currentState")}:</strong>{" "}
-                  <span className="badge bg-secondary">{translateMachineState(t, pendingTransition.oldState)}</span>
+                  <span className="badge bg-secondary">{pendingTransition.oldState}</span>
                 </div>
                 <div>
                   <strong>{t("machines.newState")}:</strong>{" "}
-                  <span className="badge bg-primary">{translateMachineState(t, pendingTransition.newState)}</span>
+                  <span className="badge bg-primary">{pendingTransition.newState}</span>
                 </div>
               </div>
               <div className="modal-footer">

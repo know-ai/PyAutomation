@@ -121,6 +121,7 @@ VIEW_REST_BUNDLES: dict[str, ViewBundle] = {
     "hmi:view.machines.summary": {
         "read": [
             ("GET", "/api/machines"),
+            ("GET", "/api/settings/workspace/machines-summary"),
         ],
         "write": [
             ("PUT", "/api/machines"),

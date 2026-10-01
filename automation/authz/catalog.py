@@ -104,6 +104,7 @@ AUTHENTICATED_ALWAYS_REST = frozenset(
         ("POST", "/api/users/logout"),
         ("POST", "/api/users/change_password"),
         ("GET", "/api/authz/me"),
+        ("POST", "/api/settings/client-preference"),
     }
 )
 

@@ -16,7 +16,8 @@ import {
 } from "../services/machines";
 import { DomainConfigSlot } from "../components/DomainConfigSlot";
 import { showToast } from "../utils/toast";
-import { tx, translateSubscribeHint, translateMachineState, translateMachineClassification } from "../utils/domainI18n";
+import { tx, translateSubscribeHint, translateMachineClassification } from "../utils/domainI18n";
+import { criticityBadgeStyle } from "../utils/criticityBadge";
 import { socketService } from "../services/socket";
 import type { Tag } from "../services/tags";
 import { getTagsList } from "../services/tags";
@@ -1696,7 +1697,7 @@ export function MachinesDetailed() {
           className={badgeClass}
           style={needsBlink ? { animation: "blink-alarm 1s infinite" } : undefined}
         >
-          {translateMachineState(t, stateStr)}
+          {stateStr}
         </span>
       );
     }
@@ -1707,7 +1708,6 @@ export function MachinesDetailed() {
       return translateMachineClassification(t, String(classValue ?? ""));
     }
 
-    // Si es el atributo "priority" o "criticity", mostrar como badge num?rico
     if (attributeName === "priority" || attributeName === "criticity") {
       const numericValue = typeof value === "object" && value !== null && "value" in value 
         ? value.value 
@@ -1715,7 +1715,10 @@ export function MachinesDetailed() {
       const numValue = typeof numericValue === "number" ? numericValue : parseInt(String(numericValue), 10);
       
       if (!isNaN(numValue) && numValue >= 1 && numValue <= 5) {
-        const badgeStyle = getNumericBadgeStyle(numValue);
+        const badgeStyle =
+          attributeName === "criticity"
+            ? criticityBadgeStyle(numValue) || { className: "badge bg-secondary" }
+            : getNumericBadgeStyle(numValue);
         return (
           <span 
             className={badgeStyle.className}

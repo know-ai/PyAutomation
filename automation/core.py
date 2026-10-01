@@ -3091,11 +3091,19 @@ class PyAutomation(Singleton):
         except ValueError as exc:
             return False, str(exc)
         record = self.get_opcua_server_record_by_namespace(namespace=namespace)
+        previous_label = "-"
+        node_name = name
         if record:
+            try:
+                previous_label = access_label(record.access_level if record.access_level is not None else 1)
+            except Exception:
+                previous_label = "-"
+            node_name = node_name or getattr(record, "name", None)
             self.update_opcua_server_access_level(namespace=namespace, access_level=level)
         else:
             if not name:
                 name = f"Node_{namespace}"
+            node_name = name
             self.create_opcua_server_record(name=name, namespace=namespace, access_level=level)
         remember = getattr(getattr(opcua_server_machine, "access", None), "remember", None)
         if callable(remember):
@@ -3115,7 +3123,19 @@ class PyAutomation(Singleton):
         try:
             from .opcua_server.observability import emit_access_event, note_metric
             note_metric(opcua_server_machine, "access_level_changes")
-            emit_access_event("changed", namespace, access_label(level))
+            actor = None
+            try:
+                from .extensions import _api as Api
+
+                actor = Api.get_current_user()
+            except Exception:
+                actor = None
+            emit_access_event(
+                "changed",
+                namespace,
+                f"name={node_name or '-'} from={previous_label} to={access_label(level)}",
+                user=actor,
+            )
         except Exception:
             pass
         return True, f"Access level updated to {level} ({access_label(level)})"

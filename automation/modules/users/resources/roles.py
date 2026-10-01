@@ -60,7 +60,13 @@ class CreateRoleResource(Resource):
         role, message = app.set_role(**args)
         
         if role:
+            from ....utils.config_audit import record_configuration_event
 
+            record_configuration_event(
+                message="Role created",
+                description=f"role={args.get('name')} level={args.get('level')}",
+                user=Api.get_current_user(),
+            )
             return role.serialize(), 200
         
         return message, 400

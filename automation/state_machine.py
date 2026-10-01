@@ -1238,8 +1238,27 @@ class StateMachineCore(StateMachine):
         if new_tag is None:
             raise ValueError(f"Unable to resolve bind tag for '{source.name}'")
 
+        previous_mode = (self.signal_modes or {}).get(source.name)
         self.signal_modes[source.name] = preferred
         self._publish_opcua()
+        if user is not None and str(previous_mode or "") != preferred:
+            try:
+                from .utils.config_audit import record_configuration_event
+
+                machine_name = getattr(getattr(self, "name", None), "value", None) or ""
+                record_configuration_event(
+                    message="Machine signal mode updated",
+                    description=(
+                        f"machine={machine_name} tag={source.name} "
+                        f"from={previous_mode or '-'} to={preferred}"
+                    ),
+                    user=user,
+                )
+            except Exception:
+                logging.getLogger("pyautomation").debug(
+                    "signal mode audit skipped",
+                    exc_info=True,
+                )
 
         if getattr(new_tag, "name", None) == getattr(old_tag, "name", None):
             return True

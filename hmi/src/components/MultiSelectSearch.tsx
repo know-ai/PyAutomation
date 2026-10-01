@@ -19,6 +19,7 @@ export type MultiSelectOption = {
   value: string;
   label: string;
   description?: string;
+  locked?: boolean;
 };
 
 type MultiSelectSearchProps = {
@@ -66,7 +67,8 @@ function sameOptions(left: MultiSelectOption[], right: MultiSelectOption[]): boo
     (option, index) =>
       option.value === right[index].value &&
       option.label === right[index].label &&
-      option.description === right[index].description
+      option.description === right[index].description &&
+      option.locked === right[index].locked
   );
 }
 
@@ -106,6 +108,10 @@ function MultiSelectSearchInner({
   }
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const lockedSet = useMemo(
+    () => new Set(options.filter((option) => option.locked).map((option) => option.value)),
+    [options]
+  );
 
   const labelByValue = useMemo(() => {
     const map = new Map<string, string>();
@@ -184,13 +190,14 @@ function MultiSelectSearchInner({
 
   const toggleOption = useCallback(
     (value: string) => {
+      if (lockedSet.has(value) && selectedSet.has(value)) return;
       if (selectedSet.has(value)) {
         onChange(selected.filter((item) => item !== value));
       } else {
         onChange([...selected, value]);
       }
     },
-    [onChange, selected, selectedSet]
+    [lockedSet, onChange, selected, selectedSet]
   );
 
   const selectFiltered = useCallback(() => {
@@ -202,13 +209,14 @@ function MultiSelectSearchInner({
   }, [filtered, onChange, selected]);
 
   const clearFiltered = useCallback(() => {
+    const keepLocked = (value: string) => lockedSet.has(value);
     if (!query.trim()) {
-      onChange([]);
+      onChange(selected.filter(keepLocked));
       return;
     }
     const filteredValues = new Set(filtered.map((option) => option.value));
-    onChange(selected.filter((value) => !filteredValues.has(value)));
-  }, [filtered, onChange, query, selected]);
+    onChange(selected.filter((value) => keepLocked(value) || !filteredValues.has(value)));
+  }, [filtered, lockedSet, onChange, query, selected]);
 
   useEffect(() => {
     if (!open) return;
@@ -294,6 +302,7 @@ function MultiSelectSearchInner({
   const renderTagItem = useCallback(
     (option: MultiSelectOption, index: number) => {
       const isSelected = selectedSet.has(option.value);
+      const isLocked = Boolean(option.locked) && isSelected;
       const isHighlighted = index === highlightIndex;
       const showValue = option.label !== option.value;
       const showSelectedHeader = index === 0 && isSelected && Boolean(selectedGroupLabel);
@@ -323,7 +332,8 @@ function MultiSelectSearchInner({
             aria-selected={isSelected}
             className={`multi-select-search__option${isSelected ? " is-selected" : ""}${
               isHighlighted ? " is-highlighted" : ""
-            }`}
+            }${isLocked ? " is-locked" : ""}`}
+            aria-disabled={isLocked || undefined}
             onClick={() => toggleOption(option.value)}
           >
             <span

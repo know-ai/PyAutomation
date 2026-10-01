@@ -3,6 +3,10 @@ from flask import request, make_response
 from .... import PyAutomation
 from ....extensions.api import api
 from ....extensions import _api as Api
+from ..machines_summary_columns import (
+    load_machines_summary_columns,
+    save_machines_summary_columns,
+)
 from ..workspace import load_realtime_trends_workspace, save_realtime_trends_workspace
 import json
 
@@ -55,7 +59,11 @@ class SettingsUpdateResource(Resource):
 
         Updates application configuration including logger period, log rotation settings, and logging level.
         """
-        data = api.payload
+        data = api.payload or {}
+        try:
+            previous_config = app.get_app_config() or {}
+        except Exception:
+            previous_config = {}
         
         # 1. Update Logger Worker Period
         if 'logger_period' in data:
@@ -105,28 +113,48 @@ class SettingsUpdateResource(Resource):
                 pass
 
         try:
-            from ....utils.system_event_audit import clip, persist_system_event
+            from ....utils.config_audit import record_configuration_event, settings_change_description
 
-            changed = [key for key in (
-                "logger_period",
-                "log_max_bytes",
-                "log_backup_count",
-                "log_level",
-                "log_error_cooldown_seconds",
-                "alarm_inhibit_uncertain_quality",
-            ) if key in data]
-            persist_system_event(
-                message="System settings updated",
-                description=clip("keys=" + ",".join(changed) if changed else "settings", 256),
-                classification="Configuration",
-                priority=2,
-                criticity=3,
-                user=Api.get_current_user(),
-            )
+            description = settings_change_description(previous_config, data)
+            if description:
+                record_configuration_event(
+                    message="System settings updated",
+                    description=description,
+                    user=Api.get_current_user(),
+                )
         except Exception:
             pass
 
         return "Settings updated", 200
+
+
+client_preference_model = api.model("client_preference_model", {
+    "key": fields.String(required=True, description="Workstation preference key"),
+    "value": fields.String(required=True, description="New value"),
+})
+
+
+@ns.route("/client-preference")
+class ClientPreferenceAuditResource(Resource):
+
+    @api.doc(security="apikey", description="Records a workstation preference change in the Events log.")
+    @api.response(200, "Recorded")
+    @api.response(400, "Unknown preference")
+    @Api.token_required(auth=True)
+    @ns.expect(client_preference_model)
+    def post(self):
+        data = api.payload or {}
+        from ....utils.config_audit import client_preference_change, record_configuration_event
+
+        change = client_preference_change(data.get("key"), data.get("value"))
+        if change is None:
+            return {"message": "Unknown preference"}, 400
+        record_configuration_event(
+            message=change[0],
+            description=change[1],
+            user=Api.get_current_user(),
+        )
+        return {"message": "Recorded"}, 200
 
 
 workspace_model = api.model("realtime_trends_workspace_model", {
@@ -163,11 +191,76 @@ class RealtimeTrendsWorkspaceResource(Resource):
         if data is None:
             return {'message': 'JSON body required'}, 400
         try:
-            return save_realtime_trends_workspace(data), 200
+            before = load_realtime_trends_workspace()
+            saved = save_realtime_trends_workspace(data)
+            from ....utils.config_audit import realtime_trends_changes, record_configuration_event
+
+            actor = Api.get_current_user()
+            for message, description in realtime_trends_changes(before, saved):
+                record_configuration_event(message=message, description=description, user=actor)
+            return saved, 200
         except OSError as e:
             return {'message': f'Failed to persist realtime-trends workspace: {str(e)}'}, 500
         except Exception as e:
             return {'message': f'Failed to save realtime-trends workspace: {str(e)}'}, 400
+
+
+_COLUMN_EDITOR_ROLES = frozenset({"integrator", "admin", "administrator"})
+
+machines_summary_columns_model = api.model("machines_summary_columns_model", {
+    "schemaVersion": fields.Integer(required=False),
+    "kind": fields.String(required=False),
+    "scope": fields.String(required=False),
+    "updatedAt": fields.String(required=False),
+    "columns": fields.List(fields.String, required=False),
+})
+
+
+@ns.route("/workspace/machines-summary")
+class MachinesSummaryColumnsResource(Resource):
+
+    @api.doc(
+        security="apikey",
+        description="Station-scoped columns for the machines summary. Persisted on disk (db/).",
+    )
+    @api.response(200, "Columns retrieved")
+    @Api.token_required(auth=True)
+    def get(self):
+        try:
+            return load_machines_summary_columns(), 200
+        except Exception as e:
+            return {"message": f"Failed to retrieve machines-summary columns: {str(e)}"}, 500
+
+    @api.doc(security="apikey", description="Replaces the station machines-summary columns.")
+    @api.response(200, "Columns saved")
+    @api.response(400, "Invalid payload")
+    @api.response(403, "Role not allowed")
+    @Api.token_required(auth=True)
+    @ns.expect(machines_summary_columns_model)
+    def put(self):
+        user = Api.get_current_user()
+        role_name = str(getattr(getattr(user, "role", None), "name", "") or "").strip().lower()
+        if role_name not in _COLUMN_EDITOR_ROLES:
+            return {"message": "Only integrator or administrator can change summary columns"}, 403
+        data = api.payload
+        if data is None:
+            return {"message": "JSON body required"}, 400
+        try:
+            before = load_machines_summary_columns()
+            saved = save_machines_summary_columns(data)
+            from ....utils.config_audit import record_configuration_event, summary_column_changes
+
+            actor = Api.get_current_user()
+            for message, description in summary_column_changes(
+                before.get("columns"),
+                saved.get("columns"),
+            ):
+                record_configuration_event(message=message, description=description, user=actor)
+            return saved, 200
+        except OSError as e:
+            return {"message": f"Failed to persist machines-summary columns: {str(e)}"}, 500
+        except Exception as e:
+            return {"message": f"Failed to save machines-summary columns: {str(e)}"}, 400
 
 
 @ns.route('/export_config')
@@ -272,6 +365,14 @@ class ImportConfigResource(Resource):
                 }, 403
             if error:
                 return {'message': error, 'details': result.get("results", {})}, 400
+
+            from ....utils.config_audit import import_description, record_configuration_event
+
+            record_configuration_event(
+                message="Configuration imported",
+                description=import_description(file.filename, result),
+                user=Api.get_current_user(),
+            )
             
             return {
                 'message': result.get("message", "Configuration imported successfully"),

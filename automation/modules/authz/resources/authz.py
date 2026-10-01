@@ -101,6 +101,10 @@ class AuthzGrantsResource(Resource):
             return {"message": "subject_type and subject_id are required"}, 400
         if not isinstance(grants, list):
             return {"message": "grants must be a list"}, 400
+        try:
+            before_rows = list_grants(subject_type=subject_type, subject_id=subject_id)
+        except Exception:
+            before_rows = []
         saved = []
         for item in grants:
             if not isinstance(item, dict):
@@ -113,6 +117,11 @@ class AuthzGrantsResource(Resource):
             saved.append(upsert_grant(subject_type, subject_id, resource_key, action, effect))
         reload_cache(reason="put")
         version = notify_authz_invalidated(cache_version())
+        from ....utils.config_audit import grant_changes, record_configuration_event
+
+        actor = Api.get_current_user()
+        for message, description in grant_changes(subject_type, subject_id, before_rows, saved):
+            record_configuration_event(message=message, description=description, user=actor)
         return {"data": saved, "version": version}, 200
 
 

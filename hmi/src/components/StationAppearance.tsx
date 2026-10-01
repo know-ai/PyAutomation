@@ -7,6 +7,7 @@ import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { useDisplayDensity } from "../hooks/useDisplayDensity";
 import { useShowInfraMachines } from "../hooks/useShowInfraMachines";
 import { SettingsChapter } from "./SettingsChapter";
+import { auditClientPreference } from "../services/settings";
 import type { DisplayDensity } from "../utils/displayDensity";
 
 const DENSITY_OPTIONS: Array<{
@@ -78,7 +79,11 @@ export function StationAppearance() {
               role="radio"
               aria-checked={mode === "light"}
               className={clsx("settings-choice__card", mode === "light" && "is-selected")}
-              onClick={() => set("light")}
+              onClick={() => {
+                if (mode === "light") return;
+                set("light");
+                auditClientPreference("theme", "light");
+              }}
             >
               <i className="bi bi-sun settings-choice__icon" aria-hidden="true" />
               <span className="settings-choice__copy">
@@ -91,7 +96,11 @@ export function StationAppearance() {
               role="radio"
               aria-checked={mode === "dark"}
               className={clsx("settings-choice__card", mode === "dark" && "is-selected")}
-              onClick={() => set("dark")}
+              onClick={() => {
+                if (mode === "dark") return;
+                set("dark");
+                auditClientPreference("theme", "dark");
+              }}
             >
               <i className="bi bi-moon settings-choice__icon" aria-hidden="true" />
               <span className="settings-choice__copy">
@@ -115,7 +124,11 @@ export function StationAppearance() {
                   role="radio"
                   aria-checked={selected}
                   className={clsx("settings-choice__card", selected && "is-selected")}
-                  onClick={() => setDensityMode(option.id)}
+                  onClick={() => {
+                    if (densityMode === option.id) return;
+                    setDensityMode(option.id);
+                    auditClientPreference("display_density", option.id);
+                  }}
                 >
                   <i className={`bi ${option.icon} settings-choice__icon`} aria-hidden="true" />
                   <span className="settings-choice__copy">
@@ -137,7 +150,11 @@ export function StationAppearance() {
               role="radio"
               aria-checked={!showInfra}
               className={clsx("settings-choice__card", !showInfra && "is-selected")}
-              onClick={() => setShowInfra(false)}
+              onClick={() => {
+                if (!showInfra) return;
+                setShowInfra(false);
+                auditClientPreference("show_infra_machines", "false");
+              }}
             >
               <i className="bi bi-eye-slash settings-choice__icon" aria-hidden="true" />
               <span className="settings-choice__copy">
@@ -150,7 +167,11 @@ export function StationAppearance() {
               role="radio"
               aria-checked={showInfra}
               className={clsx("settings-choice__card", showInfra && "is-selected")}
-              onClick={() => setShowInfra(true)}
+              onClick={() => {
+                if (showInfra) return;
+                setShowInfra(true);
+                auditClientPreference("show_infra_machines", "true");
+              }}
             >
               <i className="bi bi-eye settings-choice__icon" aria-hidden="true" />
               <span className="settings-choice__copy">
@@ -170,7 +191,11 @@ export function StationAppearance() {
               role="radio"
               aria-checked={tzMode === "plant"}
               className={clsx("settings-choice__card", tzMode === "plant" && "is-selected")}
-              onClick={() => setTzMode("plant")}
+              onClick={() => {
+                if (tzMode === "plant") return;
+                setTzMode("plant");
+                auditClientPreference("display_timezone", "plant");
+              }}
             >
               <i className="bi bi-building settings-choice__icon" aria-hidden="true" />
               <span className="settings-choice__copy">
@@ -185,7 +210,11 @@ export function StationAppearance() {
               role="radio"
               aria-checked={tzMode === "local"}
               className={clsx("settings-choice__card", tzMode === "local" && "is-selected")}
-              onClick={() => setTzMode("local")}
+              onClick={() => {
+                if (tzMode === "local") return;
+                setTzMode("local");
+                auditClientPreference("display_timezone", "local");
+              }}
             >
               <i className="bi bi-laptop settings-choice__icon" aria-hidden="true" />
               <span className="settings-choice__copy">

@@ -66,6 +66,11 @@ export const exportConfig = async (): Promise<Blob> => {
 /**
  * Importa la configuración desde un archivo JSON
  */
+/** Records a workstation preference in the Events log. Never throws. */
+export function auditClientPreference(key: string, value: string): void {
+  void api.post("/settings/client-preference", { key, value }).catch(() => undefined);
+}
+
 export const importConfig = async (file: File): Promise<ImportConfigResponse> => {
   const formData = new FormData();
   formData.append("file", file);

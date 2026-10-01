@@ -15,7 +15,7 @@ _EVENTS = {
 }
 
 
-def emit_access_event(kind: str, transaction_id: str, detail: str = "") -> None:
+def emit_access_event(kind: str, transaction_id: str, detail: str = "", user=None) -> None:
     """Persist one of the nine access events. Complexity: O(1). Never raises."""
     message, priority, criticity = _EVENTS[kind]
     try:
@@ -24,9 +24,10 @@ def emit_access_event(kind: str, transaction_id: str, detail: str = "") -> None:
         persist_system_event(
             message=message,
             description=f"{transaction_id} {detail}".strip(),
-            classification="Control",
+            classification="Configuration" if kind == "changed" else "Control",
             priority=priority,
             criticity=criticity,
+            user=user,
             plant_wide=True,
         )
     except Exception:

@@ -599,6 +599,16 @@ class MachineSubscribeResource(Resource):
                     "message": message or "Subscription failed"
                 }, 400
 
+            from ....utils.config_audit import record_configuration_event
+
+            record_configuration_event(
+                message="Machine tag subscribed",
+                description=(
+                    f"machine={machine_name} field={field_tag_name} internal={internal_tag_name}"
+                ),
+                user=Api.get_current_user(),
+            )
+
             payload = {
                 "message": message or "Tag subscribed successfully",
                 "data": machine.serialize(),
@@ -675,6 +685,14 @@ class MachineUnsubscribeResource(Resource):
                 return {
                     "message": "Unsubscription failed"
                 }, 400
+
+            from ....utils.config_audit import record_configuration_event
+
+            record_configuration_event(
+                message="Machine tag unsubscribed",
+                description=f"machine={machine_name} tag={tag_name}",
+                user=Api.get_current_user(),
+            )
 
             return {
                 "message": "Tag unsubscribed successfully",
@@ -896,6 +914,7 @@ class MachineAttributesResource(Resource):
                             }, 500
                         yaml_persist.pop("buffer_size", None)
 
+                    previous_buffer = getattr(getattr(machine, "buffer_size", None), "value", None)
                     # Actualizar buffer_size y reiniciar la máquina
                     machine.set_buffer_size(size=buffer_size_value)
                     machine.transition(to="restart", user=user)
@@ -909,6 +928,16 @@ class MachineAttributesResource(Resource):
                     machine.transition(to="wait", user=user)
                     
                     updated_attributes.append(f"buffer_size to {buffer_size_value}")
+                    if user is not None and previous_buffer != buffer_size_value:
+                        from ....utils.config_audit import record_configuration_event
+
+                        record_configuration_event(
+                            message="Machine buffer size updated",
+                            description=(
+                                f"machine={machine_name} from={previous_buffer} to={buffer_size_value}"
+                            ),
+                            user=user,
+                        )
                 except (ValueError, TypeError) as e:
                     return {
                         "message": f"Invalid buffer_size value: {str(e)}"

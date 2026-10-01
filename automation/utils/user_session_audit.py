@@ -21,6 +21,8 @@ _PRIORITY = {
     "PASSWORD_CHANGED": 3,
     "PASSWORD_RESET": 4,
     "ROLE_UPDATED": 4,
+    "USER_ENABLED": 3,
+    "USER_DISABLED": 4,
 }
 
 _CRITICITY = {
@@ -31,6 +33,8 @@ _CRITICITY = {
     "PASSWORD_CHANGED": 4,
     "PASSWORD_RESET": 5,
     "ROLE_UPDATED": 5,
+    "USER_ENABLED": 3,
+    "USER_DISABLED": 5,
 }
 
 _MESSAGE = {
@@ -41,12 +45,14 @@ _MESSAGE = {
     "PASSWORD_CHANGED": "User password changed",
     "PASSWORD_RESET": "User password reset",
     "ROLE_UPDATED": "User role updated",
+    "USER_ENABLED": "User account enabled",
+    "USER_DISABLED": "User account disabled",
 }
 
 # Account administration is plant-wide. Session events belong to the edge
 # where the operator logged in or out.
 _PLANT_WIDE = frozenset(
-    {"SIGNUP", "PASSWORD_CHANGED", "PASSWORD_RESET", "ROLE_UPDATED"}
+    {"SIGNUP", "PASSWORD_CHANGED", "PASSWORD_RESET", "ROLE_UPDATED", "USER_ENABLED", "USER_DISABLED"}
 )
 
 

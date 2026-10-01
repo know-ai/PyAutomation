@@ -1160,6 +1160,16 @@ body.process-restart-lock #toast-container {
   overflow: auto;
 }
 
+.machines-summary-table-wrap > table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.machines-summary-table-wrap th,
+.machines-summary-table-wrap td {
+  white-space: nowrap;
+}
+
 .page-fit-card > .card-body > .history-results {
   flex: 1 1 auto;
   min-height: 0;
@@ -2100,6 +2110,10 @@ body.process-restart-lock #toast-container {
 
 .multi-select-search__option.is-selected {
   background-color: rgba(13, 110, 253, 0.12);
+}
+
+.multi-select-search__option.is-locked {
+  cursor: default;
 }
 
 .multi-select-search__option.is-selected:hover,

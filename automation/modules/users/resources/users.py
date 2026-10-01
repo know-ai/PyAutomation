@@ -643,7 +643,6 @@ class SetUserEnabledResource(Resource):
             action="USER_ENABLED" if enabled else "USER_DISABLED",
             user=target_user or current_user,
             actor=current_user,
-            extra=f"username={target_username}",
         )
         return {
             'message': status_msg,

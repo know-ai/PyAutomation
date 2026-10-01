@@ -367,6 +367,13 @@ class AddOPCUAClientResource(Resource):
         )
         error, payload = _command_result(result, ADD_FAILED, **params)
         if error is None:
+            from ....utils.config_audit import record_configuration_event
+
+            record_configuration_event(
+                message="OPC UA client created",
+                description=f"client={args['client_name']} host={host} port={port}",
+                user=Api.get_current_user(),
+            )
             return {
                 'message': f"OPC UA client '{args['client_name']}' added successfully",
                 'data': payload if isinstance(payload, dict) else {'message': payload}
@@ -407,6 +414,16 @@ class UpdateOPCUAClientResource(Resource):
         error, payload = _command_result(result, UPDATE_FAILED, **params)
         if error is None:
             new_name = args.get('new_client_name') or client_name
+            from ....utils.config_audit import record_configuration_event
+
+            record_configuration_event(
+                message="OPC UA client updated",
+                description=(
+                    f"client={client_name} name={new_name} "
+                    f"host={args.get('host')} port={args.get('port')}"
+                ),
+                user=Api.get_current_user(),
+            )
             return {
                 'message': f"OPC UA client '{client_name}' updated successfully" + (f" to '{new_name}'" if new_name != client_name else ""),
                 'data': payload if isinstance(payload, dict) else {'message': payload}
@@ -434,6 +451,13 @@ class RemoveOPCUAClientResource(Resource):
         success = app.remove_opcua_client(client_name=client_name)
         
         if success:
+            from ....utils.config_audit import record_configuration_event
+
+            record_configuration_event(
+                message="OPC UA client deleted",
+                description=f"client={client_name}",
+                user=Api.get_current_user(),
+            )
             return {
                 'message': f"OPC UA client '{client_name}' removed successfully"
             }, 200
