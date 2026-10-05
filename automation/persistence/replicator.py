@@ -290,6 +290,12 @@ class RemoteReplicator:
             if sent_ids:
                 self.journal.mark_sent(sent_ids)
                 replicated += len(sent_ids)
+                try:
+                    from ..health.service import note_database_contact
+
+                    note_database_contact()
+                except Exception:
+                    pass
             retry_ids.extend(domain_retry)
             retry_errors.update(domain_retry_err)
             poison_ids.extend(domain_poison)

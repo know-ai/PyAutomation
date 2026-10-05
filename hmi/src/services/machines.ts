@@ -1,4 +1,5 @@
 import api from "./api";
+import { confirmationHeaders } from "./operatorConfirmation";
 
 export type Machine = {
   state: string;
@@ -60,11 +61,14 @@ export const updateMachineInterval = async (
  */
 export const transitionMachine = async (
   machineName: string,
-  to: string
+  to: string,
+  confirmation?: string | null
 ): Promise<{ message: string; data: Machine }> => {
-  const { data } = await api.put(`/machines/${encodeURIComponent(machineName)}/transition`, {
-    to,
-  });
+  const { data } = await api.put(
+    `/machines/${encodeURIComponent(machineName)}/transition`,
+    { to },
+    confirmationHeaders(confirmation)
+  );
   return data;
 };
 

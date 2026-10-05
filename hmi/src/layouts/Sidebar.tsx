@@ -50,8 +50,14 @@ export function Sidebar() {
     { to: "/events", icon: "bi bi-calendar-event", labelKey: "navigation.events", view: VIEW_IDS.events },
     { to: "/operational-logs", icon: "bi bi-journal-text", labelKey: "navigation.operationalLogs", view: VIEW_IDS.operationalLogs },
     { to: "/performance", icon: "bi bi-speedometer2", labelKey: "navigation.performance", view: VIEW_IDS.performance },
-    { to: "/settings", icon: "bi bi-gear", labelKey: "navigation.settings", view: VIEW_IDS.settings },
   ];
+
+  const settingsItem = {
+    to: "/settings",
+    icon: "bi bi-gear",
+    labelKey: "navigation.settings",
+    view: VIEW_IDS.settings,
+  };
 
   const tagsSubItems = [
     { to: "/tags/definitions", labelKey: "sidebar.tags.definitions", icon: "bi bi-card-list", view: VIEW_IDS.tagsDefinitions },
@@ -363,6 +369,34 @@ export function Sidebar() {
               </>
             )}
 
+            {!systemOnly &&
+              canView(VIEW_IDS.ldsDashboard) &&
+              extensions.map((item) => (
+                <li className="nav-item" key={item.id}>
+                  <NavLink
+                    to={item.path}
+                    className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                    onClick={closeSidebarOnMobile}
+                  >
+                    <i className={`nav-icon ${item.icon}`} />
+                    <p>{t(item.label_key)}</p>
+                  </NavLink>
+                </li>
+              ))}
+            
+            {(systemOnly ? [] : navItems.filter((item) => canView(item.view))).map((item) => (
+              <li className="nav-item" key={item.to}>
+                <NavLink
+                  to={item.to}
+                  className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                  onClick={closeSidebarOnMobile}
+                >
+                  <i className={`nav-icon ${item.icon}`} />
+                  <p>{t(item.labelKey)}</p>
+                </NavLink>
+              </li>
+            ))}
+
             {(systemOnly || administrationSubItems.some((item) => canView(item.view))) && (
             <li className={`nav-item ${administrationExpanded ? "menu-open" : ""}`}>
               <a
@@ -407,34 +441,19 @@ export function Sidebar() {
               </ul>
             </li>
             )}
-            
-            {!systemOnly &&
-              canView(VIEW_IDS.ldsDashboard) &&
-              extensions.map((item) => (
-                <li className="nav-item" key={item.id}>
-                  <NavLink
-                    to={item.path}
-                    className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
-                    onClick={closeSidebarOnMobile}
-                  >
-                    <i className={`nav-icon ${item.icon}`} />
-                    <p>{t(item.label_key)}</p>
-                  </NavLink>
-                </li>
-              ))}
-            
-            {(systemOnly ? [] : navItems.filter((item) => canView(item.view))).map((item) => (
-              <li className="nav-item" key={item.to}>
+
+            {!systemOnly && canView(settingsItem.view) && (
+              <li className="nav-item">
                 <NavLink
-                  to={item.to}
+                  to={settingsItem.to}
                   className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
                   onClick={closeSidebarOnMobile}
                 >
-                  <i className={`nav-icon ${item.icon}`} />
-                  <p>{t(item.labelKey)}</p>
+                  <i className={`nav-icon ${settingsItem.icon}`} />
+                  <p>{t(settingsItem.labelKey)}</p>
                 </NavLink>
               </li>
-            ))}
+            )}
           </ul>
         </nav>
         

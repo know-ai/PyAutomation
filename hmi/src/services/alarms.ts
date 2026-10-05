@@ -1,5 +1,6 @@
 import type { AxiosRequestConfig } from "axios";
 import api from "./api";
+import { confirmationHeaders } from "./operatorConfirmation";
 
 export type Alarm = {
   identifier?: string;
@@ -218,16 +219,20 @@ export const filterAlarmsSummary = async (
 /**
  * Reconoce una alarma por su nombre
  */
-export const acknowledgeAlarm = async (alarmName: string): Promise<any> => {
-  const { data } = await api.post(`/alarms/acknowledge/${encodeURIComponent(alarmName)}`);
+export const acknowledgeAlarm = async (alarmName: string, confirmation?: string | null): Promise<any> => {
+  const { data } = await api.post(
+    `/alarms/acknowledge/${encodeURIComponent(alarmName)}`,
+    undefined,
+    confirmationHeaders(confirmation)
+  );
   return data;
 };
 
 /**
  * Reconoce todas las alarmas activas
  */
-export const acknowledgeAllAlarms = async (): Promise<any> => {
-  const { data } = await api.post("/alarms/acknowledge_all");
+export const acknowledgeAllAlarms = async (confirmation?: string | null): Promise<any> => {
+  const { data } = await api.post("/alarms/acknowledge_all", undefined, confirmationHeaders(confirmation));
   return data;
 };
 
@@ -236,9 +241,14 @@ export const acknowledgeAllAlarms = async (): Promise<any> => {
  */
 export const executeAlarmAction = async (
   actionValue: string,
-  alarmName: string
+  alarmName: string,
+  confirmation?: string | null
 ): Promise<any> => {
-  const { data } = await api.post(`/alarms/${encodeURIComponent(actionValue)}/${encodeURIComponent(alarmName)}`);
+  const { data } = await api.post(
+    `/alarms/${encodeURIComponent(actionValue)}/${encodeURIComponent(alarmName)}`,
+    undefined,
+    confirmationHeaders(confirmation)
+  );
   return data;
 };
 

@@ -7,6 +7,10 @@ from ..machines_summary_columns import (
     load_machines_summary_columns,
     save_machines_summary_columns,
 )
+from ..operator_confirmation import (
+    load_operator_confirmation,
+    save_operator_confirmation,
+)
 from ..workspace import load_realtime_trends_workspace, save_realtime_trends_workspace
 import json
 
@@ -155,6 +159,49 @@ class ClientPreferenceAuditResource(Resource):
             user=Api.get_current_user(),
         )
         return {"message": "Recorded"}, 200
+
+
+operator_confirmation_model = api.model("operator_confirmation_model", {
+    "enabled": fields.Boolean(required=True, description="Require operator credentials before acknowledge and engine restart"),
+})
+
+
+@ns.route("/operator-confirmation")
+class OperatorConfirmationResource(Resource):
+
+    @api.doc(security="apikey", description="Station policy for operator re-authentication. Default off.")
+    @api.response(200, "Policy retrieved")
+    @Api.token_required(auth=True)
+    def get(self):
+        try:
+            return load_operator_confirmation(), 200
+        except Exception as exc:
+            return {"message": f"Failed to retrieve operator confirmation: {exc}"}, 500
+
+    @api.doc(security="apikey", description="Enables or disables operator re-authentication. Survives a process restart.")
+    @api.response(200, "Policy saved")
+    @api.response(400, "Invalid payload")
+    @Api.token_required(auth=True)
+    @ns.expect(operator_confirmation_model)
+    def put(self):
+        data = api.payload or {}
+        if "enabled" not in data:
+            return {"message": "enabled is required"}, 400
+        enabled = bool(data.get("enabled"))
+        try:
+            before = load_operator_confirmation()
+            saved = save_operator_confirmation(enabled)
+        except OSError as exc:
+            return {"message": f"Failed to persist operator confirmation: {exc}"}, 500
+        if bool(before.get("enabled")) != enabled:
+            from ....utils.config_audit import record_configuration_event
+
+            record_configuration_event(
+                message="Operator confirmation updated",
+                description=f"enabled:{bool(before.get('enabled'))}->{enabled}",
+                user=Api.get_current_user(),
+            )
+        return saved, 200
 
 
 workspace_model = api.model("realtime_trends_workspace_model", {

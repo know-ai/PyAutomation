@@ -24,10 +24,12 @@ import { alarmToFormData } from "../utils/alarmForm";
 import { VirtualizedCombobox, type ComboboxItem } from "../components/VirtualizedCombobox";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAuthz } from "../hooks/useAuthz";
+import { useOperatorConfirmation } from "../components/OperatorConfirmationProvider";
 import { VIEW_IDS } from "../utils/access";
 
 export function Alarms() {
   const { t } = useTranslation();
+  const { confirm } = useOperatorConfirmation();
   const { canUse, canRest, canExportCsv } = useAuthz();
   const canMutate = canRest("/api/alarms/add");
   const canAct = canUse(VIEW_IDS.alarmsDefinitions);
@@ -350,10 +352,22 @@ export function Alarms() {
       return;
     }
 
+    let confirmation: string | null = null;
+    if (actionValue === "acknowledge") {
+      const confirmed = await confirm({
+        method: "POST",
+        path: `/api/alarms/acknowledge/${encodeURIComponent(alarmName)}`,
+        title: t("operatorConfirm.title"),
+        detail: t("operatorConfirm.acknowledgeOne", { name: alarmName }),
+      });
+      if (!confirmed) return;
+      confirmation = confirmed.token;
+    }
+
     // For other actions, execute directly
     setExecutingAction((prev) => ({ ...prev, [alarmName]: true }));
     try {
-      const result = await executeAlarmAction(actionValue, alarmName);
+      const result = await executeAlarmAction(actionValue, alarmName, confirmation);
       showToast("success", result.message || t("alarms.actionExecutedSuccess", { alarmName }));
       
       // Reload alarms to get updated state
@@ -861,9 +875,16 @@ export function Alarms() {
     if (!hasUnacknowledgedAlarms || acknowledgingAll) {
       return;
     }
+    const confirmed = await confirm({
+      method: "POST",
+      path: "/api/alarms/acknowledge_all",
+      title: t("operatorConfirm.title"),
+      detail: t("operatorConfirm.acknowledgeAll"),
+    });
+    if (!confirmed) return;
     setAcknowledgingAll(true);
     try {
-      const response = await acknowledgeAllAlarms();
+      const response = await acknowledgeAllAlarms(confirmed.token);
       const message =
         response?.message ||
         response?.data?.message ||

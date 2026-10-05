@@ -14,6 +14,8 @@ import { VIEW_IDS } from "../utils/access";
 import { usePerformanceAlarms, type PerfAlarmBinding } from "../hooks/usePerformanceAlarms";
 import { usePerformanceTrends } from "../hooks/usePerformanceTrends";
 import { useTranslation } from "../hooks/useTranslation";
+import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
+import { formatHeaderStamp } from "../utils/timezone";
 import {
   type NodePerformanceSnapshot,
   type PerfAlarmKey,
@@ -310,7 +312,8 @@ function activeLayoutsOf(layouts: PerfLayouts, isMobile: boolean): Record<string
 }
 
 export function Performance() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const { timeZone } = useDisplayTimezone();
   const { canView, canUse, canRest, views } = useAuthz();
   const allowed = canView(VIEW_IDS.performance);
   const canConfigure = canConfigurePerformanceAlarms(views);
@@ -742,6 +745,10 @@ export function Performance() {
                       ? t("performance.dbTxnUnavailable")
                       : formatNumber(snapshot.DB_TXN_PER_MIN, 0)
                   }
+                />
+                <PerfStat
+                  label={t("performance.dbLastContact")}
+                  value={formatHeaderStamp(snapshot.DB_LAST_CONTACT_UTC, locale, timeZone)}
                 />
               </PerfPanel>
             </div>

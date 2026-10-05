@@ -133,10 +133,13 @@ VIEW_REST_BUNDLES: dict[str, ViewBundle] = {
             ("POST", "/api/tags/list"),
             ("GET", "/api/health/node"),
             ("GET", "/api/health/system"),
+            ("GET", "/api/leaks/metrics/false-alarms"),
+            ("POST", "/api/leaks/filter_by"),
         ],
         "write": [
             ("PUT", "/api/machines"),
             ("POST", "/api/machines"),
+            ("PUT", "/api/leaks/report"),
         ],
     },
     "hmi:view.communications.clients": {
@@ -183,6 +186,7 @@ VIEW_REST_BUNDLES: dict[str, ViewBundle] = {
         ],
         "write": [
             ("PUT", "/api/settings"),
+            ("PUT", "/api/settings/operator-confirmation"),
             ("POST", "/api/settings/import_config"),
         ],
     },

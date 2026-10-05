@@ -7,6 +7,7 @@ import { selectActiveAlarmsPreview } from "../store/slices/alarmsSlice";
 import { showToast } from "../utils/toast";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { useTranslation } from "../hooks/useTranslation";
+import { useOperatorConfirmation } from "../components/OperatorConfirmationProvider";
 import { formatTimestamp } from "../utils/timezone";
 import { isSystemUser } from "../utils/systemUser";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
@@ -33,6 +34,7 @@ function clampMenuPosition(clientX: number, clientY: number): { x: number; y: nu
 
 export function Footer() {
   const { t } = useTranslation();
+  const { confirm } = useOperatorConfirmation();
   const navigate = useNavigate();
   const user = useAppSelector((s) => s.auth.user);
   const preview = useAppSelector(selectActiveAlarmsPreview);
@@ -137,10 +139,17 @@ export function Footer() {
 
   const runAcknowledgeOne = async (alarmName: string) => {
     if (acknowledging || acknowledgingAll) return;
+    const confirmed = await confirm({
+      method: "POST",
+      path: `/api/alarms/acknowledge/${encodeURIComponent(alarmName)}`,
+      title: t("operatorConfirm.title"),
+      detail: t("operatorConfirm.acknowledgeOne", { name: alarmName }),
+    });
+    if (!confirmed) return;
     setAcknowledging(alarmName);
     closeContextMenu();
     try {
-      const response = await acknowledgeAlarm(alarmName);
+      const response = await acknowledgeAlarm(alarmName, confirmed.token);
       const message =
         response?.message ||
         response?.data?.message ||
@@ -159,10 +168,17 @@ export function Footer() {
 
   const runAcknowledgeAll = async () => {
     if (acknowledging || acknowledgingAll) return;
+    const confirmed = await confirm({
+      method: "POST",
+      path: "/api/alarms/acknowledge_all",
+      title: t("operatorConfirm.title"),
+      detail: t("operatorConfirm.acknowledgeAll"),
+    });
+    if (!confirmed) return;
     setAcknowledgingAll(true);
     closeContextMenu();
     try {
-      const response = await acknowledgeAllAlarms();
+      const response = await acknowledgeAllAlarms(confirmed.token);
       const message =
         response?.message ||
         response?.data?.message ||

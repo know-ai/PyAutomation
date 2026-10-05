@@ -8,6 +8,7 @@ import { QualityPolicyPanel } from "../components/QualityPolicyPanel";
 import { ServiceRuntimePanel } from "../components/ServiceRuntimePanel";
 import { SettingsChapter } from "../components/SettingsChapter";
 import { GeospatialProfilePanel } from "../components/settings/GeospatialProfilePanel";
+import { OperatorConfirmationPanel } from "../components/OperatorConfirmationPanel";
 import { getSettings, updateSettings, exportConfig, importConfig, type AppConfig } from "../services/settings";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
@@ -21,8 +22,9 @@ const TOC = [
   { href: "#settings-quality", labelKey: "settings.qualityPolicyTitle" },
   { href: "#settings-historian", labelKey: "settings.navHistorian" },
   { href: "#settings-service", labelKey: "settings.navService" },
-  { href: "#settings-backup", labelKey: "settings.navBackup" },
+  { href: "#settings-operator-confirmation", labelKey: "settings.navOperatorConfirmation" },
   { href: "#settings-georef", labelKey: "settings.navGeoref" },
+  { href: "#settings-backup", labelKey: "settings.navBackup" },
 ] as const;
 
 export function Settings() {
@@ -201,9 +203,21 @@ export function Settings() {
         />
       </SettingsChapter>
 
+      <OperatorConfirmationPanel canMutate={canMutate} />
+
+      <SettingsChapter
+        id="settings-georef"
+        index="07"
+        kicker={t("settings.georefKicker")}
+        title={t("settings.georefTitle")}
+        lede={t("settings.georefLede")}
+      >
+        <GeospatialProfilePanel canMutate={canEditGeoref} />
+      </SettingsChapter>
+
       <SettingsChapter
         id="settings-backup"
-        index="06"
+        index="08"
         kicker={t("settings.backupKicker")}
         title={t("settings.backupTitle")}
         lede={t("settings.backupLede")}
@@ -222,16 +236,6 @@ export function Settings() {
             </Button>
           </div>
         </article>
-      </SettingsChapter>
-
-      <SettingsChapter
-        id="settings-georef"
-        index="07"
-        kicker={t("settings.georefKicker")}
-        title={t("settings.georefTitle")}
-        lede={t("settings.georefLede")}
-      >
-        <GeospatialProfilePanel canMutate={canEditGeoref} />
       </SettingsChapter>
 
       <input

@@ -10,6 +10,7 @@ import {
 } from "../services/performanceAlarms";
 import type { PerfAlarmCatalogEntry } from "../services/performance";
 import { showToast } from "../utils/toast";
+import { useOperatorConfirmation } from "./OperatorConfirmationProvider";
 import { alarmStateBadgeClass } from "../utils/alarmState";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
 
@@ -43,6 +44,7 @@ export function PerformanceAlarmModal({
   onConfigure,
 }: PerformanceAlarmModalProps) {
   const { t } = useTranslation();
+  const { confirm } = useOperatorConfirmation();
   const [busy, setBusy] = useState(false);
   const life = lifecycleOf(alarm);
 
@@ -105,7 +107,18 @@ export function PerformanceAlarmModal({
               <Button
                 variant="warning"
                 disabled={busy}
-                onClick={() => void run(() => acknowledgeAlarm(alarm!.name), "performance.alarmAckOk")}
+                onClick={() =>
+                  void (async () => {
+                    const confirmed = await confirm({
+                      method: "POST",
+                      path: `/api/alarms/acknowledge/${encodeURIComponent(alarm!.name)}`,
+                      title: t("operatorConfirm.title"),
+                      detail: t("operatorConfirm.acknowledgeOne", { name: alarm!.name }),
+                    });
+                    if (!confirmed) return;
+                    await run(() => acknowledgeAlarm(alarm!.name, confirmed.token), "performance.alarmAckOk");
+                  })()
+                }
               >
                 {t("performance.alarmAck")}
               </Button>

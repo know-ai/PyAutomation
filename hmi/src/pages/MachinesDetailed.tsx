@@ -15,6 +15,7 @@ import {
   type Machine,
 } from "../services/machines";
 import { DomainConfigSlot } from "../components/DomainConfigSlot";
+import { isLdsEngineName, LdsLeakPerformance } from "../components/LdsLeakPerformance";
 import { showToast } from "../utils/toast";
 import { tx, translateSubscribeHint, translateMachineClassification } from "../utils/domainI18n";
 import { criticityBadgeStyle } from "../utils/criticityBadge";
@@ -2627,6 +2628,13 @@ export function MachinesDetailed() {
                             </Card>
                               );
                             })()}
+                          </div>
+                        </div>
+                      )}
+                      {activeTab === machineName && isLdsEngineName(machineName) && (
+                        <div className="row mt-3">
+                          <div className="col-12">
+                            <LdsLeakPerformance />
                           </div>
                         </div>
                       )}

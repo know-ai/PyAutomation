@@ -31,6 +31,17 @@ def _publish_engine(machine_name: str) -> None:
     except Exception:
         logger.debug("OPC UA engine publish skipped for %s", machine_name, exc_info=True)
 
+
+def _emit_machine_snapshot(machine) -> None:
+    """Push the current machine, including a threshold written outside set_value."""
+    sio = getattr(machine, "sio", None)
+    if sio is None:
+        return
+    try:
+        sio.emit("on.machine", data=machine.serialize())
+    except Exception:
+        logger.debug("Machine snapshot emit skipped", exc_info=True)
+
 ns = Namespace('Machines', description='State Machine Management Resources')
 app = PyAutomation()
 
@@ -998,6 +1009,7 @@ class MachineAttributesResource(Resource):
             # Construir mensaje de éxito
             message = f"Successfully updated: {', '.join(updated_attributes)}"
             _publish_engine(machine_name)
+            _emit_machine_snapshot(machine)
 
             return {
                 "message": message,
@@ -1099,6 +1111,7 @@ class MachineDomainConfigResource(Resource):
             except Exception:
                 pass
             _publish_engine(machine_name)
+            _emit_machine_snapshot(machine)
             return {
                 "status": "success",
                 "config": config,

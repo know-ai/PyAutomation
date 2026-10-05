@@ -312,7 +312,77 @@ class VerifyCredentialsResource(Resource):
         ):
             return Api.disabled_account_body(), 403
         return credentials_valid, 200
-    
+
+
+@ns.route('/confirm-action')
+class ConfirmActionResource(Resource):
+
+    @api.doc(
+        security='apikey',
+        description="Checks an operator password and whether that role may call one endpoint. Does not rotate the session.",
+    )
+    @api.response(200, "Confirmation issued")
+    @api.response(401, "Invalid credentials")
+    @api.response(403, "Not authorized")
+    @Api.token_required(auth=True)
+    def post(self):
+        data = request.get_json(silent=True) or {}
+        username = str(data.get("username") or "").strip()
+        password = data.get("password")
+        method = str(data.get("method") or "").strip().upper()
+        path = str(data.get("path") or "").strip()
+        target_state = data.get("to")
+        if not username or not isinstance(password, str) or not password or not method or not path:
+            return {"message": "username, password, method and path are required"}, 400
+
+        from ....utils.operator_confirmation import (
+            action_requires_confirmation,
+            issue_confirmation_token,
+            normalize_api_path,
+        )
+        from ....utils.system_user import is_system_username
+        from ....authz.catalog import default_action, rest_resource_key
+        from ....authz.engine import evaluate
+
+        normalized = normalize_api_path(path)
+        target = None if target_state is None else str(target_state)
+        if not action_requires_confirmation(method, normalized, target):
+            return {"message": "This action does not accept operator confirmation", "code": "CONFIRMATION_REJECTED"}, 400
+
+        valid, message = users.verify_credentials(password=password, username=username)
+        if not valid:
+            if message and "user is disabled" in str(message).lower():
+                return {"message": "Invalid credentials", "code": "CREDENTIALS_INVALID"}, 401
+            return {"message": "Invalid credentials", "code": "CREDENTIALS_INVALID"}, 401
+        if is_system_username(username):
+            return {
+                "message": "Not authorized",
+                "code": "AUTHZ_DENIED",
+            }, 403
+
+        operator = users.get_by_username(username=username)
+        resource_key = rest_resource_key(method, normalized)
+        action = default_action(method)
+        if operator is None or not evaluate(operator, resource_key, action):
+            return {
+                "message": "Not authorized",
+                "code": "AUTHZ_DENIED",
+                "resource": resource_key,
+                "action": action,
+            }, 403
+
+        token = issue_confirmation_token(
+            username=username,
+            method=method,
+            path=normalized,
+            secret=app.server.config.get("AUTOMATION_APP_SECRET_KEY") or "",
+            target_state=target,
+        )
+        if not token:
+            return {"message": "Operator confirmation is invalid", "code": "CONFIRMATION_INVALID"}, 403
+        return {"token": token, "username": username}, 200
+
+
 @ns.route('/<username>')
 @api.param('username', 'The username')
 class UserResource(Resource):

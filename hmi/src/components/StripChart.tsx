@@ -34,6 +34,24 @@ export const BUFFER_SIZE_MIN = 120;
 /** @deprecated Usar timeSpanMinutes. */
 export const BUFFER_SIZE_MAX = 360;
 
+const STRIP_COLORS = [
+  "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+  "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+];
+
+function formatLiveReading(value: unknown, locale: string): string {
+  if (value == null || value === "") return "—";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (typeof value === "number" || (typeof value === "string" && value.trim() !== "" && Number.isFinite(numeric))) {
+    if (!Number.isFinite(numeric)) return "—";
+    return numeric.toLocaleString(locale === "es" ? "es-PE" : "en-US", {
+      maximumFractionDigits: 3,
+    });
+  }
+  return String(value);
+}
+
 function historyRevision(
   histories: Array<TagHistoryPoint[] | undefined>,
   timeSpanMinutes: number,
@@ -82,7 +100,7 @@ function StripChartInner({
   onDelete,
 }: StripChartProps) {
   const { mode } = useTheme();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const { timeZone } = useDisplayTimezone();
   const dispatch = useAppDispatch();
   const pageHidden = usePageHidden();
@@ -198,11 +216,6 @@ function StripChartInner({
       return empty;
     }
 
-    const colorPalette = [
-      "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-      "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
-    ];
-
     const unitOrder: string[] = [];
     config.tagNames.forEach((tagName) => {
       const unit = getTagUnit(tagName);
@@ -233,7 +246,7 @@ function StripChartInner({
         type: "scatter",
         mode: "lines",
         name: getTagLabel(tagName),
-        line: { color: colorPalette[index % colorPalette.length], width: 2 },
+        line: { color: STRIP_COLORS[index % STRIP_COLORS.length], width: 2 },
         yaxis: unitAxis[unit] || "y",
       } as Data;
     });
@@ -392,22 +405,33 @@ function StripChartInner({
               ) : (
                 <span className="d-inline-flex align-items-center gap-2 flex-wrap">
                   <span>{config.title || t("stripChart.defaultTitle")}</span>
-                  {config.tagNames.map((tagName) => {
+                  {config.tagNames.map((tagName, index) => {
                     const live = liveTags[tagName];
                     const missing = missingTags.includes(tagName);
+                    const unit = getTagUnit(tagName);
+                    const reading = formatLiveReading(live?.value, locale);
+                    const readingText = unit && unit !== "—" ? `${reading} ${unit}` : reading;
                     return (
                       <span key={tagName} className="d-inline-flex align-items-center gap-1">
                         <span className="small text-muted">{getTagLabel(tagName)}</span>
                         {missing ? (
                           <span className="badge bg-warning text-dark">{t("stripChart.tagUnavailable")}</span>
                         ) : (
-                          <QualityBadge
-                            quality={live?.quality}
-                            qualityLabel={live?.quality_label}
-                            substatus={live?.quality_substatus}
-                            stale={Boolean(live?.stale)}
-                            staleAgeMs={typeof live?.stale_age_ms === "number" ? live.stale_age_ms : null}
-                          />
+                          <>
+                            <span
+                              className="rt-strip-reading"
+                              style={{ color: STRIP_COLORS[index % STRIP_COLORS.length] }}
+                            >
+                              {readingText}
+                            </span>
+                            <QualityBadge
+                              quality={live?.quality}
+                              qualityLabel={live?.quality_label}
+                              substatus={live?.quality_substatus}
+                              stale={Boolean(live?.stale)}
+                              staleAgeMs={typeof live?.stale_age_ms === "number" ? live.stale_age_ms : null}
+                            />
+                          </>
                         )}
                       </span>
                     );

@@ -426,8 +426,10 @@ class MetricsSamplerWorker(BaseWorker):
 
             app = PyAutomation()
             payload["DB_CONNECTED"] = bool(app.is_db_connected())
-            health = get_database_health_service().snapshot()
+            health_service = get_database_health_service()
+            health = health_service.snapshot()
             payload["DB_LATENCY_MS"] = health.latency_ms
+            payload["DB_LAST_CONTACT_UTC"] = getattr(health_service, "last_contact_iso", lambda: None)()
             db = getattr(app, "_db", None)
             # Sockets whose greenlet is gone cannot close themselves. This is the
             # only periodic sweep, so the census stays honest between restarts.

@@ -12,6 +12,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import { useMemoryWatchdog } from "../hooks/useMemoryWatchdog";
 import { socketService } from "../services/socket";
 import { DatabaseStatusProvider } from "../hooks/useDatabaseStatus";
+import { OperatorConfirmationProvider } from "../components/OperatorConfirmationProvider";
 import { DatabaseUnavailableOverlay } from "../components/DatabaseUnavailableOverlay";
 import { DegradedModeBanner } from "../components/DegradedModeBanner";
 import { SocketConnectivityBanner } from "../components/SocketConnectivityBanner";
@@ -76,6 +77,7 @@ export function MainLayout({ children }: PropsWithChildren) {
   }, []);
 
   return (
+    <OperatorConfirmationProvider>
     <DatabaseStatusProvider>
     <div className="app-wrapper">
       <Header />
@@ -100,6 +102,7 @@ export function MainLayout({ children }: PropsWithChildren) {
       />
     </div>
     </DatabaseStatusProvider>
+    </OperatorConfirmationProvider>
   );
 }
 

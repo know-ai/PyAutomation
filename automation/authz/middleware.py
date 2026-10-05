@@ -13,6 +13,8 @@ from .catalog import (
 )
 from .engine import evaluate
 
+_CONFIRMATION_OK = object()
+
 
 def enforce_api_authz():
     if request.method == "OPTIONS":
@@ -46,6 +48,11 @@ def enforce_api_authz():
         return None
     resource_key = rest_key_from_request()
     action = default_action(request.method)
+    confirmed = _confirmed_operator(resource_key, action)
+    if confirmed is _CONFIRMATION_OK:
+        return None
+    if confirmed is not None:
+        return confirmed
     if not resource_key or not evaluate(user, resource_key, action):
         return {
             "message": "Forbidden",
@@ -54,6 +61,70 @@ def enforce_api_authz():
             "action": action,
         }, 403
     return None
+
+
+def _confirmed_operator(resource_key: str | None, action: str):
+    """When the station policy is on, authorize acknowledge and restart as the confirming operator."""
+    try:
+        from ..utils.operator_confirmation import (
+            action_requires_confirmation,
+            consume_confirmation_token,
+            policy_enabled,
+        )
+    except Exception:
+        return None
+    if not policy_enabled():
+        return None
+    payload = request.get_json(silent=True) if request.is_json else None
+    target_state = None
+    if isinstance(payload, dict):
+        target_state = payload.get("to")
+    if not action_requires_confirmation(request.method, request.path, target_state):
+        return None
+    token = request.headers.get("X-Operator-Confirmation")
+    if not token:
+        return {
+            "message": "Operator confirmation required",
+            "code": "CONFIRMATION_REQUIRED",
+        }, 403
+    try:
+        from .. import server
+
+        secret = server.config.get("AUTOMATION_APP_SECRET_KEY") or ""
+    except Exception:
+        secret = ""
+    username = consume_confirmation_token(
+        token,
+        method=request.method,
+        path=request.path,
+        secret=secret,
+        target_state=None if target_state is None else str(target_state),
+    )
+    if not username:
+        return {
+            "message": "Operator confirmation is invalid",
+            "code": "CONFIRMATION_INVALID",
+        }, 403
+    from ..modules.users.users import Users
+
+    operator = Users().get_by_username(username=username)
+    if operator is None or not evaluate(operator, resource_key, action):
+        return {
+            "message": "Forbidden",
+            "code": "AUTHZ_DENIED",
+            "resource": resource_key,
+            "action": action,
+        }, 403
+    try:
+        from flask import g
+
+        g.confirmed_operator = operator
+    except Exception:
+        return {
+            "message": "Operator confirmation is invalid",
+            "code": "CONFIRMATION_INVALID",
+        }, 403
+    return _CONFIRMATION_OK
 
 
 def _extract_token() -> str | None:

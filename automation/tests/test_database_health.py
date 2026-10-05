@@ -67,7 +67,21 @@ class TestRequireRemoteDb(unittest.TestCase):
 
 
 class TestDatabaseHealthService(unittest.TestCase):
+    def setUp(self):
+        import os
+        import tempfile
+        from unittest.mock import patch
+
+        self._tmp = tempfile.TemporaryDirectory()
+        self._contact = patch(
+            "automation.health.service.CONTACT_PATH",
+            os.path.join(self._tmp.name, "db_last_contact.json"),
+        )
+        self._contact.start()
+
     def tearDown(self):
+        self._contact.stop()
+        self._tmp.cleanup()
         set_database_health_service(None)
 
     def test_disconnected_when_no_handle(self):
@@ -105,6 +119,22 @@ class TestDatabaseHealthService(unittest.TestCase):
             snap = service.snapshot(force=True)
         self.assertFalse(snap.connected)
         self.assertEqual(snap.message, DB_UNAVAILABLE_MESSAGE)
+
+    def test_last_contact_freezes_when_the_database_drops(self):
+        service = DatabaseHealthService(timeout_s=0.5, cache_ttl_s=0)
+        db = MagicMock()
+        with patch.object(service, "_db_handle", return_value=db), patch.object(
+            service, "_current_engine", return_value="PostgreSQL"
+        ):
+            service.snapshot(force=True)
+            stamped = service.last_contact_iso()
+            self.assertTrue(stamped)
+            db.execute_sql.side_effect = TimeoutError("database health probe timed out")
+            failed = service.snapshot(force=True)
+        self.assertFalse(failed.connected)
+        self.assertEqual(service.last_contact_iso(), stamped)
+        restored = DatabaseHealthService(timeout_s=0.2, cache_ttl_s=0)
+        self.assertEqual(restored.last_contact_iso(), stamped)
 
     def test_cache_avoids_repeat_ping(self):
         service = DatabaseHealthService(timeout_s=0.5, cache_ttl_s=30)

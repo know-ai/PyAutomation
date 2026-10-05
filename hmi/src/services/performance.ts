@@ -47,6 +47,7 @@ export type NodePerformanceSnapshot = {
   DB_ACTIVE_CONNECTIONS?: number | null;
   DB_CONNECTIONS_LOCAL?: number | null;
   DB_TXN_PER_MIN?: number | null;
+  DB_LAST_CONTACT_UTC?: string | null;
   DB_DISK_FREE_GB?: number | null;
   SAF_QUEUE_DEPTH?: number | null;
   SAF_REPLICATION_LAG_MS?: number | null;

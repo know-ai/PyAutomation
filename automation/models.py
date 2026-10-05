@@ -104,21 +104,23 @@ class PropertyType:
                             self.das.buffer[self.tag.get_name()]["timestamp"](timestamp)
                             self.das.buffer[self.tag.get_name()]["values"](val)
         
-        if self.value:
-            if value.value!=self.value.value:
-                if machine:
-                    if machine.sio:
-                        if name:
-                            payload = {machine.name.value: {name: value.value}}
-                            machine.sio.emit("on.machine.property", data=payload)
-                            machine.sio.emit("on.machine", data=machine.serialize())
+        changed = False
+        if self.value and value.value != self.value.value and machine and machine.sio and name:
+            changed = True
+            machine.sio.emit(
+                "on.machine.property",
+                data={machine.name.value: {name: value.value}},
+            )
 
-        if name=="machine_interval":
-            
+        if name == "machine_interval":
+            if changed:
+                machine.sio.emit("on.machine", data=machine.serialize())
             return value, f"{name} To: {value.value} s."
-        
+
         self.value = value
-        
+        if changed:
+            machine.sio.emit("on.machine", data=machine.serialize())
+
         return value, f"{name} To: {value.value}"
 
 

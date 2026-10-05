@@ -393,6 +393,16 @@ class Api(Singleton):
     @classmethod
     def get_current_user(cls):
 
+        try:
+            from flask import g, has_request_context
+
+            if has_request_context():
+                confirmed = getattr(g, "confirmed_operator", None)
+                if confirmed is not None:
+                    return confirmed
+        except Exception:
+            pass
+
         token = None
 
         if 'X-API-KEY' in request.headers:

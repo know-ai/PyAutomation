@@ -5,6 +5,8 @@ import { HistoryResults } from "../components/HistoryResults";
 import { MultiSelectSearch } from "../components/MultiSelectSearch";
 import { AreaFilter } from "../components/AreaFilter";
 import {
+  acknowledgeAlarm,
+  acknowledgeAllAlarms,
   filterAlarmsSummary,
   getAlarmSummaryComments,
   type AlarmSummary,
@@ -26,7 +28,9 @@ import {
   type ScheduledQueryContext,
 } from "../hooks/useScheduledQuery";
 import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp, type UiLocale } from "../utils/timezone";
-import { alarmStateBadgeClass } from "../utils/alarmState";
+import { alarmStateBadgeClass, isUnacknowledgedAlarm } from "../utils/alarmState";
+import { showToast } from "../utils/toast";
+import { useOperatorConfirmation } from "../components/OperatorConfirmationProvider";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
 import { useAuthz } from "../hooks/useAuthz";
 
@@ -94,6 +98,7 @@ function displayValue(value: unknown): string {
 }
 
 export function AlarmsSummary() {
+  const { confirm } = useOperatorConfirmation();
   const { t, locale } = useTranslation();
   const { canExportCsv } = useAuthz();
   const { timeZone } = useDisplayTimezone();
@@ -150,12 +155,15 @@ export function AlarmsSummary() {
     x: number;
     y: number;
     alarmId: number | undefined;
+    alarmName?: string;
+    canAcknowledge?: boolean;
   }>({
     visible: false,
     x: 0,
     y: 0,
     alarmId: undefined,
   });
+  const [acknowledging, setAcknowledging] = useState(false);
   const [selectedAlarmId, setSelectedAlarmId] = useState<number | undefined>(undefined);
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [commentMessage, setCommentMessage] = useState("");
@@ -419,7 +427,59 @@ export function AlarmsSummary() {
       x: e.clientX,
       y: e.clientY,
       alarmId: alarmId || undefined,
+      alarmName: alarm.name,
+      canAcknowledge: Boolean(alarm.name) && isUnacknowledgedAlarm(alarm.state),
     });
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu({ visible: false, x: 0, y: 0, alarmId: undefined });
+  };
+
+  const handleAcknowledgeOne = async () => {
+    const alarmName = contextMenu.alarmName;
+    closeContextMenu();
+    if (!alarmName || acknowledging) return;
+    const confirmed = await confirm({
+      method: "POST",
+      path: `/api/alarms/acknowledge/${encodeURIComponent(alarmName)}`,
+      title: t("operatorConfirm.title"),
+      detail: t("operatorConfirm.acknowledgeOne", { name: alarmName }),
+    });
+    if (!confirmed) return;
+    setAcknowledging(true);
+    try {
+      const response = await acknowledgeAlarm(alarmName, confirmed.token);
+      showToast(response?.message || t("alarms.acknowledgeOneSuccess", { name: alarmName }), "success");
+      schedule(FILTER_INSTANT_MS);
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data;
+      showToast(data?.message || t("alarms.acknowledgeOneError", { name: alarmName }), "error");
+    } finally {
+      setAcknowledging(false);
+    }
+  };
+
+  const handleAcknowledgeAll = async () => {
+    if (acknowledging) return;
+    const confirmed = await confirm({
+      method: "POST",
+      path: "/api/alarms/acknowledge_all",
+      title: t("operatorConfirm.title"),
+      detail: t("operatorConfirm.acknowledgeAll"),
+    });
+    if (!confirmed) return;
+    setAcknowledging(true);
+    try {
+      const response = await acknowledgeAllAlarms(confirmed.token);
+      showToast(response?.message || t("alarms.acknowledgeAllSuccess"), "success");
+      schedule(FILTER_INSTANT_MS);
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { message?: string } } })?.response?.data;
+      showToast(data?.message || t("alarms.acknowledgeAllError"), "error");
+    } finally {
+      setAcknowledging(false);
+    }
   };
 
   const handleAddComment = () => {
@@ -751,6 +811,16 @@ export function AlarmsSummary() {
                       </option>
                     ))}
                   </select>
+                  <Button
+                    variant="warning"
+                    className="btn-sm"
+                    onClick={() => void handleAcknowledgeAll()}
+                    disabled={acknowledging}
+                    loading={acknowledging}
+                  >
+                    <i className="bi bi-check2-all me-1"></i>
+                    {t("alarms.acknowledgeAll")}
+                  </Button>
                   {canExportCsv() && (
                     <Button
                       variant="primary"
@@ -944,6 +1014,16 @@ export function AlarmsSummary() {
                 zIndex: 1000,
               }}
             >
+              {contextMenu.canAcknowledge && (
+                <button
+                  className="dropdown-item"
+                  onClick={() => void handleAcknowledgeOne()}
+                  disabled={acknowledging}
+                >
+                  <i className="bi bi-check-circle me-2"></i>
+                  {t("alarms.acknowledgeOne")}
+                </button>
+              )}
               <button
                 className="dropdown-item"
                 onClick={handleAddComment}

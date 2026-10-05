@@ -13,6 +13,7 @@ import { socketService } from "../services/socket";
 import { tx, translateMachineClassification } from "../utils/domainI18n";
 import { criticityBadgeStyle } from "../utils/criticityBadge";
 import { useAuthz } from "../hooks/useAuthz";
+import { useOperatorConfirmation } from "../components/OperatorConfirmationProvider";
 import { actorMayConfigureMachineColumns } from "../utils/userAccount";
 import {
   DEFAULT_SUMMARY_COLUMNS,
@@ -21,6 +22,7 @@ import {
 } from "../utils/machinesSummaryColumns";
 import { useShowInfraMachines } from "../hooks/useShowInfraMachines";
 import { visibleMachineTabs } from "../utils/infraMachines";
+import { LeakLikelihoodBar } from "../components/LeakLikelihoodBar";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -55,6 +57,7 @@ function CriticityBadge({ value }: { value: number | undefined }) {
 
 export function Machines() {
   const { t } = useTranslation();
+  const { confirm } = useOperatorConfirmation();
   const { canExportCsv } = useAuthz();
   const { showInfra } = useShowInfraMachines();
   const dispatch = useAppDispatch();
@@ -282,11 +285,26 @@ export function Machines() {
   const handleConfirmTransition = async () => {
     if (!pendingTransition) return;
 
+    const target = pendingTransition.newState.trim().toLowerCase();
+    let confirmation: string | null = null;
+    if (target === "restart" || target === "restarting") {
+      const confirmed = await confirm({
+        method: "PUT",
+        path: `/api/machines/${encodeURIComponent(pendingTransition.machineName)}/transition`,
+        to: pendingTransition.newState,
+        title: t("operatorConfirm.title"),
+        detail: t("operatorConfirm.restart", { name: pendingTransition.machineName }),
+      });
+      if (!confirmed) return;
+      confirmation = confirmed.token;
+    }
+
     setUpdatingMachine(pendingTransition.machineName);
     try {
       const response = await transitionMachine(
         pendingTransition.machineName,
-        pendingTransition.newState
+        pendingTransition.newState,
+        confirmation
       );
 
       // Actualizar la máquina en el estado local
@@ -424,6 +442,7 @@ export function Machines() {
       );
     }
     if (key === "criticity") return <CriticityBadge value={machine.criticity} />;
+    if (key === "leak_likelihood") return <LeakLikelihoodBar machine={machine} />;
     if (key === "classification") {
       return machine.classification ? translateMachineClassification(t, machine.classification) : "-";
     }
