@@ -144,6 +144,7 @@ def persist_alarm_fields_local(
     off_delay=None,
     on_delay_units: str | None = None,
     off_delay_units: str | None = None,
+    priority: int | None = None,
 ) -> None:
     """Update an alarm row already present in the local mirror."""
     row = _find_by_any("alarms", identifier=identifier, name=name)
@@ -165,6 +166,7 @@ def persist_alarm_fields_local(
                     off_delay=off_delay,
                     on_delay_units=on_delay_units,
                     off_delay_units=off_delay_units,
+                    priority=priority,
                 )
             except Exception:
                 _LOGGER.debug("persist_alarm_fields_local create fallback failed", exc_info=True)
@@ -208,6 +210,8 @@ def persist_alarm_fields_local(
         payload["on_delay_units"] = on_delay_units
     if off_delay_units is not None:
         payload["off_delay_units"] = off_delay_units
+    if priority is not None:
+        payload["priority"] = priority
     _upsert("alarms", payload)
 
 

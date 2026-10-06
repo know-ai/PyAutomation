@@ -12,6 +12,10 @@ export type LeakRow = {
   flow_unit?: LeakUnit;
   location?: number | null;
   location_unit?: LeakUnit;
+  volume?: number | null;
+  volume_unit?: LeakUnit;
+  size?: number | null;
+  size_unit?: LeakUnit;
   state?: string | null;
   detection_source?: string | null;
   operation_mode?: string | null;

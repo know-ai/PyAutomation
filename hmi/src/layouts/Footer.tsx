@@ -8,6 +8,7 @@ import { showToast } from "../utils/toast";
 import { useDisplayTimezone } from "../hooks/useDisplayTimezone";
 import { useTranslation } from "../hooks/useTranslation";
 import { useOperatorConfirmation } from "../components/OperatorConfirmationProvider";
+import { useAlarmAudio } from "../components/AlarmAudioProvider";
 import { formatTimestamp } from "../utils/timezone";
 import { isSystemUser } from "../utils/systemUser";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
@@ -35,6 +36,8 @@ function clampMenuPosition(clientX: number, clientY: number): { x: number; y: nu
 export function Footer() {
   const { t } = useTranslation();
   const { confirm } = useOperatorConfirmation();
+  const { profile, sessionMuted, toggleSessionMute } = useAlarmAudio();
+  const audioMuted = sessionMuted || profile.muted;
   const navigate = useNavigate();
   const user = useAppSelector((s) => s.auth.user);
   const preview = useAppSelector(selectActiveAlarmsPreview);
@@ -255,7 +258,21 @@ export function Footer() {
       <table className="table table-sm table-borderless mb-0 footer-alarms-table">
         <thead>
           <tr>
-            <th>{t("tables.name")}</th>
+            <th>
+              <span className="d-flex justify-content-between align-items-center gap-2">
+                {t("tables.name")}
+                <button
+                  type="button"
+                  className="btn btn-link btn-sm p-0"
+                  aria-pressed={audioMuted}
+                  title={profile.muted ? t("alarmAudio.muted") : audioMuted ? t("alarmAudio.unmute") : t("alarmAudio.mute")}
+                  disabled={profile.muted}
+                  onClick={toggleSessionMute}
+                >
+                  <i className={`bi ${audioMuted ? "bi-volume-mute" : "bi-volume-up"}`} aria-hidden="true" />
+                </button>
+              </span>
+            </th>
             <th>{t("tables.type")}</th>
             <th>{t("tables.state")}</th>
             <th>{t("tables.triggerValue")}</th>

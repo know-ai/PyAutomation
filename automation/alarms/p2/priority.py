@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .clock import SystemClock
-from .constants import _PRIORITY_DEFAULT, _PRIORITY_MAX, _PRIORITY_MIN
+from .constants import _PRIORITY_MAX, _PRIORITY_MIN, alarm_priority_or_default, coerce_alarm_priority
 from .events import MemoryEventLogger
 from .repository import MemoryAlarmRepository
 
@@ -23,21 +23,20 @@ class PriorityManager:
 
     def set_priority(self, alarm_id, p: int, op_id: int = 0, reason: str = "") -> None:
         """Context: API. Complexity: O(1)."""
-        if not _PRIORITY_MIN <= int(p) <= _PRIORITY_MAX:
-            raise ValueError(f"priority {p} out of range [{_PRIORITY_MIN}, {_PRIORITY_MAX}]")
+        p = coerce_alarm_priority(p)
         with self._repo.transaction():
             old = self._repo.get_priority(alarm_id)
-            self._repo.set_priority(alarm_id, int(p))
+            self._repo.set_priority(alarm_id, p)
             if self._distribution.get(old, 0) > 0:
                 self._distribution[old] -= 1
-            self._distribution[int(p)] = self._distribution.get(int(p), 0) + 1
+            self._distribution[p] = self._distribution.get(p, 0) + 1
             self._events.log(
                 name="ALM.PRIORITY.CHANGED",
                 alarm_id=alarm_id,
                 user_id=op_id,
                 reason=reason,
                 from_priority=old,
-                to_priority=int(p),
+                to_priority=p,
                 timestamp=self._clock.now(),
             )
 
@@ -47,7 +46,6 @@ class PriorityManager:
 
     def hydrate(self, alarm_id, p: int) -> None:
         """Context: BG. Complexity: O(1). Load catalog into counters."""
-        p = int(p) if p is not None else _PRIORITY_DEFAULT
-        p = min(_PRIORITY_MAX, max(_PRIORITY_MIN, p))
+        p = alarm_priority_or_default(p)
         self._repo.set_priority(alarm_id, p)
         self._distribution[p] = self._distribution.get(p, 0) + 1

@@ -5,8 +5,6 @@ import { HistoryResults } from "../components/HistoryResults";
 import { MultiSelectSearch } from "../components/MultiSelectSearch";
 import { AreaFilter } from "../components/AreaFilter";
 import {
-  acknowledgeAlarm,
-  acknowledgeAllAlarms,
   filterAlarmsSummary,
   getAlarmSummaryComments,
   type AlarmSummary,
@@ -28,9 +26,8 @@ import {
   type ScheduledQueryContext,
 } from "../hooks/useScheduledQuery";
 import { formatDateTimeLocalForBackend, formatDateTimeLocalInput, formatOperatorTimestamp, type UiLocale } from "../utils/timezone";
-import { alarmStateBadgeClass, isUnacknowledgedAlarm } from "../utils/alarmState";
+import { alarmStateBadgeClass } from "../utils/alarmState";
 import { showToast } from "../utils/toast";
-import { useOperatorConfirmation } from "../components/OperatorConfirmationProvider";
 import { translateAlarmDescription } from "../utils/alarmCatalog";
 import { useAuthz } from "../hooks/useAuthz";
 
@@ -98,7 +95,6 @@ function displayValue(value: unknown): string {
 }
 
 export function AlarmsSummary() {
-  const { confirm } = useOperatorConfirmation();
   const { t, locale } = useTranslation();
   const { canExportCsv } = useAuthz();
   const { timeZone } = useDisplayTimezone();
@@ -155,15 +151,12 @@ export function AlarmsSummary() {
     x: number;
     y: number;
     alarmId: number | undefined;
-    alarmName?: string;
-    canAcknowledge?: boolean;
   }>({
     visible: false,
     x: 0,
     y: 0,
     alarmId: undefined,
   });
-  const [acknowledging, setAcknowledging] = useState(false);
   const [selectedAlarmId, setSelectedAlarmId] = useState<number | undefined>(undefined);
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [commentMessage, setCommentMessage] = useState("");
@@ -268,45 +261,63 @@ export function AlarmsSummary() {
     setFilters((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
   };
 
+  const addOneSecond = (dateTimeLocal: string): string => {
+    const normalized = dateTimeLocal.length === 16 ? `${dateTimeLocal}:00` : dateTimeLocal;
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return dateTimeLocal;
+    date.setSeconds(date.getSeconds() + 1);
+    return formatToLocalDateTime(date);
+  };
+
+  const buildSummaryFilter = (): AlarmSummaryFilter => {
+    const payload: AlarmSummaryFilter = {
+      ...filters,
+    };
+    const queryWindow = resolveQueryWindow();
+    if (selectedStates.length > 0) {
+      payload.states = selectedStates;
+    }
+    if (queryWindow.start) {
+      payload.greater_than_timestamp = formatDateTimeForBackend(queryWindow.start);
+    }
+    if (queryWindow.end) {
+      payload.less_than_timestamp = formatDateTimeForBackend(addOneSecond(queryWindow.end));
+    }
+    if (timeZone) {
+      payload.timezone = timeZone;
+    }
+    if (selectedArea) {
+      payload.area = selectedArea;
+    }
+    const trimmedSearch = debouncedSearchTerm.trim();
+    if (trimmedSearch) {
+      payload.q = trimmedSearch;
+    }
+    return payload;
+  };
+
+  const applySummaryResponse = (response: AlarmSummaryResponse, commentedId?: number) => {
+    const rows = (response.data || []).map((alarm) => {
+      const id = typeof alarm.id === "string" ? Number(alarm.id) : alarm.id;
+      return commentedId != null && id === commentedId ? { ...alarm, has_comments: true } : alarm;
+    });
+    setAlarmsSummary(rows);
+    setPagination({
+      page: response.pagination?.page || 1,
+      limit: response.pagination?.limit || 20,
+      total: response.pagination?.total_records || 0,
+      pages: response.pagination?.total_pages || 0,
+    });
+    setHasLoaded(true);
+  };
+
   const loadAlarmsSummary = async ({ signal, generation }: ScheduledQueryContext) => {
     setLoading(true);
     setError(null);
     try {
-      const payload: AlarmSummaryFilter = {
-        ...filters,
-      };
-      const queryWindow = resolveQueryWindow();
-
-      if (selectedStates.length > 0) {
-        payload.states = selectedStates;
-      }
-      if (queryWindow.start) {
-        payload.greater_than_timestamp = formatDateTimeForBackend(queryWindow.start);
-      }
-      if (queryWindow.end) {
-        payload.less_than_timestamp = formatDateTimeForBackend(queryWindow.end);
-      }
-      if (timeZone) {
-        payload.timezone = timeZone;
-      }
-      if (selectedArea) {
-        payload.area = selectedArea;
-      }
-      const trimmedSearch = debouncedSearchTerm.trim();
-      if (trimmedSearch) {
-        payload.q = trimmedSearch;
-      }
-
-      const response: AlarmSummaryResponse = await filterAlarmsSummary(payload, { signal });
+      const response: AlarmSummaryResponse = await filterAlarmsSummary(buildSummaryFilter(), { signal });
       if (!isCurrent(generation, signal)) return;
-      setAlarmsSummary(response.data || []);
-      setPagination({
-        page: response.pagination?.page || 1,
-        limit: response.pagination?.limit || 20,
-        total: response.pagination?.total_records || 0,
-        pages: response.pagination?.total_pages || 0,
-      });
-      setHasLoaded(true);
+      applySummaryResponse(response);
     } catch (e: any) {
       if (isRequestCanceled(e) || !isCurrent(generation, signal)) return;
       if (isDbUnavailableError(e)) {
@@ -427,59 +438,11 @@ export function AlarmsSummary() {
       x: e.clientX,
       y: e.clientY,
       alarmId: alarmId || undefined,
-      alarmName: alarm.name,
-      canAcknowledge: Boolean(alarm.name) && isUnacknowledgedAlarm(alarm.state),
     });
   };
 
   const closeContextMenu = () => {
     setContextMenu({ visible: false, x: 0, y: 0, alarmId: undefined });
-  };
-
-  const handleAcknowledgeOne = async () => {
-    const alarmName = contextMenu.alarmName;
-    closeContextMenu();
-    if (!alarmName || acknowledging) return;
-    const confirmed = await confirm({
-      method: "POST",
-      path: `/api/alarms/acknowledge/${encodeURIComponent(alarmName)}`,
-      title: t("operatorConfirm.title"),
-      detail: t("operatorConfirm.acknowledgeOne", { name: alarmName }),
-    });
-    if (!confirmed) return;
-    setAcknowledging(true);
-    try {
-      const response = await acknowledgeAlarm(alarmName, confirmed.token);
-      showToast(response?.message || t("alarms.acknowledgeOneSuccess", { name: alarmName }), "success");
-      schedule(FILTER_INSTANT_MS);
-    } catch (err: unknown) {
-      const data = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data;
-      showToast(data?.message || t("alarms.acknowledgeOneError", { name: alarmName }), "error");
-    } finally {
-      setAcknowledging(false);
-    }
-  };
-
-  const handleAcknowledgeAll = async () => {
-    if (acknowledging) return;
-    const confirmed = await confirm({
-      method: "POST",
-      path: "/api/alarms/acknowledge_all",
-      title: t("operatorConfirm.title"),
-      detail: t("operatorConfirm.acknowledgeAll"),
-    });
-    if (!confirmed) return;
-    setAcknowledging(true);
-    try {
-      const response = await acknowledgeAllAlarms(confirmed.token);
-      showToast(response?.message || t("alarms.acknowledgeAllSuccess"), "success");
-      schedule(FILTER_INSTANT_MS);
-    } catch (err: unknown) {
-      const data = (err as { response?: { data?: { message?: string } } })?.response?.data;
-      showToast(data?.message || t("alarms.acknowledgeAllError"), "error");
-    } finally {
-      setAcknowledging(false);
-    }
   };
 
   const handleAddComment = () => {
@@ -498,15 +461,40 @@ export function AlarmsSummary() {
 
     setAddingComment(true);
     setError(null);
+    const commentedId = selectedAlarmId;
     try {
       await createLog({
         message: commentMessage.trim(),
-        alarm_summary_id: selectedAlarmId,
+        alarm_summary_id: commentedId,
       });
       setCommentMessage("");
       setShowCommentModal(false);
       setSelectedAlarmId(undefined);
-      schedule(FILTER_INSTANT_MS);
+      try {
+        const response = await filterAlarmsSummary(buildSummaryFilter());
+        applySummaryResponse(response, commentedId);
+      } catch {
+        setAlarmsSummary((rows) =>
+          rows.map((alarm) => {
+            const id = typeof alarm.id === "string" ? Number(alarm.id) : alarm.id;
+            return id === commentedId ? { ...alarm, has_comments: true } : alarm;
+          })
+        );
+      }
+      const openId =
+        selectedAlarmForComments?.id == null
+          ? undefined
+          : typeof selectedAlarmForComments.id === "string"
+            ? Number(selectedAlarmForComments.id)
+            : selectedAlarmForComments.id;
+      if (showCommentsModal && openId === commentedId) {
+        try {
+          const commentsData = await getAlarmSummaryComments(commentedId);
+          setComments(commentsData || []);
+        } catch {
+          /* the row already shows that the comment was stored */
+        }
+      }
     } catch (e: any) {
       const data = e?.response?.data;
       const backendMessage =
@@ -811,16 +799,6 @@ export function AlarmsSummary() {
                       </option>
                     ))}
                   </select>
-                  <Button
-                    variant="warning"
-                    className="btn-sm"
-                    onClick={() => void handleAcknowledgeAll()}
-                    disabled={acknowledging}
-                    loading={acknowledging}
-                  >
-                    <i className="bi bi-check2-all me-1"></i>
-                    {t("alarms.acknowledgeAll")}
-                  </Button>
                   {canExportCsv() && (
                     <Button
                       variant="primary"
@@ -1014,16 +992,6 @@ export function AlarmsSummary() {
                 zIndex: 1000,
               }}
             >
-              {contextMenu.canAcknowledge && (
-                <button
-                  className="dropdown-item"
-                  onClick={() => void handleAcknowledgeOne()}
-                  disabled={acknowledging}
-                >
-                  <i className="bi bi-check-circle me-2"></i>
-                  {t("alarms.acknowledgeOne")}
-                </button>
-              )}
               <button
                 className="dropdown-item"
                 onClick={handleAddComment}

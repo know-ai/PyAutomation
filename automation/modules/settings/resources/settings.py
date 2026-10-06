@@ -11,6 +11,7 @@ from ..operator_confirmation import (
     load_operator_confirmation,
     save_operator_confirmation,
 )
+from ..alarm_audio import load_alarm_audio, save_alarm_audio
 from ..workspace import load_realtime_trends_workspace, save_realtime_trends_workspace
 import json
 
@@ -199,6 +200,49 @@ class OperatorConfirmationResource(Resource):
             record_configuration_event(
                 message="Operator confirmation updated",
                 description=f"enabled:{bool(before.get('enabled'))}->{enabled}",
+                user=Api.get_current_user(),
+            )
+        return saved, 200
+
+
+alarm_audio_model = api.model("alarm_audio_model", {
+    "muted": fields.Boolean(required=False),
+    "profiles": fields.List(fields.Raw(), required=True),
+})
+
+
+@ns.route("/alarm-audio")
+class AlarmAudioResource(Resource):
+
+    @api.doc(security="apikey", description="Alarm beep profile by priority. Default catalog tones.")
+    @api.response(200, "Profile retrieved")
+    @Api.token_required(auth=True)
+    def get(self):
+        try:
+            return load_alarm_audio(), 200
+        except Exception as exc:
+            return {"message": f"Failed to retrieve alarm audio: {exc}"}, 500
+
+    @api.doc(security="apikey", description="Saves the beep and repeat interval of each alarm priority.")
+    @api.response(200, "Profile saved")
+    @api.response(400, "Invalid profile")
+    @Api.token_required(auth=True)
+    @ns.expect(alarm_audio_model)
+    def put(self):
+        data = api.payload or {}
+        try:
+            before = load_alarm_audio()
+            saved = save_alarm_audio(data)
+        except ValueError as exc:
+            return {"message": str(exc)}, 400
+        except OSError as exc:
+            return {"message": f"Failed to persist alarm audio: {exc}"}, 500
+        if before.get("profiles") != saved.get("profiles") or bool(before.get("muted")) != bool(saved.get("muted")):
+            from ....utils.config_audit import record_configuration_event
+
+            record_configuration_event(
+                message="Alarm audio updated",
+                description="priority beep profile changed",
                 user=Api.get_current_user(),
             )
         return saved, 200

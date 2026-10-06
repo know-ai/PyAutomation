@@ -103,8 +103,13 @@ class LogsLogger(BaseLogger):
             return list()
         
         return Logs.read_lasts(lasts=lasts, area=area)
-        
-    
+
+    @db_rollback
+    def distinct_notebook_areas(self) -> list[str]:
+        if not self.check_connectivity():
+            return []
+        return Logs.distinct_notebook_areas()
+
     @db_rollback
     def filter_by(
         self,
@@ -243,6 +248,15 @@ class LogsLoggerEngine(BaseEngine):
         _query["parameters"]["lasts"] = lasts
         _query["parameters"]["area"] = area
         
+        return self.query(_query)
+
+    def distinct_notebook_areas(self):
+        r"""
+        Thread-safe list of areas already used on operator notes.
+        """
+        _query = dict()
+        _query["action"] = "distinct_notebook_areas"
+        _query["parameters"] = dict()
         return self.query(_query)
     
     def filter_by(

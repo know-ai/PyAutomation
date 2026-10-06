@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ..utils.operational_log_audit import (
@@ -51,19 +52,49 @@ class TestCreateLogJournalsWhenHistorianIsDown(unittest.TestCase):
         envelope.serialize.return_value = {"journaled": True, "message": "nota"}
         app = core_mod.PyAutomation()
         app.sio = MagicMock()
-        with patch.object(app, "is_db_connected", return_value=False):
-            with patch.object(
-                app.logs_engine,
-                "create",
-                return_value=(envelope, "journaled"),
-            ) as create:
-                log, status = app.create_log(message="Relevo OK", user=user)
+        scope = SimpleNamespace(enabled=False, is_valid=True, area=None)
+        with patch.object(app, "_refresh_node_scope", return_value=scope):
+            with patch.object(app, "is_db_connected", return_value=False):
+                with patch.object(
+                    app.logs_engine,
+                    "create",
+                    return_value=(envelope, "journaled"),
+                ) as create:
+                    log, status = app.create_log(message="Relevo OK", user=user)
 
         create.assert_called_once()
         self.assertEqual(log, envelope)
         self.assertEqual(status, "journaled")
         app.sio.emit.assert_called_once()
         self.assertEqual(app.sio.emit.call_args.args[0], "on.log")
+
+    def test_explicit_area_is_kept_for_the_logbook(self):
+        from .. import core as core_mod
+
+        user = MagicMock()
+        user.username = "operator1"
+        app = core_mod.PyAutomation()
+        app.sio = None
+        scope = SimpleNamespace(enabled=True, is_valid=True, area="Linea1")
+        with patch.object(app, "_refresh_node_scope", return_value=scope):
+            with patch.object(app.logs_engine, "create", return_value=(MagicMock(), "ok")) as create:
+                app.create_log(message="Relevo", user=user, area="Turno noche")
+
+        self.assertEqual(create.call_args.kwargs["area"], "Turno noche")
+
+    def test_blank_area_still_uses_the_node_area(self):
+        from .. import core as core_mod
+
+        user = MagicMock()
+        user.username = "operator1"
+        app = core_mod.PyAutomation()
+        app.sio = None
+        scope = SimpleNamespace(enabled=True, is_valid=True, area="Linea1")
+        with patch.object(app, "_refresh_node_scope", return_value=scope):
+            with patch.object(app.logs_engine, "create", return_value=(MagicMock(), "ok")) as create:
+                app.create_log(message="Relevo", user=user, area="")
+
+        self.assertEqual(create.call_args.kwargs["area"], "Linea1")
 
     def test_logger_journals_when_connectivity_fails(self):
         from ..logger.logs import LogsLogger

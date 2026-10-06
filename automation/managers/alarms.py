@@ -101,6 +101,12 @@ class AlarmManager(Singleton):
     def alarm_count(self) -> int:
         return len(self.get_alarms())
 
+    def audible_cues(self, limit: int = 1000) -> list:
+        """Strictly unacknowledged alarms as id/priority pairs. Not the catalog."""
+        from ..alarms.audio_profile import cues_from_alarms
+
+        return cues_from_alarms(self._alarms.values(), limit=limit)
+
     def prune_not_owned(self, scope) -> list[str]:
         """Remove foreign alarms from local indexes only."""
         removed = []
@@ -141,6 +147,7 @@ class AlarmManager(Singleton):
             off_delay:float=None,
             on_delay_units:str=None,
             off_delay_units:str=None,
+            priority:int=None,
         )->tuple[Alarm, str]:
         r"""
         Creates and registers a new alarm in the manager.
@@ -205,6 +212,7 @@ class AlarmManager(Singleton):
             alarm_off_delay=FloatType(clamp_alarm_delay(off_delay)),
             on_delay_units=normalize_delay_units(on_delay_units),
             off_delay_units=normalize_delay_units(off_delay_units),
+            priority=priority,
         )
         alarm.set_socketio(sio=sio)
         self._alarms[alarm.identifier] = alarm
@@ -226,6 +234,7 @@ class AlarmManager(Singleton):
             off_delay:float=None,
             on_delay_units:str=None,
             off_delay_units:str=None,
+            priority:int=None,
             )->tuple[Alarm, str]:
         r"""
         Updates an existing alarm configuration.
@@ -299,6 +308,7 @@ class AlarmManager(Singleton):
             off_delay=off_delay,
             on_delay_units=on_delay_units,
             off_delay_units=off_delay_units,
+            priority=priority,
             )
         self._alarms[id] = alarm
         self._index_alarm(alarm)

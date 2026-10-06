@@ -57,12 +57,10 @@ def apply_alarm_runtime_fields(alarm, payload: dict) -> None:
         alarm.last_transition_from = payload["last_transition_from"]
     if payload.get("last_transition_to") is not None:
         alarm.last_transition_to = payload["last_transition_to"]
-    priority = payload.get("priority")
-    if priority is not None:
-        try:
-            alarm.priority = int(priority)
-        except (TypeError, ValueError):
-            pass
+    if "priority" in payload:
+        from ..alarms.p2.constants import alarm_priority_or_default
+
+        alarm.priority = alarm_priority_or_default(payload.get("priority"))
     if payload.get("latching") is not None:
         alarm.latching = bool(payload["latching"])
     if payload.get("ack_required") is not None:
@@ -253,6 +251,7 @@ def local_alarm_payloads() -> list[dict]:
                 "off_delay": row.get("off_delay"),
                 "on_delay_units": row.get("on_delay_units"),
                 "off_delay_units": row.get("off_delay_units"),
+                "priority": row.get("priority"),
             }
         )
     return payloads

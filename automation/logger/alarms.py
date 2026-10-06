@@ -79,7 +79,8 @@ class AlarmsLogger(BaseLogger):
             on_delay:float=None,
             off_delay:float=None,
             on_delay_units:str=None,
-            off_delay_units:str=None):
+            off_delay_units:str=None,
+            priority:int=None):
         r"""
         Creates a new Alarm definition in the database.
 
@@ -108,6 +109,7 @@ class AlarmsLogger(BaseLogger):
             off_delay=off_delay,
             on_delay_units=on_delay_units,
             off_delay_units=off_delay_units,
+            priority=priority,
         )
         try:
             from ..catalog.bootstrap import mirror_historian_row
@@ -251,6 +253,7 @@ class AlarmsLogger(BaseLogger):
         off_delay:float=None,
         on_delay_units:str=None,
         off_delay_units:str=None,
+        priority:int=None,
         ):
         r"""
         Updates an existing alarm definition.
@@ -299,6 +302,10 @@ class AlarmsLogger(BaseLogger):
                 fields["on_delay_units"] = on_delay_units
             if off_delay_units is not None:
                 fields["off_delay_units"] = off_delay_units
+            if priority is not None:
+                from ..alarms.p2.constants import coerce_alarm_priority
+
+                fields["priority"] = coerce_alarm_priority(priority)
             query = Alarms.put(
                 id=alarm.id,
                 **fields
@@ -665,6 +672,7 @@ class AlarmsLoggerEngine(BaseEngine):
         off_delay:float=None,
         on_delay_units:str=None,
         off_delay_units:str=None,
+        priority:int=None,
         ):
         r"""
         Thread-safe alarm creation.
@@ -683,7 +691,8 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["off_delay"] = off_delay
         _query["parameters"]["on_delay_units"] = on_delay_units
         _query["parameters"]["off_delay_units"] = off_delay_units
-        
+        _query["parameters"]["priority"] = priority
+
         return self.query(_query)
     
     def get_lasts(
@@ -817,6 +826,7 @@ class AlarmsLoggerEngine(BaseEngine):
         off_delay:float=None,
         on_delay_units:str=None,
         off_delay_units:str=None,
+        priority:int=None,
         ):
         r"""
         Thread-safe alarm update.
@@ -835,6 +845,7 @@ class AlarmsLoggerEngine(BaseEngine):
         _query["parameters"]["off_delay"] = off_delay
         _query["parameters"]["on_delay_units"] = on_delay_units
         _query["parameters"]["off_delay_units"] = off_delay_units
+        _query["parameters"]["priority"] = priority
 
         return self.query(_query)
 

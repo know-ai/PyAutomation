@@ -16,7 +16,28 @@ _MAX_KPI_ACK_LATENCIES = 1_000
 _MAX_PRIORITY_KEYS = 4
 _PRIORITY_MIN = 1
 _PRIORITY_MAX = 4
-_PRIORITY_DEFAULT = 3
+_PRIORITY_DEFAULT = 4
+
+
+def coerce_alarm_priority(value, default: int = _PRIORITY_DEFAULT) -> int:
+    """ISA-18.2 alarm priority: 1 (most urgent) through 4. None uses the default."""
+    if value is None or value == "":
+        return default
+    try:
+        number = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"priority {value!r} is not an integer") from exc
+    if not _PRIORITY_MIN <= number <= _PRIORITY_MAX:
+        raise ValueError(f"priority {number} out of range [{_PRIORITY_MIN}, {_PRIORITY_MAX}]")
+    return number
+
+
+def alarm_priority_or_default(value, default: int = _PRIORITY_DEFAULT) -> int:
+    """Same scale as ``coerce_alarm_priority``, but a bad value falls back to the default."""
+    try:
+        return coerce_alarm_priority(value, default=default)
+    except ValueError:
+        return default
 _SUPPRESSION_CACHE_MAX = 2_000
 _SUPPRESSION_TTL_S = 60.0
 _SILENCE_MAX_MIN = 30

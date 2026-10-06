@@ -591,6 +591,7 @@ class Machine(Singleton):
                         trigger_value=trigger_value,
                         description=description,
                         area=alarm_area,
+                        priority=payload.get("priority"),
                     )
                 elif alarm is not None:
                     try:

@@ -88,6 +88,7 @@ export function Alarms() {
     display_name: "",
     on_delay: "0",
     off_delay: "0",
+    priority: "4",
   });
   const [nodeIdentity, setNodeIdentity] = useState<NodeIdentity>({
     nodeId: "",
@@ -156,6 +157,7 @@ export function Alarms() {
     display_name: "",
     on_delay: "0",
     off_delay: "0",
+    priority: "4",
   };
 
   const syncDerivedFields = (nextTagName: string, nextType: string) => {
@@ -708,6 +710,15 @@ export function Alarms() {
       if (nextOffDelay !== originalOffDelay) {
         payload.off_delay = nextOffDelay;
       }
+      const originalPriority = Number(original.priority ?? 4);
+      const nextPriority = Number(formData.priority);
+      if (
+        nextPriority !== originalPriority &&
+        nextPriority >= 1 &&
+        nextPriority <= 4
+      ) {
+        payload.priority = nextPriority;
+      }
 
       // Si no hay campos para actualizar, mostrar error
       const fieldsToUpdate = Object.keys(payload).filter(key => key !== 'id');
@@ -717,7 +728,8 @@ export function Alarms() {
         return;
       }
 
-      await updateAlarm(payload);
+      const response = await updateAlarm(payload);
+      showToast(response?.message || t("alarms.updateSuccess"), "success");
       
       // Cerrar modal y resetear formulario
       setShowEditModal(false);
@@ -736,6 +748,7 @@ export function Alarms() {
       const errorMsg =
         backendMessage || e?.message || t("alarms.updateError");
       setError(errorMsg);
+      showToast(errorMsg, "error");
     } finally {
       setUpdating(false);
     }
@@ -798,6 +811,8 @@ export function Alarms() {
       };
       payload.on_delay = parseDelay(formData.on_delay);
       payload.off_delay = parseDelay(formData.off_delay);
+      const nextPriority = Number(formData.priority);
+      payload.priority = nextPriority >= 1 && nextPriority <= 4 ? nextPriority : 4;
 
       const response = await createAlarm(payload);
       const responseMessage =
@@ -1269,6 +1284,23 @@ export function Alarms() {
                         )}
                       </div>
                       <div className="col-md-6">
+                        <label className="form-label">{t("alarms.priority")}</label>
+                        <select
+                          className="form-select"
+                          value={formData.priority}
+                          onChange={(e) =>
+                            setFormData({ ...formData, priority: e.target.value })
+                          }
+                        >
+                          {[1, 2, 3, 4].map((level) => (
+                            <option key={level} value={String(level)}>
+                              {t("alarms.priorityOption", { priority: level })}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="form-text">{t("alarms.priorityHint")}</div>
+                      </div>
+                      <div className="col-md-6">
                         <label className="form-label" title={t("alarms.onDelayTooltip")}>
                           {t("alarms.onDelay")}
                         </label>
@@ -1470,6 +1502,23 @@ export function Alarms() {
                             placeholder={t("alarms.enterTriggerValue")}
                           />
                         )}
+                      </div>
+                      <div className="col-md-6">
+                        <label className="form-label">{t("alarms.priority")}</label>
+                        <select
+                          className="form-select"
+                          value={formData.priority}
+                          onChange={(e) =>
+                            setFormData({ ...formData, priority: e.target.value })
+                          }
+                        >
+                          {[1, 2, 3, 4].map((level) => (
+                            <option key={level} value={String(level)}>
+                              {t("alarms.priorityOption", { priority: level })}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="form-text">{t("alarms.priorityHint")}</div>
                       </div>
                       <div className="col-md-6">
                         <label className="form-label" title={t("alarms.onDelayTooltip")}>

@@ -135,10 +135,12 @@ class TestAlarmDelays(unittest.TestCase):
         self.assertIn("on_timer_remaining", payload)
         self.assertIn("off_timer_remaining", payload)
         self.assertIn("delay_phase", payload)
-        alarm.put(on_delay=8.0, off_delay=1.0)
+        self.assertEqual(payload["priority"], 4)
+        alarm.put(on_delay=8.0, off_delay=1.0, priority=1)
         updated = alarm.serialize()
         self.assertEqual(updated["on_delay"], 8.0)
         self.assertEqual(updated["off_delay"], 1.0)
+        self.assertEqual(updated["priority"], 1)
 
     def test_default_delay_is_zero_seconds(self):
         cvt.set_tag(

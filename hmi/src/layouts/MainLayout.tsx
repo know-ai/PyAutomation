@@ -13,6 +13,8 @@ import { useMemoryWatchdog } from "../hooks/useMemoryWatchdog";
 import { socketService } from "../services/socket";
 import { DatabaseStatusProvider } from "../hooks/useDatabaseStatus";
 import { OperatorConfirmationProvider } from "../components/OperatorConfirmationProvider";
+import { bindDraggableModals } from "../components/draggableModals";
+import { AlarmAudioProvider } from "../components/AlarmAudioProvider";
 import { DatabaseUnavailableOverlay } from "../components/DatabaseUnavailableOverlay";
 import { DegradedModeBanner } from "../components/DegradedModeBanner";
 import { SocketConnectivityBanner } from "../components/SocketConnectivityBanner";
@@ -66,6 +68,8 @@ export function MainLayout({ children }: PropsWithChildren) {
     closeSidebarOnMobile();
   }, [location.pathname]);
 
+  useEffect(() => bindDraggableModals(document), []);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -78,6 +82,7 @@ export function MainLayout({ children }: PropsWithChildren) {
 
   return (
     <OperatorConfirmationProvider>
+    <AlarmAudioProvider>
     <DatabaseStatusProvider>
     <div className="app-wrapper">
       <Header />
@@ -102,6 +107,7 @@ export function MainLayout({ children }: PropsWithChildren) {
       />
     </div>
     </DatabaseStatusProvider>
+    </AlarmAudioProvider>
     </OperatorConfirmationProvider>
   );
 }

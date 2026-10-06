@@ -117,6 +117,7 @@ class Alarm(StateMachine):
             reload:bool=False,
             on_delay_units:str=DEFAULT_ALARM_DELAY_UNITS,
             off_delay_units:str=DEFAULT_ALARM_DELAY_UNITS,
+            priority:int|None=None,
         ):
         r"""
         Initializes the Alarm.
@@ -152,7 +153,9 @@ class Alarm(StateMachine):
         self.alarm_off_delay = FloatType(clamp_alarm_delay(alarm_off_delay))
         self.on_delay_units = normalize_delay_units(on_delay_units)
         self.off_delay_units = normalize_delay_units(off_delay_units)
-        self.priority = 3
+        from .p2.constants import alarm_priority_or_default
+
+        self.priority = alarm_priority_or_default(priority)
         self.latching = True
         self.ack_required = True
         self.chattering = False
@@ -247,6 +250,7 @@ class Alarm(StateMachine):
             "off_delay": self._off_delay_s(),
             "on_delay_units": self.on_delay_units,
             "off_delay_units": self.off_delay_units,
+            "priority": int(self.priority),
         }
 
     def _current_condition_value(self):
@@ -1092,7 +1096,8 @@ class Alarm(StateMachine):
             on_delay:float=None,
             off_delay:float=None,
             on_delay_units:str=None,
-            off_delay_units:str=None):
+            off_delay_units:str=None,
+            priority:int=None):
         r"""
         Updates the alarm configuration.
 
@@ -1162,6 +1167,11 @@ class Alarm(StateMachine):
             self.on_delay_units = normalize_delay_units(on_delay_units)
         if off_delay_units is not None:
             self.off_delay_units = normalize_delay_units(off_delay_units)
+        if priority is not None:
+            from .p2.constants import coerce_alarm_priority
+
+            self.priority = coerce_alarm_priority(priority)
+            message += f" priority: {self.priority}"
         if delay_changed:
             self._reset_delay_timers()
             try:
@@ -1365,6 +1375,7 @@ class Alarm(StateMachine):
             "off_delay": self._off_delay_s(),
             "on_delay_units": self.on_delay_units,
             "off_delay_units": self.off_delay_units,
+            "priority": int(self.priority),
             "condition_met": bool(self._condition_met),
             "on_timer_remaining": self._timer_remaining(self._on_timer_start, self._on_delay_s())
             if self._delay_phase() == "pending"

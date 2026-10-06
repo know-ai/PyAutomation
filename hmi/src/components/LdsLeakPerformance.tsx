@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Card } from "./Card";
 import { Button } from "./Button";
 import { useTranslation } from "../hooks/useTranslation";
@@ -94,7 +95,9 @@ function metersFactor(unit: LeakUnit): number | null {
 }
 
 function locationErrorMeters(estimated: number | null | undefined, unit: LeakUnit, reportedRaw: string): number | null {
-  const reported = Number(reportedRaw.trim());
+  const trimmed = reportedRaw.trim();
+  if (!trimmed) return null;
+  const reported = Number(trimmed);
   if (estimated == null || !Number.isFinite(Number(estimated)) || !Number.isFinite(reported)) return null;
   const factor = metersFactor(unit);
   if (factor == null) return null;
@@ -207,9 +210,10 @@ export function LdsLeakPerformance() {
   const pages = Math.max(1, list?.pagination?.pages ?? 1);
   const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = total === 0 ? 0 : Math.min(page * PAGE_SIZE, total);
-  const draftLocationError = draft
-    ? locationErrorMeters(draft.estimatedLocation, draft.estimatedUnit, location)
-    : null;
+  const draftLocationError =
+    draft?.isLeak
+      ? locationErrorMeters(draft.estimatedLocation, draft.estimatedUnit, location)
+      : null;
 
   const openDraft = (row: LeakRow, isLeak: boolean) => {
     setDraft({
@@ -253,9 +257,13 @@ export function LdsLeakPerformance() {
         id,
         {
           is_leak: isLeak,
-          size: optionalNumber(size),
-          volume: optionalNumber(volume),
-          location: optionalNumber(location),
+          ...(isLeak
+            ? {
+                size: optionalNumber(size),
+                volume: optionalNumber(volume),
+                location: optionalNumber(location),
+              }
+            : {}),
         },
         confirmed.token
       );
@@ -294,7 +302,6 @@ export function LdsLeakPerformance() {
         </div>
       }
     >
-      <p className="text-muted small mb-3">{t("machines.ldsPerformanceLede")}</p>
       {error && (
         <div className="alert alert-warning py-2" role="alert">
           {error}
@@ -316,7 +323,6 @@ export function LdsLeakPerformance() {
         <Stat
           label={t("machines.ldsLocationAccuracy")}
           value={formatMeters(metrics?.mean_location_error_m, locale)}
-          hint={t("machines.ldsLocationAccuracyHint")}
         />
       </div>
       {judgedRate != null && (
@@ -358,7 +364,8 @@ export function LdsLeakPerformance() {
             <thead>
               <tr>
                 <th>{t("machines.ldsWhen")}</th>
-                <th>{t("machines.ldsMode")}</th>
+                <th>{t("machines.ldsSize")}</th>
+                <th>{t("machines.ldsVolume")}</th>
                 <th>{t("machines.ldsFlow")}</th>
                 <th>{t("machines.ldsLocation")}</th>
                 <th>{t("machines.ldsStatus")}</th>
@@ -370,7 +377,8 @@ export function LdsLeakPerformance() {
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{formatOperatorTimestamp(row.timestamp, locale)}</td>
-                  <td>{row.operation_mode || "—"}</td>
+                  <td>{measure(row.size, row.size_unit, locale)}</td>
+                  <td>{measure(row.volume, row.volume_unit, locale)}</td>
                   <td>{measure(row.flow, row.flow_unit, locale)}</td>
                   <td>{measure(row.location, row.location_unit, locale)}</td>
                   <td>{row.state || "—"}</td>
@@ -411,8 +419,9 @@ export function LdsLeakPerformance() {
           </Button>
         </div>
       </div>
-      {draft && (
-        <div className="modal fade show" style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }} role="dialog" aria-modal="true">
+      {draft &&
+        createPortal(
+        <div className="modal fade show" style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)", zIndex: 2000 }} role="dialog" aria-modal="true">
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
@@ -421,14 +430,17 @@ export function LdsLeakPerformance() {
               </div>
               <div className="modal-body">
                 <p className="mb-2">{draft.isLeak ? t("machines.ldsRealLeak") : t("machines.ldsFalseAlarm")}</p>
-                {!draft.isLeak && <div className="alert alert-warning py-2">{t("machines.ldsClassifyFalseWarning")}</div>}
-                <label className="form-label small mb-1">{t("machines.ldsSizeOptional")}</label>
-                <input className="form-control form-control-sm mb-2" inputMode="decimal" value={size} onChange={(event) => setSize(event.target.value)} />
-                <label className="form-label small mb-1">{t("machines.ldsVolumeOptional")}</label>
-                <input className="form-control form-control-sm mb-2" inputMode="decimal" value={volume} onChange={(event) => setVolume(event.target.value)} />
-                <label className="form-label small mb-1">{t("machines.ldsLocationOptional")}</label>
-                <input className="form-control form-control-sm" inputMode="decimal" value={location} onChange={(event) => setLocation(event.target.value)} />
-                {draftLocationError != null && (
+                {draft.isLeak && (
+                  <>
+                    <label className="form-label small mb-1">{t("machines.ldsSizeOptional")}</label>
+                    <input className="form-control form-control-sm mb-2" inputMode="decimal" value={size} onChange={(event) => setSize(event.target.value)} />
+                    <label className="form-label small mb-1">{t("machines.ldsVolumeOptional")}</label>
+                    <input className="form-control form-control-sm mb-2" inputMode="decimal" value={volume} onChange={(event) => setVolume(event.target.value)} />
+                    <label className="form-label small mb-1">{t("machines.ldsLocationOptional")}</label>
+                    <input className="form-control form-control-sm" inputMode="decimal" value={location} onChange={(event) => setLocation(event.target.value)} />
+                  </>
+                )}
+                {draft.isLeak && draftLocationError != null && (
                   <p className="text-muted small mt-2 mb-0">
                     {t("machines.ldsLocationErrorPreview", { value: formatMeters(draftLocationError, locale) })}
                   </p>
@@ -440,8 +452,9 @@ export function LdsLeakPerformance() {
               </div>
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+        document.body
+        )}
     </Card>
   );
 }

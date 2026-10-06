@@ -104,6 +104,10 @@ export function normalizeAlarmState(state: AlarmStateLike): string {
   return tokens[0] ? tokens[0].replace(/\b\w/g, (c) => c.toUpperCase()) : "Normal";
 }
 
+export function requiresAudioAnnunciation(state: AlarmStateLike): boolean {
+  return alarmStateMatches(state, "Unacknowledged");
+}
+
 export function isUnacknowledgedAlarm(state: AlarmStateLike): boolean {
   return (
     alarmStateMatches(state, "Unacknowledged") ||

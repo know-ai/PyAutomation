@@ -125,6 +125,31 @@ class Logs(BaseModel):
         return [log.serialize() for log in logs]
 
     @classmethod
+    def distinct_notebook_areas(cls) -> list[str]:
+        """Areas already used on operator notes. These are not node areas."""
+        from ..utils.operational_log_audit import NOTEBOOK_CLASSIFICATIONS
+
+        families = [item.lower() for item in NOTEBOOK_CLASSIFICATIONS]
+        query = (
+            cls.select(cls.area)
+            .where(cls.area.is_null(False))
+            .where(cls.area != "")
+            .where(fn.LOWER(cls.classification).in_(families))
+            .distinct()
+        )
+        names: list[str] = []
+        seen: set[str] = set()
+        for row in query:
+            text = str(row.area or "").strip()
+            key = text.casefold()
+            if not text or key in seen:
+                continue
+            seen.add(key)
+            names.append(text)
+        names.sort(key=str.casefold)
+        return names
+
+    @classmethod
     def filter_by(
         cls,
         usernames:list[str]=None,

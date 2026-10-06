@@ -188,6 +188,23 @@ class LogsFilterByResource(Resource):
         return result, 200
     
 
+@ns.route('/areas')
+class LogAreasResource(Resource):
+
+    @api.doc(security='apikey', description="Areas already used on operator notes, plus none of the node registry.")
+    @api.response(200, "Success")
+    @api.response(503, "Remote database unavailable")
+    @require_remote_db
+    @Api.token_required(auth=True)
+    def get(self):
+        r"""
+        List operational-note areas.
+
+        Returns area names stored on logbook notes. These names are not plant nodes.
+        """
+        return {"areas": app.list_operational_log_areas()}, 200
+
+
 @ns.route('/lasts/<lasts>')
 @api.param('lasts', 'Number of records to retrieve')
 class LastsEventsResource(Resource):

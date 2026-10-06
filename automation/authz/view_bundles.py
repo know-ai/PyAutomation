@@ -19,6 +19,7 @@ _SHARED_AREA_READ: list[RestEntry] = [
 ]
 _SHARED_TIMEZONE: list[RestEntry] = [
     ("GET", "/api/system/timezone"),
+    ("GET", "/api/settings/alarm-audio"),
 ]
 
 VIEW_REST_BUNDLES: dict[str, ViewBundle] = {
@@ -38,6 +39,7 @@ VIEW_REST_BUNDLES: dict[str, ViewBundle] = {
         "read": [
             ("POST", "/api/logs/filter_by"),
             ("GET", "/api/logs"),
+            ("GET", "/api/logs/areas"),
             ("GET", "/api/users"),
             ("GET", "/api/alarms"),
             *_SHARED_AREA_READ,
@@ -183,10 +185,12 @@ VIEW_REST_BUNDLES: dict[str, ViewBundle] = {
     "hmi:view.settings": {
         "read": [
             ("GET", "/api/settings"),
+            ("GET", "/api/settings/alarm-audio"),
         ],
         "write": [
             ("PUT", "/api/settings"),
             ("PUT", "/api/settings/operator-confirmation"),
+            ("PUT", "/api/settings/alarm-audio"),
             ("POST", "/api/settings/import_config"),
         ],
     },

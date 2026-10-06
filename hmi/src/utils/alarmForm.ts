@@ -9,7 +9,18 @@ export type AlarmFormData = {
   display_name: string;
   on_delay: string;
   off_delay: string;
+  priority: string;
 };
+
+export const DEFAULT_ALARM_PRIORITY = "4";
+
+export function formPriority(raw: unknown): string {
+  const number = Number(raw);
+  if (number === 1 || number === 2 || number === 3 || number === 4) {
+    return String(number);
+  }
+  return DEFAULT_ALARM_PRIORITY;
+}
 
 const TYPE_ALIASES: Record<string, string> = {
   BOOL: "BOOL",
@@ -79,5 +90,6 @@ export function alarmToFormData(alarm: Alarm): AlarmFormData {
     display_name: alarm.display_name || "",
     on_delay: delay(alarm.on_delay),
     off_delay: delay(alarm.off_delay),
+    priority: formPriority(alarm.priority),
   };
 }

@@ -8,7 +8,7 @@ import {
   isTagHistoryTracked,
   updateTagValuesBatch,
 } from "../store/slices/tagsSlice";
-import { setCountByState, setTop3Active, updateAlarmsBatch } from "../store/slices/alarmsSlice";
+import { setAudibleSeed, setCountByState, setTop3Active, updateAlarmsBatch } from "../store/slices/alarmsSlice";
 import { loadAllMachines, updateMachinesBatch } from "../store/slices/machinesSlice";
 import { useAppSelector } from "./useAppSelector";
 import { store } from "../store/store";
@@ -75,6 +75,9 @@ export function useSocket() {
         if (payload.count_by_state && typeof payload.count_by_state === "object") {
           dispatch(setCountByState(payload.count_by_state));
         }
+        if (Array.isArray(payload.audible_alarms)) {
+          dispatch(setAudibleSeed(payload.audible_alarms));
+        }
         if (tags.length > 0) {
           dispatch(updateTagValuesBatch(tags));
         }
@@ -92,6 +95,9 @@ export function useSocket() {
         }
         if (response?.count_by_state) {
           dispatch(setCountByState(response.count_by_state));
+        }
+        if (Array.isArray(response?.audible_alarms)) {
+          dispatch(setAudibleSeed(response.audible_alarms));
         }
       } catch {
         // Offline / historian-less nodes still get on_connection when available.

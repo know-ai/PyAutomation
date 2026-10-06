@@ -5228,6 +5228,22 @@ html[data-hmi-density="control"] .card > .card-header {
   border-color: var(--bs-success);
 }
 
+.modal-header {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.modal-header.modal-header--dragging {
+  cursor: grabbing;
+}
+
+.modal-header :is(button, input, textarea, select, a, label) {
+  cursor: pointer;
+  touch-action: auto;
+  user-select: auto;
+}
+
 
 
 

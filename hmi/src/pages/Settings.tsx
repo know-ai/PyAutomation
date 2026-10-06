@@ -9,6 +9,7 @@ import { ServiceRuntimePanel } from "../components/ServiceRuntimePanel";
 import { SettingsChapter } from "../components/SettingsChapter";
 import { GeospatialProfilePanel } from "../components/settings/GeospatialProfilePanel";
 import { OperatorConfirmationPanel } from "../components/OperatorConfirmationPanel";
+import { AlarmAudioSettingsPanel } from "../components/AlarmAudioSettingsPanel";
 import { getSettings, updateSettings, exportConfig, importConfig, type AppConfig } from "../services/settings";
 import { useTranslation } from "../hooks/useTranslation";
 import { showToast } from "../utils/toast";
@@ -24,6 +25,7 @@ const TOC = [
   { href: "#settings-service", labelKey: "settings.navService" },
   { href: "#settings-operator-confirmation", labelKey: "settings.navOperatorConfirmation" },
   { href: "#settings-georef", labelKey: "settings.navGeoref" },
+  { href: "#settings-alarm-audio", labelKey: "alarmAudio.nav" },
   { href: "#settings-backup", labelKey: "settings.navBackup" },
 ] as const;
 
@@ -215,9 +217,11 @@ export function Settings() {
         <GeospatialProfilePanel canMutate={canEditGeoref} />
       </SettingsChapter>
 
+      <AlarmAudioSettingsPanel canMutate={canMutate} />
+
       <SettingsChapter
         id="settings-backup"
-        index="08"
+        index="09"
         kicker={t("settings.backupKicker")}
         title={t("settings.backupTitle")}
         lede={t("settings.backupLede")}

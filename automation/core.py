@@ -516,6 +516,7 @@ class PyAutomation(Singleton):
                 "machines": self.serialize_machines() or list(),
                 "last_alarms": _safe_hist(lambda: self.get_lasts_alarms(lasts=10, area=local_area), list()),
                 "last_active_alarms": _safe_hist(lambda: self.get_lasts_active_alarms(lasts=3), list()),
+                "audible_alarms": _safe_hist(lambda: self.alarm_manager.audible_cues(), list()),
                 "count_by_state": count_by_state,
                 "last_events": _safe_hist(lambda: self.get_lasts_events(lasts=10, area=local_area), list()),
                 "last_logs": _safe_hist(lambda: self.get_lasts_logs(lasts=10, area=local_area), list()),
@@ -5232,6 +5233,7 @@ class PyAutomation(Singleton):
                     off_delay=payload.get("off_delay"),
                     on_delay_units=payload.get("on_delay_units"),
                     off_delay_units=payload.get("off_delay_units"),
+                    priority=payload.get("priority"),
                 )
                 synced += 1
             except Exception:
@@ -5597,6 +5599,7 @@ class PyAutomation(Singleton):
             off_delay=int|float|None,
             on_delay_units=str|None,
             off_delay_units=str|None,
+            priority=int|None,
             output=(Alarm|type(None), str)
     )
     def create_alarm(
@@ -5619,6 +5622,7 @@ class PyAutomation(Singleton):
             off_delay:float=None,
             on_delay_units:str=None,
             off_delay_units:str=None,
+            priority:int=None,
         )->tuple[Alarm, str]:
         r"""
         Creates and registers a new alarm in the system.
@@ -5688,6 +5692,13 @@ class PyAutomation(Singleton):
             if not scope.owns_tag(tag_obj):
                 return None, f"Alarm '{name}' references a tag outside this node"
 
+        from .alarms.p2.constants import coerce_alarm_priority
+
+        try:
+            priority = coerce_alarm_priority(priority)
+        except ValueError as exc:
+            return None, str(exc)
+
         result = self.alarm_manager.append_alarm(
             name=name,
             tag=tag,
@@ -5705,6 +5716,7 @@ class PyAutomation(Singleton):
             off_delay=off_delay,
             on_delay_units=on_delay_units,
             off_delay_units=off_delay_units,
+            priority=priority,
         )
 
         # Verificar que result no sea None antes de desempaquetar
@@ -5742,6 +5754,7 @@ class PyAutomation(Singleton):
                             off_delay=alarm._off_delay_s(),
                             on_delay_units=alarm.on_delay_units,
                             off_delay_units=alarm.off_delay_units,
+                            priority=alarm.priority,
                         )
                 else:
                     try:
@@ -5762,6 +5775,7 @@ class PyAutomation(Singleton):
                                 off_delay=alarm._off_delay_s(),
                                 on_delay_units=alarm.on_delay_units,
                                 off_delay_units=alarm.off_delay_units,
+                                priority=alarm.priority,
                             )
                     except Exception:
                         logging.debug("local catalog alarm persist skipped", exc_info=True)
@@ -5873,7 +5887,7 @@ class PyAutomation(Singleton):
             return self.alarms_engine.filter_alarm_summary_by(**fields)
 
     @logging_error_handler
-    @validate_types(id=str, name=str|None, tag=str|None, description=str|None, alarm_type=str|None, trigger_value=int|float|None, user=User|type(None), on_delay=int|float|None, off_delay=int|float|None, on_delay_units=str|None, off_delay_units=str|None, output=None)
+    @validate_types(id=str, name=str|None, tag=str|None, description=str|None, alarm_type=str|None, trigger_value=int|float|None, user=User|type(None), on_delay=int|float|None, off_delay=int|float|None, on_delay_units=str|None, off_delay_units=str|None, priority=int|None, output=None)
     def update_alarm(
             self, 
             id:str, 
@@ -5886,7 +5900,8 @@ class PyAutomation(Singleton):
             on_delay:int|float=None,
             off_delay:int|float=None,
             on_delay_units:str=None,
-            off_delay_units:str=None)->None:
+            off_delay_units:str=None,
+            priority:int=None)->None:
         r"""
         Updates the properties of an existing alarm.
 
@@ -5925,6 +5940,10 @@ class PyAutomation(Singleton):
             self.cvt.get_tag_by_name(name=tag)
         ):
             return
+        if priority is not None:
+            from .alarms.p2.constants import coerce_alarm_priority
+
+            current.priority = coerce_alarm_priority(priority)
         self.alarm_manager.put(
             id=id,
             name=name,
@@ -5937,7 +5956,15 @@ class PyAutomation(Singleton):
             off_delay=off_delay,
             on_delay_units=on_delay_units,
             off_delay_units=off_delay_units,
+            priority=priority,
         )
+        if priority is not None:
+            logging.getLogger("pyautomation").info(
+                "Alarm updated id=%s name=%s priority=%s",
+                id,
+                getattr(current, "name", None) or name,
+                int(current.priority),
+            )
         # Persist Tag on Database
         if self.is_db_connected():
 
@@ -5952,6 +5979,7 @@ class PyAutomation(Singleton):
                 off_delay=off_delay,
                 on_delay_units=on_delay_units,
                 off_delay_units=off_delay_units,
+                priority=priority,
             )
         try:
             from .catalog.mutations import persist_alarm_fields_local
@@ -5970,6 +5998,7 @@ class PyAutomation(Singleton):
                 off_delay=off_delay,
                 on_delay_units=on_delay_units,
                 off_delay_units=off_delay_units,
+                priority=priority,
             )
         except Exception:
             logging.debug("local catalog alarm update skipped", exc_info=True)
@@ -6281,9 +6310,8 @@ class PyAutomation(Singleton):
         if scope.enabled:
             if not scope.is_valid:
                 return None, "Multi-edge node identity is not configured"
-            if area not in (None, scope.area):
-                return None, "Log area belongs to another edge node"
-            area = scope.area
+            if area in (None, ""):
+                area = scope.area
         log, message = self.logs_engine.create(
             message=message, 
             user=user, 
@@ -6389,6 +6417,16 @@ class PyAutomation(Singleton):
                 area=optional_area(area),
             ) or list()
         
+        return list()
+
+    @logging_error_handler
+    def list_operational_log_areas(self) -> list:
+        r"""
+        Areas typed on operator notes. Node areas are not created or renamed here.
+        """
+        if self.is_db_connected():
+            areas = self.logs_engine.distinct_notebook_areas()
+            return list(areas or [])
         return list()
 
     # INIT APP
@@ -7346,6 +7384,7 @@ class PyAutomation(Singleton):
                                     description=item.get("description"),
                                     state=state_name or "Normal",
                                     area=item.get("area"),
+                                    priority=item.get("priority"),
                                 )
                                 results["imported"].setdefault("Alarms", 0)
                                 results["imported"]["Alarms"] += 1

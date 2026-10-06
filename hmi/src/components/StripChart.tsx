@@ -261,6 +261,18 @@ function StripChartInner({
 
     const width = plotSize.width > 0 ? plotSize.width : undefined;
     const height = plotSize.height > 0 ? plotSize.height : undefined;
+    const axisInk = mode === "dark" ? "#ced4da" : "#6c757d";
+    const gridInk = mode === "dark" ? "#495057" : "#dee2e6";
+    const tickInk = mode === "dark" ? "#ffffff" : "#212529";
+    const valueAxis = (title: string, seriesColor: string) => ({
+      title,
+      titlefont: { color: seriesColor },
+      tickfont: { color: seriesColor },
+      showline: true,
+      linecolor: axisInk,
+      zeroline: false,
+      gridcolor: gridInk,
+    });
 
     const layout: Partial<Layout> = {
       autosize: false,
@@ -271,20 +283,19 @@ function StripChartInner({
       margin: { l: 56, r: unitOrder.length > 1 ? 56 : 16, t: 28, b: 40 },
       paper_bgcolor: mode === "dark" ? "#212529" : "#ffffff",
       plot_bgcolor: mode === "dark" ? "#2c3034" : "#f8f9fa",
-      font: { color: mode === "dark" ? "#ffffff" : "#212529" },
+      font: { color: tickInk },
       xaxis: {
         type: "date",
         range: xRange,
         tickformat: "%H:%M:%S",
         hoverformat: "%H:%M:%S",
-        color: mode === "dark" ? "#ffffff" : "#212529",
-        gridcolor: mode === "dark" ? "#495057" : "#dee2e6",
+        showline: true,
+        linecolor: axisInk,
+        zeroline: false,
+        tickfont: { color: tickInk },
+        gridcolor: gridInk,
       },
-      yaxis: {
-        title: unitOrder[0] || "Valor",
-        color: axisColors["y"] || (mode === "dark" ? "#ffffff" : "#212529"),
-        gridcolor: mode === "dark" ? "#495057" : "#dee2e6",
-      },
+      yaxis: valueAxis(unitOrder[0] || "Valor", axisColors["y"] || tickInk),
       showlegend: config.tagNames.length > 1,
       legend: {
         orientation: "h",
@@ -298,10 +309,9 @@ function StripChartInner({
 
     if (unitOrder.length > 1) {
       (layout as any).yaxis2 = {
-        title: unitOrder[1],
+        ...valueAxis(unitOrder[1], axisColors["y2"] || tickInk),
         overlaying: "y",
         side: "right",
-        color: axisColors["y2"] || (mode === "dark" ? "#ffffff" : "#212529"),
         gridcolor: "rgba(0,0,0,0)",
       };
     }

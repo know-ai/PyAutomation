@@ -70,6 +70,7 @@ export const HISTORY_PAGE_SIZE_MAX = 100;
 export type AlarmsFooterResponse = {
   top_3_active: Alarm[];
   count_by_state: Record<string, number>;
+  audible_alarms?: Array<{ id?: string; priority?: number }>;
 };
 
 /**

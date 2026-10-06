@@ -567,6 +567,7 @@ def persist_alarm_to_local(
     off_delay=None,
     on_delay_units: str | None = None,
     off_delay_units: str | None = None,
+    priority: int | None = None,
 ) -> str | None:
     """Write an alarm definition into the local catalog. Never raises."""
     try:
@@ -602,6 +603,7 @@ def persist_alarm_to_local(
             "off_delay": off_delay,
             "on_delay_units": on_delay_units,
             "off_delay_units": off_delay_units,
+            "priority": priority,
         }
         payload = {k: v for k, v in payload.items() if v is not None or k in {"description", "area"}}
         if existing and existing.get("_pk") is not None:

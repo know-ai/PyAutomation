@@ -1,7 +1,7 @@
 import { createSlice, PayloadAction, createSelector } from "@reduxjs/toolkit";
 import type { Alarm } from "../../services/alarms";
 import { logout } from "./authSlice";
-import { isAnnunciatedAlarm } from "../../utils/alarmState";
+import { isAnnunciatedAlarm, requiresAudioAnnunciation } from "../../utils/alarmState";
 
 export const TOP3_MAX = 3;
 export const CATALOG_PAGE_MAX = 50;
@@ -15,6 +15,7 @@ export type HistoryRow = Record<string, unknown> & {
 interface AlarmsState {
   // INV-43: never the full catalog
   top3Active: Alarm[];
+  audible: Record<string, number>;
   countByState: Record<string, number>;
   page: Alarm[];
   pageNumber: number;
@@ -28,6 +29,7 @@ interface AlarmsState {
 
 const initialState: AlarmsState = {
   top3Active: [],
+  audible: {},
   countByState: {},
   page: [],
   pageNumber: 1,
@@ -53,8 +55,8 @@ function isLiveAlarm(alarm: Alarm): boolean {
 }
 
 function sortByTransition(a: Alarm, b: Alarm): number {
-  const pa = Number(a.priority ?? 3);
-  const pb = Number(b.priority ?? 3);
+  const pa = Number(a.priority ?? 4);
+  const pb = Number(b.priority ?? 4);
   if (pa !== pb) return pa - pb;
   const aTime = Date.parse(String(a.last_transition_ts || a.timestamp || "")) || 0;
   const bTime = Date.parse(String(b.last_transition_ts || b.timestamp || "")) || 0;
@@ -80,6 +82,26 @@ export function clampHistory(items: HistoryRow[]): HistoryRow[] {
   return items.slice(0, HISTORY_PAGE_MAX);
 }
 
+export function audiblePriority(alarm: Alarm): number | null {
+  if (!requiresAudioAnnunciation(alarm.state)) return null;
+  const priority = Number(alarm.priority ?? 4);
+  return Number.isFinite(priority) ? priority : 3;
+}
+
+function applyAudible(map: Record<string, number>, alarm: Alarm): Record<string, number> {
+  const key = alarmKey(alarm);
+  if (!key) return map;
+  const priority = audiblePriority(alarm);
+  if (priority == null) {
+    if (!(key in map)) return map;
+    const next = { ...map };
+    delete next[key];
+    return next;
+  }
+  if (map[key] === priority) return map;
+  return { ...map, [key]: priority };
+}
+
 function patchPage(page: Alarm[], incoming: Alarm): Alarm[] {
   const key = alarmKey(incoming);
   if (!key) return clampPage(page);
@@ -101,6 +123,15 @@ const alarmsSlice = createSlice({
     setCountByState: (state, action: PayloadAction<Record<string, number>>) => {
       state.countByState = action.payload || {};
     },
+    setAudibleSeed: (state, action: PayloadAction<Array<{ id?: string; priority?: number }>>) => {
+      const next: Record<string, number> = {};
+      action.payload.forEach((cue) => {
+        if (!cue.id) return;
+        const priority = Number(cue.priority ?? 4);
+        next[String(cue.id)] = Number.isFinite(priority) ? priority : 3;
+      });
+      state.audible = next;
+    },
     setAlarmsPage: (state, action: PayloadAction<Alarm[]>) => {
       state.page = clampPage(action.payload);
     },
@@ -121,24 +152,30 @@ const alarmsSlice = createSlice({
       const alarm = action.payload;
       state.top3Active = upsertTop3(state.top3Active, alarm);
       state.page = patchPage(state.page, alarm);
+      state.audible = applyAudible(state.audible, alarm);
     },
     updateAlarm: (state, action: PayloadAction<Alarm>) => {
       const alarm = action.payload;
       state.top3Active = upsertTop3(state.top3Active, alarm);
       state.page = patchPage(state.page, alarm);
+      state.audible = applyAudible(state.audible, alarm);
     },
     updateAlarmsBatch: (state, action: PayloadAction<Alarm[]>) => {
       let top3 = state.top3Active;
       let page = state.page;
+      let audible = state.audible;
       action.payload.forEach((alarm) => {
         top3 = upsertTop3(top3, alarm);
         page = patchPage(page, alarm);
+        audible = applyAudible(audible, alarm);
       });
       state.top3Active = top3.slice(0, TOP3_MAX);
       state.page = clampPage(page);
+      state.audible = audible;
     },
     clearAlarms: (state) => {
       state.top3Active = [];
+      state.audible = {};
       state.page = [];
       state.history = [];
       state.historyAlarmId = null;
@@ -154,6 +191,7 @@ const alarmsSlice = createSlice({
   extraReducers: (builder) => {
     builder.addCase(logout, (state) => {
       state.top3Active = [];
+      state.audible = {};
       state.page = [];
       state.hasNext = false;
       state.pageNumber = 1;
@@ -167,6 +205,7 @@ const alarmsSlice = createSlice({
 export const {
   setTop3Active,
   setCountByState,
+  setAudibleSeed,
   setAlarmsPage,
   setPageMeta,
   setHistory,

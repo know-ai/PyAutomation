@@ -25,6 +25,14 @@ def _payload_delay(payload: dict, key: str):
     return clamp_alarm_delay(payload.get(key))
 
 
+def _payload_priority(payload: dict):
+    if "priority" not in payload or payload.get("priority") is None:
+        return None
+    from ....alarms.p2.constants import coerce_alarm_priority
+
+    return coerce_alarm_priority(payload.get("priority"))
+
+
 ns = Namespace('Alarms', description='Alarm Management Resources')
 app = PyAutomation()
 
@@ -69,6 +77,7 @@ create_alarm_model = api.model("create_alarm_model", {
     'off_delay': fields.Float(required=False, description='Seconds the condition must stay normal before the alarm clears (ISA-18.2 Off-Delay). Default 0 (immediate).', default=0.0),
     'on_delay_units': fields.String(required=False, description="Delay unit (currently always 'seconds')", default='seconds'),
     'off_delay_units': fields.String(required=False, description="Delay unit (currently always 'seconds')", default='seconds'),
+    'priority': fields.Integer(required=False, description='ISA-18.2 alarm priority, 1 (most urgent) through 4. Default 4.', default=4),
 })
 
 alarms_kp_range_model = api.model("alarms_kp_range_model", {
@@ -88,6 +97,7 @@ update_alarm_model = api.model("update_alarm_model", {
     'off_delay': fields.Float(required=False, description='Seconds the condition must stay normal before the alarm clears (ISA-18.2 Off-Delay)'),
     'on_delay_units': fields.String(required=False, description="Delay unit (currently always 'seconds')"),
     'off_delay_units': fields.String(required=False, description="Delay unit (currently always 'seconds')"),
+    'priority': fields.Integer(required=False, description='ISA-18.2 alarm priority, 1 (most urgent) through 4.'),
 })
 
 # Parsers
@@ -214,6 +224,7 @@ class AlarmsFooterResource(Resource):
         return {
             "top_3_active": compact,
             "count_by_state": runtime.count_by_state(),
+            "audible_alarms": app.alarm_manager.audible_cues(),
         }, 200
 
 
@@ -686,6 +697,7 @@ class AddAlarmResource(Resource):
                 off_delay=_payload_delay(payload, 'off_delay'),
                 on_delay_units=normalize_delay_units(payload.get('on_delay_units')) if payload.get('on_delay_units') else None,
                 off_delay_units=normalize_delay_units(payload.get('off_delay_units')) if payload.get('off_delay_units') else None,
+                priority=payload.get('priority', 4),
             )
             
             if alarm:
@@ -788,6 +800,7 @@ class UpdateAlarmResource(Resource):
                 off_delay=_payload_delay(update_kwargs, 'off_delay'),
                 on_delay_units=normalize_delay_units(update_kwargs.get('on_delay_units')) if update_kwargs.get('on_delay_units') else None,
                 off_delay_units=normalize_delay_units(update_kwargs.get('off_delay_units')) if update_kwargs.get('off_delay_units') else None,
+                priority=_payload_priority(update_kwargs),
             )
             
             # Get updated alarm
@@ -797,7 +810,8 @@ class UpdateAlarmResource(Resource):
                     'message': f"Alarm '{updated_alarm.name}' updated successfully",
                     'alarm': {
                         'id': updated_alarm.identifier,
-                        'name': updated_alarm.name
+                        'name': updated_alarm.name,
+                        'priority': int(updated_alarm.priority),
                     }
                 }, 200
             else:

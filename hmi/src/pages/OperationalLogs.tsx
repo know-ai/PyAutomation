@@ -7,6 +7,7 @@ import { AreaFilter } from "../components/AreaFilter";
 import {
   filterLogs,
   createLog,
+  getOperationalLogAreas,
   type Log,
   type LogFilter,
 } from "../services/logs";
@@ -53,6 +54,23 @@ const PRESET_DATES: PresetDate[] = [
 
 const WATCHDOG_DESCRIPTION = "memory-watchdog";
 const NOTEBOOK_CLASSIFICATIONS = ["General", "Operational"];
+const NEW_AREA_OPTION = "\u0000";
+
+function mergeAreaNames(...groups: string[][]): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const group of groups) {
+    for (const raw of group) {
+      const name = raw.trim();
+      const key = name.toLocaleLowerCase();
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      names.push(name);
+    }
+  }
+  names.sort((a, b) => a.localeCompare(b));
+  return names;
+}
 
 function viewFilters(view: LogView): Pick<LogFilter, "classifications" | "exclude_description"> {
   if (view === "notebook") {
@@ -106,6 +124,11 @@ export function OperationalLogs() {
   const { canExportCsv } = useAuthz();
   const { timeZone } = useDisplayTimezone();
   const plantAreas = usePlantAreas();
+  const [notebookAreas, setNotebookAreas] = useState<string[]>([]);
+  const areaOptions = useMemo(
+    () => mergeAreaNames(plantAreas, notebookAreas),
+    [plantAreas, notebookAreas]
+  );
   const { schedule, flushPending, setRunner, isCurrent } = useScheduledQuery();
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(false);
@@ -141,7 +164,10 @@ export function OperationalLogs() {
     const saved = localStorage.getItem("operational_logs_selectedAlarmNames");
     return saved ? JSON.parse(saved) : [];
   });
-  const [selectedArea, setSelectedArea] = useState("");
+  const [selectedArea, setSelectedArea] = useState(
+    () => localStorage.getItem("operational_logs_area") || ""
+  );
+  const [selectedLog, setSelectedLog] = useState<Log | null>(null);
   const [presetDate, setPresetDate] = useState<PresetDate>(() => {
     const saved = localStorage.getItem("operational_logs_presetDate");
     return (saved as PresetDate) || "Last Day";
@@ -158,6 +184,8 @@ export function OperationalLogs() {
   const [newLogMessage, setNewLogMessage] = useState("");
   const [newLogShift, setNewLogShift] = useState<ShiftValue>("");
   const [newLogArea, setNewLogArea] = useState("");
+  const [addingNewArea, setAddingNewArea] = useState(false);
+  const [newAreaDraft, setNewAreaDraft] = useState("");
   const [newLogHandover, setNewLogHandover] = useState(false);
   const [addingLog, setAddingLog] = useState(false);
   const [searchText, setSearchText] = useState(
@@ -165,7 +193,7 @@ export function OperationalLogs() {
   );
   const [logView, setLogView] = useState<LogView>(() => {
     const saved = localStorage.getItem("operational_logs_view");
-    return (saved as LogView) || "notebook";
+    return (saved as LogView) || "all";
   });
 
   // Cargar opciones para los filtros
@@ -229,6 +257,12 @@ export function OperationalLogs() {
         console.error("Error loading alarm names:", e);
       }
 
+      try {
+        setNotebookAreas(await getOperationalLogAreas());
+      } catch (e) {
+        console.error("Error loading operational areas:", e);
+      }
+
       // Establecer fechas por defecto solo si no hay fechas guardadas
       if (!startDate || !endDate) {
         const { start, end } = getPresetDateRange("Last Day");
@@ -252,37 +286,52 @@ export function OperationalLogs() {
     setFilters((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
   };
 
+  const addOneSecond = (dateTimeLocal: string): string => {
+    const normalized = dateTimeLocal.length === 16 ? `${dateTimeLocal}:00` : dateTimeLocal;
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return dateTimeLocal;
+    date.setSeconds(date.getSeconds() + 1);
+    return formatToLocalDateTime(date);
+  };
+
+  const buildLogFilter = (
+    queryWindow: { start: string; end: string },
+    view: LogView,
+    page: number
+  ): LogFilter => {
+    const payload: LogFilter = {
+      ...filters,
+      page,
+    };
+    if (selectedUsernames.length > 0) {
+      payload.usernames = selectedUsernames;
+    }
+    if (selectedAlarmNames.length > 0) {
+      payload.alarm_names = selectedAlarmNames;
+    }
+    const trimmedSearch = searchText.trim();
+    if (trimmedSearch) {
+      payload.search = trimmedSearch;
+    }
+    Object.assign(payload, viewFilters(view));
+    if (queryWindow.start) {
+      payload.greater_than_timestamp = formatDateTimeForBackend(queryWindow.start);
+    }
+    if (queryWindow.end) {
+      payload.less_than_timestamp = formatDateTimeForBackend(addOneSecond(queryWindow.end));
+    }
+    payload.timezone = timeZone;
+    if (selectedArea) {
+      payload.area = selectedArea;
+    }
+    return payload;
+  };
+
   const loadLogs = async ({ signal, generation }: ScheduledQueryContext) => {
     setLoading(true);
     setError(null);
     try {
-      const payload: LogFilter = {
-        ...filters,
-      };
-
-      if (selectedUsernames.length > 0) {
-        payload.usernames = selectedUsernames;
-      }
-      if (selectedAlarmNames.length > 0) {
-        payload.alarm_names = selectedAlarmNames;
-      }
-      const trimmedSearch = searchText.trim();
-      if (trimmedSearch) {
-        payload.search = trimmedSearch;
-      }
-      Object.assign(payload, viewFilters(logView));
-      const queryWindow = resolveQueryWindow(true);
-      if (queryWindow.start) {
-        payload.greater_than_timestamp = formatDateTimeForBackend(queryWindow.start);
-      }
-      if (queryWindow.end) {
-        payload.less_than_timestamp = formatDateTimeForBackend(queryWindow.end);
-      }
-
-      payload.timezone = timeZone;
-      if (selectedArea) {
-        payload.area = selectedArea;
-      }
+      const payload = buildLogFilter(resolveQueryWindow(true), logView, filters.page || 1);
 
       const response = await filterLogs(payload, { signal });
       if (!isCurrent(generation, signal)) return;
@@ -349,30 +398,45 @@ export function OperationalLogs() {
     setAddingLog(true);
     setError(null);
     try {
+      const area = (addingNewArea ? newAreaDraft : newLogArea).trim();
       await createLog({
         message: newLogMessage.trim(),
         shift: newLogShift || undefined,
-        area: newLogArea.trim() || undefined,
+        area: area || undefined,
         handover: newLogHandover,
       });
+      if (area) {
+        setNotebookAreas((current) => mergeAreaNames(current, [area]));
+      }
       setNewLogMessage("");
       setNewLogShift("");
       setNewLogArea("");
+      setAddingNewArea(false);
+      setNewAreaDraft("");
       setNewLogHandover(false);
       setShowAddLogModal(false);
-      const window = resolveQueryWindow(true);
-      setStartDate(window.start);
-      setEndDate(window.end);
-      localStorage.setItem("operational_logs_startDate", window.start);
-      localStorage.setItem("operational_logs_endDate", window.end);
-      if (logView !== "notebook" && logView !== "all") {
-        setLogView("notebook");
-        localStorage.setItem("operational_logs_view", "notebook");
+      const queryWindow = resolveQueryWindow(true);
+      setStartDate(queryWindow.start);
+      setEndDate(queryWindow.end);
+      localStorage.setItem("operational_logs_startDate", queryWindow.start);
+      localStorage.setItem("operational_logs_endDate", queryWindow.end);
+      const nextView: LogView =
+        logView !== "notebook" && logView !== "all" ? "notebook" : logView;
+      if (nextView !== logView) {
+        setLogView(nextView);
+        localStorage.setItem("operational_logs_view", nextView);
       }
-      const nextFilters = { ...filters, page: 1 };
-      setFilters(nextFilters);
+      setFilters((prev) => ({ ...prev, page: 1 }));
       localStorage.setItem("operational_logs_page", "1");
-      schedule(FILTER_INSTANT_MS);
+      const response = await filterLogs(buildLogFilter(queryWindow, nextView, 1));
+      setLogs(response.data || []);
+      setPagination({
+        page: response.pagination.page || 1,
+        limit: response.pagination.limit || 20,
+        total: response.pagination.total_records || 0,
+        pages: response.pagination.total_pages || 0,
+      });
+      setHasLoaded(true);
     } catch (e: any) {
       const errorMsg =
         e?.response?.data?.message ||
@@ -558,10 +622,11 @@ export function OperationalLogs() {
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <AreaFilter
                     value={selectedArea}
-                    areas={plantAreas}
+                    areas={areaOptions}
                     plantLabel={t("common.plantWide")}
                     onChange={(area) => {
                       setSelectedArea(area);
+                      localStorage.setItem("operational_logs_area", area);
                       resetToFirstPage();
                     }}
                   />
@@ -779,23 +844,24 @@ export function OperationalLogs() {
                     <th>{t("tables.shift")}</th>
                     <th>{t("tables.area")}</th>
                     <th>{t("tables.message")}</th>
-                    <th>{t("tables.description")}</th>
                     <th>{t("tables.classification")}</th>
-                    <th>{t("tables.handover")}</th>
-                    <th>{t("tables.alarm")}</th>
-                    <th>{t("tables.event")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {logs.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="text-center text-muted py-4">
+                      <td colSpan={7} className="text-center text-muted py-4">
                         {t("operationalLogs.noLogs")}
                       </td>
                     </tr>
                   ) : (
                     logs.map((log) => (
-                      <tr key={log.id ?? `${log.timestamp}-${log.message}`}>
+                      <tr
+                        key={log.id ?? `${log.timestamp}-${log.message}`}
+                        onDoubleClick={() => setSelectedLog(log)}
+                        style={{ cursor: "pointer" }}
+                        title={t("operationalLogs.detailHint")}
+                      >
                         <td>{log.id || (log.journaled ? "SAF" : "-")}</td>
                         <td>{formatOperatorTimestamp(log.timestamp, locale)}</td>
                         <td>{log.user?.username || log.user_name || "-"}</td>
@@ -811,11 +877,7 @@ export function OperationalLogs() {
                             <div className="small text-muted">{t("operationalLogs.journaledHint")}</div>
                           ) : null}
                         </td>
-                        <td>{log.description || "-"}</td>
                         <td>{log.classification || "-"}</td>
-                        <td>{log.handover ? t("common.yes") : t("common.no")}</td>
-                        <td>{log.alarm?.name || "-"}</td>
-                        <td>{log.event?.id || "-"}</td>
                       </tr>
                     ))
                   )}
@@ -823,6 +885,63 @@ export function OperationalLogs() {
               </table>
             </div>
           </HistoryResults>
+
+          {selectedLog && (
+            <div
+              className="modal show d-block"
+              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+              onClick={() => setSelectedLog(null)}
+            >
+              <div className="modal-dialog modal-lg modal-dialog-scrollable" onClick={(event) => event.stopPropagation()}>
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">
+                      {t("operationalLogs.detailTitle", { id: selectedLog.id || "SAF" })}
+                    </h5>
+                    <button type="button" className="btn-close" aria-label={t("common.close")} onClick={() => setSelectedLog(null)} />
+                  </div>
+                  <div className="modal-body">
+                    <dl className="row mb-0">
+                      <dt className="col-sm-4">{t("tables.id")}</dt>
+                      <dd className="col-sm-8">{selectedLog.id || (selectedLog.journaled ? "SAF" : "-")}</dd>
+                      <dt className="col-sm-4">{t("tables.timestamp")}</dt>
+                      <dd className="col-sm-8">{formatOperatorTimestamp(selectedLog.timestamp, locale) || "-"}</dd>
+                      <dt className="col-sm-4">{t("tables.user")}</dt>
+                      <dd className="col-sm-8">{selectedLog.user?.username || selectedLog.user_name || "-"}</dd>
+                      <dt className="col-sm-4">{t("tables.message")}</dt>
+                      <dd className="col-sm-8">{selectedLog.message || "-"}</dd>
+                      <dt className="col-sm-4">{t("tables.description")}</dt>
+                      <dd className="col-sm-8">{selectedLog.description || "-"}</dd>
+                      <dt className="col-sm-4">{t("tables.classification")}</dt>
+                      <dd className="col-sm-8">{selectedLog.classification || "-"}</dd>
+                      <dt className="col-sm-4">{t("tables.shift")}</dt>
+                      <dd className="col-sm-8">
+                        {selectedLog.shift
+                          ? t(`operationalLogs.shift${selectedLog.shift.charAt(0).toUpperCase()}${selectedLog.shift.slice(1)}`)
+                          : "-"}
+                      </dd>
+                      <dt className="col-sm-4">{t("tables.area")}</dt>
+                      <dd className="col-sm-8">{selectedLog.area || "-"}</dd>
+                      <dt className="col-sm-4">{t("tables.handover")}</dt>
+                      <dd className="col-sm-8">{selectedLog.handover ? t("common.yes") : t("common.no")}</dd>
+                      <dt className="col-sm-4">{t("tables.alarm")}</dt>
+                      <dd className="col-sm-8">{selectedLog.alarm?.name || "-"}</dd>
+                      <dt className="col-sm-4">{t("tables.event")}</dt>
+                      <dd className="col-sm-8">{selectedLog.event?.id || "-"}</dd>
+                    </dl>
+                    {selectedLog.journaled ? (
+                      <p className="text-muted small mb-0 mt-3">{t("operationalLogs.journaledHint")}</p>
+                    ) : null}
+                  </div>
+                  <div className="modal-footer">
+                    <Button variant="secondary" onClick={() => setSelectedLog(null)}>
+                      {t("common.close")}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Modal para agregar log */}
           {showAddLogModal && (
@@ -877,14 +996,41 @@ export function OperationalLogs() {
                         <label className="form-label">
                           {t("operationalLogs.areaLabel")}
                         </label>
-                        <input
-                          type="text"
-                          className="form-control"
-                          maxLength={64}
-                          value={newLogArea}
-                          onChange={(e) => setNewLogArea(e.target.value)}
-                          placeholder={t("operationalLogs.areaPlaceholder")}
-                        />
+                        <select
+                          className="form-select"
+                          value={addingNewArea ? NEW_AREA_OPTION : newLogArea}
+                          onChange={(e) => {
+                            if (e.target.value === NEW_AREA_OPTION) {
+                              setAddingNewArea(true);
+                              return;
+                            }
+                            setAddingNewArea(false);
+                            setNewAreaDraft("");
+                            setNewLogArea(e.target.value);
+                          }}
+                        >
+                          <option value="">{t("operationalLogs.areaNone")}</option>
+                          {areaOptions.map((area) => (
+                            <option key={area} value={area}>
+                              {area}
+                            </option>
+                          ))}
+                          <option value={NEW_AREA_OPTION}>{t("operationalLogs.areaNew")}</option>
+                        </select>
+                        {addingNewArea && (
+                          <>
+                            <input
+                              type="text"
+                              className="form-control mt-2"
+                              maxLength={64}
+                              value={newAreaDraft}
+                              onChange={(e) => setNewAreaDraft(e.target.value)}
+                              placeholder={t("operationalLogs.areaNewPlaceholder")}
+                              aria-label={t("operationalLogs.areaNew")}
+                            />
+                            <div className="form-text">{t("operationalLogs.areaNewHint")}</div>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="form-check">
@@ -908,6 +1054,8 @@ export function OperationalLogs() {
                         setNewLogMessage("");
                         setNewLogShift("");
                         setNewLogArea("");
+                        setAddingNewArea(false);
+                        setNewAreaDraft("");
                         setNewLogHandover(false);
                       }}
                       disabled={addingLog}

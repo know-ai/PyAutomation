@@ -274,7 +274,7 @@ class Alarms(BaseModel):
     off_delay = FloatField(default=DEFAULT_ALARM_DELAY_S)
     on_delay_units = CharField(default=DEFAULT_ALARM_DELAY_UNITS, max_length=16)
     off_delay_units = CharField(default=DEFAULT_ALARM_DELAY_UNITS, max_length=16)
-    priority = IntegerField(default=3)
+    priority = IntegerField(default=4)
     latching = BooleanField(default=True)
     ack_required = BooleanField(default=True)
     chattering = BooleanField(default=False)
@@ -300,6 +300,7 @@ class Alarms(BaseModel):
         off_delay:float=None,
         on_delay_units:str=None,
         off_delay_units:str=None,
+        priority:int=None,
         ):
         r"""
         Creates a new Alarm configuration record.
@@ -338,6 +339,8 @@ class Alarms(BaseModel):
                 None if state is None else state_name,
             )
             return None
+        from ..alarms.p2.constants import alarm_priority_or_default
+
         if not cls.name_exists(name):
 
             alarm = super().create(
@@ -354,6 +357,7 @@ class Alarms(BaseModel):
                 off_delay=DEFAULT_ALARM_DELAY_S if off_delay is None else off_delay,
                 on_delay_units=on_delay_units or DEFAULT_ALARM_DELAY_UNITS,
                 off_delay_units=off_delay_units or DEFAULT_ALARM_DELAY_UNITS,
+                priority=alarm_priority_or_default(priority),
             )
             alarm.save()
 
@@ -405,6 +409,8 @@ class Alarms(BaseModel):
         r"""
         Serializes the alarm record.
         """
+        from ..alarms.p2.constants import alarm_priority_or_default
+
         timestamp = self.timestamp
         if timestamp:
 
@@ -430,7 +436,7 @@ class Alarms(BaseModel):
             'off_delay': self.off_delay if self.off_delay is not None else DEFAULT_ALARM_DELAY_S,
             'on_delay_units': self.on_delay_units or DEFAULT_ALARM_DELAY_UNITS,
             'off_delay_units': self.off_delay_units or DEFAULT_ALARM_DELAY_UNITS,
-            'priority': getattr(self, 'priority', 3) or 3,
+            'priority': alarm_priority_or_default(getattr(self, 'priority', None)),
             'latching': bool(getattr(self, 'latching', True)),
             'ack_required': bool(getattr(self, 'ack_required', True)),
         }

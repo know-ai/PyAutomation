@@ -102,3 +102,9 @@ export const createLog = async (payload: CreateLogPayload): Promise<any> => {
   return data;
 };
 
+export const getOperationalLogAreas = async (): Promise<string[]> => {
+  const { data } = await api.get("/logs/areas");
+  const areas = Array.isArray(data?.areas) ? data.areas : [];
+  return areas.map((area: unknown) => String(area || "").trim()).filter(Boolean);
+};
+

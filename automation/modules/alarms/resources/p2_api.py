@@ -66,10 +66,37 @@ class AlarmPriorityResource(Resource):
             )
         except ValueError as exc:
             return {"message": str(exc)}, 400
+        priority = int(args["priority"])
         alarm = app.alarm_manager.peek_alarm(id=alarm_id) or app.alarm_manager.peek_alarm(name=alarm_id)
         if alarm is not None:
-            alarm.priority = int(args["priority"])
-        return {"alarm_id": alarm_id, "priority": int(args["priority"])}, 200
+            alarm.priority = priority
+        _persist_alarm_priority(alarm, alarm_id, priority)
+        return {"alarm_id": alarm_id, "priority": priority}, 200
+
+
+def _persist_alarm_priority(alarm, alarm_id, priority: int) -> None:
+    """Write the definition row. A historian miss keeps the in-memory value."""
+    try:
+        from ....dbmodels.alarms import Alarms
+    except Exception:
+        return
+    row = None
+    identifier = getattr(alarm, "identifier", None) or alarm_id
+    name = getattr(alarm, "name", None)
+    try:
+        row = Alarms.read_by_identifier(identifier)
+        if row is None and name:
+            row = Alarms.read_by_name(name)
+        if row is None:
+            return
+        row.priority = priority
+        row.save()
+    except Exception:
+        import logging
+
+        logging.getLogger("pyautomation").warning(
+            "alarm priority persisted in memory only id=%s", alarm_id, exc_info=True
+        )
 
 
 def _apply_type(alarm_id, type_name, args):

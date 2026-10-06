@@ -709,6 +709,7 @@ def _alarm_catalog_fields(item: Mapping[str, Any]) -> dict[str, Any] | None:
     description = item.get("description")
     area = item.get("area")
     state = item.get("state")
+    item_priority = item.get("priority")
     runtime = _runtime_alarm(name)
     if runtime is not None:
         tag = tag or _tag_name(getattr(runtime, "tag", None))
@@ -724,6 +725,8 @@ def _alarm_catalog_fields(item: Mapping[str, Any]) -> dict[str, Any] | None:
         description = description or extra.get("description")
         area = area or extra.get("area")
         state = state or extra.get("state")
+        if item_priority is None:
+            item_priority = extra.get("priority")
     if not name or not tag:
         return None
     payload = {
@@ -734,6 +737,7 @@ def _alarm_catalog_fields(item: Mapping[str, Any]) -> dict[str, Any] | None:
         "trigger_value": 0.0 if trigger_value is None else trigger_value,
         "description": description or "",
         "area": area,
+        "priority": item_priority,
     }
     if state:
         payload["state"] = state
